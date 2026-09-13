@@ -1,1 +1,67 @@
-# intelligent-notepad
+# Intelligent Notepad
+
+Notepad, exact down to the status bar. Plus your AI agents. Minus the subscription nag.
+
+## Why this exists
+
+Somewhere along the way, the humble text editor learned a new trick: asking for money. You highlight a paragraph, click Rewrite, and instead of better prose you get a message explaining that intelligence costs $10 a month, billed annually, terms and conditions apply, have you tried turning your wallet off and on again.
+
+Intelligent Notepad is built on a contrarian belief: that the AI subscription you already have should work in the text editor you already use. No Microsoft account sign-in to summarize a grocery list. No AI credits deducted because you dared to rephrase a sentence. No Copilot+ PC required to fix a typo with anything smarter than hope.
+
+Just Notepad. Every tab, every menu, every pixel of the status bar, reproduced 1:1 in C++ and WinUI 3. And sitting beside it, a panel where Claude Code and Codex do the thinking, reached through the open [Agent Client Protocol](https://agentclientprotocol.com/get-started/agents). Your agents, your keys, your machine. The paywall is not included, because there isn't one.
+
+Conceptually: [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal), but for Notepad. Same agent UX grammar (status bar, per-tab pane, session management, slash commands), except the context is your document instead of your shell history, and nobody suggests running `rm -rf` anything.
+
+## What it is not
+
+It is not a terminal. Nothing here runs shell commands, detects failed builds, or knows what a TTY is. If you came looking for a command line with opinions, that project is excellent and it lives next door.
+
+It is not Word. There will be no paperclip, no mail merge, and no Clippy resurrection arc, no matter how politely you ask.
+
+It is not a subscription. Saying it twice because it bears repeating.
+
+## Layout
+
+| Path | What it is |
+| ---- | ---------- |
+| `src/` | The app (lands with `D00 T01 §2`) |
+| `tests/` | Unit, UI, protocol, and perf suites (backbone: `D00 T02`) |
+| `resources/baseline/` | Captured Notepad baseline for parity checks (lands with `D00 T02 §3`) |
+| `todo/` | The live execution plan. Start here. |
+| `scripts/todo-graph.py` | Build, validate, query, and render the TODO graph (stdlib-only) |
+| `docs/` | User guide, review records, phase runs, plans |
+
+## Start here
+
+1. `todo/TODO-00-INDEX.md` -- domain order and active work.
+2. `todo/implementation-plan.md` -- every section in dependency order, grouped in phases.
+3. `todo/README.md` -- the format spec: sections, stamps, XREFs, gates.
+4. `CLAUDE.md` / `AGENTS.md` -- working rules.
+
+```bash
+python3 scripts/todo-graph.py self-test      # the script's own contract, ~1s
+python3 scripts/todo-graph.py validate       # structural + graph integrity of todo/
+python3 scripts/todo-graph.py query ready    # sections whose dependencies are met
+python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # any section reference -> file, section, deps, status
+```
+
+## The build
+
+C++ and WinUI 3 on Windows 11. One-command build and one-command test, pinned toolchain, CI on a Windows runner: all owned by `D00 T01`. Testing is automatic and complete per the bar `D06 T01` writes; no feature is done until its automated proof is green, because "works on my machine" is a confession, not a test result.
+
+Only the ACP client talks to agents, over JSON-RPC 2.0 on stdio: the client launches the agent subprocess (Codex via `codex-acp`, Claude via `claude-agent-acp`), negotiates versions, and drives sessions. Every agent action is consent-gated (`D03 T02`, `D05 T02`); every agent edit is reviewed as a diff and applied through undo (`D05 T02 §3-§4`). The agent can suggest; only you can commit. Literally: one section, one commit, and the row flips only when review says so.
+
+## Port notes
+
+The TODO system (graph script, format, skills, plan mechanics) is a day-1 port of the JMR Online TODO system, seeded 2026-09-14 and groomed against real Windows 11 Notepad behavior the same week. History comments in the scripts name JMR sections (`D00 T01 §21` and the like): those are provenance for why a rule exists, not live references here.
+
+## Deferred
+
+Ported deliberately later, when the repo earns them:
+
+- `plan-gate.py` (routing authority with host probes and clock parks): `query ready` plus the phase tables route until then.
+- External review panel scripts (`review-batch`, `review-rounds`, `review-families`, `review-slices`): the session performs the lenses itself per `review-todo-section` until then.
+- `section_commit_gate.py` (stamp provenance at commit time): `validate` plus review carry the contract until then.
+- Run-guard Stop hook: `process-phase` holds completion-first as procedure until then.
+- `coming-soon-inspect.py`: the `pending-control-contract` severity class stays reserved until it lands.
+- CI workflows (build, test, todo gates): owned by `D00 T01 §3` and `§7`, not scaffolded here.

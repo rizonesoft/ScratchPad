@@ -1,0 +1,116 @@
+---
+schema_version: 1
+id: automated-test-strategy
+domain: 06-quality
+status: draft
+title: "TODO-01 -- Automated Test Strategy"
+depends_on: ["test-backbone"]
+track: Q1
+---
+
+# TODO-01 -- Automated Test Strategy
+
+> **Goal:** "Automatic and complete" is a written bar with measured compliance: layers, coverage, UI suites, and a flake policy that keeps the suite honest.
+
+> [!IMPORTANT]
+> **Current state:** No strategy is written. The `D00 T02` harnesses exist (or land first); this file decides what runs on them and what "complete" means.
+
+## Inputs
+
+- [`00-workspace/TODO-02-test-backbone.md`](../00-workspace/TODO-02-test-backbone.md) -- the harnesses this strategy fills
+- -> XREF: D00 T02 §5 -- the soak and quarantine procedure this strategy's flake policy extends
+
+## Outcome
+
+- Every layer (unit, integration, UI, protocol, perf) has an owner, a suite, and a bar.
+- Coverage is measured per layer with a committed floor that CI enforces.
+- UI suites drive the real app for every Notepad surface and every AI surface.
+- Flakes are quarantined by procedure with a fix window, never deleted.
+
+**Adjacency:** all=not-applicable (test strategy with no user-facing feature surface; the suites it defines live with their features)
+
+## Implementation Order
+
+| Order | Section | Deliverable | Depends On | Status |
+| :---: | :-----: | ----------- | ---------- | :----: |
+|   1   |   §1    | Strategy doc with layers and bars | D00 T02 §1 |  [ ]   |
+|   2   |   §2    | Coverage floors enforced in CI | §1 |  [ ]   |
+|   3   |   §3    | Notepad parity UI suites | §1, D02 T02 §5 |  [ ]   |
+|   4   |   §4    | AI surface UI suites | §1, D05 T02 §5 |  [ ]   |
+|   5   |   §5    | Perf budgets enforced in CI | §1 |  [ ]   |
+|   6   |   §6    | Flake policy and quarantine operation | §1, D00 T02 §5 |  [ ]   |
+
+---
+
+## 1. Strategy Doc with Layers and Bars
+
+Why this section exists: "automatic and complete" without a written definition is a slogan. The doc makes it a bar with owners.
+
+- [ ] `docs/test-strategy.md` defines the layers (unit, integration, UI, protocol, perf), each with owner, suite location, and bar. Done when: every layer names all three.
+- [ ] The doc defines what "complete" means per layer (behavior coverage, not line coverage alone). Done when: each definition is falsifiable.
+- [ ] The doc maps every domain's surfaces to the suites that prove them. Done when: no surface is unmapped.
+- [ ] Commit: `"quality: write the automated test strategy"`
+
+**Test checkpoint:** A reviewer verifies every surface maps to a suite and every bar is falsifiable; gaps are filed, not waived. Cheaper substitute that fails: a strategy that says "test everything".
+
+## 2. Coverage Floors Enforced in CI
+
+Why this section exists: floors that CI does not enforce are wishes. Measure per layer, fail below the floor.
+
+- [ ] Coverage is measured per layer with the tooling recorded in the strategy doc. Done when: a coverage report exists for every layer.
+- [ ] CI fails the run when any layer drops below its committed floor. Done when: a probe deletion of tests fails the run (reverted immediately).
+- [ ] Floors ratchet only upward; lowering one needs a recorded decision. Done when: the rule is written and the history shows no silent drop.
+- [ ] Uncoverable code (platform shims, defensive branches) is marked with reason, not silently excluded. Done when: each marking names its reason.
+- [ ] Commit: `"quality: enforce coverage floors in CI"`
+
+**Test checkpoint:** Probe test deletion fails CI; floors documented; markings reasoned. Cheaper substitute that fails: one global percentage that hides an untested layer.
+
+## 3. Notepad Parity UI Suites
+
+Why this section exists: the clone claim is proven surface by surface, automatically, on every run.
+
+- [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
+- [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
+- [ ] The suites run in CI on a Windows runner. Done when: the CI log shows them green.
+- [ ] Commit: `"quality: drive Notepad parity in UI suites"`
+
+**Test checkpoint:** Suites green in CI; deliberate deviations fail; coverage table fully mapped. Cheaper substitute that fails: parity checked by hand before release.
+
+## 4. AI Surface UI Suites
+
+Why this section exists: the AI panel, prompts, diffs, and elicitations are driven automatically against scripted agents, not clicked by hand.
+
+- [ ] `tests/UI/AiPanel/` drives the panel, prompts, tool display, diff review, apply, and elicitation against the loopback. Done when: each flow passes.
+- [ ] Consent and denial paths are driven, not just the allow path. Done when: the denial matrix passes.
+- [ ] The suites run in CI on a Windows runner. Done when: the CI log shows them green.
+- [ ] Commit: `"quality: drive AI surfaces in UI suites"`
+
+**Test checkpoint:** Suites green in CI with denial paths proven. Cheaper substitute that fails: AI flows tested by hand because "scripting agents is hard".
+
+## 5. Perf Budgets Enforced in CI
+
+Why this section exists: budgets nobody measures are decorations. The perf tests from every domain run here as one enforced gate.
+
+- [ ] `tests/Perf/` collects the latency, memory, and responsiveness budgets from all domains. Done when: every committed budget has a test.
+- [ ] CI fails the run on budget breach with the offending measurement named. Done when: a probe slowdown fails the run (reverted immediately).
+- [ ] Budgets are recorded with their hardware assumptions so results are comparable. Done when: the assumptions are written.
+- [ ] Commit: `"quality: enforce perf budgets in CI"`
+
+**Test checkpoint:** Budgets measured in CI; probe breach fails. Cheaper substitute that fails: perf tested on the dev machine before release.
+
+## 6. Flake Policy and Quarantine Operation
+
+Why this section exists: the quarantine procedure from `D00 T02 §5` needs an operator: triage cadence, fix windows, and escalation.
+
+- [ ] The flake policy sets triage cadence, fix window, and escalation for quarantined tests. Done when: the policy is written in the strategy doc.
+- [ ] A quarantined test is retried on its schedule and either reinstated or removed with a recorded decision. Done when: the lifecycle is demonstrated once for real.
+- [ ] Quarantine size is reported in CI; growth past the committed limit fails the run. Done when: the limit is tested.
+- [ ] Commit: `"quality: operate the flake policy"`
+
+**Test checkpoint:** Lifecycle demonstrated for real; quarantine growth fails CI. Cheaper substitute that fails: quarantine as a trash can with no triage.
+
+## Verification
+
+- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] Every surface mapped to a suite, every suite green in CI
+- [ ] `python3 scripts/todo-graph.py validate` clean

@@ -1,0 +1,8 @@
+build/
+out/
+.vs/
+*.user
+*.suo
+TestResults/
+resources/baseline/*-local/
+__pycache__/
