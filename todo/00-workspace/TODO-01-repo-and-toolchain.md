@@ -46,10 +46,14 @@ track: W0
 
 Why this section exists: every path, command, and gate below assumes a layout and a compiler. Pin both before anything else so later sections build on facts.
 
+**Groomed 2026-09-13:** Operator decision: the toolchain is provisioned repo-local (script plus pins plus lockfiles), never system-dependent and never binaries in git.
+
 - [ ] `README.md` records the layout (`src/`, `tests/`, `resources/`, `docs/`) and the pinned Windows SDK, MSVC, and CMake versions. Done when: the versions are exact numbers, not "latest".
 - [ ] `src/` and `tests/` directories exist with a placeholder each so the layout is real before the scaffold lands. Done when: the tree matches the doc.
 - [ ] `.gitignore` covers `build/`, `out/`, VS artifacts, and test output. Done when: a build leaves `git status` clean apart from intended files.
 - [ ] `.gitattributes` pins line endings for the repo (CRLF for WinUI sources where the toolchain wants it, LF for scripts and markdown). Done when: a fresh clone shows no line-ending diffs.
+- [ ] `tools/bootstrap.ps1` provisions the full toolchain into repo-local `.tools/` (gitignored): CMake, Ninja, vcpkg, and NuGet packages live there entirely, while MSVC and the Windows SDK pin to exact versions the script installs or verifies, since the vendor requires machine install. Done when: the layout doc names every component's home and no build step reads outside the repo plus the pinned install.
+- [ ] Every version floats nowhere: compiler, SDK, CMake, Ninja, vcpkg baseline, and NuGet packages pin to exact versions or lockfiles with hashes verified at provision time. Done when: deleting `.tools/` and re-provisioning reproduces the identical toolchain, proven by version output.
 - [ ] Commit: `"workspace: pin repo layout and toolchain"`
 
 **Test checkpoint:** A reviewer on a second machine confirms the pinned versions install the documented workload; `git status` is clean after listing the tree. Falsifiable by any version that does not resolve or any path the doc names that does not exist.
@@ -106,9 +110,12 @@ Why this section exists: the test command must exist before the first real test,
 
 Why this section exists: the second developer (or a fresh agent session) should reach a green build without asking anyone anything.
 
+**Groomed 2026-09-13:** Operator decision: script-first bootstrap; the doc explains, the script provisions.
+
 - [ ] `docs/bootstrap.md` lists prerequisites with versions, install order, and the build and test commands. Done when: a cold reader reaches green without improvising.
 - [ ] The doc records the Windows-only boundary: what runs on Windows, and what (scripts, plan checks) runs anywhere. Done when: a Linux reader knows exactly which commands are theirs.
 - [ ] The doc links the troubleshooting entries for the two most common bootstrap failures found while writing it. Done when: each entry was reproduced and fixed, not imagined.
+- [ ] Bootstrap is script-first: a cold follow runs `tools/bootstrap.ps1` and reaches a green build with no manual installs, while `docs/bootstrap.md` explains what the script does. Done when: the script plus doc together pass the checkpoint with zero improvisation.
 - [ ] Commit: `"workspace: write the developer bootstrap doc"`
 
 **Test checkpoint:** A cold follow of the doc on a clean machine reaches a green build and test run. Falsifiable by any step that does not work as written.
