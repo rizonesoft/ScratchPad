@@ -10,6 +10,6 @@ public sealed class SmokeTests
     {
         var core = new NotepadCore();
 
-        Assert.NotEmpty(core.Version);
+        Assert.Empty(core.Version); // PROBE: inverted for the §5 red-run check
     }
 }
