@@ -67,7 +67,7 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [04 Agents] [TODO-02 Agent Sessions and Auth](./04-agents/TODO-02-agent-sessions-auth.md) -- session create/load/list, authenticate/logout, multi-session handling.
 - [05 AI Surface] [TODO-01 Chat Panel](./05-ai-surface/TODO-01-chat-panel.md) -- the new AI panel: transcript, streaming updates, input, history.
 - [05 AI Surface] [TODO-02 Permission and Apply UX](./05-ai-surface/TODO-02-permission-apply-ux.md) -- permission prompts, tool-call display, diff review and apply-to-editor.
-- [05 AI Surface] [TODO-03 Agent Chrome](./05-ai-surface/TODO-03-agent-chrome.md) -- status bar, per-tab pane with document context, slash commands, management panel, token usage. Modeled on Intelligent Terminal.
+- [05 AI Surface] [TODO-03 Agent Chrome](./05-ai-surface/TODO-03-agent-chrome.md) -- status bar, per-tab pane with document context, slash commands, management panel, token usage. Editor-native; the terminal is prior art only.
 - [06 Quality] [TODO-01 Automated Test Strategy](./06-quality/TODO-01-automated-test-strategy.md) -- what automatic and complete means here: layers, coverage bar, UI automation suites, flake policy.
 - [06 Quality] [TODO-02 ACP Conformance Harness](./06-quality/TODO-02-acp-conformance-harness.md) -- scripted fake agents, schema validation, session fixtures, adapter compatibility matrix.
 - [07 Release] [TODO-01 Packaging and Update](./07-release/TODO-01-packaging-and-update.md) -- MSIX packaging, clean-machine install test, update channel, release checklist.

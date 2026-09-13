@@ -17,9 +17,9 @@ The new AI surfaces: chat panel, permission prompts, tool-call display, diff rev
 - Chat transcript, streaming, input, history, agent picker
 - Permission prompts, tool-call and plan display
 - Diff review and apply-to-editor through the D02 interface
-- Agent chrome modeled on Intelligent Terminal: status bar, per-tab pane, slash commands, management, usage
+- Editor-native agent chrome: status bar, per-tab pane, slash commands, management, usage
 
-Concept reference: [microsoft/intelligent-terminal](https://github.com/microsoft/intelligent-terminal) -- the agent UX grammar (status bar, pane, management, slash commands) with document context instead of shell context.
+Prior art (non-authoritative): [microsoft/intelligent-terminal](https://github.com/microsoft/intelligent-terminal) proved ACP fits a native desktop app. The chrome here is designed for an editor and judged against `docs/ai-panel-contract.md`, never against the terminal.
 
 ## Out of scope
 

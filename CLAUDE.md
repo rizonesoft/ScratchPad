@@ -53,7 +53,7 @@ Build and test commands arrive with `D00 T01` (one-command build, `ctest` suite)
 - **Parity is proven, not remembered:** Notepad surfaces are checked against the captured baseline under `resources/baseline/`; protocol behavior against the ACP schema and docs. A claim without its artifact is not evidence.
 - **Consent gates every agent action:** deny-by-default, prompt faithfully, answer exactly once. An agent edit reaches the buffer only through diff review and the undoable edit path.
 - **No em dashes:** use ordinary punctuation in authored prose. One line per paragraph and per list item in Markdown.
-- **Source-of-truth hierarchy:** Windows 11 Notepad behavior (via captures) for the clone surfaces; [agentclientprotocol.com](https://agentclientprotocol.com/get-started/agents) for protocol behavior; [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) for the agent UX grammar; this repo's `todo/` for what is planned and what shipped. Where they disagree, say so and record the decision.
+- **Source-of-truth hierarchy:** Windows 11 Notepad behavior (via captures) for the clone surfaces; [agentclientprotocol.com](https://agentclientprotocol.com/get-started/agents) for protocol behavior; this repo's `todo/` for what is planned and what shipped. [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) is prior art (it proved ACP fits a native app), never a design authority. Where sources disagree, say so and record the decision.
 
 ## Unknowns and questions
 

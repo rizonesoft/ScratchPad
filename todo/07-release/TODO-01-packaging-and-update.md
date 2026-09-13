@@ -99,7 +99,7 @@ Why this section exists: the first release proves the whole pipeline end to end,
 
 ## 6. Store and WinGet Distribution
 
-Why this section exists: users install from the Store and WinGet, as Intelligent Terminal does. The channels are proven with a published package, not assumed from docs.
+Why this section exists: users install from the Store and WinGet. The channels are proven with a published package, not assumed from docs.
 
 - [ ] The MSIX publishes to the Microsoft Store with the listing owned and the submission proven. Done when: the Store listing installs the app on a clean VM.
 - [ ] A WinGet manifest publishes and `winget install` works from a clean VM. Done when: the install is driven.

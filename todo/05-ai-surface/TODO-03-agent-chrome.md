@@ -10,14 +10,14 @@ track: A3
 
 # TODO-03 -- Agent Chrome
 
-> **Goal:** The agent UX around the chat panel, modeled on Intelligent Terminal: a status bar, a per-tab pane with document context, slash commands, a session management panel, and token usage display.
+> **Goal:** The agent UX around the chat panel, designed for an editor: a status bar, a per-tab pane with document context, slash commands, a session management panel, and token usage display.
 
 > [!IMPORTANT]
-> **Current state:** The `D05 T01` chat panel and `D05 T02` consent/apply UX exist (or land first). No status bar, no per-tab binding, no slash commands, no management panel. This file is the Intelligent Terminal parity slice for an editor: same agent UX grammar, with document context instead of shell context.
+> **Current state:** The `D05 T01` chat panel and `D05 T02` consent/apply UX exist (or land first). No status bar, no per-tab binding, no slash commands, no management panel. This file is editor-native agent chrome: the same problems (reach, context, sessions, cost) solved for documents, judged against the design contract, never against the terminal.
 
 ## Inputs
 
-- [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) -- the concept reference: agent status bar, per-tab agent pane, agent management, slash commands, token usage. Notepad has no shell, so error detection and run-or-copy become selection actions and apply-to-editor (owned in `D05 T02`).
+- [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) -- prior art (non-authoritative): proof that ACP fits a native desktop app. Selection actions and apply-to-editor are owned in `D05 T02`.
 - [`05-ai-surface/TODO-01-chat-panel.md`](./TODO-01-chat-panel.md) -- the panel this chrome surrounds
 - [`04-agents/TODO-02-agent-sessions-auth.md`](../04-agents/TODO-02-agent-sessions-auth.md) -- the sessions the management panel lists
 
@@ -49,7 +49,7 @@ track: A3
 
 Why this section exists: the status bar is the persistent one-click surface for everything agent-related. Without it the agent features are reachable only to users who memorized them.
 
-**Fidelity:** new build, no baseline; judged against `docs/ai-panel-contract.md` and the Intelligent Terminal status bar grammar (toggle, state icon, management entry, usage readout).
+**Fidelity:** new build, no baseline; judged against `docs/ai-panel-contract.md` only.
 
 **Job:** The user can reach the panel, sessions, and usage from one bar. Consumer: the panel, the management panel, and the usage readout.
 
@@ -66,7 +66,7 @@ Why this section exists: the status bar is the persistent one-click surface for 
 
 ## 2. Per-Tab Pane with Document Context
 
-Why this section exists: each tab is its own document, so each tab gets its own agent context. The agent sees the open document without copy-paste, exactly as Intelligent Terminal sees shell output.
+Why this section exists: each tab is its own document, so each tab gets its own agent context. The agent sees the open document without copy-paste.
 
 **Fidelity:** new build, no baseline; judged against `docs/ai-panel-contract.md`.
 
@@ -86,7 +86,7 @@ Why this section exists: each tab is its own document, so each tab gets its own 
 
 ## 3. Slash Commands
 
-Why this section exists: the common actions (new session, clear, stop, model pick) must work without leaving the keyboard. Intelligent Terminal's slash grammar is the model.
+Why this section exists: the common actions (new session, clear, stop, model pick) must work without leaving the keyboard. The command set is defined in the design contract.
 
 **Fidelity:** new build, no baseline; judged against `docs/ai-panel-contract.md`.
 

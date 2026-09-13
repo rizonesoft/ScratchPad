@@ -10,11 +10,11 @@ Intelligent Notepad is built on a contrarian belief: that the AI subscription yo
 
 Just Notepad. Every tab, every menu, every pixel of the status bar, reproduced 1:1 in C++ and WinUI 3. And sitting beside it, a panel where Claude Code and Codex do the thinking, reached through the open [Agent Client Protocol](https://agentclientprotocol.com/get-started/agents). Your agents, your keys, your machine. The paywall is not included, because there isn't one.
 
-Conceptually: [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal), but for Notepad. Same agent UX grammar (status bar, per-tab pane, session management, slash commands), except the context is your document instead of your shell history, and nobody suggests running `rm -rf` anything.
+Design authority is split exactly two ways: Windows 11 Notepad dictates the editor, and the Agent Client Protocol specification dictates the agent layer. Microsoft's [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) proved that ACP fits inside a native desktop app, and it is cited in the plan as prior art for that lesson only. Nothing here is designed to match it: the context is your document, never a shell, and nobody suggests running `rm -rf` anything.
 
 ## What it is not
 
-It is not a terminal. Nothing here runs shell commands, detects failed builds, or knows what a TTY is. If you came looking for a command line with opinions, that project is excellent and it lives next door.
+It is not a terminal, and it is not designed like one. Nothing here runs shell commands, detects failed builds, or knows what a TTY is. The agent chrome (status bar, pane, sessions, slash commands) solves editor problems for documents; any resemblance to terminal agent UX ends at "both talk ACP". If you came looking for a command line with opinions, that project is excellent and it lives next door.
 
 It is not Word. There will be no paperclip, no mail merge, and no Clippy resurrection arc, no matter how politely you ask.
 

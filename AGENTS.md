@@ -32,7 +32,7 @@ The lifecycle is: capture, author, validate the plan and source claims, record `
 - **Parity is proven:** captures for Notepad surfaces, ACP schema and docs for protocol behavior. No artifact, no claim.
 - **Consent gates agents:** deny-by-default, exactly-once answers, diff review, undoable apply.
 - **No em dashes** in authored prose. One line per paragraph and list item in Markdown.
-- **Source of truth:** Notepad behavior via captures, ACP via agentclientprotocol.com, agent UX grammar via Intelligent Terminal, plan state via `todo/`. Disagreements are recorded decisions, not silent reinterpretations.
+- **Source of truth:** Notepad behavior via captures, ACP via agentclientprotocol.com, plan state via `todo/`. Intelligent Terminal is prior art, never a design authority. Disagreements are recorded decisions, not silent reinterpretations.
 
 ## Validation
 
