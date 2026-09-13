@@ -70,17 +70,22 @@ Why this section exists: every path, command, and gate below assumes a layout an
 
 ## 2. Solution Scaffold with One-Command Build
 
+> **Started:** 2026-09-13T21:32:35Z
+
 Why this section exists: the scaffold is the first thing that compiles. One command, no IDE required, so CI and humans build the same bytes.
 
 **Needs:** Windows host (build/test)
 
-- [ ] `src/IntelligentNotepad.slnx` holds the stub WinUI 3 app (`net10.0-windows10.0.19041.0`) plus the neutral `Notepad.Core`, `Notepad.Acp`, and `Notepad.Agents` libraries, and `dotnet build` compiles it all. Done when: the build is green from Linux and the stub launches on Windows 11.
-- [ ] `docs/build.md` gives the single build command and its prerequisites. Done when: following it on a clean machine produces the stub.
-- [ ] The stub reports its own version and toolchain in an About surface or log line, with the commit stamped via `SourceRevisionId`. Done when: the provenance of a binary is answerable from the binary.
-- [ ] Build outputs land under per-project `bin/` and `obj/` (gitignored) and publish output under `dist/` (gitignored), never beside sources. Done when: `git status` is clean after a full build.
-- [ ] Commit: `"workspace: scaffold solution with one-command build"`
+**Decided 2026-09-13:** unpackaged stub (`WindowsPackageType=None`); MSIX stays D07 T01 §1. Framework-dependent: the host carries WindowsAppRuntime 2.x and `docs/build.md` records the runtime prerequisite.
+**Decided 2026-09-13:** stub version 0.0.0+sha (D07 owns release versions); TargetPlatformMinVersion 10.0.17763.0 per the Microsoft template. Provision dirs become `.tools/dotnet-<rid>` so both SDKs coexist in one checkout (§1's per-OS checkpoint unaffected; the shipped §1 body stays untouched).
 
-**Test checkpoint:** `dotnet build` exits 0 from a Linux checkout and the stub window launches on Windows; `git status` shows no build outputs. Cheaper substitute that fails: a solution that builds only inside the IDE on the author's machine.
+- [x] `src/IntelligentNotepad.slnx` holds the stub WinUI 3 app (`net10.0-windows10.0.19041.0`, unpackaged) plus the neutral `Notepad.Core`, `Notepad.Acp`, and `Notepad.Agents` libraries (`net10.0`), with `src/Notepad.Neutral.slnf` filtering the neutral scope. Done when: `dotnet build` on the slnf is green from Linux, `dotnet build` on the slnx is green on Windows, and the stub launches on Windows 11. **Corrected 2026-09-13:** was "dotnet build compiles it all, green from Linux"; the XAML compiler cannot complete on Linux (spike: 1.8-line codegen absent with CS5001/CS0103, 2.4.0 fails WMC1006 on BCL resolution), so Linux builds the neutral filter and Windows builds all.
+- [x] `docs/build.md` gives the single build command and its prerequisites. Done when: following it on a clean machine produces the stub. **Corrected 2026-09-13:** one command per OS (slnf on Linux, slnx on Windows); the doc names both plus the provision and runtime prerequisites.
+- [x] The stub reports its own version and toolchain in an About surface or log line, with the commit stamped via `SourceRevisionId`. Done when: the provenance of a binary is answerable from the binary.
+- [x] Build outputs land under per-project `bin/` and `obj/` (gitignored) and publish output under `dist/` (gitignored), never beside sources. Done when: `git status` is clean after a full build.
+- [x] Commit: `"workspace: scaffold solution with one-command build"`
+
+**Test checkpoint:** `dotnet build src/Notepad.Neutral.slnf` exits 0 on Linux; `dotnet build src/IntelligentNotepad.slnx` exits 0 on Windows and the stub window launches with its versioned title observed; `git status` shows no build outputs. Cheaper substitute that fails: a solution that builds only inside the IDE on the author's machine. **Corrected 2026-09-13:** per-OS commands per the item-1 correction; was bare `dotnet build` green from Linux.
 
 ## 3. CI on Linux and Windows Runners
 

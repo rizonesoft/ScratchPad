@@ -30,7 +30,7 @@ try {
   $Expected = ((Get-Content $Sidecar -Raw) -split '\s+')[0].ToUpperInvariant()
   $Actual = (Get-FileHash -Path $Zip -Algorithm SHA512).Hash
   if ($Actual -ne $Expected) { throw "provision.ps1: SHA512 mismatch for $Base.zip" }
-  $Dest = Join-Path $Root '.tools\dotnet'
+  $Dest = Join-Path $Root ".tools\dotnet-$Rid"
   if (Test-Path $Dest) { Remove-Item -Recurse -Force $Dest }
   New-Item -ItemType Directory -Path $Dest | Out-Null
   Expand-Archive -Path $Zip -DestinationPath $Dest

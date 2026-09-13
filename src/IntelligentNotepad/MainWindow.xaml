@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="IntelligentNotepad.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid>
+        <TextBlock Text="Intelligent Notepad stub" HorizontalAlignment="Center" VerticalAlignment="Center" />
+    </Grid>
+</Window>

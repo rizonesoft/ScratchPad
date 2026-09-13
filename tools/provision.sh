@@ -26,11 +26,12 @@ EXPECTED="$(awk '{print $1}' "$WORK/sdk.sha512" | tr 'A-Z' 'a-z')"
 ACTUAL="$(sha512sum "$WORK/sdk.tar.gz" | awk '{print $1}')"
 test "$EXPECTED" = "$ACTUAL" || { echo "provision.sh: SHA512 mismatch for $BASE.tar.gz" >&2; exit 1; }
 
-rm -rf "$ROOT/.tools/dotnet"
-mkdir -p "$ROOT/.tools/dotnet"
-tar -xzf "$WORK/sdk.tar.gz" -C "$ROOT/.tools/dotnet"
+DEST="$ROOT/.tools/dotnet-$RID"
+rm -rf "$DEST"
+mkdir -p "$DEST"
+tar -xzf "$WORK/sdk.tar.gz" -C "$DEST"
 
-export DOTNET_ROOT="$ROOT/.tools/dotnet" DOTNET_MULTILEVEL_LOOKUP=0 PATH="$ROOT/.tools/dotnet:$PATH"
+export DOTNET_ROOT="$DEST" DOTNET_MULTILEVEL_LOOKUP=0 PATH="$DEST:$PATH"
 dotnet --info
 dotnet --list-sdks | grep -qF "${VERSION} [" || { echo "provision.sh: installed SDK is not $VERSION" >&2; exit 1; }
-echo "provision.sh: .NET SDK $VERSION ready in $ROOT/.tools/dotnet"
+echo "provision.sh: .NET SDK $VERSION ready in $DEST"

@@ -1,0 +1,10 @@
+{
+  "solution": {
+    "path": "IntelligentNotepad.slnx",
+    "projects": [
+      "Notepad.Core/Notepad.Core.csproj",
+      "Notepad.Acp/Notepad.Acp.csproj",
+      "Notepad.Agents/Notepad.Agents.csproj"
+    ]
+  }
+}

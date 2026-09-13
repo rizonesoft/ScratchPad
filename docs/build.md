@@ -1,0 +1,19 @@
+# Build
+
+One command per OS, no IDE required. CI runs the same commands (§3).
+
+## Prerequisites
+
+Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` on Windows. Then put it on the path: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0` (Windows: `.tools\dotnet-win-x64`). Launching the stub additionally needs the WindowsAppRuntime 2.x framework package on the machine; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from the Windows App SDK release if it is missing.
+
+## Build commands
+
+Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/IntelligentNotepad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under per-project `bin/` and `obj/`, publish output under `dist/`, all gitignored.
+
+## Run the stub (Windows)
+
+Build the solution, then run `src\IntelligentNotepad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\IntelligentNotepad.exe` directly. The window title carries the stub version and runtime (for example `Intelligent Notepad (stub 0.0.0+<sha>, .NET 10.0.12)`).
+
+## Provenance
+
+The app stamps the git commit into the binary via `SourceRevisionId`, so the provenance of a binary is answerable from the binary: `([System.Diagnostics.FileVersionInfo]::GetVersionInfo('IntelligentNotepad.exe')).ProductVersion` prints `0.0.0+<sha>`. Package versions are locked by `src/IntelligentNotepad/packages.lock.json`; the stub itself is version 0.0.0 and real release versions arrive with D07.

@@ -6,3 +6,4 @@
 *.xaml text eol=crlf
 *.csproj text eol=crlf
 *.slnx text eol=crlf
+*.slnf text eol=crlf
