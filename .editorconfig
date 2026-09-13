@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.{cs,csproj,xaml,slnx,slnf}]
+end_of_line = crlf
+
+[*.{cs,xaml}]
+indent_size = 4
+
+[*.{csproj,slnx,slnf}]
+indent_size = 2
+
+[**/obj/**]
+generated_code = true
+
+[**/bin/**]
+generated_code = true
+
+# The XAML compiler generates public partial declarations (CS0262 on anything
+# else), so x:Class files cannot satisfy CA1515. Excluded by path, app only.
+[src/IntelligentNotepad/*.xaml.cs]
+dotnet_diagnostic.CA1515.severity = none

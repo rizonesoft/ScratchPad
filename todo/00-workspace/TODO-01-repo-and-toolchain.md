@@ -117,13 +117,18 @@ Why this section exists: without CI the toolchain pin rots and "works on my mach
 
 ## 4. Warning and Analysis Gates
 
+> **Started:** 2026-09-13T22:25:30Z
+
 Why this section exists: warnings are defects with seniority. Gate them at zero from the first compile so the count never has a legacy tail.
+
+**Decided 2026-09-13:** `Directory.Build.props` and `.editorconfig` live at root so future `tests/` projects inherit the gates. `AnalysisLevel latest` resolves inside the pinned SDK, so the rule set does not float.
+**Decided 2026-09-13:** `AnalysisMode All` (CA rules stay silent under the default mode; the probe proved CA1822/CA1823 need it). CA1515 excluded by path for `src/IntelligentNotepad/*.xaml.cs` (the XAML compiler generates public partials, CS0262 proven). Cost of changing the mode: re-verify zero warnings plus the probe pair.
 
 - [ ] The build treats warnings as errors (`TreatWarningsAsErrors` plus `EnforceCodeStyleInBuild` in `Directory.Build.props`, steward pattern) for project code. Done when: an unused-variable probe fails the build.
 - [ ] Roslyn analysis (`AnalysisLevel` latest) runs in CI with the committed `.editorconfig` ruleset. Done when: the ruleset file is in the repo and CI runs it.
 - [ ] Third-party and generated code are excluded by path, not by blanket suppression. Done when: the exclusion list names paths.
 - [ ] Analysis findings block the build; the doc records how to run the same analysis locally. Done when: a probe finding fails CI and the local command reproduces it.
-- [ ] Commit: `"workspace: gate warnings and static analysis"`
+- [x] Commit: `"workspace: gate warnings and static analysis"`
 
 **Test checkpoint:** An unused-variable probe fails the build and a probe analysis finding fails CI; both reproduce locally with documented commands. Cheaper substitute that fails: warnings counted in a dashboard nobody reads.
 

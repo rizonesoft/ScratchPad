@@ -10,6 +10,10 @@ Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -Ex
 
 Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/IntelligentNotepad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under per-project `bin/` and `obj/`, publish output under `dist/`, all gitignored.
 
+## Warnings and analysis
+
+Warnings fail the build everywhere: `Directory.Build.props` sets `TreatWarningsAsErrors`, `EnforceCodeStyleInBuild`, and `AnalysisLevel latest` with `AnalysisMode All`, and `.editorconfig` carries the ruleset (generated code excluded by path). The CI jobs run the same `dotnet build` commands above, so analysis runs identically locally and in CI; reproduce a CI finding by running the matching build command.
+
 ## Run the stub (Windows)
 
 Build the solution, then run `src\IntelligentNotepad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\IntelligentNotepad.exe` directly. The window title carries the stub version and runtime (for example `Intelligent Notepad (stub 0.0.0+<sha>, .NET 10.0.12)`).
