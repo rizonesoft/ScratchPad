@@ -34,7 +34,7 @@ track: W0
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Repo layout and toolchain pin | -- |  [x]   |
 |   2   |   §2    | Solution scaffold with one-command build | §1 |  [x]   |
-|   3   |   §3    | CI on Linux and Windows runners | §2 |  [ ]   |
+|   3   |   §3    | CI on Linux and Windows runners | §2 |  [x]   |
 |   4   |   §4    | Warning and analysis gates | §2 |  [ ]   |
 |   5   |   §5    | Test wiring and first smoke test | §2 |  [ ]   |
 |   6   |   §6    | Developer bootstrap doc | §1 |  [ ]   |
@@ -101,13 +101,19 @@ Why this section exists: without CI the toolchain pin rots and "works on my mach
 
 **Decided 2026-09-13:** GitHub Actions (repo-native; public repo, free minutes both OSes). Runners `ubuntu-24.04` + `windows-2025`; actions pinned to SHAs. No `setup-dotnet`: jobs run the §1 provisioners so `global.json` governs the SDK. Cost of changing CI: rewrite the workflow and re-probe green/red.
 
-- [ ] `.github/workflows/build.yml` runs the §2 neutral-filter build on a Linux runner and the full §2 solution build on a Windows runner, for every push to `main`. Done when: a push shows green runs on both. **Corrected 2026-09-13:** was "§2 build plus the neutral test suites" and "full build plus UI suites"; neither suite exists (§5 and T02 §2 are open and §3 depends only on §2), so this workflow runs the builds now and §5/T02 §2 extend it with their own probe evidence.
-- [ ] CI uploads the built stub as an artifact. Done when: the binary is downloadable from the run.
-- [ ] CI fails the run when the build fails, with the log naming the failing step. Done when: a deliberately broken commit (reverted immediately) shows red for the right reason.
-- [ ] The workflow pins its runner images and action versions, with the SDK version governed by `global.json`. Done when: no `latest` floats the build.
+- [x] `.github/workflows/build.yml` runs the §2 neutral-filter build on a Linux runner and the full §2 solution build on a Windows runner, for every push to `main`. Done when: a push shows green runs on both. **Corrected 2026-09-13:** was "§2 build plus the neutral test suites" and "full build plus UI suites"; neither suite exists (§5 and T02 §2 are open and §3 depends only on §2), so this workflow runs the builds now and §5/T02 §2 extend it with their own probe evidence.
+- [x] CI uploads the built stub as an artifact. Done when: the binary is downloadable from the run.
+- [x] CI fails the run when the build fails, with the log naming the failing step. Done when: a deliberately broken commit (reverted immediately) shows red for the right reason.
+- [x] The workflow pins its runner images and action versions, with the SDK version governed by `global.json`. Done when: no `latest` floats the build.
 - [x] Commit: `"workspace: run the build on Linux and Windows"`
 
 **Test checkpoint:** Push the workflow and read both runs: green on good code with the stub artifact downloadable, red-with-cause on a deliberately broken probe commit (reverted immediately), green again after the revert. Cheaper substitute that fails: a workflow that exists but never ran. **Corrected 2026-09-13:** dropped the UI-suites clause (no UI suites exist; T02 §2 owns them on Windows runners).
+
+> **Verified:** 2026-09-13 | §3 | run 34785141981 green both jobs with stub artifact downloaded (exe+dll+XAML); run 34785638088 red both jobs with MSB4025 naming file+line; run 34786154222 green after revert; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates ef12eb3 6fb4909 e858133 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s3.md
+> **CRUD:** applicable | pushes wrote CI runs (read back via run conclusions, logs, and artifact download); probe wrote a failure (read back via MSB4025 in both Build steps)
+> **Duration:** 34
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 4. Warning and Analysis Gates
 
