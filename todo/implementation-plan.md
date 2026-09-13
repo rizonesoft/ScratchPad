@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **0 of 106 sections complete (0%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **1 of 106 sections complete (1%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -86,7 +86,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 |  ✔  | Section      | Deliverable                              | Items |
 | :-: | ------------ | ---------------------------------------- | :---: |
-| [ ] | `D00 T01 §1` | Repo layout and toolchain pin            |   5   |
+| [x] | `D00 T01 §1` | Repo layout and toolchain pin            |   5   |
 | [ ] | `D00 T01 §2` | Solution scaffold with one-command build |   5   |
 | [ ] | `D00 T01 §3` | CI on Linux and Windows runners          |   5   |
 | [ ] | `D00 T01 §4` | Warning and analysis gates               |   5   |

@@ -32,7 +32,7 @@ track: W0
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Repo layout and toolchain pin | -- |  [ ]   |
+|   1   |   §1    | Repo layout and toolchain pin | -- |  [x]   |
 |   2   |   §2    | Solution scaffold with one-command build | §1 |  [ ]   |
 |   3   |   §3    | CI on Linux and Windows runners | §2 |  [ ]   |
 |   4   |   §4    | Warning and analysis gates | §2 |  [ ]   |
@@ -61,6 +61,12 @@ Why this section exists: every path, command, and gate below assumes a layout an
 - [x] Commit: `"workspace: pin repo layout and toolchain"`
 
 **Test checkpoint:** Wipe `.tools/`, re-run the provisioner for the session OS, and confirm `dotnet --info` reproduces the pinned versions; `git status` is clean after listing the tree. Falsifiable by any version that does not resolve or any path the doc names that does not exist.
+
+> **Verified:** 2026-09-13 | §1 | wipe+provision reproduces SDK 10.0.401/runtime 10.0.12 from repo-local .tools (Linux twice, Windows via interop once); pinned test trio restores+builds clean; fresh clones clean on Linux+Windows; validate 0 fatal; self-test 391/391
+> **Review:** rounds 2, candidates a5daf42 52a4218 -- `adversarial` approve · `consistency` approve (round-1 needs-attention on the exec bit, fixed) · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s1.md
+> **CRUD:** applicable | provisioners wrote the SDK tree and read it back via SHA512 verify plus dotnet --info/--list-sdks; repo files written and read back via git status and fresh clones on both OSes
+> **Duration:** 17
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 2. Solution Scaffold with One-Command Build
 
