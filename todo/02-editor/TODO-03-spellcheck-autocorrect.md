@@ -66,9 +66,12 @@ Why this section exists: the red squiggle is the surface users see. It must rend
 
 **Chrome:** Consume the shared editor and menu styles. Do not invent a second suggestion treatment.
 
+**Groomed 2026-09-13:** Notepad audit: the Shift+F10 suggestions trigger is now explicit.
+
 - [ ] Misspelled words render the squiggle with Notepad's timing (as-you-type, not on save). Done when: the render test passes.
 - [ ] Clicking offers suggestions with ignore and add-to-dictionary, as Notepad's. Done when: each action is driven.
 - [ ] Applying a suggestion is one undo unit. Done when: apply-then-undo fixtures pass.
+- [ ] Shift+F10 on a misspelled word opens its suggestions as Notepad's. Done when: the key is driven. Source: https://www.bleepingcomputer.com/news/microsoft/notepad-finally-gets-spellcheck-autocorrect-for-all-windows-11-users/
 - [ ] Commit: `"editor: render squiggles and suggestions"`
 
 **Test checkpoint:** Render, menu actions, and undo grouping driven; capture comparison passes. Cheaper substitute that fails: suggestions that bypass undo.
@@ -96,9 +99,12 @@ Why this section exists: Notepad lets users disable spelling globally or per fil
 
 **Chrome:** Consume the shared settings styles. Do not invent a second toggle treatment.
 
+**Groomed 2026-09-13:** Notepad audit: the temporary per-file context toggle is now explicit.
+
 - [ ] The settings page carries the spelling toggles bound to the §2 store with Notepad's file-type list. Done when: each toggle is driven.
 - [ ] Toggling takes effect on open buffers immediately, as Notepad's. Done when: the live-effect test passes.
 - [ ] New file types default as Notepad defaults them. Done when: the default is recorded and tested.
+- [ ] The context menu offers a temporary spellcheck toggle for the current file only. Done when: the toggle is driven and does not touch the store. Source: https://www.bleepingcomputer.com/news/microsoft/notepad-finally-gets-spellcheck-autocorrect-for-all-windows-11-users/
 - [ ] Commit: `"editor: toggle spelling globally and per file type"`
 
 **Test checkpoint:** Toggles, live effect, and defaults driven; capture comparison passes. Cheaper substitute that fails: toggles that need a restart.

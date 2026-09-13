@@ -46,9 +46,12 @@ track: R1
 
 Why this section exists: the package is the product as the user meets it. It builds in CI, signed, with the app's identity pinned.
 
+**Groomed 2026-09-13:** Notepad audit: the x64 plus ARM64 architecture matrix is now explicit.
+
 - [ ] CI builds a signed MSIX from the §-chosen packaging project. Done when: the artifact downloads from the run.
 - [ ] Package identity (name, publisher, version from the build) is pinned and recorded. Done when: the identity doc exists.
 - [ ] Capabilities requested are the minimum the app needs, each justified. Done when: the justification is written.
+- [ ] The package builds for x64 and ARM64 as Notepad ships natively since v11.2204; the architecture matrix is recorded and each arch installs on its VM. Done when: both arch installs are driven. Source: https://www.xda-developers.com/windows-11-notepad-arm64-native-support-media-player-update/
 - [ ] Commit: `"release: build the MSIX package"`
 
 **Test checkpoint:** Signed MSIX artifact in CI with pinned identity and justified capabilities. Cheaper substitute that fails: a zip of the build folder.
@@ -68,9 +71,12 @@ Why this section exists: install must work where nothing of ours has ever been. 
 
 Why this section exists: updates must arrive and must be survivable. A failed update rolls back to a working app, never to a brick.
 
+**Groomed 2026-09-13:** Notepad audit: the post-update What's New notes surface is now explicit.
+
 - [ ] The update channel (store or self-hosted, chosen here) delivers updates with the choice recorded. Done when: the choice and its rationale are written.
 - [ ] A failed or interrupted update rolls back to the previous working version. Done when: the rollback test passes.
 - [ ] The user is notified of updates per the committed policy, never force-restarted mid-work. Done when: the policy is written and tested.
+- [ ] Post-update What's New notes surface per the notification policy with a revisitable entry as captured. Done when: the notes and entry are driven. Source: https://blogs.windows.com/windows-insider/2026/01/21/notepad-and-paint-updates-begin-rolling-out-to-windows-insiders/
 - [ ] Commit: `"release: ship updates with rollback"`
 
 **Test checkpoint:** Update, rollback, and notification-policy tests green. Cheaper substitute that fails: updates that require a manual reinstall.

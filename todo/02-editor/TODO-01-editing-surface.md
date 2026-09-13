@@ -60,10 +60,16 @@ Why this section exists: the shell and the surface evolve separately, so their b
 
 Why this section exists: the buffer is the source of truth for every character. Correctness here is correctness everywhere.
 
+**Groomed 2026-09-13:** Notepad audit: word-kill, EOP rules, hex/bracket entry, and the Unicode-controls display mode are now explicit.
+
 - [ ] `src/Editor/TextBuffer.cpp` models the document with Notepad's line and encoding semantics. Done when: the caret-math fixtures pass.
 - [ ] Caret movement (arrows, word jump, line ends, page, document ends) matches Notepad key for key. Done when: the movement fixtures pass.
 - [ ] Selection (keyboard, shift-extend, select-all) matches Notepad. Done when: the selection fixtures pass.
 - [ ] Surrogate pairs, combining characters, and tab stops behave as Notepad's. Done when: the edge-case fixtures pass.
+- [ ] Ctrl+Backspace deletes the previous word as Notepad's. Done when: the deletion fixtures pass. Source: https://blogs.windows.com/windows-insider/2018/07/11/announcing-windows-10-insider-preview-build-17713/
+- [ ] End-of-paragraph selection follows Notepad: mouse drag and Shift+End exclude the EOP character, Shift+RightArrow and next-line extension include it, matching what Delete removes; with wrap off the caret follows typed spaces. Done when: the EOP fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
+- [ ] Alt+X converts preceding hex into its Unicode character and Ctrl+} jumps between matching brackets, as Notepad's RichEdit engine does. Done when: both fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
+- [ ] The Unicode-controls display mode (menu entry in §6) renders bidi RLO/LRO and ZWJ as zero-width glyphs and splits ZWJ emoji sequences for arrow-key navigation and Alt+X inspection. Done when: the mode fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
 - [ ] Commit: `"editor: add the text buffer and caret model"`
 
 **Test checkpoint:** `ctest -R TextBuffer` green across movement, selection, and edge-case fixtures. Cheaper substitute that fails: caret math that works on ASCII and breaks on real text.
@@ -80,10 +86,17 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 **Chrome:** Consume the shared editor styles. Do not invent a second text treatment.
 
+**Groomed 2026-09-13:** Notepad audit: CF_TEXT-only paste, color emoji, text drag-drop, Ctrl+click paragraph, and spaceless double-click are now explicit.
+
 - [ ] `src/Editor/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes.
 - [ ] Cut, copy, paste, and paste-as-behavior match Notepad including formats offered. Done when: clipboard round-trips are driven.
 - [ ] Drag-select, double-click word, triple-click line match Notepad. Done when: each gesture is driven.
 - [ ] IME and accessibility (narrator, keyboard-only use) behave as Notepad's. Done when: the accessibility checks pass.
+- [ ] Paste accepts only CF_TEXT from the clipboard and strips all formatting, so every paste is effectively plain text. Done when: formatted-paste round-trips yield raw text. Source: https://en.wikipedia.org/wiki/Windows_Notepad
+- [ ] Color emoji render through font fallback as Notepad's. Done when: the emoji fixtures pass against the capture. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
+- [ ] Dragging selected text moves or copies it per Notepad's modifiers, recorded from the capture. Done when: move and copy drags are driven.
+- [ ] Ctrl+click selects the paragraph under the cursor. Done when: the gesture is driven. Source: https://techlasi.com/savvy/get-help-with-notepad-in-windows-complete-guide-for-2025/
+- [ ] Double-click selects the word alone with no trailing space, as Win11 changed it. Done when: the gesture is driven. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
 - [ ] Commit: `"editor: render the surface with selection and clipboard"`
 
 **Test checkpoint:** Capture comparison passes; clipboard round-trips driven; gestures driven; accessibility checks pass. Cheaper substitute that fails: rendering asserted without comparing to the capture.
@@ -112,9 +125,14 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 
 **Chrome:** Consume the shared editor styles. Do not invent a second zoom treatment.
 
+**Groomed 2026-09-13:** Notepad audit: exact zoom keys, the wrap-on line/column rule, and the F5 time/date insert are now explicit.
+
 - [ ] Zoom steps, shortcuts, and limits match Notepad; the level persists through the settings store. Done when: each step is driven and persistence proven.
 - [ ] Word wrap toggles per Notepad with the choice persisted; wrapped and unwrapped caret math both hold. Done when: the wrap fixtures pass.
 - [ ] The status bar zoom readout stays in sync (with `D01 T02 §4`). Done when: the sync is driven.
+- [ ] Zoom keys are exactly Ctrl+Plus, Ctrl+Minus, Ctrl+0 for 100%, and Ctrl+mouse-wheel. Done when: each key is driven.
+- [ ] The line/column readout with wrap on follows Notepad's logical-versus-visual rule recorded from the capture. Done when: the wrap-on fixtures pass.
+- [ ] F5 inserts the current time and date at the caret; the exact format is recorded from the capture. Done when: the insert is driven and matches the capture. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
 - [ ] Commit: `"editor: match zoom and word wrap"`
 
 **Test checkpoint:** Steps, shortcuts, persistence, and wrap math all driven; capture comparison passes. Cheaper substitute that fails: zoom that works but with different steps than Notepad.
@@ -131,9 +149,12 @@ Why this section exists: right-click is a surface too. The context menu must car
 
 **Chrome:** Consume the shared menu styles. Do not invent a second context treatment.
 
+**Groomed 2026-09-13:** Notepad audit: the compact layout specifics with AI, Spelling, and Unicode-controls routing are now explicit.
+
 - [ ] The context menu carries Notepad's items in order with correct enablement. Done when: the capture comparison passes item by item.
 - [ ] Each item routes to the same handler as its menu/shortcut twin. Done when: no handler exists twice.
 - [ ] Mouse behaviors (right-click caret placement, selection drag) match Notepad. Done when: each is driven.
+- [ ] The menu matches Notepad's compact layout as captured: the icon row (Cut, Copy, Paste, Select all, Undo, Delete), then Define with Bing, the AI entries routed to D05 T02 §6, Spelling routed to D02 T03 §2 and D02 T03 §4, and the Unicode-controls entry routed to §2. Done when: the capture comparison passes item by item. Source: https://www.windowslatest.com/2025/08/16/windows-11-cluttered-notepads-right-click-menu-but-its-now-getting-file-explorer-like-ui-as-a-fix/
 - [ ] Commit: `"editor: match the context menu and mouse behaviors"`
 
 **Test checkpoint:** Capture comparison item by item; shared-handler check passes; mouse behaviors driven. Cheaper substitute that fails: context items with their own duplicate handlers.

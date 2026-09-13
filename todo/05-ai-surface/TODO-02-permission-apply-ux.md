@@ -145,11 +145,21 @@ Why this section exists: this is the answer to Notepad's subscription-gated Writ
 
 **Chrome:** Consume the shared menu and diff styles. Do not invent a second action treatment.
 
+**Groomed 2026-09-13:** Notepad audit: committed shortcuts, rewrite presets, summarize lengths, the Write flow, the off-switch, the no-Microsoft-AI-stack and privacy stances, and streaming proposals are now explicit (Write was named in scope but had no items).
+
 - [ ] Explain, rewrite, and summarize appear on the selection context menu and Edit menu with committed shortcuts. Done when: each entry point is driven.
 - [ ] Each action needs no Microsoft account, subscription, or credit: it uses the tab's connected agent or reports honestly that none is connected. Done when: the no-agent and no-network cases are driven.
 - [ ] Rewrite and summarize proposals land in §3 diff review; nothing applies directly. Done when: the routing test passes.
 - [ ] Explain renders in the panel without touching the buffer. Done when: the buffer-untouched test passes.
 - [ ] Consent follows §1: the first selection action per session prompts with scope, then the grant governs. Done when: the consent flow is driven.
+- [ ] Rewrite, Summarize, and Write use Ctrl+D, Ctrl+M, and Ctrl+Q; Explain's shortcut is committed in the design contract with no Notepad conflict. Done when: each shortcut is driven and the contract records the conflict matrix. Source: https://support.microsoft.com/en-gb/windows/enhance-your-writing-with-ai-in-notepad-4088b954-c97b-46dc-813f-959be01746d5
+- [ ] Rewrite offers length, tone, and format presets plus free-prompt custom rewrite; preset effects and tone values are recorded from the capture. Done when: each preset and custom rewrite route a proposal to §3. Source: https://www.digitalcitizen.life/rewrite-text-notepad-windows-11/
+- [ ] Summarize offers short, medium, and long lengths with regenerate; inserting a summary routes through §3 diff review, never directly. Done when: each length and the review routing are driven. Source: https://support.microsoft.com/en-gb/windows/enhance-your-writing-with-ai-in-notepad-4088b954-c97b-46dc-813f-959be01746d5
+- [ ] Write opens a cursor-anchored prompt; output lands in §3 diff review as Keep/Discard hunks with follow-up refine. Done when: prompt, keep, discard, and follow-up are driven. Source: https://blogs.windows.com/windows-insider/2025/05/22/paint-snipping-tool-and-notepad-updates-with-new-features-begin-rolling-out-to-windows-insiders/
+- [ ] An AI master toggle in Settings hides every selection-action entry (menus, context items, shortcuts inert). Done when: toggle-off hides all entries. Source: https://www.windowslatest.com/2025/03/15/microsoft-is-adding-recent-files-feature-copilot-button-to-notepad-on-windows-11/
+- [ ] No Microsoft AI stack exists: no MS sign-in, no AI credits, no Copilot+ local-model mode, no Entra unlock; agents authenticate with user keys in the platform credential store (D04 T02 §1). Done when: the absence is verified and the auth path driven. Source: https://support.microsoft.com/en-gb/windows/enhance-your-writing-with-ai-in-notepad-4088b954-c97b-46dc-813f-959be01746d5
+- [ ] Selection and document data go only to the connected agent; nothing reaches Microsoft; locality and redaction follow D01 T01 §6 and D04 T02 §5. Done when: the data-flow review passes and the redaction tests cover selection actions.
+- [ ] Selection-action proposals stream into §3 review as they arrive; the UI never waits silently for turn end. Done when: partial-proposal rendering is driven. Source: https://blogs.windows.com/windows-insider/2026/01/21/notepad-and-paint-updates-begin-rolling-out-to-windows-insiders/
 - [ ] Commit: `"ai-surface: act on selections with the connected agent"`
 
 **Test checkpoint:** Entry points, no-agent honesty, diff routing, untouched-buffer explain, and consent driven. Cheaper substitute that fails: a rewrite that applies without review.

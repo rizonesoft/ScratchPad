@@ -57,7 +57,10 @@ Why this section exists: the status bar is the persistent one-click surface for 
 
 **Chrome:** Consume the shared bar styles. Do not invent a second status treatment.
 
+**Groomed 2026-09-13:** Notepad audit: the status bar (not a Copilot button) as the persistent agent entry is now explicit.
+
 - [ ] `src/AiPanel/AgentStatusBar.xaml` carries the panel toggle, turn-state indicator, and management entry with committed shortcuts. Done when: each control is driven by mouse and shortcut.
+- [ ] The bar is the persistent agent entry instead of a Notepad-style Copilot button; AI toggle-off hides it with the panel. Done when: the contract records the placement and toggle-off is driven. Source: https://support.microsoft.com/en-gb/windows/enhance-your-writing-with-ai-in-notepad-4088b954-c97b-46dc-813f-959be01746d5
 - [ ] The bar reflects live state (idle, streaming, awaiting-permission, failed) without polling the session. Done when: the state test passes.
 - [ ] The bar hides with the panel per the persisted visibility choice. Done when: the toggle is driven.
 - [ ] Commit: `"ai-surface: add the agent status bar"`

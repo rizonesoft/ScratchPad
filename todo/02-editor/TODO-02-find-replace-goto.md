@@ -46,10 +46,13 @@ track: N2
 
 Why this section exists: the UI is thin; the engine carries the semantics. Case, whole-word, direction, wrap, and counting are settled and tested here.
 
+**Groomed 2026-09-13:** Notepad audit: the wrap scope rule and the absent direction control are now explicit.
+
 - [ ] `src/Editor/SearchEngine.cpp` finds matches with Notepad's options: case, whole word, direction, wrap-around. Done when: the option-matrix fixtures pass.
 - [ ] Match counting matches Notepad's count exactly on the fixture corpus. Done when: every count agrees.
 - [ ] Zero-length and regex-free semantics match Notepad (no regex unless Notepad has it). Done when: the behavior is recorded and tested.
 - [ ] The engine never mutates the buffer; replace goes through the undoable edit path. Done when: a mutation probe test passes.
+- [ ] Search scope follows Notepad: with wrap around off the search runs cursor-to-end only, with wrap around on it covers the whole file; there is no Up/Down direction control in the current bar. Done when: the scope fixtures pass. Source: https://www.howtogeek.com/359042/everything-new-in-notepad-in-windows-10-redstone-5/
 - [ ] Commit: `"editor: add the search engine"`
 
 **Test checkpoint:** `ctest -R SearchEngine` green across the option matrix and counts; mutation probe passes. Cheaper substitute that fails: search tested only through the UI with three cases.
@@ -66,9 +69,14 @@ Why this section exists: the find bar is the surface users touch. It must place,
 
 **Chrome:** Consume the shared bar styles. Do not invent a second find treatment.
 
+**Groomed 2026-09-13:** Notepad audit: the exact exposed option set, F3/Shift+F3, and within-session memory with autofill are now explicit.
+
 - [ ] `src/Editor/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes.
 - [ ] Enter, Shift+Enter, Escape, and option toggles flow as Notepad's. Done when: the keyboard flow is driven.
 - [ ] No-match and wrap-around feedback match Notepad's. Done when: both are driven.
+- [ ] The bar exposes exactly Match case and Wrap around under More options; no whole-word toggle and no Up/Down direction radio appear. Done when: the capture comparison confirms the set. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
+- [ ] F3 finds next and Shift+F3 finds previous through the bar. Done when: both keys are driven.
+- [ ] The bar remembers entered values and option states across openings within the session, and opening it with a selection autofills the search field. Done when: memory and autofill are driven. Source: https://blogs.windows.com/windows-insider/2018/07/11/announcing-windows-10-insider-preview-build-17713/
 - [ ] Commit: `"editor: build the find bar"`
 
 **Test checkpoint:** UI drive walks find, next/previous, options, no-match, and wrap; capture comparison passes. Cheaper substitute that fails: the bar tested without the counter.
