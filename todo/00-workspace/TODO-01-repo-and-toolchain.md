@@ -48,6 +48,8 @@ Why this section exists: every path, command, and gate below assumes a layout an
 
 **Groomed 2026-09-13:** Operator decision: the toolchain is provisioned repo-local (script plus pins plus lockfiles), never system-dependent and never binaries in git.
 
+**Needs:** Windows host (build/test)
+
 - [ ] `README.md` records the layout (`src/`, `tests/`, `resources/`, `docs/`) and the pinned Windows SDK, MSVC, and CMake versions. Done when: the versions are exact numbers, not "latest".
 - [ ] `src/` and `tests/` directories exist with a placeholder each so the layout is real before the scaffold lands. Done when: the tree matches the doc.
 - [ ] `.gitignore` covers `build/`, `out/`, VS artifacts, and test output. Done when: a build leaves `git status` clean apart from intended files.
@@ -61,6 +63,8 @@ Why this section exists: every path, command, and gate below assumes a layout an
 ## 2. Solution Scaffold with One-Command Build
 
 Why this section exists: the scaffold is the first thing that compiles. One command, no IDE required, so CI and humans build the same bytes.
+
+**Needs:** Windows host (build/test)
 
 - [ ] `src/IntelligentNotepad.sln` (or the CMake equivalent chosen in §1) builds a stub WinUI 3 app that opens an empty window. Done when: the stub launches on Windows 11.
 - [ ] `docs/build.md` gives the single build command and its prerequisites. Done when: following it on a clean machine produces the stub.
@@ -86,6 +90,8 @@ Why this section exists: without CI the toolchain pin rots and "works on my mach
 
 Why this section exists: warnings are defects with seniority. Gate them at zero from the first compile so the count never has a legacy tail.
 
+**Needs:** Windows host (build/test)
+
 - [ ] The build treats warnings as errors at `/W4` (or the chosen level) for project code. Done when: an unused-variable probe fails the build.
 - [ ] Static analysis (MSVC `/analyze` or clang-tidy, chosen here) runs in CI with a committed ruleset. Done when: the ruleset file is in the repo and CI runs it.
 - [ ] Third-party and generated code are excluded by path, not by blanket suppression. Done when: the exclusion list names paths.
@@ -97,6 +103,8 @@ Why this section exists: warnings are defects with seniority. Gate them at zero 
 ## 5. CTest Wiring and First Smoke Test
 
 Why this section exists: the test command must exist before the first real test, so every later section has somewhere to put its proof.
+
+**Needs:** Windows host (build/test)
 
 - [ ] `ctest --test-dir build --output-on-failure` runs the suite (empty-but-green counts today). Done when: the command exits 0 on a clean checkout.
 - [ ] One smoke test asserts the stub app object constructs and reports its version. Done when: `ctest -R Smoke` passes and fails if the version string is blanked.
@@ -111,6 +119,8 @@ Why this section exists: the test command must exist before the first real test,
 Why this section exists: the second developer (or a fresh agent session) should reach a green build without asking anyone anything.
 
 **Groomed 2026-09-13:** Operator decision: script-first bootstrap; the doc explains, the script provisions.
+
+**Needs:** Windows host (build/test)
 
 - [ ] `docs/bootstrap.md` lists prerequisites with versions, install order, and the build and test commands. Done when: a cold reader reaches green without improvising.
 - [ ] The doc records the Windows-only boundary: what runs on Windows, and what (scripts, plan checks) runs anywhere. Done when: a Linux reader knows exactly which commands are theirs.

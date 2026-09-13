@@ -44,6 +44,8 @@ track: W0
 
 Why this section exists: unit tests need a home and a framework before the first class lands, or the first class lands untested.
 
+**Needs:** Windows host (build/test)
+
 - [ ] `tests/Unit/` hosts the chosen C++ framework (Catch2, GTest, or the §-chosen one) with the choice recorded in `docs/testing.md`. Done when: the doc names the framework and why it won.
 - [ ] One passing test exercises the choice (a trivial pure function). Done when: `ctest -R Unit` passes and fails when the assertion is inverted.
 - [ ] Test-only helpers live under `tests/Common/` so suites share fixtures without reaching into each other. Done when: the directory and its ownership rule exist.
@@ -55,6 +57,8 @@ Why this section exists: unit tests need a home and a framework before the first
 ## 2. UI Automation Driver Spike
 
 Why this section exists: "automatic and complete" testing of a WinUI app needs a driver that clicks the real UI. Spike the options before committing the suites to one.
+
+**Needs:** Windows host (build/test)
 
 - [ ] `docs/ui-automation-spike.md` compares WinAppDriver and FlaUI (and any third contender) on our stub: launch, click, read text, screenshot. Done when: each contender has a measured verdict, not an opinion.
 - [ ] The spike picks one driver and records the decision with its cost of reversal. Done when: the doc names the winner and what switching would cost.
@@ -68,6 +72,8 @@ Why this section exists: "automatic and complete" testing of a WinUI app needs a
 
 Why this section exists: parity with Windows 11 Notepad is checkable only against captures. The store makes "matches Notepad" a diff, not an opinion.
 
+**Needs:** Windows host (build/test)
+
 - [ ] `resources/baseline/` holds the first captures (main window, tab bar, menus, settings) taken from stock Windows 11 Notepad with the capture procedure in `resources/baseline/README.md`. Done when: each capture names its source build.
 - [ ] `tests/UI/` compares the app's rendered surfaces against the captures with a committed tolerance policy. Done when: a deliberate 10px layout shift fails the comparison.
 - [ ] The refresh procedure re-captures after intentional changes and requires review of the diff. Done when: the procedure is written and was used once for real.
@@ -80,6 +86,8 @@ Why this section exists: parity with Windows 11 Notepad is checkable only agains
 
 Why this section exists: protocol tests must run with no network, no API keys, and no real agent. A loopback fixture speaks ACP back at the client deterministically.
 
+**Needs:** Windows host (build/test)
+
 - [ ] `tests/Fixtures/AcpLoopback/` implements a scripted fake agent over stdio: it answers `initialize`, `session/new`, and `session/prompt` from a script file. Done when: a test drives a full prompt turn against it.
 - [ ] The fixture can inject faults on demand (malformed JSON, dropped responses, slow streams). Done when: each fault has a test proving the client survives it.
 - [ ] The fixture validates every message it receives against the ACP schema and fails loudly on violations. Done when: a deliberately malformed client message fails the test.
@@ -91,6 +99,8 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 ## 5. Soak and Quarantine Procedure
 
 Why this section exists: UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks.
+
+**Needs:** Windows host (build/test)
 
 - [ ] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
 - [ ] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
