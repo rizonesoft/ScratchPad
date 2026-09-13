@@ -12,16 +12,16 @@ track: W0
 > **Goal:** The harnesses every test in the project runs on: a unit-test project, a UI automation driver, a golden-capture store, an ACP loopback fixture, and a soak procedure.
 
 > [!IMPORTANT]
-> **Current state:** Only `D00 T01 §5`'s CTest wiring and smoke test exist. No test framework is chosen, no UI driver exists, no captures exist. This file builds the backbone; `D06 T01` decides what runs on it.
+> **Current state:** Only `D00 T01 §5`'s `dotnet test` wiring and smoke test exist. The framework is xUnit (operator stack decision); no UI driver exists, no captures exist. This file builds the backbone; `D06 T01` decides what runs on it.
 
 ## Inputs
 
-- [`00-workspace/TODO-01-repo-and-toolchain.md`](./TODO-01-repo-and-toolchain.md) -- §5's CTest wiring, which this file extends
+- [`00-workspace/TODO-01-repo-and-toolchain.md`](./TODO-01-repo-and-toolchain.md) -- §5's `dotnet test` wiring, which this file extends
 - -> XREF: D06 T01 §1 -- the automated test strategy this backbone serves; the strategy names suites, this file names harnesses
 
 ## Outcome
 
-- Unit, UI-automation, and protocol tests each have a harness wired into one `ctest` run.
+- Unit, UI-automation, and protocol tests each have a harness wired into one `dotnet test` run.
 - Golden captures for parity surfaces live in a committed store with a refresh procedure.
 - A loopback ACP agent lets protocol tests run with no network and no API keys.
 - Flaky tests are quarantined by procedure, never by deletion.
@@ -42,17 +42,17 @@ track: W0
 
 ## 1. Unit Test Project and Framework
 
-Why this section exists: unit tests need a home and a framework before the first class lands, or the first class lands untested.
+Why this section exists: unit tests need a home and a framework before the first class lands, or the first class lands untested. UI-free code lives in `net10.0` libraries so these tests run on Linux; Windows-only code stays in the app project.
 
-**Needs:** Windows host (build/test)
+**Replatformed 2026-09-13:** xUnit on .NET 10, the steward stack; the neutral-library rule above is what lets this suite run anywhere.
 
-- [ ] `tests/Unit/` hosts the chosen C++ framework (Catch2, GTest, or the §-chosen one) with the choice recorded in `docs/testing.md`. Done when: the doc names the framework and why it won.
-- [ ] One passing test exercises the choice (a trivial pure function). Done when: `ctest -R Unit` passes and fails when the assertion is inverted.
+- [ ] `tests/Unit/` hosts xUnit over the neutral libraries (the shop standard, proven in steward) with the choice recorded in `docs/testing.md`. Done when: the doc names the framework, its pinned versions, and why it won.
+- [ ] One passing test exercises the choice (a trivial pure function). Done when: `dotnet test tests/Unit` passes on Linux and fails when the assertion is inverted.
 - [ ] Test-only helpers live under `tests/Common/` so suites share fixtures without reaching into each other. Done when: the directory and its ownership rule exist.
 - [ ] CI runs the unit suite on every push. Done when: a deliberately failing probe test fails the run (reverted immediately).
 - [ ] Commit: `"workspace: add unit test project and framework"`
 
-**Test checkpoint:** `ctest -R Unit` green; inverted assertion red; CI mirrors both. Cheaper substitute that fails: a framework vendored but wired to nothing.
+**Test checkpoint:** `dotnet test tests/Unit` green on Linux; inverted assertion red; CI mirrors both. Cheaper substitute that fails: a framework vendored but wired to nothing.
 
 ## 2. UI Automation Driver Spike
 
@@ -62,11 +62,11 @@ Why this section exists: "automatic and complete" testing of a WinUI app needs a
 
 - [ ] `docs/ui-automation-spike.md` compares WinAppDriver and FlaUI (and any third contender) on our stub: launch, click, read text, screenshot. Done when: each contender has a measured verdict, not an opinion.
 - [ ] The spike picks one driver and records the decision with its cost of reversal. Done when: the doc names the winner and what switching would cost.
-- [ ] `tests/UI/` runs one passing drive of the stub window (launch, assert title, close) under the winner. Done when: `ctest -R UISmoke` passes on CI.
+- [ ] `tests/UI/` runs one passing drive of the stub window (launch, assert title, close) under the winner. Done when: the UISmoke drive passes on a Windows runner in CI.
 - [ ] The spike records what the driver cannot do (if anything), with each gap routed to a named D06 section. Done when: no silent gaps remain.
 - [ ] Commit: `"workspace: spike UI automation drivers and wire the winner"`
 
-**Test checkpoint:** `ctest -R UISmoke` passes on CI against the real stub window; the spike doc carries measured verdicts. Cheaper substitute that fails: a driver chosen by reputation with no drive of our binary.
+**Test checkpoint:** The UISmoke drive passes on a Windows runner in CI against the real stub window; the spike doc carries measured verdicts. Cheaper substitute that fails: a driver chosen by reputation with no drive of our binary.
 
 ## 3. Golden Capture Store and Refresh
 
@@ -86,9 +86,7 @@ Why this section exists: parity with Windows 11 Notepad is checkable only agains
 
 Why this section exists: protocol tests must run with no network, no API keys, and no real agent. A loopback fixture speaks ACP back at the client deterministically.
 
-**Needs:** Windows host (build/test)
-
-- [ ] `tests/Fixtures/AcpLoopback/` implements a scripted fake agent over stdio: it answers `initialize`, `session/new`, and `session/prompt` from a script file. Done when: a test drives a full prompt turn against it.
+- [ ] `tests/Fixtures/AcpLoopback/` (a `net10.0` console app, spawned through the .NET host on either OS) implements a scripted fake agent over stdio: it answers `initialize`, `session/new`, and `session/prompt` from a script file. Done when: a test drives a full prompt turn against it on Linux.
 - [ ] The fixture can inject faults on demand (malformed JSON, dropped responses, slow streams). Done when: each fault has a test proving the client survives it.
 - [ ] The fixture validates every message it receives against the ACP schema and fails loudly on violations. Done when: a deliberately malformed client message fails the test.
 - [ ] `D03` sections consume this fixture rather than building their own fakes. Done when: the ownership is recorded here and referenced there.
@@ -100,8 +98,6 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 
 Why this section exists: UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks.
 
-**Needs:** Windows host (build/test)
-
 - [ ] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
 - [ ] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
 - [ ] A quarantined test owes a fix or a removal decision within a committed window. Done when: the window and the escalation are written.
@@ -112,5 +108,5 @@ Why this section exists: UI and protocol tests flake. Without a procedure, flake
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green, all harnesses exercised
+- [ ] `dotnet test` green, all harnesses exercised
 - [ ] `python3 scripts/todo-graph.py validate` clean

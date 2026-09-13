@@ -8,7 +8,7 @@ Somewhere along the way, the humble text editor learned a new trick: asking for 
 
 Intelligent Notepad is built on a contrarian belief: that the AI subscription you already have should work in the text editor you already use. No Microsoft account sign-in to summarize a grocery list. No AI credits deducted because you dared to rephrase a sentence. No Copilot+ PC required to fix a typo with anything smarter than hope.
 
-Just Notepad. Every tab, every menu, every pixel of the status bar, reproduced 1:1 in C++ and WinUI 3. And sitting beside it, a panel where Claude Code and Codex do the thinking, reached through the open [Agent Client Protocol](https://agentclientprotocol.com/get-started/agents). Your agents, your keys, your machine. The paywall is not included, because there isn't one.
+Just Notepad. Every tab, every menu, every pixel of the status bar, reproduced 1:1 in C# and WinUI 3 on .NET. And sitting beside it, a panel where Claude Code and Codex do the thinking, reached through the open [Agent Client Protocol](https://agentclientprotocol.com/get-started/agents). Your agents, your keys, your machine. The paywall is not included, because there isn't one.
 
 Design authority is split exactly two ways: Windows 11 Notepad dictates the editor, and the Agent Client Protocol specification dictates the agent layer. Microsoft's [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) proved that ACP fits inside a native desktop app, and it is cited in the plan as prior art for that lesson only. Nothing here is designed to match it: the context is your document, never a shell, and nobody suggests running `rm -rf` anything.
 
@@ -47,7 +47,7 @@ python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # any section reference ->
 
 ## The build
 
-C++ and WinUI 3 on Windows 11. One-command build and one-command test, pinned toolchain, CI on a Windows runner: all owned by `D00 T01`. Testing is automatic and complete per the bar `D06 T01` writes; no feature is done until its automated proof is green, because "works on my machine" is a confession, not a test result.
+.NET and WinUI 3 on Windows 11. One-command build and one-command test, pinned SDK, CI on Linux and Windows runners: all owned by `D00 T01`. Testing is automatic and complete per the bar `D06 T01` writes; no feature is done until its automated proof is green, because "works on my machine" is a confession, not a test result.
 
 Only the ACP client talks to agents, over JSON-RPC 2.0 on stdio: the client launches the agent subprocess (Codex via `codex-acp`, Claude via `claude-agent-acp`), negotiates versions, and drives sessions. Every agent action is consent-gated (`D03 T02`, `D05 T02`); every agent edit is reviewed as a diff and applied through undo (`D05 T02 §3-§4`). The agent can suggest; only you can commit. Literally: one section, one commit, and the row flips only when review says so.
 

@@ -116,6 +116,6 @@ Why this section exists: users install from the Store and WinGet. The channels a
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Checklist green with its record
 - [ ] `python3 scripts/todo-graph.py validate` clean

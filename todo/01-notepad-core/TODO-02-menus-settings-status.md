@@ -78,14 +78,14 @@ Why this section exists: settings with two writers disagree. One store, one writ
 
 **Groomed 2026-09-13:** Notepad audit: fresh-install default values are now recorded from the capture (research conflicts on wrap/statusbar defaults, so the capture decides).
 
-- [ ] `src/Notepad/SettingsStore.h` and `SettingsStore.cpp` own every tunable: theme, font, wrap, zoom default, and later AI settings. Done when: no other file writes a setting.
+- [ ] `src/Notepad.Core/SettingsStore.cs` owns every tunable: theme, font, wrap, zoom default, and later AI settings. Done when: no other file writes a setting.
 - [ ] The store persists atomically and migrates old versions forward. Done when: a corrupt store resets to defaults with a notice, driven in tests.
 - [ ] Readers observe changes live; nothing caches a stale copy. Done when: a change propagates to all readers in the test.
 - [ ] The store's schema is documented with each key's consumer. Done when: `docs/settings-schema.md` names every key and its reader.
 - [ ] Fresh-install defaults for every key (font family, style, size; wrap; status bar; theme) match a clean Notepad install exactly and are recorded from the capture. Done when: a clean-profile drive matches the recorded values.
 - [ ] Commit: `"notepad-core: add the settings store"`
 
-**Test checkpoint:** `ctest -R SettingsStore` green, including corrupt-store reset and live propagation. Cheaper substitute that fails: settings scattered across the registry and config files.
+**Test checkpoint:** `dotnet test --filter SettingsStore` green, including corrupt-store reset and live propagation. Cheaper substitute that fails: settings scattered across the registry and config files.
 
 ## 3. Settings Page
 
@@ -153,7 +153,7 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 
 **Groomed 2026-09-13:** Notepad audit: header/footer codes with defaults and command-line print routing are now explicit.
 
-- [ ] `src/Notepad/PrintService.cpp` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output.
+- [ ] `src/Notepad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output.
 - [ ] Page setup persists per Notepad's behavior. Done when: the persistence is driven.
 - [ ] Print failure (no printer, cancelled dialog) reports and changes nothing. Done when: both paths are driven.
 - [ ] Header and footer codes &l, &c, &r, &d, &t, &f, and &p render as Notepad's, defaulting to header &f and footer Page &p; custom codes re-enter each print and an empty box prints nothing. Done when: print-to-PDF fixtures cover every code. Source: https://support.microsoft.com/en-gb/topic/how-to-use-notepad-to-create-a-log-file-dd228763-76de-a7a7-952b-d5ae203c4e12
@@ -167,7 +167,7 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 Why this section exists: menus rot one item at a time. The audit makes "every control works or names its owner" a repeatable check, not a launch-day hope.
 
 - [ ] `docs/menu-audit.md` enumerates every menu item, shortcut, and enablement rule from the capture, each resolved to working or to a named owning section. Done when: no item is unaccounted.
-- [ ] `tests/UI/MenuAuditTest` invokes every working item and shortcut through the real menu. Done when: `ctest -R MenuAudit` passes on CI.
+- [ ] `tests/UI/MenuAuditTest` invokes every working item and shortcut through the real menu. Done when: `dotnet test --filter MenuAudit` passes on a Windows runner in CI.
 - [ ] The audit runs in CI so a newly dead item fails the build. Done when: a deliberately deadened probe item fails the run (reverted immediately).
 - [ ] Commit: `"notepad-core: audit menu and shortcut completeness"`
 
@@ -175,6 +175,6 @@ Why this section exists: menus rot one item at a time. The audit makes "every co
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Every menu item working or owner-named, proven in CI
 - [ ] `python3 scripts/todo-graph.py validate` clean

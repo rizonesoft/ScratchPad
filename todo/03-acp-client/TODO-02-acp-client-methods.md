@@ -49,7 +49,7 @@ track: A1
 
 Why this section exists: `session/request_permission` is the safety boundary of the whole product. Deny-by-default, prompt faithfully, answer exactly once.
 
-- [ ] `src/Acp/Permissions.cpp` answers `session/request_permission` with allow, deny, or escalate-to-user per policy. Done when: the policy matrix is tested.
+- [ ] `src/Notepad.Acp/Permissions.cs` answers `session/request_permission` with allow, deny, or escalate-to-user per policy. Done when: the policy matrix is tested.
 - [ ] Deny is the default for unknown kinds, timed-out prompts, and any ambiguity. Done when: each default-deny case is tested.
 - [ ] Each request is answered exactly once; double-answer and no-answer are impossible by construction. Done when: the exactly-once tests pass.
 - [ ] The UI contract for prompts is defined for `D05 T02 §1` to render (kind, scope, risk summary). Done when: the contract test passes against a stub renderer.
@@ -96,7 +96,7 @@ Why this section exists: grants are the user's standing choices. Scoped narrowly
 
 Why this section exists: every grant and denial is a security event. The log makes "what did the agent touch" answerable.
 
-- [ ] `src/Acp/GrantLog.cpp` records actor, time, kind, scope, decision, and reason for every permission event. Done when: the schema test passes.
+- [ ] `src/Notepad.Acp/GrantLog.cs` records actor, time, kind, scope, decision, and reason for every permission event. Done when: the schema test passes.
 - [ ] The log is append-only within a session and exportable by the user. Done when: tamper and export tests pass.
 - [ ] The UI surfaces the log where `D05 T02` designs it; this section owns the data and its integrity. Done when: the data contract test passes.
 - [ ] Commit: `"acp-client: log every grant and denial"`
@@ -105,6 +105,6 @@ Why this section exists: every grant and denial is a security event. The log mak
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Escape, consent, and exactly-once proofs all green
 - [ ] `python3 scripts/todo-graph.py validate` clean

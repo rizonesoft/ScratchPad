@@ -111,6 +111,6 @@ Why this section exists: the quarantine procedure from `D00 T02 §5` needs an op
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Every surface mapped to a suite, every suite green in CI
 - [ ] `python3 scripts/todo-graph.py validate` clean

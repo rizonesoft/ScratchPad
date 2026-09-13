@@ -48,14 +48,14 @@ Why this section exists: the UI is thin; the engine carries the semantics. Case,
 
 **Groomed 2026-09-13:** Notepad audit: the wrap scope rule and the absent direction control are now explicit.
 
-- [ ] `src/Editor/SearchEngine.cpp` finds matches with Notepad's options: case, whole word, direction, wrap-around. Done when: the option-matrix fixtures pass.
+- [ ] `src/Notepad.Core/SearchEngine.cs` finds matches with Notepad's options: case, whole word, direction, wrap-around. Done when: the option-matrix fixtures pass.
 - [ ] Match counting matches Notepad's count exactly on the fixture corpus. Done when: every count agrees.
 - [ ] Zero-length and regex-free semantics match Notepad (no regex unless Notepad has it). Done when: the behavior is recorded and tested.
 - [ ] The engine never mutates the buffer; replace goes through the undoable edit path. Done when: a mutation probe test passes.
 - [ ] Search scope follows Notepad: with wrap around off the search runs cursor-to-end only, with wrap around on it covers the whole file; there is no Up/Down direction control in the current bar. Done when: the scope fixtures pass. Source: https://www.howtogeek.com/359042/everything-new-in-notepad-in-windows-10-redstone-5/
 - [ ] Commit: `"editor: add the search engine"`
 
-**Test checkpoint:** `ctest -R SearchEngine` green across the option matrix and counts; mutation probe passes. Cheaper substitute that fails: search tested only through the UI with three cases.
+**Test checkpoint:** `dotnet test --filter SearchEngine` green across the option matrix and counts; mutation probe passes. Cheaper substitute that fails: search tested only through the UI with three cases.
 
 ## 2. Find Bar UI
 
@@ -71,7 +71,7 @@ Why this section exists: the find bar is the surface users touch. It must place,
 
 **Groomed 2026-09-13:** Notepad audit: the exact exposed option set, F3/Shift+F3, and within-session memory with autofill are now explicit.
 
-- [ ] `src/Editor/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes.
+- [ ] `src/Notepad/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes.
 - [ ] Enter, Shift+Enter, Escape, and option toggles flow as Notepad's. Done when: the keyboard flow is driven.
 - [ ] No-match and wrap-around feedback match Notepad's. Done when: both are driven.
 - [ ] The bar exposes exactly Match case and Wrap around under More options; no whole-word toggle and no Up/Down direction radio appear. Done when: the capture comparison confirms the set. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
@@ -112,7 +112,7 @@ Why this section exists: small surface, exact behavior. Validation, errors, and 
 
 **Chrome:** Consume the shared dialog styles. Do not invent a second dialog treatment.
 
-- [ ] `src/Editor/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven.
+- [ ] `src/Notepad/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven.
 - [ ] Valid input lands the caret exactly (line, column rules as Notepad's). Done when: the landing fixtures pass.
 - [ ] The dialog remembers nothing it should not and persists nothing. Done when: the behavior is recorded and tested.
 - [ ] Commit: `"editor: add go-to-line"`
@@ -132,6 +132,6 @@ Why this section exists: find options persist across sessions in Notepad, and th
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Option matrix, counts, and undo grouping all proven
 - [ ] `python3 scripts/todo-graph.py validate` clean

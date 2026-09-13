@@ -56,7 +56,7 @@ Why this section exists: consent the user does not understand is not consent. Th
 
 **Chrome:** Consume the shared prompt styles. Do not invent a second prompt treatment.
 
-- [ ] `src/AiPanel/PermissionPrompt.xaml` renders kind, scope, risk summary, and allow/deny/scope choices per the `D03 T02 §1` contract. Done when: the contract test passes against the real prompt.
+- [ ] `src/Notepad/PermissionPrompt.xaml` renders kind, scope, risk summary, and allow/deny/scope choices per the `D03 T02 §1` contract. Done when: the contract test passes against the real prompt.
 - [ ] Timeout and dismiss count as deny, visibly. Done when: both are driven.
 - [ ] Scope choices (once, session, always-for-scope) map exactly to `D03 T02 §4` grants. Done when: the mapping test passes.
 - [ ] Prompts queue without loss when several arrive at once. Done when: the queue test passes.
@@ -166,6 +166,6 @@ Why this section exists: this is the answer to Notepad's subscription-gated Writ
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] No agent edit reaches the buffer without review and undo
 - [ ] `python3 scripts/todo-graph.py validate` clean

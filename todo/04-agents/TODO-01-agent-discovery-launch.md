@@ -46,7 +46,7 @@ track: A2
 
 Why this section exists: "no agents found" must mean none are installed, not that detection looked in the wrong place.
 
-- [ ] `src/Agents/AgentDetector.cpp` finds `codex-acp` and `claude-agent-acp` on PATH and in their documented install locations. Done when: the detection matrix passes on fixtures.
+- [ ] `src/Notepad.Agents/AgentDetector.cs` finds `codex-acp` and `claude-agent-acp` on PATH and in their documented install locations. Done when: the detection matrix passes on fixtures.
 - [ ] Each found agent reports its version and protocol versions. Done when: the version probe is tested.
 - [ ] Detection rescans on demand and on a committed trigger (startup, settings change). Done when: install-then-rescan is tested.
 - [ ] Unknown but ACP-shaped binaries are listed as unverified, never silently ignored or trusted. Done when: the unverified path is tested.
@@ -100,6 +100,6 @@ Why this section exists: adapters move independently of us. The record pins what
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Detection, spawn, and health proven on fixtures and a clean VM
 - [ ] `python3 scripts/todo-graph.py validate` clean

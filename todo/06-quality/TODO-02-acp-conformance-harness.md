@@ -86,6 +86,6 @@ Why this section exists: claimed adapters are proven on a schedule against their
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Script library, schema pin, and matrix all green in CI
 - [ ] `python3 scripts/todo-graph.py validate` clean

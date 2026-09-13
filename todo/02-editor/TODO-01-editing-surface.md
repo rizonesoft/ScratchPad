@@ -48,7 +48,7 @@ track: N2
 
 Why this section exists: the shell and the surface evolve separately, so their boundary is a contract settled once, in writing, before either side leans on it.
 
-- [ ] `src/Editor/IEditorSurface.h` defines the interface: set/get text, caret, selection, dirty events, undo/redo, find hooks. Done when: the shell compiles against the interface alone.
+- [ ] `src/Notepad.Core/IEditorSurface.cs` defines the interface: set/get text, caret, selection, dirty events, undo/redo, find hooks. Done when: the shell compiles against the interface alone.
 - [ ] Lifetime and threading rules are recorded: who owns the buffer, which thread edits, how the shell observes. Done when: the rules are written and the placeholder honors them.
 - [ ] The placeholder surface implements the interface so the shell runs end to end before the real surface lands. Done when: the app runs with the placeholder and all shell tests pass.
 - [ ] AI edits are declared as future consumers of this same interface, never as a second edit path. Done when: the declaration is recorded here.
@@ -62,7 +62,7 @@ Why this section exists: the buffer is the source of truth for every character. 
 
 **Groomed 2026-09-13:** Notepad audit: word-kill, EOP rules, hex/bracket entry, and the Unicode-controls display mode are now explicit.
 
-- [ ] `src/Editor/TextBuffer.cpp` models the document with Notepad's line and encoding semantics. Done when: the caret-math fixtures pass.
+- [ ] `src/Notepad.Core/TextBuffer.cs` models the document with Notepad's line and encoding semantics. Done when: the caret-math fixtures pass.
 - [ ] Caret movement (arrows, word jump, line ends, page, document ends) matches Notepad key for key. Done when: the movement fixtures pass.
 - [ ] Selection (keyboard, shift-extend, select-all) matches Notepad. Done when: the selection fixtures pass.
 - [ ] Surrogate pairs, combining characters, and tab stops behave as Notepad's. Done when: the edge-case fixtures pass.
@@ -72,7 +72,7 @@ Why this section exists: the buffer is the source of truth for every character. 
 - [ ] The Unicode-controls display mode (menu entry in §6) renders bidi RLO/LRO and ZWJ as zero-width glyphs and splits ZWJ emoji sequences for arrow-key navigation and Alt+X inspection. Done when: the mode fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
 - [ ] Commit: `"editor: add the text buffer and caret model"`
 
-**Test checkpoint:** `ctest -R TextBuffer` green across movement, selection, and edge-case fixtures. Cheaper substitute that fails: caret math that works on ASCII and breaks on real text.
+**Test checkpoint:** `dotnet test --filter TextBuffer` green across movement, selection, and edge-case fixtures. Cheaper substitute that fails: caret math that works on ASCII and breaks on real text.
 
 ## 3. Rendering, Selection, Clipboard
 
@@ -88,7 +88,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 **Groomed 2026-09-13:** Notepad audit: CF_TEXT-only paste, color emoji, text drag-drop, Ctrl+click paragraph, and spaceless double-click are now explicit.
 
-- [ ] `src/Editor/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes.
+- [ ] `src/Notepad/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes.
 - [ ] Cut, copy, paste, and paste-as-behavior match Notepad including formats offered. Done when: clipboard round-trips are driven.
 - [ ] Drag-select, double-click word, triple-click line match Notepad. Done when: each gesture is driven.
 - [ ] IME and accessibility (narrator, keyboard-only use) behave as Notepad's. Done when: the accessibility checks pass.
@@ -105,13 +105,13 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 Why this section exists: undo is the user's memory. Its grouping and limits must match Notepad's, or trust in the surface breaks.
 
-- [ ] `src/Editor/UndoStack.cpp` groups edits as Notepad groups them (typing bursts, single operations). Done when: the grouping fixtures pass.
+- [ ] `src/Notepad.Core/UndoStack.cs` groups edits as Notepad groups them (typing bursts, single operations). Done when: the grouping fixtures pass.
 - [ ] Undo and redo limits, and the dirty-flag interaction (undo-to-clean clears dirty), match Notepad. Done when: the fixtures pass.
 - [ ] Undo across save boundaries behaves as Notepad's. Done when: the save-interaction fixtures pass.
 - [ ] Redo clears exactly when Notepad clears it. Done when: the fixtures pass.
 - [ ] Commit: `"editor: add undo and redo"`
 
-**Test checkpoint:** `ctest -R UndoStack` green across grouping, dirty, save, and redo-clear fixtures. Cheaper substitute that fails: per-keystroke undo that technically works and feels nothing like Notepad.
+**Test checkpoint:** `dotnet test --filter UndoStack` green across grouping, dirty, save, and redo-clear fixtures. Cheaper substitute that fails: per-keystroke undo that technically works and feels nothing like Notepad.
 
 ## 5. Zoom and Word Wrap
 
@@ -173,6 +173,6 @@ Why this section exists: Notepad opens big files without dying. Our surface comm
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Caret, selection, undo, and clipboard fixtures all green
 - [ ] `python3 scripts/todo-graph.py validate` clean

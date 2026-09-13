@@ -18,7 +18,7 @@ Domains are numbered in **allocation order**. `DNN TNN §N` cross-references enc
 
 | No. | Domain | Phase | Purpose |
 | :-: | ------ | :---: | ------- |
-| 00 | [Workspace](./00-workspace/INDEX.md) | 0 | Repo, Windows toolchain, CI, this TODO system, test backbone. |
+| 00 | [Workspace](./00-workspace/INDEX.md) | 0 | Repo, .NET toolchain, CI, this TODO system, test backbone. |
 | 01 | [Notepad Core](./01-notepad-core/INDEX.md) | 1 | WinUI 3 app spine: window, tabs, file IO, menus, settings, status bar. Win11 Notepad parity. |
 | 02 | [Editor](./02-editor/INDEX.md) | 1 | Editing surface: text engine, caret, find/replace, go-to, zoom, wrap. |
 | 03 | [ACP Client](./03-acp-client/INDEX.md) | 2 | Agent Client Protocol: JSON-RPC stdio transport, session lifecycle, client methods, v2 readiness. |
@@ -52,7 +52,7 @@ A coverage claim rests on the source it was derived from. This table was derived
 
 ## Active TODOs
 
-- [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- layout, pinned Windows SDK and compiler, CI on a Windows runner, warning and analysis gates, this TODO system's own CI checks.
+- [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- layout, pinned .NET SDK, CI on Linux and Windows runners, warning and analysis gates, this TODO system's own CI checks.
 - [00 Workspace] [TODO-02 Test Backbone](./00-workspace/TODO-02-test-backbone.md) -- unit-test project, UI automation driver, golden captures, ACP loopback fixture, soak procedure.
 - [01 Notepad Core] [TODO-01 WinUI App Spine](./01-notepad-core/TODO-01-winui-app-spine.md) -- window, tab model, file IO with encoding detection, open/save round-trips.
 - [01 Notepad Core] [TODO-02 Menus, Settings and Status](./01-notepad-core/TODO-02-menus-settings-status.md) -- full menu bar, settings page, status bar, print slice.

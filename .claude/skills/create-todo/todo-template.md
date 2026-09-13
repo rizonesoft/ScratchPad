@@ -60,6 +60,6 @@ CHANGEME: one paragraph of context.
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` -- full suite green
+- [ ] `dotnet test` -- full suite green
 - [ ] CHANGEME: file-level checks this file owes as a whole
 - [ ] `python3 scripts/todo-graph.py validate` clean

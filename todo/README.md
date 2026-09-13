@@ -61,7 +61,7 @@ superseded_by: other-todo-id       # optional -- set with status: superseded
 ## Inputs
 
 - [`resources/baseline/notepad-parity.md`](…) -- the parity notes this TODO executes
-- [`src/Notepad/App.xaml.cpp`](…) -- exists; §2 extends it
+- [`src/Notepad/App.xaml.cs`](…) -- exists; §2 extends it
 - -> XREF: [`02-editor/TODO-01 §4`](…) -- consumes the buffer this section builds
 
 ## Outcome
@@ -76,7 +76,7 @@ superseded_by: other-todo-id       # optional -- set with status: superseded
 
 | Order | Section | Deliverable                              | Depends On   | Status |
 | :---: | :-----: | ---------------------------------------- | ------------ | :----: |
-|   1   |   §1    | Solution + WinUI 3 project + CTest wired | --           |  [x]   |
+|   1   |   §1    | Solution + WinUI 3 project + tests wired | --           |  [x]   |
 |   2   |   §2    | Single-window shell with menu bar        | §1           |  [ ]   |
 |   3   |   §3    | Tab model with dirty tracking            | §1           |  [ ]   |
 |   4   |   §4    | File open and save with encoding detect  | §2, §3       |  [ ]   |
@@ -87,20 +87,20 @@ superseded_by: other-todo-id       # optional -- set with status: superseded
 
 One paragraph of context: why this section exists and what it must not break.
 
-- [ ] `src/IntelligentNotepad.sln` builds clean with the pinned Windows SDK. Done when: a clean checkout builds with one command and the smoke test passes. Cheaper substitute: a solution that builds only on the author's machine.
+- [ ] `src/IntelligentNotepad.slnx` builds clean with the pinned .NET SDK. Done when: a clean checkout builds with one command and the smoke test passes. Cheaper substitute: a solution that builds only on the author's machine.
 - [ ] Another concrete item. Max 30 per section. See Work items below.
 - [ ] Commit: `"notepad-core: scaffold solution + test wiring"`
 
-**Test checkpoint:** `ctest --test-dir build --output-on-failure` exits 0 with at least one passing test; the build reports zero warnings at the configured level.
+**Test checkpoint:** `dotnet test` exits 0 with at least one passing test; the build reports zero warnings at the configured level.
 
-> **Verified:** 2026-09-14 | §1 | ctest 3 passed · zero warnings · build `Debug/x64`
+> **Verified:** 2026-09-14 | §1 | dotnet test 3 passed · zero warnings · build `Debug/x64`
 
 ## 2. …
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` -- full suite green
-- [ ] Compiler warnings clean at the configured level (`/W4`, warnings as errors)
+- [ ] `dotnet test` -- full suite green
+- [ ] Build warnings clean at the configured level (warnings as errors, analyzers run)
 - [ ] Static analysis clean at the configured level
 - [ ] Installed MSIX smoke-tested on a clean Windows 11 machine
 ```
@@ -138,7 +138,7 @@ One paragraph of context, then the checklist.
 
 **Test checkpoint:** …
 
-> **Verified:** 2026-09-14 | §3 | ctest TabModelTest 12 passed · zero warnings
+> **Verified:** 2026-09-14 | §3 | dotnet test TabModelTest 12 passed · zero warnings
 > **Deferred:** session restore across restarts -> XREF: D01 T01 §6 -- needs the settings store first
 > **Review:** round 1, fingerprint `a3f91c2e5b04` -- `adversarial` approve · `consistency` approve · `integration` needs-attention (1). Raw findings: docs/reviews/01-notepad-core/D01-T01-s3.md
 > **CRUD:** applicable | TabModelTest + UI smoke: open, edit, save, close, readback byte-identical
@@ -289,7 +289,7 @@ A section that only names an outcome ("build the tab bar") leaves a cold agent t
 Each checklist item except `Commit:` is a **micro-step**. Required on new work:
 
 1. **One action.** One file, class, test, command, or control. If you need "and then" to describe it, it is two items, or one item with numbered sub-steps.
-2. **A named path** in backticks (`src/Notepad/TabModel.cpp`, `TabBar.xaml`, `ctest -R TabModel`). A verb with no object ("implement tabs") is not an item.
+2. **A named path** in backticks (`src/Notepad.Core/TabModel.cs`, `TabBar.xaml`, `dotnet test --filter TabModel`). A verb with no object ("implement tabs") is not an item.
 3. **Done when.** The observable end state in the same bullet. Example: "Done when: closing a dirty tab prompts, and Discard closes without writing."
 4. **The cheaper substitute** on any UI or write item, so the Test checkpoint can fail on it.
 5. **A source cite** when behavior is copied: a capture path, a protocol doc URL, or a Windows behavior note.
@@ -321,7 +321,7 @@ python3 scripts/todo-graph.py resolve 'D03 T01 §3'   # ref -> file, section, de
 `resolve` is the front door for the two section skills, and it takes whatever you already had in front of you: a `DNN TNN §N` reference, a `<path> §N` pair, or a row pasted straight out of `implementation-plan.md`, backticks, pipes and all. Its exit code carries the verdict: `3` means the section is already `[x]` (audit stance, not implementation), `4` means a dependency is unmet, `5` means the section moved out of the tree. So
 
 ```
-process todo section: | [ ] | `D00 T01 §2` | CI on a Windows runner | 6 |
+process todo section: | [ ] | `D00 T01 §2` | CI on Linux and Windows runners | 6 |
 ```
 
 is a complete instruction: nobody has to translate domain `00` and TODO `01` into a filename, which is the step that gets done wrong at 3am.

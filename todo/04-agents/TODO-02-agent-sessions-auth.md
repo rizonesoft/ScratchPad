@@ -92,7 +92,7 @@ Why this section exists: closing ends the conversation's resources: process, gra
 
 Why this section exists: "what happened in that session" must be answerable after the fact, from our side, without the agent's help.
 
-- [ ] `src/Agents/SessionLog.cpp` records session lifecycle events with time, agent, and outcome. Done when: the schema test passes.
+- [ ] `src/Notepad.Agents/SessionLog.cs` records session lifecycle events with time, agent, and outcome. Done when: the schema test passes.
 - [ ] The log excludes secrets and prompt contents by default, with the exclusion tested. Done when: the redaction test passes.
 - [ ] The user can export and clear the log. Done when: both are tested.
 - [ ] Commit: `"agents: log session lifecycle"`
@@ -101,6 +101,6 @@ Why this section exists: "what happened in that session" must be answerable afte
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Secret scan clean, session semantics proven
 - [ ] `python3 scripts/todo-graph.py validate` clean

@@ -48,12 +48,12 @@ track: N2
 
 Why this section exists: formatting is data on top of the buffer, not a second buffer. The model decides what Markdown means here, once.
 
-- [ ] `src/Editor/FormatModel.cpp` represents Notepad's styles as annotations on the §2 buffer. Done when: the model fixtures pass.
+- [ ] `src/Notepad.Core/FormatModel.cs` represents Notepad's styles as annotations on the §2 buffer. Done when: the model fixtures pass.
 - [ ] The supported syntax is exactly Notepad's (no extra Markdown dialect). Done when: the syntax list is recorded from the source and tested.
 - [ ] Annotations survive edits, undo, and save/load without drifting from the text. Done when: the stability fixtures pass.
 - [ ] Commit: `"editor: add the format model"`
 
-**Test checkpoint:** `ctest -R FormatModel` green on model, syntax, and stability fixtures. Cheaper substitute that fails: formatting stored as HTML nobody can diff.
+**Test checkpoint:** `dotnet test --filter FormatModel` green on model, syntax, and stability fixtures. Cheaper substitute that fails: formatting stored as HTML nobody can diff.
 
 ## 2. Toolbar: Inline Styles and Lists
 
@@ -69,7 +69,7 @@ Why this section exists: the toolbar is the surface. Bold, italic, lists, nested
 
 **Groomed 2026-09-13:** Notepad audit: headings, nested-list clipboard, links with the scheme gate, and Clear Formatting are now explicit.
 
-- [ ] `src/Editor/FormatToolbar.xaml` offers Notepad's inline styles and lists with active states. Done when: the capture comparison passes.
+- [ ] `src/Notepad/FormatToolbar.xaml` offers Notepad's inline styles and lists with active states. Done when: the capture comparison passes.
 - [ ] Nested lists indent and outdent as Notepad's. Done when: the nesting fixtures pass.
 - [ ] Every format change is undoable per Notepad's grouping. Done when: the undo fixtures pass.
 - [ ] Headings apply through the H1 toolbar picker with title, subtitle, section, and subsection levels. Done when: each level is driven. Source: https://www.windowslatest.com/2025/07/02/windows-11-notepads-rich-text-formatting-markdown-is-now-available/
@@ -133,6 +133,6 @@ Why this section exists: formatting is optional in Notepad, and plain text must 
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Markdown round-trips byte-stable; plain text untouched
 - [ ] `python3 scripts/todo-graph.py validate` clean

@@ -64,7 +64,7 @@ Why this section exists: everything visible hangs off the main window. Build the
 - [ ] `src/Notepad/MainWindow.xaml` hosts the menu bar region, tab region, editor region, and status region. Done when: all four regions exist with the Notepad layout.
 - [ ] The window title follows Notepad's convention (file name, dirty marker, app name). Done when: each state renders exactly as captured.
 - [ ] The window restores its size and position across launches. Done when: move, close, reopen, and the geometry matches.
-- [ ] `tests/UI/MainWindowTest` drives launch and asserts the regions exist. Done when: `ctest -R MainWindow` passes on CI.
+- [ ] `tests/UI/MainWindowTest` drives launch and asserts the regions exist. Done when: `dotnet test --filter MainWindow` passes on a Windows runner in CI.
 - [ ] The window frame uses Mica material with rounded corners, following the app theme from the D01 T02 §2 store. Done when: light, dark, and system themes each render Mica correctly against the capture. Source: https://blogs.windows.com/blog/2021/12/07/redesigned-notepad-for-windows-11-begins-rolling-out-to-windows-insiders/
 - [ ] First-run shows Notepad's What's New dialog as captured, revisitable through the megaphone entry; if the capture shows it removed, the removal is recorded instead. Done when: first-run is driven. Source: https://blogs.windows.com/windows-insider/2026/01/21/notepad-and-paint-updates-begin-rolling-out-to-windows-insiders/
 - [ ] Commit: `"notepad-core: build the main window shell"`
@@ -77,7 +77,7 @@ Why this section exists: tabs are the unit of work. The model must be right befo
 
 **Groomed 2026-09-13:** Notepad audit: the display-title rule for auto-named untitled tabs and a closed-tab stack for reopen are now explicit.
 
-- [ ] `src/Notepad/TabModel.h` and `TabModel.cpp` model the tab list: identity, file path, dirty flag, encoding, line ending. Done when: the model compiles with no UI dependency.
+- [ ] `src/Notepad.Core/TabModel.cs` models the tab list: identity, file path, dirty flag, encoding, line ending. Done when: the model compiles with no UI dependency.
 - [ ] Dirty tracking flips on edit and clears on save, and only on save. Done when: `tests/Unit/TabModelTest` covers edit, save, and no-op edits.
 - [ ] The model notifies the UI of list and dirty changes through one observable path. Done when: two observers cannot disagree about dirty state.
 - [ ] An untitled tab carries no path until first save. Done when: save on untitled routes to Save As (§5).
@@ -85,7 +85,7 @@ Why this section exists: tabs are the unit of work. The model must be right befo
 - [ ] The model keeps a closed-tab stack so recently closed tabs can reopen; depth and what is kept (path, contents, caret) are recorded from the capture. Done when: `tests/Unit/TabModelTest` covers close-then-reopen round-trips.
 - [ ] Commit: `"notepad-core: add the tab model with dirty tracking"`
 
-**Test checkpoint:** `ctest -R TabModel` green, including edit-then-undo-to-clean semantics as Notepad defines them. Cheaper substitute that fails: dirty tracked in the UI layer where two paths can disagree.
+**Test checkpoint:** `dotnet test --filter TabModel` green, including edit-then-undo-to-clean semantics as Notepad defines them. Cheaper substitute that fails: dirty tracked in the UI layer where two paths can disagree.
 
 ## 3. Tab Bar UI: Open, Switch, Reorder, Close
 
@@ -117,11 +117,11 @@ Why this section exists: opening must never corrupt. Detection decides the bytes
 
 **Groomed 2026-09-13:** Notepad audit: EOL detection, the Open dialog, the large-file limit, and .LOG append-on-open are now explicit (EOL was only implied by §5's preserve rule).
 
-- [ ] `src/Notepad/FileIO.cpp` detects BOM, UTF-8, UTF-16 LE/BE, and ANSI fallback exactly as Notepad does. Done when: the fixture matrix in `tests/Data/encodings/` passes byte-identical.
+- [ ] `src/Notepad.Core/FileIO.cs` detects BOM, UTF-8, UTF-16 LE/BE, and ANSI fallback exactly as Notepad does. Done when: the fixture matrix in `tests/Data/encodings/` passes byte-identical.
 - [ ] Open failure (missing file, locked file, unreadable file) reports Notepad's message and leaves the tab list unchanged. Done when: each failure is driven.
 - [ ] Files that change on disk while open are detected and the user is asked before reload. Done when: the external-change prompt is driven.
 - [ ] Large files open without blocking the UI past the committed budget. Done when: the budget is recorded and measured.
-- [ ] `src/Notepad/FileIO.cpp` detects the file's line-ending convention (CRLF, LF, CR) per Notepad's extended-EOL rules; mixed-ending behavior is recorded from the capture. Done when: the fixture matrix in `tests/Data/eol/` passes byte-identical. Source: https://devblogs.microsoft.com/commandline/extended-eol-in-notepad/
+- [ ] `src/Notepad.Core/FileIO.cs` detects the file's line-ending convention (CRLF, LF, CR) per Notepad's extended-EOL rules; mixed-ending behavior is recorded from the capture. Done when: the fixture matrix in `tests/Data/eol/` passes byte-identical. Source: https://devblogs.microsoft.com/commandline/extended-eol-in-notepad/
 - [ ] The Open dialog defaults to Text documents (*.txt) with an All-files switch, as Notepad's. Done when: the dialog matrix is driven against the capture.
 - [ ] Files past Notepad's size limit refuse with its redirect dialog instead of hanging; the exact threshold and wording are recorded from the capture. Done when: an over-limit open is driven. Source: https://en.wikipedia.org/wiki/Windows_Notepad
 - [ ] A file whose first line is .LOG appends the current date and time at the end on every open, in the same format as the F5 insert (D02 T01 §5). Done when: open-append round-trips are fixture-tested. Source: https://support.microsoft.com/en-us/windows/apps/help-in-notepad
@@ -162,7 +162,7 @@ Why this section exists: Notepad reopens where the user left off. So do we, with
 
 **Groomed 2026-09-13:** Notepad audit: the startup preference's fresh-install default is now recorded from the capture instead of unnamed.
 
-- [ ] `src/Notepad/SessionStore.cpp` persists open paths, active tab, caret positions, and unsaved buffer contents. Done when: quit and relaunch restores all four, including an untitled tab with unsaved text.
+- [ ] `src/Notepad.Core/SessionStore.cs` persists open paths, active tab, caret positions, and unsaved buffer contents. Done when: quit and relaunch restores all four, including an untitled tab with unsaved text.
 - [ ] The "When Notepad starts" preference offers restore-previous-session or open-new-window, as Notepad's. Done when: both modes are driven.
 - [ ] Missing or moved files are skipped with a notice, never resurrected as ghosts. Done when: the skip path is driven.
 - [ ] The recent-files list matches Notepad's order, truncation, and clearing. Done when: the UI test walks all three.
@@ -237,7 +237,7 @@ Why this section exists: Notepad opens new windows, and the "Opening files" sett
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Round-trip matrix byte-identical across encodings and line endings
 - [ ] No destructive path without its prompt, all driven
 - [ ] `python3 scripts/todo-graph.py validate` clean

@@ -46,13 +46,13 @@ track: N2
 
 Why this section exists: the UI is thin; the engine carries the semantics. Language, word breaking, and suggestion ranking are settled and tested here.
 
-- [ ] `src/Editor/SpellEngine.cpp` checks the §-buffer in the system language with Notepad's word-breaking rules. Done when: the fixture corpus agrees with Notepad word for word.
+- [ ] `src/Notepad.Core/SpellEngine.cs` checks the §-buffer in the system language with Notepad's word-breaking rules. Done when: the fixture corpus agrees with Notepad word for word.
 - [ ] Suggestions rank as Notepad ranks them for the fixture corpus. Done when: top suggestions match on every fixture.
 - [ ] Checking never blocks typing: it runs within the committed budget on large buffers. Done when: the perf test measures it.
 - [ ] The engine exposes ignore-word and add-to-dictionary hooks for the UI. Done when: both are tested at the engine level.
 - [ ] Commit: `"editor: add the spellcheck engine"`
 
-**Test checkpoint:** `ctest -R SpellEngine` green on the corpus; perf budget measured. Cheaper substitute that fails: spellcheck that works on ten words and hangs on ten thousand.
+**Test checkpoint:** `dotnet test --filter SpellEngine` green on the corpus; perf budget measured. Cheaper substitute that fails: spellcheck that works on ten words and hangs on ten thousand.
 
 ## 2. Squiggles and Suggestions UI
 
@@ -80,7 +80,7 @@ Why this section exists: the red squiggle is the surface users see. It must rend
 
 Why this section exists: autocorrect changes text the user did not explicitly change, so its word list and behavior must match Notepad's, and it must be disableable.
 
-- [ ] `src/Editor/AutoCorrect.cpp` applies Notepad's common-mistake corrections as the user types. Done when: the correction fixtures pass.
+- [ ] `src/Notepad.Core/AutoCorrect.cs` applies Notepad's common-mistake corrections as the user types. Done when: the correction fixtures pass.
 - [ ] Every autocorrection is one undo unit and announces itself as Notepad does. Done when: the undo fixtures pass.
 - [ ] Autocorrect never fires inside words the user just fixed manually. Done when: the fight-with-user test passes.
 - [ ] Commit: `"editor: add autocorrect"`
@@ -111,6 +111,6 @@ Why this section exists: Notepad lets users disable spelling globally or per fil
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Corpus agreement with Notepad proven
 - [ ] `python3 scripts/todo-graph.py validate` clean

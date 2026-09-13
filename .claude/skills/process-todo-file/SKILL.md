@@ -32,7 +32,7 @@ The `## Verification` section is not decoration. Run every item in it and record
 For a code TODO that means the **full** suite, not the filtered runs individual sections used:
 
 ```bash
-ctest --test-dir build --output-on-failure
+dotnet test
 ```
 
 plus the file's other Verification items (warnings, analysis, captures, clean-machine checks), each executed, none trimmed.

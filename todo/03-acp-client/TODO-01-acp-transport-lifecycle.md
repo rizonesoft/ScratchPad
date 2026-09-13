@@ -50,19 +50,19 @@ track: A1
 
 Why this section exists: every byte on the wire goes through this layer. Correct framing and schema validation here is correctness everywhere.
 
-- [ ] `src/Acp/JsonRpc.h` and `JsonRpc.cpp` encode and decode JSON-RPC 2.0 requests, responses, and notifications. Done when: the codec fixtures pass, including batch-free single-message framing.
+- [ ] `src/Notepad.Acp/JsonRpc.cs` encodes and decodes JSON-RPC 2.0 requests, responses, and notifications. Done when: the codec fixtures pass, including batch-free single-message framing.
 - [ ] Outgoing messages validate against the ACP schema before send; violations fail loudly in tests. Done when: a deliberately malformed message fails the test.
 - [ ] Incoming messages validate on receipt with structured errors, never exceptions across the transport. Done when: each violation shape is tested.
 - [ ] Request ids correlate responses under concurrency. Done when: interleaved responses route to the right callers in the test.
 - [ ] Commit: `"acp-client: add the JSON-RPC message layer"`
 
-**Test checkpoint:** `ctest -R JsonRpc` green, including malformed-in and malformed-out cases. Cheaper substitute that fails: a JSON library used raw with no schema validation.
+**Test checkpoint:** `dotnet test --filter JsonRpc` green, including malformed-in and malformed-out cases. Cheaper substitute that fails: a JSON library used raw with no schema validation.
 
 ## 2. Stdio Subprocess Transport
 
 Why this section exists: stdio is the required ACP transport. The client launches the agent, owns its pipes, and must never write a non-message byte.
 
-- [ ] `src/Acp/StdioTransport.cpp` spawns a child process with piped stdin/stdout/stderr on Windows. Done when: the loopback fixture spawns and shakes hands.
+- [ ] `src/Notepad.Acp/StdioTransport.cs` spawns a child process with piped stdin/stdout/stderr. Done when: the loopback fixture spawns and shakes hands.
 - [ ] Messages are newline-delimited with no embedded newlines; stdout carries only ACP messages. Done when: a byte-level capture test proves it.
 - [ ] Stderr is captured as agent logs and never parsed as protocol. Done when: noisy-stderr fixtures pass.
 - [ ] Shutdown closes stdin and terminates the child cleanly with a committed timeout, then force-kills. Done when: the shutdown matrix is tested.
@@ -74,7 +74,7 @@ Why this section exists: stdio is the required ACP transport. The client launche
 
 Why this section exists: every connection begins with `initialize`. Versions and capabilities negotiated wrong here break every later call.
 
-- [ ] `src/Acp/Session.cpp` sends `initialize` with the client's protocol version and capabilities. Done when: the loopback records the exact params.
+- [ ] `src/Notepad.Acp/Session.cs` sends `initialize` with the client's protocol version and capabilities. Done when: the loopback records the exact params.
 - [ ] The client honors the agent's answered version (v1 peer stays v1) and records the negotiated surface. Done when: v1-only and v2-capable peers are both tested.
 - [ ] Unknown capabilities and fields are ignored forward-compatibly, never rejected. Done when: the tolerance fixtures pass.
 - [ ] A failed or timed-out `initialize` surfaces a structured error, not a hang. Done when: the failure is tested.
@@ -129,7 +129,7 @@ Why this section exists: agents are separate processes that can die or misbehave
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] Full prompt turn proven against the loopback with byte-level framing proof
 - [ ] No test in this file needs network, keys, or a real agent
 - [ ] `python3 scripts/todo-graph.py validate` clean

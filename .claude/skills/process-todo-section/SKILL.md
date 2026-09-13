@@ -58,7 +58,7 @@ Use the `skill arg` line it prints as the canonical form for the rest of the run
 - **Validate before building.** Step 2 is a gate, not a formality. A section that cannot pass it gets fixed first.
 - **Follow the corrected contract.** The checklist items define the scope. Do not widen because something adjacent looks wrong; file it instead with `add-todo`. Correcting a defect *in* the section is not widening; adding work the section never asked for is.
 - **One section = one commit.** If you cannot describe the change in one commit message, the section was mis-sized. Plan corrections may ride in that commit, or land as their own `todo:` commit first when they are substantial.
-- **Commits are free; pushes are not.** Commit locally as often as you like. Push twice per section: the SHIP push, then the STAMP push. While iterating, run the affected tests only (`ctest -R '<names>'`), not the whole suite. A third push is allowed when it is named and the reason recorded.
+- **Commits are free; pushes are not.** Commit locally as often as you like. Push twice per section: the SHIP push, then the STAMP push. While iterating, run the affected tests only (`dotnet test --filter '<names>'`), not the whole suite. A third push is allowed when it is named and the reason recorded.
 - **Never mark `[x]` without evidence.** The Implementation Order row flips only after the review stamp exists.
 - **User data first.** A section that writes files, syncs rows, numbers a document, or records consent is built to: atomic writes, read back what was written, skip and report rather than drop or duplicate, and every destructive path confirmed. Its Test checkpoint exercises the failure path, not only the happy path.
 - **Server-side authority, adapted.** Any value the user trusts (file bytes, a permission decision, a diff hunk) is computed or verified in exactly one place, and the UI reflects it rather than deciding it. A UI calculation nothing verifies is a bug.
@@ -66,7 +66,7 @@ Use the `skill arg` line it prints as the canonical form for the rest of the run
 
 ## The session does every step
 
-One session validates, builds, gates, commits, and hands to review. It dispatches nobody to implement, gate, or keep records. Output discipline is load-bearing: bound every command (`ctest -R` for affected tests, `tail`/`head` on logs, field extraction on JSON), because an unbounded dump lands in the one context that must carry it for the rest of the run.
+One session validates, builds, gates, commits, and hands to review. It dispatches nobody to implement, gate, or keep records. Output discipline is load-bearing: bound every command (`dotnet test --filter` for affected tests, `tail`/`head` on logs, field extraction on JSON), because an unbounded dump lands in the one context that must carry it for the rest of the run.
 
 ## Workflow
 
@@ -171,7 +171,7 @@ Before the checkpoint, account for **every control, menu item, dialog, and state
 
 Execute the checkpoint command and read the output. Quote the result in the commit body. If the checkpoint cannot run (no Windows host, missing fixture), the section is not done: record what ran, what did not, and why, and stop without a stamp. A checkpoint half-run is not evidence.
 
-Then run the section's other owed gates: warnings clean, analysis clean, `validate` clean. Run the affected tests, not only the new ones: `ctest -R` on the touched suites.
+Then run the section's other owed gates: warnings clean, analysis clean, `validate` clean. Run the affected tests, not only the new ones: `dotnet test --filter` on the touched suites.
 
 ### 7. Commit, push, hand to review
 

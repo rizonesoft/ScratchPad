@@ -75,6 +75,6 @@ Why this section exists: v2 work must never break v1 peers. The lock proves it o
 
 ## Verification
 
-- [ ] `ctest --test-dir build --output-on-failure` green
+- [ ] `dotnet test` green
 - [ ] v1 suite unchanged and green with v2 present
 - [ ] `python3 scripts/todo-graph.py validate` clean

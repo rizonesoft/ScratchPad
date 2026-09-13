@@ -68,13 +68,13 @@ The total can rise when an audit identifies real scope. Say so plainly, route it
 
 Chase them in this order. The first gates the whole build.
 
-### 1. A Windows 11 build machine with the pinned toolchain
+### 1. A Windows 11 host to run the app
 
-The app is C++ and WinUI 3: it builds and tests on Windows only. Until `D00 T01 §1` pins the SDK and compiler and a machine (or runner) has them, every implementation section waits. Scripts and plan checks run anywhere; everything else needs the host.
+The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere with the repo-local SDK, while the app itself runs on Windows only. Until `D00 T01 §1` pins the SDK, every implementation section waits. Scripts and plan checks run anywhere; app launch, UI suites, captures, and packaging need Windows.
 
-### 2. A Windows CI runner
+### 2. Linux and Windows CI runners
 
-`D00 T01 §3` owns it. Until CI runs the build and tests, gates are prose. No implementation section is blocked on CI existing, but no section's evidence is trustworthy without it.
+`D00 T01 §3` owns them. Until CI runs the build and tests, gates are prose. No implementation section is blocked on CI existing, but no section's evidence is trustworthy without it.
 
 ### 3. Codex and Claude Code adapters for compatibility runs
 
@@ -88,9 +88,9 @@ The app is C++ and WinUI 3: it builds and tests on Windows only. Until `D00 T01 
 | :-: | ------------ | ---------------------------------------- | :---: |
 | [ ] | `D00 T01 §1` | Repo layout and toolchain pin            |   5   |
 | [ ] | `D00 T01 §2` | Solution scaffold with one-command build |   5   |
-| [ ] | `D00 T01 §3` | CI on a Windows runner                   |   5   |
+| [ ] | `D00 T01 §3` | CI on Linux and Windows runners          |   5   |
 | [ ] | `D00 T01 §4` | Warning and analysis gates               |   5   |
-| [ ] | `D00 T01 §5` | CTest wiring and first smoke test        |   5   |
+| [ ] | `D00 T01 §5` | Test wiring and first smoke test         |   5   |
 | [ ] | `D00 T01 §6` | Developer bootstrap doc                  |   4   |
 | [ ] | `D00 T01 §7` | TODO graph checks in CI                  |   5   |
 | [ ] | `D00 T02 §1` | Unit test project and framework          |   5   |

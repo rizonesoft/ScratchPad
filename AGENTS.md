@@ -4,7 +4,7 @@ Agent instructions for this repository. Human orientation lives in `README.md`. 
 
 ## What is here
 
-`intelligent-notepad` is the monorepo for an exact Windows 11 Notepad clone (C++, WinUI 3) with Claude Code and Codex inside via the Agent Client Protocol. Day 1: the plan and its tooling. `src/` lands with `D00 T01 §2`.
+`intelligent-notepad` is the monorepo for an exact Windows 11 Notepad clone (C#, WinUI 3 on .NET) with Claude Code and Codex inside via the Agent Client Protocol. Day 1: the plan and its tooling. `src/` lands with `D00 T01 §2`.
 
 | Path | Purpose |
 | ---- | ------- |
@@ -17,7 +17,7 @@ Agent instructions for this repository. Human orientation lives in `README.md`. 
 | `docs/` | User guide, review records, phase runs, plans |
 | `build/` | Ignored derived output, never an authoritative record |
 
-The app builds and tests on Windows only. The TODO tooling (`scripts/`, plan checks) runs anywhere with Python 3.
+The app runs on Windows only; neutral libraries build and test anywhere with the repo-local .NET SDK. The TODO tooling (`scripts/`, plan checks) runs anywhere with Python 3.
 
 ## The TODO system
 
@@ -35,7 +35,7 @@ The lifecycle is: capture, author, validate the plan and source claims, record `
 
 ## Working rules
 
-- **Output discipline:** bound every command (`ctest -R`, `tail`/`head`, field extraction, `>/dev/null`). Keep full logs in ignored scratch.
+- **Output discipline:** bound every command (`dotnet test --filter`, `tail`/`head`, field extraction, `>/dev/null`). Keep full logs in ignored scratch.
 - **Act, then report:** complete authorized work and report evidence. Explicit operator stop instructions take effect immediately.
 - **Writes are serial:** one session owns the working tree. Check `git status` before building over unfamiliar work.
 - **User data first:** atomic writes, readback, skip-and-report, confirmed destructive paths. Checkpoints prove the failure path too.
@@ -61,7 +61,7 @@ python3 scripts/todo-graph.py plan --check   # fail if the projection went stale
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # ref -> file, section, deps, status
 ```
 
-Build and test commands arrive with `D00 T01` (one-command build, `ctest` suite). Until they land, `todo-graph.py` is the only thing to run, and it is stdlib-only by design.
+Build and test commands arrive with `D00 T01` (one-command build, `dotnet test` suite). Until they land, `todo-graph.py` is the only thing to run, and it is stdlib-only by design.
 
 Run checks owed by the task. Report only commands actually run, and distinguish static evidence, test output, and review proof.
 
