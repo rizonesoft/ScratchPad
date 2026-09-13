@@ -35,7 +35,7 @@ track: W0
 |   1   |   §1    | Repo layout and toolchain pin | -- |  [x]   |
 |   2   |   §2    | Solution scaffold with one-command build | §1 |  [x]   |
 |   3   |   §3    | CI on Linux and Windows runners | §2 |  [x]   |
-|   4   |   §4    | Warning and analysis gates | §2 |  [ ]   |
+|   4   |   §4    | Warning and analysis gates | §2 |  [x]   |
 |   5   |   §5    | Test wiring and first smoke test | §2 |  [ ]   |
 |   6   |   §6    | Developer bootstrap doc | §1 |  [ ]   |
 |   7   |   §7    | TODO graph checks in CI | §3 |  [ ]   |
@@ -124,13 +124,19 @@ Why this section exists: warnings are defects with seniority. Gate them at zero 
 **Decided 2026-09-13:** `Directory.Build.props` and `.editorconfig` live at root so future `tests/` projects inherit the gates. `AnalysisLevel latest` resolves inside the pinned SDK, so the rule set does not float.
 **Decided 2026-09-13:** `AnalysisMode All` (CA rules stay silent under the default mode; the probe proved CA1822/CA1823 need it). CA1515 excluded by path for `src/IntelligentNotepad/*.xaml.cs` (the XAML compiler generates public partials, CS0262 proven). Cost of changing the mode: re-verify zero warnings plus the probe pair.
 
-- [ ] The build treats warnings as errors (`TreatWarningsAsErrors` plus `EnforceCodeStyleInBuild` in `Directory.Build.props`, steward pattern) for project code. Done when: an unused-variable probe fails the build.
-- [ ] Roslyn analysis (`AnalysisLevel` latest) runs in CI with the committed `.editorconfig` ruleset. Done when: the ruleset file is in the repo and CI runs it.
-- [ ] Third-party and generated code are excluded by path, not by blanket suppression. Done when: the exclusion list names paths.
-- [ ] Analysis findings block the build; the doc records how to run the same analysis locally. Done when: a probe finding fails CI and the local command reproduces it.
+- [x] The build treats warnings as errors (`TreatWarningsAsErrors` plus `EnforceCodeStyleInBuild` in `Directory.Build.props`, steward pattern) for project code. Done when: an unused-variable probe fails the build.
+- [x] Roslyn analysis (`AnalysisLevel` latest) runs in CI with the committed `.editorconfig` ruleset. Done when: the ruleset file is in the repo and CI runs it.
+- [x] Third-party and generated code are excluded by path, not by blanket suppression. Done when: the exclusion list names paths.
+- [x] Analysis findings block the build; the doc records how to run the same analysis locally. Done when: a probe finding fails CI and the local command reproduces it.
 - [x] Commit: `"workspace: gate warnings and static analysis"`
 
 **Test checkpoint:** An unused-variable probe fails the build and a probe analysis finding fails CI; both reproduce locally with documented commands. Cheaper substitute that fails: warnings counted in a dashboard nobody reads.
+
+> **Verified:** 2026-09-13 | §4 | gates green locally both OSes (0 warnings); run 34787039263 green both jobs; probe run 34787733488 red both jobs with CS0169+CA1822+CA1823 named, reproduced locally; run 34788413405 green after revert; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates f5482ca f554b05 2e8a38f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s4.md
+> **CRUD:** applicable | gates wrote props+ruleset (read back via warning-free builds); probe wrote violations (read back via named diagnostics locally and in CI)
+> **Duration:** 50
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 5. Test Wiring and First Smoke Test
 
