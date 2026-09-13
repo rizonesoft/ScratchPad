@@ -33,7 +33,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Repo layout and toolchain pin | -- |  [x]   |
-|   2   |   §2    | Solution scaffold with one-command build | §1 |  [ ]   |
+|   2   |   §2    | Solution scaffold with one-command build | §1 |  [x]   |
 |   3   |   §3    | CI on Linux and Windows runners | §2 |  [ ]   |
 |   4   |   §4    | Warning and analysis gates | §2 |  [ ]   |
 |   5   |   §5    | Test wiring and first smoke test | §2 |  [ ]   |
@@ -86,6 +86,12 @@ Why this section exists: the scaffold is the first thing that compiles. One comm
 - [x] Commit: `"workspace: scaffold solution with one-command build"`
 
 **Test checkpoint:** `dotnet build src/Notepad.Neutral.slnf` exits 0 on Linux; `dotnet build src/IntelligentNotepad.slnx` exits 0 on Windows and the stub window launches with its versioned title observed; `git status` shows no build outputs. Cheaper substitute that fails: a solution that builds only inside the IDE on the author's machine. **Corrected 2026-09-13:** per-OS commands per the item-1 correction; was bare `dotnet build` green from Linux.
+
+> **Verified:** 2026-09-13 | §2 | slnf green on Linux (0w/0e); slnx green on Windows (0w/0e); stub launched, versioned title + HWND observed; ProductVersion 0.0.0+sha from the binary; fresh clones clean both OSes; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidate 46319af -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s2.md
+> **CRUD:** applicable | builds wrote bin/obj trees (read back via dll presence plus launch) and the lockfile (read back via restore); launch wrote a window (read back via title plus handle)
+> **Duration:** 19
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 3. CI on Linux and Windows Runners
 
