@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Provision SDK
+        run: ./tools/provision.sh
+      - name: Build neutral scope
+        run: |
+          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
+          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
+          export DOTNET_MULTILEVEL_LOOKUP=0
+          dotnet build src/Notepad.Neutral.slnf --nologo
+
+  build-windows:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Provision SDK
+        run: powershell -ExecutionPolicy Bypass -File tools\provision.ps1
+      - name: Build solution
+        run: |
+          $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
+          $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
+          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          dotnet build src/IntelligentNotepad.slnx --nologo
+      - name: Upload stub
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: intelligent-notepad-stub-windows-x64
+          path: src/IntelligentNotepad/bin/Debug/net10.0-windows10.0.19041.0/win-x64/

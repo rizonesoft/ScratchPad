@@ -95,15 +95,19 @@ Why this section exists: the scaffold is the first thing that compiles. One comm
 
 ## 3. CI on Linux and Windows Runners
 
+> **Started:** 2026-09-13T21:51:25Z
+
 Why this section exists: without CI the toolchain pin rots and "works on my machine" becomes the build system.
 
-- [ ] `.github/workflows/build.yml` (or the chosen CI) runs the §2 build plus the neutral test suites on a Linux runner, and the full build plus UI suites on a Windows runner, for every push to `main`. Done when: a push shows green runs on both.
+**Decided 2026-09-13:** GitHub Actions (repo-native; public repo, free minutes both OSes). Runners `ubuntu-24.04` + `windows-2025`; actions pinned to SHAs. No `setup-dotnet`: jobs run the §1 provisioners so `global.json` governs the SDK. Cost of changing CI: rewrite the workflow and re-probe green/red.
+
+- [ ] `.github/workflows/build.yml` runs the §2 neutral-filter build on a Linux runner and the full §2 solution build on a Windows runner, for every push to `main`. Done when: a push shows green runs on both. **Corrected 2026-09-13:** was "§2 build plus the neutral test suites" and "full build plus UI suites"; neither suite exists (§5 and T02 §2 are open and §3 depends only on §2), so this workflow runs the builds now and §5/T02 §2 extend it with their own probe evidence.
 - [ ] CI uploads the built stub as an artifact. Done when: the binary is downloadable from the run.
 - [ ] CI fails the run when the build fails, with the log naming the failing step. Done when: a deliberately broken commit (reverted immediately) shows red for the right reason.
 - [ ] The workflow pins its runner images and action versions, with the SDK version governed by `global.json`. Done when: no `latest` floats the build.
-- [ ] Commit: `"workspace: run the build on Linux and Windows"`
+- [x] Commit: `"workspace: run the build on Linux and Windows"`
 
-**Test checkpoint:** Push a commit and read both runs: green on good code, red-with-cause on a deliberately broken probe commit. Cheaper substitute that fails: a workflow that exists but never ran, or UI suites running anywhere but a Windows runner.
+**Test checkpoint:** Push the workflow and read both runs: green on good code with the stub artifact downloadable, red-with-cause on a deliberately broken probe commit (reverted immediately), green again after the revert. Cheaper substitute that fails: a workflow that exists but never ran. **Corrected 2026-09-13:** dropped the UI-suites clause (no UI suites exist; T02 §2 owns them on Windows runners).
 
 ## 4. Warning and Analysis Gates
 
