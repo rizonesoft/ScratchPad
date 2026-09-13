@@ -1,5 +1,8 @@
 build/
 out/
+bin/
+obj/
+dist/
 .tools/
 .vs/
 *.user

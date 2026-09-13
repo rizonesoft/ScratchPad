@@ -31,6 +31,22 @@ It is not a subscription. Saying it twice because it bears repeating.
 | `scripts/todo-graph.py` | Build, validate, query, and render the TODO graph (stdlib-only) |
 | `docs/` | User guide, review records, phase runs, plans |
 
+## Toolchain pins
+
+Exact versions, verified 2026-09-13 against the .NET release metadata and NuGet. Nothing here floats.
+
+| Component | Version | Pinned in |
+| --------- | ------- | --------- |
+| .NET SDK | 10.0.401 (runtime 10.0.12, released 2026-09-08) | `global.json` (`rollForward: disable`) |
+| Windows App SDK | 2.4.0 | this file until §2's lockfile |
+| xunit.v3 | 4.0.1 | this file until §5's lockfile |
+| xunit.runner.visualstudio | 4.0.0 | this file until §5's lockfile |
+| Microsoft.NET.Test.Sdk | 18.10.0 | this file until §5's lockfile |
+
+`tools/provision.sh` (Linux) and `tools/provision.ps1` (Windows) read the SDK version from `global.json`, download that exact build from `builds.dotnet.microsoft.com`, verify its published SHA512 (linux-x64 `51c8b999…ce25b`, win-x64 `24b670ad…79430`; full hashes in the [release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)), and extract into repo-local `.tools/` (gitignored). No machine-wide install, no build step reads outside the repo. Run `./tools/provision.sh` (or `powershell -ExecutionPolicy Bypass -File tools\provision.ps1`), then prefix SDK commands with `export DOTNET_ROOT="$PWD/.tools/dotnet" PATH="$PWD/.tools/dotnet:$PATH" DOTNET_MULTILEVEL_LOOKUP=0`.
+
+The xunit v3 line is the default: the plan names xUnit without a major, and v3 is the current line for new .NET 10 work. Swapping majors costs a `PackageReference` edit before §5 and a suite rewrite after.
+
 ## Start here
 
 1. `todo/TODO-00-INDEX.md` -- domain order and active work.
