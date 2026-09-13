@@ -36,7 +36,7 @@ It is not a subscription. Saying it twice because it bears repeating.
 1. `todo/TODO-00-INDEX.md` -- domain order and active work.
 2. `todo/implementation-plan.md` -- every section in dependency order, grouped in phases.
 3. `todo/README.md` -- the format spec: sections, stamps, XREFs, gates.
-4. `CLAUDE.md` / `AGENTS.md` -- working rules.
+4. `AGENTS.md` -- working rules.
 
 ```bash
 python3 scripts/todo-graph.py self-test      # the script's own contract, ~1s
