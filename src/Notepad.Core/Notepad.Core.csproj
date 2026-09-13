@@ -6,4 +6,5 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-</Project>
+<!-- PROBE: deliberately unclosed element for the §3 red-run check
+<ProbeBreaksXml>
