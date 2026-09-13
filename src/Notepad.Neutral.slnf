@@ -4,7 +4,8 @@
     "projects": [
       "Notepad.Core/Notepad.Core.csproj",
       "Notepad.Acp/Notepad.Acp.csproj",
-      "Notepad.Agents/Notepad.Agents.csproj"
+      "Notepad.Agents/Notepad.Agents.csproj",
+      "../tests/Smoke/Smoke.csproj"
     ]
   }
 }

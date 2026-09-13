@@ -10,6 +10,10 @@ Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -Ex
 
 Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/IntelligentNotepad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under per-project `bin/` and `obj/`, publish output under `dist/`, all gitignored.
 
+## Test
+
+Linux runs the neutral scope including smoke: `dotnet test src/Notepad.Neutral.slnf`. Windows runs the same tests through the full solution: `dotnet test src/IntelligentNotepad.slnx`. Run only the smoke test with `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
+
 ## Warnings and analysis
 
 Warnings fail the build everywhere: `Directory.Build.props` sets `TreatWarningsAsErrors`, `EnforceCodeStyleInBuild`, and `AnalysisLevel latest` with `AnalysisMode All`, and `.editorconfig` carries the ruleset (generated code excluded by path). The CI jobs run the same `dotnet build` commands above, so analysis runs identically locally and in CI; reproduce a CI finding by running the matching build command.

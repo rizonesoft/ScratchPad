@@ -4,5 +4,6 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest</AnalysisLevel>
     <AnalysisMode>All</AnalysisMode>
+    <Version>0.0.0</Version>
   </PropertyGroup>
 </Project>

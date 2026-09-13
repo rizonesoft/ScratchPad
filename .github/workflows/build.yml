@@ -19,6 +19,12 @@ jobs:
           export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
           export DOTNET_MULTILEVEL_LOOKUP=0
           dotnet build src/Notepad.Neutral.slnf --nologo
+      - name: Test neutral scope
+        run: |
+          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
+          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
+          export DOTNET_MULTILEVEL_LOOKUP=0
+          dotnet test src/Notepad.Neutral.slnf --nologo
 
   build-windows:
     runs-on: windows-2025
@@ -34,6 +40,12 @@ jobs:
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
           dotnet build src/IntelligentNotepad.slnx --nologo
+      - name: Test solution
+        run: |
+          $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
+          $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
+          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          dotnet test src/IntelligentNotepad.slnx --nologo
       - name: Upload stub
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

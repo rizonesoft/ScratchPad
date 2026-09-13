@@ -140,13 +140,18 @@ Why this section exists: warnings are defects with seniority. Gate them at zero 
 
 ## 5. Test Wiring and First Smoke Test
 
+> **Started:** 2026-09-13T23:16:01Z
+
 Why this section exists: the test command must exist before the first real test, so every later section has somewhere to put its proof.
+
+**Decided 2026-09-13:** smoke lives in `tests/Smoke/` (T02 §1 owns `tests/Unit/` separately); added to slnx and slnf. Core seeds `NotepadCore.Version` from the assembly stamp and fails loud on null (no fallback masking). `Version 0.0.0` centralized in `Directory.Build.props` (app-local removed). Default console logger; `TestResults/` ignore pre-verified by probe.
+**Decided 2026-09-13:** xunit v2 line (2.9.3 + runner 2.8.2 + Test.Sdk 17.14.1), reversing the §1 v3 default: v3+MTP discovers zero tests on SDK 10.0.401 (proven on our project and xunit's own template), VSTest passes first try. T02 §1 re-evaluates v3/MTP.
 
 - [ ] `dotnet test` runs the suite (empty-but-green counts today). Done when: the command exits 0 on a clean checkout.
 - [ ] One smoke test asserts the neutral core constructs and reports its version. Done when: `dotnet test --filter Smoke` passes on Linux and fails if the version string is blanked.
 - [ ] CI runs the test command after the build and fails the run on test failure. Done when: a deliberately failing probe test (reverted immediately) shows red.
 - [ ] Test output (logs, captures) lands under `TestResults/` (gitignored) and never in the source tree. Done when: `git status` is clean after a full test run.
-- [ ] Commit: `"workspace: wire dotnet test with a first smoke test"`
+- [x] Commit: `"workspace: wire dotnet test with a first smoke test"`
 
 **Test checkpoint:** `dotnet test` exits 0; blanking the version string turns it red; CI mirrors both. Cheaper substitute that fails: a test project that builds but whose tests CI never runs.
 
