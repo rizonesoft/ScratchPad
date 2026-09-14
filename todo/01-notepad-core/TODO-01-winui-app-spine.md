@@ -36,7 +36,7 @@ track: N1
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Main window shell with menu bar host | -- |  [x]   |
-|   2   |   §2    | Tab model with dirty tracking | §1 |  [ ]   |
+|   2   |   §2    | Tab model with dirty tracking | §1 |  [x]   |
 |   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [ ]   |
 |   4   |   §4    | File open with encoding detection | §2 |  [ ]   |
 |   5   |   §5    | File save and Save As | §4 |  [ ]   |
@@ -100,6 +100,12 @@ Why this section exists: tabs are the unit of work. The model must be right befo
 - [x] Commit: `"notepad-core: add the tab model with dirty tracking"`
 
 **Test checkpoint:** `dotnet test --filter TabModel` green, including edit-then-undo-to-clean semantics as Notepad defines them. Cheaper substitute that fails: dirty tracked in the UI layer where two paths can disagree.
+
+> **Verified:** 2026-09-14 | §2 | Tab model with dirty tracking, auto-naming (first-line/trim/35), observable path, SaveAs routing, unbounded closed stack with proven skip rules; TabModel 24/24 locally and Unit 31/31 in CI both jobs (run 34816231797); mutation probe on the discard guard red then green; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates f16aeae a0dbe54 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s2.md
+> **CRUD:** applicable | edits wrote dirty plus display names (read back via IsDirty and DisplayName asserts); closes wrote stack entries or skips (read back via entry fields and empty-stack asserts); reopens wrote tabs (read back via path, contents, dirty, LIFO order); observers wrote event streams (read back via identical-sequence assert)
+> **Duration:** 28
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 3. Tab Bar UI: Open, Switch, Reorder, Close
 
