@@ -88,6 +88,8 @@ Why this section exists: "automatic and complete" testing of a WinUI app needs a
 
 ## 3. Golden Capture Store and Refresh
 
+> **Started:** 2026-09-14T02:28:00Z
+
 Why this section exists: parity with Windows 11 Notepad is checkable only against captures. The store makes "matches Notepad" a diff, not an opinion.
 
 **Needs:** Windows host (build/test)

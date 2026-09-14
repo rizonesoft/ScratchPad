@@ -16,6 +16,10 @@ xUnit v3 with the Microsoft Testing Platform runner was evaluated twice and ship
 
 Run everything for the host OS with the `dotnet test` commands above. Run one suite with `dotnet test tests/Unit` (or `tests/Smoke`, `tests/UI`). Filter within a run with `--filter`, for example `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
 
+## Golden captures
+
+`resources/baseline/` holds stock Notepad reference captures plus goldens of our own surfaces at canonical size; `tests/UI` compares fresh captures against them under the committed `tolerance.json` policy. Captures come from `tools/CaptureBaseline`; the refresh procedure in `resources/baseline/README.md` governs re-capturing after intentional changes.
+
 ## CI and quarantine
 
 CI runs the same `dotnet test` commands on every push, so a red suite fails the run. Flaky tests are quarantined by procedure (T02 §5), never deleted or silently skipped.
