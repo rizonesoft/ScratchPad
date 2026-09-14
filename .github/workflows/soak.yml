@@ -35,7 +35,7 @@ jobs:
           export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
           export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
           export DOTNET_MULTILEVEL_LOOKUP=0
-          for i in 1 2 3 4 5; do dotnet test tests/Protocol/Protocol.csproj --no-build --nologo --logger "trx;LogFileName=protocol-linux-$i.trx" --results-directory TestResults; done
+          for i in 1 2 3 4 5; do dotnet test tests/Protocol/Protocol.csproj --no-build --nologo --logger "trx;LogFileName=protocol-linux-$i.trx" --results-directory TestResults || exit 1; done
       - name: Upload soak results
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
