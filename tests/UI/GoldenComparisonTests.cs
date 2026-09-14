@@ -4,6 +4,7 @@ using Xunit.Abstractions;
 
 namespace UI;
 
+[Collection("UI tests")]
 public sealed class GoldenComparisonTests
 {
     readonly ITestOutputHelper output;

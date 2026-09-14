@@ -4,6 +4,7 @@ using Xunit;
 
 namespace UI;
 
+[Collection("UI tests")]
 public sealed class UISmoke
 {
     [Fact]
