@@ -1,0 +1,5 @@
+{
+  "sessionId": "sess_loopback_001",
+  "chunks": ["Hello from the loopback agent. ", "This turn is fully scripted."],
+  "stopReason": "end_turn"
+}

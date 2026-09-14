@@ -21,6 +21,7 @@ track: A1
 - [ACP file system](https://agentclientprotocol.com/protocol/v1/file-system) -- client fs methods
 - [ACP terminals](https://agentclientprotocol.com/protocol/v1/terminals) -- terminal execution
 - [`03-acp-client/TODO-01-acp-transport-lifecycle.md`](./TODO-01-acp-transport-lifecycle.md) -- the transport these methods ride on
+- [`00-workspace/TODO-02-test-backbone.md`](../00-workspace/TODO-02-test-backbone.md) -- the §4 loopback fixture, the scripted agent that drives these methods in tests
 
 ## Outcome
 

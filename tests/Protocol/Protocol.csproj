@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- CA2007 (ConfigureAwait): xUnit tests run with no synchronization context; ConfigureAwait would be noise. -->
+    <NoWarn>$(NoWarn);CA2007</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Build order only: the fixture is spawned as a subprocess, never referenced. -->
+    <ProjectReference Include="..\Fixtures\AcpLoopback\AcpLoopback.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Scripts\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <!-- The fixture runs framework-dependent, so both its dll and its runtimeconfig travel with the tests. -->
+  <Target Name="CopyLoopbackFixture" AfterTargets="Build">
+    <ItemGroup>
+      <LoopbackOut Include="$(MSBuildProjectDirectory)\..\Fixtures\AcpLoopback\bin\$(Configuration)\$(TargetFramework)\AcpLoopback.dll" />
+      <LoopbackOut Include="$(MSBuildProjectDirectory)\..\Fixtures\AcpLoopback\bin\$(Configuration)\$(TargetFramework)\AcpLoopback.runtimeconfig.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(LoopbackOut)" DestinationFolder="$(OutDir)" />
+  </Target>
+
+</Project>

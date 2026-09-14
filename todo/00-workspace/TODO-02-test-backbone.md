@@ -110,6 +110,8 @@ Why this section exists: parity with Windows 11 Notepad is checkable only agains
 
 ## 4. ACP Loopback Fixture
 
+> **Started:** 2026-09-14T04:28:00Z
+
 Why this section exists: protocol tests must run with no network, no API keys, and no real agent. A loopback fixture speaks ACP back at the client deterministically.
 
 - [ ] `tests/Fixtures/AcpLoopback/` (a `net10.0` console app, spawned through the .NET host on either OS) implements a scripted fake agent over stdio: it answers `initialize`, `session/new`, and `session/prompt` from a script file. Done when: a test drives a full prompt turn against it on Linux.
@@ -117,6 +119,8 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 - [ ] The fixture validates every message it receives against the ACP schema and fails loudly on violations. Done when: a deliberately malformed client message fails the test.
 - [ ] `D03` sections consume this fixture rather than building their own fakes. Done when: the ownership is recorded here and referenced there.
 - [ ] Commit: `"workspace: add ACP loopback fixture"`
+
+**Ownership:** D00 T02 §4 owns `tests/Fixtures/AcpLoopback/`; consumers are D03 T01 (transport lifecycle) and D03 T02 (client methods), which drive their tests against this fixture and extend it rather than building their own fakes.
 
 **Test checkpoint:** A scripted prompt turn passes; each injected fault is survived; a malformed client message fails. Cheaper substitute that fails: tests that pass against a mock that accepts anything.
 
