@@ -26,8 +26,8 @@ if (args.Length < 2)
     return 2;
 }
 
-var width = Flag(args, "--width", 800);
-var height = Flag(args, "--height", 600);
+var width = Flag(args, "--width", 900);
+var height = Flag(args, "--height", 650);
 var element = Value(args, "--element");
 
 return args[0] switch
