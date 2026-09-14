@@ -5,7 +5,8 @@
       "Notepad.Core/Notepad.Core.csproj",
       "Notepad.Acp/Notepad.Acp.csproj",
       "Notepad.Agents/Notepad.Agents.csproj",
-      "../tests/Smoke/Smoke.csproj"
+      "../tests/Smoke/Smoke.csproj",
+      "../tests/Unit/Unit.csproj"
     ]
   }
 }

@@ -42,6 +42,8 @@ track: W0
 
 ## 1. Unit Test Project and Framework
 
+> **Started:** 2026-09-14T01:00:00Z
+
 Why this section exists: unit tests need a home and a framework before the first class lands, or the first class lands untested. UI-free code lives in `net10.0` libraries so these tests run on Linux; Windows-only code stays in the app project.
 
 **Replatformed 2026-09-13:** xUnit on .NET 10, the steward stack; the neutral-library rule above is what lets this suite run anywhere.
