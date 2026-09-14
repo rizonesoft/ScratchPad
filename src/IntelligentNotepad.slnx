@@ -1,6 +1,7 @@
 <Solution>
   <Project Path="../tests/Smoke/Smoke.csproj" />
   <Project Path="../tests/Unit/Unit.csproj" />
+  <Project Path="../tests/UI/UI.csproj" />
   <Project Path="IntelligentNotepad/IntelligentNotepad.csproj" />
   <Project Path="Notepad.Acp/Notepad.Acp.csproj" />
   <Project Path="Notepad.Agents/Notepad.Agents.csproj" />

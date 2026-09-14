@@ -10,7 +10,7 @@ xUnit v3 with the Microsoft Testing Platform runner was evaluated twice and ship
 
 ## Suites
 
-`tests/Smoke/` holds the one wiring test that proves the harness works; `tests/Unit/` holds unit tests over the neutral libraries, starting with the framework-choice tests. `tests/UI/` (T02 §2) and the ACP loopback fixture (T02 §4) arrive with their sections. Test-only helpers shared between suites live under `tests/Common/` per its README.
+`tests/Smoke/` holds the one wiring test that proves the harness works; `tests/Unit/` holds unit tests over the neutral libraries, starting with the framework-choice tests. `tests/UI/` drives the stub window under FlaUI (launch, title assert, close, with a failure screenshot); the ACP loopback fixture (T02 §4) arrives with its section. Test-only helpers shared between suites live under `tests/Common/` per its README.
 
 ## Commands
 

@@ -66,6 +66,8 @@ Why this section exists: unit tests need a home and a framework before the first
 
 ## 2. UI Automation Driver Spike
 
+> **Started:** 2026-09-14T01:45:00Z
+
 Why this section exists: "automatic and complete" testing of a WinUI app needs a driver that clicks the real UI. Spike the options before committing the suites to one.
 
 **Needs:** Windows host (build/test)
