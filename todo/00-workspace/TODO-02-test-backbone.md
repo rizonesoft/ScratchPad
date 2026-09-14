@@ -33,7 +33,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Unit test project and framework | T01 §5 |  [x]   |
-|   2   |   §2    | UI automation driver spike | T01 §5 |  [ ]   |
+|   2   |   §2    | UI automation driver spike | T01 §5 |  [x]   |
 |   3   |   §3    | Golden capture store and refresh | §2 |  [ ]   |
 |   4   |   §4    | ACP loopback fixture | §1 |  [ ]   |
 |   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [ ]   |
@@ -72,13 +72,19 @@ Why this section exists: "automatic and complete" testing of a WinUI app needs a
 
 **Needs:** Windows host (build/test)
 
-- [ ] `docs/ui-automation-spike.md` compares WinAppDriver and FlaUI (and any third contender) on our stub: launch, click, read text, screenshot. Done when: each contender has a measured verdict, not an opinion.
-- [ ] The spike picks one driver and records the decision with its cost of reversal. Done when: the doc names the winner and what switching would cost.
-- [ ] `tests/UI/` runs one passing drive of the stub window (launch, assert title, close) under the winner. Done when: the UISmoke drive passes on a Windows runner in CI.
-- [ ] The spike records what the driver cannot do (if anything), with each gap routed to a named D06 section. Done when: no silent gaps remain.
-- [ ] Commit: `"workspace: spike UI automation drivers and wire the winner"`
+- [x] `docs/ui-automation-spike.md` compares WinAppDriver and FlaUI (and any third contender) on our stub: launch, click, read text, screenshot. Done when: each contender has a measured verdict, not an opinion.
+- [x] The spike picks one driver and records the decision with its cost of reversal. Done when: the doc names the winner and what switching would cost.
+- [x] `tests/UI/` runs one passing drive of the stub window (launch, assert title, close) under the winner. Done when: the UISmoke drive passes on a Windows runner in CI.
+- [x] The spike records what the driver cannot do (if anything), with each gap routed to a named D06 section. Done when: no silent gaps remain.
+- [x] Commit: `"workspace: spike UI automation drivers and wire the winner"`
 
 **Test checkpoint:** The UISmoke drive passes on a Windows runner in CI against the real stub window; the spike doc carries measured verdicts. Cheaper substitute that fails: a driver chosen by reputation with no drive of our binary.
+
+> **Verified:** 2026-09-14 | §2 | FlaUI and WinAppDriver both measured on the stub (FlaUI 506 ms attach, island traversal works; WinAppDriver 3755 ms with admin/client costs); UISmoke green locally and in CI (run 34798097715, UI.dll 1/1) after the crash-dialog red run 34797312338; gaps routed to D06 T01 §1/§3, T02 §3/§5; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates 749fe22 4eb476f 40d3373 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s2.md
+> **CRUD:** applicable | spike drives wrote measurements and screenshots (read back via timings, byte counts, pixels); UISmoke wrote pass/fail plus a failure screenshot path (read back in CI logs)
+> **Duration:** 41
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 3. Golden Capture Store and Refresh
 
