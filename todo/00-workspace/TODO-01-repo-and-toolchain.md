@@ -36,7 +36,7 @@ track: W0
 |   2   |   §2    | Solution scaffold with one-command build | §1 |  [x]   |
 |   3   |   §3    | CI on Linux and Windows runners | §2 |  [x]   |
 |   4   |   §4    | Warning and analysis gates | §2 |  [x]   |
-|   5   |   §5    | Test wiring and first smoke test | §2 |  [ ]   |
+|   5   |   §5    | Test wiring and first smoke test | §2 |  [x]   |
 |   6   |   §6    | Developer bootstrap doc | §1 |  [ ]   |
 |   7   |   §7    | TODO graph checks in CI | §3 |  [ ]   |
 
@@ -147,13 +147,19 @@ Why this section exists: the test command must exist before the first real test,
 **Decided 2026-09-13:** smoke lives in `tests/Smoke/` (T02 §1 owns `tests/Unit/` separately); added to slnx and slnf. Core seeds `NotepadCore.Version` from the assembly stamp and fails loud on null (no fallback masking). `Version 0.0.0` centralized in `Directory.Build.props` (app-local removed). Default console logger; `TestResults/` ignore pre-verified by probe.
 **Decided 2026-09-13:** xunit v2 line (2.9.3 + runner 2.8.2 + Test.Sdk 17.14.1), reversing the §1 v3 default: v3+MTP discovers zero tests on SDK 10.0.401 (proven on our project and xunit's own template), VSTest passes first try. T02 §1 re-evaluates v3/MTP.
 
-- [ ] `dotnet test` runs the suite (empty-but-green counts today). Done when: the command exits 0 on a clean checkout.
-- [ ] One smoke test asserts the neutral core constructs and reports its version. Done when: `dotnet test --filter Smoke` passes on Linux and fails if the version string is blanked.
-- [ ] CI runs the test command after the build and fails the run on test failure. Done when: a deliberately failing probe test (reverted immediately) shows red.
-- [ ] Test output (logs, captures) lands under `TestResults/` (gitignored) and never in the source tree. Done when: `git status` is clean after a full test run.
+- [x] `dotnet test` runs the suite (empty-but-green counts today). Done when: the command exits 0 on a clean checkout.
+- [x] One smoke test asserts the neutral core constructs and reports its version. Done when: `dotnet test --filter Smoke` passes on Linux and fails if the version string is blanked.
+- [x] CI runs the test command after the build and fails the run on test failure. Done when: a deliberately failing probe test (reverted immediately) shows red.
+- [x] Test output (logs, captures) lands under `TestResults/` (gitignored) and never in the source tree. Done when: `git status` is clean after a full test run.
 - [x] Commit: `"workspace: wire dotnet test with a first smoke test"`
 
 **Test checkpoint:** `dotnet test` exits 0; blanking the version string turns it red; CI mirrors both. Cheaper substitute that fails: a test project that builds but whose tests CI never runs.
+
+> **Verified:** 2026-09-14 | §5 | suite 1/1 green both OSes locally and in CI (run 34790029058); --filter Smoke passes; blanked version red locally; probe run 34790728911 red both jobs with test named; run 34791418524 green after revert; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates a7f6fce 805ce64 c317b8a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s5.md
+> **CRUD:** applicable | test runs wrote results (read back via Passed/Failed counts); probe wrote a failure (read back via named test in both CI logs); blank-check wrote red locally
+> **Duration:** 62
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 6. Developer Bootstrap Doc
 
