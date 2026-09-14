@@ -4,6 +4,6 @@
   "cropTopFraction": 0.08,
   "cropSideFraction": 0.02,
   "cropBottomFraction": 0.03,
-  "perPixelDelta": 24,
+  "perPixelDelta": 96,
   "maxDifferentFraction": 0.001
 }

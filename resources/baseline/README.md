@@ -12,7 +12,7 @@ Run `dotnet run --project tools/CaptureBaseline -- notepad resources/baseline/st
 
 ## Tolerance policy
 
-`tolerance.json` is the committed comparison contract: canonical dimensions, the relative crop that drops the version-carrying title bar (top 8%) and rounded-corner edges (2% sides and bottom), the per-pixel channel delta that counts as different, and the maximum different-pixel fraction that still passes. Numbers were set by measurement: fresh captures must pass with margin on any DPI, while a 10px layout shift must fail. Change them only with new measurements quoted in the committing review.
+`tolerance.json` is the committed comparison contract: canonical dimensions, the relative crop that drops the version-carrying title bar (top 8%) and rounded-corner edges (2% sides, 3% bottom), the per-pixel channel delta that counts as different, and the maximum different-pixel fraction that still passes. Numbers were set by measurement on real CI pixels: at delta 96 the cross-DPI rasterization noise is 128 pixels (0.031%) while a 10px shift is 736 pixels (0.180%), so the 0.1% threshold clears noise by 3x and still catches the shift at nearly 2x margin. The delta sits between anti-aliasing fringe physics and content-change physics; low-contrast content below delta 96 needs its own policy. Change these numbers only with new measurements quoted in the committing review.
 
 ## Refresh procedure
 
