@@ -2,6 +2,10 @@
 
 One command per OS, no IDE required. CI runs the same commands (§3).
 
+## CI workflows
+
+Two workflows run on pushes to `main`: `build` compiles and tests on Linux and Windows, while `plan-gates` runs the TODO graph self-test, tree validation, and plan-projection check only when the push touches `scripts/`, `todo/`, or the workflow itself, so documentation-only edits skip the graph checks (§7).
+
 ## Prerequisites
 
 Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` on Windows. Then put it on the path: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0` (Windows: `.tools\dotnet-win-x64`). Launching the stub additionally needs the WindowsAppRuntime 2.x framework package on the machine; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from the Windows App SDK release if it is missing.
