@@ -27,9 +27,9 @@ track: A3
 - Tool calls and plans display live with honest states.
 - Agent edits reach the buffer only through diff review, and every apply is undoable.
 
-**Adjacency:** list=not-applicable (no lists in this file); document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (no reports in this file); notifications=not-applicable (prompts are in-panel, not notifications); permissions=applicable @ D05 T02 §1; audit=applicable @ D03 T02 §5; exchange=not-applicable (no import/export in this file); reverse=applicable @ D02 T01 §4
+**Adjacency:** list=applicable @ D05 T02 §7; document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (no reports in this file); notifications=not-applicable (prompts are in-panel, not notifications); permissions=applicable @ D05 T02 §1; audit=applicable @ D03 T02 §5; exchange=not-applicable (no import/export in this file); reverse=applicable @ D02 T01 §4
 
-**Adjacency rationale:** This file owns the permission prompt surface; grants audit in D03; applied edits undo through the D02 stack.
+**Adjacency rationale:** This file owns the permission prompt surface; grants audit in D03; applied edits undo through the D02 stack; the §7 language picker is the list.
 
 ## Implementation Order
 
@@ -41,6 +41,9 @@ track: A3
 |   4   |   §4    | Apply to editor through undo | §3, D02 T01 §4 |  [ ]   |
 |   5   |   §5    | Elicitation forms | §1 |  [ ]   |
 |   6   |   §6    | Selection actions: explain, rewrite, summarize | §3, §4 |  [ ]   |
+|   7   |   §7    | Document actions: translate, extract, summarize | §1, D01 T01 §2 |  [ ]   |
+|   8   |   §8    | Continue writing with ghost drafts | §1, §4, D02 T01 §3 |  [ ]   |
+|   9   |   §9    | Agent title suggestions for untitled tabs | §6, D01 T01 §22 |  [ ]   |
 
 ---
 
@@ -163,6 +166,74 @@ Why this section exists: this is the answer to Notepad's subscription-gated Writ
 - [ ] Commit: `"ai-surface: act on selections with the connected agent"`
 
 **Test checkpoint:** Entry points, no-agent honesty, diff routing, untouched-buffer explain, and consent driven. Cheaper substitute that fails: a rewrite that applies without review.
+
+## 7. Document Actions: Translate, Extract, Summarize
+
+Why this section exists: some agent work produces new documents, not buffer edits: translation, meeting-note extraction, whole-document summary. New tabs carry them, so nothing is overwritten and no review theater is owed.
+
+**Fidelity:** new build, no baseline; judged against `docs/ai-panel-contract.md`.
+
+**Job:** The user can translate, extract, and summarize into new tabs. Consumer: the tab model, which receives finished documents.
+
+**Treatment:** Actions per the contract, delivering to new tabs; consent-first like §6. Cheaper substitute that fails the checkpoint: document results inserted into the buffer without review.
+
+**Chrome:** Consume the shared menu and tab styles. Do not invent a second action treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Translate renders the selection or document into the picked language in a new tab through a language picker that lists the supported target languages. Done when: both scopes and the picker are driven.
+- [ ] Action items and dates extract from meeting notes into a checklist tab. Done when: the extraction is driven.
+- [ ] Document summary lands in a new tab at short, medium, and long lengths. Done when: each length is driven.
+- [ ] Each action uses the tab's connected agent or reports honestly that none is connected. Done when: the no-agent and no-network cases are driven.
+- [ ] Consent follows §1: the first document action per session prompts with scope, then the grant governs. Done when: the consent flow is driven.
+- [ ] Selection and document data go only to the connected agent; locality and redaction follow D01 T01 §6 and D04 T02 §5. Done when: the data-flow review passes.
+- [ ] Commit: `"ai-surface: act on documents with the connected agent"`
+
+**Test checkpoint:** Entry points, no-agent honesty, new-tab delivery, and consent driven. Cheaper substitute that fails: document actions that overwrite the buffer.
+
+## 8. Continue Writing with Ghost Drafts
+
+Why this section exists: the agent drafts the next paragraph where the caret is. Ghost text shows it; accept applies through undo and dismiss vanishes it.
+
+**Fidelity:** new build, no baseline; judged against `docs/ai-panel-contract.md`.
+
+**Job:** The user can continue writing from an agent draft. Consumer: the apply path (§4), which receives only accepted text.
+
+**Treatment:** Ghost render per the contract with streaming partials; accept and dismiss inline. Cheaper substitute that fails the checkpoint: drafts inserted without ghost review.
+
+**Chrome:** Consume the shared editor styles. Do not invent a second ghost treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Continue-writing drafts the next paragraph from buffer context. Done when: driven.
+- [ ] Drafts render ghosted with streaming partials. Done when: driven.
+- [ ] Accept applies through §4 undo and dismiss clears without a trace. Done when: both are driven.
+- [ ] No-agent and no-network cases report honestly. Done when: both are driven.
+- [ ] Consent follows §1. Done when: the consent flow is driven.
+- [ ] Commit: `"ai-surface: continue writing with ghost drafts"`
+
+**Test checkpoint:** Draft, ghost, accept, dismiss, undo, and consent driven. Cheaper substitute that fails: drafts that bypass review.
+
+## 9. Agent Title Suggestions for Untitled Tabs
+
+Why this section exists: the first-line default (D01 T01 §22) is a starting point; the agent suggests better titles on request, applied title-only, never touching content.
+
+**Fidelity:** new build, no baseline (no stock counterpart; judged on its own contract).
+
+**Job:** The user can rename an untitled tab with agent help. Consumer: the tab bar (D01 T01 §22), which renders the picked title; the action path (§6), which invokes the agent.
+
+**Treatment:** A suggest command sends the note's opening to the agent through §6's invocation; the picked suggestion applies as the tab title only. Title-only and reversible: no consent gate, but the request is explicit. Cheaper substitute that fails the checkpoint: titles that rewrite themselves unprompted.
+
+**Chrome:** Consume the shared tab styles. Do not invent a second title treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] A suggest command asks the agent for titles. Done when: the suggestion round-trip is driven.
+- [ ] The picked suggestion applies as the tab title only. Done when: content fixtures prove no edit.
+- [ ] Suggestions never fire unprompted. Done when: the negative test passes.
+- [ ] Commit: `"ai-surface: suggest tab titles"`
+
+**Test checkpoint:** round-trip, title-only apply, and explicit-only are all driven in the room. Cheaper substitute that fails: a title that edits the note.
 
 ## Verification
 

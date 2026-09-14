@@ -20,6 +20,7 @@ track: N2
 - Microsoft's Notepad spellcheck announcement (red squiggle, click for suggestions, per-file-type toggles for txt/md/srt/ass/lrc/lic and more)
 - [`02-editor/TODO-01-editing-surface.md`](./TODO-01-editing-surface.md) -- the buffer being checked
 - [`01-notepad-core/TODO-02-menus-settings-status.md`](../01-notepad-core/TODO-02-menus-settings-status.md) -- §2 owns the toggles
+- -> XREF: D02 T05 §2 -- the grammar underlines mirror §2's card treatment; no behavior deferred either way
 
 ## Outcome
 
@@ -46,7 +47,10 @@ track: N2
 
 Why this section exists: the UI is thin; the engine carries the semantics. Language, word breaking, and suggestion ranking are settled and tested here.
 
+**Decided 2026-09-14:** Nuspell (LGPL, Hunspell-dictionary-compatible) behind the engine: the best maintained open-source spellchecker, with every locale's LibreOffice/Mozilla dictionaries reusable. Embedded via a C-ABI interop layer; corpus agreement with Notepad stays the acceptance. Alternative recorded: the Windows platform spellchecker (zero dependencies, exact-Notepad behavior, not open-source). Cost of changing engines: rewrite `src/Notepad.Core/SpellEngine.cs` plus dictionary shipping; fixtures stay.
+
 - [ ] `src/Notepad.Core/SpellEngine.cs` checks the §-buffer in the system language with Notepad's word-breaking rules. Done when: the fixture corpus agrees with Notepad word for word.
+- [ ] The engine is Nuspell behind `src/Notepad.Core/SpellEngine.cs`, running fully offline on bundled Hunspell-compatible dictionaries. Done when: the corpus checks with no network and no system spell service.
 - [ ] Suggestions rank as Notepad ranks them for the fixture corpus. Done when: top suggestions match on every fixture.
 - [ ] Checking never blocks typing: it runs within the committed budget on large buffers. Done when: the perf test measures it.
 - [ ] The engine exposes ignore-word and add-to-dictionary hooks for the UI. Done when: both are tested at the engine level.

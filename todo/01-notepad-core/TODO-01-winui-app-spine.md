@@ -14,11 +14,14 @@ track: N1
 
 > [!IMPORTANT]
 > **Current state:** Only the `D00 T01 §2` stub window exists. No tab model, no file IO, no menus. The editor surface this spine will host is `D02 T01`'s; until it lands, sections here host a placeholder.
+>
+> **Corrected 2026-09-14 (phase-1 run 2):** §§1-3 have shipped since: the window shell with menu host, the tab model with dirty tracking, and the tab bar UI all exist. File IO (§§4-5) is still missing; later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
 - `resources/baseline/` captures of the Notepad main window and tab bar (owned by `D00 T02 §3`)
 - -> XREF: D02 T01 §1 -- the editing surface this spine hosts; the hosting contract (interface, lifetime) is settled there and consumed here
+- -> XREF: D07 T01 §1 -- the package consumes `resources/notepad.ico` for its visuals; §11 wires the dev surface only
 
 ## Outcome
 
@@ -27,9 +30,9 @@ track: N1
 - Files round-trip byte-identical for supported encodings and line endings.
 - Unsaved work is never lost silently: every destructive path prompts or recovers.
 
-**Adjacency:** list=applicable @ D01 T01 §6; document=applicable @ D01 T02 §6; settings=applicable @ D01 T02 §4; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=applicable @ D01 T01 §4; reverse=applicable @ D01 T01 §7
+**Adjacency:** list=applicable @ D01 T01 §6; document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=applicable @ D01 T01 §4; reverse=applicable @ D01 T01 §7
 
-**Adjacency rationale:** The tab bar is the list; open/save is the exchange; print is the document; close-without-save and crash recovery are the reversals. Settings live in T02 with their consumer named there.
+**Adjacency rationale:** The tab bar is the list; open/save is the exchange; print is the document; close-without-save and crash recovery are the reversals. Settings live in T02 with their consumer named there. The §16 versions list and the §17 template picker follow the §6 list treatment.
 
 ## Implementation Order
 
@@ -45,6 +48,23 @@ track: N1
 |   8   |   §8    | File association and command-line open | §4, §6 |  [ ]   |
 |   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [ ]   |
 |  10   |   §10   | Window border parity repair | §1 |  [ ]   |
+|  11   |   §11   | App icon wiring | §1 |  [ ]   |
+|  12   |   §12   | Split view | §1, §2, D02 T01 §1 |  [ ]   |
+|  13   |   §13   | Pinned tabs | §2, §6 |  [ ]   |
+|  14   |   §14   | Text statistics panel | §1 |  [ ]   |
+|  15   |   §15   | Distraction-free focus mode | §1, D01 T02 §1 |  [ ]   |
+|  16   |   §16   | File snapshots | §5, §7 |  [ ]   |
+|  17   |   §17   | New-file templates | §2 |  [ ]   |
+|  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [ ]   |
+|  19   |   §19   | Encrypted notes | §4, §5 |  [ ]   |
+|  20   |   §20   | Backup on save | §5 |  [ ]   |
+|  21   |   §21   | Reload prompt on external change | §4 |  [ ]   |
+|  22   |   §22   | First-line titles for untitled tabs | §2 |  [ ]   |
+|  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
+|  24   |   §24   | Share target | §1, §2 |  [ ]   |
+|  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
+|  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
+|  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
 
 ---
 
@@ -146,18 +166,21 @@ Why this section exists: the tab bar is the most-touched surface in the app. It 
 
 ## 4. File Open with Encoding Detection
 
-Why this section exists: opening must never corrupt. Detection decides the bytes' meaning, so it is tested against fixtures, not hoped for.
+> **Started:** 2026-09-14T22:04:41Z
+
+Why this section exists: opening must never corrupt. Detection decides the bytes' meaning, so it is tested against fixtures, not hoped for. Opening is the app's file import: bytes are read from disk into a tab.
 
 **Groomed 2026-09-13:** Notepad audit: EOL detection, the Open dialog, the large-file limit, and .LOG append-on-open are now explicit (EOL was only implied by §5's preserve rule).
 
-- [ ] `src/Notepad.Core/FileIO.cs` detects BOM, UTF-8, UTF-16 LE/BE, and ANSI fallback exactly as Notepad does. Done when: the fixture matrix in `tests/Data/encodings/` passes byte-identical.
+- [x] `src/Notepad.Core/FileOpen.cs` detects BOM, UTF-8, UTF-16 LE/BE, and ANSI fallback exactly as Notepad does. **Corrected 2026-09-14:** the seed named it `FileIO.cs`; CA1724 forbids the name (clashes with `Microsoft.VisualBasic.FileIO`). Done when: the fixture matrix in `tests/Fixtures/encodings/` passes byte-identical. **Corrected 2026-09-14:** the seed said `tests/Data/encodings/`; fixtures live in `tests/Fixtures/` (no `tests/Data` exists).
 - [ ] Open failure (missing file, locked file, unreadable file) reports Notepad's message and leaves the tab list unchanged. Done when: each failure is driven.
-- [ ] Files that change on disk while open are detected and the user is asked before reload. Done when: the external-change prompt is driven.
-- [ ] Large files open without blocking the UI past the committed budget. Done when: the budget is recorded and measured.
-- [ ] `src/Notepad.Core/FileIO.cs` detects the file's line-ending convention (CRLF, LF, CR) per Notepad's extended-EOL rules; mixed-ending behavior is recorded from the capture. Done when: the fixture matrix in `tests/Data/eol/` passes byte-identical. Source: https://devblogs.microsoft.com/commandline/extended-eol-in-notepad/
+- [ ] Files that change on disk while open are detected. Done when: the watcher fires on external change. **Corrected 2026-09-14 (phase-1 run 2):** the reload prompt UI is D01 T01 §21 here (it deps this section); this item owns detection only.
+- [x] Opening a path that already has a tab focuses the existing tab instead of opening a duplicate. Done when: the dedup is driven. **Added 2026-09-14 (phase-1 run 2):** two tabs on one path invite dual-write data loss; focus-existing is the default (bedtime stock probe confirms) and costs one branch to flip.
+- [ ] Large files open without blocking the UI: chunked/async open with progress past the threshold recorded here. Done when: a large-file open stays responsive and the threshold is recorded. **Corrected 2026-09-14:** the seed said "the committed budget", which D02 T01 §7 owns; this item owns the open-path threshold only.
+- [x] `src/Notepad.Core/FileOpen.cs` detects the file's line-ending convention (CRLF, LF, CR) per Notepad's extended-EOL rules; mixed-ending behavior is recorded from the capture. Done when: the fixture matrix in `tests/Fixtures/eol/` passes byte-identical. Source: https://devblogs.microsoft.com/commandline/extended-eol-in-notepad/ **Corrected 2026-09-14:** same `tests/Data/` to `tests/Fixtures/` move as item 1; the seed named the file `FileIO.cs` (CA1724, see item 1).
 - [ ] The Open dialog defaults to Text documents (*.txt) with an All-files switch, as Notepad's. Done when: the dialog matrix is driven against the capture.
 - [ ] Files past Notepad's size limit refuse with its redirect dialog instead of hanging; the exact threshold and wording are recorded from the capture. Done when: an over-limit open is driven. Source: https://en.wikipedia.org/wiki/Windows_Notepad
-- [ ] A file whose first line is .LOG appends the current date and time at the end on every open, in the same format as the F5 insert (D02 T01 §5). Done when: open-append round-trips are fixture-tested. Source: https://support.microsoft.com/en-us/windows/apps/help-in-notepad
+- [x] A file whose first line is .LOG appends the current date and time at the end on every open, in the format recorded here from the capture (D02 T01 §5's F5 insert matches this recording). Done when: open-append round-trips are fixture-tested. Source: https://support.microsoft.com/en-us/windows/apps/help-in-notepad **Corrected 2026-09-14:** the seed pointed at D02 T01 §5's format, but §5 ships later; §4 records the format first.
 - [ ] Commit: `"notepad-core: open files with encoding detection"`
 
 **Test checkpoint:** Encoding fixture matrix green byte-identical; failure and external-change paths driven. Cheaper substitute that fails: UTF-8-only open that mangles the rest.
@@ -201,6 +224,7 @@ Why this section exists: Notepad reopens where the user left off. So do we, with
 - [ ] The recent-files list matches Notepad's order, truncation, and clearing. Done when: the UI test walks all three.
 - [ ] Unsaved content is stored locally only, never synced or logged, with the privacy review recorded. Done when: the store format review names every field.
 - [ ] The "When Notepad starts" preference defaults to the fresh-install value recorded from the capture. Done when: a clean profile launches with the recorded default.
+- [ ] Session restore reopens the window set as Notepad does. Done when: the multi-window restore is driven. **Moved 2026-09-14 (phase-1 run 2)** from §9 item 4: restore is this section here.
 - [ ] Commit: `"notepad-core: restore sessions and recent files"`
 
 **Test checkpoint:** UI drive quits with saved tabs, an untitled unsaved tab, and a dirty tab, and relaunches to all three with contents and carets; both startup modes driven; missing-file skip driven. Cheaper substitute that fails: restore that works only when every file still exists.
@@ -235,17 +259,19 @@ Why this section exists: Notepad opens from Explorer and from the command line. 
 **Groomed 2026-09-13:** Notepad audit: the Jump List, Explorer file-drop, and the /P + /PT print flags are now explicit.
 
 - [ ] Double-clicking an associated extension opens the file in the app (new window or new tab per Notepad's rule). Done when: the rule is recorded and driven.
-- [ ] Command-line paths open, including multiple files and a missing file (which offers to create, per Notepad). Done when: each case is driven.
-- [ ] Association setup and teardown are clean: uninstall leaves no broken associations. Done when: install and uninstall are driven on a clean VM.
+- [ ] Command-line paths open, including multiple files , a missing file (which offers to create, per Notepad), and large/over-limit files. Done when: each case is driven. **Corrected 2026-09-14 (phase-1 run 2):** these drives re-prove §4 failure dialogs (wording recorded there), responsiveness, and redirect in situ; §4 stamps on its neutral proof plus this forward cover.
+- [ ] Association setup and teardown are clean: uninstall leaves no broken associations. Done when: install and uninstall are driven in Windows Sandbox. **Corrected 2026-09-14:** VM testing retired; Sandbox is the clean machine now.
 - [ ] Only the extensions Notepad claims are claimed, and the claim is user-reversible. Done when: the list is recorded and the reversal driven.
 - [ ] The taskbar Jump List offers recent files with pinning from the §6 store, as Notepad's. Done when: recents and pin are driven. Source: https://www.pctips.com/notepad-tips-and-tricks/
 - [ ] Dropping files from Explorer onto the window opens them per the §4 path and the §9 open-in mode. Done when: single- and multi-file drops are driven.
 - [ ] The /P and /PT command-line flags are verified against the real Notepad: supported flags print through D01 T02 §5, removed flags are recorded as removed with the version note. Done when: the verification record exists and supported flags are driven.
 - [ ] Commit: `"notepad-core: associate files and open from the command line"`
 
-**Test checkpoint:** Association, multi-file open, missing-file offer, and clean uninstall all driven on a clean VM. Cheaper substitute that fails: association tested only on the dev machine.
+**Test checkpoint:** Association, multi-file open, missing-file offer, and clean uninstall all driven in Windows Sandbox. Cheaper substitute that fails: association tested only on the dev machine.
 
 ## 9. Multi-Window with Open-In Mode
+
+> **Started:** 2026-09-14T22:14:18Z
 
 Why this section exists: Notepad opens new windows, and the "Opening files" setting decides tab vs window. Filed by groom 2026-09-14: the seed assumed one window.
 
@@ -253,22 +279,25 @@ Why this section exists: Notepad opens new windows, and the "Opening files" sett
 
 **Job:** The user can work in several windows as in Notepad. Consumer: the tab model, which lives per window.
 
-**Treatment:** Per-window tab lists with the open-in setting. Cheaper substitute that fails the checkpoint: everything forced into one window.
+**Treatment:** Per-window tab lists with the open-in setting.
+
+> **Moved 2026-09-14 (phase-1 run 2):** item 4 (multi-window restore) to §6: restore is that section here; §9 consumes it. Cheaper substitute that fails the checkpoint: everything forced into one window.
 
 **Chrome:** Consume the shared window styles. Do not invent a second window treatment.
 
 **Groomed 2026-09-13:** Notepad audit: tab drag-out to a new window and drag-in docking are now explicit.
 
 - [ ] The new-window command (menu, shortcut) opens a window as Notepad's. Done when: the command is driven.
-- [ ] The "Opening files" setting (new tab vs new window) is honored everywhere files open. Done when: both modes are driven.
-- [ ] Windows are independent: tabs, dirty state, and undo never cross windows. Done when: the isolation test passes.
-- [ ] Session restore reopens the window set as Notepad does. Done when: the multi-window restore is driven.
+- [ ] The "Opening files" setting (new tab vs new window) is honored everywhere files open. Done when: both modes are driven. **Corrected 2026-09-14 (phase-1 run 2):** end-to-end honor is driven at §8-time (command-line opens in each mode) and D01 T02 §1-time (File menu); this section proves the mode value and routing.
+- [ ] Windows are independent: tabs, dirty state, and closed stacks never cross windows. Done when: the isolation test passes. **Corrected 2026-09-14 (phase-1 run 2):** undo isolation moved to D02 T01 §4 (noted there); undo does not exist until D02 lands.
 - [ ] Dragging a tab out of the tab strip detaches it into a new window, and dragging a tab into another window's strip docks it there, per Notepad's threshold and cues. Done when: both directions are driven against the capture. Source: https://blogs.windows.com/windows-insider/2023/01/19/tabs-in-notepad-begins-rolling-out-to-windows-insiders/
 - [ ] Commit: `"notepad-core: support multiple windows"`
 
-**Test checkpoint:** New window, open-in modes, isolation, and multi-window restore driven. Cheaper substitute that fails: multi-window that shares one tab list.
+**Test checkpoint:** New window, open-in modes, and isolation driven (restore is now §6 here). Cheaper substitute that fails: multi-window that shares one tab list.
 
 ## 10. Window Border Parity Repair
+
+> **Moved:** 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; the border defect was VM-session-only and the host renders stock parity, proven by FreshCaptureMatchesGolden green plus local pixel inspection).
 
 Why this section exists: the operator viewed the running app over RDP on Conclave-PC and reported the window border renders wrong. §1 shipped the frame green on CI, so this is new granularity on shipped work, not a §1 reopen. The app itself runs correctly there since the hook-degrade fix (window `Untitled - Intelligent Notepad` verified live in the console session): only the border chrome is in question.
 
@@ -282,17 +311,357 @@ Why this section exists: the operator viewed the running app over RDP on Conclav
 
 **Needs:** Windows host (build/test)
 
-- [ ] Capture the defect on Conclave-PC through the PMV2-aware PrintWindow path (PerMonitorV2 thread context plus PrintWindow full-content, which reads the DWM redirection bitmap regardless of viewer state). Done when: a non-black capture shows our window and the wrong border is described in pixels (thickness, color, radius, affected sides). Cheaper substitute that fails: diagnosing from the one-line operator report without a capture, or capturing unaware (reads virtualize to black at 150 percent session DPI). Source: operator RDP observation 2026-09-14.
-- [ ] Compare the border against `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` plus the `-light-` twin. Done when: every differing border attribute is listed with stock-vs-ours measurements.
-- [ ] Locate the root cause in `src/IntelligentNotepad/MainWindow.xaml` and `src/IntelligentNotepad/MainWindow.xaml.cs` (frame style, `ExtendsContentIntoTitleBar`, `AppWindow`/`OverlappedPresenter` settings, Mica brush, theme seam). Done when: the single setting or style producing the wrong border is named with its code reference, and sibling causes (DPI, theme, presenter) are ruled out with evidence.
-- [ ] Fix at the root cause in the app sources: no overlay, mask, or per-host special case. Done when: the change is the minimal edit the diagnosis names and the comment cites the stock behavior. Cheaper substitute that fails: padding or a repaint that matches at one DPI only.
-- [ ] Re-capture on Conclave-PC with the viewer attached and compare border pixels against the stock capture. Done when: the fresh capture matches stock on every attribute listed in item 2.
-- [ ] Extend `tests/UI/GoldenComparisonTests.cs` if the border region sat outside the compared area; refresh the golden only if the old golden froze the defect, recording why. Done when: the suite asserts the corrected border and `dotnet test tests/UI` on Conclave-PC shows no border-related failures; the 6 input-injection failures and the hook skip stay tracked in D00 T01 §8.
-- [ ] Record the VM capture procedure (PMV2-aware captures; unaware reads virtualize to black at 150 percent session DPI) in `docs/testing.md`. Done when: a cold agent captures pixels by following the doc.
-- [ ] Found 2026-09-14: drive the border regression capture through a PMV2-aware placed-window path (`UiCapture`-style Place plus settle inside `UiDpi.Enter`, as `tests/UI/UiCapture.cs` does), since unaware captures virtualize to black at 150 percent session DPI. Done when: the regression test's capture is verified non-black before its border asserts run.
+- [ ] ~~Capture the defect on Conclave-PC through the PMV2-aware PrintWindow path (PerMonitorV2 thread context plus PrintWindow full-content, which reads the DWM redirection bitmap regardless of viewer state). Done when: a non-black capture shows our window and the wrong border is described in pixels (thickness, color, radius, affected sides). Cheaper substitute that fails: diagnosing from the one-line operator report without a capture, or capturing unaware (reads virtualize to black at 150 percent session DPI). Source: operator RDP observation 2026-09-14.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Compare the border against `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` plus the `-light-` twin. Done when: every differing border attribute is listed with stock-vs-ours measurements.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Locate the root cause in `src/IntelligentNotepad/MainWindow.xaml` and `src/IntelligentNotepad/MainWindow.xaml.cs` (frame style, `ExtendsContentIntoTitleBar`, `AppWindow`/`OverlappedPresenter` settings, Mica brush, theme seam). Done when: the single setting or style producing the wrong border is named with its code reference, and sibling causes (DPI, theme, presenter) are ruled out with evidence.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Fix at the root cause in the app sources: no overlay, mask, or per-host special case. Done when: the change is the minimal edit the diagnosis names and the comment cites the stock behavior. Cheaper substitute that fails: padding or a repaint that matches at one DPI only.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Re-capture on Conclave-PC with the viewer attached and compare border pixels against the stock capture. Done when: the fresh capture matches stock on every attribute listed in item 2.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Extend `tests/UI/GoldenComparisonTests.cs` if the border region sat outside the compared area; refresh the golden only if the old golden froze the defect, recording why. Done when: the suite asserts the corrected border and `dotnet test tests/UI` on Conclave-PC shows no border-related failures; the 6 input-injection failures and the hook skip stay tracked in D00 T01 §8.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Record the VM capture procedure (PMV2-aware captures; unaware reads virtualize to black at 150 percent session DPI) in `docs/testing.md`. Done when: a cold agent captures pixels by following the doc.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Found 2026-09-14: drive the border regression capture through a PMV2-aware placed-window path (`UiCapture`-style Place plus settle inside `UiDpi.Enter`, as `tests/UI/UiCapture.cs` does), since unaware captures virtualize to black at 150 percent session DPI. Done when: the regression test's capture is verified non-black before its border asserts run.~~ Moved 2026-09-14 to docs/testing.md.
 - [ ] Commit: `"notepad-core: repair the window border to stock parity"`
 
 **Test checkpoint:** A Conclave-PC capture of our window matches the stock border capture attribute-for-attribute; `dotnet test tests/UI` on Conclave-PC shows no border-related failures (input failures tracked in D00 T01 §8); the unaware-capture cause recorded. Cheaper substitute that fails: a fix verified only on CI's 800x600 dark render.
+
+## 11. App Icon Wiring
+
+> **Started:** 2026-09-14T22:14:51Z
+
+Why this section exists: the operator supplied the app icon. It must show in the exe, the window chrome, and the taskbar with no default glyph anywhere.
+
+**Fidelity:** new build, no baseline (operator-supplied `resources/notepad.ico`: 256px RGBA plus 16/32/48/64/72/128).
+
+**Job:** The user can recognize the app in the taskbar and window chrome. Consumer: the shell, which paints but never stores.
+
+**Treatment:** Exe icon from the asset via the project plus `AppWindow.SetIcon` for the window chrome; the taskbar follows the exe. Cheaper substitute that fails the checkpoint: a window-only icon with a default exe glyph.
+
+**Chrome:** Consume the supplied asset. Do not redraw or recolor it.
+
+**Needs:** Windows host (build/test)
+
+- [x] The build embeds `resources/notepad.ico` as the exe icon in `src/IntelligentNotepad/IntelligentNotepad.csproj`. Done when: the built exe shows the icon in Explorer. Proven 2026-09-14: the extracted associated icon matches the asset 0/1024 pixels (byte proof for the Explorer eyeball).
+- [ ] The main window sets the icon from the asset at startup in `src/IntelligentNotepad/MainWindow.xaml.cs`. Done when: window captures show it.
+- [ ] Taskbar and window chrome show the asset with no default glyph anywhere. Done when: taskbar and window captures show it (Alt+Tab follows the exe by platform contract).
+- [ ] Commit: `"notepad-core: wire the app icon"`
+
+**Test checkpoint:** Exe, window, and taskbar captures show the asset; MSIX visual assets stay D07 T01 §1's. Cheaper substitute that fails: the icon in one place only.
+
+## 12. Split View
+
+> **Moved:** 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md (D02 T01 §16; phase-1 run 2 cycle repair: split needs live editor views, which cannot exist behind the T01-whole gate; in-tree move, the D02 row carries the work and this row is skipped so it counts once).
+
+- [ ] ~~Split one file into two views on the same buffer, edits visible in both. Done when: typing in one pane appears in the other under host drive.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §16.
+- [ ] ~~Split two different files side by side. Done when: each pane shows its file with independent dirty state.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §16.
+- [ ] ~~Panes scroll and edit independently under host drive. Done when: scroll position and caret do not leak across panes.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §16.
+- [ ] ~~Keyboard focus moves between panes and is announced. Done when: the shortcut moves focus both ways with UIA announcement.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §16.
+- [ ] Commit: `"editor: split the view"`
+
+**Test checkpoint:** splits on one buffer and two files, independence, and focus moves are all driven in the room. Cheaper substitute that fails: panes sharing one caret.
+
+## 13. Pinned Tabs
+
+Why this section exists: pinned tabs survive restarts and shrug off accidental close.
+
+**Fidelity:** new build, no baseline (stock Notepad pins nothing).
+
+**Job:** The user can pin tabs that persist across restarts. Consumer: the tab model (§2), which carries pin state into session restore (§6).
+
+**Treatment:** Pin action with pinned tab visuals; unpin to release; close-all skips pinned. Cheaper substitute that fails the checkpoint: pinned look with no persistence.
+
+**Chrome:** Consume the shared tab styles. Do not invent a second pin treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Pin and unpin a tab under host drive. Done when: pinned tabs render pinned and unpin restores normal.
+- [ ] Pinned tabs survive restart through §6 session restore. Done when: pins persist across an app relaunch.
+- [ ] Close-all and close-others skip pinned tabs. Done when: pinned tabs stay open while the rest close.
+- [ ] Commit: `"notepad-core: pin tabs"`
+
+**Test checkpoint:** pin, persist, and skip are all driven in the room. Cheaper substitute that fails: pins that forget.
+
+## 14. Text Statistics Panel
+
+Why this section exists: writers who measure want top words, sentence lengths, and repetition flags without leaving the app.
+
+**Fidelity:** new build, no baseline (stock Notepad computes nothing).
+
+**Job:** The user can inspect document statistics in a panel. Consumer: the panel, which computes on open and refreshes on demand.
+
+**Treatment:** A panel shows computed stats over an injected text provider until D02 T01 §1 binds the real buffer; refresh is on demand so typing never pays. **Corrected 2026-09-14 (phase-1 run 2):** the D02 T01 §2 dep cycled through the T01-whole gate. Cheaper substitute that fails the checkpoint: live recompute that taxes typing.
+
+**Chrome:** Consume the shared panel styles. Do not invent a second stats treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The panel lists top words with counts. Done when: counts match a fixture document exactly.
+- [ ] The panel shows sentence length distribution. Done when: lengths match the fixture.
+- [ ] Repetition flags call out overused words. Done when: a seeded repeat is flagged.
+- [ ] Stats compute on open and refresh on demand only. Done when: typing benchmarks show no recompute.
+- [ ] Commit: `"notepad-core: show text statistics"`
+
+**Test checkpoint:** words, lengths, flags, and on-demand refresh are all driven in the room. Cheaper substitute that fails: stats that never update.
+
+## 15. Distraction-Free Focus Mode
+
+> **Moved:** 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md (D02 T01 §17; phase-1 run 2 cycle repair: paragraph emphasis needs the rendered surface, which cannot exist behind the T01-whole gate; in-tree move, the D02 row carries the work and this row is skipped so it counts once).
+
+- [ ] ~~Focus mode enters and exits under host drive. Done when: chrome fades on entry and restores exactly on exit.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §17.
+- [ ] ~~The current paragraph stays lit while the rest dims. Done when: captures show the emphasis.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §17.
+- [ ] ~~Exit restores the exact prior layout. Done when: pane, panel, and bar states match pre-entry.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §17.
+- [ ] Commit: `"editor: fade the chrome"`
+
+**Test checkpoint:** entry, emphasis, and exact restore are all driven in the room. Cheaper substitute that fails: a mode that strands the user.
+
+## 16. File Snapshots
+
+Why this section exists: named local versions with one-click restore and no cloud.
+
+**Fidelity:** new build, no baseline (stock Notepad versions nothing).
+
+**Job:** The user can snapshot and restore named versions. Consumer: the file store, which keeps versions beside the file.
+
+**Treatment:** Named snapshots in a versions list; one-click restore with a dirty check before overwriting. Dirty-tab content arrives through an injected provider until D02 T01 §1 binds the real buffer. Cheaper substitute that fails the checkpoint: an untracked .bak pile.
+
+**Chrome:** Consume the shared list styles. Do not invent a second versions treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Take a named snapshot of the current file. Done when: the snapshot stores content byte-identical.
+- [ ] The versions list shows snapshots and restores on click. Done when: restore replaces content under host drive.
+- [ ] Restore over dirty content prompts first through §7. Done when: the prompt blocks a blind overwrite.
+- [ ] Retention caps the snapshot count sanely. Done when: the cap is enforced and documented.
+- [ ] Commit: `"notepad-core: snapshot files"`
+
+**Test checkpoint:** snapshot, restore, dirty prompt, and retention are all driven in the room. Cheaper substitute that fails: restore that overwrites blindly.
+
+## 17. New-File Templates
+
+> **Started:** 2026-09-14T22:16:45Z
+
+Why this section exists: new files start from templates with date and title filled in.
+
+**Fidelity:** new build, no baseline (stock Notepad templates nothing).
+
+**Job:** The user can start templated notes. Consumer: the new-tab flow (§2), which expands variables.
+
+**Treatment:** A template picker on new; date and title variables expand; custom templates persist. Cheaper substitute that fails the checkpoint: static boilerplate with no variables.
+
+**Chrome:** Consume the shared dialog styles. Do not invent a second picker treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The picker lists built-in templates on new. Done when: every built-in opens expanded. **Corrected 2026-09-14:** the seed named no built-ins; they are Blank note, Meeting notes, and Daily journal (adding one costs one static plus a picker row).
+- [x] Date and title variables expand. Done when: fixtures show correct expansion. **Corrected 2026-09-14:** `{date}` is the locale short date, `{title}` comes from the picker prompt (empty means "Untitled"), unknown braces stay literal.
+- [x] Custom templates persist across restarts. Done when: a user template survives relaunch. **Corrected 2026-09-14:** customs live as `.txt` files in `%LocalAppData%/IntelligentNotepad/templates/` (same root as the settings seam).
+- [ ] Commit: `"notepad-core: template new files"`
+
+**Test checkpoint:** picker, variables, and custom persistence are all driven in the room. Cheaper substitute that fails: templates that never update.
+
+## 18. Export as Markdown, HTML, Plain Text
+
+Why this section exists: Markdown, HTML, or plain text out of any view, to file. Copy-as split to D02 T01 §18 by phase-1 run 2 (cycle repair); the converter below is shared.
+
+**Fidelity:** new build, no baseline (stock Notepad converts nothing).
+
+**Job:** The user can move text across formats. Consumer: the file writer (§5), which saves the converted text.
+
+**Treatment:** Export dialog with faithful conversion of the buffer text; the buffer arrives through an injected text provider until D02 T01 §1 binds the real buffer. Cheaper substitute that fails the checkpoint: plain-text-only bytes under new extensions.
+
+**Chrome:** Consume the shared dialog styles. Do not invent a second convert treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Export writes all three formats to file. Done when: exported files open in their native apps.
+- [ ] Round-trip fidelity fixtures pin the conversions. Done when: fixtures cover structure, emphasis, and lists.
+- [ ] Commit: `"notepad-core: export formats"`
+
+**Test checkpoint:** export and fidelity are all driven in the room. Cheaper substitute that fails: HTML that drops structure.
+
+## 19. Encrypted Notes
+
+Why this section exists: some notes need a password. Files lock with a clearly stated algorithm, and a wrong password fails loud instead of producing garbage.
+
+**Fidelity:** new build, no baseline (stock Notepad encrypts nothing).
+
+**Job:** The user can lock files with a password and unlock them later. Consumer: the file reader (§4) and writer (§5), which decrypt around the existing encoding path.
+
+**Treatment:** Password-derived key with a stated algorithm (AES-256-GCM via platform crypto is the default; the section records the final choice); a wrong password fails loud before any bytes render. Cheaper substitute that fails the checkpoint: obfuscation, or silent mojibake on a wrong password.
+
+**Chrome:** Consume the shared dialog styles. Do not invent a second lock treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The algorithm, KDF, and parameters are stated in the file header and in docs. Done when: a reader implements decrypt from the doc alone.
+- [ ] Locking a file writes the encrypted form through §5. Done when: the ciphertext round-trips byte-identical.
+- [ ] Unlocking with the right password restores the exact bytes. Done when: round-trip fixtures pass across encodings.
+- [ ] A wrong password fails loud with no partial render. Done when: the failure path is driven and nothing leaks.
+- [ ] The password never persists; the key lives in memory only. Done when: no password or key bytes reach disk or logs.
+- [ ] Commit: `"notepad-core: lock notes with a password"`
+
+**Test checkpoint:** stated algorithm, lock, unlock, loud failure, and memory-only keys are all driven in the room. Cheaper substitute that fails: encryption nobody can audit.
+
+## 20. Backup on Save
+
+Why this section exists: saves overwrite. A timestamped .bak sibling beside the file is the automatic safety net under the named §16 snapshots.
+
+**Fidelity:** new build, no baseline (stock Notepad keeps no backups).
+
+**Job:** The user can recover the pre-save version. Consumer: the save path (§5), which writes the sibling first.
+
+**Treatment:** Timestamped .bak sibling on every save with a retention count; old siblings rotate out. Cheaper substitute that fails the checkpoint: one .bak that the next save eats.
+
+**Chrome:** No new surface; the file list is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Every save writes a timestamped .bak sibling first. Done when: the sibling predates the save under host drive.
+- [ ] Retention caps the sibling count. Done when: old siblings rotate out at the cap.
+- [ ] A crashed save leaves the newest .bak intact. Done when: the failure path is driven.
+- [ ] Commit: `"notepad-core: back up on save"`
+
+**Test checkpoint:** sibling, retention, and crash safety are all driven in the room. Cheaper substitute that fails: backups that pile up forever.
+
+## 21. Reload Prompt on External Change
+
+Why this section exists: files change behind us (sync tools, other editors). The app notices and asks instead of silently overwriting or showing stale bytes.
+
+**Fidelity:** new build, no baseline (the capture session records whether stock prompts; this section defines our behavior either way).
+
+**Job:** The user can choose keep or reload when the file changes on disk. Consumer: the open document, which refreshes or holds per the answer.
+
+**Treatment:** A watcher notices external change; a prompt offers reload or keep; dirty documents resolve both sides explicitly. Cheaper substitute that fails the checkpoint: silent reload that eats edits, or no notice at all.
+
+**Chrome:** Consume the shared dialog styles. Do not invent a second reload treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] External change raises the prompt on a clean document. Done when: the prompt is driven under host file writes.
+- [ ] Reload refreshes from disk; keep holds the buffer. Done when: both answers are driven.
+- [ ] A dirty document resolves explicitly with no silent data loss either way. Done when: both paths are driven.
+- [ ] Unsaved (never-pathed) documents never prompt. Done when: the negative test passes.
+- [ ] Commit: `"notepad-core: prompt on external change"`
+
+**Test checkpoint:** prompt, both answers, dirty resolution, and the unsaved negative are all driven in the room. Cheaper substitute that fails: a prompt that defaults to data loss.
+
+## 22. First-Line Titles for Untitled Tabs
+
+Why this section exists: untitled tabs show their first line as the live default. Agent suggestions live at D05 T02 §9.
+
+**Fidelity:** new build, no baseline (the capture session confirms the first-line default against stock; this section defines it either way).
+
+**Job:** The user can read untitled tabs at a glance. Consumer: the tab bar (§2), which renders titles.
+
+**Treatment:** First line as the live default, trimmed per §2's auto-name rule. Cheaper substitute that fails the checkpoint: static "Untitled" for every blank tab.
+
+**Chrome:** Consume the shared tab styles. Do not invent a second title treatment.
+
+**Needs:** Windows host (build/test)
+
+- [x] Untitled tabs show the first line as their live default. Proven by D01 T01 §2 shipped test UntitledShowsFirstLineOnly; bedtime UI drive re-confirms at the surface. Done when: typing the first line renames the tab under host drive.
+- [ ] The first-line default is confirmed against the stock capture or the difference recorded. Done when: the capture comparison or the recorded difference exists.
+- [ ] Commit: `"notepad-core: title untitled tabs from the first line"`
+
+**Test checkpoint:** live default and capture confirmation are driven in the room. Cheaper substitute that fails: tabs that all read Untitled.
+
+## 23. Side-by-Side Tab Diff
+
+> **Moved:** 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md (D02 T01 §19; phase-1 run 2 cycle repair: diffing open tabs needs buffer content plus the moved split, neither behind the T01-whole gate; in-tree move, the D02 row carries the work and this row is skipped so it counts once).
+
+- [ ] ~~Any two open tabs pair into a diff. Done when: the pair path is driven.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §19.
+- [ ] ~~Word-level change marks render on both sides. Done when: fixtures match exactly.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §19.
+- [ ] ~~The pair hosts in a D02 T01 §16 split. Done when: panes show the pair under host drive.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §19.
+- [ ] ~~Marks are display-only; editing either side re-marks live. Done when: re-marking is driven.~~ Moved 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md §19.
+- [ ] Commit: `"editor: diff two tabs"`
+
+**Test checkpoint:** pairing, word marks, split hosting, and live re-mark are all driven in the room. Cheaper substitute that fails: a diff of screenshots.
+
+## 24. Share Target
+
+> **Started:** 2026-09-14T22:19:07Z
+
+Why this section exists: Windows apps share text; we receive it into a new tab. The OS registration lives at D07 T01 §7; this section owns the receive path.
+
+**Fidelity:** new build, no baseline (the capture session records whether stock receives shares; this section defines our behavior either way). **Corrected 2026-09-14:** the seed asserted stock receives nothing; unverified.
+
+**Job:** The user can share text from other apps into a new tab. Consumer: the tab model (§2), which opens the shared text.
+
+**Treatment:** Incoming text opens a new untitled tab through the receive path. Cheaper substitute that fails the checkpoint: share support that opens an empty tab.
+
+> **Moved 2026-09-14 (phase-1 run 2):** item 1 (share-target registration) to D07 T01 §7. Registration needs package identity, which D07 T01 §1 owns; an unpackaged app cannot declare the share contract. The receive path stays here and §7 routes activation into it.
+
+**Chrome:** No new surface; the new tab is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [x] Shared text opens in a new untitled tab. Done when: the receive path is driven.
+- [x] Non-text shares decline gracefully. Done when: the negative path is driven.
+- [ ] Commit: `"notepad-core: receive shared text"`
+
+**Test checkpoint:** receive and graceful decline are driven in the room (registration is D07 T01 §7's). Cheaper substitute that fails: a target that eats shares silently.
+
+## 25. Jump List Tasks
+
+Why this section exists: new note and pinned notes on the taskbar icon. (Jump-list recents are §8 item 5. **Corrected 2026-09-14:** the seed duplicated them here.) The app starts working before it opens.
+
+**Fidelity:** new build, no baseline (stock Notepad lists no tasks).
+
+**Job:** The user can jump straight to a note from the taskbar. Consumer: the taskbar, which renders the app's tasks.
+
+**Treatment:** Jump list tasks for new note, pinned notes (§13), and recent files (§6); each launches to the right place. Cheaper substitute that fails the checkpoint: tasks that all open a blank window.
+
+**Chrome:** No new surface; the taskbar is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The taskbar icon carries new-note, pinned, and recent tasks. Done when: all three appear.
+- [ ] New note opens a fresh untitled tab through §2. Done when: the launch path is driven.
+- [ ] Pinned notes open their files through §13. Done when: each pin launches correctly.
+- [ ] Commit: `"notepad-core: task the jump list"`
+
+**Test checkpoint:** tasks, new, pinned, and recent launches are all driven in the room. Cheaper substitute that fails: a jump list that jumps nowhere.
+
+## 26. Protocol Handler
+
+Why this section exists: links can open a path in the app.
+
+**Fidelity:** new build, no baseline (stock Notepad handles no protocol).
+
+**Job:** The user can open app paths from links. Consumer: the file opener (§4), which opens the carried path; the association path (§8), which shares registration mechanics.
+
+**Treatment:** Registered protocol links carry a path; activation opens it through §4; malformed links decline. Cheaper substitute that fails the checkpoint: a protocol that opens the app and drops the path.
+
+**Chrome:** No new surface; the opened file is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The protocol scheme is registered (name recorded here). Done when: links offer the app.
+- [ ] Activation opens the carried path through §4. Done when: the open path is driven.
+- [ ] Malformed links decline gracefully. Done when: the negative path is driven.
+- [ ] Commit: `"notepad-core: handle the protocol"`
+
+**Test checkpoint:** registration, open, and graceful decline are all driven in the room. Cheaper substitute that fails: links that open the wrong file.
+
+## 28. UIA Tab Accessibility Names
+
+> **Started:** 2026-09-14T22:20:48Z
+
+Why this section exists: stock tab UIA names carry ". Modified." / ". Unmodified." suffixes ours does not reproduce (phase-1 run 1 recon). Screen readers and automation tell dirty from clean by name.
+
+**Fidelity:** stock tab UIA names, recorded from the capture during implementation; ours match or the difference is recorded.
+
+**Job:** The user can hear tab dirty state by name. Consumer: screen readers and UIA clients, which read the tab names §3 exposes.
+
+**Treatment:** Tab UIA names carry the stock dirty/clean suffixes, updating with the §2 model. Cheaper substitute that fails the checkpoint: names that update on selection only.
+
+**Chrome:** No visual surface; the accessible name is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Tab UIA names carry the stock Modified/Unmodified suffixes. Done when: names match stock under host drive.
+- [ ] Suffixes track the §2 dirty model live. Done when: edits flip the suffix.
+- [ ] Commit: `"notepad-core: name tabs for accessibility"`
+
+**Test checkpoint:** stock-matching names and live tracking are driven in the room. Cheaper substitute that fails: accessible names that lie about dirty state.
 
 ## Verification
 

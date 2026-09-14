@@ -19,6 +19,7 @@ track: N1
 
 - `resources/baseline/` captures of menus, settings, status bar, and print dialog
 - [`01-notepad-core/TODO-01-winui-app-spine.md`](./TODO-01-winui-app-spine.md) -- the shell and tab model these surfaces hang off
+- -> XREF: D05 T03 §3 -- slash commands versus palette split; the palette lists without reimplementing
 
 ## Outcome
 
@@ -27,9 +28,9 @@ track: N1
 - The status bar shows live line/column, zoom, encoding, and line endings.
 - Print produces Notepad's output for the active document.
 
-**Adjacency:** list=not-applicable (no lists in this file); document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=not-applicable (no import/export in this file); reverse=applicable @ D01 T02 §2
+**Adjacency:** list=applicable @ D01 T02 §8; document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=not-applicable (no import/export in this file); reverse=applicable @ D01 T02 §2
 
-**Adjacency rationale:** The settings store is the settings owner with its consumer named in §2; print is the document; resetting settings to defaults is the reversal.
+**Adjacency rationale:** The settings store is the settings owner with its consumer named in §2; print is the document; resetting settings to defaults is the reversal; the §8 palette is the list.
 
 ## Implementation Order
 
@@ -41,6 +42,11 @@ track: N1
 |   4   |   §4    | Status bar | D01 T01 §1 |  [ ]   |
 |   5   |   §5    | Print path | §1 |  [ ]   |
 |   6   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
+|   7   |   §7    | Reading level in the status bar | §4 |  [ ]   |
+|   8   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
+|   9   |   §9    | Live counts in the status bar | §4 |  [ ]   |
+|  10   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
+|  11   |   §11   | Session word goal | §4, §9 |  [ ]   |
 
 ---
 
@@ -78,8 +84,8 @@ Why this section exists: settings with two writers disagree. One store, one writ
 
 **Groomed 2026-09-13:** Notepad audit: fresh-install default values are now recorded from the capture (research conflicts on wrap/statusbar defaults, so the capture decides).
 
-- [ ] `src/Notepad.Core/SettingsStore.cs` owns every tunable: theme, font, wrap, zoom default, and later AI settings. Done when: no other file writes a setting.
-- [ ] The store persists atomically and migrates old versions forward. Done when: a corrupt store resets to defaults with a notice, driven in tests.
+- [ ] `src/Notepad.Core/SettingsStore.cs` owns and records every tunable: theme, font, wrap, zoom default, and later AI settings. Done when: no other file writes a setting.
+- [ ] The store persists atomically and migrates old versions forward. Done when: a corrupt store can restore defaults with a notice, driven in tests.
 - [ ] Readers observe changes live; nothing caches a stale copy. Done when: a change propagates to all readers in the test.
 - [ ] The store's schema is documented with each key's consumer. Done when: `docs/settings-schema.md` names every key and its reader.
 - [ ] Fresh-install defaults for every key (font family, style, size; wrap; status bar; theme) match a clean Notepad install exactly and are recorded from the capture. Done when: a clean-profile drive matches the recorded values.
@@ -172,6 +178,115 @@ Why this section exists: menus rot one item at a time. The audit makes "every co
 - [ ] Commit: `"notepad-core: audit menu and shortcut completeness"`
 
 **Test checkpoint:** Audit green in CI; probe dead item fails; every item working or owner-named. Cheaper substitute that fails: a spreadsheet audit nobody reruns.
+
+## 7. Reading Level in the Status Bar
+
+Why this section exists: writers calibrate difficulty. A click computes grade level locally with no agent and no network.
+
+**Fidelity:** new build, no baseline (beyond the stock status bar).
+
+**Job:** The user can read the document's grade level on demand. Consumer: the status bar, which shows the computed value.
+
+**Treatment:** Click-to-compute readout in the status area; recomputes on demand only. Cheaper substitute that fails the checkpoint: always-on scoring that taxes typing.
+
+**Chrome:** Consume the shared status styles. Do not invent a second metric treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Flesch-Kincaid grade computes locally over the buffer. Done when: fixtures match reference values.
+- [ ] Clicking the status area computes and shows the score. Done when: driven.
+- [ ] The score never recomputes unprompted and never touches the network. Done when: the negative tests pass.
+- [ ] Commit: `"notepad-core: show reading level on demand"`
+
+**Test checkpoint:** Computation, display, and the on-demand rule driven. Cheaper substitute that fails: a score that phones home.
+
+## 8. Command Palette
+
+Why this section exists: every command in one fuzzy list: menu items, agent actions, each runnable by name. Discoverable beats memorable.
+
+**Fidelity:** new build, no baseline (stock Notepad has no palette).
+
+**Job:** The user can run any command by name. Consumer: the command handlers, which the palette invokes identically to menus.
+
+**Treatment:** Ctrl+Shift+P fuzzy list with shortcuts shown; entries mirror §1 menu items plus D05 T02 §6 selection actions. Cheaper substitute that fails the checkpoint: a palette missing commands the menus have.
+
+**Chrome:** Consume the shared list styles. Do not invent a second palette treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] `src/Notepad/CommandRegistry.cs` names every §1 menu item plus the D05 T02 §6 selection actions with shortcuts. Done when: the registry test enumerates them.
+- [ ] The palette lists fuzzy-matched entries with shortcuts shown. Done when: driven.
+- [ ] Invoking from the palette equals invoking from the menu. Done when: the equivalence test passes.
+- [ ] The slash-command overlap resolves per the D05 T03 §3 XREF with no double implementation. Done when: the split is recorded and tested.
+- [ ] Every §1 item and D05 T02 §6 action appears or names why not. Done when: the audit passes.
+- [ ] Commit: `"notepad-core: add the command palette"`
+
+**Test checkpoint:** Registry, UI, equivalence, and audit driven. Cheaper substitute that fails: a palette that lists half the app.
+
+## 9. Live Counts in the Status Bar
+
+Why this section exists: writers watch length as they type. Words, reading time, and characters update live beside the stock fields.
+
+**Fidelity:** new build, no baseline (beyond the stock status bar in §4).
+
+**Job:** The user can watch counts update while typing. Consumer: the status bar (§4), which renders the new fields in its existing layout.
+
+**Treatment:** Debounced live counts off the buffer; typing never waits on arithmetic. Cheaper substitute that fails the checkpoint: counts on save only.
+
+**Chrome:** Consume the shared status styles. Do not invent a second count treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Words and characters update live as the user types. Done when: every keystroke updates them under host drive.
+- [ ] Reading time updates live beside the counts. Done when: the estimate tracks the words.
+- [ ] Recompute is debounced off the keystroke path. Done when: rapid typing shows one recompute per pause.
+- [ ] Typing benchmarks prove counts never block input. Done when: latency matches §4's bar without the fields.
+- [ ] Commit: `"notepad-core: count live in the status bar"`
+
+**Test checkpoint:** live counts, reading time, debounce, and non-blocking input are all driven in the room. Cheaper substitute that fails: counts that lag a paragraph behind.
+
+## 10. Custom Accent Themes
+
+Why this section exists: system dark and light are the floor. Writers pick accent themes that feel like theirs, previewed live before applying.
+
+**Fidelity:** new build, no baseline (beyond the stock theme setting in §3).
+
+**Job:** The user can pick and preview accent themes. Consumer: the settings page (§3), which previews before applying.
+
+**Treatment:** A theme gallery with live preview; system themes stay the default. Cheaper substitute that fails the checkpoint: a hex field with no preview.
+
+**Chrome:** Consume the shared settings styles. Do not invent a second gallery treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The gallery lists the built-in accent themes. Done when: every theme renders its swatch.
+- [ ] Preview applies live before commit. Done when: hovering previews and leaving restores.
+- [ ] The chosen accent persists across restarts through §2. Done when: relaunch keeps it.
+- [ ] Stock dark and light stay default and untouched. Done when: a fresh install shows system themes.
+- [ ] Commit: `"notepad-core: theme the accents"`
+
+**Test checkpoint:** gallery, preview, persistence, and untouched defaults are all driven in the room. Cheaper substitute that fails: themes that need a restart to apply.
+
+## 11. Session Word Goal
+
+Why this section exists: a word goal with a thin progress line for the session. No accounts, no streaks, no cloud: the goal dies with the session.
+
+**Fidelity:** new build, no baseline (stock Notepad goals nothing).
+
+**Job:** The user can set a session word goal and watch the line fill. Consumer: the status bar (§4), which hosts the line; the live counter (§9), which feeds it.
+
+**Treatment:** Goal set per session; the thin line fills from §9's live count; reaching it is a quiet full line, not a celebration. Cheaper substitute that fails the checkpoint: goals that persist, sync, or streak.
+
+**Chrome:** Consume the shared status styles. Do not invent a second goal treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] A session goal sets from the status bar. Done when: the set path is driven.
+- [ ] The thin line fills from the live count. Done when: typing moves the line under host drive.
+- [ ] The goal and progress vanish with the session. Done when: relaunch shows no goal.
+- [ ] Commit: `"notepad-core: goal the session"`
+
+**Test checkpoint:** set, fill, and session-death are all driven in the room. Cheaper substitute that fails: a goal that follows you home.
 
 ## Verification
 

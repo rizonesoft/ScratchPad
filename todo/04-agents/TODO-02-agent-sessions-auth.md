@@ -20,6 +20,7 @@ track: A2
 - [ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup) -- create and load
 - [ACP authentication](https://agentclientprotocol.com/protocol/v1/authentication) -- authenticate and logout
 - -> XREF: D05 T02 §1 -- permission prompts gate session actions that need consent; the consent contract is settled there
+- -> XREF: D08 T02 §3 -- the voice provider settings follow the platform-store pattern for the OpenRouter key
 
 ## Outcome
 
@@ -27,9 +28,9 @@ track: A2
 - Auth state is explicit (in or out) with no half-logged limbo.
 - Credentials live in the platform store, never in our files or logs.
 
-**Adjacency:** list=applicable @ D04 T02 §2; document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (no reports in this file); notifications=not-applicable (no notification surface in this file); permissions=applicable @ D05 T02 §1; audit=applicable @ D04 T02 §5; exchange=not-applicable (no import/export in this file); reverse=applicable @ D04 T02 §4
+**Adjacency:** list=applicable @ D04 T02 §2; document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (no reports in this file); notifications=not-applicable (no notification surface in this file); permissions=applicable @ D05 T02 §1; audit=applicable @ D04 T02 §5; exchange=applicable @ D04 T02 §6; reverse=applicable @ D04 T02 §4
 
-**Adjacency rationale:** The session list is the list; session close is the reversal; the session log is the audit; consent UI lives in D05.
+**Adjacency rationale:** The session list is the list; session close is the reversal; the session log is the audit; consent UI lives in D05. The sidecar read is the import.
 
 ## Implementation Order
 
@@ -40,6 +41,7 @@ track: A2
 |   3   |   §3    | Session resume and delete | §2 |  [ ]   |
 |   4   |   §4    | Session close and cleanup | §2 |  [ ]   |
 |   5   |   §5    | Session log | §4 |  [ ]   |
+|   6   |   §6    | Per-file sidecar instructions | §2, D01 T01 §4 |  [ ]   |
 
 ---
 
@@ -82,7 +84,7 @@ Why this section exists: resume must restore context faithfully, and delete must
 Why this section exists: closing ends the conversation's resources: process, grants, temp state. Nothing lingers to surprise the next session.
 
 - [ ] Close terminates the agent process (or detaches, per the agent's model) and releases the transport. Done when: no process or handle leaks in tests.
-- [ ] Grants tied to the session expire at close. Done when: the expiry test passes.
+- [ ] The session can revoke its grants at close. Done when: the expiry test passes.
 - [ ] Temp state (partial transcripts, caches) is cleaned with the user's data preserved per the session log. Done when: the cleanup test passes.
 - [ ] Commit: `"agents: close sessions and clean up"`
 
@@ -92,12 +94,33 @@ Why this section exists: closing ends the conversation's resources: process, gra
 
 Why this section exists: "what happened in that session" must be answerable after the fact, from our side, without the agent's help.
 
-- [ ] `src/Notepad.Agents/SessionLog.cs` records session lifecycle events with time, agent, and outcome. Done when: the schema test passes.
+- [ ] `src/Notepad.Agents/SessionLog.cs` records session lifecycle events in the audit log with time, agent, and outcome. Done when: the schema test passes.
 - [ ] The log excludes secrets and prompt contents by default, with the exclusion tested. Done when: the redaction test passes.
 - [ ] The user can export and clear the log. Done when: both are tested.
 - [ ] Commit: `"agents: log session lifecycle"`
 
 **Test checkpoint:** Schema, redaction, export, and clear tests green. Cheaper substitute that fails: a log that records prompts verbatim.
+
+## 6. Per-File Sidecar Instructions
+
+Why this section exists: notes carry their own agent instructions in a sidecar file next to the note. Project conventions travel with the document, not the app.
+
+**Fidelity:** new build, no baseline (no stock counterpart; judged on its own contract).
+
+**Job:** The user can pin instructions to a file. Consumer: the session (§2), which loads the sidecar at create.
+
+**Treatment:** A sidecar file beside the note (name and format recorded here) loads into the session context at §2 create time; missing or malformed sidecars degrade to no instructions with a notice. Cheaper substitute that fails the checkpoint: global instructions with a filename filter.
+
+**Chrome:** No new surface; the file list is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The sidecar name and format are recorded and parsed. Done when: fixtures cover frontmatter and plain text.
+- [ ] Session create imports the note's sidecar through §2. Done when: the load is driven.
+- [ ] Missing or malformed sidecars degrade to no instructions with a notice. Done when: both paths are driven.
+- [ ] Commit: `"agents: read per-file sidecar instructions"`
+
+**Test checkpoint:** format, load, and degrade are all driven in the room. Cheaper substitute that fails: instructions that load for the wrong file.
 
 ## Verification
 

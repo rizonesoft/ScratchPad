@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **15 of 108 sections complete (14%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **15 of 156 sections complete (10%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -98,49 +98,91 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §3` | Golden capture store and refresh         |   5   |
 | [x] | `D00 T02 §4` | ACP loopback fixture                     |   5   |
 | [x] | `D00 T02 §5` | Soak and quarantine procedure            |   5   |
-| [ ] | `D00 T01 §8` | Conclave-PC input capability             |   4   |
+
+> **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 
 ### Phase 1 -- Notepad parity: window, tabs, files, menus, editor
 
-|  ✔  | Section       | Deliverable                              | Items |
-| :-: | ------------- | ---------------------------------------- | :---: |
-| [x] | `D01 T01 §1`  | Main window shell with menu bar host     |   5   |
-| [x] | `D01 T01 §2`  | Tab model with dirty tracking            |   5   |
-| [x] | `D01 T01 §3`  | Tab bar UI: open, switch, reorder, close |   5   |
-| [ ] | `D01 T01 §10` | Window border parity repair              |   9   |
-| [ ] | `D01 T01 §4`  | File open with encoding detection        |   5   |
-| [ ] | `D01 T01 §5`  | File save and Save As                    |   5   |
-| [ ] | `D01 T01 §6`  | Recent files and session restore         |   6   |
-| [ ] | `D01 T01 §7`  | Dirty prompts and crash recovery         |   6   |
-| [ ] | `D01 T01 §8`  | File association and command-line open   |   5   |
-| [ ] | `D01 T02 §1`  | Menu bar with all items and enablement   |   5   |
-| [ ] | `D01 T02 §2`  | Settings store with one writer           |   5   |
-| [ ] | `D01 T02 §3`  | Settings page                            |   7   |
-| [ ] | `D01 T02 §4`  | Status bar                               |   6   |
-| [ ] | `D01 T02 §5`  | Print path                               |   4   |
-| [ ] | `D01 T02 §6`  | Menu and shortcut completeness audit     |   4   |
-| [ ] | `D02 T01 §1`  | Hosting contract with the shell          |   5   |
-| [ ] | `D02 T01 §2`  | Text buffer and caret model              |   5   |
-| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard          |   5   |
-| [ ] | `D02 T01 §4`  | Undo and redo                            |   5   |
-| [ ] | `D02 T01 §5`  | Zoom and word wrap                       |   4   |
-| [ ] | `D02 T01 §6`  | Context menu and mouse behaviors         |   4   |
-| [ ] | `D02 T01 §7`  | Large-file behavior and budget           |   5   |
-| [ ] | `D02 T02 §1`  | Search engine over the buffer            |   5   |
-| [ ] | `D02 T02 §2`  | Find bar UI                              |   4   |
-| [ ] | `D02 T02 §3`  | Replace mode                             |   4   |
-| [ ] | `D02 T02 §4`  | Go-to-line dialog                        |   4   |
-| [ ] | `D02 T02 §5`  | Options persistence and edge cases       |   4   |
-| [ ] | `D01 T01 §9`  | Multi-window with open-in mode           |   5   |
-| [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer        |   5   |
-| [ ] | `D02 T03 §2`  | Squiggles and suggestions UI             |   4   |
-| [ ] | `D02 T03 §3`  | Autocorrect                              |   4   |
-| [ ] | `D02 T03 §4`  | Global and per-file-type toggles         |   4   |
-| [ ] | `D02 T04 §1`  | Format model over the buffer             |   4   |
-| [ ] | `D02 T04 §2`  | Toolbar: inline styles and lists         |   4   |
-| [ ] | `D02 T04 §3`  | Markdown syntax and source fidelity      |   5   |
-| [ ] | `D02 T04 §4`  | Tables by toolbar and syntax             |   4   |
-| [ ] | `D02 T04 §5`  | Formatting toggle and plain-text safety  |   4   |
+|  ✔  | Section       | Deliverable                                                         | Items |
+| :-: | ------------- | ------------------------------------------------------------------- | :---: |
+| [x] | `D01 T01 §1`  | Main window shell with menu bar host                                |   5   |
+| [x] | `D01 T01 §2`  | Tab model with dirty tracking                                       |   5   |
+| [x] | `D01 T01 §3`  | Tab bar UI: open, switch, reorder, close                            |   5   |
+| [ ] | `D01 T01 §4`  | File open with encoding detection                                   |  10   |
+| [ ] | `D01 T01 §5`  | File save and Save As                                               |   5   |
+| [ ] | `D01 T01 §6`  | Recent files and session restore                                    |   6   |
+| [ ] | `D01 T01 §7`  | Dirty prompts and crash recovery                                    |   6   |
+| [ ] | `D01 T01 §8`  | File association and command-line open                              |   5   |
+| [ ] | `D01 T02 §1`  | Menu bar with all items and enablement                              |   5   |
+| [ ] | `D01 T02 §2`  | Settings store with one writer                                      |   5   |
+| [ ] | `D01 T02 §3`  | Settings page                                                       |   7   |
+| [ ] | `D01 T02 §4`  | Status bar                                                          |   6   |
+| [ ] | `D01 T02 §5`  | Print path                                                          |   4   |
+| [ ] | `D01 T02 §6`  | Menu and shortcut completeness audit                                |   4   |
+| [ ] | `D01 T02 §7`  | Reading level in the status bar                                     |   4   |
+| [ ] | `D01 T02 §8`  | Command palette                                                     |   6   |
+| [ ] | `D01 T02 §9`  | Live counts in the status bar                                       |   5   |
+| [ ] | `D01 T02 §10` | Custom accent themes                                                |   5   |
+| [ ] | `D01 T02 §11` | Session word goal                                                   |   4   |
+| [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   5   |
+| [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |   5   |
+| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |   5   |
+| [ ] | `D02 T01 §4`  | Undo and redo                                                       |   5   |
+| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   4   |
+| [ ] | `D02 T01 §6`  | Context menu and mouse behaviors                                    |   4   |
+| [ ] | `D02 T01 §7`  | Large-file behavior and budget                                      |   5   |
+| [ ] | `D02 T01 §8`  | Selection utilities: case, sort, dedupe                             |   6   |
+| [ ] | `D02 T01 §9`  | Synonym picker                                                      |   5   |
+| [ ] | `D02 T01 §10` | Readability heatmap                                                 |   4   |
+| [ ] | `D02 T01 §11` | Text utilities: format, encode, normalize, slugify, inspect, tables |   9   |
+| [ ] | `D02 T01 §12` | Bookmarked lines                                                    |   5   |
+| [ ] | `D02 T01 §13` | Column selection                                                    |   5   |
+| [ ] | `D02 T01 §14` | Smart paste                                                         |   5   |
+| [ ] | `D02 T01 §15` | Clickable URLs                                                      |   5   |
+| [ ] | `D02 T01 §16` | Split view                                                          |   6   |
+| [ ] | `D02 T01 §17` | Distraction-free focus mode                                         |   4   |
+| [ ] | `D02 T01 §18` | Copy as Markdown, HTML, plain text                                  |   4   |
+| [ ] | `D02 T01 §19` | Side-by-side tab diff                                               |   6   |
+| [ ] | `D02 T02 §1`  | Search engine over the buffer                                       |   5   |
+| [ ] | `D02 T02 §2`  | Find bar UI                                                         |   4   |
+| [ ] | `D02 T02 §3`  | Replace mode                                                        |   4   |
+| [ ] | `D02 T02 §4`  | Go-to-line dialog                                                   |   4   |
+| [ ] | `D02 T02 §5`  | Options persistence and edge cases                                  |   4   |
+| [ ] | `D02 T02 §6`  | Find across all open tabs                                           |   5   |
+| [ ] | `D01 T01 §9`  | Multi-window with open-in mode                                      |   5   |
+| [ ] | `D01 T01 §11` | App icon wiring                                                     |   4   |
+| [ ] | `D01 T01 §13` | Pinned tabs                                                         |   4   |
+| [ ] | `D01 T01 §14` | Text statistics panel                                               |   5   |
+| [ ] | `D01 T01 §16` | File snapshots                                                      |   5   |
+| [ ] | `D01 T01 §17` | New-file templates                                                  |   4   |
+| [ ] | `D01 T01 §18` | Copy and export as Markdown, HTML, plain text                       |   4   |
+| [ ] | `D01 T01 §19` | Encrypted notes                                                     |   6   |
+| [ ] | `D01 T01 §20` | Backup on save                                                      |   4   |
+| [ ] | `D01 T01 §21` | Reload prompt on external change                                    |   5   |
+| [ ] | `D01 T01 §22` | First-line titles for untitled tabs                                 |   3   |
+| [ ] | `D01 T01 §24` | Share target                                                        |   3   |
+| [ ] | `D01 T01 §25` | Jump list tasks                                                     |   5   |
+| [ ] | `D01 T01 §26` | Protocol handler                                                    |   4   |
+| [ ] | `D01 T01 §28` | UIA tab accessibility names                                         |   3   |
+| [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   5   |
+| [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   4   |
+| [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |
+| [ ] | `D02 T03 §4`  | Global and per-file-type toggles                                    |   4   |
+| [ ] | `D02 T04 §1`  | Format model over the buffer                                        |   4   |
+| [ ] | `D02 T04 §2`  | Toolbar: inline styles and lists                                    |   4   |
+| [ ] | `D02 T04 §3`  | Markdown syntax and source fidelity                                 |   5   |
+| [ ] | `D02 T04 §4`  | Tables by toolbar and syntax                                        |   4   |
+| [ ] | `D02 T04 §5`  | Formatting toggle and plain-text safety                             |   4   |
+| [ ] | `D02 T05 §1`  | Grammar engine over the buffer                                      |   5   |
+| [ ] | `D02 T05 §2`  | Grammar underlines and cards                                        |   4   |
+| [ ] | `D02 T05 §3`  | Grammar toggle and scope                                            |   4   |
+| [ ] | `D02 T05 §4`  | Style lints: passive voice and weasel words                         |   5   |
+
+> **Moved:** `D01 T01 §12` -- 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md (D02 T01 §16; phase-1 run 2 cycle repair: split needs live editor views, which cannot exist behind the T01-whole gate; in-tree move, the D02 row carries the work and this row is skipped so it counts once).
+> **Moved:** `D01 T01 §15` -- 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md (D02 T01 §17; phase-1 run 2 cycle repair: paragraph emphasis needs the rendered surface, which cannot exist behind the T01-whole gate; in-tree move, the D02 row carries the work and this row is skipped so it counts once).
+> **Moved:** `D01 T01 §23` -- 2026-09-14 to todo/02-editor/TODO-01-editing-surface.md (D02 T01 §19; phase-1 run 2 cycle repair: diffing open tabs needs buffer content plus the moved split, neither behind the T01-whole gate; in-tree move, the D02 row carries the work and this row is skipped so it counts once).
+
+> **Moved:** `D01 T01 §10` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; the border defect was VM-session-only and the host renders stock parity, proven by FreshCaptureMatchesGolden green plus local pixel inspection).
 
 ### Phase 2 -- Protocol and agents: ACP client, launch, sessions
 
@@ -171,38 +213,51 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D04 T02 §3` | Session resume and delete                    |   4   |
 | [ ] | `D04 T02 §4` | Session close and cleanup                    |   4   |
 | [ ] | `D04 T02 §5` | Session log                                  |   4   |
+| [ ] | `D04 T02 §6` | Per-file sidecar instructions                |   4   |
 
 ### Phase 3 -- AI surface and quality: panel, consent, conformance
 
-|  ✔  | Section      | Deliverable                                    | Items |
-| :-: | ------------ | ---------------------------------------------- | :---: |
-| [ ] | `D05 T01 §1` | Panel shell and transcript contract            |   4   |
-| [ ] | `D05 T01 §2` | Streaming transcript rendering                 |   5   |
-| [ ] | `D05 T01 §3` | Input, send, and stop                          |   4   |
-| [ ] | `D05 T01 §4` | Turn states and cancellation UX                |   4   |
-| [ ] | `D05 T01 §5` | Agent picker and history                       |   4   |
-| [ ] | `D05 T01 §6` | Panel and editor coexistence                   |   4   |
-| [ ] | `D05 T02 §1` | Permission prompt surface                      |   5   |
-| [ ] | `D05 T02 §2` | Tool-call and plan display                     |   4   |
-| [ ] | `D05 T02 §3` | Diff review                                    |   4   |
-| [ ] | `D05 T02 §4` | Apply to editor through undo                   |   5   |
-| [ ] | `D05 T02 §5` | Elicitation forms                              |   4   |
-| [ ] | `D05 T02 §6` | Selection actions: explain, rewrite, summarize |   6   |
-| [ ] | `D06 T01 §1` | Strategy doc with layers and bars              |   4   |
-| [ ] | `D06 T01 §2` | Coverage floors enforced in CI                 |   5   |
-| [ ] | `D06 T01 §3` | Notepad parity UI suites                       |   5   |
-| [ ] | `D06 T01 §4` | AI surface UI suites                           |   4   |
-| [ ] | `D06 T01 §5` | Perf budgets enforced in CI                    |   4   |
-| [ ] | `D06 T01 §6` | Flake policy and quarantine operation          |   4   |
-| [ ] | `D06 T02 §1` | Scripted agent library                         |   4   |
-| [ ] | `D06 T02 §2` | Schema pin and drift detection                 |   4   |
-| [ ] | `D06 T02 §3` | Version matrix (v1 and v2)                     |   4   |
-| [ ] | `D06 T02 §4` | Adapter compatibility schedule                 |   5   |
-| [ ] | `D05 T03 §1` | Agent status bar                               |   4   |
-| [ ] | `D05 T03 §2` | Per-tab pane with document context             |   5   |
-| [ ] | `D05 T03 §3` | Slash commands                                 |   5   |
-| [ ] | `D05 T03 §4` | Agent management panel                         |   4   |
-| [ ] | `D05 T03 §5` | Token usage display                            |   4   |
+|  ✔  | Section      | Deliverable                                     | Items |
+| :-: | ------------ | ----------------------------------------------- | :---: |
+| [ ] | `D05 T01 §1` | Panel shell and transcript contract             |   4   |
+| [ ] | `D05 T01 §2` | Streaming transcript rendering                  |   5   |
+| [ ] | `D05 T01 §3` | Input, send, and stop                           |   4   |
+| [ ] | `D05 T01 §4` | Turn states and cancellation UX                 |   4   |
+| [ ] | `D05 T01 §5` | Agent picker and history                        |   4   |
+| [ ] | `D05 T01 §6` | Panel and editor coexistence                    |   4   |
+| [ ] | `D05 T01 §7` | Chat export to Markdown                         |   4   |
+| [ ] | `D05 T02 §1` | Permission prompt surface                       |   5   |
+| [ ] | `D05 T02 §2` | Tool-call and plan display                      |   4   |
+| [ ] | `D05 T02 §3` | Diff review                                     |   4   |
+| [ ] | `D05 T02 §4` | Apply to editor through undo                    |   5   |
+| [ ] | `D05 T02 §5` | Elicitation forms                               |   4   |
+| [ ] | `D05 T02 §6` | Selection actions: explain, rewrite, summarize  |   6   |
+| [ ] | `D05 T02 §7` | Document actions: translate, extract, summarize |   7   |
+| [ ] | `D05 T02 §8` | Continue writing with ghost drafts              |   6   |
+| [ ] | `D05 T02 §9` | Agent title suggestions for untitled tabs       |   4   |
+| [ ] | `D06 T01 §1` | Strategy doc with layers and bars               |   4   |
+| [ ] | `D06 T01 §2` | Coverage floors enforced in CI                  |   5   |
+| [ ] | `D06 T01 §3` | Notepad parity UI suites                        |   5   |
+| [ ] | `D06 T01 §4` | AI surface UI suites                            |   4   |
+| [ ] | `D06 T01 §5` | Perf budgets enforced in CI                     |   4   |
+| [ ] | `D06 T01 §6` | Flake policy and quarantine operation           |   4   |
+| [ ] | `D06 T02 §1` | Scripted agent library                          |   4   |
+| [ ] | `D06 T02 §2` | Schema pin and drift detection                  |   4   |
+| [ ] | `D06 T02 §3` | Version matrix (v1 and v2)                      |   4   |
+| [ ] | `D06 T02 §4` | Adapter compatibility schedule                  |   5   |
+| [ ] | `D05 T03 §1` | Agent status bar                                |   4   |
+| [ ] | `D05 T03 §2` | Per-tab pane with document context              |   5   |
+| [ ] | `D05 T03 §3` | Slash commands                                  |   5   |
+| [ ] | `D05 T03 §4` | Agent management panel                          |   4   |
+| [ ] | `D05 T03 §5` | Token usage display                             |   4   |
+| [ ] | `D08 T01 §1` | Kokoro TTS embedded                             |   5   |
+| [ ] | `D08 T01 §2` | Audio transcode and provisioning                |   4   |
+| [ ] | `D08 T01 §3` | Whisper STT embedded                            |   5   |
+| [ ] | `D08 T01 §4` | Provider interface with OpenRouter              |   5   |
+| [ ] | `D08 T02 §1` | Read-aloud UI with MP3                          |   5   |
+| [ ] | `D08 T02 §2` | Dictate and transcribe UI                       |   5   |
+| [ ] | `D08 T02 §3` | Provider settings and consent                   |   5   |
+| [ ] | `D08 T02 §4` | Voice menus and shortcuts                       |   4   |
 
 ### Phase 4 -- Release: packaging, install, update
 
@@ -214,3 +269,4 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D07 T01 §4` | Release checklist             |   4   |
 | [ ] | `D07 T01 §5` | First signed release          |   4   |
 | [ ] | `D07 T01 §6` | Store and WinGet distribution |   4   |
+| [ ] | `D07 T01 §7` | Share target registration     |   4   |

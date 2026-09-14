@@ -208,13 +208,15 @@ Why this section exists: the plan is load-bearing, so a broken plan must fail th
 
 ## 8. Conclave-PC Input Capability for Automation
 
+> **Moved:** 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
+
 Why this section exists: the shared VM refuses both input interception (`SetWindowsHookEx` fails Win32 error 5, which crashed the app until the degrade fix) and synthetic input (`SendInput` fails Win32 error 5 even from high-integrity processes on the Default desktop, failing 6 UI tests), with only Windows Defender installed. The suite's real-input drives cannot run there until the denying mechanism is identified and the narrowest host change applied.
 
 **Needs:** Windows host (build/test)
 
-- [ ] Found 2026-09-14: identify the mechanism refusing `SetWindowsHookEx` (`src/IntelligentNotepad/MiddleClickHook.cs`) and `SendInput` (`tests/UI/TabBarTests.cs` `Press`) on Conclave-PC: Defender ASR or exploit-protection rule, GPO, or hardening agent, with the exact rule named. Done when: the denying rule is named with its configuration path.
-- [ ] Apply the narrowest host change (a scoped exclusion or single-rule exception, never a blanket disable) and record it in `docs/testing.md`. Done when: the hook probe succeeds and `dotnet test tests/UI --filter ThreeTabsSwitchAndClose` passes on Conclave-PC.
-- [ ] Re-run the full UI suite on Conclave-PC and confirm the input failures plus the hook skip clear with no new failures. Done when: `dotnet test tests/UI` shows 18/18 on the VM.
+- [ ] ~~Found 2026-09-14: identify the mechanism refusing `SetWindowsHookEx` (`src/IntelligentNotepad/MiddleClickHook.cs`) and `SendInput` (`tests/UI/TabBarTests.cs` `Press`) on Conclave-PC: Defender ASR or exploit-protection rule, GPO, or hardening agent, with the exact rule named. Done when: the denying rule is named with its configuration path.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Apply the narrowest host change (a scoped exclusion or single-rule exception, never a blanket disable) and record it in `docs/testing.md`. Done when: the hook probe succeeds and `dotnet test tests/UI --filter ThreeTabsSwitchAndClose` passes on Conclave-PC.~~ Moved 2026-09-14 to docs/testing.md.
+- [ ] ~~Re-run the full UI suite on Conclave-PC and confirm the input failures plus the hook skip clear with no new failures. Done when: `dotnet test tests/UI` shows 18/18 on the VM.~~ Moved 2026-09-14 to docs/testing.md.
 - [ ] Commit: `"workspace: enable input capability on Conclave-PC"`
 
 **Test checkpoint:** Hook probe true, `SendInput` injects, full UI suite green on the VM; the host change recorded and minimal. Cheaper substitute that fails: disabling real-time protection host-wide instead of the narrow exclusion.

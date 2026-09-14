@@ -26,6 +26,7 @@ Domains are numbered in **allocation order**. `DNN TNN §N` cross-references enc
 | 05 | [AI Surface](./05-ai-surface/INDEX.md) | 3 | Chat panel, permission prompts, diff review and apply. New build, no Notepad counterpart. |
 | 06 | [Quality](./06-quality/INDEX.md) | 3 | Automated test strategy, UI automation, ACP conformance harness. Testing is automatic and complete. |
 | 07 | [Release](./07-release/INDEX.md) | 4 | MSIX packaging, install/update, release checklist. |
+| 08 | [Voice](./08-voice/INDEX.md) | 8 | Embedded speech engines, voice surface. |
 
 The Phase column is the original coarse domain grouping, not an executable schedule. Current dependency-safe sequencing and live counts come only from [`implementation-plan.md`](./implementation-plan.md) plus `python3 scripts/todo-graph.py query stats`. Do not infer readiness from a domain number or repeat fixed totals here.
 
@@ -58,6 +59,7 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [02 Editor] [TODO-02 Find, Replace and Go To](./02-editor/TODO-02-find-replace-goto.md) -- find/replace bar and go-to-line with Notepad behavior.
 - [02 Editor] [TODO-03 Spellcheck and Autocorrect](./02-editor/TODO-03-spellcheck-autocorrect.md) -- squiggles, suggestions, autocorrect, per-file-type toggles.
 - [02 Editor] [TODO-04 Lightweight Formatting](./02-editor/TODO-04-lightweight-formatting.md) -- formatting toolbar, Markdown, tables.
+- [02 Editor] [TODO-05 Grammar Checking](./02-editor/TODO-05-grammar-checking.md) -- offline grammar and style checks, blue underlines with explanations, toggles.
 - [03 ACP Client] [TODO-01 Transport and Lifecycle](./03-acp-client/TODO-01-acp-transport-lifecycle.md) -- JSON-RPC over stdio, initialize, session/new, prompt turns, cancellation.
 - [03 ACP Client] [TODO-02 Client Methods](./03-acp-client/TODO-02-acp-client-methods.md) -- session/request_permission, fs methods, terminals surface.
 - [03 ACP Client] [TODO-03 v2 Readiness](./03-acp-client/TODO-03-acp-v2-readiness.md) -- version negotiation, v2 behind flags, migration path.
@@ -69,6 +71,8 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [06 Quality] [TODO-01 Automated Test Strategy](./06-quality/TODO-01-automated-test-strategy.md) -- what automatic and complete means here: layers, coverage bar, UI automation suites, flake policy.
 - [06 Quality] [TODO-02 ACP Conformance Harness](./06-quality/TODO-02-acp-conformance-harness.md) -- scripted fake agents, schema validation, session fixtures, adapter compatibility matrix.
 - [07 Release] [TODO-01 Packaging and Update](./07-release/TODO-01-packaging-and-update.md) -- MSIX packaging, clean-machine install test, update channel, release checklist.
+- [08 Voice] [TODO-01 Voice Engines](./08-voice/TODO-01-voice-engines.md) -- Kokoro TTS, Whisper STT, MP3 transcode, OpenRouter provider interface.
+- [08 Voice] [TODO-02 Voice Surface](./08-voice/TODO-02-voice-surface.md) -- read-aloud, dictate, transcribe, provider settings.
 
 ## Completed TODOs
 

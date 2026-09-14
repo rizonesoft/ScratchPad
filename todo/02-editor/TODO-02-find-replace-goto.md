@@ -26,9 +26,9 @@ track: N2
 - Go-to-line lands on the right line with Notepad's validation and errors.
 - Search never mutates the buffer except through replace, which is undoable.
 
-**Adjacency:** list=not-applicable (no lists in this file); document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=not-applicable (no import/export in this file); reverse=applicable @ D02 T01 §4
+**Adjacency:** list=applicable @ D02 T02 §6; document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=not-applicable (no import/export in this file); reverse=applicable @ D02 T01 §4
 
-**Adjacency rationale:** Find options persist through the D01 store; replace is undone through the D02 undo stack.
+**Adjacency rationale:** Find options persist through the D01 store; replace is undone through the D02 undo stack. The cross-tab results list is the list.
 
 ## Implementation Order
 
@@ -39,6 +39,7 @@ track: N2
 |   3   |   §3    | Replace mode | §2 |  [ ]   |
 |   4   |   §4    | Go-to-line dialog | D02 T01 §2 |  [ ]   |
 |   5   |   §5    | Options persistence and edge cases | §2, §4 |  [ ]   |
+|   6   |   §6    | Find across all open tabs | §1, §2 |  [ ]   |
 
 ---
 
@@ -129,6 +130,28 @@ Why this section exists: find options persist across sessions in Notepad, and th
 - [ ] Commit: `"editor: persist find options and cover edge cases"`
 
 **Test checkpoint:** Persistence driven; perf budget measured in CI; combination fixtures green. Cheaper substitute that fails: options kept in memory only.
+
+## 6. Find Across All Open Tabs
+
+Why this section exists: one search, every open tab, a results list, one-click jumps.
+
+**Fidelity:** new build, no baseline (stock Notepad searches one tab).
+
+**Job:** The user can search all open tabs at once. Consumer: the results list, which jumps on click; the search engine (§1), which runs per buffer.
+
+**Treatment:** The §1 engine runs over every open buffer; matches gather in a results list with tab, line, and context; one click jumps. Cheaper substitute that fails the checkpoint: tab-by-tab search with a tally.
+
+**Chrome:** Consume the shared list styles. Do not invent a second results treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Search runs over every open buffer through §1. Done when: matches in each tab are found under host drive.
+- [ ] The results list shows tab, line, and context per match. Done when: the list matches fixtures exactly.
+- [ ] One click jumps to the match with the tab activated. Done when: jumps land on the right tab and line.
+- [ ] Scope stays open tabs only; files on disk are out. Done when: the negative test passes.
+- [ ] Commit: `"editor: find across open tabs"`
+
+**Test checkpoint:** multi-buffer search, results list, jumps, and open-only scope are all driven in the room. Cheaper substitute that fails: results that jump nowhere.
 
 ## Verification
 

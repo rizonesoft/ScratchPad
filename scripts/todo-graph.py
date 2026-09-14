@@ -891,7 +891,9 @@ def unmet_dependencies(
     A whole-TODO dependency is complete only when every numbered section in
     that TODO is [x]. An EMPTY prerequisite TODO is unmet: nothing shipped is
     not everything shipped, and `all()` over an empty set must not open the
-    gate accidentally.
+    gate accidentally. A section carrying `> **Moved:**` counts as done for
+    this gate: its row can never flip here, so holding the file edge on it
+    would stall whole-TODO dependents forever.
     """
     if sec_num not in target.sections:
         # Callers gate on membership first (resolve/classify exit 1, query
@@ -937,7 +939,9 @@ def unmet_dependencies(
                 }
             )
             continue
-        open_secs = sorted(n for n, x in dt.sections.items() if x.status != "x")
+        open_secs = sorted(
+            n for n, x in dt.sections.items() if x.status != "x" and not x.moved
+        )
         if open_secs or not dt.sections:
             ddom = dt.domain.split("-")[0]
             first = f"§{open_secs[0]}" if open_secs else "no sections"
@@ -3045,6 +3049,28 @@ depends_on: ["self-test-dep-source"]
         check(
             "mixed section becomes ready with the same flip",
             resolve_exit_code("D90 T07 §2", rtodos),
+            0,
+        )
+        # Moved: the source's only open section leaves the tree (row stays
+        # [ ], work struck); the consumer becomes ready WITHOUT editing the
+        # consumer, or whole-TODO dependents would wait on moved work forever.
+        dep_src.write_text(
+            dep_source_text(" ").replace(
+                "## 2. Open half\n",
+                "## 2. Open half\n\n"
+                "> **Moved:** 2026-01-02 to docs/testing.md (fixture).\n",
+            ),
+            encoding="utf-8",
+        )
+        mtodos = load_todos()
+        check(
+            "a moved open section does not block the whole-TODO consumer",
+            resolve_exit_code("D90 T07 §1", mtodos),
+            0,
+        )
+        check(
+            "mixed section ready when its row edge moved out",
+            resolve_exit_code("D90 T07 §2", mtodos),
             0,
         )
         # Empty and unknown sources are UNMET, never accidentally satisfied.

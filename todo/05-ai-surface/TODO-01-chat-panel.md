@@ -27,9 +27,9 @@ track: A3
 - Input, agent picker, history, and cancellation all work with keyboard and mouse.
 - The panel never blocks the editor: both stay live during a turn.
 
-**Adjacency:** list=applicable @ D05 T01 §5; document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (no reports in this file); notifications=not-applicable (turn completion is in-panel state, not a notification); permissions=applicable @ D05 T02 §1; audit=applicable @ D03 T02 §5; exchange=not-applicable (no import/export in this file); reverse=applicable @ D05 T01 §4
+**Adjacency:** list=applicable @ D05 T01 §5; document=not-applicable (no printed output in this file); settings=applicable @ D01 T02 §2; reporting=not-applicable (no reports in this file); notifications=not-applicable (turn completion is in-panel state, not a notification); permissions=applicable @ D05 T02 §1; audit=applicable @ D03 T02 §5; exchange=applicable @ D05 T01 §7; reverse=applicable @ D05 T01 §4
 
-**Adjacency rationale:** History is the list; cancelling a turn is the reversal; grants audit in D03; AI settings persist through the D01 store.
+**Adjacency rationale:** History is the list; cancelling a turn is the reversal; grants audit in D03; AI settings persist through the D01 store. §7 exports transcripts through the D01 file writer.
 
 ## Implementation Order
 
@@ -41,6 +41,7 @@ track: A3
 |   4   |   §4    | Turn states and cancellation UX | §2, §3 |  [ ]   |
 |   5   |   §5    | Agent picker and history | §1 |  [ ]   |
 |   6   |   §6    | Panel and editor coexistence | §2, §3 |  [ ]   |
+|   7   |   §7    | Chat export to Markdown | §1, D01 T01 §5 |  [ ]   |
 
 ---
 
@@ -158,6 +159,27 @@ Why this section exists: the panel must never break the editor. Both stay live, 
 - [ ] Commit: `"ai-surface: keep panel and editor live together"`
 
 **Test checkpoint:** Focus, concurrency, and layout tests green. Cheaper substitute that fails: coexistence claimed without a concurrency test.
+
+## 7. Chat Export to Markdown
+
+Why this section exists: any agent transcript saves as a Markdown file in one click.
+
+**Fidelity:** new build, no baseline (no stock counterpart; judged on its own contract).
+
+**Job:** The user can export a transcript as Markdown. Consumer: the file writer (D01 T01 §5), which saves the export.
+
+**Treatment:** One click renders the §1 transcript (turns, code blocks, timestamps) to Markdown and saves through the file dialog. Cheaper substitute that fails the checkpoint: copy-paste instructions instead of an export.
+
+**Chrome:** Consume the shared panel styles. Do not invent a second export treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] One click exports the current transcript to Markdown. Done when: the click path is driven.
+- [ ] Turns, code blocks, and timestamps render faithfully. Done when: fixtures match exactly.
+- [ ] The export saves through D01 T01 §5's dialog. Done when: the save path is driven.
+- [ ] Commit: `"ai-surface: export chats to Markdown"`
+
+**Test checkpoint:** one-click path, faithful render, and save are all driven in the room. Cheaper substitute that fails: an export that drops turns.
 
 ## Verification
 

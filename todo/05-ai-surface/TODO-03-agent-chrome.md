@@ -20,6 +20,7 @@ track: A3
 - [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) -- prior art (non-authoritative): proof that ACP fits a native desktop app. Selection actions and apply-to-editor are owned in `D05 T02`.
 - [`05-ai-surface/TODO-01-chat-panel.md`](./TODO-01-chat-panel.md) -- the panel this chrome surrounds
 - [`04-agents/TODO-02-agent-sessions-auth.md`](../04-agents/TODO-02-agent-sessions-auth.md) -- the sessions the management panel lists
+- -> XREF: D01 T02 §8 -- the palette lists this file's slash surface without reimplementing it
 
 ## Outcome
 

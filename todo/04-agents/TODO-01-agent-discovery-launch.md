@@ -49,7 +49,7 @@ Why this section exists: "no agents found" must mean none are installed, not tha
 - [ ] `src/Notepad.Agents/AgentDetector.cs` finds `codex-acp` and `claude-agent-acp` on PATH and in their documented install locations. Done when: the detection matrix passes on fixtures.
 - [ ] Each found agent reports its version and protocol versions. Done when: the version probe is tested.
 - [ ] Detection rescans on demand and on a committed trigger (startup, settings change). Done when: install-then-rescan is tested.
-- [ ] Unknown but ACP-shaped binaries are listed as unverified, never silently ignored or trusted. Done when: the unverified path is tested.
+- [ ] The detector lists unknown but ACP-shaped binaries as unverified, never silently ignoring or trusting them. Done when: the unverified path is tested.
 - [ ] Commit: `"agents: detect installed agents with versions"`
 
 **Test checkpoint:** Detection matrix green on fixtures; rescan proven; unverified binaries listed honestly. Cheaper substitute that fails: hardcoding two PATH lookups.

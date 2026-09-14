@@ -18,6 +18,7 @@ track: R1
 ## Inputs
 
 - [`00-workspace/TODO-01-repo-and-toolchain.md`](../00-workspace/TODO-01-repo-and-toolchain.md) -- the build this file packages
+- -> XREF: D01 T01 §11 -- the app icon asset this package consumes for its visuals
 
 ## Outcome
 
@@ -39,6 +40,7 @@ track: R1
 |   4   |   §4    | Release checklist | §3 |  [ ]   |
 |   5   |   §5    | First signed release | §4 |  [ ]   |
 |   6   |   §6    | Store and WinGet distribution | §1 |  [ ]   |
+|   7   |   §7    | Share target registration | §1, D01 T01 §24 |  [ ]   |
 
 ---
 
@@ -74,7 +76,7 @@ Why this section exists: updates must arrive and must be survivable. A failed up
 **Groomed 2026-09-13:** Notepad audit: the post-update What's New notes surface is now explicit.
 
 - [ ] The update channel (store or self-hosted, chosen here) delivers updates with the choice recorded. Done when: the choice and its rationale are written.
-- [ ] A failed or interrupted update rolls back to the previous working version. Done when: the rollback test passes.
+- [ ] A failed or interrupted update produces a rollback to the previous working version. Done when: the rollback test passes.
 - [ ] The user is notified of updates per the committed policy, never force-restarted mid-work. Done when: the policy is written and tested.
 - [ ] Post-update What's New notes surface per the notification policy with a revisitable entry as captured. Done when: the notes and entry are driven. Source: https://blogs.windows.com/windows-insider/2026/01/21/notepad-and-paint-updates-begin-rolling-out-to-windows-insiders/
 - [ ] Commit: `"release: ship updates with rollback"`
@@ -113,6 +115,27 @@ Why this section exists: users install from the Store and WinGet. The channels a
 - [ ] Commit: `"release: distribute through Store and WinGet"`
 
 **Test checkpoint:** Store and WinGet installs driven on clean VMs; version lockstep in the checklist. Cheaper substitute that fails: a release page download link called distribution.
+
+## 7. Share Target Registration
+
+Why this section exists: the share contract needs package identity, which only exists here. Split from D01 T01 §24 by phase-1 run 2: registration lives here, the receive path stays there.
+
+**Fidelity:** new build, no baseline (OS integration, judged on its own contract).
+
+**Job:** The user can share text from other apps into ours. Consumer: the OS share sheet, which lists us; the receive path (D01 T01 §24), which takes the text.
+
+**Treatment:** The package declares `windows.shareTarget`; activation routes the shared text into §24's receive. Cheaper substitute that fails the checkpoint: registration that launches a blank window.
+
+**Chrome:** No new surface; the share sheet is the surface.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The package declares the share-target extension. Done when: the manifest names it.
+- [ ] The app appears in the share sheet. Done when: driven on a packaged install.
+- [ ] Shared text routes to D01 T01 §24's receive path. Done when: the activation is driven end to end.
+- [ ] Commit: `"release: register the share target"`
+
+**Test checkpoint:** declaration, sheet presence, and routed receive are all driven in the room. Cheaper substitute that fails: a target that eats shares silently.
 
 ## Verification
 
