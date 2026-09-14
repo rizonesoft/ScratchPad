@@ -44,6 +44,7 @@ track: N1
 |   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [ ]   |
 |   8   |   §8    | File association and command-line open | §4, §6 |  [ ]   |
 |   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [ ]   |
+|  10   |   §10   | Window border parity repair | §1 |  [ ]   |
 
 ---
 
@@ -266,6 +267,31 @@ Why this section exists: Notepad opens new windows, and the "Opening files" sett
 - [ ] Commit: `"notepad-core: support multiple windows"`
 
 **Test checkpoint:** New window, open-in modes, isolation, and multi-window restore driven. Cheaper substitute that fails: multi-window that shares one tab list.
+
+## 10. Window Border Parity Repair
+
+Why this section exists: the operator viewed the running app over RDP on Conclave-PC and reported the window border renders wrong. §1 shipped the frame green on CI, so this is new granularity on shipped work, not a §1 reopen. The app itself runs correctly there since the hook-degrade fix (window `Untitled - Intelligent Notepad` verified live in the console session): only the border chrome is in question.
+
+**Fidelity:** Notepad main window border -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` and its `-light-` twin. Border thickness, color, and corner radius match the capture on every side.
+
+**Job:** The user can open the app to a window whose border is indistinguishable from Notepad's. Consumer: none, this surface is the consumer.
+
+**Treatment:** Root-cause repair of the frame style; the diagnosis names the exact setting. Cheaper substitute that fails the checkpoint: a cosmetic overlay that matches at one size or theme.
+
+**Chrome:** Consume the shared Notepad-matched styles. Do not invent a second window frame.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Capture the defect on Conclave-PC with a viewer attached: open RDP or vmconnect to the console session, keep it visible, and capture via the in-session GDI routine (`build/shot2.ps1` pattern on the guest). Done when: a non-black capture shows our window and the wrong border is described in pixels (thickness, color, radius, affected sides). Cheaper substitute that fails: diagnosing from the one-line operator report without a capture. Source: operator RDP observation 2026-09-14.
+- [ ] Compare the border against `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` plus the `-light-` twin. Done when: every differing border attribute is listed with stock-vs-ours measurements.
+- [ ] Locate the root cause in `src/IntelligentNotepad/MainWindow.xaml` and `src/IntelligentNotepad/MainWindow.xaml.cs` (frame style, `ExtendsContentIntoTitleBar`, `AppWindow`/`OverlappedPresenter` settings, Mica brush, theme seam). Done when: the single setting or style producing the wrong border is named with its code reference, and sibling causes (DPI, theme, presenter) are ruled out with evidence.
+- [ ] Fix at the root cause in the app sources: no overlay, mask, or per-host special case. Done when: the change is the minimal edit the diagnosis names and the comment cites the stock behavior. Cheaper substitute that fails: padding or a repaint that matches at one DPI only.
+- [ ] Re-capture on Conclave-PC with the viewer attached and compare border pixels against the stock capture. Done when: the fresh capture matches stock on every attribute listed in item 2.
+- [ ] Extend `tests/UI/GoldenComparisonTests.cs` if the border region sat outside the compared area; refresh the golden only if the old golden froze the defect, recording why. Done when: the suite asserts the corrected border and `dotnet test tests/UI` is green on Conclave-PC with no new skips.
+- [ ] Record the VM capture procedure (a viewer must stay attached; headless GDI reads black) in `docs/testing.md`. Done when: a cold agent captures pixels by following the doc.
+- [ ] Commit: `"notepad-core: repair the window border to stock parity"`
+
+**Test checkpoint:** A Conclave-PC capture of our window matches the stock border capture attribute-for-attribute; `dotnet test tests/UI` green on Conclave-PC; the headless-black cause recorded. Cheaper substitute that fails: a fix verified only on CI's 800x600 dark render.
 
 ## Verification
 

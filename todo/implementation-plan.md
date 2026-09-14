@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **15 of 106 sections complete (14%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **15 of 107 sections complete (14%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -101,44 +101,45 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 1 -- Notepad parity: window, tabs, files, menus, editor
 
-|  ✔  | Section      | Deliverable                              | Items |
-| :-: | ------------ | ---------------------------------------- | :---: |
-| [x] | `D01 T01 §1` | Main window shell with menu bar host     |   5   |
-| [x] | `D01 T01 §2` | Tab model with dirty tracking            |   5   |
-| [x] | `D01 T01 §3` | Tab bar UI: open, switch, reorder, close |   5   |
-| [ ] | `D01 T01 §4` | File open with encoding detection        |   5   |
-| [ ] | `D01 T01 §5` | File save and Save As                    |   5   |
-| [ ] | `D01 T01 §6` | Recent files and session restore         |   6   |
-| [ ] | `D01 T01 §7` | Dirty prompts and crash recovery         |   6   |
-| [ ] | `D01 T01 §8` | File association and command-line open   |   5   |
-| [ ] | `D01 T02 §1` | Menu bar with all items and enablement   |   5   |
-| [ ] | `D01 T02 §2` | Settings store with one writer           |   5   |
-| [ ] | `D01 T02 §3` | Settings page                            |   7   |
-| [ ] | `D01 T02 §4` | Status bar                               |   6   |
-| [ ] | `D01 T02 §5` | Print path                               |   4   |
-| [ ] | `D01 T02 §6` | Menu and shortcut completeness audit     |   4   |
-| [ ] | `D02 T01 §1` | Hosting contract with the shell          |   5   |
-| [ ] | `D02 T01 §2` | Text buffer and caret model              |   5   |
-| [ ] | `D02 T01 §3` | Rendering, selection, clipboard          |   5   |
-| [ ] | `D02 T01 §4` | Undo and redo                            |   5   |
-| [ ] | `D02 T01 §5` | Zoom and word wrap                       |   4   |
-| [ ] | `D02 T01 §6` | Context menu and mouse behaviors         |   4   |
-| [ ] | `D02 T01 §7` | Large-file behavior and budget           |   5   |
-| [ ] | `D02 T02 §1` | Search engine over the buffer            |   5   |
-| [ ] | `D02 T02 §2` | Find bar UI                              |   4   |
-| [ ] | `D02 T02 §3` | Replace mode                             |   4   |
-| [ ] | `D02 T02 §4` | Go-to-line dialog                        |   4   |
-| [ ] | `D02 T02 §5` | Options persistence and edge cases       |   4   |
-| [ ] | `D01 T01 §9` | Multi-window with open-in mode           |   5   |
-| [ ] | `D02 T03 §1` | Spellcheck engine over the buffer        |   5   |
-| [ ] | `D02 T03 §2` | Squiggles and suggestions UI             |   4   |
-| [ ] | `D02 T03 §3` | Autocorrect                              |   4   |
-| [ ] | `D02 T03 §4` | Global and per-file-type toggles         |   4   |
-| [ ] | `D02 T04 §1` | Format model over the buffer             |   4   |
-| [ ] | `D02 T04 §2` | Toolbar: inline styles and lists         |   4   |
-| [ ] | `D02 T04 §3` | Markdown syntax and source fidelity      |   5   |
-| [ ] | `D02 T04 §4` | Tables by toolbar and syntax             |   4   |
-| [ ] | `D02 T04 §5` | Formatting toggle and plain-text safety  |   4   |
+|  ✔  | Section       | Deliverable                              | Items |
+| :-: | ------------- | ---------------------------------------- | :---: |
+| [x] | `D01 T01 §1`  | Main window shell with menu bar host     |   5   |
+| [x] | `D01 T01 §2`  | Tab model with dirty tracking            |   5   |
+| [x] | `D01 T01 §3`  | Tab bar UI: open, switch, reorder, close |   5   |
+| [ ] | `D01 T01 §10` | Window border parity repair              |   8   |
+| [ ] | `D01 T01 §4`  | File open with encoding detection        |   5   |
+| [ ] | `D01 T01 §5`  | File save and Save As                    |   5   |
+| [ ] | `D01 T01 §6`  | Recent files and session restore         |   6   |
+| [ ] | `D01 T01 §7`  | Dirty prompts and crash recovery         |   6   |
+| [ ] | `D01 T01 §8`  | File association and command-line open   |   5   |
+| [ ] | `D01 T02 §1`  | Menu bar with all items and enablement   |   5   |
+| [ ] | `D01 T02 §2`  | Settings store with one writer           |   5   |
+| [ ] | `D01 T02 §3`  | Settings page                            |   7   |
+| [ ] | `D01 T02 §4`  | Status bar                               |   6   |
+| [ ] | `D01 T02 §5`  | Print path                               |   4   |
+| [ ] | `D01 T02 §6`  | Menu and shortcut completeness audit     |   4   |
+| [ ] | `D02 T01 §1`  | Hosting contract with the shell          |   5   |
+| [ ] | `D02 T01 §2`  | Text buffer and caret model              |   5   |
+| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard          |   5   |
+| [ ] | `D02 T01 §4`  | Undo and redo                            |   5   |
+| [ ] | `D02 T01 §5`  | Zoom and word wrap                       |   4   |
+| [ ] | `D02 T01 §6`  | Context menu and mouse behaviors         |   4   |
+| [ ] | `D02 T01 §7`  | Large-file behavior and budget           |   5   |
+| [ ] | `D02 T02 §1`  | Search engine over the buffer            |   5   |
+| [ ] | `D02 T02 §2`  | Find bar UI                              |   4   |
+| [ ] | `D02 T02 §3`  | Replace mode                             |   4   |
+| [ ] | `D02 T02 §4`  | Go-to-line dialog                        |   4   |
+| [ ] | `D02 T02 §5`  | Options persistence and edge cases       |   4   |
+| [ ] | `D01 T01 §9`  | Multi-window with open-in mode           |   5   |
+| [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer        |   5   |
+| [ ] | `D02 T03 §2`  | Squiggles and suggestions UI             |   4   |
+| [ ] | `D02 T03 §3`  | Autocorrect                              |   4   |
+| [ ] | `D02 T03 §4`  | Global and per-file-type toggles         |   4   |
+| [ ] | `D02 T04 §1`  | Format model over the buffer             |   4   |
+| [ ] | `D02 T04 §2`  | Toolbar: inline styles and lists         |   4   |
+| [ ] | `D02 T04 §3`  | Markdown syntax and source fidelity      |   5   |
+| [ ] | `D02 T04 §4`  | Tables by toolbar and syntax             |   4   |
+| [ ] | `D02 T04 §5`  | Formatting toggle and plain-text safety  |   4   |
 
 ### Phase 2 -- Protocol and agents: ACP client, launch, sessions
 
