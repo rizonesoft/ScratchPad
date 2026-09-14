@@ -187,6 +187,8 @@ Why this section exists: the second developer (or a fresh agent session) should 
 
 ## 7. TODO Graph Checks in CI
 
+> **Started:** 2026-09-14T00:41:00Z
+
 Why this section exists: the plan is load-bearing, so a broken plan must fail the build like any other defect.
 
 - [ ] CI runs `python3 scripts/todo-graph.py self-test` on every push touching `scripts/` or `todo/`. Done when: the run shows the case count and zero failures.
