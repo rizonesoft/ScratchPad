@@ -24,6 +24,10 @@ Run everything for the host OS with the `dotnet test` commands above. Run one su
 
 CI runs the same `dotnet test` commands on every push, so a red suite fails the run. Flaky tests are quarantined by procedure (T02 §5), never deleted or silently skipped.
 
+## Automation hosts
+
+The Conclave-PC Hyper-V VM is the shared UI-automation host (agent SSH plus RDP; connection details in the Conclave vault under `Conclave-PC VM`). Its policy refuses low-level mouse hooks, so the app runs there without middle-click-to-close and `MiddleClickClosesTheTabUnderTheCursor` skips with the Win32 error in the skip reason; every other UI test runs identically, and CI plus dev boxes still run the full suite with no skips.
+
 ## CI telemetry
 
 Every `build` run on `main` is measured for lag (wall plus step split; queue time runs about 5s) and quality (per-suite counts against the local run, conclusion). CI runs the identical suites with the identical tests: no test carries an xUnit `Skip`, and the Windows job runs the full solution including the UI suite's real-input drives (middle-click through `mouse_event`, cursor-travel drag, right-clicks, `SendInput` keyboard) on the runner's interactive session. Counts match the local runs exactly everywhere below; the Linux job holds steady near 35s. CI renders 800x600 dark at 100% DPI, so DPI-sensitive coverage still needs a local run (§3 phase-log note). Method: `gh run view <id> --json jobs` for the step split, `gh run view <id> --log | grep 'Passed!'` for counts. Each telemetry batch records every run since the previous batch; the batch's own run lands in the next batch.

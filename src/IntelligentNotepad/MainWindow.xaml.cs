@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
@@ -209,9 +210,24 @@ public sealed partial class MainWindow : Window, IDisposable
 
     // Loaded fires even when activation never does (CI launches never take
     // the foreground), so it backstops the install; whichever fires first wins.
+    // A host can refuse the hook outright (Conclave-PC policy fails
+    // SetWindowsHookEx): middle-click-to-close degrades away instead of
+    // taking the app down, and the UI suite skips that test there.
     private void InstallMiddleClickHook()
     {
-        middleClick ??= new MiddleClickHook(WindowNative.GetWindowHandle(this), OnMiddleDown, DispatcherQueue);
+        if (middleClick is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            middleClick = new MiddleClickHook(WindowNative.GetWindowHandle(this), OnMiddleDown, DispatcherQueue);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Debug.WriteLine($"Middle-click hook unavailable: {ex.Message}");
+        }
     }
 
     // Every layout pass refreshes the hook's cached tab bounds, so its

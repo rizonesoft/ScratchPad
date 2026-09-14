@@ -423,6 +423,7 @@ public sealed class TabBarTests
     [Fact]
     public void MiddleClickClosesTheTabUnderTheCursor()
     {
+        UiHooks.SkipWhenUnavailable();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
