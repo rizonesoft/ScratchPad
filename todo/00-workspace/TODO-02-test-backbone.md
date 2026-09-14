@@ -2,7 +2,7 @@
 schema_version: 1
 id: test-backbone
 domain: 00-workspace
-status: draft
+status: done
 title: "TODO-02 -- Test Backbone"
 track: W0
 ---
@@ -152,5 +152,5 @@ Why this section exists: UI and protocol tests flake. Without a procedure, flake
 
 ## Verification
 
-- [ ] `dotnet test` green, all harnesses exercised
-- [ ] `python3 scripts/todo-graph.py validate` clean
+- [x] `dotnet test` green, all harnesses exercised. Evidence: build run 34810042091 success both jobs (Smoke 1/1, Unit 2/2, Protocol 8/8 on Linux and Windows, UI 3/3 on Windows) plus soak runs 34808621885 and 34809456063 success (22 passed, 0 failed each).
+- [x] `python3 scripts/todo-graph.py validate` clean. Evidence: `19 todos, 106 sections -- 0 fatal, 0 warning(s), 19 adjacency advisory` (all pre-existing kinds) at closeout.
