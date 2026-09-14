@@ -10,7 +10,7 @@ namespace UI;
 [SuppressMessage("Performance", "CA1812", Justification = "Instantiated by System.Text.Json deserialization.")]
 internal sealed record Tolerance(int CanonicalWidth, int CanonicalHeight, double CropTopFraction, double CropSideFraction, double CropBottomFraction, int PerPixelDelta, double MaxDifferentFraction);
 
-internal sealed record ComparisonResult(bool Match, double DifferentFraction, int DifferentPixels, int TotalPixels);
+internal sealed record ComparisonResult(bool Match, double DifferentFraction, int DifferentPixels, int TotalPixels, bool[] DifferentMap, int MapWidth, int MapHeight, int MapLeft, int MapTop);
 
 internal static class GoldenComparer
 {
@@ -32,6 +32,23 @@ internal static class GoldenComparer
         }
 
         return canonical;
+    }
+
+    internal static Bitmap RenderDiff(Bitmap fresh, ComparisonResult result)
+    {
+        var diff = new Bitmap(fresh);
+        for (var y = 0; y < result.MapHeight; y++)
+        {
+            for (var x = 0; x < result.MapWidth; x++)
+            {
+                if (result.DifferentMap[y * result.MapWidth + x])
+                {
+                    diff.SetPixel(result.MapLeft + x, result.MapTop + y, Color.Red);
+                }
+            }
+        }
+
+        return diff;
     }
 
     internal static Bitmap ShiftRight(Bitmap source, int pixels)
@@ -74,6 +91,7 @@ internal static class GoldenComparer
             Marshal.Copy(freshData.Scan0, freshBytes, 0, length);
             var different = 0;
             var total = 0;
+            var map = new bool[(right - left) * (bottom - top)];
             for (var y = top; y < bottom; y++)
             {
                 for (var x = left; x < right; x++)
@@ -93,12 +111,13 @@ internal static class GoldenComparer
                     if (delta > tolerance.PerPixelDelta)
                     {
                         different++;
+                        map[(y - top) * (right - left) + (x - left)] = true;
                     }
                 }
             }
 
             var fraction = total == 0 ? 1.0 : (double)different / total;
-            return new ComparisonResult(fraction <= tolerance.MaxDifferentFraction, fraction, different, total);
+            return new ComparisonResult(fraction <= tolerance.MaxDifferentFraction, fraction, different, total, map, right - left, bottom - top, left, top);
         }
         finally
         {
