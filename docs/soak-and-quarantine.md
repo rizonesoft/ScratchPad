@@ -17,7 +17,8 @@ Results go to the workflow run page: the per-step logs plus the `soak-results-li
 
 | Date | Run | Result |
 | ---- | --- | ------ |
-| 2026-09-14 | _first run link lands with the §5 stamp_ | _pending_ |
+| 2026-09-14 | [34808621885](https://github.com/rizonesoft/intelligent-notepad/actions/runs/34808621885) (dispatch) | success, 22 passed, 0 failed |
+| 2026-09-14 | [34809456063](https://github.com/rizonesoft/intelligent-notepad/actions/runs/34809456063) (dispatch, after red-repeat fix) | success, 22 passed, 0 failed |
 
 ## Quarantine
 

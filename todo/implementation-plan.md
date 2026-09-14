@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **11 of 106 sections complete (10%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **12 of 106 sections complete (11%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -97,7 +97,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §2` | UI automation driver spike               |   5   |
 | [x] | `D00 T02 §3` | Golden capture store and refresh         |   5   |
 | [x] | `D00 T02 §4` | ACP loopback fixture                     |   5   |
-| [ ] | `D00 T02 §5` | Soak and quarantine procedure            |   5   |
+| [x] | `D00 T02 §5` | Soak and quarantine procedure            |   5   |
 
 ### Phase 1 -- Notepad parity: window, tabs, files, menus, editor
 

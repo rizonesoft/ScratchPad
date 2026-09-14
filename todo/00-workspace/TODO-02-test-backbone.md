@@ -36,7 +36,7 @@ track: W0
 |   2   |   §2    | UI automation driver spike | T01 §5 |  [x]   |
 |   3   |   §3    | Golden capture store and refresh | §2 |  [x]   |
 |   4   |   §4    | ACP loopback fixture | §1 |  [x]   |
-|   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [ ]   |
+|   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [x]   |
 
 ---
 
@@ -136,13 +136,19 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 
 Why this section exists: UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks.
 
-- [ ] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
-- [ ] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
-- [ ] A quarantined test owes a fix or a removal decision within a committed window. Done when: the window and the escalation are written.
-- [ ] Deleting a test without a recorded decision fails review. Done when: the rule is written in the procedure.
-- [ ] Commit: `"workspace: add soak and quarantine procedure"`
+- [x] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
+- [x] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
+- [x] A quarantined test owes a fix or a removal decision within a committed window. Done when: the window and the escalation are written.
+- [x] Deleting a test without a recorded decision fails review. Done when: the rule is written in the procedure.
+- [x] Commit: `"workspace: add soak and quarantine procedure"`
 
 **Test checkpoint:** A deliberately flaky probe test is quarantined by the procedure, the suite stays green, and the probe is then removed with its decision recorded. Cheaper substitute that fails: a retry loop that hides the flake.
+
+> **Verified:** 2026-09-14 | §5 | Soak workflow plus procedure doc; soak green twice by dispatch (runs 34808621885, 34809456063; 22 passed, 0 failed each) with run links in the doc; probe lifecycle proven locally (pass/fail/fail/fail/fail/pass same binary, quarantined suite green 2+1 skipped twice, removed with decision row); red-repeat swallow fixed in 77aff94 with shell-construct proof; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates 549ff76 77aff94 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s5.md
+> **CRUD:** applicable | probe wrote pass/fail outcomes (read back across six runs); quarantine wrote a skip (read back via Skipped count with suite green); soak wrote trx plus artifacts (read back via 22 Passed lines per run); removal wrote a decision row (read back in the doc)
+> **Duration:** 24
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
