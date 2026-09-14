@@ -8,7 +8,7 @@ Two workflows run on pushes to `main`: `build` compiles and tests on Linux and W
 
 ## Prerequisites
 
-Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` on Windows. Then put it on the path: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0` (Windows: `.tools\dotnet-win-x64`). Launching the stub additionally needs the WindowsAppRuntime 2.x framework package on the machine; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from the Windows App SDK release if it is missing.
+Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` on Windows. Then put it on the path: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0` (Windows: `.tools\dotnet-win-x64`). Launching the stub additionally needs the WindowsAppRuntime 2.x framework package on the machine; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from `https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe` (matching SDK 2.4.0) if it is missing. CI installs it via the `Install WindowsAppRuntime` step.
 
 ## Build commands
 
