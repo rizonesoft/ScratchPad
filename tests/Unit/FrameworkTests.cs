@@ -16,7 +16,7 @@ public sealed class FrameworkTests
     [Fact]
     public void TrivialPureFunctionPasses()
     {
-        Assert.Equal(5, Add(2, 2));
+        Assert.Equal(4, Add(2, 2));
     }
 
     private static int Add(int left, int right) => left + right;
