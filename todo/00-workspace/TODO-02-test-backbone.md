@@ -35,7 +35,7 @@ track: W0
 |   1   |   §1    | Unit test project and framework | T01 §5 |  [x]   |
 |   2   |   §2    | UI automation driver spike | T01 §5 |  [x]   |
 |   3   |   §3    | Golden capture store and refresh | §2 |  [x]   |
-|   4   |   §4    | ACP loopback fixture | §1 |  [ ]   |
+|   4   |   §4    | ACP loopback fixture | §1 |  [x]   |
 |   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [ ]   |
 
 ---
