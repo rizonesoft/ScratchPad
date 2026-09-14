@@ -80,9 +80,12 @@ public sealed class TabBarTests
             ContentBox(window).Text = "BBB";
             SelectTab(window, 2);
             ContentBox(window).Text = "CCC";
+            WaitForTabName(window, 0, "AAA");
+            WaitForTabName(window, 1, "BBB");
+            WaitForTabName(window, 2, "CCC");
             Assert.Equal("AAA", TabItemAt(window, 0).Name);
             SelectTab(window, 0);
-            Assert.Equal("AAA", ContentBox(window).Text);
+            Assert.Equal("AAA", WaitForContent(window, "AAA"));
 
             // Ctrl+Tab cycles sequentially and wraps; Ctrl+1/3 jump.
             Press(window, VirtualKeyShort.TAB, withControl: true);
@@ -101,6 +104,7 @@ public sealed class TabBarTests
             // proves which tab went. Dirty closes have their own drives.
             SelectTab(window, 2);
             ContentBox(window).Text = string.Empty;
+            WaitForTabName(window, 2, "Untitled");
 
             // Ctrl+W closes the active tab; the neighbor takes selection.
             Press(window, VirtualKeyShort.KEY_W, withControl: true);
@@ -151,6 +155,11 @@ public sealed class TabBarTests
                 ContentBox(window).Text = $"TAB{i}";
             }
 
+            for (int i = 0; i < 10; i++)
+            {
+                WaitForTabName(window, i, $"TAB{i}");
+            }
+
             // Ctrl+3 is positional; Ctrl+9 selects the last tab (probed).
             Press(window, VirtualKeyShort.KEY_3, withControl: true);
             Assert.Equal("TAB2", WaitForContent(window, "TAB2"));
@@ -163,6 +172,7 @@ public sealed class TabBarTests
             Press(window, VirtualKeyShort.TAB, withControl: true, withShift: true);
             Assert.Equal("TAB8", WaitForContent(window, "TAB8"));
             ContentBox(window).Text = string.Empty;
+            WaitForTabName(window, 8, "Untitled");
             Press(window, VirtualKeyShort.KEY_W, withControl: true);
             Assert.Equal(9, WaitForTabCount(window, 9));
             Press(window, VirtualKeyShort.KEY_T, withControl: true, withShift: true);
@@ -196,6 +206,9 @@ public sealed class TabBarTests
             ContentBox(window).Text = "BBB";
             SelectTab(window, 2);
             ContentBox(window).Text = "CCC";
+            WaitForTabName(window, 0, "AAA");
+            WaitForTabName(window, 1, "BBB");
+            WaitForTabName(window, 2, "CCC");
 
             // Real mouse travel like the middle-click drive: pin topmost so an
             // overlapping window cannot receive the drag (which would pass
@@ -233,11 +246,11 @@ public sealed class TabBarTests
             var after = TabItems(window);
             Assert.Equal(3, after.Count);
             SelectTab(window, 0);
-            Assert.Equal("AAA", ContentBox(window).Text);
+            Assert.Equal("AAA", WaitForContent(window, "AAA"));
             SelectTab(window, 1);
-            Assert.Equal("BBB", ContentBox(window).Text);
+            Assert.Equal("BBB", WaitForContent(window, "BBB"));
             SelectTab(window, 2);
-            Assert.Equal("CCC", ContentBox(window).Text);
+            Assert.Equal("CCC", WaitForContent(window, "CCC"));
         }
         finally
         {
@@ -270,7 +283,9 @@ public sealed class TabBarTests
             Assert.NotNull(FindButton(dialog, "Don't save"));
             Assert.NotNull(FindButton(dialog, "Cancel"));
 
-            FindButton(dialog, "Cancel")?.Invoke();
+            var cancel = FindButton(dialog, "Cancel");
+            Assert.NotNull(cancel);
+            cancel.Invoke();
             Assert.True(WaitForGone(window, "SavePromptDialog", TimeSpan.FromSeconds(10)), "prompt did not close on Cancel");
             Assert.Single(TabItems(window));
             Assert.StartsWith("*", WaitForTitle(window, "*"), StringComparison.Ordinal);
@@ -297,7 +312,9 @@ public sealed class TabBarTests
             Press(window, VirtualKeyShort.KEY_W, withControl: true);
             var dialog = WaitForDialog(window);
             Assert.NotNull(dialog);
-            FindButton(dialog, "Don't save")?.Invoke();
+            var dontSave = FindButton(dialog, "Don't save");
+            Assert.NotNull(dontSave);
+            dontSave.Invoke();
             Assert.True(WaitForGone(window, "SavePromptDialog", TimeSpan.FromSeconds(10)), "prompt did not close on Don't save");
             Assert.Equal(0, WaitForTabCount(window, 0));
 
@@ -333,6 +350,9 @@ public sealed class TabBarTests
             ContentBox(window).Text = "BBB";
             SelectTab(window, 2);
             ContentBox(window).Text = "CCC";
+            WaitForTabName(window, 0, "AAA");
+            WaitForTabName(window, 1, "BBB");
+            WaitForTabName(window, 2, "CCC");
 
             // Real right-button input like the middle-click drive: pin topmost
             // so an overlapping window cannot swallow the clicks instead.
@@ -366,10 +386,14 @@ public sealed class TabBarTests
         // Close-right hits the dirty CCC tab, so the prompt appears and
         // Don't-save takes it; the survivors keep their names.
         TabItemAt(window, 1).RightClick();
-        WaitForMenuItem(window, "Close tabs to the right")?.Invoke();
+        var closeRight = WaitForMenuItem(window, "Close tabs to the right");
+        Assert.NotNull(closeRight);
+        closeRight.Invoke();
         var dirty = WaitForDialog(window);
         Assert.NotNull(dirty);
-        FindButton(dirty, "Don't save")?.Invoke();
+        var dontSave = FindButton(dirty, "Don't save");
+        Assert.NotNull(dontSave);
+        dontSave.Invoke();
         Assert.True(WaitForGone(window, "SavePromptDialog", TimeSpan.FromSeconds(10)), "prompt did not close on Don't save");
         Assert.Equal(2, WaitForTabCount(window, 2));
         Assert.Equal("AAA", TabItemAt(window, 0).Name);
@@ -378,15 +402,21 @@ public sealed class TabBarTests
         // Clean tabs close silent.
         SelectTab(window, 0);
         ContentBox(window).Text = string.Empty;
+        WaitForTabName(window, 0, "Untitled");
         SelectTab(window, 1);
         ContentBox(window).Text = string.Empty;
+        WaitForTabName(window, 1, "Untitled");
         TabItemAt(window, 0).RightClick();
-        WaitForMenuItem(window, "Close other tabs")?.Invoke();
+        var closeOthers = WaitForMenuItem(window, "Close other tabs");
+        Assert.NotNull(closeOthers);
+        closeOthers.Invoke();
         Assert.Equal(1, WaitForTabCount(window, 1));
         Assert.Equal("Untitled", TabItemAt(window, 0).Name);
 
         TabItemAt(window, 0).RightClick();
-        WaitForMenuItem(window, "New tab")?.Invoke();
+        var newTab = WaitForMenuItem(window, "New tab");
+        Assert.NotNull(newTab);
+        newTab.Invoke();
         Assert.Equal(2, WaitForTabCount(window, 2));
     }
 
@@ -408,12 +438,15 @@ public sealed class TabBarTests
             ContentBox(window).Text = "AAA";
             SelectTab(window, 1);
             ContentBox(window).Text = "BBB";
+            WaitForTabName(window, 0, "AAA");
+            WaitForTabName(window, 1, "BBB");
 
             // Middle-click the non-active tab: cursor position wins. Clean
             // only the clicked tab so its close runs silent while the AAA
             // survivor proves which tab went.
             SelectTab(window, 1);
             ContentBox(window).Text = string.Empty;
+            WaitForTabName(window, 1, "Untitled");
             SelectTab(window, 0);
             // Real input needs the top of the Z order, not just focus: an
             // overlapping window would receive (and keep) the click instead.
@@ -428,7 +461,7 @@ public sealed class TabBarTests
             }
 
             Assert.Equal(1, WaitForTabCount(window, 1));
-            Assert.Equal("AAA", ContentBox(window).Text);
+            Assert.Equal("AAA", WaitForContent(window, "AAA"));
         }
         finally
         {
@@ -596,6 +629,27 @@ public sealed class TabBarTests
             TimeSpan.FromMilliseconds(250)).Result ?? [];
         Assert.True(items.Count > index, $"tab list holds {items.Count} items, index {index} wanted");
         return items[index];
+    }
+
+    // Setup verification, not redundancy: SelectTab returns before the model
+    // round-trips, and under CI load the editor box can lag a beat behind
+    // the selection, landing a content set on the wrong tab (two CI reds,
+    // same dialog assert, green locally). The auto-name only matches when
+    // the set reached its tab through the full chain.
+    static void WaitForTabName(Window window, int index, string expected)
+    {
+        string? NameAt()
+        {
+            var found = TabItems(window);
+            return found.Count > index ? found[index].Name : null;
+        }
+
+        var result = Retry.While(
+            NameAt,
+            name => name != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.Equal(expected, result);
     }
 
     static int WaitForTabCount(Window window, int expected)
