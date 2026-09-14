@@ -420,10 +420,9 @@ public sealed class TabBarTests
         Assert.Equal(2, WaitForTabCount(window, 2));
     }
 
-    [Fact]
+    [HookFact]
     public void MiddleClickClosesTheTabUnderTheCursor()
     {
-        UiHooks.SkipWhenUnavailable();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
