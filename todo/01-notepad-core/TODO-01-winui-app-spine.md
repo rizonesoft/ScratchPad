@@ -83,17 +83,21 @@ Why this section exists: everything visible hangs off the main window. Build the
 
 ## 2. Tab Model with Dirty Tracking
 
+> **Started:** 2026-09-14T06:50:00Z
+
 Why this section exists: tabs are the unit of work. The model must be right before any UI touches it, because every file path flows through it.
 
 **Groomed 2026-09-13:** Notepad audit: the display-title rule for auto-named untitled tabs and a closed-tab stack for reopen are now explicit.
 
-- [ ] `src/Notepad.Core/TabModel.cs` models the tab list: identity, file path, dirty flag, encoding, line ending. Done when: the model compiles with no UI dependency.
-- [ ] Dirty tracking flips on edit and clears on save, and only on save. Done when: `tests/Unit/TabModelTest` covers edit, save, and no-op edits.
-- [ ] The model notifies the UI of list and dirty changes through one observable path. Done when: two observers cannot disagree about dirty state.
-- [ ] An untitled tab carries no path until first save. Done when: save on untitled routes to Save As (§5).
-- [ ] An untitled tab's display title follows Notepad's auto-naming from content; the exact rule (first line, truncation) is recorded from the capture. Done when: untitled tabs render titles exactly as captured. Source: https://blogs.windows.com/windows-insider/2023/01/19/tabs-in-notepad-begins-rolling-out-to-windows-insiders/
-- [ ] The model keeps a closed-tab stack so recently closed tabs can reopen; depth and what is kept (path, contents, caret) are recorded from the capture. Done when: `tests/Unit/TabModelTest` covers close-then-reopen round-trips.
-- [ ] Commit: `"notepad-core: add the tab model with dirty tracking"`
+**Corrected 2026-09-14:** the seed named `tests/Unit/TabModelTest` (twice); the suite convention is `*Tests` (`tests/Unit/TabModelTests.cs`). The `--filter TabModel` checkpoint is unchanged.
+
+- [x] `src/Notepad.Core/TabModel.cs` models the tab list: identity, file path, dirty flag, encoding, line ending. Done when: the model compiles with no UI dependency.
+- [x] Dirty tracking flips on edit and clears on save, and only on save. Done when: `tests/Unit/TabModelTests` covers edit, save, and no-op edits.
+- [x] The model notifies the UI of list and dirty changes through one observable path. Done when: two observers cannot disagree about dirty state.
+- [x] An untitled tab carries no path until first save. Done when: save on untitled routes to Save As (§5).
+- [x] An untitled tab's display title follows Notepad's auto-naming from content; the exact rule (first line, truncation) is recorded from the capture. Done when: untitled tabs render titles exactly as captured. Source: https://blogs.windows.com/windows-insider/2023/01/19/tabs-in-notepad-begins-rolling-out-to-windows-insiders/
+- [x] The model keeps a closed-tab stack so recently closed tabs can reopen; depth and what is kept (path, contents, caret) are recorded from the capture. Done when: `tests/Unit/TabModelTests` covers close-then-reopen round-trips.
+- [x] Commit: `"notepad-core: add the tab model with dirty tracking"`
 
 **Test checkpoint:** `dotnet test --filter TabModel` green, including edit-then-undo-to-clean semantics as Notepad defines them. Cheaper substitute that fails: dirty tracked in the UI layer where two paths can disagree.
 
