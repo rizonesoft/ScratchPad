@@ -32,7 +32,7 @@ track: W0
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Unit test project and framework | T01 §5 |  [x]   |
+|   1   |   §1    | Unit test project and framework | T01 §5 |  [ ]   |
 |   2   |   §2    | UI automation driver spike | T01 §5 |  [ ]   |
 |   3   |   §3    | Golden capture store and refresh | §2 |  [ ]   |
 |   4   |   §4    | ACP loopback fixture | §1 |  [ ]   |
