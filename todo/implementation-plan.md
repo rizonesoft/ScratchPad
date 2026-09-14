@@ -93,7 +93,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §5` | Test wiring and first smoke test         |   5   |
 | [x] | `D00 T01 §6` | Developer bootstrap doc                  |   4   |
 | [ ] | `D00 T01 §7` | TODO graph checks in CI                  |   5   |
-| [ ] | `D00 T02 §1` | Unit test project and framework          |   5   |
+| [x] | `D00 T02 §1` | Unit test project and framework          |   5   |
 | [ ] | `D00 T02 §2` | UI automation driver spike               |   5   |
 | [ ] | `D00 T02 §3` | Golden capture store and refresh         |   5   |
 | [ ] | `D00 T02 §4` | ACP loopback fixture                     |   5   |
