@@ -72,6 +72,7 @@ Why this section exists: the clone claim is proven surface by surface, automatic
 - [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
 - [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
 - [ ] The suites run in CI on a Windows runner. Done when: the CI log shows them green.
+- [ ] Found 2026-09-14: `tests/UI/MainWindowTests.cs` `PollThemeSide` captures without `UiDpi.Enter`, so at 150 percent session DPI the reads virtualize to black; on Conclave-PC `ThemesRenderWithMica` light fails while dark and system pass vacuously. Harden the capture path (PMV2-aware captures or a non-black guard) and re-prove the matrix. Done when: `dotnet test tests/UI --filter ThemesRenderWithMica` passes on Conclave-PC with center pixels verified non-black in all three themes.
 - [ ] Commit: `"quality: drive Notepad parity in UI suites"`
 
 **Test checkpoint:** Suites green in CI; deliberate deviations fail; coverage table fully mapped. Cheaper substitute that fails: parity checked by hand before release.

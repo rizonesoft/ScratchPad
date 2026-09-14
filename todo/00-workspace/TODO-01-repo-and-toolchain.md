@@ -39,6 +39,7 @@ track: W0
 |   5   |   §5    | Test wiring and first smoke test | §2 |  [x]   |
 |   6   |   §6    | Developer bootstrap doc | §1 |  [x]   |
 |   7   |   §7    | TODO graph checks in CI | §3 |  [x]   |
+|   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
 
 ---
 
@@ -204,6 +205,19 @@ Why this section exists: the plan is load-bearing, so a broken plan must fail th
 > **CRUD:** applicable | CI wrote step conclusions (read back via run/job/step APIs); probes wrote red runs (read back via failed step names and log lines); docs-only push wrote no run (read back via empty run list)
 > **Duration:** 12
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 8. Conclave-PC Input Capability for Automation
+
+Why this section exists: the shared VM refuses both input interception (`SetWindowsHookEx` fails Win32 error 5, which crashed the app until the degrade fix) and synthetic input (`SendInput` fails Win32 error 5 even from high-integrity processes on the Default desktop, failing 6 UI tests), with only Windows Defender installed. The suite's real-input drives cannot run there until the denying mechanism is identified and the narrowest host change applied.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Found 2026-09-14: identify the mechanism refusing `SetWindowsHookEx` (`src/IntelligentNotepad/MiddleClickHook.cs`) and `SendInput` (`tests/UI/TabBarTests.cs` `Press`) on Conclave-PC: Defender ASR or exploit-protection rule, GPO, or hardening agent, with the exact rule named. Done when: the denying rule is named with its configuration path.
+- [ ] Apply the narrowest host change (a scoped exclusion or single-rule exception, never a blanket disable) and record it in `docs/testing.md`. Done when: the hook probe succeeds and `dotnet test tests/UI --filter ThreeTabsSwitchAndClose` passes on Conclave-PC.
+- [ ] Re-run the full UI suite on Conclave-PC and confirm the input failures plus the hook skip clear with no new failures. Done when: `dotnet test tests/UI` shows 18/18 on the VM.
+- [ ] Commit: `"workspace: enable input capability on Conclave-PC"`
+
+**Test checkpoint:** Hook probe true, `SendInput` injects, full UI suite green on the VM; the host change recorded and minimal. Cheaper substitute that fails: disabling real-time protection host-wide instead of the narrow exclusion.
 
 ## Verification
 

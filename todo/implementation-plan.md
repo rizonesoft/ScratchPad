@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **15 of 107 sections complete (14%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **15 of 108 sections complete (14%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -98,6 +98,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §3` | Golden capture store and refresh         |   5   |
 | [x] | `D00 T02 §4` | ACP loopback fixture                     |   5   |
 | [x] | `D00 T02 §5` | Soak and quarantine procedure            |   5   |
+| [ ] | `D00 T01 §8` | Conclave-PC input capability             |   4   |
 
 ### Phase 1 -- Notepad parity: window, tabs, files, menus, editor
 
@@ -106,7 +107,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §1`  | Main window shell with menu bar host     |   5   |
 | [x] | `D01 T01 §2`  | Tab model with dirty tracking            |   5   |
 | [x] | `D01 T01 §3`  | Tab bar UI: open, switch, reorder, close |   5   |
-| [ ] | `D01 T01 §10` | Window border parity repair              |   8   |
+| [ ] | `D01 T01 §10` | Window border parity repair              |   9   |
 | [ ] | `D01 T01 §4`  | File open with encoding detection        |   5   |
 | [ ] | `D01 T01 §5`  | File save and Save As                    |   5   |
 | [ ] | `D01 T01 §6`  | Recent files and session restore         |   6   |
@@ -189,7 +190,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D05 T02 §6` | Selection actions: explain, rewrite, summarize |   6   |
 | [ ] | `D06 T01 §1` | Strategy doc with layers and bars              |   4   |
 | [ ] | `D06 T01 §2` | Coverage floors enforced in CI                 |   5   |
-| [ ] | `D06 T01 §3` | Notepad parity UI suites                       |   4   |
+| [ ] | `D06 T01 §3` | Notepad parity UI suites                       |   5   |
 | [ ] | `D06 T01 §4` | AI surface UI suites                           |   4   |
 | [ ] | `D06 T01 §5` | Perf budgets enforced in CI                    |   4   |
 | [ ] | `D06 T01 §6` | Flake policy and quarantine operation          |   4   |
