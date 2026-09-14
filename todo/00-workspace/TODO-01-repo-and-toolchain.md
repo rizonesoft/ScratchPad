@@ -38,7 +38,7 @@ track: W0
 |   4   |   §4    | Warning and analysis gates | §2 |  [x]   |
 |   5   |   §5    | Test wiring and first smoke test | §2 |  [x]   |
 |   6   |   §6    | Developer bootstrap doc | §1 |  [x]   |
-|   7   |   §7    | TODO graph checks in CI | §3 |  [ ]   |
+|   7   |   §7    | TODO graph checks in CI | §3 |  [x]   |
 
 ---
 
@@ -191,13 +191,19 @@ Why this section exists: the second developer (or a fresh agent session) should 
 
 Why this section exists: the plan is load-bearing, so a broken plan must fail the build like any other defect.
 
-- [ ] CI runs `python3 scripts/todo-graph.py self-test` on every push touching `scripts/` or `todo/`. Done when: the run shows the case count and zero failures.
-- [ ] CI runs `python3 scripts/todo-graph.py validate` on the same pushes. Done when: a probe FATAL (reverted immediately) fails the run.
-- [ ] CI runs `python3 scripts/todo-graph.py plan --sync` followed by a clean-tree check (or `plan --check` once the JSON paths are committed), so a stale projection fails the run. Done when: a hand-flipped plan box fails the run.
-- [ ] The workflow triggers only on relevant paths so doc edits do not pay for graph checks. Done when: a docs-only push skips the job.
-- [ ] Commit: `"workspace: gate the TODO graph in CI"`
+- [x] CI runs `python3 scripts/todo-graph.py self-test` on every push touching `scripts/` or `todo/`. Done when: the run shows the case count and zero failures.
+- [x] CI runs `python3 scripts/todo-graph.py validate` on the same pushes. Done when: a probe FATAL (reverted immediately) fails the run.
+- [x] CI runs `python3 scripts/todo-graph.py plan --sync` followed by a clean-tree check (or `plan --check` once the JSON paths are committed), so a stale projection fails the run. Done when: a hand-flipped plan box fails the run.
+- [x] The workflow triggers only on relevant paths so doc edits do not pay for graph checks. Done when: a docs-only push skips the job.
+- [x] Commit: `"workspace: gate the TODO graph in CI"`
 
 **Test checkpoint:** Probe commits prove each of the three checks fails the run for the right reason; all probes reverted. Cheaper substitute that fails: checks that run but whose failures do not fail the run.
+
+> **Verified:** 2026-09-14 | §7 | plan-gates green (run 34793534551, 391 cases 0 failed); self-test probe red 34793587854, validate probe red 34793710261 with FATALs named, projection probe red 34793805213, each reverted to green; docs-only push ran no plan-gates job; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates ba504d2 d51bbf5 7adbd7c d18932b bbaf5c6 f18b59d 7c2b739 294ec5e -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s7.md
+> **CRUD:** applicable | CI wrote step conclusions (read back via run/job/step APIs); probes wrote red runs (read back via failed step names and log lines); docs-only push wrote no run (read back via empty run list)
+> **Duration:** 12
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
