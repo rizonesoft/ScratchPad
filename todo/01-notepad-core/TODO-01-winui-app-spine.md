@@ -37,7 +37,7 @@ track: N1
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Main window shell with menu bar host | -- |  [x]   |
 |   2   |   §2    | Tab model with dirty tracking | §1 |  [x]   |
-|   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [ ]   |
+|   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [x]   |
 |   4   |   §4    | File open with encoding detection | §2 |  [ ]   |
 |   5   |   §5    | File save and Save As | §4 |  [ ]   |
 |   6   |   §6    | Recent files and session restore | §5 |  [ ]   |
@@ -136,6 +136,12 @@ Why this section exists: the tab bar is the most-touched surface in the app. It 
 - [x] Commit: `"notepad-core: build the tab bar UI"`
 
 **Test checkpoint:** UI drive opens three tabs, attempts reorder (order unchanged), switches, and closes each, comparing against captures; dirty close prompts. Cheaper substitute that fails: tab actions unit-tested without rendering the bar.
+
+> **Verified:** 2026-09-14 | §3 | Tab bar UI: TabView strip with new-tab, switch, close glyph, Ctrl+T/W/Tab/1-9, Ctrl+Shift+T, 4-item context menu, middle-click close via low-level hook, shrink-to-fit overflow, dirty prompt with cancel-keeps-tab; UI 18/18 (9 TabBar, 3 consecutive 9/9 runs), Unit 31/31, Protocol 8/8, Smoke 1/1 on Windows, neutral suite green on Linux, build 0 warnings, golden refreshed and in tolerance; two transient flakes disclosed (unknown 8/9 once, empty TabItems query once, both green on rerun, latter covered by polling helper); validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidate fea3412 -- `adversarial` advisory · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s3.md
+> **CRUD:** applicable | tab gestures wrote model tabs (read back via UIA counts, names, content asserts); edits wrote dirty plus display names (read back via dot glyph, title marker, prompt naming); closes wrote removals and stack entries (read back via counts, survivor contents, reopen no-ops); dialog wrote answers (read back via tab kept on Cancel, closed on Don't-save); captures wrote the refreshed golden (read back via in-tolerance comparison)
+> **Duration:** 125
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 4. File Open with Encoding Detection
 
