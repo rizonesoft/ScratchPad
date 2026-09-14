@@ -163,17 +163,19 @@ Why this section exists: the test command must exist before the first real test,
 
 ## 6. Developer Bootstrap Doc
 
+> **Started:** 2026-09-14T00:18:32Z
+
 Why this section exists: the second developer (or a fresh agent session) should reach a green build without asking anyone anything.
 
 **Groomed 2026-09-13:** Operator decision: script-first bootstrap; the doc explains, the script provisions.
 
 **Needs:** Windows host (build/test)
 
-- [ ] `docs/bootstrap.md` lists prerequisites with versions, install order, and the build and test commands. Done when: a cold reader reaches green without improvising.
-- [ ] The doc records the OS boundary: `dotnet build` and neutral `dotnet test` run anywhere, while app launch, UI suites, captures, and packaging run on Windows. Done when: a Linux reader knows exactly which commands are theirs.
-- [ ] The doc links the troubleshooting entries for the two most common bootstrap failures found while writing it. Done when: each entry was reproduced and fixed, not imagined.
-- [ ] Bootstrap is script-first: a cold follow runs `tools/provision.sh` (Linux) or `tools/provision.ps1` (Windows) and reaches a green build with no manual installs, while `docs/bootstrap.md` explains what the script does. Done when: the script plus doc together pass the checkpoint with zero improvisation.
-- [ ] Commit: `"workspace: write the developer bootstrap doc"`
+- [x] `docs/bootstrap.md` lists prerequisites with versions, install order, and the build and test commands. Done when: a cold reader reaches green without improvising.
+- [x] The doc records the OS boundary: the neutral scope (`dotnet build`/`dotnet test` on `src/Notepad.Neutral.slnf`) runs anywhere, while the full solution build, app launch, UI suites, captures, and packaging run on Windows. Done when: a Linux reader knows exactly which commands are theirs. **Corrected 2026-09-14:** was "`dotnet build` runs anywhere"; §2 proved the XAML compiler is Windows-only, so Linux builds the neutral filter (see the §2 correction).
+- [x] The doc links the troubleshooting entries for the two most common bootstrap failures found while writing it. Done when: each entry was reproduced and fixed, not imagined.
+- [x] Bootstrap is script-first: a cold follow runs `tools/provision.sh` (Linux) or `tools/provision.ps1` (Windows) and reaches a green build with no manual installs, while `docs/bootstrap.md` explains what the script does. Done when: the script plus doc together pass the checkpoint with zero improvisation.
+- [x] Commit: `"workspace: write the developer bootstrap doc"`
 
 **Test checkpoint:** A cold follow of the doc on a clean machine reaches a green build and test run. Falsifiable by any step that does not work as written.
 
