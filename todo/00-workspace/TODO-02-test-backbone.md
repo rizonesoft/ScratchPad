@@ -34,7 +34,7 @@ track: W0
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Unit test project and framework | T01 §5 |  [x]   |
 |   2   |   §2    | UI automation driver spike | T01 §5 |  [x]   |
-|   3   |   §3    | Golden capture store and refresh | §2 |  [ ]   |
+|   3   |   §3    | Golden capture store and refresh | §2 |  [x]   |
 |   4   |   §4    | ACP loopback fixture | §1 |  [ ]   |
 |   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [ ]   |
 
@@ -94,13 +94,19 @@ Why this section exists: parity with Windows 11 Notepad is checkable only agains
 
 **Needs:** Windows host (build/test)
 
-- [ ] `resources/baseline/` holds the first captures (main window, tab bar, menus, settings) taken from stock Windows 11 Notepad with the capture procedure in `resources/baseline/README.md`. Done when: each capture names its source build.
-- [ ] `tests/UI/` compares the app's rendered surfaces against the captures with a committed tolerance policy. Done when: a deliberate 10px layout shift fails the comparison.
-- [ ] The refresh procedure re-captures after intentional changes and requires review of the diff. Done when: the procedure is written and was used once for real.
-- [ ] Captures are versioned beside the code they verify, so a checkout is self-consistent. Done when: no capture lives outside the repo.
-- [ ] Commit: `"workspace: add golden capture store and refresh"`
+- [x] `resources/baseline/` holds the first captures (main window, tab bar, menus, settings) taken from stock Windows 11 Notepad with the capture procedure in `resources/baseline/README.md`. Done when: each capture names its source build.
+- [x] `tests/UI/` compares the app's rendered surfaces against the captures with a committed tolerance policy. Done when: a deliberate 10px layout shift fails the comparison.
+- [x] The refresh procedure re-captures after intentional changes and requires review of the diff. Done when: the procedure is written and was used once for real.
+- [x] Captures are versioned beside the code they verify, so a checkout is self-consistent. Done when: no capture lives outside the repo.
+- [x] Commit: `"workspace: add golden capture store and refresh"`
 
 **Test checkpoint:** A deliberate layout shift fails the comparison; a reviewed refresh passes. Cheaper substitute that fails: screenshots in a chat thread instead of a committed store.
+
+> **Verified:** 2026-09-14 | §3 | 4 stock captures (Notepad 11.2607.14.0) plus app golden with README procedure; comparison green in CI (run 34804426231, UI 3/3) with 10px shift failing (736px vs 410px budget, PIL cross-checked); refresh shakedown reviewed and green (run 34805175346); validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates bf39eb8 9501c57 4d459fd e9414bf 8d866b7 dbcd869 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s3.md
+> **CRUD:** applicable | captures wrote pngs (read back via pixels and dims); comparisons wrote fractions plus failure artifacts (read back in CI logs and downloads); refresh wrote new goldens (reviewed pixel by pixel)
+> **Duration:** 117
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 4. ACP Loopback Fixture
 
