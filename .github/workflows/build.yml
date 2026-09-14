@@ -45,6 +45,10 @@ jobs:
           Invoke-WebRequest -Uri https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe -OutFile $env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe
           & $env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe --quiet
           Get-AppxPackage -Name '*WindowsAppRuntime*' | Select-Object Name, Version
+      - name: Use dark app theme
+        run: |
+          Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name AppsUseLightTheme -Value 0
+          Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name SystemUsesLightTheme -Value 0
       - name: Test solution
         run: |
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"

@@ -50,7 +50,7 @@ internal static class UiCapture
             }
 
             var scale = DisplayScale();
-            if (!Place(window, 300, 200, (int)Math.Round(tolerance.CanonicalWidth * scale), (int)Math.Round(tolerance.CanonicalHeight * scale)))
+            if (!Place(window, 50, 50, (int)Math.Round(tolerance.CanonicalWidth * scale), (int)Math.Round(tolerance.CanonicalHeight * scale)))
             {
                 throw new InvalidOperationException("stub window refused placement");
             }

@@ -26,8 +26,8 @@ if (args.Length < 2)
     return 2;
 }
 
-var width = Flag(args, "--width", 1000);
-var height = Flag(args, "--height", 700);
+var width = Flag(args, "--width", 800);
+var height = Flag(args, "--height", 600);
 var element = Value(args, "--element");
 
 return args[0] switch
@@ -196,7 +196,7 @@ static bool Prepare(Window window, int width, int height)
         }
 
         var scale = Native.DisplayScale();
-        if (!Native.Place(window, 300, 200, (int)Math.Round(width * scale), (int)Math.Round(height * scale)))
+        if (!Native.Place(window, 50, 50, (int)Math.Round(width * scale), (int)Math.Round(height * scale)))
         {
             Console.WriteLine("window refused placement");
             return false;
