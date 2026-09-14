@@ -132,6 +132,8 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 
 ## 5. Soak and Quarantine Procedure
 
+> **Started:** 2026-09-14T05:08:00Z
+
 Why this section exists: UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks.
 
 - [ ] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
