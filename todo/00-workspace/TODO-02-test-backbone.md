@@ -32,7 +32,7 @@ track: W0
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Unit test project and framework | T01 §5 |  [ ]   |
+|   1   |   §1    | Unit test project and framework | T01 §5 |  [x]   |
 |   2   |   §2    | UI automation driver spike | T01 §5 |  [ ]   |
 |   3   |   §3    | Golden capture store and refresh | §2 |  [ ]   |
 |   4   |   §4    | ACP loopback fixture | §1 |  [ ]   |
@@ -50,13 +50,19 @@ Why this section exists: unit tests need a home and a framework before the first
 
 **Flag from T01 §5:** re-evaluate xUnit v3 with the MTP runner when standing up this suite: v3+MTP discovered zero tests on our stack (proven on our project and xUnit's own template, so v2 with VSTest shipped); record the re-evaluation verdict in `docs/testing.md` alongside item 1.
 
-- [ ] `tests/Unit/` hosts xUnit over the neutral libraries (the shop standard, proven in steward) with the choice recorded in `docs/testing.md`. Done when: the doc names the framework, its pinned versions, and why it won.
-- [ ] One passing test exercises the choice (a trivial pure function). Done when: `dotnet test tests/Unit` passes on Linux and fails when the assertion is inverted.
-- [ ] Test-only helpers live under `tests/Common/` so suites share fixtures without reaching into each other. Done when: the directory and its ownership rule exist.
-- [ ] CI runs the unit suite on every push. Done when: a deliberately failing probe test fails the run (reverted immediately).
-- [ ] Commit: `"workspace: add unit test project and framework"`
+- [x] `tests/Unit/` hosts xUnit over the neutral libraries (the shop standard, proven in steward) with the choice recorded in `docs/testing.md`. Done when: the doc names the framework, its pinned versions, and why it won.
+- [x] One passing test exercises the choice (a trivial pure function). Done when: `dotnet test tests/Unit` passes on Linux and fails when the assertion is inverted.
+- [x] Test-only helpers live under `tests/Common/` so suites share fixtures without reaching into each other. Done when: the directory and its ownership rule exist.
+- [x] CI runs the unit suite on every push. Done when: a deliberately failing probe test fails the run (reverted immediately).
+- [x] Commit: `"workspace: add unit test project and framework"`
 
 **Test checkpoint:** `dotnet test tests/Unit` green on Linux; inverted assertion red; CI mirrors both. Cheaper substitute that fails: a framework vendored but wired to nothing.
+
+> **Verified:** 2026-09-14 | §1 | Unit 2/2 green locally on both OSes and in CI (run 34794828910); inverted assertion red locally; probe run 34795487610 red both jobs with the test named; run 34796097790 green after revert; v3/MTP re-evaluation reproduced zero-test discovery on the vendor template; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates f0b847c 1468835 7629678 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s1.md
+> **CRUD:** applicable | test runs wrote results (read back via Passed/Failed counts); probe wrote failures (read back via the named test in both CI logs); inverted check wrote red locally
+> **Duration:** 45
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 2. UI Automation Driver Spike
 
