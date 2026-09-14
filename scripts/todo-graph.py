@@ -2481,8 +2481,6 @@ def cmd_self_test(_args) -> int:
     def check(name: str, got, want) -> None:
         cases.append((name, got, want))
 
-    check("ci-probe: deliberate self-test failure", True, False)
-
     global TODO_DIR, PLAN  # noqa: PLW0603 -- rebinding is the point
     saved_todo_dir, saved_plan = TODO_DIR, PLAN
     tmp = tempfile.TemporaryDirectory(prefix="todo-graph-selftest-")
