@@ -35,7 +35,7 @@ track: N1
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Main window shell with menu bar host | -- |  [ ]   |
+|   1   |   §1    | Main window shell with menu bar host | -- |  [x]   |
 |   2   |   §2    | Tab model with dirty tracking | §1 |  [ ]   |
 |   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [ ]   |
 |   4   |   §4    | File open with encoding detection | §2 |  [ ]   |
@@ -74,6 +74,12 @@ Why this section exists: everything visible hangs off the main window. Build the
 - [x] Commit: `"notepad-core: build the main window shell"`
 
 **Test checkpoint:** UI drive launches the app, asserts the four regions and the title convention, and compares against the golden capture within tolerance. Cheaper substitute that fails: regions asserted in unit tests without rendering the window.
+
+> **Verified:** 2026-09-14 | §1 | Shell with 4 UIA regions, title convention (5 theory cases plus live asserts), geometry restore, light/dark/system Mica with brightness proof, first-run plus megaphone dialog drives, shell golden in tolerance; UI 9/9, Unit 7/7, Protocol 8/8 locally and in CI both jobs (run 34813967613) after the artifact-proven first-run red (run 34812982991, fixed by seam-seeding captures); validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates 8d7c266 93bf74f 79f6786 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s1.md
+> **CRUD:** applicable | title composer wrote window titles (read back via 5 cases plus live asserts); seam wrote geometry, theme, seen-flag (read back via relaunch, brightness polls, flag polls); dialog wrote dismissals (read back via close plus persist); captures wrote goldens (read back via comparison fractions and the 3.537% red artifact)
+> **Duration:** 43
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 2. Tab Model with Dirty Tracking
 
