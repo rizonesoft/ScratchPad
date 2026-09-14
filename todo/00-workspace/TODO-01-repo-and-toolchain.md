@@ -2,7 +2,7 @@
 schema_version: 1
 id: repo-and-toolchain
 domain: 00-workspace
-status: draft
+status: done
 title: "TODO-01 -- Repo and Toolchain"
 track: W0
 ---
@@ -207,6 +207,6 @@ Why this section exists: the plan is load-bearing, so a broken plan must fail th
 
 ## Verification
 
-- [ ] Clean-machine build and test both green from the docs alone
-- [ ] CI green on `main` with all gates enforcing
-- [ ] `python3 scripts/todo-graph.py validate` clean
+- [x] Clean-machine build and test both green from the docs alone. Evidence: §6 cold follows on Linux (0 warnings, Passed 1/1) and Windows (0 warnings, Passed 1/1, stub launch title observed), zero improvisation.
+- [x] CI green on `main` with all gates enforcing. Evidence: build run 34793972371 success both jobs and plan-gates run 34793972372 success on the §7 stamp commit.
+- [x] `python3 scripts/todo-graph.py validate` clean. Evidence: `19 todos, 106 sections -- 0 fatal, 0 warning(s), 19 adjacency advisory` (all pre-existing kinds) at closeout.

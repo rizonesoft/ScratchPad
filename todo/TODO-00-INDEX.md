@@ -52,7 +52,6 @@ A coverage claim rests on the source it was derived from. This table was derived
 
 ## Active TODOs
 
-- [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- layout, pinned .NET SDK, CI on Linux and Windows runners, warning and analysis gates, this TODO system's own CI checks.
 - [00 Workspace] [TODO-02 Test Backbone](./00-workspace/TODO-02-test-backbone.md) -- unit-test project, UI automation driver, golden captures, ACP loopback fixture, soak procedure.
 - [01 Notepad Core] [TODO-01 WinUI App Spine](./01-notepad-core/TODO-01-winui-app-spine.md) -- window, tab model, file IO with encoding detection, open/save round-trips.
 - [01 Notepad Core] [TODO-02 Menus, Settings and Status](./01-notepad-core/TODO-02-menus-settings-status.md) -- full menu bar, settings page, status bar, print slice.
@@ -71,6 +70,10 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [06 Quality] [TODO-01 Automated Test Strategy](./06-quality/TODO-01-automated-test-strategy.md) -- what automatic and complete means here: layers, coverage bar, UI automation suites, flake policy.
 - [06 Quality] [TODO-02 ACP Conformance Harness](./06-quality/TODO-02-acp-conformance-harness.md) -- scripted fake agents, schema validation, session fixtures, adapter compatibility matrix.
 - [07 Release] [TODO-01 Packaging and Update](./07-release/TODO-01-packaging-and-update.md) -- MSIX packaging, clean-machine install test, update channel, release checklist.
+
+## Completed TODOs
+
+- [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- completed 2026-09-14.
 
 ## Queries
 

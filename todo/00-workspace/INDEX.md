@@ -8,8 +8,13 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 
 | TODO | Title | Status |
 | ---- | ----- | :----: |
-| [TODO-01](./TODO-01-repo-and-toolchain.md) | Repo and Toolchain | `draft` |
 | [TODO-02](./TODO-02-test-backbone.md) | Test Backbone | `draft` |
+
+## Completed
+
+| TODO | Title | Completed |
+| ---- | ----- | :-------: |
+| [TODO-01](./TODO-01-repo-and-toolchain.md) | Repo and Toolchain | 2026-09-14 |
 
 ## In scope
 
