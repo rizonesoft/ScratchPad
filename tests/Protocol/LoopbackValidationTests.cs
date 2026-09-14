@@ -28,6 +28,18 @@ public sealed class LoopbackValidationTests
     }
 
     [Fact]
+    public async Task NonObjectInputRejectedLoudly()
+    {
+        await using var client = await AcpTestClient.StartAsync("prompt-turn.json");
+
+        await client.SendRawAsync("123");
+        await client.WaitForExitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, client.ExitCode);
+        Assert.Contains("rejected non-object message", client.StderrText, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task GarbageInputKillsFixtureLoudly()
     {
         await using var client = await AcpTestClient.StartAsync("prompt-turn.json");

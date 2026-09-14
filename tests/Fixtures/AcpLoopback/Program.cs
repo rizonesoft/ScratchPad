@@ -6,18 +6,21 @@ using System.Text.Json.Nodes;
 
 var options = LoopbackOptions.Parse(args);
 JsonObject script;
+string sessionId;
+string[] chunks;
+string stopReason;
 try
 {
     script = JsonNode.Parse(File.ReadAllText(options.ScriptPath))!.AsObject();
+    sessionId = script["sessionId"]?.GetValue<string>() ?? "sess_loopback_001";
+    chunks = script["chunks"]?.AsArray().Select(n => n!.GetValue<string>()).ToArray() ?? [];
+    stopReason = script["stopReason"]?.GetValue<string>() ?? "end_turn";
 }
-catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException)
 {
     Console.Error.WriteLine($"acp-loopback: cannot load script '{options.ScriptPath}': {ex.Message}");
     return 3;
 }
-string sessionId = script["sessionId"]?.GetValue<string>() ?? "sess_loopback_001";
-string[] chunks = script["chunks"]?.AsArray().Select(n => n!.GetValue<string>()).ToArray() ?? [];
-string stopReason = script["stopReason"]?.GetValue<string>() ?? "end_turn";
 
 bool garbageEmitted = false;
 string? line;
@@ -34,8 +37,13 @@ while ((line = Console.In.ReadLine()) != null)
     }
     catch (JsonException ex)
     {
-        // Loud failure: stderr plus a nonzero exit, and nothing but valid ACP on stdout.
+        // Loud failures: stderr plus a nonzero exit, and nothing but valid ACP on stdout.
         Console.Error.WriteLine($"acp-loopback: rejected malformed JSON: {ex.Message}");
+        return 2;
+    }
+    catch (InvalidOperationException)
+    {
+        Console.Error.WriteLine($"acp-loopback: rejected non-object message: {line}");
         return 2;
     }
     string? version = request["jsonrpc"]?.GetValueKind() == JsonValueKind.String ? request["jsonrpc"]!.GetValue<string>() : null;
@@ -59,7 +67,7 @@ while ((line = Console.In.ReadLine()) != null)
         Console.Error.WriteLine($"acp-loopback: rejected invalid params for {method}: {error["message"]}");
         if (id is not null)
         {
-            Write(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = JsonNode.Parse(id.ToJsonString()), ["error"] = error });
+            Write(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = Clone(id), ["error"] = error });
         }
         continue;
     }
