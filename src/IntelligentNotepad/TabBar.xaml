@@ -1,0 +1,22 @@
+<UserControl
+    x:Class="IntelligentNotepad.TabBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- D01 T01 §3: the tab strip. The TabView is deliberately unbound: the
+         code-behind builds one TabViewItem per Tab so the container-to-model
+         mapping (Tag) is exact with no ItemsSource magic.
+         CanReorderTabs is off as parity: three live probes dragged stock
+         tabs (named tabs, on-screen foreground window) and the order never
+         moved. CanDragTabs is off with it; stock has no tear-off. -->
+    <TabView
+        x:Name="Tabs"
+        HorizontalAlignment="Stretch"
+        VerticalAlignment="Stretch"
+        AutomationProperties.AutomationId="Tabs"
+        CanDragTabs="False"
+        CanReorderTabs="False"
+        TabWidthMode="SizeToContent"
+        SelectionChanged="Tabs_SelectionChanged"
+        TabCloseRequested="Tabs_TabCloseRequested" />
+</UserControl>

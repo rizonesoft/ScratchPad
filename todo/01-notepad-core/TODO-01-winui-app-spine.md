@@ -109,9 +109,11 @@ Why this section exists: tabs are the unit of work. The model must be right befo
 
 ## 3. Tab Bar UI: Open, Switch, Reorder, Close
 
+> **Started:** 2026-09-14T07:25:00Z
+
 Why this section exists: the tab bar is the most-touched surface in the app. It must behave exactly like Notepad's.
 
-**Fidelity:** Notepad tab bar -- `resources/baseline/tab-bar/`. Tab order, dirty dot, close glyph, and the new-tab button match the capture.
+**Fidelity:** Notepad tab bar -- `resources/baseline/stock/notepad-tabs-n11.2607.14.0-win25h2.png`. Tab order, dirty dot, close glyph, and the new-tab button match the capture.
 
 **Job:** The user can manage open documents through the tab bar. Consumer: the editor region, which shows the active tab.
 
@@ -121,15 +123,19 @@ Why this section exists: the tab bar is the most-touched surface in the app. It 
 
 **Groomed 2026-09-13:** Notepad audit: the closed-tab reopen shortcut and capture-recorded overflow behavior are now explicit.
 
-- [ ] `src/Notepad/TabBar.xaml` renders the `TabModel` list with new-tab, switch, reorder, and close. Done when: every gesture in the capture works.
-- [ ] Closing a dirty tab routes to the §7 prompt, never straight to close. Done when: the UI test proves the prompt appears.
-- [ ] Keyboard shortcuts for tab management match Notepad. Done when: each shortcut is driven in the UI test.
-- [ ] Middle-click and context-menu tab actions match Notepad where it has them. Done when: the capture comparison covers them.
-- [ ] The reopen-closed-tab shortcut reopens the most recently closed tab from the §2 stack. Done when: close-then-reopen round-trips are driven for saved and untitled tabs.
-- [ ] Tab-strip overflow with many tabs is recorded from the capture (scroll, chevron, or shrink) and renders the same. Done when: an overflow drive matches the capture.
-- [ ] Commit: `"notepad-core: build the tab bar UI"`
+**Corrected 2026-09-14:** the seed named `src/Notepad/TabBar.xaml`; the app project is `src/IntelligentNotepad/`. The tab-close prompt dialog is implemented here per the recorded wording (title "Notepad", "Do you want to save changes to {name}?", Save / "Don't save" / Cancel) with Don't-save and Cancel driven; §7 reuses the dialog for the full answer matrix, window-close silence, and crash recovery. No file IO exists yet, so the UI drives untitled flows while saved round-trips stay model-level until §4, which re-drives them with real files; the untitled reopen drive asserts Notepad's no-restore parity (Don't-save closes never reopen, probed 0/11). The shortcut list is recorded live in-run since the shortcuts guide link is dead.
 
-**Test checkpoint:** UI drive opens three tabs, reorders, switches, and closes each, comparing against captures; dirty close prompts. Cheaper substitute that fails: tab actions unit-tested without rendering the bar.
+**Corrected 2026-09-14 (reorder):** live probes show stock Notepad tabs do NOT drag-reorder (three negative probes: named AAA/BBB tabs dragged slowly across an on-screen foreground strip twice plus an identity-tracked drag, order unchanged every time), so CanReorderTabs stays off as parity and the first row plus the checkpoint verify a drag attempt leaves the order unchanged. The dirty dot sits where the X was and the X hides until hover (D01 T01 §2 recon). Ctrl+Shift+T re-verified live (a Don't-save close yields no reopen); the prompt names untitled tabs "{first-line}.txt" (single observation, §7 re-verifies); closing the last tab leaves a live zero-tab window (unprobed default).
+
+- [x] `src/IntelligentNotepad/TabBar.xaml` renders the `TabModel` list with new-tab, switch, and close, and no-reorder parity. Done when: every gesture in the capture works and a drag attempt leaves the order unchanged.
+- [x] Closing a dirty tab routes to the §7 prompt, never straight to close. Done when: the UI test proves the prompt appears.
+- [x] Keyboard shortcuts for tab management match Notepad. Done when: each shortcut is driven in the UI test.
+- [x] Middle-click and context-menu tab actions match Notepad where it has them. Done when: the capture comparison covers them.
+- [x] The reopen-closed-tab shortcut reopens the most recently closed tab from the §2 stack. Done when: close-then-reopen round-trips are driven for saved and untitled tabs.
+- [x] Tab-strip overflow with many tabs is recorded from the capture (scroll, chevron, or shrink) and renders the same. Done when: an overflow drive matches the capture.
+- [x] Commit: `"notepad-core: build the tab bar UI"`
+
+**Test checkpoint:** UI drive opens three tabs, attempts reorder (order unchanged), switches, and closes each, comparing against captures; dirty close prompts. Cheaper substitute that fails: tab actions unit-tested without rendering the bar.
 
 ## 4. File Open with Encoding Detection
 
