@@ -24,4 +24,8 @@
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.401" PrivateAssets="All" />
   </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Notepad.Core\Notepad.Core.csproj" />
+  </ItemGroup>
 </Project>

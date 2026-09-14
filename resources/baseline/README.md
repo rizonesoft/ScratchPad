@@ -4,7 +4,7 @@ Parity with Windows 11 Notepad is checkable only against captures. This store ho
 
 ## Sources
 
-Stock captures were taken from `Microsoft.WindowsNotepad` 11.2607.14.0 on Windows 11 25H2 at 150% DPI via `tools/CaptureBaseline` (FlaUI 5.0.0, `System.Drawing.Common` 10.0.12 for canonicalization): `notepad-main` (fresh window, one empty Untitled tab), `notepad-tabs` (same window with a second empty tab), `notepad-menu-file` (File menu open), `notepad-settings` (settings page, showing the source version). Window state is one empty window with no saved content; the tool opens its own window and never touches other Notepad windows. App goldens were taken from our stub the same way; `stub-window.png` shows the full window at canonical size.
+Stock captures were taken from `Microsoft.WindowsNotepad` 11.2607.14.0 on Windows 11 25H2 at 150% DPI via `tools/CaptureBaseline` (FlaUI 5.0.0, `System.Drawing.Common` 10.0.12 for canonicalization): `notepad-main` (fresh window, one empty Untitled tab), `notepad-tabs` (same window with a second empty tab), `notepad-menu-file` (File menu open), `notepad-settings` (settings page, showing the source version), each in dark (no infix) and light (`-light-`) app theme. Window state is one empty window with no saved content; the tool opens its own window and never touches other Notepad windows. App goldens were taken from our app the same way; `main-window.png` shows the §1 shell (empty regions, megaphone entry) at canonical size.
 
 ## Capture procedure
 

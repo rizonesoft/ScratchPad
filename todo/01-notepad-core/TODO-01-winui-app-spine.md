@@ -49,9 +49,11 @@ track: N1
 
 ## 1. Main Window Shell with Menu Bar Host
 
+> **Started:** 2026-09-14T06:02:00Z
+
 Why this section exists: everything visible hangs off the main window. Build the shell first so later sections have a host.
 
-**Fidelity:** Notepad main window chrome -- `resources/baseline/main-window/`. Window frame, title bar, and menu bar placement match the capture.
+**Fidelity:** Notepad main window chrome -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png`. Window frame, title bar, and menu bar placement match the capture.
 
 **Job:** The user can open the app to a window that looks and places like Notepad. Consumer: none, this surface is the consumer.
 
@@ -61,13 +63,15 @@ Why this section exists: everything visible hangs off the main window. Build the
 
 **Groomed 2026-09-13:** Notepad audit: theme-bound Mica and rounded corners are now explicit (was capture-implicit); the first-run What's New dialog and megaphone entry are recorded from the capture.
 
-- [ ] `src/Notepad/MainWindow.xaml` hosts the menu bar region, tab region, editor region, and status region. Done when: all four regions exist with the Notepad layout.
-- [ ] The window title follows Notepad's convention (file name, dirty marker, app name). Done when: each state renders exactly as captured.
-- [ ] The window restores its size and position across launches. Done when: move, close, reopen, and the geometry matches.
-- [ ] `tests/UI/MainWindowTest` drives launch and asserts the regions exist. Done when: `dotnet test --filter MainWindow` passes on a Windows runner in CI.
-- [ ] The window frame uses Mica material with rounded corners, following the app theme from the D01 T02 §2 store. Done when: light, dark, and system themes each render Mica correctly against the capture. Source: https://blogs.windows.com/blog/2021/12/07/redesigned-notepad-for-windows-11-begins-rolling-out-to-windows-insiders/
-- [ ] First-run shows Notepad's What's New dialog as captured, revisitable through the megaphone entry; if the capture shows it removed, the removal is recorded instead. Done when: first-run is driven. Source: https://blogs.windows.com/windows-insider/2026/01/21/notepad-and-paint-updates-begin-rolling-out-to-windows-insiders/
-- [ ] Commit: `"notepad-core: build the main window shell"`
+**Corrected 2026-09-14:** the seed named `src/Notepad/MainWindow.xaml`, `tests/UI/MainWindowTest`, and `resources/baseline/main-window/`; the app project is `src/IntelligentNotepad/` (D00 T01 §2), the test file follows the `*Tests` convention, and the §3 store is flat with `stock/notepad-main-n11.2607.14.0-win25h2.png` as the main-window capture. Items 3 and 5 persist through a local seam the D01 T02 §2 store adopts, since the store ships later in this phase.
+
+- [x] `src/IntelligentNotepad/MainWindow.xaml` hosts the menu bar region, tab region, editor region, and status region. Done when: all four regions exist with the Notepad layout.
+- [x] The window title follows Notepad's convention (file name, dirty marker, app name). Done when: each state renders exactly as captured.
+- [x] The window restores its size and position across launches, persisted in local app data behind a seam the D01 T02 §2 store adopts. Done when: move, close, reopen, and the geometry matches.
+- [x] `tests/UI/MainWindowTests.cs` drives launch and asserts the regions exist. Done when: `dotnet test --filter MainWindow` passes on a Windows runner in CI.
+- [x] The window frame uses Mica material with rounded corners, following the app theme resolved through the same seam the D01 T02 §2 store adopts. Done when: light, dark, and system themes each render Mica correctly against the captures. Source: https://blogs.windows.com/blog/2021/12/07/redesigned-notepad-for-windows-11-begins-rolling-out-to-windows-insiders/
+- [x] First-run shows Notepad's What's New dialog as captured, revisitable through the megaphone entry; if the capture shows it removed, the removal is recorded instead. Done when: first-run is driven. Source: https://blogs.windows.com/windows-insider/2026/01/21/notepad-and-paint-updates-begin-rolling-out-to-windows-insiders/
+- [x] Commit: `"notepad-core: build the main window shell"`
 
 **Test checkpoint:** UI drive launches the app, asserts the four regions and the title convention, and compares against the golden capture within tolerance. Cheaper substitute that fails: regions asserted in unit tests without rendering the window.
 

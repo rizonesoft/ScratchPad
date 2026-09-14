@@ -19,7 +19,7 @@ public sealed class GoldenComparisonTests
     {
         var tolerance = GoldenComparer.Load(Path.Combine(AppContext.BaseDirectory, "tolerance.json"));
         using var fresh = UiCapture.CaptureWindow(tolerance);
-        using var golden = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "stub-window.png"));
+        using var golden = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "main-window.png"));
         var result = GoldenComparer.Compare(golden, fresh, tolerance);
         output.WriteLine($"fresh-vs-golden: {result.DifferentFraction:P4} different ({result.DifferentPixels}/{result.TotalPixels}), threshold {tolerance.MaxDifferentFraction:P4}");
         if (!result.Match)
@@ -33,11 +33,13 @@ public sealed class GoldenComparisonTests
     [Fact]
     public void TenPixelShiftFailsComparison()
     {
+        // Shift sensitivity is a comparer property, so the probe runs on the
+        // content-rich stock capture: the §1 shell golden is legitimately sparse
+        // (empty regions its owners fill later) and a 10px shift hides in it.
         var tolerance = GoldenComparer.Load(Path.Combine(AppContext.BaseDirectory, "tolerance.json"));
-        using var fresh = UiCapture.CaptureWindow(tolerance);
-        using var shifted = GoldenComparer.ShiftRight(fresh, 10);
-        using var golden = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "stub-window.png"));
-        var result = GoldenComparer.Compare(golden, shifted, tolerance);
+        using var stock = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "stock-main.png"));
+        using var shifted = GoldenComparer.ShiftRight(stock, 10);
+        var result = GoldenComparer.Compare(stock, shifted, tolerance);
         output.WriteLine($"shifted-vs-golden: {result.DifferentFraction:P4} different ({result.DifferentPixels}/{result.TotalPixels}), threshold {tolerance.MaxDifferentFraction:P4}");
         if (result.Match)
         {

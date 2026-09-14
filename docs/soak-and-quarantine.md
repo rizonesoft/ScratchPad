@@ -47,3 +47,4 @@ Deleting a test without a recorded decision fails review. Every removed test get
 | Test | Decision | Rationale | Date | By |
 | ---- | -------- | --------- | ---- | -- |
 | `Unit.DeliberatelyFlakyProbe` | removed | Deliberate §5 checkpoint probe: proven flaky (red then green, same binary), quarantined by this procedure with the suite green, then removed as designed. | 2026-09-14 | §5 implementation |
+| `UI.StubWindowLaunchesShowsTitleAndCloses` | removed | D01 T01 §1 graduated the stub to the shell: the stub title it asserted no longer exists, and `MainWindowTests` covers launch, title, regions, and close. | 2026-09-14 | §1 implementation |

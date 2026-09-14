@@ -325,8 +325,12 @@
       "intelligentnotepad": {
         "type": "Project",
         "dependencies": {
-          "Microsoft.WindowsAppSDK": "[2.4.0, )"
+          "Microsoft.WindowsAppSDK": "[2.4.0, )",
+          "Notepad.Core": "[0.0.0, )"
         }
+      },
+      "notepad.core": {
+        "type": "Project"
       }
     }
   }

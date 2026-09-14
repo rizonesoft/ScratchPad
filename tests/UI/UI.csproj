@@ -21,7 +21,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\resources\baseline\app\stub-window.png" Link="goldens\stub-window.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\resources\baseline\app\main-window.png" Link="goldens\main-window.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\resources\baseline\stock\notepad-main-n11.2607.14.0-win25h2.png" Link="goldens\stock-main.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\..\resources\baseline\tolerance.json" Link="tolerance.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
