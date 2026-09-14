@@ -37,7 +37,7 @@ track: W0
 |   3   |   §3    | CI on Linux and Windows runners | §2 |  [x]   |
 |   4   |   §4    | Warning and analysis gates | §2 |  [x]   |
 |   5   |   §5    | Test wiring and first smoke test | §2 |  [x]   |
-|   6   |   §6    | Developer bootstrap doc | §1 |  [ ]   |
+|   6   |   §6    | Developer bootstrap doc | §1 |  [x]   |
 |   7   |   §7    | TODO graph checks in CI | §3 |  [ ]   |
 
 ---
@@ -178,6 +178,12 @@ Why this section exists: the second developer (or a fresh agent session) should 
 - [x] Commit: `"workspace: write the developer bootstrap doc"`
 
 **Test checkpoint:** A cold follow of the doc on a clean machine reaches a green build and test run. Falsifiable by any step that does not work as written.
+
+> **Verified:** 2026-09-14 | §6 | doc cold-followed green on Linux (0 warnings, Passed 1/1) and Windows (0 warnings, Passed 1/1, stub launch title observed); env-failure entries reproduced verbatim on both OSes; run 34792965135 green both jobs on the push; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidate ef2e014 -- `adversarial` advisory (cold machines had step-1 prereqs preinstalled; bare metal follows the documented vendor installers) · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s6.md
+> **CRUD:** not applicable | doc-only section; cold follows wrote build and test outputs outside the repo (read back via warning counts, test counts, window title)
+> **Duration:** 22
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 7. TODO Graph Checks in CI
 
