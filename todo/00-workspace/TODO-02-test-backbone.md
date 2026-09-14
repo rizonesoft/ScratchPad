@@ -114,15 +114,21 @@ Why this section exists: parity with Windows 11 Notepad is checkable only agains
 
 Why this section exists: protocol tests must run with no network, no API keys, and no real agent. A loopback fixture speaks ACP back at the client deterministically.
 
-- [ ] `tests/Fixtures/AcpLoopback/` (a `net10.0` console app, spawned through the .NET host on either OS) implements a scripted fake agent over stdio: it answers `initialize`, `session/new`, and `session/prompt` from a script file. Done when: a test drives a full prompt turn against it on Linux.
-- [ ] The fixture can inject faults on demand (malformed JSON, dropped responses, slow streams). Done when: each fault has a test proving the client survives it.
-- [ ] The fixture validates every message it receives against the ACP schema and fails loudly on violations. Done when: a deliberately malformed client message fails the test.
-- [ ] `D03` sections consume this fixture rather than building their own fakes. Done when: the ownership is recorded here and referenced there.
-- [ ] Commit: `"workspace: add ACP loopback fixture"`
+- [x] `tests/Fixtures/AcpLoopback/` (a `net10.0` console app, spawned through the .NET host on either OS) implements a scripted fake agent over stdio: it answers `initialize`, `session/new`, and `session/prompt` from a script file. Done when: a test drives a full prompt turn against it on Linux.
+- [x] The fixture can inject faults on demand (malformed JSON, dropped responses, slow streams). Done when: each fault has a test proving the client survives it.
+- [x] The fixture validates every message it receives against the ACP schema and fails loudly on violations. Done when: a deliberately malformed client message fails the test.
+- [x] `D03` sections consume this fixture rather than building their own fakes. Done when: the ownership is recorded here and referenced there.
+- [x] Commit: `"workspace: add ACP loopback fixture"`
 
 **Ownership:** D00 T02 §4 owns `tests/Fixtures/AcpLoopback/`; consumers are D03 T01 (transport lifecycle) and D03 T02 (client methods), which drive their tests against this fixture and extend it rather than building their own fakes.
 
 **Test checkpoint:** A scripted prompt turn passes; each injected fault is survived; a malformed client message fails. Cheaper substitute that fails: tests that pass against a mock that accepts anything.
+
+> **Verified:** 2026-09-14 | §4 | Loopback fixture plus Protocol suite (turn, 3 faults, 4 validation tests) green locally (Protocol 8/8) and in CI both jobs (run 34807778662, Protocol 8/8; run 34807053331 green at 7/7 before hardening); mutation probe (accepting fixture) red then green on revert; ownership recorded here with D03 T01/T02 back-refs; validate 0 fatal; self-test 391/391
+> **Review:** round 1, candidates 6fdfda3 b505081 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s4.md
+> **CRUD:** applicable | prompt turns wrote responses plus notifications (read back via chunk text, stopReason, sessionId); faults wrote garbage/timeouts/delays (read back via skip count, TimeoutException, completion); violations wrote errors plus exits (read back via codes 2/-32601/-32602 and stderr); mutation wrote a red test (read back, then green on revert)
+> **Duration:** 38
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 5. Soak and Quarantine Procedure
 
