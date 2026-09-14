@@ -47,7 +47,7 @@ public sealed class MainWindowTests
     [Fact]
     public void ShellMatchesGolden()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        // UiCapture seeds the seam (no first-run, dark Mica) for determinism.
         var tolerance = GoldenComparer.Load(Path.Combine(AppContext.BaseDirectory, "tolerance.json"));
         using var fresh = UiCapture.CaptureWindow(tolerance);
         using var golden = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "main-window.png"));

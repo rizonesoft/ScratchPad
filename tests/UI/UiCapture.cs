@@ -37,6 +37,10 @@ internal static class UiCapture
             throw new InvalidOperationException($"app missing at {appPath}");
         }
 
+        // Captures must be machine-independent: no first-run dialog, dark Mica
+        // even on light-system machines. First-run has its own driven test.
+        new Notepad.Core.ShellSettings { WhatsNewSeen = true, Theme = "dark" }.Save();
+
         using var app = Application.Launch(appPath);
         try
         {
