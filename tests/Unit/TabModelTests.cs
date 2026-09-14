@@ -227,6 +227,20 @@ public sealed class TabModelTests
     }
 
     [Fact]
+    public void ClosingANonOpenTabIsANoOp()
+    {
+        var model = new TabModel();
+        Tab tab = model.NewTab();
+        model.CloseTab(tab, content: null, caretOffset: 0, discardUnsaved: false);
+
+        model.ActiveTab = tab;
+        model.CloseTab(tab, content: null, caretOffset: 0, discardUnsaved: false);
+
+        Assert.Empty(model.Tabs);
+        Assert.Empty(model.Closed);
+    }
+
+    [Fact]
     public void ClosingActiveTabSelectsANeighbor()
     {
         var model = new TabModel();

@@ -46,15 +46,22 @@ public sealed class TabModel : INotifyPropertyChanged
 
     // Closes a tab. Content and caret come from the editor buffer (D02 T01),
     // which is the only writer; the model snapshots what the stack needs.
+    // Pass content null when the tab is clean at close (reopen reloads by path).
+    // Closing a tab that is not open is a no-op, so double-close races are safe.
     public void CloseTab(Tab tab, string? content, int caretOffset, bool discardUnsaved)
     {
         ArgumentNullException.ThrowIfNull(tab);
+        int index = Tabs.IndexOf(tab);
+        if (index < 0)
+        {
+            return;
+        }
+
         if (!discardUnsaved && (tab.FilePath is not null || !string.IsNullOrEmpty(content)))
         {
             Closed.Push(new ClosedTab(tab.FilePath, content, caretOffset, tab.Encoding, tab.LineEnding));
         }
 
-        int index = Tabs.IndexOf(tab);
         Tabs.Remove(tab);
         if (ReferenceEquals(ActiveTab, tab))
         {
