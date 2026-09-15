@@ -254,9 +254,13 @@ Why this section exists: Notepad reopens where the user left off. So do we, with
 
 ## 7. Dirty Prompts and Crash Recovery
 
-Why this section exists: this section is the last line before data loss. Every destructive path prompts, and a crash recovers to a prompt, never to silence.
+-> **Started:** 2026-09-15T09:24:07Z
+
+Why this section exists: this section is the last line before data loss. Every destructive path prompts, and a crash recovers to the user's buffers, never to silence about them.
 
 **Fidelity:** Notepad save prompts and recovery behavior -- `resources/baseline/prompts/`. Button order and wording match.
+
+**Corrected 2026-09-15:** the Why line said a crash "recovers to a prompt". Probed 2026-09-15: stock 11.2607.14.0 shows no offer, notice, or prompt after a kill (relaunch opened zero dialogs) and silently restores every dirty buffer. The line now says what stock does. The prompt matrix below is tab-close only; window close and crash relaunch are both silent.
 
 **Job:** The user can never lose work without choosing to. Consumer: the tab model, which only closes clean tabs unprompted.
 
@@ -266,14 +270,16 @@ Why this section exists: this section is the last line before data loss. Every d
 
 **Corrected 2026-09-14:** the seed prompted on every close. Notepad prompts when closing an unsaved tab, but closing the window preserves the session silently for §6 to restore. This section now draws that line exactly.
 
-- [ ] Closing an unsaved tab prompts per Notepad (save, don't save, cancel). Done when: all three answers are driven.
-- [ ] Closing the window with dirty tabs preserves everything silently for §6 restore, as Notepad's. Done when: the drive proves zero prompts and full restore.
-- [ ] Cancel on a tab prompt aborts that close only, leaving the tab exactly as it was. Done when: the drive proves nothing closed and nothing saved.
-- [ ] Crash recovery snapshots dirty buffers periodically and offers restore on next launch. Done when: a killed-process drive recovers to the prompt.
-- [ ] Recovery never overwrites the user's files without the prompt's explicit choice. Done when: the drive proves files untouched until chosen.
-- [ ] Commit: `"notepad-core: prompt on dirty close and recover crashes"`
+- [x] Closing an unsaved tab prompts per Notepad (save, don't save, cancel). Done when: all three answers are driven. **Corrected 2026-09-15:** the prompt names the tab's full path for saved tabs (capture `notepad-save-prompt-path-n11.2607.14.0-win25h2.png`: "Do you want to save changes to C:\...?"), not the file name the §3 `PromptName` ships; untitled tabs are "{tab-name}.txt" (double-confirmed: §3 FIRST to FIRST.txt plus this probe's "FIRSTLINE7 rest of line" to "FIRSTLINE7 rest of line.txt", capture `notepad-save-prompt-untitled-n11.2607.14.0-win25h2.png`). Button order Save (default, accent) / "Don't save" / Cancel with title "Notepad" matches the §3 dialog verbatim, straight apostrophe included. **Corrected 2026-09-15:** stock answers Save on untitled with the Save As dialog (probed: title "Save as", cancel keeps the tab dirty and open); no Save As dialog exists until D01 T02 §1, so Save on untitled keeps the tab open with no loss (the cancel-outcome, driven), Save on pathed tabs saves in place and closes (driven with bytes), and SaveRedirect/SaveFailed keep the tab open (redirect needs the same dialog; failures report at D01 T02 §1-time). The drives cover Save (pathed, bytes plus closed), Don't-save (closed, discarded), Cancel (kept), and untitled-Save (kept, dirty, nothing written). **Driven 2026-09-15:** `SaveOnPathedDirtyTabWritesBytesAndCloses` (bytes plus closed, full-path message), `DontSaveDiscardsAndCloses` (bytes intact), `CancelKeepsTabExactly`, `UntitledSaveKeepsTabDirtyWithNothingWritten` (name.txt message, kept dirty, dir empty).
+- [x] Closing the window with dirty tabs preserves everything silently for §6 restore, as Notepad's. Done when: the drive proves zero prompts and full restore. **Probed 2026-09-15:** window close is silent for one dirty tab and for two (both closed with zero dialogs; the singleton case re-verified after a debris scare, and the silently closed singleton restored dirty on next launch). The 2026-09-14 Corrected line stands as drawn. **Driven 2026-09-15:** `WindowCloseWithDirtyTabsIsSilentAndRestores` (zero modals across 3 s of close, both buffers restored dirty, file bytes intact).
+- [x] Cancel on a tab prompt aborts that close only, leaving the tab exactly as it was. Done when: the drive proves nothing closed and nothing saved. **Driven 2026-09-15:** `CancelKeepsTabExactly` (text, name, count, and file bytes unchanged; the re-prompt proves still dirty).
+- [x] Crash recovery checkpoints dirty buffers continuously and restores them silently on next launch, as Notepad's. Done when: a killed-process drive relaunches to all dirty buffers with contents and zero dialogs. **Corrected 2026-09-15:** the seed offered restore through a prompt. Probed 2026-09-15: stock shows no offer after a kill (relaunch opened zero dialogs) and restores every dirty buffer, including untitled content typed seconds before the kill, so the checkpoint is continuous, not periodic. Our session.json doubles as the checkpoint (debounced 2 s after edits, skipped in fresh mode so killed fresh sessions leave nothing stale), and relaunch restores through the §6 path with no new file, marker, or dialog. The 2 s debounce is an engineering default (cost: one constant); stock's exact cadence is unobservable from outside. **Driven 2026-09-15:** `KillRecoversBuffersSilentlyWithFilesUntouched` (checkpoint gated on session.json markers, kill, relaunch to both buffers with zero dialogs).
+- [x] Recovery never writes the user's files: restored buffers arrive dirty, and bytes change only through the §5 save paths. Done when: the drive proves file bytes identical before the kill and after the relaunch. **Driven 2026-09-15:** `KillRecoversBuffersSilentlyWithFilesUntouched` asserts file bytes identical before the kill and after the relaunch. **Corrected 2026-09-15:** the seed gated overwrites on "the prompt's explicit choice". No prompt exists (see item 4); the explicit choice is the user's later save. Probed 2026-09-15: stock's file bytes were identical before the kill and after the relaunch.
+- [x] Commit: `"notepad-core: prompt on dirty close and recover crashes"`
 
-**Test checkpoint:** Tab-prompt answers driven; silent window close with full restore driven; killed-process recovery driven; files untouched until chosen. Cheaper substitute that fails: prompting on window close as if it were tab close.
+**Test checkpoint:** Tab-prompt answers driven (Save on pathed saves bytes and closes; untitled-Save keeps the tab dirty with nothing written); silent window close with full restore driven; killed-process drive relaunches to all dirty buffers with zero dialogs; file bytes identical across the kill. Cheaper substitute that fails: prompting on window close as if it were tab close; a recovery offer dialog stock never shows.
+
+**Forwarded 2026-09-15 (not this section):** a bare `notepad.exe` launch with a live window opens a NEW window (for §8's launch rules), and stock Ctrl+T opens a new tab (matches our TabBar; for the record).
 
 ## 8. File Association and Command-Line Open
 

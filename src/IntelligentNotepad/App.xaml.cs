@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Notepad.Core;
 
@@ -6,6 +7,10 @@ namespace IntelligentNotepad;
 public partial class App : Application
 {
     private readonly List<Window> windows = new();
+
+    // Crash-checkpoint debounce (D01 T01 §7): every content-box edit
+    // restarts this one-shot; the tick checkpoints all live windows.
+    private DispatcherQueueTimer? checkpointTimer;
 
     public App()
     {
@@ -105,5 +110,65 @@ public partial class App : Application
         }
 
         data.Save();
+    }
+
+    // Called on every content-box edit (via MainWindow): restarts the
+    // checkpoint one-shot. UI thread only, like all window traffic.
+    internal void NotifyTabsEdited()
+    {
+        DispatcherQueue? queue = DispatcherQueue.GetForCurrentThread();
+        if (queue is null)
+        {
+            return;
+        }
+
+        checkpointTimer ??= queue.CreateTimer();
+        checkpointTimer.Interval = CrashCheckpoint.Debounce;
+        checkpointTimer.IsRepeating = false;
+        checkpointTimer.Tick -= CheckpointTick;
+        checkpointTimer.Tick += CheckpointTick;
+        checkpointTimer.Stop();
+        checkpointTimer.Start();
+    }
+
+    private void CheckpointTick(DispatcherQueueTimer timer, object args)
+    {
+        CheckpointAll();
+    }
+
+    // Continuous crash checkpoint (D01 T01 §7): snapshots every live
+    // window into session.json, the same file a quit writes, so a kill
+    // relaunches through the §6 path with no offer or marker (stock
+    // shows none). Policy follows CrashCheckpoint.Decide; writes are
+    // atomic temp-plus-move like quits, so a mid-write kill leaves the
+    // previous checkpoint or nothing (both restore clean).
+    internal void CheckpointAll()
+    {
+        StartupMode mode = WhenStartsRouting.Route(ShellSettings.Load().WhenStarts);
+        var data = new SessionData();
+        foreach (MainWindow window in windows.OfType<MainWindow>())
+        {
+            SessionWindow record = window.CaptureSessionWindow();
+            if (record.Tabs.Count > 0)
+            {
+                data.Windows.Add(record);
+            }
+        }
+
+        switch (CrashCheckpoint.Decide(mode, data.IsTrivial, File.Exists(SessionData.FilePath)))
+        {
+            case CrashCheckpoint.Decision.Write:
+                data.ActiveWindow = data.Windows.Count == 0
+                    ? 0
+                    : Math.Clamp(SessionData.Load().ActiveWindow, 0, data.Windows.Count - 1);
+                data.Save();
+                break;
+            case CrashCheckpoint.Decision.Delete:
+                SessionData.Delete();
+                break;
+            case CrashCheckpoint.Decision.Skip:
+            default:
+                break;
+        }
     }
 }

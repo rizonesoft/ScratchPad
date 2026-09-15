@@ -43,6 +43,15 @@ public sealed partial class MainWindow : Window, IDisposable
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;
         tabBar = new TabBar { Model = tabs };
+        // Crash checkpoint feed (D01 T01 §7): every box edit restarts
+        // the App debounce, so a kill restores seconds-old buffers.
+        tabBar.TabsEdited += (_, _) =>
+        {
+            if (Application.Current is App app)
+            {
+                app.NotifyTabsEdited();
+            }
+        };
         // The HWND is not valid in the constructor; installing here silently
         // subclasses nothing. First activation owns the install.
         Activated += OnFirstActivated;
@@ -498,11 +507,12 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         closed = true;
 
-        // No close prompt here: §7 owns window-close behavior (prompt matrix,
-        // silence, crash recovery). Until then tabs die with the window, and
-        // non-last closes drop them silently; §7 adds the dirty prompt into
-        // this path. The session snapshot runs first: App sees the closing
-        // window plus its survivors and applies the survivors-or-self rule.
+        // No close prompt here, by probe, not by omission (D01 T01 §7):
+        // stock closes windows with dirty tabs silently for one tab and
+        // for many (both probed with zero dialogs), preserving everything
+        // for session restore. The prompt matrix is tab-close only. The
+        // session snapshot runs first: App sees the closing window plus
+        // its survivors and applies the survivors-or-self rule.
         if (Application.Current is App app)
         {
             app.SnapshotSession(this);

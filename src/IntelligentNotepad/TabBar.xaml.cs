@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Diagnostics;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -160,6 +161,14 @@ public sealed partial class TabBar : UserControl
         return right;
     }
 
+    // Raised on every content-box edit, including keystrokes that change
+    // neither FirstLine nor IsDirty (same first line, already dirty): the
+    // model events skip those, but the §7 crash checkpoint must see them.
+    // MainWindow forwards to the App debounce; restore-time programmatic
+    // sets may or may not fire (pre-show boxes are unreliable raisers)
+    // and need no checkpoint anyway (restored state is already filed).
+    public event EventHandler? TabsEdited;
+
     // The box MainWindow shows in the editor region for the active tab.
     public TextBox ContentFor(Tab tab)
     {
@@ -175,7 +184,11 @@ public sealed partial class TabBar : UserControl
                 VerticalAlignment = VerticalAlignment.Stretch,
             };
             AutomationProperties.SetAutomationId(box, "TabContentBox");
-            box.TextChanged += (_, _) => tab.NotifyEdited(box.Text);
+            box.TextChanged += (_, _) =>
+            {
+                tab.NotifyEdited(box.Text);
+                TabsEdited?.Invoke(this, EventArgs.Empty);
+            };
             boxes[tab.Id] = box;
         }
 
@@ -258,10 +271,7 @@ public sealed partial class TabBar : UserControl
         switch (await AskSaveAsync(tab).ConfigureAwait(true))
         {
             case SaveAnswer.Save:
-                // No file IO exists yet (§4/§5), so Save cannot persist: the
-                // tab stays open. Interim default, recorded; §7 reuses this
-                // dialog for the full answer matrix.
-                return true;
+                return TrySaveAndClose(tab, model);
             case SaveAnswer.DontSave:
                 boxes.Remove(tab.Id);
                 model.CloseTab(tab, null, 0, discardUnsaved: true);
@@ -269,6 +279,40 @@ public sealed partial class TabBar : UserControl
             case SaveAnswer.Cancel:
             default:
                 return false;
+        }
+    }
+
+    // Save half of the §7 answer matrix. Pathed tabs save in place via
+    // the §5 engine and close; untitled tabs stay open because stock
+    // answers with the Save As dialog, which lands with D01 T02 §1
+    // (the keep-open cancel-outcome, probed, loses nothing). Redirects
+    // (locked/read-only need the same dialog) and failures (reported
+    // at T02 §1-time) also keep the tab open. Every keep-open path
+    // returns true: the user vetoed nothing, so batch closes continue
+    // past them instead of aborting.
+    bool TrySaveAndClose(Tab tab, TabModel model)
+    {
+        if (tab.FilePath is null)
+        {
+            return true;
+        }
+
+        string text = boxes.TryGetValue(tab.Id, out TextBox? box) ? box.Text ?? string.Empty : string.Empty;
+        var spec = new SaveSpec(tab.Encoding, tab.HasBom, tab.LineEnding);
+        switch (FileSave.SaveFile(tab.FilePath, text, spec))
+        {
+            case SaveSuccess:
+                tab.ApplySave(tab.FilePath, spec);
+                CloseClean(tab, model);
+                return true;
+            case SaveRedirect redirect:
+                Debug.WriteLine($"Save redirected to Save As, tab kept: {redirect.Detail}");
+                return true;
+            case SaveFailed failed:
+                Debug.WriteLine($"Save failed, tab kept: {failed.Detail}");
+                return true;
+            default:
+                return true;
         }
     }
 
@@ -531,9 +575,12 @@ public sealed partial class TabBar : UserControl
         model.CloseTab(tab, null, caret, discardUnsaved: false);
     }
 
-    // The prompt names an untitled tab "{first-line}.txt": live Notepad showed
-    // FIRST.txt for a tab showing FIRST. Saved tabs use the file name.
-    static string PromptName(Tab tab) => tab.IsUntitled ? tab.DisplayName + ".txt" : tab.DisplayName;
+    // The prompt names a saved tab by its FULL PATH (probed 2026-09-15:
+    // the message carries "C:\...\file.txt", capture
+    // `notepad-save-prompt-path-n11.2607.14.0-win25h2.png`) and an
+    // untitled tab by "{tab-name}.txt" (double-confirmed: §3 FIRST to
+    // FIRST.txt plus the §7 FIRSTLINE7 probe).
+    static string PromptName(Tab tab) => tab.IsUntitled ? tab.DisplayName + ".txt" : tab.FilePath!;
 
     async Task<SaveAnswer> AskSaveAsync(Tab tab)
     {
