@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -38,7 +39,7 @@ public sealed partial class TabBar : UserControl
     readonly Dictionary<Guid, TextBox> boxes = new();
 
     // Header parts per tab, refreshed on Tab.PropertyChanged.
-    readonly Dictionary<Guid, (TextBlock Dot, TextBlock Name)> headers = new();
+    readonly Dictionary<Guid, (FrameworkElement Dot, TextBlock Name)> headers = new();
 
     readonly HashSet<Guid> hovered = new();
 
@@ -49,6 +50,7 @@ public sealed partial class TabBar : UserControl
         InitializeComponent();
         Tabs.AddTabButtonCommand = new RelayCommand(_ => Model?.NewTab());
         Tabs.RightTapped += Tabs_RightTapped;
+        Tabs.LayoutUpdated += (_, _) => SyncAddButtonMargin();
     }
 
     // Shrink-to-fit, owned here because this TabView generation never
@@ -128,6 +130,160 @@ public sealed partial class TabBar : UserControl
 
     // Right edge, in DIP, of the interactive strip (tabs plus the add
     // button). MainWindow drags the window from everything right of here.
+    // Caption inset, in DIP: the TabView ends where the system caption
+    // buttons begin, so a full strip parks the add button left of minimize
+    // instead of under maximize (12 probed tabs put the add center 67 DIP
+    // inside the caption zone). Shrink-to-fit and TabStripContentRight both
+    // read the narrowed TabView, so no other math changes. MainWindow feeds
+    // this from AppWindow.TitleBar.RightInset on every layout.
+    double lastCaptionInset = -1;
+
+    internal void SetCaptionInset(double dip)
+    {
+        double inset = Math.Max(0, dip);
+        if (Math.Abs(inset - lastCaptionInset) < 0.5)
+        {
+            return;
+        }
+
+        lastCaptionInset = inset;
+        Tabs.Margin = new Thickness(0, 0, inset, 0);
+    }
+
+    // Add-button vertical placement, per layout. With tabs the button
+    // hugs the strip bottom beside the bottom-hugged tab items (stock's
+    // add glyph centers 25.5 DIP with its text at 26.5). With no tabs the
+    // strip row collapses and the template parks the button top-hugged
+    // (probed 36px tall at strip top), so it is re-margined to the strip
+    // middle; stock has no zero-tab state (last close quits), so centered
+    // is the target by construction. Idempotent: steady state recomputes
+    // the same values and skips the sets, so the per-layout call cannot
+    // loop. Kept out of ShrinkTabsToFit (widths only) deliberately.
+    Thickness? addButtonMargin;
+
+    bool zeroTabMarginApplied;
+
+    bool syncPending;
+
+    // Template-part lookup by visual walk: Tabs.FindName cannot see the
+    // add button (template namescope), so match its x:Name instead. (The
+    // UIA AutomationId reads AddButton too, but that comes from the peer,
+    // not the attached property.) Breadth-first, returns the first hit.
+    Button? FindAddButton()
+    {
+        Queue<DependencyObject> queue = new();
+        queue.Enqueue(Tabs);
+        while (queue.Count > 0)
+        {
+            DependencyObject current = queue.Dequeue();
+            int count = VisualTreeHelper.GetChildrenCount(current);
+            for (int i = 0; i < count; i++)
+            {
+                DependencyObject child = VisualTreeHelper.GetChild(current, i);
+                if (child is Button candidate && candidate.Name == "AddButton")
+                {
+                    return candidate;
+                }
+
+                queue.Enqueue(child);
+            }
+        }
+
+        return null;
+    }
+
+    // LayoutUpdated entry: never touch the template part synchronously.
+    // Setting its alignment or margin inside layout dispatch reenters
+    // the TabView mid-transition (last-tab close) and dies native
+    // 0xC000027B, so the apply runs one dispatch later. The pending
+    // flag collapses a layout storm into one apply; the apply is
+    // idempotent, so the re-layout it triggers settles.
+    void SyncAddButtonMargin()
+    {
+        if (syncPending)
+        {
+            return;
+        }
+
+        syncPending = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            syncPending = false;
+            ApplyAddButtonPlacement();
+        }))
+        {
+            syncPending = false;
+        }
+    }
+
+    void ApplyAddButtonPlacement()
+    {
+        // Template-part touches stow native 0xC000027B while the strip
+        // is mid-transition (last-tab close), so both this walk and the
+        // transform below catch the stowed COMException, not just the
+        // managed disconnect InvalidOperationException.
+        Button? found;
+        try
+        {
+            found = FindAddButton();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            return;
+        }
+
+        if (found is not Button add)
+        {
+            return;
+        }
+
+        if (Tabs.TabItems.Count != 0)
+        {
+            if (add.VerticalAlignment != VerticalAlignment.Bottom)
+            {
+                add.VerticalAlignment = VerticalAlignment.Bottom;
+            }
+
+            if (zeroTabMarginApplied && addButtonMargin.HasValue)
+            {
+                add.Margin = addButtonMargin.Value;
+                zeroTabMarginApplied = false;
+            }
+
+            return;
+        }
+
+        if (add.ActualHeight <= 0 || Tabs.ActualHeight <= 0)
+        {
+            return;
+        }
+
+        if (add.VerticalAlignment != VerticalAlignment.Center)
+        {
+            add.VerticalAlignment = VerticalAlignment.Center;
+        }
+
+        addButtonMargin ??= add.Margin;
+        double offsetY;
+        try
+        {
+            offsetY = add.TransformToVisual(Tabs).TransformPoint(new Point(0, 0)).Y - add.Margin.Top;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            return;
+        }
+
+        double top = Math.Max(0, (Tabs.ActualHeight - add.ActualHeight) / 2 - offsetY);
+        Thickness next = new(addButtonMargin.Value.Left, top, addButtonMargin.Value.Right, addButtonMargin.Value.Bottom);
+        if (!next.Equals(add.Margin))
+        {
+            add.Margin = next;
+        }
+
+        zeroTabMarginApplied = true;
+    }
+
     internal double TabStripContentRight()
     {
         double right = 0;
@@ -159,6 +315,41 @@ public sealed partial class TabBar : UserControl
         }
 
         return right;
+    }
+
+    // Top, in DIP and TabView-relative, of the highest strip content
+    // (tab items or the add button). Bottom-hugged content leaves a drag
+    // band above it; MainWindow covers that band with a second drag rect
+    // so no dead clicks appear. Zero when nothing is found (no band, the
+    // safe fallback).
+    internal double TabStripContentTop()
+    {
+        double top = 0;
+        bool found = false;
+        try
+        {
+            foreach (object? entry in Tabs.TabItems)
+            {
+                if (entry is TabViewItem item)
+                {
+                    Rect bounds = item.TransformToVisual(Tabs).TransformBounds(new Rect(0, 0, item.ActualWidth, item.ActualHeight));
+                    top = found ? Math.Min(top, bounds.Top) : bounds.Top;
+                    found = true;
+                }
+            }
+
+            if (FindAddButton() is Button add)
+            {
+                Rect bounds = add.TransformToVisual(Tabs).TransformBounds(new Rect(0, 0, add.ActualWidth, add.ActualHeight));
+                top = found ? Math.Min(top, bounds.Top) : bounds.Top;
+                found = true;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+        }
+
+        return found ? Math.Max(0, top) : 0;
     }
 
     // Raised on every content-box edit, including keystrokes that change
@@ -437,7 +628,17 @@ public sealed partial class TabBar : UserControl
         // column lets the name trim; ellipsis-vs-clip when squeezed is
         // unprobed, ellipsis is the default. The dot trails the name on the
         // right: stock shows it where the X was (D01 T01 §2 recon).
-        var dot = new TextBlock { Text = "•", VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        // 6-DIP solid ellipse, not a bullet glyph: stock's dot measures
+        // 10-11px at 150% (about 7 DIP with anti-aliasing) while U+2022
+        // rendered 5px. The fill is primary text at 55% opacity, which
+        // lands stock's sampled 154 gray on the tab background (secondary
+        // maxes out at 140, too dark even at full opacity). The brush
+        // still tracks the theme where a fixed gray would not.
+        Brush dotFill = Application.Current.Resources.TryGetValue("TextFillColorPrimaryBrush", out object? found) && found is Brush themed
+            ? themed
+            : new SolidColorBrush(Microsoft.UI.Colors.Gray);
+        var dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 6, Height = 6, Fill = dotFill, Opacity = 0.55, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+        AutomationProperties.SetName(dot, "\u2022");
         var name = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -449,7 +650,16 @@ public sealed partial class TabBar : UserControl
         // The cap reproduces stock's ~201px normal width (134 DIP at the
         // 150% probe density). Long-name widths are unprobed; the cap is the
         // default. Cost of changing: this constant plus the overflow drive.
-        var item = new TabViewItem { Header = header, Tag = tab, MaxWidth = 134 };
+        // Bottom-hugged items, not stretched: stock's tabs sit at the
+        // strip bottom (tab bottom edge 42, text center 26.5 DIP), while
+        // stretched items center 3-4 DIP too high here. MinHeight 34
+        // releases the template default (at least the strip height, so
+        // Bottom alone is a no-op); items then hug at content height
+        // (~58px) with text 2.5px above stock, X aligned with text. Local
+        // values, not an ItemContainerStyle, so the default item template
+        // keeps applying (a bare style would replace it and unrender
+        // the tabs).
+        var item = new TabViewItem { Header = header, Tag = tab, MaxWidth = 134, MinHeight = 34, VerticalAlignment = VerticalAlignment.Bottom };
         headers[tab.Id] = (dot, name);
         AutomationProperties.SetName(item, tab.DisplayName);
         // Stock hides the X on dirty tabs until hover (D01 T01 §2 recon), so
@@ -498,7 +708,7 @@ public sealed partial class TabBar : UserControl
 
     void RefreshHeader(Tab tab)
     {
-        if (headers.TryGetValue(tab.Id, out (TextBlock Dot, TextBlock Name) parts))
+        if (headers.TryGetValue(tab.Id, out (FrameworkElement Dot, TextBlock Name) parts))
         {
             parts.Dot.Visibility = tab.IsDirty ? Visibility.Visible : Visibility.Collapsed;
             parts.Name.Text = tab.DisplayName;

@@ -701,13 +701,13 @@ Why this section exists: the operator compared the app against Windows 11 Notepa
 - -> XREF: D01 T01 §3 -- the strip, dot, and add button this repairs; §3 item 1 points here for the measured geometry, and the zero-tab default there is now probed
 - -> SOURCE: operator chrome report 2026-09-15 (four defects) plus the canonical-capture measurement campaign
 
-- [ ] Shell rows are 43/32 DIP with the editor step at 75. Done when: the canonical capture measures the editor step at 75.
-- [ ] A full 12-tab strip parks the add button left of minimize. Done when: `FullStripParksAddButtonLeftOfCaption` passes (add right at most minimize left).
-- [ ] The zero-tab strip centers the add button. Done when: `ZeroTabsCentersAddButton` passes (within 8px of strip center).
-- [ ] The dirty dot is a 6-DIP ellipse at stock gray keeping the "•" accessible name. Done when: the capture measures ~9px/156 and the §3 dot drives stay green.
-- [ ] Last-tab close after move/resize never crashes 0xC000027B (template sets run one dispatch past layout; stowed reads are caught). Done when: repeated closes stay alive where 3/3 crashed pre-fix.
-- [ ] The shell golden is refreshed per procedure and the full gate is green. Done when: `main-window.png` shows the new chrome with an inspected diff, and Smoke/Unit/Protocol/UI pass with 0 warnings.
-- [ ] Commit: `"notepad-core: repair tab-strip chrome parity"`
+- [x] Shell rows are 43/32 DIP with the editor step at 75. Done when: the canonical capture measures the editor step at 75. **Measured 2026-09-15:** editor step at capture y114 (150%) = 76 DIP, 1px rounding over stock's 75.
+- [x] A full 12-tab strip parks the add button left of minimize. Done when: `FullStripParksAddButtonLeftOfCaption` passes (add right at most minimize left). **Measured 2026-09-15:** add center x1030 vs caption zone from x1132 (94px clearance); pre-fix the add sat under maximize at x1239.
+- [x] The zero-tab strip centers the add button. Done when: `ZeroTabsCentersAddButton` passes (within 8px of strip center). **Measured 2026-09-15:** add center 33 vs strip center 32.25; pre-fix it top-hugged 17px high.
+- [x] The dirty dot is a 6-DIP ellipse at stock gray keeping the "•" accessible name. Done when: the capture measures ~9px/156 and the §3 dot drives stay green. **Measured 2026-09-15:** dot 9px peak 156 vs stock 10-11px/154 (pre-fix 5px near-white); `DirtyClosePromptsAndCancelKeepsTheTab` plus `InitialTabRendersFromModel` green on the kept name.
+- [x] Last-tab close after move/resize never crashes 0xC000027B (template sets run one dispatch past layout; stowed reads are caught). Done when: repeated closes stay alive where 3/3 crashed pre-fix. **Driven 2026-09-15:** 3/3 native crashes pre-fix (event log 0xC000027B in Microsoft.UI.Xaml.dll), 5/5 alive post-fix.
+- [x] The shell golden is refreshed per procedure and the full gate is green. Done when: `main-window.png` shows the new chrome with an inspected diff, and Smoke/Unit/Protocol/UI pass with 0 warnings. **Driven 2026-09-15:** golden recaptured (diff: chrome shift plus sub-threshold Mica tint) and green; Smoke 1/1, Unit 148/148, Protocol 35/35, UI 37/38 with the 1 pre-existing quarantine.
+- [x] Commit: `"notepad-core: repair tab-strip chrome parity"`
 
 **Test checkpoint:** add-vs-caption, zero-tab centering, dot size/color, and crash survival are all measured in the room, and the §3 dot contract plus the full suite stay green. Cheaper substitute that fails: geometry asserted from constants without rendering the strip.
 

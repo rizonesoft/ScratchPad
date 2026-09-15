@@ -399,6 +399,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private bool hasDragRect;
 
+    private double lastTopGap;
+
     private void UpdateDragRects()
     {
         if (tabBar is null || Content?.XamlRoot is not XamlRoot xamlRoot)
@@ -409,6 +411,7 @@ public sealed partial class MainWindow : Window, IDisposable
         double scale = xamlRoot.RasterizationScale;
         double leftDip = AppWindow.TitleBar.LeftInset / scale;
         double captionDip = AppWindow.TitleBar.RightInset / scale;
+        tabBar.SetCaptionInset(captionDip);
         double contentRight = Math.Max(leftDip, tabBar.TabStripContentRight());
         double stripWidth = TabRegion.ActualWidth;
         double stripHeight = TabRegion.ActualHeight;
@@ -417,11 +420,23 @@ public sealed partial class MainWindow : Window, IDisposable
             0,
             (int)Math.Round(Math.Max(0, stripWidth - captionDip - contentRight) * scale),
             (int)Math.Round(stripHeight * scale));
-        if (!hasDragRect || !rect.Equals(lastDragRect))
+        double topGap = tabBar.TabStripContentTop();
+        RectInt32[] rects = [rect];
+        if (topGap > 0.5 && contentRight > leftDip + 0.5)
+        {
+            rects = [rect, new RectInt32(
+                (int)Math.Round(leftDip * scale),
+                0,
+                (int)Math.Round((contentRight - leftDip) * scale),
+                (int)Math.Round(topGap * scale))];
+        }
+
+        if (!hasDragRect || !rect.Equals(lastDragRect) || Math.Abs(topGap - lastTopGap) > 0.5)
         {
             hasDragRect = true;
             lastDragRect = rect;
-            AppWindow.TitleBar.SetDragRectangles([rect]);
+            lastTopGap = topGap;
+            AppWindow.TitleBar.SetDragRectangles(rects);
         }
     }
 
