@@ -14,10 +14,17 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>..\..\resources\notepad.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
     <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\resources\notepad.ico" Link="notepad.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
