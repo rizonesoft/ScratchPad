@@ -201,12 +201,16 @@ public sealed class PinnedTabsTests
                 Assert.Equal(4, WaitForTabCount(window, 4));
                 TabItemAt(window, 2).DoubleClick();
                 Assert.NotNull(WaitForPin(window, 2));
+                Assert.Contains(b, WaitForPinnedFiles(b));
                 SelectTab(window, 2);
                 Press(window, VirtualKeyShort.KEY_W, withControl: true);
                 Assert.Equal(3, WaitForTabCount(window, 3));
                 Assert.Equal("Untitled", TabItemAt(window, 0).Name);
                 Assert.Equal("a13.txt", TabItemAt(window, 1).Name);
                 Assert.Equal("c13.txt", TabItemAt(window, 2).Name);
+                // Review round 1: the feed mirrors live pin state, so the
+                // closed tab's entry goes with it (no orphan jump pin).
+                Assert.True(WaitForPinnedFilesGone(b));
             }
             finally
             {
@@ -289,6 +293,22 @@ public sealed class PinnedTabsTests
             TimeSpan.FromMilliseconds(250)).Result;
         Assert.NotNull(result);
         return result;
+    }
+
+    static bool WaitForPinnedFilesGone(string path)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!ShellSettings.Load().PinnedFiles.Contains(path))
+            {
+                return true;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        return false;
     }
 
     static AutomationElement WaitForPin(Window window, int index)

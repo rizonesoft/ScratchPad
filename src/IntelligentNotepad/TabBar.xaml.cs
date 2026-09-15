@@ -470,6 +470,7 @@ public sealed partial class TabBar : UserControl
             case SaveAnswer.DontSave:
                 boxes.Remove(tab.Id);
                 model.CloseTab(tab, null, 0, discardUnsaved: true);
+                ReleasePinFeed(tab, model);
                 return true;
             case SaveAnswer.Cancel:
             default:
@@ -513,6 +514,13 @@ public sealed partial class TabBar : UserControl
 
     void TogglePin(Tab tab)
     {
+        // A double-clicked X closes first: the second click must not pin
+        // a tab that already left the model (ghost jump-list entry).
+        if (Model is not TabModel model || !model.Tabs.Contains(tab))
+        {
+            return;
+        }
+
         tab.IsPinned = !tab.IsPinned;
         ShellSettings settings = ShellSettings.Load();
         if (tab.IsPinned)
@@ -524,6 +532,31 @@ public sealed partial class TabBar : UserControl
             PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath);
         }
 
+        settings.Save();
+        PinToggled?.Invoke(this, EventArgs.Empty);
+    }
+
+    // D01 T01 §13 (review round 1): closing a pinned tab releases its
+    // jump-list feed entry; the feed mirrors live pin state, and an entry
+    // with no pinned tab behind it has no removal path (unpin needs the
+    // tab). A second pinned tab holding the same path keeps the entry.
+    void ReleasePinFeed(Tab tab, TabModel model)
+    {
+        if (!tab.IsPinned || tab.FilePath is null)
+        {
+            return;
+        }
+
+        foreach (Tab other in model.Tabs)
+        {
+            if (other.IsPinned && string.Equals(other.FilePath, tab.FilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        ShellSettings settings = ShellSettings.Load();
+        PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath);
         settings.Save();
         PinToggled?.Invoke(this, EventArgs.Empty);
     }
@@ -822,6 +855,7 @@ public sealed partial class TabBar : UserControl
         int caret = boxes.TryGetValue(tab.Id, out TextBox? box) ? box.SelectionStart : 0;
         boxes.Remove(tab.Id);
         model.CloseTab(tab, null, caret, discardUnsaved: false);
+        ReleasePinFeed(tab, model);
     }
 
     // The prompt names a saved tab by its FULL PATH (probed 2026-09-15:
