@@ -46,7 +46,7 @@ track: N1
 |   6   |   §6    | Recent files and session restore | §5 |  [ ]   |
 |   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [ ]   |
 |   8   |   §8    | File association and command-line open | §4, §6 |  [ ]   |
-|   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [ ]   |
+|   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [x]   |
 |  10   |   §10   | Window border parity repair | §1 |  [ ]   |
 |  11   |   §11   | App icon wiring | §1 |  [ ]   |
 |  12   |   §12   | Split view | §1, §2, D02 T01 §1 |  [ ]   |
@@ -301,6 +301,12 @@ Why this section exists: Notepad opens new windows, and the "Opening files" sett
 - [x] Commit: `"notepad-core: support multiple windows"`
 
 **Test checkpoint:** New window, open-in modes, and isolation driven (restore is now §6 here). Cheaper substitute that fails: multi-window that shares one tab list.
+
+> **Verified:** 2026-09-15 | §9 | Multi-window: Ctrl+Shift+N opens a same-size second window at the OS cascade (3 probed offsets, captures filed), Opening-files value plus routing proven with unknown staying put, model plus live two-window isolation, merge-on-close mutation-driven, no-tear-off parity negative; Unit 90/90, Protocol 35/35 both OSes, UI 22/22 and Smoke 1/1 on Windows, build 0 warnings; item 4 struck with two clean drag-out negatives; validate 0 fatal; self-test 393/393
+> **Review:** rounds 2, candidates d4416bb plus 172a857 (review fix: close merges onto fresh settings instead of clobbering) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s9.md
+> **CRUD:** applicable | Ctrl+Shift+N wrote a window (read back via count 1 to 2 to 1, differing origins, untitled tab, no dialog); Ctrl+T in the second wrote a tab (read back via per-window counts 1 vs 2); content set wrote isolation (read back via empty first-window box and clean title); external flag flip plus close wrote preservation (read back via flag still flipped; red unfixed); outside-strip drag wrote nothing (read back via count 1 and 1 tab)
+> **Duration:** 418
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 10. Window Border Parity Repair
 
