@@ -130,6 +130,42 @@ public sealed class MultiWindowTests
         }
     }
 
+    [Fact]
+    public void SecondWindowClosePreservesNewerExternalState()
+    {
+        // The stale-snapshot race: every window holds the settings it loaded,
+        // so a close must merge its geometry onto freshly loaded state rather
+        // than saving its snapshot whole (else a window opened before a newer
+        // save clobbers it; the real victim is whatsnew.seen, flipped by the
+        // first window's first-run dismiss). Staged externally instead of via
+        // the dialog because the open first-run dialog swallows Ctrl+Shift+N
+        // (standard ContentDialog modality); the mechanism is direction-free.
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(first);
+        try
+        {
+            Press(first, VirtualKeyShort.KEY_N, withControl: true, withShift: true);
+            Window[] windows = WaitForWindowCount(app, automation, 2);
+            Assert.Equal(2, windows.Length);
+            Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
+                ? windows[1]
+                : windows[0];
+            ShellSettings newer = ShellSettings.Load();
+            newer.WhatsNewSeen = false;
+            newer.Save();
+            second.Close();
+            Assert.Single(WaitForWindowCount(app, automation, 1));
+            Assert.False(ShellSettings.Load().WhatsNewSeen, "second-window close clobbered newer external state");
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
+    }
+
     static Application LaunchApp()
     {
         var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();

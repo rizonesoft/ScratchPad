@@ -286,8 +286,9 @@ public sealed partial class MainWindow : Window, IDisposable
         DispatcherQueue.TryEnqueue(async () =>
         {
             await ShowWhatsNewAsync().ConfigureAwait(false);
-            settings.WhatsNewSeen = true;
-            settings.Save();
+            ShellSettings fresh = ShellSettings.Load();
+            fresh.WhatsNewSeen = true;
+            fresh.Save();
         });
     }
 
@@ -297,16 +298,19 @@ public sealed partial class MainWindow : Window, IDisposable
 
         // No close prompt here: §7 owns window-close behavior (prompt matrix,
         // silence, crash recovery). Until then tabs die with the window.
-        // Every window saves geometry on close; last-closed wins the next
-        // first window (default, §6 owns the multi-window restore).
+        // Geometry merges onto freshly loaded state: with several windows,
+        // each holds a stale snapshot, and a whole-object save would clobber
+        // a sibling's newer flag (notably WhatsNewSeen). Last-closed still
+        // wins the geometry (default, §6 owns the multi-window restore).
         Dispose();
         PointInt32 position = AppWindow.Position;
         SizeInt32 size = AppWindow.Size;
-        settings.X = position.X;
-        settings.Y = position.Y;
-        settings.Width = size.Width;
-        settings.Height = size.Height;
-        settings.Save();
+        ShellSettings fresh = ShellSettings.Load();
+        fresh.X = position.X;
+        fresh.Y = position.Y;
+        fresh.Width = size.Width;
+        fresh.Height = size.Height;
+        fresh.Save();
     }
 
     private async void WhatsNewButton_Click(object sender, RoutedEventArgs e)
