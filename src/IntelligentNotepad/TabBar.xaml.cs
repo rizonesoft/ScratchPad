@@ -128,8 +128,6 @@ public sealed partial class TabBar : UserControl
         }
     }
 
-    // Right edge, in DIP, of the interactive strip (tabs plus the add
-    // button). MainWindow drags the window from everything right of here.
     // Caption inset, in DIP: the TabView ends where the system caption
     // buttons begin, so a full strip parks the add button left of minimize
     // instead of under maximize (12 probed tabs put the add center 67 DIP
@@ -284,6 +282,8 @@ public sealed partial class TabBar : UserControl
         zeroTabMarginApplied = true;
     }
 
+    // Right edge, in DIP, of the interactive strip (tabs plus the add
+    // button). MainWindow drags the window from everything right of here.
     internal double TabStripContentRight()
     {
         double right = 0;

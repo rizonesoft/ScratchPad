@@ -16,8 +16,8 @@
                  captures put stock's tab strip at 0-42 (tab bottom edge 41,
                  earliest menu content 48) and its menu row at 42-75 (File
                  text 53-63 centered, editor step at 75). The old 48/48 put
-                 our editor at 96 DIP, 21 below stock's 75; 43/32 lands it
-                 exactly. T02 §1's MenuBar must fit the 32-DIP menu row. -->
+                 our editor at 96 DIP, 21 below stock's 75; 43/32 lands it within a pixel (captured 76 DIP,
+                 stock 75). T02 §1's MenuBar must fit the 32-DIP menu row. -->
             <RowDefinition Height="43" />
             <RowDefinition Height="32" />
             <RowDefinition Height="*" />
