@@ -4,14 +4,14 @@ UI and protocol tests flake. Without a procedure, flakes get deleted and coverag
 
 ## Nightly soak
 
-The `soak` workflow (`.github/workflows/soak.yml`) runs on schedule at 03:17 UTC and on manual dispatch. It runs the full suite on both OSes plus five extra repetitions of the flake-prone suites (UI and Protocol), all with `trx` loggers. Each job carries a timeout (45 min Linux, 60 min Windows); expected wall time is under 15 minutes per job.
+Soak runs locally, usually as an unattended bedtime run: the full suite for the host OS plus five extra repetitions of the flake-prone suites (UI and Protocol), all with `trx` loggers. The CI `soak` workflow was retired on 2026-09-14; the table below shows the local command shape per OS.
 
-| Job | Scope | Repeats |
-| --- | ----- | ------- |
-| soak-linux | `src/Notepad.Neutral.slnf`, full test | Protocol suite x5 |
-| soak-windows | `src/IntelligentNotepad.slnx`, full test | UI suite x5, Protocol suite x5 |
+| Host | Command |
+| --- | ----- |
+| Windows | `.tools\dotnet-win-x64\dotnet.exe test src/IntelligentNotepad.slnx --logger trx`, then the UI and Protocol suites x5 |
+| Linux | `.tools/dotnet-linux-x64/dotnet test src/Notepad.Neutral.slnf --logger trx`, then the Protocol suite x5 |
 
-Results go to the workflow run page: the per-step logs plus the `soak-results-linux` and `soak-results-windows` artifacts (trx files, default retention), with `golden-failures-soak` uploaded on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.
+Results stay under `TestResults/` (gitignored): the per-run console log plus the trx files, with golden-failure captures kept alongside on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.
 
 ## Soak log
 
@@ -34,7 +34,7 @@ A quarantined test keeps running nowhere until it is fixed (un-skipped with a pa
 
 | Test | Failure signature | First seen | Owner | Quarantined | Due |
 | ---- | ----------------- | ---------- | ----- | ----------- | --- |
-| _(empty)_ | | | | | |
+| `UI.TabBarTests.ContextMenuMatchesNotepad` (`ctxmenu-name-race`) | xUnit `Assert.Equal` on `TabItemAt().Name` after a context-menu close: expected one tab's name, got a surviving sibling's, so the wrong tab closed. Proof: commit `62656a2` red in the full suite, green solo (quoted in `docs/reviews/01-notepad-core/D01-T01-s6.md`). Likely cause: right-click targeting/timing under machine load or live user input during the menu drive. | 2026-09-15 | D01 T01 §3 | 2026-09-15 | 2026-09-22 |
 
 ## Fix-or-remove window
 

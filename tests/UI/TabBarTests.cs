@@ -329,7 +329,7 @@ public sealed class TabBarTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "QUARANTINED 2026-09-15 D01-T01-S3 ctxmenu-name-race")]
     public void ContextMenuMatchesNotepad()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
