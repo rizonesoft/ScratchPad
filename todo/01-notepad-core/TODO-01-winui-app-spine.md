@@ -41,7 +41,7 @@ track: N1
 |   1   |   §1    | Main window shell with menu bar host | -- |  [x]   |
 |   2   |   §2    | Tab model with dirty tracking | §1 |  [x]   |
 |   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [x]   |
-|   4   |   §4    | File open with encoding detection | §2 |  [ ]   |
+|   4   |   §4    | File open with encoding detection | §2 |  [x]   |
 |   5   |   §5    | File save and Save As | §4 |  [ ]   |
 |   6   |   §6    | Recent files and session restore | §5 |  [ ]   |
 |   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [ ]   |
@@ -185,6 +185,12 @@ Why this section exists: opening must never corrupt. Detection decides the bytes
 - [x] Commit: `"notepad-core: open files with encoding detection"`
 
 **Test checkpoint:** Encoding fixture matrix green byte-identical; failure and external-change paths driven. Cheaper substitute that fails: UTF-8-only open that mangles the rest.
+
+> **Verified:** 2026-09-15 | §4 | File open: 12-case encoding matrix plus 7-case EOL matrix byte-identical, stock-verbatim failure messages with OS detail, watcher detection, focus-existing dedup, 1 MiB progress threshold with 4 MiB scale drive, .txt-plus-all-files filter spec, 1 GiB over-limit refusal; FileOpen 37/37, Unit 89/89, Protocol 35/35 both OSes, UI 18/18 and Smoke 1/1 on Windows, build 0 warnings; stock quotes read verbatim from the failure and dialog captures; validate 0 fatal; self-test 393/393
+> **Review:** rounds 2, candidates 625c7f2 plus 5c28ed3 (review fix: >2 GiB refuses as TooLarge instead of throwing) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve (neutral section, rendered dialog defers to the menus TODO Open trigger). Raw findings: docs/reviews/01-notepad-core/D01-T01-s4.md
+> **CRUD:** applicable | temp-file opens wrote bytes (read back via OpenSuccess text, encoding, BOM, and EOL asserts); failure opens wrote nothing (read back via tab-count and result-type asserts); external writes wrote Changed (read back via the fired gate); the 4 MiB open wrote progress (read back via final-report-equals-length); .LOG opens wrote the stamp (read back via exact-text asserts); fixtures wrote bytes once (read back via blob inspection after the gitattributes fix)
+> **Duration:** 179
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 5. File Save and Save As
 
