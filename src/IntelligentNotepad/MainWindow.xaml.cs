@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Notepad.Core;
 using Windows.Foundation;
@@ -31,7 +32,11 @@ public sealed partial class MainWindow : Window, IDisposable
     // §9); later windows open at the OS default cascade like stock's.
     private readonly bool firstWindow;
 
-    public MainWindow(bool firstWindow)
+    // Tabs restored over missing files, owed the lazy "Cannot find" notice
+    // on first activation (D01 T01 §6). Once per tab instance.
+    private readonly HashSet<Guid> missingNotice = new();
+
+    public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {
         this.firstWindow = firstWindow;
         InitializeComponent();
@@ -58,7 +63,14 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         tabs.PropertyChanged += Tabs_PropertyChanged;
         tabs.Tabs.CollectionChanged += Tabs_CollectionChanged;
-        tabs.NewTab();
+        if (restore is null)
+        {
+            tabs.NewTab();
+        }
+        else
+        {
+            RestoreSessionWindow(restore);
+        }
         if (Content is FrameworkElement root)
         {
             root.RequestedTheme = settings.Theme switch
@@ -74,7 +86,9 @@ public sealed partial class MainWindow : Window, IDisposable
             root.Loaded += OnFirstLoaded;
         }
 
-        if (firstWindow)
+        // Restored sessions skip geometry: stock reopens session windows at
+        // its default positions, never where they were (two clean negatives).
+        if (firstWindow && restore is null)
         {
             RestoreGeometry();
         }
@@ -127,7 +141,165 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             ShowActiveTab();
             UpdateTitle();
+            // The lazy missing notice: owed once per restored-missing tab, on
+            // first activation (stock shows it then, never at restore). If the
+            // tree is not visual yet the flag stays for the next activation.
+            if (tabs.ActiveTab is Tab now && now.FilePath is not null
+                && missingNotice.Contains(now.Id) && !File.Exists(now.FilePath))
+            {
+                _ = ShowMissingNoticeAsync(now);
+            }
         }
+    }
+
+    private async Task ShowMissingNoticeAsync(Tab tab)
+    {
+        if (tab.FilePath is null || Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        missingNotice.Remove(tab.Id);
+        var dialog = new MissingFileDialog(tab.FilePath) { XamlRoot = xamlRoot };
+        await dialog.ShowAsync();
+    }
+
+    // Rebuilds this window's tabs from a session record (D01 T01 §6), in
+    // order with the recorded active tab, contents, and carets. Clean file
+    // tabs reload from disk; dirty and untitled tabs take the recorded
+    // buffer; missing files resurrect as empty tabs owed the lazy notice.
+    private void RestoreSessionWindow(SessionWindow record)
+    {
+        ArgumentNullException.ThrowIfNull(record);
+        if (tabBar is null)
+        {
+            tabs.NewTab();
+            return;
+        }
+
+        foreach (SessionTab saved in record.Tabs)
+        {
+            if (saved.Path is not null && saved.Content is null)
+            {
+                RestoreCleanFileTab(saved);
+            }
+            else
+            {
+                RestoreBufferTab(saved);
+            }
+        }
+
+        if (tabs.Tabs.Count == 0)
+        {
+            tabs.NewTab();
+        }
+        else
+        {
+            tabs.ActiveTab = tabs.Tabs[Math.Clamp(record.Active, 0, tabs.Tabs.Count - 1)];
+        }
+    }
+
+    private void RestoreCleanFileTab(SessionTab saved)
+    {
+        string path = saved.Path!;
+        if (TryDetectFile(path) is not DetectedFile detected)
+        {
+            // Flag after activating: the build-time activation must not raise
+            // the notice; only the final active tab (or a later click) does.
+            var ghost = new Tab { FilePath = path };
+            tabs.Tabs.Add(ghost);
+            tabs.ActiveTab = ghost;
+            missingNotice.Add(ghost.Id);
+            return;
+        }
+
+        Tab tab = tabs.OpenTab(path, detected);
+        TextBox box = tabBar!.ContentFor(tab);
+        box.Text = detected.Text;
+        // Explicit: programmatic Text sets on pre-show boxes do not reliably
+        // raise TextChanged (observed: restored untitled tabs kept a clean
+        // model under filled boxes), so restore notifies directly instead of
+        // depending on the event. Duplicate calls are safe (same content).
+        tab.NotifyEdited(detected.Text);
+        tab.MarkSaved();
+        box.SelectionStart = Math.Min(Math.Max(0, saved.Caret), box.Text.Length);
+    }
+
+    private void RestoreBufferTab(SessionTab saved)
+    {
+        string content = saved.Content ?? string.Empty;
+        Tab tab;
+        if (saved.Path is null)
+        {
+            tab = tabs.NewTab();
+        }
+        else
+        {
+            tab = new Tab
+            {
+                FilePath = saved.Path,
+                Encoding = saved.Encoding,
+                HasBom = saved.HasBom,
+                LineEnding = saved.LineEnding,
+            };
+            tabs.Tabs.Add(tab);
+            tabs.ActiveTab = tab;
+            if (!File.Exists(saved.Path))
+            {
+                missingNotice.Add(tab.Id);
+            }
+        }
+
+        TextBox box = tabBar!.ContentFor(tab);
+        box.Text = content;
+        // Explicit for the same pre-show reason as the clean-file path: the
+        // model must match the filled box even if TextChanged never fires.
+        tab.NotifyEdited(content);
+        box.SelectionStart = Math.Min(Math.Max(0, saved.Caret), box.Text.Length);
+    }
+
+    // Sync open for restore: the window appears with its tabs, like stock.
+    // NotFound (including Exists-then-deleted races) means missing; other
+    // failures degrade to an empty kept tab with no notice, recoverable via
+    // reopen once §8/T02 land (recorded default; cost: a failure notice).
+    static DetectedFile? TryDetectFile(string path)
+    {
+        try
+        {
+            if (!File.Exists(path) || new FileInfo(path).Length > int.MaxValue)
+            {
+                return null;
+            }
+
+            return FileOpen.Detect(File.ReadAllBytes(path));
+        }
+        catch (Exception ex) when (FileOpen.MapFailure(ex) is not null)
+        {
+            return null;
+        }
+    }
+
+    // The session record for this window's live tabs, read by App on close.
+    internal SessionWindow CaptureSessionWindow()
+    {
+        var snapshots = new List<TabSnapshot>(tabs.Tabs.Count);
+        foreach (Tab tab in tabs.Tabs)
+        {
+            string? content = null;
+            int caret = 0;
+            if (tabBar is not null)
+            {
+                TextBox box = tabBar.ContentFor(tab);
+                content = box.Text;
+                caret = box.SelectionStart;
+            }
+
+            snapshots.Add(new TabSnapshot(
+                tab.FilePath, content, caret, tab.IsDirty, tab.Encoding, tab.HasBom, tab.LineEnding));
+        }
+
+        int active = tabs.ActiveTab is null ? 0 : tabs.Tabs.IndexOf(tabs.ActiveTab);
+        return SessionCapture.CaptureWindow(snapshots, active, File.Exists);
     }
 
     private void Tabs_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -137,6 +309,16 @@ public sealed partial class MainWindow : Window, IDisposable
             foreach (Tab tab in e.OldItems)
             {
                 tab.PropertyChanged -= ActiveTab_PropertyChanged;
+                // Recents record tab closes only (probed s2m1). Window teardown
+                // removes no tabs, so closes-with-the-window stay unrecorded,
+                // like stock. Merged onto fresh settings like geometry: every
+                // window tab-closes against the same file.
+                if (tab.FilePath is not null)
+                {
+                    ShellSettings fresh = ShellSettings.Load();
+                    RecentFiles.NoteClosed(fresh.RecentFiles, tab.FilePath);
+                    fresh.Save();
+                }
             }
         }
 
@@ -277,6 +459,10 @@ public sealed partial class MainWindow : Window, IDisposable
             root.Loaded -= OnFirstLoaded;
         }
 
+        // D01 T01 §11: window chrome icon. Loaded, not the constructor: the
+        // HWND is invalid there, and not first-activation: background launches
+        // never activate. The exe icon (ApplicationIcon) covers the taskbar.
+        AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "notepad.ico"));
         InstallMiddleClickHook();
         if (settings.WhatsNewSeen || !firstWindow)
         {
@@ -297,11 +483,19 @@ public sealed partial class MainWindow : Window, IDisposable
         closed = true;
 
         // No close prompt here: §7 owns window-close behavior (prompt matrix,
-        // silence, crash recovery). Until then tabs die with the window.
+        // silence, crash recovery). Until then tabs die with the window, and
+        // non-last closes drop them silently; §7 adds the dirty prompt into
+        // this path. The session snapshot runs first: App sees the closing
+        // window plus its survivors and applies the survivors-or-self rule.
+        if (Application.Current is App app)
+        {
+            app.SnapshotSession(this);
+        }
+
         // Geometry merges onto freshly loaded state: with several windows,
         // each holds a stale snapshot, and a whole-object save would clobber
         // a sibling's newer flag (notably WhatsNewSeen). Last-closed still
-        // wins the geometry (default, §6 owns the multi-window restore).
+        // wins the geometry.
         Dispose();
         PointInt32 position = AppWindow.Position;
         SizeInt32 size = AppWindow.Size;

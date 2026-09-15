@@ -1,0 +1,743 @@
+using FlaUI.Core;
+using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
+using FlaUI.UIA3;
+using Notepad.Core;
+using Xunit;
+
+namespace UI;
+
+// D01 T01 §6: quit and relaunch restores tabs, contents, and carets; both
+// startup modes; the missing-file notice plus snapshot drop; multi-window
+// restore; recents order, truncation, and the tab-close-only trigger.
+[Collection("UI tests")]
+public sealed class SessionRestoreTests
+{
+    [Fact]
+    public void QuitAndRelaunchRestoresTabsContentsAndCarets()
+    {
+        string dir = NewTempDir();
+        string fileA = Path.Combine(dir, "alpha.txt");
+        string fileB = Path.Combine(dir, "bravo.txt");
+        File.WriteAllText(fileA, "alpha one\ntwo\nthree");
+        File.WriteAllText(fileB, "bravo base");
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        new SessionData
+        {
+            Windows =
+            [
+                new SessionWindow
+                {
+                    Active = 0,
+                    Tabs =
+                    [
+                        new SessionTab { Path = fileA, Caret = 5 },
+                        new SessionTab { Content = "unsaved one\ntwo", Caret = 8 },
+                        new SessionTab { Path = fileB, Content = "bravo edited", Caret = 4 },
+                    ],
+                },
+            ],
+        }.Save();
+        try
+        {
+            int wantA;
+            int wantU;
+            int wantB;
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(3, WaitForTabCount(window, 3));
+                    WaitForTabName(window, 0, "alpha.txt");
+                    WaitForTabName(window, 1, "unsaved one");
+                    WaitForTabName(window, 2, "bravo.txt");
+                    Assert.Equal("alpha one\ntwo\nthree", NormalizeBreaks(BoxText(window)));
+
+                    // Restore sets carets: typing lands at the seeded offset.
+                    TabItemAt(window, 1).Click();
+                    Thread.Sleep(400);
+                    ContentBox(window).Focus();
+                    Keyboard.Type("Q");
+                    Assert.Equal(8, ContentBox(window).Text.IndexOf('Q'));
+                    TabItemAt(window, 2).Click();
+                    Thread.Sleep(400);
+                    ContentBox(window).Focus();
+                    Keyboard.Type("Q");
+                    Assert.Equal(4, ContentBox(window).Text.IndexOf('Q'));
+
+                    // Reposition every caret from the end, then quit.
+                    wantA = PositionCaretFromEnd(window, 0, 2);
+                    wantU = PositionCaretFromEnd(window, 1, 2);
+                    wantB = PositionCaretFromEnd(window, 2, 2);
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+
+            // The snapshot proves capture: clean tab stays a path with its
+            // caret, buffers persist, active follows the last touch.
+            SessionData snap = SessionData.Load();
+            SessionWindow snapWindow = Assert.Single(snap.Windows);
+            Assert.Equal(3, snapWindow.Tabs.Count);
+            Assert.Equal(2, snapWindow.Active);
+            Assert.Equal(fileA, snapWindow.Tabs[0].Path);
+            Assert.Null(snapWindow.Tabs[0].Content);
+            Assert.Equal(wantA, snapWindow.Tabs[0].Caret);
+            Assert.Contains("Q", snapWindow.Tabs[1].Content);
+            Assert.Equal(wantU, snapWindow.Tabs[1].Caret);
+            Assert.Contains("Q", snapWindow.Tabs[2].Content);
+            Assert.Equal(wantB, snapWindow.Tabs[2].Caret);
+
+            // Round-trip: typing after relaunch lands at the snapshotted caret.
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(3, WaitForTabCount(window, 3));
+                    AssertTypeLandsAt(window, 0, wantA, "Z");
+                    AssertTypeLandsAt(window, 1, wantU, "Z");
+                    AssertTypeLandsAt(window, 2, wantB, "Z");
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void FreshModeStartsNewWindowAndDiscardsSession()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "fresh.txt");
+        File.WriteAllText(file, "fresh");
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
+        new SessionData
+        {
+            Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 1 }] }],
+        }.Save();
+        try
+        {
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(1, WaitForTabCount(window, 1));
+                    Assert.Equal("Untitled", TabItemAt(window, 0).Name);
+                    Assert.Equal(string.Empty, ContentBox(window).Text);
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+
+            Assert.False(File.Exists(SessionData.FilePath));
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void CleanProfileRestoresWithContinueDefault()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "clean.txt");
+        File.WriteAllText(file, "clean profile");
+        try
+        {
+            if (File.Exists(SessionData.FilePath))
+            {
+                File.Delete(SessionData.FilePath);
+            }
+
+            string settingsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "IntelligentNotepad", "settings.json");
+            if (File.Exists(settingsPath))
+            {
+                File.Delete(settingsPath);
+            }
+
+            new SessionData
+            {
+                Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 2 }] }],
+            }.Save();
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(1, WaitForTabCount(window, 1));
+                    WaitForTabName(window, 0, "clean.txt");
+                    Assert.Equal("clean profile", BoxText(window).Replace("\r\n", "\n"));
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            SeedSettings(new ShellSettings { WhatsNewSeen = true });
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void MissingFileNotifiesOnActivationAndDropsFromSnapshot()
+    {
+        string dir = NewTempDir();
+        string good = Path.Combine(dir, "good.txt");
+        string missing = Path.Combine(dir, "missing.txt");
+        File.WriteAllText(good, "good");
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        new SessionData
+        {
+            Windows =
+            [
+                new SessionWindow
+                {
+                    Active = 0,
+                    Tabs =
+                    [
+                        new SessionTab { Path = good, Caret = 1 },
+                        new SessionTab { Path = missing, Caret = 0 },
+                    ],
+                },
+            ],
+        }.Save();
+        try
+        {
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(2, WaitForTabCount(window, 2));
+                    WaitForTabName(window, 0, "good.txt");
+                    WaitForTabName(window, 1, "missing.txt");
+                    Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")));
+
+                    // The notice is lazy: activating the ghost raises it.
+                    TabItemAt(window, 1).Click();
+                    var dialog = Retry.WhileNull(
+                        () => window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")),
+                        TimeSpan.FromSeconds(10),
+                        TimeSpan.FromMilliseconds(250)).Result;
+                    Assert.NotNull(dialog);
+                    var texts = dialog.FindAllDescendants(cf => cf.ByControlType(ControlType.Text))
+                        .Select(el =>
+                        {
+                            try
+                            {
+                                return el.Properties.Name.ValueOrDefault ?? string.Empty;
+                            }
+                            catch
+                            {
+                                return string.Empty;
+                            }
+                        }).ToList();
+                    Assert.Contains(texts, t => t.Contains("Cannot find the", StringComparison.Ordinal));
+                    Assert.Contains(texts, t => t.Contains("missing.txt", StringComparison.Ordinal));
+                    var ok = dialog.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button).And(cf.ByName("OK")));
+                    Assert.NotNull(ok);
+                    ok.AsButton().Click();
+                    var gone = Retry.While(
+                        () => window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")),
+                        found => found is not null,
+                        TimeSpan.FromSeconds(5),
+                        TimeSpan.FromMilliseconds(250));
+                    Assert.Null(gone.Result);
+                    Assert.Equal(2, TabItems(window).Count);
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+
+            SessionData snap = SessionData.Load();
+            SessionTab kept = Assert.Single(Assert.Single(snap.Windows).Tabs);
+            Assert.Equal(good, kept.Path);
+
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(1, WaitForTabCount(window, 1));
+                    WaitForTabName(window, 0, "good.txt");
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void MultiWindowSessionRestoresBothWindows()
+    {
+        string dir = NewTempDir();
+        string fileA = Path.Combine(dir, "wina.txt");
+        string fileB = Path.Combine(dir, "winb.txt");
+        File.WriteAllText(fileA, "window one file");
+        File.WriteAllText(fileB, "window two file");
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        new SessionData
+        {
+            ActiveWindow = 1,
+            Windows =
+            [
+                new SessionWindow
+                {
+                    Active = 1,
+                    Tabs =
+                    [
+                        new SessionTab { Path = fileA, Caret = 3 },
+                        new SessionTab { Content = "win one unsaved", Caret = 4 },
+                    ],
+                },
+                new SessionWindow
+                {
+                    Tabs = [new SessionTab { Path = fileB, Caret = 6 }],
+                },
+            ],
+        }.Save();
+        try
+        {
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(first);
+                Assert.Equal(2, WaitForWindowCount(app, automation, 2).Length);
+                Window? one = null;
+                Window? two = null;
+                bool identified = Retry.While(
+                    () =>
+                    {
+                        Window[] found = app.GetAllTopLevelWindows(automation);
+                        if (found.Length != 2)
+                        {
+                            return false;
+                        }
+
+                        Window? match = found.FirstOrDefault(w => TabItems(w).Any(t => string.Equals(t.Name, "wina.txt", StringComparison.Ordinal)));
+                        if (match is null)
+                        {
+                            return false;
+                        }
+
+                        one = match;
+                        two = found.First(w => !w.Properties.NativeWindowHandle.Value.Equals(match.Properties.NativeWindowHandle.Value));
+                        return true;
+                    },
+                    ok => !ok,
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(250)).Result;
+                Assert.True(identified);
+                Assert.NotNull(one);
+                Assert.NotNull(two);
+                Assert.Equal(2, TabItems(one).Count);
+                Assert.Contains("win one unsaved", BoxText(one));
+                Assert.Single(TabItems(two));
+                WaitForTabName(two, 0, "winb.txt");
+
+                // Non-last close drops the closing window's tabs (stock:
+                // nothing merges); the survivor alone snapshots.
+                two.Close();
+                Assert.Single(WaitForWindowCount(app, automation, 1));
+                SessionData mid = SessionData.Load();
+                SessionWindow survivor = Assert.Single(mid.Windows);
+                Assert.Equal(2, survivor.Tabs.Count);
+                Assert.Equal(fileA, survivor.Tabs[0].Path);
+                CloseAll(app, automation);
+            }
+
+            SessionData snap = SessionData.Load();
+            Assert.Equal(2, Assert.Single(snap.Windows).Tabs.Count);
+
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Single(app.GetAllTopLevelWindows(automation));
+                    Assert.Equal(2, WaitForTabCount(window, 2));
+                    WaitForTabName(window, 0, "wina.txt");
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void TabCloseRecordsRecentsNewestFirstCappedAtTen()
+    {
+        string dir = NewTempDir();
+        var files = new List<string>();
+        for (int i = 1; i <= 12; i++)
+        {
+            string file = Path.Combine(dir, $"f{i:00}.txt");
+            File.WriteAllText(file, $"cap {i}");
+            files.Add(file);
+        }
+
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        new SessionData
+        {
+            Windows =
+            [
+                new SessionWindow
+                {
+                    Tabs = files.Select(f => new SessionTab { Path = f, Caret = 0 }).ToList(),
+                },
+            ],
+        }.Save();
+        try
+        {
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(12, WaitForTabCount(window, 12));
+                    for (int left = 11; left >= 0; left--)
+                    {
+                        Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                        Assert.Equal(left, WaitForTabCount(window, left));
+                    }
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+
+            List<string> recents = ShellSettings.Load().RecentFiles;
+            Assert.Equal(10, recents.Count);
+            Assert.Equal(files[11], recents[0]);
+            Assert.Equal(files[2], recents[^1]);
+            Assert.DoesNotContain(files[0], recents);
+            Assert.DoesNotContain(files[1], recents);
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
+    public void WindowCloseRecordsNoRecent()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "zulu.txt");
+        File.WriteAllText(file, "zulu");
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        new SessionData
+        {
+            Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 1 }] }],
+        }.Save();
+        try
+        {
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(1, WaitForTabCount(window, 1));
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
+
+            Assert.Empty(ShellSettings.Load().RecentFiles);
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    // Clicks tab i, parks its caret `back` chars from the end, returns the
+    // expected offset from the live text length.
+    static int PositionCaretFromEnd(Window window, int index, int back)
+    {
+        TabItemAt(window, index).Click();
+        Thread.Sleep(400);
+        var box = ContentBox(window);
+        box.Focus();
+        Thread.Sleep(150);
+        using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
+        {
+            Keyboard.Press(VirtualKeyShort.END);
+        }
+
+        Thread.Sleep(100);
+        for (int i = 0; i < back; i++)
+        {
+            Keyboard.Press(VirtualKeyShort.LEFT);
+            Thread.Sleep(50);
+        }
+
+        return ContentBox(window).Text.Length - back;
+    }
+
+    // Phase 3 uses "Z": U and B already hold a phase-1 "Q", so a second
+    // "Q" would find the old one first.
+    static void AssertTypeLandsAt(Window window, int index, int want, string marker)
+    {
+        TabItemAt(window, index).Click();
+        Thread.Sleep(400);
+        ContentBox(window).Focus();
+        Thread.Sleep(150);
+        Keyboard.Type(marker);
+        Thread.Sleep(200);
+        Assert.Equal(want, ContentBox(window).Text.IndexOf(marker[0]));
+    }
+
+    static string BoxText(Window window) => ContentBox(window).Text ?? string.Empty;
+
+    // WinUI boxes report lone \r separators through UIA; files hold \n.
+    static string NormalizeBreaks(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace("\r", "\n", StringComparison.Ordinal);
+
+    static string NewTempDir()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    static Application LaunchApp()
+    {
+        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
+        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            appPath = Path.ChangeExtension(appPath, ".exe");
+        }
+
+        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
+        return Application.Launch(appPath);
+    }
+
+    static void SeedSettings(ShellSettings settings)
+    {
+        settings.Save();
+        // Session seeds land after this call; the delete keeps cases that
+        // assert absence (fresh mode, clean profile) honest.
+        SessionData.Delete();
+    }
+
+    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
+    {
+        window.Focus();
+        Thread.Sleep(150);
+        if (withShift)
+        {
+            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
+            {
+                Keyboard.Press(key);
+            }
+        }
+        else if (withControl)
+        {
+            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
+            {
+                Keyboard.Press(key);
+            }
+        }
+        else
+        {
+            Keyboard.Press(key);
+        }
+
+        Thread.Sleep(250);
+    }
+
+    static TextBox ContentBox(Window window)
+    {
+        var box = Retry.WhileNull(
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(box);
+        return box;
+    }
+
+    static List<AutomationElement> TabItems(Window window) =>
+        window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
+
+    static AutomationElement TabItemAt(Window window, int index)
+    {
+        var items = Retry.While(
+            () => TabItems(window),
+            found => found.Count <= index,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(250)).Result ?? [];
+        Assert.True(items.Count > index, $"tab list holds {items.Count} items, index {index} wanted");
+        return items[index];
+    }
+
+    static int WaitForTabCount(Window window, int expected)
+    {
+        var result = Retry.While(
+            () => TabItems(window).Count,
+            count => count != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250));
+        return result.Result;
+    }
+
+    // Tab names propagate to UIA asynchronously after a restore fills the
+    // boxes, so name assertions wait like TabBarTests does.
+    static void WaitForTabName(Window window, int index, string expected)
+    {
+        string? NameAt()
+        {
+            var found = TabItems(window);
+            return found.Count > index ? found[index].Name : null;
+        }
+
+        var result = Retry.While(
+            NameAt,
+            name => name != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.Equal(expected, result);
+    }
+
+    static Window[] WaitForWindowCount(Application app, UIA3Automation automation, int expected)
+    {
+        var result = Retry.While(
+            () => app.GetAllTopLevelWindows(automation),
+            found => found.Length != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250));
+        return result.Result ?? [];
+    }
+
+    static void CloseAll(Application app, UIA3Automation automation)
+    {
+        foreach (var window in app.GetAllTopLevelWindows(automation))
+        {
+            try
+            {
+                window.Close();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
+            {
+                // Already gone; the exit wait below is the real assertion.
+            }
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!app.HasExited && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(100);
+        }
+
+        if (!app.HasExited)
+        {
+            app.Kill();
+        }
+    }
+}

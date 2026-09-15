@@ -219,6 +219,8 @@ Why this section exists: saving is the one path where a bug destroys user data. 
 
 ## 6. Recent Files and Session Restore
 
+> **Started:** 2026-09-15T06:15:00Z
+
 Why this section exists: Notepad reopens where the user left off. So do we, without ever resurrecting a file the user closed on purpose.
 
 **Fidelity:** Notepad recent-files menu and restored session -- `resources/baseline/session/`. Order and truncation match.
@@ -233,13 +235,13 @@ Why this section exists: Notepad reopens where the user left off. So do we, with
 
 **Groomed 2026-09-13:** Notepad audit: the startup preference's fresh-install default is now recorded from the capture instead of unnamed.
 
-- [ ] `src/Notepad.Core/SessionStore.cs` persists open paths, active tab, caret positions, and unsaved buffer contents. Done when: quit and relaunch restores all four, including an untitled tab with unsaved text.
-- [ ] The "When Notepad starts" preference offers restore-previous-session or open-new-window, as Notepad's. Done when: both modes are driven.
-- [ ] Missing or moved files are skipped with a notice, never resurrected as ghosts. Done when: the skip path is driven.
-- [ ] The recent-files list matches Notepad's order, truncation, and clearing. Done when: the UI test walks all three.
-- [ ] Unsaved content is stored locally only, never synced or logged, with the privacy review recorded. Done when: the store format review names every field.
-- [ ] The "When Notepad starts" preference defaults to the fresh-install value recorded from the capture. Done when: a clean profile launches with the recorded default.
-- [ ] Session restore reopens the window set as Notepad does. Done when: the multi-window restore is driven. **Moved 2026-09-14 (phase-1 run 2)** from §9 item 4: restore is this section here.
+- [x] `src/Notepad.Core/SessionStore.cs` persists open paths, active tab, caret positions, and unsaved buffer contents. Done when: quit and relaunch restores all four, including an untitled tab with unsaved text.
+- [x] The "When Notepad starts" preference offers restore-previous-session or open-new-window, as Notepad's. Done when: both modes are driven. **Corrected 2026-09-15:** stock 11.2607.14.0 labels the radios "Continue previous session" and "Start new session and discard unsaved changes" (capture `notepad-when-starts-n11.2607.14.0-win25h2.png`, both read live); the item's older labels named the same two modes. Normalized to "continue" and "fresh".
+- [x] Missing or moved files are skipped with a notice, never resurrected as ghosts. Done when: the skip path is driven. **Corrected 2026-09-15:** probes contradict the skip-at-restore reading. Stock resurrects the missing file as an empty tab, shows "Cannot find the {path} file." with OK lazily on activation (capture `notepad-missing-notice-n11.2607.14.0-win25h2.png`), keeps the tab past OK, and drops it from the next snapshot (probed s2missing). Implemented stock-exact; the drive covers notice plus eviction. Dirty tabs over missing files are kept with their buffer (user-data-first default; the clean-missing drop is the probed half).
+- [x] The recent-files list matches Notepad's order, truncation, and clearing. Done when: the UI test walks all three. **Corrected 2026-09-15:** no menu bar exists until D01 T02 §1, so the rendered recents submenu lands there (it hosts the bar and the open/save triggers that populate the list); this item ships the list behavior (order, truncation, clearing) driven, and T02 §1 walks the rendered submenu. **Corrected 2026-09-15:** the record trigger is tab close only (decisive s2m1: opens and window closes record nothing), newest first, cap 10 oldest-evicted (s2m2), "Clear list" without confirm. Order and truncation are UI-driven through closes plus settings readback; clearing is unit-driven (no UI trigger exists pre-T02).
+- [x] Unsaved content is stored locally only, never synced or logged, with the privacy review recorded. Done when: the store format review names every field.
+- [x] The "When Notepad starts" preference defaults to the fresh-install value recorded from the capture. Done when: a clean profile launches with the recorded default. **Corrected 2026-09-15:** the value is "continue". The capture shows Continue previous session selected and eight independent setup guides concur it is the out-of-box default; no clean-room reinstall was available (no Sandbox, no spare profile), so this is cited-default, not reinstalled-default. Cost of being wrong: one constant.
+- [x] Session restore reopens the window set as Notepad does. Done when: the multi-window restore is driven. **Moved 2026-09-14 (phase-1 run 2)** from §9 item 4: restore is this section here. **Corrected 2026-09-15:** non-last window closes drop their tabs (probed s2merge: no merge, survivor keeps only its own); the snapshot rule is survivors-or-self, so clean quits always narrow to one window and multi-window sessions only meet crash/shutdown paths (§7 owns the continuous checkpoint). Geometry is not restored (two clean negatives), so session windows skip it. A trivial session (one empty untitled tab) is not written, keeping empty quits file-clean and geometry intact.
 - [ ] Commit: `"notepad-core: restore sessions and recent files"`
 
 **Test checkpoint:** UI drive quits with saved tabs, an untitled unsaved tab, and a dirty tab, and relaunches to all three with contents and carets; both startup modes driven; missing-file skip driven. Cheaper substitute that fails: restore that works only when every file still exists.

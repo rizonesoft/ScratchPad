@@ -181,6 +181,9 @@ public sealed class MultiWindowTests
     static void SeedSettings(ShellSettings settings)
     {
         settings.Save();
+        // Every close snapshots the session, so a seeded launch also starts
+        // session-clean; otherwise the previous test's tabs would restore.
+        SessionData.Delete();
     }
 
     static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)

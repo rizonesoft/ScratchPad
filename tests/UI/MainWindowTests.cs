@@ -175,6 +175,7 @@ public sealed class MainWindowTests
             File.Delete(ShellSettings.FilePath);
         }
 
+        SessionData.Delete();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(15));
@@ -215,6 +216,9 @@ public sealed class MainWindowTests
     static void SeedSettings(ShellSettings settings)
     {
         settings.Save();
+        // Every close snapshots the session, so a seeded launch also starts
+        // session-clean; otherwise the previous test's tabs would restore.
+        SessionData.Delete();
     }
 
     static AutomationElement? FindById(AutomationElement window, string id)
