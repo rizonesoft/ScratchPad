@@ -296,6 +296,34 @@ public sealed class SessionStoreTests
     }
 
     [Fact]
+    public void SessionLoadHostileJsonNullsLoadClean()
+    {
+        string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            File.WriteAllText(
+                path,
+                """{"Windows":[null,{"Tabs":[null,{"Path":"/tmp/a.txt","Encoding":null,"LineEnding":null}],"Active":5}],"ActiveWindow":-3}""");
+            SessionData data = SessionData.LoadFrom(path);
+            SessionWindow window = Assert.Single(data.Windows);
+            SessionTab tab = Assert.Single(window.Tabs);
+            Assert.Equal("/tmp/a.txt", tab.Path);
+            Assert.Equal("UTF-8", tab.Encoding);
+            Assert.Equal("CRLF", tab.LineEnding);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
     public void SessionLoadCorruptFileYieldsEmpty()
     {
         string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".json");

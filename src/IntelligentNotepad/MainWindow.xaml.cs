@@ -160,8 +160,17 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         missingNotice.Remove(tab.Id);
-        var dialog = new MissingFileDialog(tab.FilePath) { XamlRoot = xamlRoot };
-        await dialog.ShowAsync();
+        try
+        {
+            var dialog = new MissingFileDialog(tab.FilePath) { XamlRoot = xamlRoot };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            // The tree died between the check and the show (window closed
+            // under the notice). Once-semantics already consumed; no retry.
+            Debug.WriteLine($"Missing notice skipped: {ex.Message}");
+        }
     }
 
     // Rebuilds this window's tabs from a session record (D01 T01 §6), in
@@ -277,6 +286,12 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             return null;
         }
+        catch (OutOfMemoryException)
+        {
+            // A giant file must degrade to a ghost tab, never brick launch:
+            // the session persists, so a throw here would crash every start.
+            return null;
+        }
     }
 
     // The session record for this window's live tabs, read by App on close.
@@ -309,6 +324,7 @@ public sealed partial class MainWindow : Window, IDisposable
             foreach (Tab tab in e.OldItems)
             {
                 tab.PropertyChanged -= ActiveTab_PropertyChanged;
+                missingNotice.Remove(tab.Id);
                 // Recents record tab closes only (probed s2m1). Window teardown
                 // removes no tabs, so closes-with-the-window stay unrecorded,
                 // like stock. Merged onto fresh settings like geometry: every

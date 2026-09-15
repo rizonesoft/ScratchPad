@@ -60,9 +60,18 @@ public sealed class SessionData
             }
 
             data.Windows ??= new List<SessionWindow>();
+            // Hand-edited sessions can null anything nullable in JSON; every
+            // null below once threw out of launch (review round 1).
+            data.Windows = data.Windows.Where(w => w is not null).ToList();
             foreach (SessionWindow window in data.Windows)
             {
                 window.Tabs ??= new List<SessionTab>();
+                window.Tabs = window.Tabs.Where(t => t is not null).ToList();
+                foreach (SessionTab tab in window.Tabs)
+                {
+                    tab.Encoding ??= "UTF-8";
+                    tab.LineEnding ??= "CRLF";
+                }
             }
 
             return data;
