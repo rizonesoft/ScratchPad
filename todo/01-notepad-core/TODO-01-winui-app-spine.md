@@ -43,7 +43,7 @@ track: N1
 |   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [x]   |
 |   4   |   §4    | File open with encoding detection | §2 |  [x]   |
 |   5   |   §5    | File save and Save As | §4 |  [x]   |
-|   6   |   §6    | Recent files and session restore | §5 |  [ ]   |
+|   6   |   §6    | Recent files and session restore | §5 |  [x]   |
 |   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [ ]   |
 |   8   |   §8    | File association and command-line open | §4, §6 |  [ ]   |
 |   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [x]   |
@@ -242,9 +242,15 @@ Why this section exists: Notepad reopens where the user left off. So do we, with
 - [x] Unsaved content is stored locally only, never synced or logged, with the privacy review recorded. Done when: the store format review names every field.
 - [x] The "When Notepad starts" preference defaults to the fresh-install value recorded from the capture. Done when: a clean profile launches with the recorded default. **Corrected 2026-09-15:** the value is "continue". The capture shows Continue previous session selected and eight independent setup guides concur it is the out-of-box default; no clean-room reinstall was available (no Sandbox, no spare profile), so this is cited-default, not reinstalled-default. Cost of being wrong: one constant.
 - [x] Session restore reopens the window set as Notepad does. Done when: the multi-window restore is driven. **Moved 2026-09-14 (phase-1 run 2)** from §9 item 4: restore is this section here. **Corrected 2026-09-15:** non-last window closes drop their tabs (probed s2merge: no merge, survivor keeps only its own); the snapshot rule is survivors-or-self, so clean quits always narrow to one window and multi-window sessions only meet crash/shutdown paths (§7 owns the continuous checkpoint). Geometry is not restored (two clean negatives), so session windows skip it. A trivial session (one empty untitled tab) is not written, keeping empty quits file-clean and geometry intact.
-- [ ] Commit: `"notepad-core: restore sessions and recent files"`
+- [x] Commit: `"notepad-core: restore sessions and recent files"`
 
 **Test checkpoint:** UI drive quits with saved tabs, an untitled unsaved tab, and a dirty tab, and relaunches to all three with contents and carets; both startup modes driven; missing-file skip driven. Cheaper substitute that fails: restore that works only when every file still exists.
+
+> **Verified:** 2026-09-15 | §6 | Session restore (paths, active, carets, buffers) plus both when-starts modes, missing-file resurrect with lazy notice plus snapshot eviction, recents order/truncation/trigger with the rendered submenu deferred to the menu-bar owner, cited continue default, multi-window restore; UI 7/7, Unit §6 24/24 (suite 143/143), full gate green with 1 pre-existing quarantine; validate 0 fatal; self-test 393/393
+> **Review:** round 2, candidates 9f43493 62656a2 44021cc ae76a8a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s6.md
+> **CRUD:** applicable | session store wrote session.json (read back via relaunch plus snapshot asserts plus typing-at-caret); settings wrote whenstarts plus recents (read back via mode drives plus recents asserts); dialog wrote nothing persistent (read back via notice text plus OK-keeps-tab); captures wrote goldens (read back via wording and label reads)
+> **Duration:** 180
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 7. Dirty Prompts and Crash Recovery
 
