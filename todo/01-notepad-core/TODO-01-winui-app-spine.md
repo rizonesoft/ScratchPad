@@ -44,7 +44,7 @@ track: N1
 |   4   |   §4    | File open with encoding detection | §2 |  [x]   |
 |   5   |   §5    | File save and Save As | §4 |  [x]   |
 |   6   |   §6    | Recent files and session restore | §5 |  [x]   |
-|   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [ ]   |
+|   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [x]   |
 |   8   |   §8    | File association and command-line open | §4, §6 |  [ ]   |
 |   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [x]   |
 |  10   |   §10   | Window border parity repair | §1 |  [ ]   |
@@ -281,6 +281,10 @@ Why this section exists: this section is the last line before data loss. Every d
 **Test checkpoint:** Tab-prompt answers driven (Save on pathed saves bytes and closes; untitled-Save keeps the tab dirty with nothing written); silent window close with full restore driven; killed-process drive relaunches to all dirty buffers with zero dialogs; file bytes identical across the kill. Cheaper substitute that fails: prompting on window close as if it were tab close; a recovery offer dialog stock never shows.
 
 **Forwarded 2026-09-15 (not this section):** a bare `notepad.exe` launch with a live window opens a NEW window (for §8's launch rules), and stock Ctrl+T opens a new tab (matches our TabBar; for the record).
+> **Verified:** 2026-09-15 | §7 | Dirty prompts and crash recovery: tab-close prompt matrix over the §3 dialog (pathed Save writes bytes and closes, untitled Save keeps dirty with nothing written, Dont-save discards, Cancel keeps exactly), full-path and tab-name.txt prompt naming from the prompts captures, silent window close with full restore, continuous 2 s checkpoint with silent kill recovery and files untouched; DirtyPrompt 7/7, CrashCheckpoint 5/5, Smoke 1/1, Unit 148/148, Protocol 35/35, UI 37 plus 1 pre-existing quarantine of 38, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** round 1, candidates 0a40085 284e49a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s7.md
+> **CRUD:** applicable | prompt answers wrote tab fates (read back via closed/kept plus file-bytes asserts); window close wrote the session (read back via zero-dialog plus restored-buffer asserts); checkpoint ticks wrote session.json (read back via kill-relaunch buffer and identical-bytes asserts); fresh typing wrote stale deletion (read back via file-gone assert); probes wrote the prompts captures (read back via verbatim wording asserts)
+> **Duration:** 260
 
 ## 8. File Association and Command-Line Open
 
