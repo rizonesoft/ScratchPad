@@ -26,8 +26,14 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private bool closed;
 
-    public MainWindow()
+    // firstWindow selects first-launch behavior: only the first window of the
+    // process restores persisted geometry and may show first-run (D01 T01
+    // §9); later windows open at the OS default cascade like stock's.
+    private readonly bool firstWindow;
+
+    public MainWindow(bool firstWindow)
     {
+        this.firstWindow = firstWindow;
         InitializeComponent();
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;
@@ -62,13 +68,28 @@ public sealed partial class MainWindow : Window, IDisposable
                 _ => ElementTheme.Default,
             };
             AddTabAccelerators(root, tabBar);
+            AddAccel(root, VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, OpenNewWindow);
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
         }
 
-        RestoreGeometry();
+        if (firstWindow)
+        {
+            RestoreGeometry();
+        }
+
         Closed += OnClosed;
+    }
+
+    // Ctrl+Shift+N, recorded live from Notepad (D01 T01 §9): a same-size
+    // window at the OS cascade with one untitled tab.
+    private static void OpenNewWindow()
+    {
+        if (Application.Current is App app)
+        {
+            app.NewWindow();
+        }
     }
 
     // Tab shortcuts, recorded live from Notepad (D01 T01 §3): Ctrl+T new,
@@ -257,7 +278,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         InstallMiddleClickHook();
-        if (settings.WhatsNewSeen)
+        if (settings.WhatsNewSeen || !firstWindow)
         {
             return;
         }
@@ -276,6 +297,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
         // No close prompt here: §7 owns window-close behavior (prompt matrix,
         // silence, crash recovery). Until then tabs die with the window.
+        // Every window saves geometry on close; last-closed wins the next
+        // first window (default, §6 owns the multi-window restore).
         Dispose();
         PointInt32 position = AppWindow.Position;
         SizeInt32 size = AppWindow.Size;

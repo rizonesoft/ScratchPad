@@ -1,0 +1,245 @@
+using System.Drawing;
+using FlaUI.Core;
+using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.Core.Tools;
+using FlaUI.Core.WindowsAPI;
+using FlaUI.UIA3;
+using Notepad.Core;
+using Xunit;
+
+namespace UI;
+
+// D01 T01 §9: the new-window command, per-window tab isolation, and the
+// no-tear-off parity negative (stock has no detach, probed twice).
+[Collection("UI tests")]
+public sealed class MultiWindowTests
+{
+    [Fact]
+    public void CtrlShiftNOpensSecondWindowAtCascade()
+    {
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 100, Y = 100, Width = 900, Height = 650 });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(first);
+        try
+        {
+            Assert.Single(app.GetAllTopLevelWindows(automation));
+            Press(first, VirtualKeyShort.KEY_N, withControl: true, withShift: true);
+            Window[] windows = WaitForWindowCount(app, automation, 2);
+            Assert.Equal(2, windows.Length);
+            Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
+                ? windows[1]
+                : windows[0];
+            Assert.NotEqual(first.BoundingRectangle.Location, second.BoundingRectangle.Location);
+            Assert.Equal("Untitled", TabItemAt(second, 0).Name);
+            Assert.Null(second.FindFirstDescendant(cf => cf.ByAutomationId("WhatsNewDialog")));
+            second.Close();
+            Assert.Single(WaitForWindowCount(app, automation, 1));
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
+    }
+
+    [Fact]
+    public void WindowsKeepIndependentTabs()
+    {
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(first);
+        try
+        {
+            Press(first, VirtualKeyShort.KEY_N, withControl: true, withShift: true);
+            Window[] windows = WaitForWindowCount(app, automation, 2);
+            Assert.Equal(2, windows.Length);
+            Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
+                ? windows[1]
+                : windows[0];
+            Press(second, VirtualKeyShort.KEY_T, withControl: true);
+            Assert.Equal(2, WaitForTabCount(second, 2));
+            Assert.Single(TabItems(first));
+            ContentBox(second).Text = "WINDOW2";
+            Assert.Equal("Untitled - Intelligent Notepad", first.Title);
+            Assert.Equal(string.Empty, ContentBox(first).Text);
+            second.Close();
+            Assert.Single(WaitForWindowCount(app, automation, 1));
+            Assert.Equal("Untitled - Intelligent Notepad", first.Title);
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
+    }
+
+    [Fact]
+    public void TabDragOutsideStripDetachesNothing()
+    {
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            // Stock has no tear-off (two clean drag-out negatives); parity is
+            // no detach. Pin topmost so the drop lands on our window, like
+            // the no-reorder drive.
+            UiDpi.PinTopmost(window, true);
+            try
+            {
+                AutomationElement tab = TabItemAt(window, 0);
+                Rectangle bounds = tab.BoundingRectangle;
+                var from = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
+                var to = new Point(from.X, bounds.Bottom + 260);
+                Mouse.Position = from;
+                Thread.Sleep(100);
+                Mouse.Down(MouseButton.Left);
+                try
+                {
+                    for (int step = 1; step <= 10; step++)
+                    {
+                        Mouse.Position = new Point(
+                            (from.X * (10 - step) + to.X * step) / 10,
+                            (from.Y * (10 - step) + to.Y * step) / 10);
+                        Thread.Sleep(50);
+                    }
+                }
+                finally
+                {
+                    Mouse.Up(MouseButton.Left);
+                }
+            }
+            finally
+            {
+                UiDpi.PinTopmost(window, false);
+            }
+
+            Thread.Sleep(500);
+            Assert.Single(app.GetAllTopLevelWindows(automation));
+            Assert.Single(TabItems(window));
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
+    }
+
+    static Application LaunchApp()
+    {
+        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
+        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            appPath = Path.ChangeExtension(appPath, ".exe");
+        }
+
+        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
+        return Application.Launch(appPath);
+    }
+
+    static void SeedSettings(ShellSettings settings)
+    {
+        settings.Save();
+    }
+
+    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
+    {
+        window.Focus();
+        Thread.Sleep(150);
+        if (withShift)
+        {
+            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
+            {
+                Keyboard.Press(key);
+            }
+        }
+        else if (withControl)
+        {
+            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
+            {
+                Keyboard.Press(key);
+            }
+        }
+        else
+        {
+            Keyboard.Press(key);
+        }
+
+        Thread.Sleep(250);
+    }
+
+    static TextBox ContentBox(Window window)
+    {
+        var box = Retry.WhileNull(
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(box);
+        return box;
+    }
+
+    static List<AutomationElement> TabItems(Window window) =>
+        window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
+
+    static AutomationElement TabItemAt(Window window, int index)
+    {
+        var items = Retry.While(
+            () => TabItems(window),
+            found => found.Count <= index,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(250)).Result ?? [];
+        Assert.True(items.Count > index, $"tab list holds {items.Count} items, index {index} wanted");
+        return items[index];
+    }
+
+    static int WaitForTabCount(Window window, int expected)
+    {
+        var result = Retry.While(
+            () => TabItems(window).Count,
+            count => count != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250));
+        return result.Result;
+    }
+
+    static Window[] WaitForWindowCount(Application app, UIA3Automation automation, int expected)
+    {
+        var result = Retry.While(
+            () => app.GetAllTopLevelWindows(automation),
+            found => found.Length != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250));
+        return result.Result ?? [];
+    }
+
+    static void CloseAll(Application app, UIA3Automation automation)
+    {
+        foreach (var window in app.GetAllTopLevelWindows(automation))
+        {
+            try
+            {
+                window.Close();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
+            {
+                // Already gone; the exit wait below is the real assertion.
+            }
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!app.HasExited && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(100);
+        }
+
+        if (!app.HasExited)
+        {
+            app.Kill();
+        }
+    }
+}
