@@ -53,7 +53,9 @@ public static class FileOpen
                 return new OpenFailureResult(OpenFailure.NotFound);
             }
 
-            if (info.Length > options.MaxBytes)
+            // Whole-file reads cap at 2 GiB (array length); past it the open
+            // refuses as TooLarge instead of throwing OverflowException.
+            if (info.Length > options.MaxBytes || info.Length > int.MaxValue)
             {
                 return new OpenFailureResult(OpenFailure.TooLarge);
             }
