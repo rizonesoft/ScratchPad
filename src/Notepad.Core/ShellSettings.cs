@@ -4,12 +4,15 @@ using System.Text.Json;
 namespace Notepad.Core;
 
 // Local persistence seam for shell state, owned by D01 T01 §1 (§9 adds
-// openin.mode, §6 adds whenstarts.mode plus recentfiles) and adopted by
+// openin.mode, §6 adds whenstarts.mode plus recentfiles, §8 adds
+// pinnedfiles) and adopted by
 // the D01 T02 §2 settings store when it lands: the store reads these keys
 // (same file, same names) and takes over writes.
 // Keys: window.x/y/width/height (int), app.theme ("system", "light",
 // "dark"), whatsnew.seen (bool), openin.mode ("new-tab", "new-window"),
-// whenstarts.mode ("continue", "fresh"), recentfiles (MRU-first paths).
+// whenstarts.mode ("continue", "fresh"), recentfiles (MRU-first paths),
+// pinnedfiles (pinned-first paths, oldest first).
+// jumplist.hash (feed fingerprint for commit-on-change).
 public sealed class ShellSettings
 {
     public int X { get; set; } = 50;
@@ -39,6 +42,17 @@ public sealed class ShellSettings
     [SuppressMessage("Design", "CA1002", Justification = "Settings JSON DTO; List is the reviewed store shape.")]
     [SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization.")]
     public List<string> RecentFiles { get; set; } = new();
+
+    // Pinned files for the §8 jump list, oldest first, capped by
+    // RecentFiles.MaxCount. Pins live here; the D01 T02 §1 recents submenu
+    // renders the toggle that mutates them.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1002", Justification = "Settings JSON DTO; List is the reviewed store shape.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization.")]
+    public List<string> PinnedFiles { get; set; } = new();
+
+    // Jump-list feed fingerprint, owned by D01 T01 §8: the service commits
+    // only while the feed differs from this hash.
+    public string JumpListHash { get; set; } = string.Empty;
 
     public bool WhatsNewSeen { get; set; }
 

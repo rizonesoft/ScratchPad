@@ -1,5 +1,6 @@
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.Windows.AppLifecycle;
 using Notepad.Core;
 
 namespace IntelligentNotepad;
@@ -15,10 +16,29 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        JumpListService.EnsureAppId();
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
+        // D01 T01 §8: verbs and print run in the launching process and
+        // exit without windows; files route through single-instance into
+        // the primary (second launches redirect and exit).
+        LaunchRequest request = LaunchArgs.Parse(Environment.GetCommandLineArgs().Skip(1), Environment.CurrentDirectory);
+        if (request.IsVerb || request.IsPrint)
+        {
+            Environment.Exit(RunHeadless(request));
+            return;
+        }
+
+        AppInstance mainInstance = AppInstance.FindOrRegisterForKey(SingleInstanceKey);
+        if (!mainInstance.IsCurrent)
+        {
+            _ = RedirectAndExitAsync(mainInstance, request.Files);
+            return;
+        }
+
+        mainInstance.Activated += OnAppRedirected;
         // D01 T01 §6: continue mode reopens the recorded window set; fresh
         // mode, an empty session, or a corrupt one opens one clean window.
         ShellSettings settings = ShellSettings.Load();
@@ -38,16 +58,25 @@ public partial class App : Application
         {
             NewWindow();
         }
+
+        List<string> startup = LaunchDrops.Drain().Concat(request.Files).ToList();
+        if (startup.Count > 0)
+        {
+            _ = OpenIntoFirstWindowAsync(startup);
+        }
+
+        RefreshJumpList();
     }
 
     // Window-opening mechanism, owned by D01 T01 §9. The first window of the
     // process restores geometry and may show first-run; later windows open
     // at the OS default cascade like stock's (probed offsets +261/-38,
     // +38/-38, +38/0: small, varying, same size). Invoked by Ctrl+Shift+N and,
-    // at their time, the D01 T02 §1 File menu and §8 command line.
-    public void NewWindow()
+    // and the §8 command line; the D01 T02 §1 File menu at its time.
+    public MainWindow NewWindow()
     {
         AddWindow(null);
+        return (MainWindow)windows[^1];
     }
 
     private void AddWindow(SessionWindow? restore)

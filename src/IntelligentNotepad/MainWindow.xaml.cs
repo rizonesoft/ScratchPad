@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window, IDisposable
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;
         tabBar = new TabBar { Model = tabs };
+        WireFileDrops();
         // Crash checkpoint feed (D01 T01 §7): every box edit restarts
         // the App debounce, so a kill restores seconds-old buffers.
         tabBar.TabsEdited += (_, _) =>
@@ -343,6 +344,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     ShellSettings fresh = ShellSettings.Load();
                     RecentFiles.NoteClosed(fresh.RecentFiles, tab.FilePath);
                     fresh.Save();
+                    App.RefreshJumpList();
                 }
             }
         }
