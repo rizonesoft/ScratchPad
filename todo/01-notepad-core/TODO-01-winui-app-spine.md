@@ -50,7 +50,7 @@ track: N1
 |   8   |   §8    | File association and command-line open | §4, §6 |  [x]   |
 |   9   |   §9    | Multi-window with open-in mode | §2, §3 |  [x]   |
 |  10   |   §10   | Window border parity repair | §1 |  [ ]   |
-|  11   |   §11   | App icon wiring | §1 |  [ ]   |
+|  11   |   §11   | App icon wiring | §1 |  [x]   |
 |  12   |   §12   | Split view | §1, §2, D02 T01 §1 |  [ ]   |
 |  13   |   §13   | Pinned tabs | §2, §6 |  [ ]   |
 |  14   |   §14   | Text statistics panel | §1 |  [ ]   |
@@ -389,12 +389,18 @@ Why this section exists: the operator supplied the app icon. It must show in the
 
 **Needs:** Windows host (build/test)
 
-- [x] The build embeds `resources/notepad.ico` as the exe icon in `src/IntelligentNotepad/IntelligentNotepad.csproj`. Done when: the built exe shows the icon in Explorer. Proven 2026-09-14: the extracted associated icon matches the asset 0/1024 pixels (byte proof for the Explorer eyeball).
-- [ ] The main window sets the icon from the asset at startup in `src/IntelligentNotepad/MainWindow.xaml.cs`. Done when: window captures show it.
-- [ ] Taskbar and window chrome show the asset with no default glyph anywhere. Done when: taskbar and window captures show it (Alt+Tab follows the exe by platform contract).
-- [ ] Commit: `"notepad-core: wire the app icon"`
+- [x] The build embeds `resources/notepad.ico` as the exe icon in `src/IntelligentNotepad/IntelligentNotepad.csproj`. Done when: the built exe shows the icon in Explorer. Proven 2026-09-14: the extracted associated icon matches the asset 0/1024 pixels (byte proof for the Explorer eyeball). **Corrected 2026-09-15:** that proof targeted the superseded asset; re-proven against the operator's 01:44Z replacement (131902 bytes, 8 images, valid header): `ExeIconMatchesAsset` extracts the exe icon and diffs 0 pixels against the shipped asset, green in the §11 filter run.
+- [x] The main window sets the icon from the asset at startup in `src/IntelligentNotepad/MainWindow.xaml.cs`. Done when: window captures show it. **Corrected 2026-09-15:** the chrome is content-extended (`ExtendsContentIntoTitleBar`), so no caption glyph surface exists; the window icon handle is the checkable surface (taskbar and Alt+Tab render from it). Shipped in `9f43493` (§6 commit, `// D01 T01 §11:` comment at `OnFirstLoaded`); `WindowChromeIconMatchesAsset` reads `WM_GETICON` small and diffs 0 pixels against the asset 16x16, green in the §11 filter run. Chrome crop `resources/baseline/app/icon-window-chrome-evidence.png` documents the glyph-free extended chrome.
+- [x] Taskbar and window chrome show the asset with no default glyph anywhere. Done when: taskbar and window captures show it (Alt+Tab follows the exe by platform contract). **Driven 2026-09-15:** taskbar crop `resources/baseline/app/icon-taskbar-evidence.png` filed and eyeballed (asset mark with running underline, no default glyph); exe plus window 0-diff pins above plus the platform contract close the loop.
+- [x] Commit: `"notepad-core: wire the app icon"` (`22f6b4c`).
 
 **Test checkpoint:** Exe, window, and taskbar captures show the asset; MSIX visual assets stay D07 T01 §1's. Cheaper substitute that fails: the icon in one place only.
+
+> **Verified:** 2026-09-15 | §11 | App icon wiring: exe embeds the operator asset, window sets it at Loaded, taskbar renders the mark with no default glyph; `ExeIconMatchesAsset` plus `WindowChromeIconMatchesAsset` 0-diff, taskbar and chrome crops filed and eyeballed; UI 2/2, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** round 1, candidate 22f6b4c plus the `SetIcon` lines in 9f43493 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s11.md
+> **CRUD:** applicable | build wrote the exe icon and content copy (read back via extraction 0-diff plus shipped-asset presence); `SetIcon` wrote the window icon (read back via `WM_GETICON` 0-diff); captures wrote PNGs (read back via eyeball)
+> **Duration:** 115
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 12. Split View
 
