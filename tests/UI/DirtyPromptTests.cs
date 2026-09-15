@@ -26,7 +26,7 @@ public sealed class DirtyPromptTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
-            Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "edited seven", Caret = 12 }] }],
+            Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "edited séven", Caret = 12 }] }],
         }.Save();
         try
         {
@@ -39,13 +39,13 @@ public sealed class DirtyPromptTests
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     WaitForTabName(window, 0, "save7.txt");
-                    Assert.Equal("edited seven", BoxText(window));
+                    Assert.Equal("edited séven", BoxText(window));
                     Press(window, VirtualKeyShort.KEY_W, withControl: true);
                     var dialog = WaitForPrompt(window);
                     Assert.Contains(file, PromptText(dialog), StringComparison.Ordinal);
                     AnswerPrompt(window, dialog, "Save");
                     Assert.Equal(0, WaitForTabCount(window, 0));
-                    Assert.Equal("edited seven", File.ReadAllText(file));
+                    Assert.Equal("edited séven", File.ReadAllText(file));
                 }
                 finally
                 {
@@ -329,6 +329,58 @@ public sealed class DirtyPromptTests
             }
 
             Assert.Equal("base crash", File.ReadAllText(file));
+        }
+        finally
+        {
+            SessionData.Delete();
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Best-effort cleanup; the test result does not depend on it.
+            }
+        }
+    }
+
+    [Fact]
+    public void FreshTypingDeletesStaleSession()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "stale7.txt");
+        File.WriteAllText(file, "base stale");
+        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
+        new SessionData
+        {
+            Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "STALE7", Caret = 3 }] }],
+        }.Save();
+        try
+        {
+            using (var app = LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                Assert.NotNull(window);
+                try
+                {
+                    Assert.Equal(1, WaitForTabCount(window, 1));
+                    Assert.Equal("Untitled", TabItemAt(window, 0).Name);
+                    ContentBox(window).Focus();
+                    Keyboard.Type("F7");
+                    var deleted = Retry.While(
+                        () => File.Exists(SessionData.FilePath),
+                        exists => exists,
+                        TimeSpan.FromSeconds(10),
+                        TimeSpan.FromMilliseconds(250)).Result;
+                    Assert.False(deleted, "stale session.json survived fresh typing");
+                    Assert.Equal("F7", BoxText(window));
+                }
+                finally
+                {
+                    CloseAll(app, automation);
+                }
+            }
         }
         finally
         {
