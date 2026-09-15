@@ -18,6 +18,8 @@ track: N1
 > **Corrected 2026-09-14 (phase-1 run 2):** §§1-3 have shipped since: the window shell with menu host, the tab model with dirty tracking, and the tab bar UI all exist. File IO (§§4-5) is still missing; later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-15 (phase-1 run 3):** §§4-7, 9, 27 have shipped since: file open, atomic save with Save As, session restore with recents, dirty prompts with crash recovery, multi-window with open-in mode, and the tab-strip chrome repair all exist; §8 is implemented but unstamped. Open: §§8, 11, 13, 14, 16-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-15 (phase-1 run 3, §14 validation):** §§8, 11, 13 have shipped since (association routing, icon wiring, pinned tabs). Open: §§14, 16-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -453,18 +455,18 @@ Why this section exists: writers who measure want top words, sentence lengths, a
 
 **Job:** The user can inspect document statistics in a panel. Consumer: the panel, which computes on open and refreshes on demand.
 
-**Treatment:** A panel shows computed stats over an injected text provider until D02 T01 §1 binds the real buffer; refresh is on demand so typing never pays. **Corrected 2026-09-14 (phase-1 run 2):** the D02 T01 §2 dep cycled through the T01-whole gate. The benchmark is a compute-count test, not BenchmarkDotNet: simulated typing must not recompute, refresh recomputes once. Cheaper substitute that fails the checkpoint: live recompute that taxes typing.
+**Treatment:** A panel shows computed stats over an injected text provider until D02 T01 §1 binds the real buffer; refresh is on demand so typing never pays. **Corrected 2026-09-14 (phase-1 run 2):** the D02 T01 §2 dep cycled through the T01-whole gate. The benchmark is a compute-count test, not BenchmarkDotNet: simulated typing must not recompute, refresh recomputes once. **Decided 2026-09-15 (§14 validation):** the panel opens on Ctrl+Shift+G (free in-tree, no stock meaning; a chrome button was rejected because new chrome would break the goldens); the menu trigger is deferred to D01 T02 §1 item 5 per its engine-trigger rule, contract named there: command ShowStatsPanel, always enabled (zero tabs shows zeros), handler MainWindow.ShowStatsPanel. Cost of changing the shortcut: one accelerator line plus the drive. Cheaper substitute that fails the checkpoint: live recompute that taxes typing.
 
-**Decided 2026-09-14:** top 10 words by count with alphabetical tie-break; a word is a maximal run of Unicode letters/digits with internal apostrophes kept, counted case-insensitively; sentences split naively on `.`/`!`/`?` runs (abbreviations over-split, recorded limitation); sentence buckets are short 1-10, medium 11-25, long 26+ words; repetition flags non-stopwords appearing 3+ times against a small built-in English stopword set (English-first, matching D02 T05). Cost of changing any rule: one constant plus the `tests/Fixtures/stats/` expectations.
+**Decided 2026-09-14:** top 10 words by count with alphabetical tie-break (**Clarified 2026-09-15 (§14 validation):** the tie-break is Ordinal over first-seen casing: deterministic and locale-independent, uppercase sorts before lowercase, so it differs from dictionary order on mixed-case ties; the fixture pins `The` before `cat`; cost of changing: the comparator plus the fixture expectations); a word is a maximal run of Unicode letters/digits with internal apostrophes kept, counted case-insensitively; sentences split naively on `.`/`!`/`?` runs (abbreviations over-split, recorded limitation); sentence buckets are short 1-10, medium 11-25, long 26+ words; repetition flags non-stopwords appearing 3+ times against a small built-in English stopword set (English-first, matching D02 T05). Cost of changing any rule: one constant plus the `tests/Fixtures/stats/` expectations.
 
-**Chrome:** Consume the shared panel styles. Do not invent a second stats treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/WhatsNewDialog (default WinUI styling). **Corrected 2026-09-15 (§14 validation):** no shared panel styles exist in the tree (three XAML files, no Themes dir); the dialog follows the existing code-built dialog pattern instead. Do not invent a second stats treatment.
 
 **Needs:** Windows host (build/test)
 
-- [ ] The panel lists top words with counts. Done when: counts match a fixture document exactly.
-- [ ] The panel shows sentence length distribution. Done when: lengths match the fixture.
-- [ ] Repetition flags call out overused words. Done when: a seeded repeat is flagged.
-- [x] Stats compute on open and refresh on demand only. Done when: typing benchmarks show no recompute. Proven 2026-09-14 (neutral half): `StatsController` computes on open, ignores provider changes until `Refresh` (compute-count test, 9/9 `TextStatsTests` green); the panel binding is bedtime.
+- [x] The panel lists top words with counts. Done when: counts match a fixture document exactly. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (fixture-exact rows in a right-aligned label/value grid, panel contained in the window), green in the §14 filter run. Two transient fused-word reads disclosed (UIA settling mid-render; fixed by box-write readback plus stable-double-read section polling, green since).
+- [x] The panel shows sentence length distribution. Done when: lengths match the fixture. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (7 fixture-exact rows including buckets) plus `EmptyTabsShowZeros` (all-zero rows), green in the §14 filter run.
+- [x] Repetition flags call out overused words. Done when: a seeded repeat is flagged. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (seeded `cat` flagged, stopword `The` excluded), green in the §14 filter run.
+- [x] Stats compute on open and refresh on demand only. Done when: typing benchmarks show no recompute. Proven 2026-09-14 (neutral half): `StatsController` computes on open, ignores provider changes until `Refresh` (compute-count test, 9/9 `TextStatsTests` green, re-proven 9/9 this run). **Bound 2026-09-15:** `StatsDialog` constructs a fresh controller per open over the active tab's buffer with a Refresh control; `RefreshAndReopenRecompute` drives reopen-recompute plus Refresh in the room, green in the §14 filter run.
 - [ ] Commit: `"notepad-core: show text statistics"`
 
 **Test checkpoint:** words, lengths, flags, and on-demand refresh are all driven in the room. Cheaper substitute that fails: stats that never update.

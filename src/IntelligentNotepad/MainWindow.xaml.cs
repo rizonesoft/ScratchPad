@@ -94,6 +94,9 @@ public sealed partial class MainWindow : Window, IDisposable
             };
             AddTabAccelerators(root, tabBar);
             AddAccel(root, VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, OpenNewWindow);
+            // D01 T01 §14: stats panel. Ctrl+Shift+G is free in-tree with no
+            // stock meaning; the menu trigger is deferred to D01 T02 §1.
+            AddAccel(root, VirtualKey.G, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowStatsPanelAsync(); });
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
@@ -378,6 +381,31 @@ public sealed partial class MainWindow : Window, IDisposable
         EditorRegion.Content = tabs.ActiveTab is Tab active && tabBar is not null
             ? tabBar.ContentFor(active)
             : null;
+    }
+
+    // D01 T01 §14: the stats panel over the active tab's buffer (empty
+    // when no tab is active, so the trigger stays always-enabled). Each
+    // open constructs a fresh controller: compute lands on open and never
+    // while typing, and Refresh re-reads on demand.
+    internal async Task ShowStatsPanelAsync()
+    {
+        if (Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        var dialog = new StatsDialog(new ActiveTabTextProvider(ActiveTabText)) { XamlRoot = xamlRoot };
+        await dialog.ShowAsync();
+    }
+
+    string ActiveTabText()
+    {
+        if (tabs.ActiveTab is not Tab active || tabBar is null)
+        {
+            return string.Empty;
+        }
+
+        return tabBar.ContentFor(active).Text ?? string.Empty;
     }
 
     // The hook reports physical client pixels; the strip hit-tests DIP.
