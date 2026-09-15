@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace Notepad.Core;
@@ -33,6 +34,10 @@ public sealed class ShellSettings
 
     // Recent files, newest first, capped by RecentFiles.MaxCount. Appended
     // on tab close only (probed s2m1); the D01 T02 §1 submenu renders it.
+    // JSON DTO: the setter serves deserialization; the List shape is the
+    // reviewed settings format (same treatment as SessionData.Windows).
+    [SuppressMessage("Design", "CA1002", Justification = "Settings JSON DTO; List is the reviewed store shape.")]
+    [SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization.")]
     public List<string> RecentFiles { get; set; } = new();
 
     public bool WhatsNewSeen { get; set; }

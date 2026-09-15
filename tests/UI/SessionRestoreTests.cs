@@ -60,16 +60,16 @@ public sealed class SessionRestoreTests
                     Assert.Equal("alpha one\ntwo\nthree", NormalizeBreaks(BoxText(window)));
 
                     // Restore sets carets: typing lands at the seeded offset.
-                    TabItemAt(window, 1).Click();
+                    SelectTab(window, 1);
                     Thread.Sleep(400);
                     ContentBox(window).Focus();
                     Keyboard.Type("Q");
-                    Assert.Equal(8, ContentBox(window).Text.IndexOf('Q'));
-                    TabItemAt(window, 2).Click();
+                    Assert.Equal(8, ContentBox(window).Text.IndexOf('Q', StringComparison.Ordinal));
+                    SelectTab(window, 2);
                     Thread.Sleep(400);
                     ContentBox(window).Focus();
                     Keyboard.Type("Q");
-                    Assert.Equal(4, ContentBox(window).Text.IndexOf('Q'));
+                    Assert.Equal(4, ContentBox(window).Text.IndexOf('Q', StringComparison.Ordinal));
 
                     // Reposition every caret from the end, then quit.
                     wantA = PositionCaretFromEnd(window, 0, 2);
@@ -91,9 +91,9 @@ public sealed class SessionRestoreTests
             Assert.Equal(fileA, snapWindow.Tabs[0].Path);
             Assert.Null(snapWindow.Tabs[0].Content);
             Assert.Equal(wantA, snapWindow.Tabs[0].Caret);
-            Assert.Contains("Q", snapWindow.Tabs[1].Content);
+            Assert.Contains("Q", snapWindow.Tabs[1].Content, StringComparison.Ordinal);
             Assert.Equal(wantU, snapWindow.Tabs[1].Caret);
-            Assert.Contains("Q", snapWindow.Tabs[2].Content);
+            Assert.Contains("Q", snapWindow.Tabs[2].Content, StringComparison.Ordinal);
             Assert.Equal(wantB, snapWindow.Tabs[2].Caret);
 
             // Round-trip: typing after relaunch lands at the snapshotted caret.
@@ -122,8 +122,9 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -167,8 +168,9 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -207,7 +209,7 @@ public sealed class SessionRestoreTests
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     WaitForTabName(window, 0, "clean.txt");
-                    Assert.Equal("clean profile", BoxText(window).Replace("\r\n", "\n"));
+                    Assert.Equal("clean profile", BoxText(window).Replace("\r\n", "\n", StringComparison.Ordinal));
                 }
                 finally
                 {
@@ -223,8 +225,9 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -267,7 +270,8 @@ public sealed class SessionRestoreTests
                     Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")));
 
                     // The notice is lazy: activating the ghost raises it.
-                    TabItemAt(window, 1).Click();
+                    SelectTab(window, 1);
+                    WaitForTabSelected(window, 1);
                     var dialog = Retry.WhileNull(
                         () => window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")),
                         TimeSpan.FromSeconds(10),
@@ -280,8 +284,9 @@ public sealed class SessionRestoreTests
                             {
                                 return el.Properties.Name.ValueOrDefault ?? string.Empty;
                             }
-                            catch
+                            catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
                             {
+                                // Torn-down or busy element; treat as no text.
                                 return string.Empty;
                             }
                         }).ToList();
@@ -289,7 +294,7 @@ public sealed class SessionRestoreTests
                     Assert.Contains(texts, t => t.Contains("missing.txt", StringComparison.Ordinal));
                     var ok = dialog.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button).And(cf.ByName("OK")));
                     Assert.NotNull(ok);
-                    ok.AsButton().Click();
+                    ok.AsButton().Invoke();
                     var gone = Retry.While(
                         () => window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")),
                         found => found is not null,
@@ -331,8 +336,9 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -402,7 +408,7 @@ public sealed class SessionRestoreTests
                 Assert.NotNull(one);
                 Assert.NotNull(two);
                 Assert.Equal(2, TabItems(one).Count);
-                Assert.Contains("win one unsaved", BoxText(one));
+                Assert.Contains("win one unsaved", BoxText(one), StringComparison.Ordinal);
                 Assert.Single(TabItems(two));
                 WaitForTabName(two, 0, "winb.txt");
 
@@ -444,8 +450,9 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -509,8 +516,9 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -552,17 +560,18 @@ public sealed class SessionRestoreTests
             {
                 Directory.Delete(dir, recursive: true);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
 
-    // Clicks tab i, parks its caret `back` chars from the end, returns the
+    // Selects tab i, parks its caret `back` chars from the end, returns the
     // expected offset from the live text length.
     static int PositionCaretFromEnd(Window window, int index, int back)
     {
-        TabItemAt(window, index).Click();
+        SelectTab(window, index);
         Thread.Sleep(400);
         var box = ContentBox(window);
         box.Focus();
@@ -586,13 +595,13 @@ public sealed class SessionRestoreTests
     // "Q" would find the old one first.
     static void AssertTypeLandsAt(Window window, int index, int want, string marker)
     {
-        TabItemAt(window, index).Click();
+        SelectTab(window, index);
         Thread.Sleep(400);
         ContentBox(window).Focus();
         Thread.Sleep(150);
         Keyboard.Type(marker);
         Thread.Sleep(200);
-        Assert.Equal(want, ContentBox(window).Text.IndexOf(marker[0]));
+        Assert.Equal(want, ContentBox(window).Text.IndexOf(marker[0], StringComparison.Ordinal));
     }
 
     static string BoxText(Window window) => ContentBox(window).Text ?? string.Empty;
@@ -703,6 +712,38 @@ public sealed class SessionRestoreTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250)).Result;
         Assert.Equal(expected, result);
+    }
+
+    // Selection lands asynchronously after a click, and the missing-file
+    // notice keys off activation: wait for the select first, so a missed
+    // select fails here naming the select instead of at the dialog wait.
+    static void WaitForTabSelected(Window window, int index)
+    {
+        bool IsSelected()
+        {
+            var found = TabItems(window);
+            return found.Count > index
+                && found[index].Patterns.SelectionItem.PatternOrDefault?.IsSelected == true;
+        }
+
+        var result = Retry.While(
+            IsSelected,
+            selected => !selected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.True(result, $"tab {index} never selected after click");
+    }
+
+    // Tab switches drive the SelectionItem pattern, never the cursor:
+    // review round 2 caught real clicks missing (wrong-tab landings
+    // that failed caret asserts and starved the lazy notice), so the
+    // cursor is out. Same shape as TabBarTests.SelectTab.
+    static void SelectTab(Window window, int index)
+    {
+        var pattern = TabItemAt(window, index).Patterns.SelectionItem.PatternOrDefault;
+        Assert.NotNull(pattern);
+        pattern.Select();
+        Thread.Sleep(150);
     }
 
     static Window[] WaitForWindowCount(Application app, UIA3Automation automation, int expected)

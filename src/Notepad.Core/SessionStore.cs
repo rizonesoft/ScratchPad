@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
 namespace Notepad.Core;
@@ -24,6 +25,10 @@ namespace Notepad.Core;
 //   the tab survives OK, and the next snapshot drops it (probed s2missing).
 public sealed class SessionData
 {
+    // JSON DTO: the setter serves deserialization plus the LoadFrom
+    // null-scrub; the List shape is the reviewed store format (§6 item 5).
+    [SuppressMessage("Design", "CA1002", Justification = "Session JSON DTO; List is the reviewed store shape.")]
+    [SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization and null-scrubbing.")]
     public List<SessionWindow> Windows { get; set; } = new();
 
     // Index into Windows of the window to activate. Only the last close
@@ -114,6 +119,9 @@ public sealed class SessionData
 
 public sealed class SessionWindow
 {
+    // JSON DTO: same treatment as SessionData.Windows above.
+    [SuppressMessage("Design", "CA1002", Justification = "Session JSON DTO; List is the reviewed store shape.")]
+    [SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization and null-scrubbing.")]
     public List<SessionTab> Tabs { get; set; } = new();
 
     public int Active { get; set; }
@@ -209,7 +217,7 @@ public static class RecentFiles
     // Records a tab close (probed s2m1: tab close is the only trigger; opens
     // and window closes record nothing). Recloses move to the front,
     // case-insensitively: Windows paths.
-    public static void NoteClosed(List<string> recents, string? path)
+    public static void NoteClosed(IList<string> recents, string? path)
     {
         if (recents is null || string.IsNullOrWhiteSpace(path))
         {
@@ -231,5 +239,5 @@ public static class RecentFiles
         }
     }
 
-    public static void Clear(List<string>? recents) => recents?.Clear();
+    public static void Clear(IList<string>? recents) => recents?.Clear();
 }

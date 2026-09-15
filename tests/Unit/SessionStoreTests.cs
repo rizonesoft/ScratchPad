@@ -241,8 +241,9 @@ public sealed class SessionStoreTests
             {
                 File.Delete(path);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -317,8 +318,9 @@ public sealed class SessionStoreTests
             {
                 File.Delete(path);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
@@ -339,8 +341,9 @@ public sealed class SessionStoreTests
             {
                 File.Delete(path);
             }
-            catch
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                // Best-effort cleanup; the test result does not depend on it.
             }
         }
     }
