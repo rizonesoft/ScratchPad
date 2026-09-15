@@ -64,6 +64,7 @@ track: N1
 |  24   |   §24   | Share target | §1, §2 |  [ ]   |
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
 |  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
+|  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [ ]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
 
@@ -87,7 +88,7 @@ Why this section exists: everything visible hangs off the main window. Build the
 
 **Corrected 2026-09-14:** the seed named `src/Notepad/MainWindow.xaml`, `tests/UI/MainWindowTest`, and `resources/baseline/main-window/`; the app project is `src/IntelligentNotepad/` (D00 T01 §2), the test file follows the `*Tests` convention, and the §3 store is flat with `stock/notepad-main-n11.2607.14.0-win25h2.png` as the main-window capture. Items 3 and 5 persist through a local seam the D01 T02 §2 store adopts, since the store ships later in this phase.
 
-- [x] `src/IntelligentNotepad/MainWindow.xaml` hosts the menu bar region, tab region, editor region, and status region. Done when: all four regions exist with the Notepad layout.
+- [x] `src/IntelligentNotepad/MainWindow.xaml` hosts the menu bar region, tab region, editor region, and status region. Done when: all four regions exist with the Notepad layout. Measured chrome row heights (43/32 DIP) land with §27 here.
 - [x] The window title follows Notepad's convention (file name, dirty marker, app name). Done when: each state renders exactly as captured.
 - [x] The window restores its size and position across launches, persisted in local app data behind a seam the D01 T02 §2 store adopts. Done when: move, close, reopen, and the geometry matches.
 - [x] `tests/UI/MainWindowTests.cs` drives launch and asserts the regions exist. Done when: `dotnet test --filter MainWindow` passes on a Windows runner in CI.
@@ -147,9 +148,9 @@ Why this section exists: the tab bar is the most-touched surface in the app. It 
 
 **Corrected 2026-09-14:** the seed named `src/Notepad/TabBar.xaml`; the app project is `src/IntelligentNotepad/`. The tab-close prompt dialog is implemented here per the recorded wording (title "Notepad", "Do you want to save changes to {name}?", Save / "Don't save" / Cancel) with Don't-save and Cancel driven; §7 reuses the dialog for the full answer matrix, window-close silence, and crash recovery. No file IO exists yet, so the UI drives untitled flows while saved round-trips stay model-level until §4, which re-drives them with real files; the untitled reopen drive asserts Notepad's no-restore parity (Don't-save closes never reopen, probed 0/11). The shortcut list is recorded live in-run since the shortcuts guide link is dead.
 
-**Corrected 2026-09-14 (reorder):** live probes show stock Notepad tabs do NOT drag-reorder (three negative probes: named AAA/BBB tabs dragged slowly across an on-screen foreground strip twice plus an identity-tracked drag, order unchanged every time), so CanReorderTabs stays off as parity and the first row plus the checkpoint verify a drag attempt leaves the order unchanged. The dirty dot sits where the X was and the X hides until hover (D01 T01 §2 recon). Ctrl+Shift+T re-verified live (a Don't-save close yields no reopen); the prompt names untitled tabs "{first-line}.txt" (single observation, §7 re-verifies); closing the last tab leaves a live zero-tab window (unprobed default).
+**Corrected 2026-09-14 (reorder):** live probes show stock Notepad tabs do NOT drag-reorder (three negative probes: named AAA/BBB tabs dragged slowly across an on-screen foreground strip twice plus an identity-tracked drag, order unchanged every time), so CanReorderTabs stays off as parity and the first row plus the checkpoint verify a drag attempt leaves the order unchanged. The dirty dot sits where the X was and the X hides until hover (D01 T01 §2 recon). Ctrl+Shift+T re-verified live (a Don't-save close yields no reopen); the prompt names untitled tabs "{first-line}.txt" (single observation, §7 re-verifies); closing the last tab leaves a live zero-tab window (unprobed default, probed with §27: live, plus a fixed close-transition crash).
 
-- [x] `src/IntelligentNotepad/TabBar.xaml` renders the `TabModel` list with new-tab, switch, and close, and no-reorder parity. Done when: every gesture in the capture works and a drag attempt leaves the order unchanged.
+- [x] `src/IntelligentNotepad/TabBar.xaml` renders the `TabModel` list with new-tab, switch, and close, and no-reorder parity. Done when: every gesture in the capture works and a drag attempt leaves the order unchanged. Measured chrome geometry (caption inset, zero-tab centering, 6-DIP dot) lands with §27 here.
 - [x] Closing a dirty tab routes to the §7 prompt, never straight to close. Done when: the UI test proves the prompt appears.
 - [x] Keyboard shortcuts for tab management match Notepad. Done when: each shortcut is driven in the UI test.
 - [x] Middle-click and context-menu tab actions match Notepad where it has them. Done when: the capture comparison covers them.
@@ -679,6 +680,36 @@ Why this section exists: links can open a path in the app.
 - [ ] Commit: `"notepad-core: handle the protocol"`
 
 **Test checkpoint:** registration, open, and graceful decline are all driven in the room. Cheaper substitute that fails: links that open the wrong file.
+
+## 27. Tab-Strip Chrome Parity Repair
+
+> **Started:** 2026-09-15T13:25:00Z
+
+Why this section exists: the operator compared the app against Windows 11 Notepad side by side and reported four chrome defects (2026-09-15): the add-tab button slides under the caption buttons on a full strip, it sits top-hugged with zero tabs, the toolbar band carries too much padding (top worst), and the dirty dot reads half-size. Canonical captures plus same-screen probes measured every one: the add center sat 67 DIP inside the caption zone (tucked under maximize at 12 tabs), the zero-tab add centered 17px above the strip middle, our editor started at 96 DIP against stock's 75, and our bullet-glyph dot rendered 5px against stock's 10-11px at 150%.
+
+**Fidelity:** stock tab bar -- `resources/baseline/stock/notepad-tabs-n11.2607.14.0-win25h2.png` (strip 0-42, tab bottom edge 41, File text 53-63, editor step 75, all canonical DIP) plus the live dirty-dot probe (stock dot 10-11px at 150%, 154 gray; stock tab text center 26.5 DIP, add glyph center 25.5 DIP). Row heights, add placement, and dot size match these numbers; the 2.5px-high tab text (template pads) is recorded non-parity.
+
+**Job:** The user can compare our chrome against Notepad without seeing a difference. Consumer: the §1 shell rows and the §3 strip, which this section re-measures without changing their contracts.
+
+**Treatment:** Measured geometry, not restyle: 43/32-DIP shell rows land the editor at stock's 75; a caption-width inset (AppWindow RightInset) parks the add button left of minimize with shrink-to-fit reading the narrowed strip; the zero-tab add re-margins to the strip middle (stock has no zero-tab state, so centered-to-match is by construction); the dot becomes a 6-DIP ellipse at stock gray keeping its "•" accessible name; tab items bottom-hug with a second drag rect covering the band above them.
+
+**Chrome:** No new surface; the strip, menu band, and dot are the surface.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T01 §1 -- the shell rows this re-measures; §1 item 1 points here for the measured heights
+- -> XREF: D01 T01 §3 -- the strip, dot, and add button this repairs; §3 item 1 points here for the measured geometry, and the zero-tab default there is now probed
+- -> SOURCE: operator chrome report 2026-09-15 (four defects) plus the canonical-capture measurement campaign
+
+- [ ] Shell rows are 43/32 DIP with the editor step at 75. Done when: the canonical capture measures the editor step at 75.
+- [ ] A full 12-tab strip parks the add button left of minimize. Done when: `FullStripParksAddButtonLeftOfCaption` passes (add right at most minimize left).
+- [ ] The zero-tab strip centers the add button. Done when: `ZeroTabsCentersAddButton` passes (within 8px of strip center).
+- [ ] The dirty dot is a 6-DIP ellipse at stock gray keeping the "•" accessible name. Done when: the capture measures ~9px/156 and the §3 dot drives stay green.
+- [ ] Last-tab close after move/resize never crashes 0xC000027B (template sets run one dispatch past layout; stowed reads are caught). Done when: repeated closes stay alive where 3/3 crashed pre-fix.
+- [ ] The shell golden is refreshed per procedure and the full gate is green. Done when: `main-window.png` shows the new chrome with an inspected diff, and Smoke/Unit/Protocol/UI pass with 0 warnings.
+- [ ] Commit: `"notepad-core: repair tab-strip chrome parity"`
+
+**Test checkpoint:** add-vs-caption, zero-tab centering, dot size/color, and crash survival are all measured in the room, and the §3 dot contract plus the full suite stay green. Cheaper substitute that fails: geometry asserted from constants without rendering the strip.
 
 ## 28. UIA Tab Accessibility Names
 
