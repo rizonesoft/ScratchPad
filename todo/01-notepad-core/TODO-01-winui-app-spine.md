@@ -64,7 +64,7 @@ track: N1
 |  24   |   §24   | Share target | §1, §2 |  [ ]   |
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
 |  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
-|  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [ ]   |
+|  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
 
@@ -710,6 +710,8 @@ Why this section exists: the operator compared the app against Windows 11 Notepa
 - [x] Commit: `"notepad-core: repair tab-strip chrome parity"`
 
 **Test checkpoint:** add-vs-caption, zero-tab centering, dot size/color, and crash survival are all measured in the room, and the §3 dot contract plus the full suite stay green. Cheaper substitute that fails: geometry asserted from constants without rendering the strip.
+> **Verified:** 2026-09-15 | §27 | Tab-strip chrome parity repair: 43/32 rows with the editor step at 76 DIP (1px rounding over stock 75), full-strip add parked left of minimize, zero-tab add centered, 6-DIP dot at stock gray with the kept bullet name, last-tab close crash-free, golden refreshed; ChromeTests 2/2, Smoke 1/1, Unit 148/148, Protocol 35/35, UI 37 plus 1 pre-existing quarantine of 38, build 0 warnings; tab-top clicks proven live; validate 0 fatal; self-test 393/393
+> **Review:** round 1, candidates 1b19937 69d082f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s27.md
 
 ## 28. UIA Tab Accessibility Names
 
