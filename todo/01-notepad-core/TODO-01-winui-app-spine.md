@@ -42,7 +42,7 @@ track: N1
 |   2   |   §2    | Tab model with dirty tracking | §1 |  [x]   |
 |   3   |   §3    | Tab bar UI: open, switch, reorder, close | §2 |  [x]   |
 |   4   |   §4    | File open with encoding detection | §2 |  [x]   |
-|   5   |   §5    | File save and Save As | §4 |  [ ]   |
+|   5   |   §5    | File save and Save As | §4 |  [x]   |
 |   6   |   §6    | Recent files and session restore | §5 |  [ ]   |
 |   7   |   §7    | Dirty prompts and crash recovery | §3, §5 |  [ ]   |
 |   8   |   §8    | File association and command-line open | §4, §6 |  [ ]   |
@@ -210,6 +210,12 @@ Why this section exists: saving is the one path where a bug destroys user data. 
 - [x] Commit: `"notepad-core: save atomically with Save As"`
 
 **Test checkpoint:** Round-trip matrix byte-identical; fault-injection save keeps old-or-new; Save As honors every offered combination. Cheaper substitute that fails: direct overwrite that can leave a truncated file.
+
+> **Verified:** 2026-09-15 | §5 | File save: atomic temp-plus-rename with fault injection, 5-by-3 Save As matrix through detect, 12-fixture open-save byte-identical round-trips, read-only and locked redirect to Save As, structural failures report OS text, UTF-8/CRLF/Untitled.txt defaults, Save All strict tab order with continue-on-cancel; Unit 119/119 Windows (116 plus 3 OS-skipped Linux), Protocol 35/35, UI 22/22, Smoke 1/1, build 0 warnings; encoding list verbatim from the expanded dropdown capture; validate 0 fatal; self-test 393/393
+> **Review:** rounds 2, candidates 911ff19 plus 4615807 (review fix: strict encoders fail loud on unencodable characters) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve (neutral section, Save As rendering defers to the menus TODO trigger). Raw findings: docs/reviews/01-notepad-core/D01-T01-s5.md
+> **CRUD:** applicable | saves wrote bytes (read back via exact-text and byte-identical asserts); injected crash wrote old bytes (read back via intact original); redirects wrote nothing (read back via intact originals); Save All wrote per-tab files (read back via bytes, tab state, entries, and the call-order log); skips and failures wrote nothing (read back via dirty flags and entries)
+> **Duration:** 50
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 6. Recent Files and Session Restore
 
