@@ -53,6 +53,9 @@ public sealed partial class MainWindow : Window, IDisposable
                 app.NotifyTabsEdited();
             }
         };
+        // D01 T01 §13: pin toggles re-commit the jump list (pins feed it).
+        tabBar.PinToggled += (_, _) => App.RefreshJumpList();
+
         // The HWND is not valid in the constructor; installing here silently
         // subclasses nothing. First activation owns the install.
         Activated += OnFirstActivated;
@@ -225,7 +228,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             // Flag after activating: the build-time activation must not raise
             // the notice; only the final active tab (or a later click) does.
-            var ghost = new Tab { FilePath = path };
+            var ghost = new Tab { FilePath = path, IsPinned = saved.IsPinned };
             tabs.Tabs.Add(ghost);
             tabs.ActiveTab = ghost;
             missingNotice.Add(ghost.Id);
@@ -233,6 +236,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         Tab tab = tabs.OpenTab(path, detected);
+        tab.IsPinned = saved.IsPinned;
         TextBox box = tabBar!.ContentFor(tab);
         box.Text = detected.Text;
         // Explicit: programmatic Text sets on pre-show boxes do not reliably
@@ -251,6 +255,7 @@ public sealed partial class MainWindow : Window, IDisposable
         if (saved.Path is null)
         {
             tab = tabs.NewTab();
+            tab.IsPinned = saved.IsPinned;
         }
         else
         {
@@ -260,6 +265,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 Encoding = saved.Encoding,
                 HasBom = saved.HasBom,
                 LineEnding = saved.LineEnding,
+                IsPinned = saved.IsPinned,
             };
             tabs.Tabs.Add(tab);
             tabs.ActiveTab = tab;
@@ -320,7 +326,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             snapshots.Add(new TabSnapshot(
-                tab.FilePath, content, caret, tab.IsDirty, tab.Encoding, tab.HasBom, tab.LineEnding));
+                tab.FilePath, content, caret, tab.IsDirty, tab.Encoding, tab.HasBom, tab.LineEnding, tab.IsPinned));
         }
 
         int active = tabs.ActiveTab is null ? 0 : tabs.Tabs.IndexOf(tabs.ActiveTab);

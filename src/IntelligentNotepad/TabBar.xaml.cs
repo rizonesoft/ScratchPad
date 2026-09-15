@@ -39,7 +39,7 @@ public sealed partial class TabBar : UserControl
     readonly Dictionary<Guid, TextBox> boxes = new();
 
     // Header parts per tab, refreshed on Tab.PropertyChanged.
-    readonly Dictionary<Guid, (FrameworkElement Dot, TextBlock Name)> headers = new();
+    readonly Dictionary<Guid, (FrameworkElement Dot, TextBlock Name, FontIcon Pin)> headers = new();
 
     readonly HashSet<Guid> hovered = new();
 
@@ -358,6 +358,10 @@ public sealed partial class TabBar : UserControl
     // MainWindow forwards to the App debounce; restore-time programmatic
     // sets may or may not fire (pre-show boxes are unreliable raisers)
     // and need no checkpoint anyway (restored state is already filed).
+    // D01 T01 §13: raised after a pin toggle so the host refreshes the
+    // jump list (the settings write happens here, the commit needs App).
+    public event EventHandler? PinToggled;
+
     public event EventHandler? TabsEdited;
 
     // The box MainWindow shows in the editor region for the active tab.
@@ -507,6 +511,23 @@ public sealed partial class TabBar : UserControl
         }
     }
 
+    void TogglePin(Tab tab)
+    {
+        tab.IsPinned = !tab.IsPinned;
+        ShellSettings settings = ShellSettings.Load();
+        if (tab.IsPinned)
+        {
+            PinnedFiles.NotePinned(settings.PinnedFiles, tab.FilePath);
+        }
+        else
+        {
+            PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath);
+        }
+
+        settings.Save();
+        PinToggled?.Invoke(this, EventArgs.Empty);
+    }
+
     public async Task CloseOthersAsync(Tab keep)
     {
         ArgumentNullException.ThrowIfNull(keep);
@@ -515,7 +536,7 @@ public sealed partial class TabBar : UserControl
             return;
         }
 
-        foreach (Tab tab in model.Tabs.Where(tab => !ReferenceEquals(tab, keep)).ToList())
+        foreach (Tab tab in model.Tabs.Where(tab => !ReferenceEquals(tab, keep) && !tab.IsPinned).ToList())
         {
             if (!await RequestCloseAsync(tab).ConfigureAwait(true))
             {
@@ -538,7 +559,7 @@ public sealed partial class TabBar : UserControl
             return;
         }
 
-        foreach (Tab tab in model.Tabs.Skip(index + 1).ToList())
+        foreach (Tab tab in model.Tabs.Skip(index + 1).Where(tab => !tab.IsPinned).ToList())
         {
             if (!await RequestCloseAsync(tab).ConfigureAwait(true))
             {
@@ -640,11 +661,21 @@ public sealed partial class TabBar : UserControl
         var dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 6, Height = 6, Fill = dotFill, Opacity = 0.55, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
         AutomationProperties.SetName(dot, "\u2022");
         var name = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+        // D01 T01 §13: pin glyph, leading the header while pinned and
+        // collapsed otherwise (zero width, so unpinned tabs render exactly
+        // as stock). A real element, so the UIA name is drivable (an
+        // IconSource carries no UIA presence). Not the container Icon:
+        // RefreshHeader runs before insert, when no container exists.
+        var pin = new FontIcon { Glyph = "\uE718", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed, Margin = new Thickness(0, 0, 6, 0) };
+        AutomationProperties.SetName(pin, "Pinned");
         var header = new Grid();
+        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        Grid.SetColumn(name, 0);
-        Grid.SetColumn(dot, 1);
+        Grid.SetColumn(pin, 0);
+        Grid.SetColumn(name, 1);
+        Grid.SetColumn(dot, 2);
+        header.Children.Add(pin);
         header.Children.Add(name);
         header.Children.Add(dot);
         // The cap reproduces stock's ~201px normal width (134 DIP at the
@@ -660,7 +691,7 @@ public sealed partial class TabBar : UserControl
         // keeps applying (a bare style would replace it and unrender
         // the tabs).
         var item = new TabViewItem { Header = header, Tag = tab, MaxWidth = 134, MinHeight = 34, VerticalAlignment = VerticalAlignment.Bottom };
-        headers[tab.Id] = (dot, name);
+        headers[tab.Id] = (dot, name, pin);
         AutomationProperties.SetName(item, tab.DisplayName);
         // Stock hides the X on dirty tabs until hover (D01 T01 §2 recon), so
         // closability tracks dirty-or-hovered. Keyboard, menu, and middle
@@ -678,6 +709,9 @@ public sealed partial class TabBar : UserControl
         // RefreshHeader cannot reach the container before insert, so a tab
         // that arrives dirty (content reopen) would keep the default X.
         item.IsClosable = !tab.IsDirty;
+        // D01 T01 §13: double-click toggles pin. The context menu keeps its
+        // stock items (parity); the gesture default is recorded on the item.
+        item.DoubleTapped += (_, _) => TogglePin(tab);
         RefreshHeader(tab);
         Tabs.TabItems.Insert(Math.Min(index, Tabs.TabItems.Count), item);
         tab.PropertyChanged += Tab_PropertyChanged;
@@ -700,7 +734,7 @@ public sealed partial class TabBar : UserControl
 
     void Tab_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (sender is Tab tab && e.PropertyName is nameof(Tab.DisplayName) or nameof(Tab.IsDirty))
+        if (sender is Tab tab && e.PropertyName is nameof(Tab.DisplayName) or nameof(Tab.IsDirty) or nameof(Tab.IsPinned))
         {
             RefreshHeader(tab);
         }
@@ -708,7 +742,7 @@ public sealed partial class TabBar : UserControl
 
     void RefreshHeader(Tab tab)
     {
-        if (headers.TryGetValue(tab.Id, out (FrameworkElement Dot, TextBlock Name) parts))
+        if (headers.TryGetValue(tab.Id, out (FrameworkElement Dot, TextBlock Name, FontIcon Pin) parts))
         {
             parts.Dot.Visibility = tab.IsDirty ? Visibility.Visible : Visibility.Collapsed;
             parts.Name.Text = tab.DisplayName;
@@ -718,6 +752,11 @@ public sealed partial class TabBar : UserControl
         {
             AutomationProperties.SetName(item, tab.DisplayName);
             item.IsClosable = hovered.Contains(tab.Id) || !tab.IsDirty;
+        }
+
+        if (headers.TryGetValue(tab.Id, out (FrameworkElement Dot, TextBlock Name, FontIcon Pin) pinParts))
+        {
+            pinParts.Pin.Visibility = tab.IsPinned ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

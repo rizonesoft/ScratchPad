@@ -81,3 +81,45 @@ public sealed class ShellSettings
         File.Move(temp, path, overwrite: true);
     }
 }
+
+// Pinned-file list behavior, owned by D01 T01 §13. Pins are oldest-first
+// (pin order), uncapped (the jump-list feed caps at render), and
+// case-insensitive (Windows paths). Untitled tabs have no path and never
+// enter the list; their pins live in session.json only.
+public static class PinnedFiles
+{
+    public static void NotePinned(IList<string> pinned, string? path)
+    {
+        if (pinned is null || string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        foreach (string existing in pinned)
+        {
+            if (string.Equals(existing, path, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+
+        pinned.Add(path);
+    }
+
+    public static void NoteUnpinned(IList<string> pinned, string? path)
+    {
+        if (pinned is null || string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        for (int i = pinned.Count - 1; i >= 0; i--)
+        {
+            if (string.Equals(pinned[i], path, StringComparison.OrdinalIgnoreCase))
+            {
+                pinned.RemoveAt(i);
+            }
+        }
+    }
+}
+

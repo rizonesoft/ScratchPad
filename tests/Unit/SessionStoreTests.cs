@@ -12,7 +12,7 @@ public sealed class SessionStoreTests
         string? path,
         string? content,
         int caret,
-        bool dirty) => new(path, content, caret, dirty, "UTF-8", false, "CRLF");
+        bool dirty, bool pinned = false) => new(path, content, caret, dirty, "UTF-8", false, "CRLF", pinned);
 
     [Fact]
     public void CaptureKeepsCleanFileTabsAsPaths()
@@ -346,5 +346,28 @@ public sealed class SessionStoreTests
                 // Best-effort cleanup; the test result does not depend on it.
             }
         }
+    }
+
+    [Fact]
+    public void CaptureCopiesPinState()
+    {
+        var window = SessionCapture.CaptureWindow(
+            [Snap("/tmp/notes/a.txt", "alpha", 3, false, pinned: true)],
+            0,
+            _ => true);
+
+        SessionTab tab = Assert.Single(window.Tabs);
+        Assert.True(tab.IsPinned);
+    }
+
+    [Fact]
+    public void TrivialPinnedTabPersists()
+    {
+        var data = new SessionData
+        {
+            Windows = [new SessionWindow { Tabs = [new SessionTab { IsPinned = true }] }],
+        };
+
+        Assert.False(data.IsTrivial);
     }
 }

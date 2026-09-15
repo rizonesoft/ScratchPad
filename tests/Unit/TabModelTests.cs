@@ -271,4 +271,19 @@ public sealed class TabModelTests
         Assert.Equal("UTF-16 LE", entry.Encoding);
         Assert.Equal("LF", entry.LineEnding);
     }
+
+    [Fact]
+    public void IsPinnedDefaultsFalseAndNotifies()
+    {
+        var model = new TabModel();
+        Tab tab = model.NewTab();
+
+        Assert.False(tab.IsPinned);
+
+        string? seen = null;
+        tab.PropertyChanged += (_, e) => seen = e.PropertyName;
+        tab.IsPinned = true;
+
+        Assert.Equal(nameof(Tab.IsPinned), seen);
+    }
 }

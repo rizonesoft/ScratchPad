@@ -46,7 +46,8 @@ public sealed class SessionData
         Windows.Count == 1
         && Windows[0].Tabs.Count == 1
         && Windows[0].Tabs[0].Path is null
-        && string.IsNullOrEmpty(Windows[0].Tabs[0].Content);
+        && string.IsNullOrEmpty(Windows[0].Tabs[0].Content)
+        && !Windows[0].Tabs[0].IsPinned;
 
     public static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -131,7 +132,8 @@ public sealed class SessionWindow
 // Persisted per tab: Path (absolute file path, null for untitled), Content
 // (full buffer text for dirty or untitled tabs, null for clean file tabs
 // which reload from disk), Caret (UTF-16 offset), Encoding (name, used when
-// Content is present so saves round-trip), HasBom, LineEnding. Per window:
+// Content is present so saves round-trip), HasBom, LineEnding, IsPinned.
+// Per window:
 // the ordered tab list plus Active (tab index). Global: ActiveWindow. No
 // rects (stock does not restore geometry). The file lives at
 // %LocalAppData%\IntelligentNotepad\session.json, written atomically via
@@ -150,6 +152,10 @@ public sealed class SessionTab
     public bool HasBom { get; set; }
 
     public string LineEnding { get; set; } = "CRLF";
+
+    // Pin state, owned by D01 T01 §13. Defaults false, so pre-pin sessions
+    // deserialize unchanged.
+    public bool IsPinned { get; set; }
 }
 
 // One tab's live state, handed to the capture rules. MainWindow builds it
@@ -161,7 +167,8 @@ public sealed record TabSnapshot(
     bool IsDirty,
     string Encoding,
     bool HasBom,
-    string LineEnding);
+    string LineEnding,
+    bool IsPinned);
 
 // Pure snapshot rules, unit-driven. `exists` is File.Exists in the app.
 public static class SessionCapture
@@ -198,6 +205,7 @@ public static class SessionCapture
                 Encoding = tab.Encoding,
                 HasBom = tab.HasBom,
                 LineEnding = tab.LineEnding,
+                IsPinned = tab.IsPinned,
             });
         }
 

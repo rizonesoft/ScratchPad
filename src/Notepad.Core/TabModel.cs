@@ -159,6 +159,22 @@ public sealed class Tab : INotifyPropertyChanged
     // Untitled tabs route their save to the §5 Save As dialog; pathed tabs save in place.
     public SaveRequestOutcome SaveRequest => FilePath is null ? SaveRequestOutcome.SaveAsRequired : SaveRequestOutcome.SaveToPath;
 
+    // Pin state, owned by D01 T01 §13: pinned tabs render a pin glyph,
+    // skip bulk closes, persist through session restore, and (pathed tabs)
+    // feed ShellSettings.PinnedFiles for the jump list. Stock pins nothing.
+    public bool IsPinned
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public bool IsDirty
     {
         get;
