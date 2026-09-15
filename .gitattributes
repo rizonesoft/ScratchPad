@@ -7,3 +7,4 @@
 *.csproj text eol=crlf
 *.slnx text eol=crlf
 *.slnf text eol=crlf
+tests/Fixtures/** -text

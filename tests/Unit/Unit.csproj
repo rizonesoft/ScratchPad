@@ -17,4 +17,9 @@
     <ProjectReference Include="..\..\src\Notepad.Core\Notepad.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\Fixtures\encodings\*.bin" Link="Fixtures\encodings\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Fixtures\eol\*.txt" Link="Fixtures\eol\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

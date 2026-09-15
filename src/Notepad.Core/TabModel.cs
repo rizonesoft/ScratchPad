@@ -44,6 +44,33 @@ public sealed class TabModel : INotifyPropertyChanged
         return tab;
     }
 
+    // Opens a detected file as a tab, owned by D01 T01 §4. An already-open
+    // path focuses instead of duplicating (case-insensitive: Windows paths);
+    // the focus-not-duplicate default is bedtime-confirmed against stock.
+    public Tab OpenTab(string path, DetectedFile file)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(file);
+        Tab? existing = Tabs.FirstOrDefault(t => string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            ActiveTab = existing;
+            return existing;
+        }
+
+        var tab = new Tab
+        {
+            FilePath = path,
+            Encoding = file.EncodingName,
+            LineEnding = file.LineEnding.Dominant,
+        };
+        tab.NotifyEdited(file.Text);
+        tab.MarkSaved();
+        Tabs.Add(tab);
+        ActiveTab = tab;
+        return tab;
+    }
+
     // Closes a tab. Content and caret come from the editor buffer (D02 T01),
     // which is the only writer; the model snapshots what the stack needs.
     // Pass content null when the tab is clean at close (reopen reloads by path).
