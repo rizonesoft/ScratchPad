@@ -62,6 +62,7 @@ public sealed class TabModel : INotifyPropertyChanged
         {
             FilePath = path,
             Encoding = file.EncodingName,
+            HasBom = file.HasBom,
             LineEnding = file.LineEnding.Dominant,
         };
         tab.NotifyEdited(file.Text);
@@ -184,6 +185,21 @@ public sealed class Tab : INotifyPropertyChanged
         }
     } = "UTF-8";
 
+    // Whether the file carries a byte-order mark; preserved across saves
+    // (D01 T01 §5: stock adds one to BOM-less UTF-16, we round-trip).
+    public bool HasBom
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public string LineEnding
     {
         get;
@@ -233,6 +249,20 @@ public sealed class Tab : INotifyPropertyChanged
     public void MarkSaved()
     {
         IsDirty = false;
+    }
+
+    // Records a completed save, owned by D01 T01 §5: path (Save As moves
+    // the tab), the written encoding, BOM, and EOL, and the cleared dirty
+    // flag. Called only after the bytes commit; failures never reach here.
+    public void ApplySave(string path, SaveSpec spec)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(spec);
+        FilePath = path;
+        Encoding = spec.EncodingName;
+        HasBom = spec.HasBom;
+        LineEnding = spec.LineEnding;
+        MarkSaved();
     }
 
     // Undo-to-save-point seam, called by the D02 T01 §4 undo stack when it pops
