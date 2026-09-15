@@ -33,7 +33,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -67,7 +67,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{first}\" \"{second}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -99,7 +99,7 @@ public sealed class LaunchTests
         {
             using var first = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
-            var window = first.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -131,7 +131,7 @@ public sealed class LaunchTests
         {
             using var first = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
-            var window = first.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -166,7 +166,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{missing}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -200,7 +200,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{missing}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -240,7 +240,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{missing}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -286,7 +286,7 @@ public sealed class LaunchTests
             using var hold = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -319,7 +319,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -352,7 +352,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -384,7 +384,7 @@ public sealed class LaunchTests
         {
             using var first = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
-            var window = first.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -429,7 +429,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs($"\"{first}\" \"{second}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -467,7 +467,7 @@ public sealed class LaunchTests
         {
             using var app = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -554,7 +554,7 @@ public sealed class LaunchTests
             string args = command[(firstSpace + 1)..].Replace("%1", file, StringComparison.Ordinal);
             using var app = Application.Launch(exe, args);
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {

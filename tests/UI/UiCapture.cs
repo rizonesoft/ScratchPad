@@ -45,7 +45,7 @@ internal static class UiCapture
         try
         {
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(15));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
             if (window is null)
             {
                 throw new InvalidOperationException("app showed no main window");

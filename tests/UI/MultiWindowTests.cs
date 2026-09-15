@@ -22,7 +22,7 @@ public sealed class MultiWindowTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 100, Y = 100, Width = 900, Height = 650 });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(first);
         try
         {
@@ -51,7 +51,7 @@ public sealed class MultiWindowTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(first);
         try
         {
@@ -83,7 +83,7 @@ public sealed class MultiWindowTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
         try
         {
@@ -143,7 +143,7 @@ public sealed class MultiWindowTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var first = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(first);
         try
         {

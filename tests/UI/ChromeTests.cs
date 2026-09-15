@@ -30,7 +30,7 @@ public sealed class ChromeTests
         new SessionData { Windows = [new SessionWindow { Tabs = tabs }] }.Save();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
         try
         {
@@ -68,7 +68,7 @@ public sealed class ChromeTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
         try
         {

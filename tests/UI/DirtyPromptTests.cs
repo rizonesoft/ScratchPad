@@ -33,7 +33,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -83,7 +83,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -131,7 +131,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -196,7 +196,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 window.Close();
@@ -225,7 +225,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -279,7 +279,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 Assert.Equal(1, WaitForTabCount(window, 1));
                 Assert.Equal("base crash", BoxText(window));
@@ -309,7 +309,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -360,7 +360,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -410,7 +410,7 @@ public sealed class DirtyPromptTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {

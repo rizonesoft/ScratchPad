@@ -22,7 +22,7 @@ public sealed class PinnedTabsTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
         try
         {
@@ -52,7 +52,7 @@ public sealed class PinnedTabsTests
             using (var app = LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -71,7 +71,7 @@ public sealed class PinnedTabsTests
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
-                var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 Assert.NotNull(window);
                 try
                 {
@@ -107,7 +107,7 @@ public sealed class PinnedTabsTests
             string c = SeedFile(dir, "c13.txt");
             using var app = LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -150,7 +150,7 @@ public sealed class PinnedTabsTests
             string c = SeedFile(dir, "c13.txt");
             using var app = LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {
@@ -194,7 +194,7 @@ public sealed class PinnedTabsTests
             string c = SeedFile(dir, "c13.txt");
             using var app = LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
             try
             {

@@ -27,7 +27,7 @@ public sealed class MainWindowTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(15));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
         Assert.NotNull(window);
         try
         {
@@ -70,7 +70,7 @@ public sealed class MainWindowTests
         using (var app = LaunchApp())
         {
             using var automation = new UIA3Automation();
-            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(15));
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
             Assert.NotNull(window);
             // AppWindow geometry is physical pixels; read the rect DPI-aware to match.
             var previous = UiDpi.Enter();
@@ -104,7 +104,7 @@ public sealed class MainWindowTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true, Theme = theme });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(15));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
         Assert.NotNull(window);
         try
         {
@@ -178,7 +178,7 @@ public sealed class MainWindowTests
         SessionData.Delete();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(15));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
         Assert.NotNull(window);
         try
         {

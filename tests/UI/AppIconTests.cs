@@ -37,16 +37,30 @@ public sealed class AppIconTests
     {
         using var app = Application.Launch(AppExePath(), string.Empty);
         using var automation = new UIA3Automation();
-        var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
         try
         {
             nint hwnd = window.Properties.NativeWindowHandle.ValueOrDefault;
             Assert.NotEqual(nint.Zero, hwnd);
-            nint hicon = SendMessage(hwnd, WmGeticon, IconSmall, 0);
-            if (hicon == nint.Zero)
+            // The app sets its icon on first Loaded, which can land after
+            // attach: poll the read instead of racing it once (2026-09-16
+            // gate cascade: a single 0 read failed the suite's first test
+            // and its lingering primary poisoned all 58 launches behind).
+            nint hicon = nint.Zero;
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (hicon == nint.Zero && DateTime.UtcNow < deadline)
             {
-                hicon = GetClassLongPtr(hwnd, GclpHiconsm);
+                hicon = SendMessage(hwnd, WmGeticon, IconSmall, 0);
+                if (hicon == nint.Zero)
+                {
+                    hicon = GetClassLongPtr(hwnd, GclpHiconsm);
+                }
+
+                if (hicon == nint.Zero)
+                {
+                    Thread.Sleep(100);
+                }
             }
 
             Assert.NotEqual(nint.Zero, hicon);
@@ -58,15 +72,37 @@ public sealed class AppIconTests
         }
         finally
         {
-            try
-            {
-                window.Close();
-            }
-            catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
-            {
-                // Already gone; the dispose below reaps the process.
-            }
+            CloseApp(app, window);
         }
+    }
+
+    // Same wait-then-kill guarantee as the other UI files: FlaUI
+    // Dispose does NOT terminate the process, and a lingering primary
+    // turns every later launch into a redirected window (2026-09-16
+    // gate cascade). A test that cannot reap its app fails here.
+    static void CloseApp(Application app, Window? window)
+    {
+        try
+        {
+            window?.Close();
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
+        {
+            // Already gone; the exit wait below is the real assertion.
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!app.HasExited && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(100);
+        }
+
+        if (!app.HasExited)
+        {
+            app.Kill();
+        }
+
+        Assert.True(app.HasExited, "app did not exit after Close");
     }
 
     static string AppExePath()
