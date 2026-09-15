@@ -65,6 +65,7 @@ track: N1
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
 |  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
+|  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
 
 ---
 
@@ -172,15 +173,15 @@ Why this section exists: opening must never corrupt. Detection decides the bytes
 
 **Groomed 2026-09-13:** Notepad audit: EOL detection, the Open dialog, the large-file limit, and .LOG append-on-open are now explicit (EOL was only implied by §5's preserve rule).
 
-- [x] `src/Notepad.Core/FileOpen.cs` detects BOM, UTF-8, UTF-16 LE/BE, and ANSI fallback exactly as Notepad does. **Corrected 2026-09-14:** the seed named it `FileIO.cs`; CA1724 forbids the name (clashes with `Microsoft.VisualBasic.FileIO`). Done when: the fixture matrix in `tests/Fixtures/encodings/` passes byte-identical. **Corrected 2026-09-14:** the seed said `tests/Data/encodings/`; fixtures live in `tests/Fixtures/` (no `tests/Data` exists).
-- [ ] Open failure (missing file, locked file, unreadable file) reports Notepad's message and leaves the tab list unchanged. Done when: each failure is driven.
+- [x] `src/Notepad.Core/FileOpen.cs` detects BOM, UTF-8, UTF-16 LE/BE, and ANSI fallback exactly as Notepad does. **Corrected 2026-09-14:** the seed named it `FileIO.cs`; CA1724 forbids the name (clashes with `Microsoft.VisualBasic.FileIO`). Done when: the fixture matrix in `tests/Fixtures/encodings/` passes byte-identical. **Corrected 2026-09-14:** the seed said `tests/Data/encodings/`; fixtures live in `tests/Fixtures/` (no `tests/Data` exists). Probed 2026-09-15: stock agrees on all 12 fixtures (1252 fallback, BOM-less UTF-16 both ways, invalid-UTF-8 to ANSI, empty to UTF-8); segment names match the §5 list exactly. Deliberate divergence: stock reads UTF-32 BOMs as UTF-16 (lossy); we decode UTF-32 correctly so round-trips never corrupt.
+- [ ] Open failure (missing file, locked file, unreadable file) reports Notepad's message and leaves the tab list unchanged. Done when: each failure is driven. Probed 2026-09-15: missing shows "The system cannot find the path specified.", locked shows "The process cannot access the file because it is being used by another process." (both OK-only, title "Notepad", captures in `resources/baseline/stock/`); a pagefile attempt yields the lock message. True ACL-denied is unstageable in an admin context, so unreadable shows the OS message in the same dialog shape (default, costs one string). Our dialog title is "Intelligent Notepad" per the §1 app-name convention.
 - [ ] Files that change on disk while open are detected. Done when: the watcher fires on external change. **Corrected 2026-09-14 (phase-1 run 2):** the reload prompt UI is D01 T01 §21 here (it deps this section); this item owns detection only.
-- [x] Opening a path that already has a tab focuses the existing tab instead of opening a duplicate. Done when: the dedup is driven. **Added 2026-09-14 (phase-1 run 2):** two tabs on one path invite dual-write data loss; focus-existing is the default (bedtime stock probe confirms) and costs one branch to flip.
-- [ ] Large files open without blocking the UI: chunked/async open with progress past the threshold recorded here. Done when: a large-file open stays responsive and the threshold is recorded. **Corrected 2026-09-14:** the seed said "the committed budget", which D02 T01 §7 owns; this item owns the open-path threshold only.
-- [x] `src/Notepad.Core/FileOpen.cs` detects the file's line-ending convention (CRLF, LF, CR) per Notepad's extended-EOL rules; mixed-ending behavior is recorded from the capture. Done when: the fixture matrix in `tests/Fixtures/eol/` passes byte-identical. Source: https://devblogs.microsoft.com/commandline/extended-eol-in-notepad/ **Corrected 2026-09-14:** same `tests/Data/` to `tests/Fixtures/` move as item 1; the seed named the file `FileIO.cs` (CA1724, see item 1).
-- [ ] The Open dialog defaults to Text documents (*.txt) with an All-files switch, as Notepad's. Done when: the dialog matrix is driven against the capture.
-- [ ] Files past Notepad's size limit refuse with its redirect dialog instead of hanging; the exact threshold and wording are recorded from the capture. Done when: an over-limit open is driven. Source: https://en.wikipedia.org/wiki/Windows_Notepad
-- [x] A file whose first line is .LOG appends the current date and time at the end on every open, in the format recorded here from the capture (D02 T01 §5's F5 insert matches this recording). Done when: open-append round-trips are fixture-tested. Source: https://support.microsoft.com/en-us/windows/apps/help-in-notepad **Corrected 2026-09-14:** the seed pointed at D02 T01 §5's format, but §5 ships later; §4 records the format first.
+- [x] Opening a path that already has a tab focuses the existing tab instead of opening a duplicate. Done when: the dedup is driven. **Added 2026-09-14 (phase-1 run 2):** two tabs on one path invite dual-write data loss; focus-existing is the default, stock-confirmed 2026-09-15 (second open focuses, no new tab).
+- [ ] Large files open without blocking the UI: chunked/async open with progress past the threshold recorded here. Done when: a large-file open stays responsive and the threshold is recorded. **Corrected 2026-09-14:** the seed said "the committed budget", which D02 T01 §7 owns; this item owns the open-path threshold only. Recorded 2026-09-15: the threshold is 1 MiB (`DefaultProgressThresholdBytes`); stock opens 64 MiB in ~13 s for scale.
+- [x] `src/Notepad.Core/FileOpen.cs` detects the file's line-ending convention (CRLF, LF, CR) per Notepad's extended-EOL rules; mixed-ending behavior is recorded from the capture. Done when: the fixture matrix in `tests/Fixtures/eol/` passes byte-identical. Source: https://devblogs.microsoft.com/commandline/extended-eol-in-notepad/ **Corrected 2026-09-14:** same `tests/Data/` to `tests/Fixtures/` move as item 1; the seed named the file `FileIO.cs` (CA1724, see item 1). Probed 2026-09-15: plurality wins, LF beats CR on ties, empty defaults CRLF; segments read "Windows (CRLF)", "Unix (LF)", "Macintosh (CR)" (consumed by D01 T02 §4).
+- [ ] The Open dialog defaults to Text documents (*.txt) with an All-files switch, as Notepad's. Done when: the dialog matrix is driven against the capture. Probed 2026-09-15: type defaults to "Text documents (*.txt)", Encoding to "Auto-Detect" (capture `resources/baseline/stock/notepad-open-dialog-n11.2607.14.0-win25h2.png`). We always auto-detect at open, matching the default; explicit-encoding open is §29 here (gap: stock offers it, this item owns the defaults only).
+- [ ] Files past our size limit refuse with an OK notice in stock's shape instead of hanging; the limit is 1 GiB (`OpenOptions.DefaultMaxBytes`, engineering: whole-file reads cap at 2 GiB) with the wording recorded here. Done when: an over-limit open is driven (tests pass small values; the app passes the default). **Corrected 2026-09-15:** the seed's Wikipedia redirect dialog does not exist in stock 11.2607 (probed: 64/256/512 MiB all open, no refusal); our wording "The file is too large to open." with title "Intelligent Notepad" is honest non-parity, recorded here.
+- [x] A file whose first line is .LOG appends the current date and time at the end on every open, in the format recorded here from the capture (D02 T01 §5's F5 insert matches this recording). Done when: open-append round-trips are fixture-tested. Source: https://support.microsoft.com/en-us/windows/apps/help-in-notepad **Corrected 2026-09-14:** the seed pointed at D02 T01 §5's format, but §5 ships later; §4 records the format first. Probed 2026-09-15: stock appends eol plus stamp plus eol (file bytes end "…2026/09/15 CRLF"); the stamp is short-time, space, short-date in the current culture (`LogTimestamp.Format`); case-sensitive confirmed (lowercase `.log` unstamped).
 - [ ] Commit: `"notepad-core: open files with encoding detection"`
 
 **Test checkpoint:** Encoding fixture matrix green byte-identical; failure and external-change paths driven. Cheaper substitute that fails: UTF-8-only open that mangles the rest.
@@ -381,13 +382,17 @@ Why this section exists: pinned tabs survive restarts and shrug off accidental c
 
 ## 14. Text Statistics Panel
 
+> **Started:** 2026-09-14T22:56:00Z
+
 Why this section exists: writers who measure want top words, sentence lengths, and repetition flags without leaving the app.
 
 **Fidelity:** new build, no baseline (stock Notepad computes nothing).
 
 **Job:** The user can inspect document statistics in a panel. Consumer: the panel, which computes on open and refreshes on demand.
 
-**Treatment:** A panel shows computed stats over an injected text provider until D02 T01 §1 binds the real buffer; refresh is on demand so typing never pays. **Corrected 2026-09-14 (phase-1 run 2):** the D02 T01 §2 dep cycled through the T01-whole gate. Cheaper substitute that fails the checkpoint: live recompute that taxes typing.
+**Treatment:** A panel shows computed stats over an injected text provider until D02 T01 §1 binds the real buffer; refresh is on demand so typing never pays. **Corrected 2026-09-14 (phase-1 run 2):** the D02 T01 §2 dep cycled through the T01-whole gate. The benchmark is a compute-count test, not BenchmarkDotNet: simulated typing must not recompute, refresh recomputes once. Cheaper substitute that fails the checkpoint: live recompute that taxes typing.
+
+**Decided 2026-09-14:** top 10 words by count with alphabetical tie-break; a word is a maximal run of Unicode letters/digits with internal apostrophes kept, counted case-insensitively; sentences split naively on `.`/`!`/`?` runs (abbreviations over-split, recorded limitation); sentence buckets are short 1-10, medium 11-25, long 26+ words; repetition flags non-stopwords appearing 3+ times against a small built-in English stopword set (English-first, matching D02 T05). Cost of changing any rule: one constant plus the `tests/Fixtures/stats/` expectations.
 
 **Chrome:** Consume the shared panel styles. Do not invent a second stats treatment.
 
@@ -396,7 +401,7 @@ Why this section exists: writers who measure want top words, sentence lengths, a
 - [ ] The panel lists top words with counts. Done when: counts match a fixture document exactly.
 - [ ] The panel shows sentence length distribution. Done when: lengths match the fixture.
 - [ ] Repetition flags call out overused words. Done when: a seeded repeat is flagged.
-- [ ] Stats compute on open and refresh on demand only. Done when: typing benchmarks show no recompute.
+- [x] Stats compute on open and refresh on demand only. Done when: typing benchmarks show no recompute. Proven 2026-09-14 (neutral half): `StatsController` computes on open, ignores provider changes until `Refresh` (compute-count test, 9/9 `TextStatsTests` green); the panel binding is bedtime.
 - [ ] Commit: `"notepad-core: show text statistics"`
 
 **Test checkpoint:** words, lengths, flags, and on-demand refresh are all driven in the room. Cheaper substitute that fails: stats that never update.
@@ -662,6 +667,31 @@ Why this section exists: stock tab UIA names carry ". Modified." / ". Unmodified
 - [ ] Commit: `"notepad-core: name tabs for accessibility"`
 
 **Test checkpoint:** stock-matching names and live tracking are driven in the room. Cheaper substitute that fails: accessible names that lie about dirty state.
+
+## 29. Open with Explicit Encoding
+
+Why this section exists: stock's Open dialog offers an Encoding picker defaulting to Auto-Detect (probed 2026-09-15); §4 matches the default by always auto-detecting, so files stock's detector misreads have no recourse here. This section adds the override.
+
+**Fidelity:** stock Open dialog Encoding picker -- `resources/baseline/stock/notepad-open-dialog-n11.2607.14.0-win25h2.png`. Option list and behavior match the capture.
+
+**Job:** The user can open a file forcing an encoding. Consumer: the §4 open path, which decodes with the forced encoding instead of detecting.
+
+**Treatment:** An encoding option on the open flow offering the §5 encoding list plus Auto-Detect; the forced encoding flows into `FileOpen` as a decode override, and the tab records it as its encoding. Cheaper substitute that fails the checkpoint: an option that re-detects and ignores the choice.
+
+**Chrome:** Consume the shared dialog styles. Do not invent a second picker treatment.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T01 §4 -- the open path and detector this overrides; §4 item 7 points here for the non-default half
+- -> SOURCE: stock-open-dialog probe 2026-09-15 (Encoding Auto-Detect default with picker options)
+
+- [ ] The open flow offers Auto-Detect plus every §5 encoding. Done when: the option list matches the capture.
+- [ ] Opening with a forced encoding decodes with it, bypassing §4 detection. Done when: a 1252 file forced to UTF-8 shows replacement characters, driven.
+- [ ] Auto-Detect behaves exactly as §4 alone. Done when: the §4 fixture matrix passes through this path unchanged.
+- [ ] The tab records the forced encoding for §5's save path. Done when: save offers the forced encoding back.
+- [ ] Commit: `"notepad-core: open with explicit encoding"`
+
+**Test checkpoint:** option list, forced decode, auto-detect equivalence, and save handoff are all driven in the room. Cheaper substitute that fails: a picker that detects anyway.
 
 ## Verification
 
