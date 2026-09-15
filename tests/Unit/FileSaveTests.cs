@@ -179,6 +179,39 @@ public sealed class FileSaveTests
     }
 
     [Fact]
+    public void UnencodableCharactersFailLoudlyInsteadOfCorrupting()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "note.txt");
+            File.WriteAllText(path, "plain\r\n");
+            var ansi = new SaveSpec(FileOpen.AnsiName, false, LineEndings.Crlf);
+            SaveResult ansiResult = FileSave.SaveFile(path, "emoji \U0001F600\r\n", ansi);
+            var ansiFailed = Assert.IsType<SaveFailed>(ansiResult);
+            Assert.False(string.IsNullOrEmpty(ansiFailed.Detail));
+            Assert.Equal("plain\r\n", File.ReadAllText(path));
+            var utf8 = new SaveSpec(FileOpen.Utf8Name, false, LineEndings.Crlf);
+            SaveResult loneResult = FileSave.SaveFile(path, "a\ud800b", utf8);
+            Assert.IsType<SaveFailed>(loneResult);
+            Assert.Equal("plain\r\n", File.ReadAllText(path));
+            var model = new TabModel();
+            Tab tab = model.OpenTab(path, new DetectedFile("plain", FileOpen.Utf8Name, false, new LineEndingInfo(0, 0, 0, LineEndings.Crlf)));
+            tab.Encoding = FileOpen.AnsiName;
+            tab.NotifyEdited("emoji \U0001F600");
+            IReadOnlyList<SaveAllEntry> entries = FileSave.SaveAll(model, _ => "emoji \U0001F600", _ => null);
+            Assert.Single(entries);
+            Assert.Equal(SaveAllOutcome.Failed, entries[0].Outcome);
+            Assert.True(tab.IsDirty);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void UnmappedFailureReportsOsMessage()
     {
         string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "gone.txt");

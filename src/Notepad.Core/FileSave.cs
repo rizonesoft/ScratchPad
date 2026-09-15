@@ -21,9 +21,13 @@ public static class FileSave
     }
 
     // Encodes text for saving: line endings normalized to the target, then
-    // bytes in the named encoding with the BOM per hasBom. Unknown encoding
-    // names throw: saving must never guess. Unknown EOL names fall back to
-    // CRLF, the §4 dominant default.
+    // bytes in the named encoding with the BOM per hasBom. Encoding names are
+    // the §4 list plus UTF-32 LE/BE (preserve-only). Unknown names throw:
+    // saving must never guess. Unknown EOL names fall back to CRLF, the §4
+    // dominant default. All encoders are strict: unencodable characters throw
+    // EncoderFallbackException (surfaced as SaveFailed) instead of silently
+    // writing '?' (default: stock's exact warning is unprobed; costs the
+    // dialog wording when D01 T02 §1 renders it).
     public static byte[] Encode(string text, string encodingName, bool hasBom, string lineEnding)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -39,27 +43,36 @@ public static class FileSave
         string converted = target == "\n" ? normalized : normalized.Replace("\n", target, StringComparison.Ordinal);
         Encoding encoding = encodingName switch
         {
-            FileOpen.AnsiName => Encoding.GetEncoding(1252),
-            FileOpen.Utf16LeName => Encoding.Unicode,
-            FileOpen.Utf16BeName => Encoding.BigEndianUnicode,
-            FileOpen.Utf8Name => Encoding.UTF8,
-            FileOpen.Utf8BomName => Encoding.UTF8,
-            Utf32LeName => Encoding.UTF32,
-            Utf32BeName => new UTF32Encoding(bigEndian: true, byteOrderMark: true),
+            FileOpen.AnsiName => Encoding.GetEncoding(1252, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback),
+            FileOpen.Utf16LeName => new UnicodeEncoding(bigEndian: false, byteOrderMark: false, throwOnInvalidBytes: true),
+            FileOpen.Utf16BeName => new UnicodeEncoding(bigEndian: true, byteOrderMark: false, throwOnInvalidBytes: true),
+            FileOpen.Utf8Name => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
+            FileOpen.Utf8BomName => new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true),
+            Utf32LeName => new UTF32Encoding(bigEndian: false, byteOrderMark: false, throwOnInvalidCharacters: true),
+            Utf32BeName => new UTF32Encoding(bigEndian: true, byteOrderMark: false, throwOnInvalidCharacters: true),
             _ => throw new ArgumentException($"Unknown encoding '{encodingName}'.", nameof(encodingName)),
         };
         byte[] body = encoding.GetBytes(converted);
-        if (!hasBom)
-        {
-            return body;
-        }
-
-        byte[] preamble = encoding.GetPreamble();
+        byte[] preamble = hasBom ? PreambleFor(encodingName) : [];
         byte[] bytes = new byte[preamble.Length + body.Length];
         Buffer.BlockCopy(preamble, 0, bytes, 0, preamble.Length);
         Buffer.BlockCopy(body, 0, bytes, preamble.Length, body.Length);
         return bytes;
     }
+
+    // Explicit BOM table: the strict encoder instances above are built with
+    // byteOrderMark false (their own preambles are empty by construction),
+    // so the flag maps to bytes here. ANSI has no BOM; unknown names cannot
+    // reach this (Encode throws first).
+    static byte[] PreambleFor(string encodingName) => encodingName switch
+    {
+        FileOpen.Utf8Name or FileOpen.Utf8BomName => [0xEF, 0xBB, 0xBF],
+        FileOpen.Utf16LeName => [0xFF, 0xFE],
+        FileOpen.Utf16BeName => [0xFE, 0xFF],
+        Utf32LeName => [0xFF, 0xFE, 0x00, 0x00],
+        Utf32BeName => [0x00, 0x00, 0xFE, 0xFF],
+        _ => [],
+    };
 
     // Atomic save: bytes land in a same-directory temp file first (a rename
     // is only atomic on one filesystem), then move over the target, so a
@@ -71,15 +84,20 @@ public static class FileSave
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(spec);
-        byte[] bytes = Encode(text, spec.EncodingName, spec.HasBom, spec.LineEnding);
         string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
         string temp = Path.Combine(directory!, $".~{Guid.NewGuid():N}.tmp");
         try
         {
+            byte[] bytes = Encode(text, spec.EncodingName, spec.HasBom, spec.LineEnding);
             File.WriteAllBytes(temp, bytes);
             faultBeforeCommit?.Invoke();
             File.Move(temp, path, overwrite: true);
             return new SaveSuccess();
+        }
+        catch (EncoderFallbackException ex)
+        {
+            // Nothing written yet (encoding precedes the temp file).
+            return new SaveFailed(ex.Message);
         }
         catch (Exception ex) when (RedirectsToSaveAs(ex))
         {
