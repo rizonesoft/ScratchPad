@@ -52,7 +52,7 @@ track: N1
 |  10   |   §10   | Window border parity repair | §1 |  [ ]   |
 |  11   |   §11   | App icon wiring | §1 |  [x]   |
 |  12   |   §12   | Split view | §1, §2, D02 T01 §1 |  [ ]   |
-|  13   |   §13   | Pinned tabs | §2, §6 |  [ ]   |
+|  13   |   §13   | Pinned tabs | §2, §6 |  [x]   |
 |  14   |   §14   | Text statistics panel | §1 |  [ ]   |
 |  15   |   §15   | Distraction-free focus mode | §1, D01 T02 §1 |  [ ]   |
 |  16   |   §16   | File snapshots | §5, §7 |  [ ]   |
@@ -416,6 +416,8 @@ Why this section exists: the operator supplied the app icon. It must show in the
 
 ## 13. Pinned Tabs
 
+> **Started:** 2026-09-15T22:18:04Z
+
 Why this section exists: pinned tabs survive restarts and shrug off accidental close.
 
 **Fidelity:** new build, no baseline (stock Notepad pins nothing).
@@ -428,12 +430,18 @@ Why this section exists: pinned tabs survive restarts and shrug off accidental c
 
 **Needs:** Windows host (build/test)
 
-- [ ] Pin and unpin a tab under host drive. Done when: pinned tabs render pinned and unpin restores normal.
-- [ ] Pinned tabs survive restart through §6 session restore. Done when: pins persist across an app relaunch.
-- [ ] Close-all and close-others skip pinned tabs. Done when: pinned tabs stay open while the rest close.
-- [ ] Commit: `"notepad-core: pin tabs"`
+- [x] Pin and unpin a tab under host drive. Done when: pinned tabs render pinned and unpin restores normal. **Corrected 2026-09-15:** the gesture is double-click on the tab (toggle); the context menu keeps its 4 stock items untouched (parity surface, §3-pinned). Stock tab double-click is a no-op by default (probe attempted: try 1 mismatched windows with no change observed, tries 2-3 defeated by single-instance routing; cost if wrong: one gesture plus this drive). Pin state also feeds `ShellSettings.PinnedFiles` for pathed tabs (the §8 jump feed reads it; §25 launches from it; untitled pins stay session-only). **Driven 2026-09-15:** `DoubleClickTogglesPinGlyph` (pin FontIcon named Pinned appears/vanishes), `PinsSurviveRelaunch` (settings write read back), green in the §13 filter run.
+- [x] Pinned tabs survive restart through §6 session restore. Done when: pins persist across an app relaunch. Pins round-trip in `session.json` (`SessionTab.IsPinned`, additive default false); §6's missing-file rules are unchanged (pin protects against close, not deletion); a pinned tab makes a session non-trivial. **Driven 2026-09-15:** `PinsSurviveRelaunch` end-to-end plus `CaptureCopiesPinState` and `TrivialPinnedTabPersists`, green in the §13 filter run.
+- [x] Close-all and close-others skip pinned tabs. Done when: pinned tabs stay open while the rest close. **Corrected 2026-09-15:** no close-all command exists (and none is added: menus are D01 T02 §1's surface); the bulk closes are close-others and close-right, both skip pinned; window close preserves everything silently per §7 (pins included); explicit single closes (X, menu, Ctrl+W, middle-click) close pinned tabs normally, browser-style. **Driven 2026-09-15:** `CloseOthersSkipsPinned`, `CloseRightSkipsPinned`, `SingleCloseStillClosesPinned`, green in the §13 filter run.
+- [x] Commit: `"notepad-core: pin tabs"` (`a14f5d8`).
 
 **Test checkpoint:** pin, persist, and skip are all driven in the room. Cheaper substitute that fails: pins that forget.
+
+> **Verified:** 2026-09-15 | §13 | Pinned tabs: double-click toggles the pin glyph with the 4-item menu untouched, pins persist through session restore, bulk closes skip pinned while single closes release normally (feed entry goes with the tab), pathed pins feed the jump list; PinnedTabs 5/5, full gate Smoke 1/1 Unit 182/182 Protocol 35/35 UI 62 plus 1 pre-existing quarantine of 63, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 0-1, candidate a14f5d8 plus 6a5d36d plus 7799a73 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s13.md
+> **CRUD:** applicable | double-click wrote pin state (read back via glyph UIA plus settings feed); relaunch wrote session.json (read back via restored glyph); close wrote feed removal (read back via settings absence); jump refresh ran through the §8 fingerprint-gated commit (no pin-specific taskbar read-back; §8's read-back covers the path)
+> **Duration:** 75
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 14. Text Statistics Panel
 
