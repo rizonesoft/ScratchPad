@@ -231,6 +231,50 @@ public sealed class LaunchTests
     }
 
     [Fact]
+    public void MissingFileOfferEnterAcceptsAsYes()
+    {
+        string dir = NewTempDir();
+        string missing = Path.Combine(dir, "enter8.txt");
+        SeedFresh();
+        try
+        {
+            using var app = LaunchAppWithArgs($"\"{missing}\"");
+            using var automation = new UIA3Automation();
+            var window = app.GetMainWindow(automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                var dialog = WaitForDialog(window, "CreateFileDialog");
+                dialog.Click();
+                Thread.Sleep(500);
+                for (int i = 0; i < 20; i++)
+                {
+                    if (window.FindFirstDescendant(cf => cf.ByAutomationId("CreateFileDialog")) is null)
+                    {
+                        break;
+                    }
+
+                    Keyboard.Press(VirtualKeyShort.RETURN);
+                    Thread.Sleep(500);
+                }
+
+                Assert.Equal(2, WaitForTabCount(window, 2));
+                WaitForTabName(window, 1, "enter8.txt");
+                Assert.False(File.Exists(missing));
+            }
+            finally
+            {
+                CloseAll(app, automation);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    [Fact]
     public void LockedFileReportsLocked()
     {
         string dir = NewTempDir();
@@ -756,7 +800,14 @@ public sealed class LaunchTests
     {
         window.Focus();
         Thread.Sleep(150);
-        using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
+        if (withControl)
+        {
+            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
+            {
+                Keyboard.Press(key);
+            }
+        }
+        else
         {
             Keyboard.Press(key);
         }
