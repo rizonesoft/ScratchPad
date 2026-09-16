@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§22, 24-26, 28-30 (§21 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§24-26, 28-30 (§§21-22 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -73,7 +73,7 @@ track: N1
 |  19   |   §19   | Encrypted notes | §4, §5 |  [x]   |
 |  20   |   §20   | Backup on save | §5 |  [x]   |
 |  21   |   §21   | Reload prompt on external change | §4 |  [x]   |
-|  22   |   §22   | First-line titles for untitled tabs | §2 |  [ ]   |
+|  22   |   §22   | First-line titles for untitled tabs | §2 |  [x]   |
 |  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
 |  24   |   §24   | Share target | §1, §2 |  [ ]   |
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
@@ -697,6 +697,12 @@ Why this section exists: untitled tabs show their first line as the live default
 - [x] Commit: `"notepad-core: title untitled tabs from the first line"`
 
 **Test checkpoint:** live default and capture confirmation are driven in the room. Cheaper substitute that fails: tabs that all read Untitled.
+
+> **Verified:** 2026-09-16 | §22 | First-line titles for untitled tabs: typing renames the rendered tab through the existing header binding, whitespace restores Untitled, trim plus 35-cap proven at the surface; stock parity proven live (tab from first line, trailing space trimmed, 40-char line titled at exactly 35, no difference); UI UntitledTitleTests 2/2, full gate Smoke 1/1 Unit 226/226 Protocol 35/35 UI 103 plus 1 pre-existing quarantine of 104, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidates 47b571d plus 28e355f (review fix: retried snapshot prompt-button lookup) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s22.md
+> **CRUD:** applicable | typing wrote the tab name from the first line (UIA name read back); clearing to whitespace rewrote Untitled (read back); the 40-char line wrote the 35-char title (read back); stock drive wrote two probe tabs and closed both (tab list read back equal before and after, debris tabs untouched)
+> **Duration:** 75
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 23. Side-by-Side Tab Diff
 
