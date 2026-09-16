@@ -55,4 +55,33 @@ public sealed class LaunchDropsTests : IDisposable
     {
         Assert.Empty(LaunchDrops.Drain(Path.Combine(dir, "absent")));
     }
+
+    [Fact]
+    public void NewNoteFlagRoundTrips()
+    {
+        LaunchDrops.Write([], dir, newNote: true);
+        IReadOnlyList<LaunchDrop> drops = LaunchDrops.DrainAll(dir);
+        var drop = Assert.Single(drops);
+        Assert.True(drop.NewNote);
+        Assert.Empty(drop.Files);
+        Assert.Empty(Directory.GetFiles(dir));
+    }
+
+    [Fact]
+    public void PreFlagJsonParsesAsNoNote()
+    {
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "old.json"), """{"Files":["C:\\o.txt"]}""");
+        IReadOnlyList<LaunchDrop> drops = LaunchDrops.DrainAll(dir);
+        var drop = Assert.Single(drops);
+        Assert.False(drop.NewNote);
+        Assert.Equal(["C:\\o.txt"], drop.Files);
+    }
+
+    [Fact]
+    public void DrainIgnoresTheFlag()
+    {
+        LaunchDrops.Write(["C:\\n.txt"], dir, newNote: true);
+        Assert.Equal(["C:\\n.txt"], LaunchDrops.Drain(dir));
+    }
 }

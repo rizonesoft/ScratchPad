@@ -34,7 +34,7 @@ public partial class App : Application
         AppInstance mainInstance = AppInstance.FindOrRegisterForKey(SingleInstanceKey);
         if (!mainInstance.IsCurrent)
         {
-            _ = RedirectAndExitAsync(mainInstance, request.Files);
+            _ = RedirectAndExitAsync(mainInstance, request.Files, request.NewNote);
             return;
         }
 
@@ -60,9 +60,9 @@ public partial class App : Application
         }
 
         List<string> startup = LaunchDrops.Drain().Concat(request.Files).ToList();
-        if (startup.Count > 0)
+        if (startup.Count > 0 || request.NewNote)
         {
-            _ = OpenIntoFirstWindowAsync(startup);
+            _ = OpenIntoFirstWindowAsync(startup, request.NewNote);
         }
 
         RefreshJumpList();

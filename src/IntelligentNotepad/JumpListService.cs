@@ -62,6 +62,12 @@ internal static class JumpListService
     {
         JumpList list = JumpList.LoadCurrentAsync().AsTask().GetAwaiter().GetResult();
         list.Items.Clear();
+        // D01 T01 §25: the static new-note task leads; the feed follows.
+        WinJumpListItem task = WinJumpListItem.CreateWithArguments(
+            Notepad.Core.JumpListFeed.NewNoteTask.Arguments,
+            Notepad.Core.JumpListFeed.NewNoteTask.Title);
+        task.GroupName = Notepad.Core.JumpListFeed.TasksCategory;
+        list.Items.Add(task);
         foreach (Notepad.Core.JumpListItem item in feed)
         {
             WinJumpListItem entry = WinJumpListItem.CreateWithArguments(item.Arguments, item.Title);

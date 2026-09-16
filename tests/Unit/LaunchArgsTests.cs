@@ -93,4 +93,32 @@ public sealed class LaunchArgsTests
         Assert.False(request.IsPrint);
         Assert.True(LaunchArgs.Parse(["/unregister-associations"], WorkDir).UnregisterAssociations);
     }
+
+    [Theory]
+    [InlineData("/new-note")]
+    [InlineData("-new-note")]
+    [InlineData("/NEW-NOTE")]
+    public void NewNoteFlagParses(string flag)
+    {
+        LaunchRequest request = LaunchArgs.Parse([flag], WorkDir);
+        Assert.True(request.NewNote);
+        Assert.Empty(request.Files);
+        Assert.False(request.IsVerb);
+    }
+
+    [Fact]
+    public void NewNoteCombinesWithFiles()
+    {
+        LaunchRequest request = LaunchArgs.Parse(["a.txt", "/new-note"], WorkDir);
+        Assert.True(request.NewNote);
+        Assert.Equal([Path.Combine(WorkDir, "a.txt")], request.Files);
+    }
+
+    [Fact]
+    public void VerbsClearNewNote()
+    {
+        LaunchRequest request = LaunchArgs.Parse(["/new-note", "/register-associations"], WorkDir);
+        Assert.True(request.RegisterAssociations);
+        Assert.False(request.NewNote);
+    }
 }

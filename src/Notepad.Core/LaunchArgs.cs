@@ -13,7 +13,8 @@ public sealed record LaunchRequest(
     string? PrintFile,
     string? PrintPrinter,
     bool RegisterAssociations,
-    bool UnregisterAssociations)
+    bool UnregisterAssociations,
+    bool NewNote)
 {
     public bool IsPrint => PrintFile is not null;
 
@@ -30,6 +31,10 @@ public static class LaunchArgs
 
     public const string UnregisterFlag = "/unregister-associations";
 
+    // D01 T01 §25: the jump-list new-note task carries this; the launch
+    // path opens (or selects) a fresh tab for it, fresh or redirected.
+    public const string NewNoteFlag = "/new-note";
+
     // Parses raw process args (argv without the exe). workingDirectory
     // roots relative paths; absolute paths pass through untouched.
     // Incomplete flags (/p with no file, /pt with no printer) are ignored,
@@ -43,6 +48,7 @@ public static class LaunchArgs
         string? printPrinter = null;
         bool register = false;
         bool unregister = false;
+        bool newNote = false;
         List<string> rest = new(args);
         for (int i = 0; i < rest.Count; i++)
         {
@@ -70,6 +76,9 @@ public static class LaunchArgs
                 case "/UNREGISTER-ASSOCIATIONS" or "-UNREGISTER-ASSOCIATIONS":
                     unregister = true;
                     break;
+                case "/NEW-NOTE" or "-NEW-NOTE":
+                    newNote = true;
+                    break;
                 default:
                     break;
             }
@@ -80,9 +89,10 @@ public static class LaunchArgs
             files.Clear();
             printFile = null;
             printPrinter = null;
+            newNote = false;
         }
 
-        return new LaunchRequest(files, printFile, printPrinter, register, unregister);
+        return new LaunchRequest(files, printFile, printPrinter, register, unregister, newNote);
     }
 
     static bool IsFlag(string arg) => arg.StartsWith('/') || arg.StartsWith('-');

@@ -63,11 +63,11 @@ partial class App
 
     static string ExePath() => Environment.ProcessPath ?? throw new InvalidOperationException("No process path.");
 
-    static async Task RedirectAndExitAsync(AppInstance main, IReadOnlyList<string> files)
+    static async Task RedirectAndExitAsync(AppInstance main, IReadOnlyList<string> files, bool newNote)
     {
         try
         {
-            LaunchDrops.Write(files);
+            LaunchDrops.Write(files, newNote: newNote);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -96,7 +96,9 @@ partial class App
             return;
         }
 
-        List<string> files = LaunchDrops.Drain().ToList();
+        IReadOnlyList<LaunchDrop> drops = LaunchDrops.DrainAll();
+        List<string> files = drops.SelectMany(drop => drop.Files).ToList();
+        bool newNote = drops.Any(drop => drop.NewNote);
         DispatcherQueue? queue = DispatcherQueue.GetForCurrentThread() ?? windows.OfType<MainWindow>().FirstOrDefault()?.DispatcherQueue;
         if (queue is null)
         {
@@ -105,14 +107,30 @@ partial class App
 
         queue.TryEnqueue(() =>
         {
-            if (files.Count == 0)
+            if (files.Count == 0 && !newNote)
             {
                 NewWindow();
                 return;
             }
 
-            _ = OpenFilesRoutedAsync(files);
+            _ = RouteRedirectAsync(files, newNote);
         });
+    }
+
+    // D01 T01 §25: redirected files route per the §9 mode, then the
+    // new-note flag (if any) lands on the first window, active. The note
+    // waits for the files so combined launches end on the note.
+    async Task RouteRedirectAsync(List<string> files, bool newNote)
+    {
+        if (files.Count > 0)
+        {
+            await OpenFilesRoutedAsync(files).ConfigureAwait(true);
+        }
+
+        if (newNote)
+        {
+            (windows.OfType<MainWindow>().FirstOrDefault() ?? NewWindow()).EnsureFreshNote();
+        }
     }
 
     // Routes redirected files per the §9 OpenIn mode (second launches
@@ -161,12 +179,16 @@ partial class App
     // (stock never opens a spare empty window beside requested files;
     // default, cost one branch). Never throws: startup file-open
     // degrades to Debug output rather than killing the app.
-    async Task OpenIntoFirstWindowAsync(IReadOnlyList<string> files)
+    async Task OpenIntoFirstWindowAsync(IReadOnlyList<string> files, bool newNote)
     {
         try
         {
             MainWindow window = windows.OfType<MainWindow>().FirstOrDefault() ?? NewWindow();
             await window.OpenFilesAsync(files, offerCreate: true).ConfigureAwait(true);
+            if (newNote)
+            {
+                window.EnsureFreshNote();
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {

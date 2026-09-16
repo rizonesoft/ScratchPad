@@ -748,22 +748,24 @@ Why this section exists: Windows apps share text; we receive it into a new tab. 
 
 ## 25. Jump List Tasks
 
+> **Started:** 2026-09-16T04:48:54Z
+
 Why this section exists: new note and pinned notes on the taskbar icon. (Jump-list recents are §8 item 5. **Corrected 2026-09-14:** the seed duplicated them here.) The app starts working before it opens.
 
 **Fidelity:** new build, no baseline (stock Notepad lists no tasks).
 
 **Job:** The user can jump straight to a note from the taskbar. Consumer: the taskbar, which renders the app's tasks.
 
-**Treatment:** Jump list tasks for new note, pinned notes (§13), and recent files (§6); each launches to the right place. Cheaper substitute that fails the checkpoint: tasks that all open a blank window.
+**Treatment:** Jump list tasks for new note, pinned notes (§13), and recent files (§6); each launches to the right place. **Decided 2026-09-16 (§25 validation):** the task carries `/new-note` (dash and case variants like the other flags), parsed into `LaunchRequest.NewNote`; combined with files, both happen, files first and the note last and active (non-destructive reading; cost: the ordering branch). New-note means activate the first clean untitled tab if one exists, else open one: bare startup no-ops on its spare, file startup selects the spare, restore and redirect open except when emptiness is already on screen; redirected notes target the first window (single-window common case, same as file routing). The task is defined as data on the feed but committed by the service, not `Build()`: the feed is user-data-driven (fingerprint), the task is static chrome, and no shipped test churns (cost of moving it into `Build()`: the exact-content feed tests gain the item). GroupName `Tasks`, explicit like Pinned/Recent (cost of renaming: one const plus the read-back asserts). Cheaper substitute that fails the checkpoint: tasks that all open a blank window.
 
 **Chrome:** No new surface; the taskbar is the surface.
 
 **Needs:** Windows host (build/test)
 
-- [ ] The taskbar icon carries new-note, pinned, and recent tasks. Done when: all three appear.
-- [ ] New note opens a fresh untitled tab through §2. Done when: the launch path is driven.
-- [ ] Pinned notes open their files through §13. Done when: each pin launches correctly.
-- [ ] Commit: `"notepad-core: task the jump list"`
+- [x] The taskbar icon carries new-note, pinned, and recent tasks. Done when: all three appear. **Driven 2026-09-16:** `TaskbarCarriesNewNotePinnedAndRecent` (commit read back: task plus pin plus recent with titles, args, groups), green.
+- [x] New note opens a fresh untitled tab through §2. Done when: the launch path is driven. **Driven 2026-09-16:** `NewNoteRedirectOpensFreshTab` (secondary flag opens tab 3 active in the primary) plus `NewNoteFreshWithFileSelectsSpare` (fresh flag-plus-file selects the spare), green.
+- [x] Pinned notes open their files through §13. Done when: each pin launches correctly. **Driven 2026-09-16:** `PinTaskArgsOpenTheFile` plus `RecentTaskArgsOpenTheFile` (verbatim feed arguments launch to the file), green.
+- [x] Commit: `"notepad-core: task the jump list"`
 
 **Test checkpoint:** tasks, new, pinned, and recent launches are all driven in the room. Cheaper substitute that fails: a jump list that jumps nowhere.
 

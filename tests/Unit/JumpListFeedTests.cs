@@ -56,4 +56,19 @@ public sealed class JumpListFeedTests
         Assert.NotEqual(JumpListFeed.Fingerprint(a), JumpListFeed.Fingerprint(b));
         Assert.Equal(JumpListFeed.Fingerprint(a), JumpListFeed.Fingerprint(JumpListFeed.Build(["C:\\p.txt"], null)));
     }
+
+    [Fact]
+    public void NewNoteTaskCarriesTheFlag()
+    {
+        Assert.Equal("New note", JumpListFeed.NewNoteTask.Title);
+        Assert.Equal(LaunchArgs.NewNoteFlag, JumpListFeed.NewNoteTask.Arguments);
+        Assert.Equal(JumpListFeed.TasksCategory, JumpListFeed.NewNoteTask.Category);
+    }
+
+    [Fact]
+    public void BuildExcludesTheStaticTask()
+    {
+        IReadOnlyList<JumpListItem> items = JumpListFeed.Build(null, null);
+        Assert.Empty(items);
+    }
 }

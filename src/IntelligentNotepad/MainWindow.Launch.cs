@@ -170,6 +170,16 @@ sealed partial class MainWindow
     internal Tab? CaptureSpareCandidate() =>
         tabs.Tabs.Count == 1 && tabs.Tabs[0].IsUntitled ? tabs.Tabs[0] : null;
 
+    // D01 T01 §25 (/new-note): a fresh note is on screen and active. A
+    // clean untitled tab already showing satisfies it (select, never
+    // duplicate pristine emptiness); otherwise open one. Dirty untitled
+    // tabs never count: the gesture must not hijack user content.
+    internal void EnsureFreshNote()
+    {
+        Tab? spare = tabs.Tabs.FirstOrDefault(t => t.IsUntitled && !t.IsDirty);
+        tabs.ActiveTab = spare ?? tabs.NewTab();
+    }
+
     // Drops the spare once routed files land: the initial tab goes iff
     // it is still a clean Untitled and the window now holds more tabs
     // (skipped routes keep their usable window). Untitled-plus-clean

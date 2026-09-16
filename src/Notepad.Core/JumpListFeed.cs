@@ -17,6 +17,13 @@ public static class JumpListFeed
 
     public const string RecentCategory = "Recent";
 
+    public const string TasksCategory = "Tasks";
+
+    // The static new-note task, defined here as data but committed by the
+    // service, not Build(): the feed is user-data-driven (fingerprinted),
+    // the task never changes (D01 T01 §25).
+    public static readonly JumpListItem NewNoteTask = new("New note", LaunchArgs.NewNoteFlag, TasksCategory);
+
     public static IReadOnlyList<JumpListItem> Build(IList<string>? pinned, IList<string>? recent)
     {
         var items = new List<JumpListItem>();
