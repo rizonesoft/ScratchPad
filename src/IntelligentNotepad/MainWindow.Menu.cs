@@ -273,6 +273,8 @@ sealed partial class MainWindow : IMenuHost
 
     void IMenuHost.SearchBing() => LaunchBing(BingSearch.SearchUrl(ActiveSelection()));
 
+    void IMenuHost.ShowFontSettings() => ShowFontSettings();
+
     void IMenuHost.DefineBing() => LaunchBing(BingSearch.DefineUrl(ActiveSelection()));
 
     static void LaunchBing(Uri url)

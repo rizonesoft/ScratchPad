@@ -98,7 +98,7 @@ public sealed class MenuBarTests
                     "MenuEditPaste", "MenuEditDelete", "MenuEditClearFormatting",
                     "MenuEditFind", "MenuEditFindNext", "MenuEditFindPrevious",
                     "MenuEditReplace", "MenuEditGoTo", "MenuEditSelectAll",
-                    "MenuEditTimeDate", "MenuEditFont",
+                    "MenuEditTimeDate",
                 ]
             ),
             ("MenuView", ["MenuViewStatusBar", "MenuViewWordWrap"]),
@@ -180,6 +180,7 @@ public sealed class MenuBarTests
             "MenuFileRecent", "MenuFileSave", "MenuFileSaveAs",
             "MenuFileSaveAll", "MenuFileCloseTab", "MenuFileCloseWindow",
             "MenuFileExit", "MenuEditSearchBing", "MenuEditDefineBing",
+            "MenuEditFont",
             "MenuToolsStats", "MenuToolsSnapshots", "MenuToolsTemplates",
             "MenuToolsExport", "MenuToolsLock",
         ];

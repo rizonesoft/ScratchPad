@@ -100,7 +100,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 **Groomed 2026-09-13:** Notepad audit: CF_TEXT-only paste, color emoji, text drag-drop, Ctrl+click paragraph, and spaceless double-click are now explicit.
 
-- [ ] `src/Notepad/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes.
+- [ ] `src/Notepad/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes. **Recorded 2026-09-16 (D01 T02 §3 validation):** the rendered font reads the D01 T02 §2 store keys (family, style, size) with a live Changed subscription; the D01 T02 §3 settings page binds the picking controls.
 - [ ] Cut, copy, paste, and paste-as-behavior match Notepad including formats offered. Done when: clipboard round-trips are driven. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Cut, Copy, Paste, Delete, and Select all disabled; this section enables all five through the `MenuCommands` registry and drives them on landing.
 - [ ] Drag-select, double-click word, triple-click line match Notepad. Done when: each gesture is driven.
 - [ ] IME and accessibility (narrator, keyboard-only use) behave as Notepad's. Done when: the accessibility checks pass.

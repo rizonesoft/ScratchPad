@@ -1,0 +1,271 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="IntelligentNotepad.SettingsPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Settings page, owned by D01 T02 §3. Card order, labels, grouping,
+         and control kinds match the stock captures; the About panel sits
+         right per the full-page shot. Cards whose owners have not landed
+         render disabled with the owner recorded and enable on landing.
+         This file establishes the settings-card treatment (card brushes,
+         icon-plus-texts-plus-control rows); later card owners consume it. -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="280" />
+        </Grid.ColumnDefinitions>
+
+        <ScrollViewer x:Name="CardsScroll" Grid.Column="0" Padding="24,0,12,24"
+                      AutomationProperties.AutomationId="SettingsCardsScroll">
+            <StackPanel Spacing="4">
+                <TextBlock Text="Settings" FontSize="28" FontWeight="SemiBold" Margin="0,12,0,12"
+                           AutomationProperties.AutomationId="SettingsHeading" />
+
+                <TextBlock Text="Appearance" Margin="0,8,0,4" />
+
+                <Expander x:Name="AppThemeCard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="SettingsCardAppTheme">
+                    <Expander.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <SymbolIcon Grid.Column="0" Symbol="View" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="App theme" />
+                                <TextBlock Text="Select which app theme to display" FontSize="12" Opacity="0.7" />
+                            </StackPanel>
+                        </Grid>
+                    </Expander.Header>
+                    <StackPanel Spacing="4" Margin="40,8,0,8">
+                        <RadioButton x:Name="ThemeLight" Content="Light" GroupName="SettingsTheme"
+                                     AutomationProperties.AutomationId="SettingsThemeLight" Checked="ThemeRadio_Checked" />
+                        <RadioButton x:Name="ThemeDark" Content="Dark" GroupName="SettingsTheme"
+                                     AutomationProperties.AutomationId="SettingsThemeDark" Checked="ThemeRadio_Checked" />
+                        <RadioButton x:Name="ThemeSystem" Content="Use system setting" GroupName="SettingsTheme"
+                                     AutomationProperties.AutomationId="SettingsThemeSystem" Checked="ThemeRadio_Checked" />
+                    </StackPanel>
+                </Expander>
+
+                <TextBlock Text="Text Formatting" Margin="0,8,0,4" />
+
+                <Expander x:Name="FontCard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="SettingsCardFont">
+                    <Expander.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <SymbolIcon Grid.Column="0" Symbol="Font" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="1" Text="Font" VerticalAlignment="Center" />
+                        </Grid>
+                    </Expander.Header>
+                    <StackPanel Spacing="8" Margin="40,8,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Family" VerticalAlignment="Center" />
+                            <ComboBox x:Name="FontFamilyCombo" Grid.Column="1" MinWidth="200"
+                                      AutomationProperties.AutomationId="SettingsFontFamily" SelectionChanged="FontCombo_SelectionChanged" />
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Style" VerticalAlignment="Center" />
+                            <ComboBox x:Name="FontStyleCombo" Grid.Column="1" MinWidth="200"
+                                      AutomationProperties.AutomationId="SettingsFontStyle" SelectionChanged="FontCombo_SelectionChanged" />
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Size" VerticalAlignment="Center" />
+                            <ComboBox x:Name="FontSizeCombo" Grid.Column="1" MinWidth="200"
+                                      AutomationProperties.AutomationId="SettingsFontSize" SelectionChanged="FontCombo_SelectionChanged" />
+                        </Grid>
+                        <TextBlock x:Name="FontPreview" Text="The sound of ocean waves calms my soul." Margin="0,8,0,0"
+                                   AutomationProperties.AutomationId="SettingsFontPreview" />
+                    </StackPanel>
+                </Expander>
+
+                <Border AutomationProperties.AutomationId="SettingsCardWordWrap"
+                        Background="{ThemeResource CardBackgroundFillColorDefault}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <SymbolIcon Grid.Column="0" Symbol="Bullets" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Word wrap" />
+                            <TextBlock Text="Fit text within window by default" FontSize="12" Opacity="0.7" />
+                        </StackPanel>
+                        <ToggleSwitch x:Name="WordWrapToggle" Grid.Column="2" OnContent="On" OffContent="Off"
+                                      VerticalAlignment="Center" AutomationProperties.AutomationId="SettingsWordWrapToggle"
+                                      Toggled="WordWrapToggle_Toggled" />
+                    </Grid>
+                </Border>
+
+                <!-- Owner: D02 T04 §5 item 1. Enables and binds on landing. -->
+                <Border AutomationProperties.AutomationId="SettingsCardFormatting" Opacity="0.5"
+                        Background="{ThemeResource CardBackgroundFillColorDefault}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <SymbolIcon Grid.Column="0" Symbol="Bold" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBlock Grid.Column="1" Text="Formatting" VerticalAlignment="Center" />
+                        <ToggleSwitch Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
+                                      VerticalAlignment="Center" IsEnabled="False" AutomationProperties.AutomationId="SettingsFormattingToggle" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="Opening Notepad" Margin="0,8,0,4" />
+
+                <Border AutomationProperties.AutomationId="SettingsCardOpeningFiles"
+                        Background="{ThemeResource CardBackgroundFillColorDefault}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <SymbolIcon Grid.Column="0" Symbol="OpenFile" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Opening files" />
+                            <TextBlock Text="Choose where your files are opened" FontSize="12" Opacity="0.7" />
+                        </StackPanel>
+                        <ComboBox x:Name="OpeningCombo" Grid.Column="2" MinWidth="180" VerticalAlignment="Center"
+                                  AutomationProperties.AutomationId="SettingsOpeningFiles" SelectionChanged="OpeningCombo_SelectionChanged" />
+                    </Grid>
+                </Border>
+
+                <Expander x:Name="WhenStartsCard" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          AutomationProperties.AutomationId="SettingsCardWhenStarts">
+                    <Expander.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <SymbolIcon Grid.Column="0" Symbol="Play" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="1" Text="When Notepad starts" VerticalAlignment="Center" />
+                        </Grid>
+                    </Expander.Header>
+                    <StackPanel Spacing="4" Margin="40,8,0,8">
+                        <RadioButton x:Name="WhenStartsContinue" Content="Continue previous session" GroupName="SettingsWhenStarts"
+                                     AutomationProperties.AutomationId="SettingsWhenStartsContinue" Checked="WhenStartsRadio_Checked" />
+                        <RadioButton x:Name="WhenStartsFresh" Content="Start new session and discard unsaved changes" GroupName="SettingsWhenStarts"
+                                     AutomationProperties.AutomationId="SettingsWhenStartsFresh" Checked="WhenStartsRadio_Checked" />
+                    </StackPanel>
+                </Expander>
+
+                <!-- Owner: D01 T02 §12. Enables and binds on landing. -->
+                <Border AutomationProperties.AutomationId="SettingsCardRecentFiles" Opacity="0.5"
+                        Background="{ThemeResource CardBackgroundFillColorDefault}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <SymbolIcon Grid.Column="0" Symbol="Clock" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBlock Grid.Column="1" Text="Recent Files" VerticalAlignment="Center" />
+                        <ToggleSwitch Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
+                                      VerticalAlignment="Center" IsEnabled="False" AutomationProperties.AutomationId="SettingsRecentFilesToggle" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="Spelling" Margin="0,8,0,4" />
+
+                <!-- Owner: D02 T03 §4 item 1. Enables and binds on landing. -->
+                <Expander HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" IsEnabled="False"
+                          AutomationProperties.AutomationId="SettingsCardSpellCheck">
+                    <Expander.Header>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <SymbolIcon Grid.Column="0" Symbol="Accept" VerticalAlignment="Center" Margin="0,0,12,0" />
+                            <TextBlock Grid.Column="1" Text="Spell check" VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
+                                          VerticalAlignment="Center" AutomationProperties.AutomationId="SettingsSpellCheckToggle" />
+                        </Grid>
+                    </Expander.Header>
+                    <TextBlock Text="File-type toggles (D02 T03 §4)." Margin="40,8,0,8" />
+                </Expander>
+
+                <!-- Owner: D02 T03 §4 item 1. Enables and binds on landing. -->
+                <Border AutomationProperties.AutomationId="SettingsCardAutocorrect" Opacity="0.5"
+                        Background="{ThemeResource CardBackgroundFillColorDefault}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <SymbolIcon Grid.Column="0" Symbol="Repair" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock Text="Autocorrect" />
+                            <TextBlock Text="Typos are automatically corrected when spell check is turned on" FontSize="12" Opacity="0.7" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
+                                      VerticalAlignment="Center" IsEnabled="False" AutomationProperties.AutomationId="SettingsAutocorrectToggle" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Text="Advanced Features" Margin="0,8,0,4" />
+
+                <!-- Owner: D05 T02 §6 item 10. Enables and binds on landing. -->
+                <Border AutomationProperties.AutomationId="SettingsCardWritingTools" Opacity="0.5"
+                        Background="{ThemeResource CardBackgroundFillColorDefault}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
+                        Padding="16,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <SymbolIcon Grid.Column="0" Symbol="Edit" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBlock Grid.Column="1" Text="Writing tools" VerticalAlignment="Center" />
+                        <ToggleSwitch Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
+                                      VerticalAlignment="Center" IsEnabled="False" AutomationProperties.AutomationId="SettingsWritingToolsToggle" />
+                    </Grid>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <StackPanel Grid.Column="1" Margin="12,64,24,0" Spacing="4">
+            <TextBlock Text="About this app" FontWeight="SemiBold"
+                       AutomationProperties.AutomationId="SettingsAboutHeading" />
+            <TextBlock Text="Intelligent Notepad"
+                       AutomationProperties.AutomationId="SettingsAboutName" />
+            <TextBlock x:Name="AboutVersion"
+                       AutomationProperties.AutomationId="SettingsAboutVersion" />
+        </StackPanel>
+    </Grid>
+</UserControl>

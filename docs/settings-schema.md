@@ -20,4 +20,6 @@ Store: `src/Notepad.Core/SettingsStore.cs` (owned by D01 T02 §2), file `%LocalA
 | `JumpListHash` | string | empty | Computed feed fingerprint | JumpListService commit-on-change |
 | `WhatsNewSeen` | bool | false | First-run latch | MainWindow first-run gate |
 
-Future keys observed on stock 11.2607.14.0 with no Phase 1 home yet: spellcheck plus autocheck (D02 T03), formatting (D02 T04), writing tools (unowned), recent-files toggle (unowned). Owners add their keys on landing following the extension pattern above (new property, default with a recorded source, row in this table).
+Future keys observed on stock 11.2607.14.0: spellcheck plus autocorrect (D02 T03 §4), formatting (D02 T04 §5), writing tools (D05 T02 §6 item 10), recent-files toggle (D01 T02 §12). Owners add their keys on landing following the extension pattern above (new property, default with a recorded source, row in this table).
+
+Page pattern (D01 T02 §3): each stock card lands in stock position on the settings page bound to its key through `SettingsStore.Update`; cards whose owners have not landed render disabled with the owner recorded in the card comment and enable on landing. Adding a card: XAML card in `SettingsPage.xaml` following the established card treatment, key with a recorded default, row in the table above, owner drive proving both directions.

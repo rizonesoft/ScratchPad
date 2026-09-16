@@ -137,7 +137,7 @@
             </MenuFlyoutItem.KeyboardAccelerators>
         </MenuFlyoutItem>
         <MenuFlyoutSeparator />
-        <MenuFlyoutItem x:Name="MenuEditFont" Text="Font" AutomationProperties.AutomationId="MenuEditFont" IsEnabled="False" />
+        <MenuFlyoutItem x:Name="MenuEditFont" Text="Font" AutomationProperties.AutomationId="MenuEditFont" IsEnabled="False" Click="OnEditFont" />
     </MenuBarItem>
 
     <MenuBarItem x:Name="MenuView" Title="View" AccessKey="V" AutomationProperties.AutomationId="MenuView">

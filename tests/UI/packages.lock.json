@@ -326,7 +326,8 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.WindowsAppSDK": "[2.4.0, )",
-          "Notepad.Core": "[0.0.0, )"
+          "Notepad.Core": "[0.0.0, )",
+          "System.Drawing.Common": "[10.0.12, )"
         }
       },
       "notepad.core": {

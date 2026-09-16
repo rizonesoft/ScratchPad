@@ -33,13 +33,35 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <local:AppMenuBar x:Name="MenuRegion" Grid.Column="0" AutomationProperties.AutomationId="MenuRegion" VerticalAlignment="Center" />
-            <Button x:Name="WhatsNewButton" Grid.Column="1" AutomationProperties.AutomationId="WhatsNewButton" AutomationProperties.Name="What's new" Click="WhatsNewButton_Click" VerticalAlignment="Center" Margin="0,0,8,0" Background="Transparent" BorderThickness="0">
-                <FontIcon Glyph="&#xE789;" FontSize="16" />
-            </Button>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,0">
+                <Button x:Name="WhatsNewButton" AutomationProperties.AutomationId="WhatsNewButton" AutomationProperties.Name="What's new" Click="WhatsNewButton_Click" Background="Transparent" BorderThickness="0">
+                    <FontIcon Glyph="&#xE789;" FontSize="16" />
+                </Button>
+                <Button x:Name="SettingsButton" AutomationProperties.AutomationId="SettingsButton" AutomationProperties.Name="Settings" Click="SettingsButton_Click" Background="Transparent" BorderThickness="0">
+                    <FontIcon Glyph="&#xE713;" FontSize="16" />
+                </Button>
+            </StackPanel>
         </Grid>
 
         <ContentControl x:Name="EditorRegion" Grid.Row="2" AutomationProperties.AutomationId="EditorRegion" AutomationProperties.Name="Editor region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
 
         <ContentControl x:Name="StatusRegion" Grid.Row="3" AutomationProperties.AutomationId="StatusRegion" AutomationProperties.Name="Status region" Background="Transparent" />
+
+        <!-- Settings overlay, owned by D01 T02 §3: covers all rows like
+             stock (tabs, menus, editor, status all hide behind it). -->
+        <Grid x:Name="SettingsRegion" Grid.RowSpan="4" Visibility="Collapsed"
+              Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+              AutomationProperties.AutomationId="SettingsRegion">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Button x:Name="SettingsBackButton" Grid.Row="0" HorizontalAlignment="Left" Margin="24,12,0,0"
+                    AutomationProperties.AutomationId="SettingsBackButton" AutomationProperties.Name="Back"
+                    Click="SettingsBackButton_Click" Background="Transparent" BorderThickness="0">
+                <SymbolIcon Symbol="Back" />
+            </Button>
+            <local:SettingsPage x:Name="SettingsView" Grid.Row="1" />
+        </Grid>
     </Grid>
 </Window>

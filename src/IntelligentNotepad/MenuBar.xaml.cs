@@ -22,6 +22,7 @@ internal interface IMenuHost
     void ClearRecents();
     void SearchBing();
     void DefineBing();
+    void ShowFontSettings();
     Task ShowStatsAsync();
     Task ShowSnapshotsAsync();
     Task ShowTemplatesAsync();
@@ -197,6 +198,8 @@ internal sealed partial class AppMenuBar : MenuBar
     void OnFileExit(object sender, RoutedEventArgs e) => host?.Exit();
 
     void OnEditSearchBing(object sender, RoutedEventArgs e) => host?.SearchBing();
+
+    void OnEditFont(object sender, RoutedEventArgs e) => host?.ShowFontSettings();
 
     void OnEditDefineBing(object sender, RoutedEventArgs e) => host?.DefineBing();
 

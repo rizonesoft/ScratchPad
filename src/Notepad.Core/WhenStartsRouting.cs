@@ -8,7 +8,7 @@ namespace Notepad.Core;
 // fresh-install default is "continue": eight independent setup guides
 // concur that stock selects Continue previous session out of the box, and
 // the stock capture shows it selected. Unknown values continue (restore,
-// never strand a session). D01 T02 §2 renders the radios; end-to-end honor
+// never strand a session). D01 T02 §3 renders the radios; end-to-end honor
 // is driven here (both modes) and there.
 public enum StartupMode
 {

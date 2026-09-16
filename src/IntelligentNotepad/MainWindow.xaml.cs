@@ -67,6 +67,11 @@ public sealed partial class MainWindow : Window, IDisposable
         Activated += OnFirstActivated;
         TabRegion.Content = tabBar;
         MenuRegion.Bind(this);
+        // D01 T02 §3: the settings page is live, so Edit > Font enables.
+        MenuRegion.SetEnabled("MenuEditFont", true);
+        // D01 T02 §3: theme changes (and any sibling-window update) apply
+        // live; the handler only reads, never writes back.
+        SettingsStore.Shared.Changed += OnSettingsChanged;
         // Layout passes also fire during teardown, when transforms and the
         // AppWindow are half-disconnected; touching them stows a crash
         // (0xC000027B). The closed flag parks this handler for those passes.
@@ -94,12 +99,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         if (Content is FrameworkElement root)
         {
-            root.RequestedTheme = SettingsStore.Shared.Current.Theme switch
-            {
-                "light" => ElementTheme.Light,
-                "dark" => ElementTheme.Dark,
-                _ => ElementTheme.Default,
-            };
+            ApplyTheme();
             AddTabAccelerators(root, tabBar);
             // D01 T02 §1: the menu bar owns Ctrl+Shift+N/G/H/E/X/L through
             // its own accelerators; the pre-menu AddAccel bindings lived
@@ -716,6 +716,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     public void Dispose()
     {
+        SettingsStore.Shared.Changed -= OnSettingsChanged;
         middleClick?.Dispose();
     }
 
@@ -765,6 +766,45 @@ public sealed partial class MainWindow : Window, IDisposable
         int width = Math.Max(100, live.Width);
         int height = Math.Max(100, live.Height);
         AppWindow.MoveAndResize(new RectInt32(live.X, live.Y, width, height));
+    }
+
+    void OnSettingsChanged(object? sender, EventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(ApplyTheme);
+    }
+
+    void ApplyTheme()
+    {
+        if (Content is FrameworkElement root)
+        {
+            root.RequestedTheme = SettingsStore.Shared.Current.Theme switch
+            {
+                "light" => ElementTheme.Light,
+                "dark" => ElementTheme.Dark,
+                _ => ElementTheme.Default,
+            };
+        }
+    }
+
+    // D01 T02 §3: settings overlay plus the Edit > Font jump target.
+    void SettingsButton_Click(object sender, RoutedEventArgs e) => ShowSettings();
+
+    void SettingsBackButton_Click(object sender, RoutedEventArgs e) => HideSettings();
+
+    void ShowSettings()
+    {
+        SettingsRegion.Visibility = Visibility.Visible;
+    }
+
+    void HideSettings()
+    {
+        SettingsRegion.Visibility = Visibility.Collapsed;
+    }
+
+    internal void ShowFontSettings()
+    {
+        ShowSettings();
+        SettingsView.JumpToFont();
     }
 
     private void OnFirstLoaded(object sender, RoutedEventArgs e)

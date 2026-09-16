@@ -16,7 +16,7 @@ internal static class UiCapture
         var previous = UiDpi.Enter();
         try
         {
-            return CaptureInner(tolerance);
+            return CaptureInner(tolerance, PrepareMain);
         }
         finally
         {
@@ -24,7 +24,90 @@ internal static class UiCapture
         }
     }
 
-    static Bitmap CaptureInner(Tolerance tolerance)
+    static void PrepareMain(Window window)
+    {
+        // The menu bar composes after placement: capturing immediately wins
+        // a race and freezes a label-less frame (the Sept 15 golden caught
+        // exactly that). Wait for the settled menus before the shutter.
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        AutomationElement? edit = null;
+        while (edit is null && DateTime.UtcNow < deadline)
+        {
+            edit = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuEdit"));
+            if (edit is null)
+            {
+                Thread.Sleep(250);
+            }
+        }
+
+        if (edit is null)
+        {
+            throw new InvalidOperationException("menu bar never composed");
+        }
+
+        Thread.Sleep(500);
+    }
+
+    internal static Bitmap CaptureSettings(Tolerance tolerance)
+    {
+        var previous = UiDpi.Enter();
+        try
+        {
+            return CaptureInner(tolerance, PrepareSettings);
+        }
+        finally
+        {
+            UiDpi.Exit(previous);
+        }
+    }
+
+    static void PrepareSettings(Window window)
+    {
+        AutomationElement? gear = null;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (gear is null && DateTime.UtcNow < deadline)
+        {
+            gear = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsButton"));
+            if (gear is null)
+            {
+                Thread.Sleep(250);
+            }
+        }
+
+        if (gear is null)
+        {
+            throw new InvalidOperationException("settings gear missing");
+        }
+
+        if (gear.Patterns.Invoke.IsSupported)
+        {
+            gear.Patterns.Invoke.Pattern.Invoke();
+        }
+        else
+        {
+            gear.Click();
+        }
+
+        deadline = DateTime.UtcNow.AddSeconds(10);
+        AutomationElement? heading = null;
+        while (heading is null && DateTime.UtcNow < deadline)
+        {
+            heading = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsHeading"));
+            if (heading is null)
+            {
+                Thread.Sleep(250);
+            }
+        }
+
+        if (heading is null)
+        {
+            throw new InvalidOperationException("settings page never opened");
+        }
+
+        Thread.Sleep(500);
+    }
+
+    static Bitmap CaptureInner(Tolerance tolerance, Action<Window>? prepare = null)
     {
         var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
         if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -56,6 +139,8 @@ internal static class UiCapture
             {
                 throw new InvalidOperationException("app window refused placement");
             }
+
+            prepare?.Invoke(window);
             var raw = Path.Combine(Path.GetTempPath(), $"golden-fresh-{Guid.NewGuid():N}.png");
             PinTopmost(window, true);
             Thread.Sleep(250);
