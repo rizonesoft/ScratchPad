@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §30 (§§21-22, §§24-26, §§28-29 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: none (§§21-22, §§24-26, §§28-30 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -81,7 +81,7 @@ track: N1
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
-|  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [ ]   |
+|  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
 
 ---
 
@@ -921,6 +921,12 @@ Why this section exists: §19 locks the file but the decrypted buffer still rest
 - [x] Commit: `"notepad-core: harden locked-tab residues"`
 
 **Test checkpoint:** refused takes, path-only persistence, and both disk scans are all driven in the room. Cheaper substitute that fails: plaintext asserted absent only where the test looked before.
+
+> **Verified:** 2026-09-16 | §30 | Locked-tab residues: takes refused with an inline note and no sidecar, session plus checkpoint path-only for locked tabs restoring as ghosts, sidecar and app-data scans clean of locked plaintext, pre-section residues and the dirty-drop consequence named in the encrypted-notes doc; UI LockedResidueTests 2/2, Unit capture 3/3, full gate Smoke 1/1 Unit 271/271 Protocol 35/35 UI 117 plus 1 pre-existing quarantine of 118, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate b04f7f0 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s30.md
+> **CRUD:** applicable | refusal wrote no sidecar (read back via dir absence); session plus checkpoint wrote path-only entries (read back via null Content plus the clean app-data scan); relaunch wrote a ghost (read back via empty box, no unlock prompt, still-locked bytes)
+> **Duration:** 22
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
