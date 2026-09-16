@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §26, §§28-30 (§§21-22, §24, §25 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§28-30 (§§21-22, §§24-26 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -77,7 +77,7 @@ track: N1
 |  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
 |  24   |   §24   | Share target | §1, §2 |  [x]   |
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [x]   |
-|  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
+|  26   |   §26   | Protocol handler | §4, §8 |  [x]   |
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
@@ -797,6 +797,12 @@ Why this section exists: links can open a path in the app.
 - [x] Commit: `"notepad-core: handle the protocol"`
 
 **Test checkpoint:** registration, open, and graceful decline are all driven in the room. Cheaper substitute that fails: links that open the wrong file.
+
+> **Verified:** 2026-09-16 | §26 | Protocol handler: scheme registered with backup and restore through verbs, links map to their carried path and open through the file path, malformed links open a bare window with nothing offered, shell-executed links proven end to end; UI ProtocolHandlerTests 5/5, Unit association plus args suites green, full gate Smoke 1/1 Unit 259/259 Protocol 35/35 UI 113 plus 1 pre-existing quarantine of 114, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate 11816b6 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s26.md
+> **CRUD:** applicable | register wrote the scheme keys (read back with marker, command, backup); unregister removed them and restored priors (read back absent); argv link wrote a file tab with bytes (read back); malformed links wrote a bare window (tab read back Untitled, no dialog); shell link wrote a file tab (name read back)
+> **Duration:** 100
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 27. Tab-Strip Chrome Parity Repair
 

@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **34 of 159 sections complete (21%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **35 of 159 sections complete (22%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -162,7 +162,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §22` | First-line titles for untitled tabs                                 |   3   |
 | [x] | `D01 T01 §24` | Share target                                                        |   3   |
 | [x] | `D01 T01 §25` | Jump list tasks                                                     |   5   |
-| [ ] | `D01 T01 §26` | Protocol handler                                                    |   4   |
+| [x] | `D01 T01 §26` | Protocol handler                                                    |   4   |
 | [x] | `D01 T01 §27` | Tab-strip chrome parity repair                                      |   7   |
 | [ ] | `D01 T01 §28` | UIA tab accessibility names                                         |   3   |
 | [ ] | `D01 T01 §29` | Open with explicit encoding                                         |   4   |
