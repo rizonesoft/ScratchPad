@@ -69,7 +69,7 @@ track: N1
 |  17   |   §17   | New-file templates | §2 |  [x]   |
 |  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [x]   |
 |  19   |   §19   | Encrypted notes | §4, §5 |  [x]   |
-|  20   |   §20   | Backup on save | §5 |  [ ]   |
+|  20   |   §20   | Backup on save | §5 |  [x]   |
 |  21   |   §21   | Reload prompt on external change | §4 |  [ ]   |
 |  22   |   §22   | First-line titles for untitled tabs | §2 |  [ ]   |
 |  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
@@ -637,6 +637,12 @@ Why this section exists: saves overwrite. A timestamped .bak sibling beside the 
 - [x] Commit: `"notepad-core: back up on save"`
 
 **Test checkpoint:** sibling, retention, and crash safety are all driven in the room. Cheaper substitute that fails: backups that pile up forever.
+
+> **Verified:** 2026-09-16 | §20 | Backup on save: every SaveFile and SaveBytes commit keeps the pre-save bytes in a timestamped sibling first, cap 5 with oldest-first rotation of own-pattern names, backup failures map through the §5 redirect map, rotation best-effort after the commit; UI BackupTests 3/3, Unit FileSaveBackupTests 5/5, full gate Smoke 1/1 Unit 224/224 Protocol 35/35 UI 93 plus 1 pre-existing quarantine of 94, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate f32b447 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s20.md
+> **CRUD:** applicable | each save wrote a sibling with the pre-save bytes (read back exact); rotation deleted the oldest past the cap (read back absent, foreign `.bak` untouched); the failed save wrote a sibling and left the file untouched (both read back); no temp debris left behind
+> **Duration:** 17
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 21. Reload Prompt on External Change
 
