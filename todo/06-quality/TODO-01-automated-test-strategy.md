@@ -49,6 +49,7 @@ Why this section exists: "automatic and complete" without a written definition i
 - [ ] `docs/test-strategy.md` defines the layers (unit, integration, UI, protocol, perf), each with owner, suite location, and bar. Done when: every layer names all three.
 - [ ] The doc defines what "complete" means per layer (behavior coverage, not line coverage alone). Done when: each definition is falsifiable.
 - [ ] The doc maps every domain's surfaces to the suites that prove them. Done when: no surface is unmapped.
+- [ ] The doc sets the platform rule for Windows-semantics unit tests (JumpList, protocol-association, launch-args path suites): they skip honestly or live in a Windows-only suite, and `dotnet test src/Notepad.Neutral.slnf` is green on Linux. Done when: the neutral suite passes on Linux with every platform skip named. -> SOURCE: phase-1 run 4 (2026-09-16), 16 Linux failures while the same suites stand 285/285 on Windows.
 - [ ] Commit: `"quality: write the automated test strategy"`
 
 **Test checkpoint:** A reviewer verifies every surface maps to a suite and every bar is falsifiable; gaps are filed, not waived. Cheaper substitute that fails: a strategy that says "test everything".
