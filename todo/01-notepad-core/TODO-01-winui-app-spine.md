@@ -57,7 +57,7 @@ track: N1
 |  13   |   §13   | Pinned tabs | §2, §6 |  [x]   |
 |  14   |   §14   | Text statistics panel | §1 |  [x]   |
 |  15   |   §15   | Distraction-free focus mode | §1, D01 T02 §1 |  [ ]   |
-|  16   |   §16   | File snapshots | §5, §7 |  [ ]   |
+|  16   |   §16   | File snapshots | §5, §7 |  [x]   |
 |  17   |   §17   | New-file templates | §2 |  [ ]   |
 |  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [ ]   |
 |  19   |   §19   | Encrypted notes | §4, §5 |  [ ]   |
@@ -500,17 +500,23 @@ Why this section exists: named local versions with one-click restore and no clou
 
 **Treatment:** Named snapshots in a versions list; one-click restore with a dirty check before overwriting. Dirty-tab content arrives through an injected provider until D02 T01 §1 binds the real buffer. **Decided 2026-09-16 (§16 validation):** the store is `<filename>.snapshots/` beside the file holding `manifest.json` (nextId plus name/createdUtc/bytes/spec entries) and `snap-{id:0000}.bin` content files (cost of moving: one const plus a migrator); snapshot bytes are exactly what `FileSave.SaveFile` would write for the buffer under the tab's spec, restore decodes through `FileOpen` detection; retention is 10 per file with oldest-first eviction at take (cost: one const plus the drives); the panel opens on Ctrl+Shift+H (free in-tree, H for history) with the menu trigger deferred to the menu owner per its engine-trigger rule (contract: command ShowSnapshots, always enabled, handler MainWindow.ShowSnapshotsPanelAsync; recorded both sides); untitled tabs get a save-first note with Take disabled (a state, not a deferral); restore replaces buffer text with natural dirty tracking (identical restores stay clean; encoding follows the tab); names are non-empty, at most 80 chars, unique per file case-insensitively, defaulting to UTC `yyyy-MM-dd HH:mm`; restore over a dirty buffer reuses the §7 prompt (Save saves then restores, Don't-save restores, Cancel aborts). Cheaper substitute that fails the checkpoint: an untracked .bak pile.
 
-**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/StatsDialog (default WinUI styling, ListView for the versions). **Corrected 2026-09-16 (§16 validation):** no shared list styles exist in the tree (the §6 list treatment is prose only; recents rendering is deferred to the menu owner); the dialog follows the existing code-built dialog pattern instead. Do not invent a second versions treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/StatsDialog (default WinUI styling, ListView for the versions). **Corrected 2026-09-16 (§16 validation):** no shared list styles exist in the tree (the §6 list treatment is prose only; recents rendering is deferred to the menu owner); the dialog follows the existing code-built dialog pattern instead. **Corrected 2026-09-16 (§16 review round 3):** the versions render as one-click restore buttons in a StackPanel (at most 10 rows), not a ListView; buttons satisfy item 2's "restores on click" directly while a ListView would need selection plus a separate restore control. Do not invent a second versions treatment.
 
 **Needs:** Windows host (build/test)
 
 - [x] Take a named snapshot of the current file. Done when: the snapshot stores content byte-identical. **Driven 2026-09-16:** `TakeStoresSaveIdenticalBytes` (take bytes equal a `FileSave` reference) plus `TakeStoresBytesAndListsVersion` (take lists, stored bytes decode to the buffer), green.
 - [x] The versions list shows snapshots and restores on click. Done when: restore replaces content under host drive. **Driven 2026-09-16:** `RestoreDontSaveReplacesBuffer`, `RestoreSaveWritesThenRestores`, and `RestoreOnCleanBufferSkipsPrompt` (one-click restore buttons, sequential reshow flow), green.
-- [x] Restore over dirty content prompts first through §7. Done when: the prompt blocks a blind overwrite. **Driven 2026-09-16:** the Save/Don't-save/Cancel matrix across `RestoreSaveWritesThenRestores`, `RestoreDontSaveReplacesBuffer`, and `RestoreCancelKeepsBuffer` (real `SavePromptDialog`, shown sequentially), green.
+- [x] Restore over dirty content prompts first through §7. Done when: the prompt blocks a blind overwrite. **Driven 2026-09-16:** the Save/Don't-save/Cancel matrix across `RestoreSaveWritesThenRestores`, `RestoreDontSaveReplacesBuffer`, and `RestoreCancelKeepsBuffer` (real `SavePromptDialog`, shown sequentially) plus `RestoreSaveFailureAbortsWithWorkPreserved` (read-only file: Save redirects, restore aborts, buffer and disk untouched), green.
 - [x] Retention caps the snapshot count sanely. Done when: the cap is enforced and documented. **Driven 2026-09-16:** `RetentionEvictsOldestPastTen` in unit (11 takes hold 10, oldest bytes deleted) and in UI (11 takes in the room, s01 gone, s11 kept, bin deleted), green. Cap documented in-dialog ("Keeps the last 10 versions.").
-- [ ] Commit: `"notepad-core: snapshot files"`
+- [x] Commit: `"notepad-core: snapshot files"` (`44404da` plus round-1 `089922a` plus round-2 `a628db3`).
 
 **Test checkpoint:** snapshot, restore, dirty prompt, and retention are all driven in the room. Cheaper substitute that fails: restore that overwrites blindly.
+
+> **Verified:** 2026-09-16 | §16 | File snapshots: Ctrl+Shift+H dialog with named takes byte-identical to FileSave output, one-click restore buttons with sequential §7 dirty prompt (Save saves then restores, Don't-save restores, Cancel aborts, save-failure aborts with work preserved), retention cap 10 with oldest-first eviction, menu trigger deferred to the menu owner with a recorded contract; SnapshotTests 8/8, SnapshotStoreTests 8/8, full gate Smoke 1/1 Unit 190/190 Protocol 35/35 UI 74 plus 1 pre-existing quarantine of 75, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1-3, candidate 44404da plus 089922a plus a628db3 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s16.md
+> **CRUD:** applicable | take wrote a snap bin plus manifest entry (read back via list plus decode); restore wrote buffer text (read back via the room); eviction deleted the oldest bin (read back via absence); failed save wrote nothing (buffer and disk read back unchanged); settings and session untouched by the dialog
+> **Duration:** 34
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 17. New-File Templates
 
