@@ -36,7 +36,7 @@ track: N1
 
 **Adjacency:** list=applicable @ D01 T01 §6; document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=applicable @ D01 T01 §4; reverse=applicable @ D01 T01 §7
 
-**Adjacency rationale:** The tab bar is the list; open/save is the exchange; print is the document; close-without-save and crash recovery are the reversals. Settings live in T02 with their consumer named there. The §16 versions list and the §17 template picker follow the §6 list treatment.
+**Adjacency rationale:** The tab bar is the list; open/save is the exchange; print is the document; close-without-save and crash recovery are the reversals. Settings live in T02 with their consumer named there. The §16 versions list follows the code-built ContentDialog pattern (**Corrected 2026-09-16 (§16 validation):** no shared list styles exist) and the §17 template picker follows the §6 list treatment.
 
 ## Implementation Order
 
@@ -490,22 +490,24 @@ Why this section exists: writers who measure want top words, sentence lengths, a
 
 ## 16. File Snapshots
 
+> **Started:** 2026-09-16T00:22:00Z
+
 Why this section exists: named local versions with one-click restore and no cloud.
 
 **Fidelity:** new build, no baseline (stock Notepad versions nothing).
 
 **Job:** The user can snapshot and restore named versions. Consumer: the file store, which keeps versions beside the file.
 
-**Treatment:** Named snapshots in a versions list; one-click restore with a dirty check before overwriting. Dirty-tab content arrives through an injected provider until D02 T01 §1 binds the real buffer. Cheaper substitute that fails the checkpoint: an untracked .bak pile.
+**Treatment:** Named snapshots in a versions list; one-click restore with a dirty check before overwriting. Dirty-tab content arrives through an injected provider until D02 T01 §1 binds the real buffer. **Decided 2026-09-16 (§16 validation):** the store is `<filename>.snapshots/` beside the file holding `manifest.json` (nextId plus name/createdUtc/bytes/spec entries) and `snap-{id:0000}.bin` content files (cost of moving: one const plus a migrator); snapshot bytes are exactly what `FileSave.SaveFile` would write for the buffer under the tab's spec, restore decodes through `FileOpen` detection; retention is 10 per file with oldest-first eviction at take (cost: one const plus the drives); the panel opens on Ctrl+Shift+H (free in-tree, H for history) with the menu trigger deferred to the menu owner per its engine-trigger rule (contract: command ShowSnapshots, always enabled, handler MainWindow.ShowSnapshotsPanelAsync; recorded both sides); untitled tabs get a save-first note with Take disabled (a state, not a deferral); restore replaces buffer text with natural dirty tracking (identical restores stay clean; encoding follows the tab); names are non-empty, at most 80 chars, unique per file case-insensitively, defaulting to UTC `yyyy-MM-dd HH:mm`; restore over a dirty buffer reuses the §7 prompt (Save saves then restores, Don't-save restores, Cancel aborts). Cheaper substitute that fails the checkpoint: an untracked .bak pile.
 
-**Chrome:** Consume the shared list styles. Do not invent a second versions treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/StatsDialog (default WinUI styling, ListView for the versions). **Corrected 2026-09-16 (§16 validation):** no shared list styles exist in the tree (the §6 list treatment is prose only; recents rendering is deferred to the menu owner); the dialog follows the existing code-built dialog pattern instead. Do not invent a second versions treatment.
 
 **Needs:** Windows host (build/test)
 
-- [ ] Take a named snapshot of the current file. Done when: the snapshot stores content byte-identical.
-- [ ] The versions list shows snapshots and restores on click. Done when: restore replaces content under host drive.
-- [ ] Restore over dirty content prompts first through §7. Done when: the prompt blocks a blind overwrite.
-- [ ] Retention caps the snapshot count sanely. Done when: the cap is enforced and documented.
+- [x] Take a named snapshot of the current file. Done when: the snapshot stores content byte-identical. **Driven 2026-09-16:** `TakeStoresSaveIdenticalBytes` (take bytes equal a `FileSave` reference) plus `TakeStoresBytesAndListsVersion` (take lists, stored bytes decode to the buffer), green.
+- [x] The versions list shows snapshots and restores on click. Done when: restore replaces content under host drive. **Driven 2026-09-16:** `RestoreDontSaveReplacesBuffer`, `RestoreSaveWritesThenRestores`, and `RestoreOnCleanBufferSkipsPrompt` (one-click restore buttons, sequential reshow flow), green.
+- [x] Restore over dirty content prompts first through §7. Done when: the prompt blocks a blind overwrite. **Driven 2026-09-16:** the Save/Don't-save/Cancel matrix across `RestoreSaveWritesThenRestores`, `RestoreDontSaveReplacesBuffer`, and `RestoreCancelKeepsBuffer` (real `SavePromptDialog`, shown sequentially), green.
+- [x] Retention caps the snapshot count sanely. Done when: the cap is enforced and documented. **Driven 2026-09-16:** `RetentionEvictsOldestPastTen` in unit (11 takes hold 10, oldest bytes deleted) and in UI (11 takes in the room, s01 gone, s11 kept, bin deleted), green. Cap documented in-dialog ("Keeps the last 10 versions.").
 - [ ] Commit: `"notepad-core: snapshot files"`
 
 **Test checkpoint:** snapshot, restore, dirty prompt, and retention are all driven in the room. Cheaper substitute that fails: restore that overwrites blindly.

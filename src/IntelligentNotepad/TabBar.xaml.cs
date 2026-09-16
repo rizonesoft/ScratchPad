@@ -863,7 +863,7 @@ public sealed partial class TabBar : UserControl
     // `notepad-save-prompt-path-n11.2607.14.0-win25h2.png`) and an
     // untitled tab by "{tab-name}.txt" (double-confirmed: §3 FIRST to
     // FIRST.txt plus the §7 FIRSTLINE7 probe).
-    static string PromptName(Tab tab) => tab.IsUntitled ? tab.DisplayName + ".txt" : tab.FilePath!;
+    internal static string PromptName(Tab tab) => tab.IsUntitled ? tab.DisplayName + ".txt" : tab.FilePath!;
 
     async Task<SaveAnswer> AskSaveAsync(Tab tab)
     {

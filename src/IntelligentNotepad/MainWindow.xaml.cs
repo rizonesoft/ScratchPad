@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private TabBar? tabBar;
     bool statsDialogOpen;
+    bool snapshotsDialogOpen;
 
     private MiddleClickHook? middleClick;
 
@@ -98,6 +99,9 @@ public sealed partial class MainWindow : Window, IDisposable
             // D01 T01 §14: stats panel. Ctrl+Shift+G is free in-tree with no
             // stock meaning; the menu trigger is deferred to D01 T02 §1.
             AddAccel(root, VirtualKey.G, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowStatsPanelAsync(); });
+            // D01 T01 §16: file snapshots. Ctrl+Shift+H is free in-tree
+            // (H for history); the menu trigger is deferred to D01 T02 §1.
+            AddAccel(root, VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowSnapshotsPanelAsync(); });
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
@@ -419,6 +423,67 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         return tabBar.ContentFor(active).Text ?? string.Empty;
+    }
+
+    // D01 T01 §16: named local versions over the active tab. The dialog
+    // takes through SnapshotStore and restores through FileOpen detection;
+    // MainWindow only injects the buffer, the dirty flag, the save path
+    // (§5 engine plus ApplySave, mirroring the §7 save branch), and the §7
+    // prompt name.
+    internal async Task ShowSnapshotsPanelAsync()
+    {
+        if (snapshotsDialogOpen || Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        snapshotsDialogOpen = true;
+        try
+        {
+            Tab? active = tabs.ActiveTab;
+            SaveSpec spec = active is null
+                ? new SaveSpec("UTF-8", false, "CRLF")
+                : new SaveSpec(active.Encoding, active.HasBom, active.LineEnding);
+            var dialog = new SnapshotsDialog(
+                active?.FilePath,
+                ActiveTabText,
+                () => active?.IsDirty == true,
+                spec,
+                text => SaveSnapshotBuffer(active, text),
+                restored =>
+                {
+                    if (active is not null && tabBar is not null)
+                    {
+                        tabBar.ContentFor(active).Text = restored;
+                    }
+                },
+                () => active is null ? "Untitled.txt" : TabBar.PromptName(active))
+            {
+                XamlRoot = xamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            snapshotsDialogOpen = false;
+        }
+    }
+
+    static SaveResult SaveSnapshotBuffer(Tab? tab, string text)
+    {
+        if (tab?.FilePath is null)
+        {
+            return new SaveFailed("No file path.");
+        }
+
+        var spec = new SaveSpec(tab.Encoding, tab.HasBom, tab.LineEnding);
+        SaveResult result = FileSave.SaveFile(tab.FilePath, text, spec);
+        if (result is SaveSuccess)
+        {
+            tab.ApplySave(tab.FilePath, spec);
+        }
+
+        return result;
     }
 
     // The hook reports physical client pixels; the strip hit-tests DIP.
