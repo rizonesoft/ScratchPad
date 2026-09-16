@@ -251,7 +251,7 @@ sealed partial class MainWindow : IMenuHost
     {
         try
         {
-            return ShellSettings.Load().RecentFiles;
+            return SettingsStore.Shared.Current.RecentFiles;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -263,9 +263,7 @@ sealed partial class MainWindow : IMenuHost
     {
         try
         {
-            ShellSettings fresh = ShellSettings.Load();
-            RecentFiles.Clear(fresh.RecentFiles);
-            fresh.Save();
+            SettingsStore.Shared.Update(fresh => RecentFiles.Clear(fresh.RecentFiles));
             App.RefreshJumpList();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

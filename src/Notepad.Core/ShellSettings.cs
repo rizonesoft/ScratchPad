@@ -3,16 +3,12 @@ using System.Text.Json;
 
 namespace Notepad.Core;
 
-// Local persistence seam for shell state, owned by D01 T01 §1 (§9 adds
-// openin.mode, §6 adds whenstarts.mode plus recentfiles, §8 adds
-// pinnedfiles) and adopted by
-// the D01 T02 §2 settings store when it lands: the store reads these keys
-// (same file, same names) and takes over writes.
-// Keys: window.x/y/width/height (int), app.theme ("system", "light",
-// "dark"), whatsnew.seen (bool), openin.mode ("new-tab", "new-window"),
-// whenstarts.mode ("continue", "fresh"), recentfiles (MRU-first paths),
-// pinnedfiles (pinned-first paths, oldest first).
-// jumplist.hash (feed fingerprint for commit-on-change).
+// Local persistence seam for shell state, owned by D01 T01 §1 and adopted
+// by the D01 T02 §2 settings store: the store reads these keys (same
+// file, same names) and owns the only write (Save delegates to
+// SettingsStore.WriteSnapshot). Key list, consumers, defaults, and default
+// sources live in docs/settings-schema.md, which replaces the sketch that
+// used to sit here.
 public sealed class ShellSettings
 {
     public int X { get; set; } = 50;
@@ -24,6 +20,32 @@ public sealed class ShellSettings
     public int Height { get; set; } = 650;
 
     public string Theme { get; set; } = "system";
+
+    // Store schema version, owned by D01 T02 §2. Absent (0) means the
+    // unversioned file §2 inherited; 1 is current. Migration stamps the
+    // version and carries every key forward unchanged.
+    public int Version { get; set; }
+
+    // Editor font, owned by D01 T02 §2, consumed by §3 and D02 T01.
+    // Defaults recorded from stock 11.2607.14.0 (settings-page UIA dump
+    // plus documented reset guides): Consolas / Regular / 11.
+    public string FontFamily { get; set; } = "Consolas";
+
+    public string FontStyle { get; set; } = "Regular";
+
+    public int FontSize { get; set; } = 11;
+
+    // Word wrap on by default (stock settings capture); consumed by D02.
+    public bool WordWrap { get; set; } = true;
+
+    // Status bar visible by default (stock view-menu capture shows it
+    // checked); consumed by D01 T02 §4.
+    public bool ShowStatusBar { get; set; } = true;
+
+    // Default zoom percent for fresh tabs, owned by D01 T02 §2. Stock
+    // exposes no zoom setting; 100 is a recorded default (cost: one int).
+    // Consumed by D02 T01 §5.
+    public int ZoomDefault { get; set; } = 100;
 
     // Stock "Opening files" value, normalized through OpenInRouting: the
     // settings capture selects "Open in a new tab". The default matches the
@@ -56,30 +78,21 @@ public sealed class ShellSettings
 
     public bool WhatsNewSeen { get; set; }
 
+    // Forward-compatibility bag, owned by D01 T02 §2: unknown JSON keys
+    // (later AI settings and owners' keys) round-trip untouched instead of
+    // dropping on the first save after an upgrade.
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1002", Justification = "System.Text.Json extension-data shape; Dictionary is the required type.")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization.")]
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
     public static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "IntelligentNotepad", "settings.json");
 
-    public static ShellSettings Load()
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<ShellSettings>(File.ReadAllText(FilePath)) ?? new ShellSettings();
-        }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-        {
-            return new ShellSettings();
-        }
-    }
+    public static ShellSettings Load() => SettingsStore.LoadFrom(FilePath).Settings;
 
-    public void Save()
-    {
-        string path = FilePath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(this));
-        File.Move(temp, path, overwrite: true);
-    }
+    public void Save() => SettingsStore.WriteSnapshot(this);
 }
 
 // Pinned-file list behavior, owned by D01 T01 §13. Pins are oldest-first

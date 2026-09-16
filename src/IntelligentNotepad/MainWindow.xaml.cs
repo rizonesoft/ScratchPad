@@ -17,7 +17,6 @@ public sealed partial class MainWindow : Window, IDisposable
 {
     private const string AppName = "Intelligent Notepad";
 
-    private readonly ShellSettings settings = ShellSettings.Load();
 
     private readonly TabModel tabs = new();
 
@@ -95,7 +94,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
         if (Content is FrameworkElement root)
         {
-            root.RequestedTheme = settings.Theme switch
+            root.RequestedTheme = SettingsStore.Shared.Current.Theme switch
             {
                 "light" => ElementTheme.Light,
                 "dark" => ElementTheme.Dark,
@@ -366,9 +365,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 // window tab-closes against the same file.
                 if (tab.FilePath is not null)
                 {
-                    ShellSettings fresh = ShellSettings.Load();
-                    RecentFiles.NoteClosed(fresh.RecentFiles, tab.FilePath);
-                    fresh.Save();
+                    SettingsStore.Shared.Update(fresh => RecentFiles.NoteClosed(fresh.RecentFiles, tab.FilePath));
                     App.RefreshJumpList();
                     MenuRegion.RefreshRecents();
                 }
@@ -764,9 +761,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RestoreGeometry()
     {
-        int width = Math.Max(100, settings.Width);
-        int height = Math.Max(100, settings.Height);
-        AppWindow.MoveAndResize(new RectInt32(settings.X, settings.Y, width, height));
+        ShellSettings live = SettingsStore.Shared.Current;
+        int width = Math.Max(100, live.Width);
+        int height = Math.Max(100, live.Height);
+        AppWindow.MoveAndResize(new RectInt32(live.X, live.Y, width, height));
     }
 
     private void OnFirstLoaded(object sender, RoutedEventArgs e)
@@ -781,17 +779,19 @@ public sealed partial class MainWindow : Window, IDisposable
         // never activate. The exe icon (ApplicationIcon) covers the taskbar.
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "notepad.ico"));
         InstallMiddleClickHook();
-        if (settings.WhatsNewSeen || !firstWindow)
+        if (SettingsStore.Shared.Current.WhatsNewSeen || !firstWindow)
         {
             return;
         }
 
         DispatcherQueue.TryEnqueue(async () =>
         {
+            // The notice runs first and resumes on the UI thread
+            // (ConfigureAwait(true)): the dialogs need the UI thread, while
+            // the trailing Update is a file write that runs anywhere.
+            await ShowCorruptSettingsNoticeAsync().ConfigureAwait(true);
             await ShowWhatsNewAsync().ConfigureAwait(false);
-            ShellSettings fresh = ShellSettings.Load();
-            fresh.WhatsNewSeen = true;
-            fresh.Save();
+            SettingsStore.Shared.Update(fresh => fresh.WhatsNewSeen = true);
         });
     }
 
@@ -811,19 +811,20 @@ public sealed partial class MainWindow : Window, IDisposable
             app.SnapshotSession(this);
         }
 
-        // Geometry merges onto freshly loaded state: with several windows,
-        // each holds a stale snapshot, and a whole-object save would clobber
-        // a sibling's newer flag (notably WhatsNewSeen). Last-closed still
-        // wins the geometry.
+        // Geometry writes through the shared store: every window mutates
+        // the same live object, so a sibling's newer flag (notably
+        // WhatsNewSeen) can no longer be clobbered by a stale snapshot.
+        // Last-closed still wins the geometry.
         Dispose();
         PointInt32 position = AppWindow.Position;
         SizeInt32 size = AppWindow.Size;
-        ShellSettings fresh = ShellSettings.Load();
-        fresh.X = position.X;
-        fresh.Y = position.Y;
-        fresh.Width = size.Width;
-        fresh.Height = size.Height;
-        fresh.Save();
+        SettingsStore.Shared.Update(fresh =>
+        {
+            fresh.X = position.X;
+            fresh.Y = position.Y;
+            fresh.Width = size.Width;
+            fresh.Height = size.Height;
+        });
     }
 
     private async void WhatsNewButton_Click(object sender, RoutedEventArgs e)
@@ -839,6 +840,26 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         var dialog = new WhatsNewDialog { XamlRoot = xamlRoot };
+        await dialog.ShowAsync();
+    }
+
+    // D01 T02 §2: the store reset to defaults on a corrupt file, so the
+    // first window says so once at startup. Runs inside the first-window
+    // gate above, before the whatsnew dialog so the reset is explained
+    // before anything else; must run on the UI thread (see call site).
+    private async Task ShowCorruptSettingsNoticeAsync()
+    {
+        if (!SettingsStore.Shared.WasResetFromCorrupt)
+        {
+            return;
+        }
+
+        if (Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        var dialog = new CorruptSettingsDialog { XamlRoot = xamlRoot };
         await dialog.ShowAsync();
     }
 }

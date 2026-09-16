@@ -569,17 +569,17 @@ public sealed partial class TabBar : UserControl
         }
 
         tab.IsPinned = !tab.IsPinned;
-        ShellSettings settings = ShellSettings.Load();
-        if (tab.IsPinned)
+        SettingsStore.Shared.Update(settings =>
         {
-            PinnedFiles.NotePinned(settings.PinnedFiles, tab.FilePath);
-        }
-        else
-        {
-            PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath);
-        }
-
-        settings.Save();
+            if (tab.IsPinned)
+            {
+                PinnedFiles.NotePinned(settings.PinnedFiles, tab.FilePath);
+            }
+            else
+            {
+                PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath);
+            }
+        });
         PinToggled?.Invoke(this, EventArgs.Empty);
     }
 
@@ -602,9 +602,7 @@ public sealed partial class TabBar : UserControl
             }
         }
 
-        ShellSettings settings = ShellSettings.Load();
-        PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath);
-        settings.Save();
+        SettingsStore.Shared.Update(settings => PinnedFiles.NoteUnpinned(settings.PinnedFiles, tab.FilePath));
         PinToggled?.Invoke(this, EventArgs.Empty);
     }
 

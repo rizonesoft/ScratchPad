@@ -41,7 +41,7 @@ public partial class App : Application
         mainInstance.Activated += OnAppRedirected;
         // D01 T01 §6: continue mode reopens the recorded window set; fresh
         // mode, an empty session, or a corrupt one opens one clean window.
-        ShellSettings settings = ShellSettings.Load();
+        ShellSettings settings = SettingsStore.Shared.Current;
         SessionData session = SessionData.Load();
         if (WhenStartsRouting.Route(settings.WhenStarts) == StartupMode.ContinueSession
             && session.Windows.Count > 0
@@ -97,7 +97,7 @@ public partial class App : Application
     internal void SnapshotSession(MainWindow closing)
     {
         ArgumentNullException.ThrowIfNull(closing);
-        if (WhenStartsRouting.Route(ShellSettings.Load().WhenStarts) == StartupMode.FreshWindow)
+        if (WhenStartsRouting.Route(SettingsStore.Shared.Current.WhenStarts) == StartupMode.FreshWindow)
         {
             SessionData.Delete();
             return;
@@ -173,7 +173,7 @@ public partial class App : Application
     // previous checkpoint or nothing (both restore clean).
     internal void CheckpointAll()
     {
-        StartupMode mode = WhenStartsRouting.Route(ShellSettings.Load().WhenStarts);
+        StartupMode mode = WhenStartsRouting.Route(SettingsStore.Shared.Current.WhenStarts);
         var data = new SessionData();
         foreach (MainWindow window in windows.OfType<MainWindow>())
         {

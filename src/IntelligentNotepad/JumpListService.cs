@@ -31,14 +31,14 @@ internal static class JumpListService
 
     // Commits the feed when it differs from the stored fingerprint.
     // Returns true when a commit landed; API failures return false.
-    public static bool RefreshIfChanged(ShellSettings settings, string exePath)
+    public static bool RefreshIfChanged(SettingsStore store, string exePath)
     {
-        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(store);
         ArgumentException.ThrowIfNullOrEmpty(exePath);
         EnsureAppId();
-        IReadOnlyList<Notepad.Core.JumpListItem> feed = JumpListFeed.Build(settings.PinnedFiles, settings.RecentFiles);
+        IReadOnlyList<Notepad.Core.JumpListItem> feed = JumpListFeed.Build(store.Current.PinnedFiles, store.Current.RecentFiles);
         string fingerprint = JumpListFeed.Fingerprint(feed);
-        if (string.Equals(fingerprint, settings.JumpListHash, StringComparison.Ordinal))
+        if (string.Equals(fingerprint, store.Current.JumpListHash, StringComparison.Ordinal))
         {
             return false;
         }
@@ -53,8 +53,7 @@ internal static class JumpListService
             return false;
         }
 
-        settings.JumpListHash = fingerprint;
-        settings.Save();
+        store.Update(current => current.JumpListHash = fingerprint);
         return true;
     }
 

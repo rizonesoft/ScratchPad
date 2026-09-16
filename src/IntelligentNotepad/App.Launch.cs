@@ -158,7 +158,7 @@ partial class App
     {
         try
         {
-            OpenTarget target = OpenInRouting.Route(ShellSettings.Load().OpenIn);
+            OpenTarget target = OpenInRouting.Route(SettingsStore.Shared.Current.OpenIn);
             MainWindow window;
             Tab? spare = null;
             if (target == OpenTarget.NewWindow)
@@ -211,7 +211,7 @@ partial class App
         string? exe = Environment.ProcessPath;
         if (!string.IsNullOrEmpty(exe))
         {
-            JumpListService.RefreshIfChanged(ShellSettings.Load(), exe);
+            JumpListService.RefreshIfChanged(SettingsStore.Shared, exe);
         }
     }
 

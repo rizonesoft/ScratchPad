@@ -16,6 +16,8 @@ track: N1
 > **Current state:** Only the `D01 T01` window shell and menu host exist. No menu items, no settings store, no status bar. Every section here is UI and carries Fidelity.
 >
 > **Corrected 2026-09-15 (phase-1 run 3):** `D01 T01` has shipped §§1-9 and §27 since, so the shell, tab model and bar, file engines, session restore, prompts, multi-window, and chrome repair all exist behind the T01-whole gate this file waits on; §8 is implemented but unstamped. Still true: no menu items, no settings store, no status bar.
+>
+> **Corrected 2026-09-16 (§2 validation):** `ShellSettings` (settings.json seam: geometry, theme, opening, startup, recents, pins, jump-list hash, whatsnew) exists since D01 T01; "no settings store" now means no single-writer store. §2 adopts its keys (same file, same names, per the header note) and takes over writes; D01 T02 §1 has shipped since (menu bar with all items).
 
 ## Inputs
 
@@ -90,16 +92,18 @@ Why this section exists: a clone with a wrong menu is not a clone. Every item ex
 
 ## 2. Settings Store with One Writer
 
+> **Started:** 2026-09-16T10:04:31Z
+
 Why this section exists: settings with two writers disagree. One store, one writer, every reader through it.
 
 **Groomed 2026-09-13:** Notepad audit: fresh-install default values are now recorded from the capture (research conflicts on wrap/statusbar defaults, so the capture decides).
 
-- [ ] `src/Notepad.Core/SettingsStore.cs` owns and records every tunable: theme, font, wrap, zoom default, and later AI settings. Done when: no other file writes a setting.
-- [ ] The store persists atomically and migrates old versions forward. Done when: a corrupt store can restore defaults with a notice, driven in tests.
-- [ ] Readers observe changes live; nothing caches a stale copy. Done when: a change propagates to all readers in the test.
-- [ ] The store's schema is documented with each key's consumer. Done when: `docs/settings-schema.md` names every key and its reader.
-- [ ] Fresh-install defaults for every key (font family, style, size; wrap; status bar; theme) match a clean Notepad install exactly and are recorded from the capture. Done when: a clean-profile drive matches the recorded values.
-- [ ] Commit: `"notepad-core: add the settings store"`
+- [x] `src/Notepad.Core/SettingsStore.cs` owns and records every tunable: theme, font, wrap, zoom default, and later AI settings. Done when: no other file writes a setting. **Recorded 2026-09-16 (§2 validation):** adopts the `ShellSettings` keys (geometry, theme, opening, startup, recents, pins, jump-list hash, whatsnew; same file, same names) and adds font family/style/size, word wrap, status-bar visibility, and zoom default; AI rides `JsonExtensionData` passthrough with no AI keys yet. One writer means one write implementation (`SettingsStore.WriteSnapshot`, which `ShellSettings.Save` delegates to so test seeding keeps working); production mutates only through `Update`, verified by review grep.
+- [x] The store persists atomically and migrates old versions forward. Done when: a corrupt store can restore defaults with a notice, driven in tests. **Decided 2026-09-16 (§2 validation):** no version field exists, so v0 is today's unversioned file and §2 adds `Version` (current v1); migration runs in memory and persists lazily on the next `Update`; unknown future versions reset like corrupt with no backup kept (settings are not user data; cost of adding a backup: one `.bak` write). The notice is the store's `WasResetFromCorrupt` flag surfaced once at startup through a `CorruptSettingsDialog` in our wording (honest-non-parity: stock has no such notice).
+- [x] Readers observe changes live; nothing caches a stale copy. Done when: a change propagates to all readers in the test. **Recorded 2026-09-16 (§2 validation):** no production reader needs live updates today (no settings UI exists; menus re-read per open), so §2 ships the `Changed` mechanism proven with test readers plus a reentrancy guard, and §3 with the D02 owners subscribe on landing; the one cached copy (`MainWindow.settings` field) is removed here.
+- [x] The store's schema is documented with each key's consumer. Done when: `docs/settings-schema.md` names every key and its reader. **Recorded 2026-09-16 (§2 validation):** the doc covers adopted plus new keys with consumers, defaults, and default sources; observed stock keys without a Phase 1 home are listed as future (spellcheck/autocorrect to D02 T03, formatting to D02 T04, writing tools and the recent-files toggle unowned).
+- [x] Fresh-install defaults for every key (font family, style, size; wrap; status bar; theme) match a clean Notepad install exactly and are recorded from the capture. Done when: a clean-profile drive matches the recorded values. **Probed 2026-09-16 (§2 validation, stock 11.2607.14.0 settings page plus UIA dumps):** font Consolas/Regular/11 (dropdown selections read live; cross-checked against documented reset guides), word wrap on (settings capture), status bar on (checked in the view-menu capture), theme "Use system setting" (selected radio), opening new tab and when-starts continue (selected; match current defaults). Zoom default 100 is a recorded default (stock exposes no zoom setting; cost: one int). Freshness caveat: the operator profile, not a clean install; every value sits at its canonical default and none looks customized.
+- [x] Commit: `"notepad-core: add the settings store"`
 
 **Test checkpoint:** `dotnet test --filter SettingsStore` green, including corrupt-store reset and live propagation. Cheaper substitute that fails: settings scattered across the registry and config files.
 
