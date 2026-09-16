@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§28-30 (§§21-22, §§24-26 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§29-30 (§§21-22, §§24-26, §28 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -79,7 +79,7 @@ track: N1
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [x]   |
 |  26   |   §26   | Protocol handler | §4, §8 |  [x]   |
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
-|  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
+|  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [ ]   |
 
@@ -857,6 +857,12 @@ Why this section exists: stock tab UIA names carry ". Modified." / ". Unmodified
 - [x] Commit: `"notepad-core: name tabs for accessibility"`
 
 **Test checkpoint:** stock-matching names and live tracking are driven in the room. Cheaper substitute that fails: accessible names that lie about dirty state.
+
+> **Verified:** 2026-09-16 | §28 | UIA tab accessibility names: stock suffixes on both SetName sites tracking the dirty model live, suite-wide asserts migrated to settled suffixed names; UI TabAccessibilityTests 2/2, Unit formatter 2/2, full gate Smoke 1/1 Unit 259/259 Protocol 35/35 UI 115 plus 1 pre-existing quarantine of 116, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate 1475bbb -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s28.md
+> **CRUD:** applicable | rewire wrote suffixed names (read back literal both halves); edit wrote the Modified suffix (read back); save plus reopen wrote the Unmodified suffix (read back)
+> **Duration:** 120
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 29. Open with Explicit Encoding
 
