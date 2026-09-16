@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§29-30 (§§21-22, §§24-26, §28 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §30 (§§21-22, §§24-26, §§28-29 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -80,7 +80,7 @@ track: N1
 |  26   |   §26   | Protocol handler | §4, §8 |  [x]   |
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
-|  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
+|  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [ ]   |
 
 ---
@@ -890,6 +890,12 @@ Why this section exists: stock's Open dialog offers an Encoding picker defaultin
 - [x] Commit: `"notepad-core: open with explicit encoding"`
 
 **Test checkpoint:** option list, forced decode, auto-detect equivalence, and save handoff are all driven in the room. Cheaper substitute that fails: a picker that detects anyway.
+
+> **Verified:** 2026-09-16 | §29 | Explicit-encoding open: option list pinned verbatim off the expanded-picker capture (Auto-Detect plus the save list), forced decode bypassing detection with replacement fallback and match-only BOM strip, null path record-equal to §4 across all 12 fixtures, forced name flowing open to tab to save; Unit FileOpenEncodingTests 9/9, full gate Smoke 1/1 Unit 268/268 Protocol 35/35 UI 115 plus 1 pre-existing quarantine of 116, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate 5a7bf3a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s29.md
+> **CRUD:** applicable | forced opens wrote decoded text plus the recorded name (read back via exact-text, contains-replacement, and equality asserts); unknown names wrote nothing (read back via the throw); temp-file open plus tab plus save wrote forced-encoding bytes (read back exact)
+> **Duration:** 60
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 30. Locked-Tab Residue Hardening
 
