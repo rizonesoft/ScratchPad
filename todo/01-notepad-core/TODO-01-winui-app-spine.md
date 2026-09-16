@@ -60,7 +60,7 @@ track: N1
 |  14   |   §14   | Text statistics panel | §1 |  [x]   |
 |  15   |   §15   | Distraction-free focus mode | §1, D01 T02 §1 |  [ ]   |
 |  16   |   §16   | File snapshots | §5, §7 |  [x]   |
-|  17   |   §17   | New-file templates | §2 |  [ ]   |
+|  17   |   §17   | New-file templates | §2 |  [x]   |
 |  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [ ]   |
 |  19   |   §19   | Encrypted notes | §4, §5 |  [ ]   |
 |  20   |   §20   | Backup on save | §5 |  [ ]   |
@@ -542,6 +542,12 @@ Why this section exists: new files start from templates with date and title fill
 - [x] Commit: `"notepad-core: template new files"`
 
 **Test checkpoint:** picker, variables, and custom persistence are all driven in the room. Cheaper substitute that fails: templates that never update.
+
+> **Verified:** 2026-09-16 | §17 | New-file templates: Ctrl+Shift+E picker with three built-ins opening expanded (title prompt plus locale date), save-current-as-template customs persisting as .txt across relaunch, menu trigger deferred to the menu owner with a recorded contract; UI TemplateTests 6/6, Unit TemplateTests 5/5, full gate Smoke 1/1 Unit 190/190 Protocol 35/35 UI 80 plus 1 pre-existing quarantine of 81, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate 2ff23cb plus d7cc0d1 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s17.md
+> **CRUD:** applicable | save-custom wrote a .txt (read back via list plus use); use wrote a new tab body (read back via the room); relaunch wrote nothing (custom read back still listed); session untouched beyond the suite's standard cleanup
+> **Duration:** 1625
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 18. Export as Markdown, HTML, Plain Text
 
