@@ -22,6 +22,8 @@ track: N1
 > **Corrected 2026-09-15 (phase-1 run 3, §14 validation):** §§8, 11, 13 have shipped since (association routing, icon wiring, pinned tabs). Open: §§14, 16-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §17 validation):** §§14, 16 have shipped since (stats panel, file snapshots). Open: §§17-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-16 (phase-1 run 3, §18 validation):** §17 has shipped since (new-file templates). Open: §§18-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -551,21 +553,23 @@ Why this section exists: new files start from templates with date and title fill
 
 ## 18. Export as Markdown, HTML, Plain Text
 
+> **Started:** 2026-09-16T01:24:00Z
+
 Why this section exists: Markdown, HTML, or plain text out of any view, to file. Copy-as split to D02 T01 §18 by phase-1 run 2 (cycle repair); the converter below is shared.
 
 **Fidelity:** new build, no baseline (stock Notepad converts nothing).
 
 **Job:** The user can move text across formats. Consumer: the file writer (§5), which saves the converted text.
 
-**Treatment:** Export dialog with faithful conversion of the buffer text; the buffer arrives through an injected text provider until D02 T01 §1 binds the real buffer. Cheaper substitute that fails the checkpoint: plain-text-only bytes under new extensions.
+**Treatment:** Export dialog with faithful conversion of the buffer text; the buffer arrives through an injected text provider until D02 T01 §1 binds the real buffer. **Decided 2026-09-16 (§18 validation):** the converter is `FormatConverter` in Notepad.Core, UI-free so copy-as reuses it: input is buffer text read as Markdown source; Markdown output is line-break-normalized identity; HTML output is a structural rendering; plain output strips inline markers. Supported subset: ATX headings (`#` plus space), `*` emphasis, `**` strong, single-backtick code spans, `[text](url)` links, flat `-`/`*` and `1.` lists, paragraphs; everything else (underscores, images, nested lists, unmatched markers) passes through literally (pinned). Copy-as needs a fragment while export ships a document, so the converter exposes `ToHtmlFragment` (shared core) plus a `ToHtmlDocument` shell (title plus meta charset) used by export; plain links render as `text (url)`. The dialog opens on Ctrl+Shift+X (free in-tree, X for eXport) with the menu trigger deferred to the menu owner per its engine-trigger rule (contract: command ShowExport, always enabled, handler MainWindow.ShowExportPanelAsync; recorded both sides); destination is beside the source file with an editable base-name box defaulting to `{basename}-export` so export never overwrites the source (no Save As picker exists yet; cost of rerouting: the T02 dialog plus the drives); untitled tabs get a save-first note with Export disabled (a state, not a deferral, mirrors §16); exports write UTF-8 no-BOM CRLF (the tab defaults; cost: one spec). Cheaper substitute that fails the checkpoint: plain-text-only bytes under new extensions.
 
-**Chrome:** Consume the shared dialog styles. Do not invent a second convert treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/StatsDialog/SnapshotsDialog/TemplatesDialog (default WinUI styling, one export button per format). **Corrected 2026-09-16 (§18 validation):** no shared dialog styles exist in the tree (same finding as §16/§17); the dialog follows the existing code-built dialog pattern instead. Do not invent a second convert treatment.
 
 **Needs:** Windows host (build/test)
 
-- [ ] Export writes all three formats to file. Done when: exported files open in their native apps.
-- [ ] Round-trip fidelity fixtures pin the conversions. Done when: fixtures cover structure, emphasis, and lists.
-- [ ] Commit: `"notepad-core: export formats"`
+- [x] Export writes all three formats to file. Done when: exported bytes equal the pinned fixtures and the HTML carries the structural tags. **Corrected 2026-09-16 (§18 validation):** the seed's "open in their native apps" is not room-drivable (launching native apps on the operator host is out); fixture-exact bytes plus structural tags are the falsifiable form. **Driven 2026-09-16:** `ExportMarkdownWritesConvertedFile` (exact bytes, source untouched), `ExportHtmlRendersStructure` (exact document plus `h1`/`ul`/title tags), `ExportPlainStripsMarkers` (exact text, heading marker gone, link kept as `text (url)`), and `UntitledShowsSaveFirstNote`, green.
+- [x] Round-trip fidelity fixtures pin the conversions. Done when: fixtures cover structure, emphasis, and lists. **Driven 2026-09-16:** `FormatConverterTests` 13/13 (headings, emphasis/strong, code, links, both list kinds, paragraphs, literal fallbacks, document shell, escaping), green.
+- [x] Commit: `"notepad-core: export formats"`
 
 **Test checkpoint:** export and fidelity are all driven in the room. Cheaper substitute that fails: HTML that drops structure.
 

@@ -25,6 +25,7 @@ public sealed partial class MainWindow : Window, IDisposable
     bool statsDialogOpen;
     bool snapshotsDialogOpen;
     bool templatesDialogOpen;
+    bool exportDialogOpen;
 
     private MiddleClickHook? middleClick;
 
@@ -107,6 +108,10 @@ public sealed partial class MainWindow : Window, IDisposable
             // in-tree (T taken by new-tab/reopen, E for tEmplate); the menu
             // trigger is deferred to D01 T02 §1.
             AddAccel(root, VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowTemplatesPanelAsync(); });
+            // D01 T01 §18: export across formats. Ctrl+Shift+X is free
+            // in-tree (X for eXport); the menu trigger is deferred to
+            // D01 T02 §1.
+            AddAccel(root, VirtualKey.X, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowExportPanelAsync(); });
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
@@ -519,6 +524,65 @@ public sealed partial class MainWindow : Window, IDisposable
         // Blank bodies stay clean (untitled tabs are dirty exactly when
         // they hold content); every other template opens dirty.
         tab.NotifyEdited(expanded);
+    }
+
+    // D01 T01 §18: export across formats beside the source file. The dialog
+    // converts the live buffer through the shared FormatConverter and
+    // writes through the §5 file writer; MainWindow only maps the format
+    // to converted text plus destination.
+    internal async Task ShowExportPanelAsync()
+    {
+        if (exportDialogOpen || Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        exportDialogOpen = true;
+        try
+        {
+            Tab? active = tabs.ActiveTab;
+            var dialog = new ExportDialog(active?.FilePath, (format, baseName) => ExportBuffer(active, format, baseName))
+            {
+                XamlRoot = xamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            exportDialogOpen = false;
+        }
+    }
+
+    string ExportBuffer(Tab? tab, ExportFormat format, string baseName)
+    {
+        if (tab?.FilePath is null)
+        {
+            throw new ArgumentException("Save the file before exporting.", nameof(tab));
+        }
+
+        if (string.IsNullOrWhiteSpace(baseName))
+        {
+            throw new ArgumentException("Export name must not be empty.", nameof(baseName));
+        }
+
+        string text = ActiveTabText();
+        string converted = format switch
+        {
+            ExportFormat.Markdown => FormatConverter.ToMarkdown(text),
+            ExportFormat.Html => FormatConverter.ToHtmlDocument(baseName, text),
+            ExportFormat.PlainText => FormatConverter.ToPlainText(text),
+            _ => throw new ArgumentOutOfRangeException(nameof(format)),
+        };
+        string fileName = baseName + FormatConverter.ExtensionFor(format);
+        string destination = Path.Combine(Path.GetDirectoryName(tab.FilePath)!, fileName);
+        var spec = new SaveSpec("UTF-8", false, "CRLF");
+        return FileSave.SaveFile(destination, converted, spec) switch
+        {
+            SaveSuccess => fileName,
+            SaveRedirect redirect => throw new IOException($"Export redirected: {redirect.Detail}"),
+            SaveFailed failed => throw new IOException($"Export failed: {failed.Detail}"),
+            _ => throw new IOException("Export failed."),
+        };
     }
 
     static SaveResult SaveSnapshotBuffer(Tab? tab, string text)
