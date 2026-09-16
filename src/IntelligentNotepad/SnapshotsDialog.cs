@@ -10,8 +10,8 @@ namespace IntelligentNotepad;
 // ten rows render as restore buttons). Take captures the live buffer through
 // the injected reader; restore decodes stored bytes through FileOpen
 // detection and replaces the buffer. Restore prompts sequentially: the
-// versions dialog hides while the §7 prompt shows (never stacked) and
-// reshows on Cancel or save failure; a successful restore leaves it open.
+// versions dialog hides while the §7 prompt shows (never stacked) and the
+// owner opens a fresh dialog afterwards, so a restore never closes the list.
 internal sealed class SnapshotsDialog : ContentDialog
 {
     readonly string? filePath;
@@ -21,6 +21,7 @@ internal sealed class SnapshotsDialog : ContentDialog
     readonly Func<string, SaveResult> saveText;
     readonly Action<string> applyText;
     readonly Func<string> promptName;
+    readonly Func<Task> reshow;
 
     readonly TextBox nameBox;
     readonly Button takeButton;
@@ -34,7 +35,8 @@ internal sealed class SnapshotsDialog : ContentDialog
         SaveSpec spec,
         Func<string, SaveResult> saveText,
         Action<string> applyText,
-        Func<string> promptName)
+        Func<string> promptName,
+        Func<Task> reshow)
     {
         ArgumentNullException.ThrowIfNull(readText);
         ArgumentNullException.ThrowIfNull(isDirty);
@@ -42,6 +44,7 @@ internal sealed class SnapshotsDialog : ContentDialog
         ArgumentNullException.ThrowIfNull(saveText);
         ArgumentNullException.ThrowIfNull(applyText);
         ArgumentNullException.ThrowIfNull(promptName);
+        ArgumentNullException.ThrowIfNull(reshow);
         this.filePath = filePath;
         this.readText = readText;
         this.isDirty = isDirty;
@@ -49,6 +52,7 @@ internal sealed class SnapshotsDialog : ContentDialog
         this.saveText = saveText;
         this.applyText = applyText;
         this.promptName = promptName;
+        this.reshow = reshow;
         AutomationProperties.SetAutomationId(this, "SnapshotsDialog");
         Title = "Snapshots";
         CloseButtonText = "Close";
@@ -167,29 +171,29 @@ internal sealed class SnapshotsDialog : ContentDialog
             return;
         }
 
+        // Review round 2: reshow a FRESH dialog, never this instance. Re-showing
+        // the hidden instance flaked under full-suite load (one reshow in
+        // four never reappeared); a fresh ShowAsync after Hide completed is
+        // always legal, so the owner reopens and this instance stays dead.
         Hide();
         ContentDialogResult answer = await new SavePromptDialog(promptName()) { XamlRoot = XamlRoot }.ShowAsync();
         if (answer == ContentDialogResult.Primary)
         {
-            if (saveText(readText()) is not SaveSuccess)
+            if (saveText(readText()) is SaveSuccess)
             {
-                await ShowAsync();
-                return;
+                applyText(text);
             }
 
-            applyText(text);
-            await ShowAsync();
+            await reshow().ConfigureAwait(true);
             return;
         }
 
         if (answer == ContentDialogResult.Secondary)
         {
             applyText(text);
-            await ShowAsync();
-            return;
         }
 
-        await ShowAsync();
+        await reshow().ConfigureAwait(true);
     }
 
     void ShowError(string? message)

@@ -457,7 +457,8 @@ public sealed partial class MainWindow : Window, IDisposable
                         tabBar.ContentFor(active).Text = restored;
                     }
                 },
-                () => active is null ? "Untitled.txt" : TabBar.PromptName(active))
+                () => active is null ? "Untitled.txt" : TabBar.PromptName(active),
+                () => ShowSnapshotsPanelAsync())
             {
                 XamlRoot = xamlRoot,
             };
