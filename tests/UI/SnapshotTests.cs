@@ -38,6 +38,9 @@ public sealed class SnapshotTests
                 TakeSnapshot(dialog, "v1");
                 Assert.NotNull(WaitForRestore(dialog, "v1"));
                 Assert.Equal("version one", FileOpen.Detect(SnapshotStore.ReadBytes(file, 1)).Text);
+                var frame = window.BoundingRectangle;
+                var panel = dialog.BoundingRectangle;
+                Assert.True(frame.Contains(panel), $"panel {panel} escapes window {frame}");
                 CloseDialog(window, dialog);
             }
             finally
@@ -203,6 +206,57 @@ public sealed class SnapshotTests
                 Assert.Equal("version one", ContentBox(window).Text);
                 Assert.Equal("version two", File.ReadAllText(file));
                 CloseDialog(window, dialog);
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public void RestoreSaveFailureAbortsWithWorkPreserved()
+    {
+        string dir = NewTempDir();
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        try
+        {
+            string file = SeedFile(dir, "locked16.txt", "seed");
+            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(2, WaitForTabCount(window, 2));
+                SelectTab(window, 1);
+                SetBoxText(window, "version one");
+                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                var dialog = WaitForDialog(window, "SnapshotsDialog");
+                TakeSnapshot(dialog, "v1");
+                CloseDialog(window, dialog);
+                SetBoxText(window, "version two");
+                File.SetAttributes(file, FileAttributes.ReadOnly);
+                try
+                {
+                    Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                    dialog = WaitForDialog(window, "SnapshotsDialog");
+                    InvokeRestore(dialog, "v1");
+                    AnswerPrompt(window, "Save");
+                    dialog = WaitForDialog(window, "SnapshotsDialog");
+                    Assert.Equal("version two", ContentBox(window).Text);
+                    Assert.Equal("seed", File.ReadAllText(file));
+                    CloseDialog(window, dialog);
+                }
+                finally
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                }
             }
             finally
             {
