@@ -358,7 +358,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             snapshots.Add(new TabSnapshot(
-                tab.FilePath, content, caret, tab.IsDirty, tab.Encoding, tab.HasBom, tab.LineEnding, tab.IsPinned));
+                tab.FilePath, content, caret, tab.IsDirty, tab.Encoding, tab.HasBom, tab.LineEnding, tab.IsPinned, tab.IsLocked));
         }
 
         int active = tabs.ActiveTab is null ? 0 : tabs.Tabs.IndexOf(tabs.ActiveTab);
@@ -470,6 +470,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 : new SaveSpec(active.Encoding, active.HasBom, active.LineEnding);
             var dialog = new SnapshotsDialog(
                 active?.FilePath,
+                active?.IsLocked == true,
                 ActiveTabText,
                 () => active?.IsDirty == true,
                 spec,

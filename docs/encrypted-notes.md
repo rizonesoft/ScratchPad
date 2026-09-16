@@ -27,3 +27,7 @@ Readers accept any positive `Iter` (the AAD binding makes weakened parameters fa
 ## Test vector
 
 Password `vector-password-19`, plaintext `vector plaintext` (UTF-8, 16 bytes), salt `00112233445566778899AABBCCDDEEFF`, nonce `102030405060708090A0B0C0`. Header line: `{"Alg":"AES-256-GCM","Kdf":"PBKDF2-SHA256","Iter":600000,"Salt":"ABEiM0RVZneImaq7zN3u/w==","Nonce":"ECAwQFBgcICQoLDA"}`. Body (ciphertext plus tag) hex: `8C05C9B2E3BAE1786170D06421DAB2C6ECCA8A5DC0F1B60CE0DF589A9BF67788`. Pinned by `NoteCryptoTests.DocumentedVectorPinsCiphertext` and cross-checked with an independent Python implementation.
+
+## Residues (D01 T01 §30)
+
+Locked tabs persist path-only: snapshot takes are refused, and session plus crash-checkpoint entries omit locked buffers, so a locked tab restores as a ghost and any unsaved edits at persist time are dropped (the locked file on disk keeps its last saved ciphertext; unlock the tab to resume editing). Residues written before §30 shipped are left in place, never wiped: snapshot sidecars (`<file>.snapshots/`) taken while the tab was unlocked, and session files holding buffers persisted before the path-only rule. Delete those sidecars and session files by hand to clear them.

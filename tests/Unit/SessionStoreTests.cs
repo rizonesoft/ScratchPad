@@ -12,7 +12,7 @@ public sealed class SessionStoreTests
         string? path,
         string? content,
         int caret,
-        bool dirty, bool pinned = false) => new(path, content, caret, dirty, "UTF-8", false, "CRLF", pinned);
+        bool dirty, bool pinned = false, bool locked = false) => new(path, content, caret, dirty, "UTF-8", false, "CRLF", pinned, locked);
 
     [Fact]
     public void CaptureKeepsCleanFileTabsAsPaths()
@@ -358,6 +358,45 @@ public sealed class SessionStoreTests
 
         SessionTab tab = Assert.Single(window.Tabs);
         Assert.True(tab.IsPinned);
+    }
+
+    [Fact]
+    public void CaptureOmitsLockedDirtyBufferButKeepsPath()
+    {
+        var window = SessionCapture.CaptureWindow(
+            [Snap("/tmp/notes/a.txt", "plaintext-secret", 3, true, locked: true)],
+            0,
+            _ => true);
+
+        SessionTab tab = Assert.Single(window.Tabs);
+        Assert.Equal("/tmp/notes/a.txt", tab.Path);
+        Assert.Null(tab.Content);
+    }
+
+    [Fact]
+    public void CaptureOmitsLockedCleanBuffer()
+    {
+        var window = SessionCapture.CaptureWindow(
+            [Snap("/tmp/notes/a.txt", "plaintext-secret", 3, false, locked: true)],
+            0,
+            _ => true);
+
+        SessionTab tab = Assert.Single(window.Tabs);
+        Assert.Equal("/tmp/notes/a.txt", tab.Path);
+        Assert.Null(tab.Content);
+    }
+
+    [Fact]
+    public void CaptureOmitsLockedUntitledBuffer()
+    {
+        var window = SessionCapture.CaptureWindow(
+            [Snap(null, "plaintext-secret", 0, true, locked: true)],
+            0,
+            _ => true);
+
+        SessionTab tab = Assert.Single(window.Tabs);
+        Assert.Null(tab.Path);
+        Assert.Null(tab.Content);
     }
 
     [Fact]

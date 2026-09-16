@@ -899,13 +899,15 @@ Why this section exists: stock's Open dialog offers an Encoding picker defaultin
 
 ## 30. Locked-Tab Residue Hardening
 
+> **Started:** 2026-09-16T07:07:31Z
+
 Why this section exists: §19 locks the file but the decrypted buffer still rests on disk outside it: snapshot sidecars (§16) store buffer bytes, and session restore (§6) plus the crash checkpoint (§7, same file) persist dirty buffers. The password and key stay memory-only per §19; this section extends the guarantee to the buffer.
 
 **Fidelity:** new build, no baseline (stock Notepad encrypts nothing).
 
 **Job:** Locked tabs leave no plaintext on disk outside the locked file. Consumer: the §19 lock flow, which gains residue-free persistence.
 
-**Treatment:** Takes on locked tabs are refused with an inline note in the versions dialog (a state, not a deferral, mirrors the §16 save-first note; prompting for a re-lock password per take is the rejected alternative, cost one dialog plus the drives). Session and checkpoint persistence omit locked-tab buffers (path-only entries, which restore as ghosts through the §19 ghost rule). Residues written before this section ships are left in place and named in the §19 doc (no retroactive wipe; cost: a one-way migration). Cheaper substitute that fails the checkpoint: a unit-only assertion with the room paths untouched.
+**Treatment:** Takes on locked tabs are refused with an inline note in the versions dialog (a state, not a deferral, mirrors the §16 save-first note; prompting for a re-lock password per take is the rejected alternative, cost one dialog plus the drives). Session and checkpoint persistence omit locked-tab buffers (path-only entries, which restore as ghosts through the §19 ghost rule). Residues written before this section ships are left in place and named in the §19 doc (no retroactive wipe; cost: a one-way migration). Cheaper substitute that fails the checkpoint: a unit-only assertion with the room paths untouched. **Decided 2026-09-16 (§30 validation):** the locked-tab state keeps the versions list (pre-§30 snapshots stay restorable; their plaintext is named in the §19 doc) with Take disabled plus the inline note, rather than replacing Content like the save-first note (which has no list to preserve); note-only replacement would orphan pre-existing snapshots with no UI to restore or remove them. Dirty locked buffers are dropped at persist time by the path-only rule (restore ghosts; the §19 doc names the consequence). The capture rule lives in `SessionCapture` (one change covers session and checkpoint, same file); `SnapshotStore.Take` needs no guard (the dialog is its sole caller).
 
 **Chrome:** Reuse the save-first note treatment. Do not invent a second refusal treatment.
 
@@ -913,10 +915,10 @@ Why this section exists: §19 locks the file but the decrypted buffer still rest
 
 - -> SOURCE: §19 review advisory (a), 2026-09-16 (decrypted-buffer residues in snapshots, session, and checkpoint)
 
-- [ ] Takes on locked tabs are refused with an inline note and no sidecar written. Done when: the room shows the note and the sidecar directory stays absent.
-- [ ] Session and checkpoint persistence omit locked-tab buffers. Done when: path-only entries restore as ghosts, driven.
-- [ ] Room drives prove no plaintext reaches disk for locked tabs. Done when: the sidecar scan and the app-data scan both come back clean.
-- [ ] Commit: `"notepad-core: harden locked-tab residues"`
+- [x] Takes on locked tabs are refused with an inline note and no sidecar written. Done when: the room shows the note and the sidecar directory stays absent. **Driven 2026-09-16:** `LockedTabRefusesTakesWithInlineNote` (note onscreen with verbatim text, Take disabled, `<file>.snapshots/` absent); versions list stays so pre-§30 snapshots remain restorable.
+- [x] Session and checkpoint persistence omit locked-tab buffers. Done when: path-only entries restore as ghosts, driven. **Driven 2026-09-16:** `CaptureOmitsLockedDirtyBufferButKeepsPath` plus `CaptureOmitsLockedCleanBuffer` plus `CaptureOmitsLockedUntitledBuffer` (unit, the `SessionCapture` rule) and `DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost` (room: session entry Content null, relaunch ghosts with empty box and no unlock prompt, file bytes still locked).
+- [x] Room drives prove no plaintext reaches disk for locked tabs. Done when: the sidecar scan and the app-data scan both come back clean. **Driven 2026-09-16:** sidecar absence in `LockedTabRefusesTakesWithInlineNote`, full app-data scan for the dirty buffer in `DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost` (checkpoint plus session write both covered by the 3 s dirty wait).
+- [x] Commit: `"notepad-core: harden locked-tab residues"`
 
 **Test checkpoint:** refused takes, path-only persistence, and both disk scans are all driven in the room. Cheaper substitute that fails: plaintext asserted absent only where the test looked before.
 

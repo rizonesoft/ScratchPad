@@ -15,6 +15,7 @@ namespace IntelligentNotepad;
 internal sealed class SnapshotsDialog : ContentDialog
 {
     readonly string? filePath;
+    readonly bool isLocked;
     readonly Func<string> readText;
     readonly Func<bool> isDirty;
     readonly SaveSpec spec;
@@ -30,6 +31,7 @@ internal sealed class SnapshotsDialog : ContentDialog
 
     public SnapshotsDialog(
         string? filePath,
+        bool isLocked,
         Func<string> readText,
         Func<bool> isDirty,
         SaveSpec spec,
@@ -46,6 +48,7 @@ internal sealed class SnapshotsDialog : ContentDialog
         ArgumentNullException.ThrowIfNull(promptName);
         ArgumentNullException.ThrowIfNull(reshow);
         this.filePath = filePath;
+        this.isLocked = isLocked;
         this.readText = readText;
         this.isDirty = isDirty;
         this.spec = spec;
@@ -80,17 +83,27 @@ internal sealed class SnapshotsDialog : ContentDialog
             Text = $"Keeps the last {SnapshotStore.MaxSnapshots} versions.",
             Margin = new Thickness(0, 8, 0, 4),
         };
+        // D01 T01 §30: takes on locked tabs are refused with an inline note
+        // (a state, mirroring the save-first note); the versions list stays
+        // so pre-§30 snapshots remain restorable.
+        var lockedNote = new TextBlock
+        {
+            Text = "Snapshots are disabled for locked tabs.",
+            Margin = new Thickness(0, 8, 0, 0),
+        };
+        AutomationProperties.SetAutomationId(lockedNote, "SnapshotsLockedNote");
         Content = new StackPanel
         {
-            Children = { nameBox, takeButton, retention, versions, error },
+            Children = { nameBox, takeButton, lockedNote, retention, versions, error },
         };
+        lockedNote.Visibility = isLocked ? Visibility.Visible : Visibility.Collapsed;
         RefreshList();
         RefreshTakeEnabled();
     }
 
     void Take()
     {
-        if (filePath is null)
+        if (filePath is null || isLocked)
         {
             return;
         }
@@ -112,7 +125,7 @@ internal sealed class SnapshotsDialog : ContentDialog
 
     void RefreshTakeEnabled()
     {
-        if (filePath is null)
+        if (filePath is null || isLocked)
         {
             takeButton.IsEnabled = false;
             return;

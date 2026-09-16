@@ -131,7 +131,9 @@ public sealed class SessionWindow
 // Privacy review, D01 T01 §6 item 5: the store format names every field.
 // Persisted per tab: Path (absolute file path, null for untitled), Content
 // (full buffer text for dirty or untitled tabs, null for clean file tabs
-// which reload from disk), Caret (UTF-16 offset), Encoding (name, used when
+// which reload from disk; always null for locked tabs per D01 T01 §30, so
+// locked buffers never reach disk and restore as ghosts), Caret (UTF-16
+// offset), Encoding (name, used when
 // Content is present so saves round-trip), HasBom, LineEnding, IsPinned.
 // Per window:
 // the ordered tab list plus Active (tab index). Global: ActiveWindow. No
@@ -159,7 +161,8 @@ public sealed class SessionTab
 }
 
 // One tab's live state, handed to the capture rules. MainWindow builds it
-// from the Tab plus its content box; tests build it by hand.
+// from the Tab plus its content box; tests build it by hand. IsLocked is
+// optional-last so pre-§30 callers keep compiling as unlocked.
 public sealed record TabSnapshot(
     string? Path,
     string? Content,
@@ -168,7 +171,8 @@ public sealed record TabSnapshot(
     string Encoding,
     bool HasBom,
     string LineEnding,
-    bool IsPinned);
+    bool IsPinned,
+    bool IsLocked = false);
 
 // Pure snapshot rules, unit-driven. `exists` is File.Exists in the app.
 public static class SessionCapture
@@ -200,7 +204,7 @@ public static class SessionCapture
             window.Tabs.Add(new SessionTab
             {
                 Path = tab.Path,
-                Content = tab.IsDirty || tab.Path is null ? tab.Content ?? string.Empty : null,
+                Content = tab.IsLocked ? null : tab.IsDirty || tab.Path is null ? tab.Content ?? string.Empty : null,
                 Caret = Math.Max(0, tab.Caret),
                 Encoding = tab.Encoding,
                 HasBom = tab.HasBom,
