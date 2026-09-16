@@ -26,8 +26,12 @@ public sealed class FileSaveTests
             Assert.IsType<SaveSuccess>(FileSave.SaveFile(path, "replaced\r\n", spec));
             Assert.Equal("replaced\r\n", File.ReadAllText(path));
             string[] leftovers = Directory.GetFiles(dir);
-            Assert.Single(leftovers);
-            Assert.Equal(path, leftovers[0]);
+            // D01 T01 §20: the second save keeps a timestamped sibling, so
+            // the directory holds the file plus one .bak; the no-temp-debris
+            // intent survives as the .tmp check.
+            Assert.DoesNotContain(leftovers, f => Path.GetFileName(f).EndsWith(".tmp", StringComparison.Ordinal));
+            Assert.Equal(2, leftovers.Length);
+            Assert.Single(leftovers, f => f.EndsWith(".bak", StringComparison.Ordinal));
         }
         finally
         {

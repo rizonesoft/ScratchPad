@@ -79,6 +79,10 @@ public static class FileSave
     // crash keeps either the old or the new bytes, never a mix. True-crash
     // orphans keep their temp name; every caught path deletes best-effort.
     // faultBeforeCommit injects the crash point for item 1's drive.
+    // Backup retention, owned by D01 T01 §20: every save keeps the
+    // pre-save bytes in a timestamped sibling first, capped at this many.
+    public const int MaxBackups = 5;
+
     public static SaveResult SaveFile(string path, string text, SaveSpec spec, Action? faultBeforeCommit = null)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -89,9 +93,18 @@ public static class FileSave
         try
         {
             byte[] bytes = Encode(text, spec.EncodingName, spec.HasBom, spec.LineEnding);
+            // Backup after encode (encode failures write nothing) and before
+            // the temp commit (a crashed save leaves the sibling intact).
+            SaveResult backup = WriteBackup(path);
+            if (backup is not SaveSuccess)
+            {
+                return backup;
+            }
+
             File.WriteAllBytes(temp, bytes);
             faultBeforeCommit?.Invoke();
             File.Move(temp, path, overwrite: true);
+            RotateBackups(path);
             return new SaveSuccess();
         }
         catch (EncoderFallbackException ex)
@@ -126,9 +139,16 @@ public static class FileSave
         string temp = Path.Combine(directory!, $".~{Guid.NewGuid():N}.tmp");
         try
         {
+            SaveResult backup = WriteBackup(path);
+            if (backup is not SaveSuccess)
+            {
+                return backup;
+            }
+
             File.WriteAllBytes(temp, bytes);
             faultBeforeCommit?.Invoke();
             File.Move(temp, path, overwrite: true);
+            RotateBackups(path);
             return new SaveSuccess();
         }
         catch (Exception ex) when (RedirectsToSaveAs(ex))
@@ -141,6 +161,128 @@ public static class FileSave
             DeleteQuietly(temp);
             return new SaveFailed(ex.Message);
         }
+    }
+
+    // Managed backup siblings oldest-first (rotation order), owned by D01
+    // T01 §20. Only own-pattern names qualify; foreign `.bak` files are
+    // left alone. Creation time orders (suffix-safe); same-tick ties fall
+    // back to name order, which can mis-order simultaneous siblings among
+    // themselves (immaterial: every candidate is newest, and only the count
+    // cap is contractual).
+    public static IReadOnlyList<string> BackupSiblings(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        string fileName = Path.GetFileName(path);
+        if (directory is null || !Directory.Exists(directory))
+        {
+            return [];
+        }
+
+        return Directory.EnumerateFiles(directory, fileName + ".*.bak")
+            .Where(candidate => IsOwnBackup(fileName, Path.GetFileName(candidate)))
+            .Select(candidate => (candidate, Created: File.GetCreationTimeUtc(candidate)))
+            .OrderBy(entry => entry.Created)
+            .ThenBy(entry => entry.candidate, StringComparer.Ordinal)
+            .Select(entry => entry.candidate)
+            .ToList();
+    }
+
+    // Copies the pre-save bytes to a timestamped sibling, atomically. No
+    // destination means no backup (first save preserves nothing). Failures
+    // abort the save: proceeding would silently drop the safety net.
+    static SaveResult WriteBackup(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return new SaveSuccess();
+            }
+
+            byte[] previous = File.ReadAllBytes(path);
+            string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+            string sibling = UniqueBackupName(directory!, Path.GetFileName(path));
+            string temp = Path.Combine(directory!, $".~{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.WriteAllBytes(temp, previous);
+                File.Move(temp, sibling);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                DeleteQuietly(temp);
+                throw;
+            }
+
+            return new SaveSuccess();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Same map as the save itself: a locked destination redirects
+            // (nothing is overwritten, so no backup is owed); anything else
+            // fails with the original untouched.
+            return RedirectsToSaveAs(ex)
+                ? new SaveRedirect($"Backup failed: {ex.Message}")
+                : new SaveFailed($"Backup failed: {ex.Message}");
+        }
+    }
+
+    // Deletes past the cap, oldest first. Best-effort: rotation must never
+    // fail a save that already committed.
+    static void RotateBackups(string path)
+    {
+        IReadOnlyList<string> siblings;
+        try
+        {
+            siblings = BackupSiblings(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return;
+        }
+
+        foreach (string stale in siblings.Take(Math.Max(0, siblings.Count - MaxBackups)))
+        {
+            try
+            {
+                File.Delete(stale);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                System.Diagnostics.Debug.WriteLine($"Backup rotate left bytes: {ex.Message}");
+            }
+        }
+    }
+
+    static string UniqueBackupName(string directory, string fileName)
+    {
+        string stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+        string candidate = Path.Combine(directory, $"{fileName}.{stamp}.bak");
+        int suffix = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(directory, $"{fileName}.{stamp}-{suffix}.bak");
+            suffix++;
+        }
+
+        return candidate;
+    }
+
+    static bool IsOwnBackup(string fileName, string sibling)
+    {
+        string prefix = fileName + ".";
+        if (!sibling.StartsWith(prefix, StringComparison.Ordinal) || !sibling.EndsWith(".bak", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string middle = sibling[prefix.Length..^4]; // strip ".bak"
+        string[] parts = middle.Split('-');
+        return parts.Length is 2 or 3
+            && parts[0].Length == 8 && parts[0].All(char.IsAsciiDigit)
+            && parts[1].Length == 9 && parts[1].All(char.IsAsciiDigit)
+            && (parts.Length == 2 || (parts[2].Length > 0 && parts[2].All(char.IsAsciiDigit)));
     }
 
     // Read-only and locked destinations redirect to Save As (probed: stock

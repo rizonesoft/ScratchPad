@@ -26,6 +26,8 @@ track: N1
 > **Corrected 2026-09-16 (phase-1 run 3, §18 validation):** §17 has shipped since (new-file templates). Open: §§18-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §19 validation):** §18 has shipped since (export across formats). Open: §§19-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -615,22 +617,24 @@ Why this section exists: some notes need a password. Files lock with a clearly s
 
 ## 20. Backup on Save
 
+> **Started:** 2026-09-16T02:14:00Z
+
 Why this section exists: saves overwrite. A timestamped .bak sibling beside the file is the automatic safety net under the named §16 snapshots.
 
 **Fidelity:** new build, no baseline (stock Notepad keeps no backups).
 
 **Job:** The user can recover the pre-save version. Consumer: the save path (§5), which writes the sibling first.
 
-**Treatment:** Timestamped .bak sibling on every save with a retention count; old siblings rotate out. Cheaper substitute that fails the checkpoint: one .bak that the next save eats.
+**Treatment:** Timestamped .bak sibling on every save with a retention count; old siblings rotate out. **Decided 2026-09-16 (§20 validation):** names are `{filename}.{yyyyMMdd-HHmmssfff UTC}.bak` with a `-2`/`-3` collision suffix; rotation orders by creation-timeUtc then name (suffix-safe) and manages only own-pattern names (foreign `.bak` files are left alone). Cap is 5 (full copies; named snapshots cover deep history; cost: one const). Both `SaveFile` and `SaveBytes` back up (every write counts; locked files back up ciphertext); a missing destination means no backup. Order inside the write: encode first (encode failures write nothing), then the backup, then the temp commit, then rotation (never delete before the replacement lands). Backup failures map through the §5 redirect map (locked destinations redirect with nothing overwritten so no backup is owed, anything else `SaveFailed` with the original untouched); rotation-delete failures are best-effort and never fail the save. Backups commit atomically through the same temp-move. The §5 atomic-save leftover test is updated to expect the sibling (contract change this section mandates; its no-temp-debris intent is preserved as a `.tmp` check). Cheaper substitute that fails the checkpoint: one .bak that the next save eats.
 
 **Chrome:** No new surface; the file list is the surface.
 
 **Needs:** Windows host (build/test)
 
-- [ ] Every save writes a timestamped .bak sibling first. Done when: the sibling predates the save under host drive.
-- [ ] Retention caps the sibling count. Done when: old siblings rotate out at the cap.
-- [ ] A crashed save leaves the newest .bak intact. Done when: the failure path is driven.
-- [ ] Commit: `"notepad-core: back up on save"`
+- [x] Every save writes a timestamped .bak sibling first. Done when: the sibling predates the save under host drive. **Driven 2026-09-16:** `SaveWritesSiblingWithPreSaveBytes` (sibling holds the pre-save bytes, file holds the edit) plus `SecondSaveKeepsPreSaveBytesInSibling` and `SaveBytesBacksUpToo`, green.
+- [x] Retention caps the sibling count. Done when: old siblings rotate out at the cap. **Driven 2026-09-16:** `RotationEvictsOldestSeededSibling` (seeded cap plus one save evicts the oldest, foreign `.bak` untouched) plus `RetentionRotatesPastFive` (seven real saves hold five) and `ForeignBakFilesAreLeftAlone`, green.
+- [x] A crashed save leaves the newest .bak intact. Done when: the failure path is driven. **Driven 2026-09-16:** `FailedSaveStillWritesSibling` (read-only destination: save redirects, sibling holds the original, file untouched) plus `FaultBeforeCommitLeavesSiblingAndOriginalIntact` (injected fault: sibling plus original intact), green.
+- [x] Commit: `"notepad-core: back up on save"`
 
 **Test checkpoint:** sibling, retention, and crash safety are all driven in the room. Cheaper substitute that fails: backups that pile up forever.
 
