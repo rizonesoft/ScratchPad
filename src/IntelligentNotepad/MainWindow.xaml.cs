@@ -24,6 +24,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private TabBar? tabBar;
     bool statsDialogOpen;
     bool snapshotsDialogOpen;
+    bool templatesDialogOpen;
 
     private MiddleClickHook? middleClick;
 
@@ -102,6 +103,10 @@ public sealed partial class MainWindow : Window, IDisposable
             // D01 T01 §16: file snapshots. Ctrl+Shift+H is free in-tree
             // (H for history); the menu trigger is deferred to D01 T02 §1.
             AddAccel(root, VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowSnapshotsPanelAsync(); });
+            // D01 T01 §17: new-from-template picker. Ctrl+Shift+E is free
+            // in-tree (T taken by new-tab/reopen, E for tEmplate); the menu
+            // trigger is deferred to D01 T02 §1.
+            AddAccel(root, VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowTemplatesPanelAsync(); });
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
@@ -468,6 +473,52 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             snapshotsDialogOpen = false;
         }
+    }
+
+    // D01 T01 §17: new-from-template picker over the §2 tab flow. The dialog
+    // expands the chosen template; MainWindow only opens the new tab with
+    // the expanded body (mirroring the restore fill path) and roots the
+    // custom store at the settings seam.
+    internal async Task ShowTemplatesPanelAsync()
+    {
+        if (templatesDialogOpen || Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        templatesDialogOpen = true;
+        try
+        {
+            string directory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "IntelligentNotepad", "templates");
+            var dialog = new TemplatesDialog(new TemplateStore(directory), ActiveTabText, UseTemplate)
+            {
+                XamlRoot = xamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            templatesDialogOpen = false;
+        }
+    }
+
+    void UseTemplate(string expanded)
+    {
+        if (tabBar is null)
+        {
+            return;
+        }
+
+        Tab tab = tabs.NewTab();
+        TextBox box = tabBar.ContentFor(tab);
+        box.Text = expanded;
+        // Explicit like the restore fill path: pre-show boxes do not
+        // reliably raise TextChanged, so the model is notified directly.
+        // Blank bodies stay clean (untitled tabs are dirty exactly when
+        // they hold content); every other template opens dirty.
+        tab.NotifyEdited(expanded);
     }
 
     static SaveResult SaveSnapshotBuffer(Tab? tab, string text)

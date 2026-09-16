@@ -20,6 +20,8 @@ track: N1
 > **Corrected 2026-09-15 (phase-1 run 3):** §§4-7, 9, 27 have shipped since: file open, atomic save with Save As, session restore with recents, dirty prompts with crash recovery, multi-window with open-in mode, and the tab-strip chrome repair all exist; §8 is implemented but unstamped. Open: §§8, 11, 13, 14, 16-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-15 (phase-1 run 3, §14 validation):** §§8, 11, 13 have shipped since (association routing, icon wiring, pinned tabs). Open: §§14, 16-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-16 (phase-1 run 3, §17 validation):** §§14, 16 have shipped since (stats panel, file snapshots). Open: §§17-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -36,7 +38,7 @@ track: N1
 
 **Adjacency:** list=applicable @ D01 T01 §6; document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=applicable @ D01 T01 §4; reverse=applicable @ D01 T01 §7
 
-**Adjacency rationale:** The tab bar is the list; open/save is the exchange; print is the document; close-without-save and crash recovery are the reversals. Settings live in T02 with their consumer named there. The §16 versions list follows the code-built ContentDialog pattern (**Corrected 2026-09-16 (§16 validation):** no shared list styles exist) and the §17 template picker follows the §6 list treatment.
+**Adjacency rationale:** The tab bar is the list; open/save is the exchange; print is the document; close-without-save and crash recovery are the reversals. Settings live in T02 with their consumer named there. The §16 versions list follows the code-built ContentDialog pattern (**Corrected 2026-09-16 (§16 validation):** no shared list styles exist) and the §17 template picker follows the code-built ContentDialog pattern (**Corrected 2026-09-16 (§17 validation):** the §6 list treatment is prose only, same finding as §16).
 
 ## Implementation Order
 
@@ -528,16 +530,16 @@ Why this section exists: new files start from templates with date and title fill
 
 **Job:** The user can start templated notes. Consumer: the new-tab flow (§2), which expands variables.
 
-**Treatment:** A template picker on new; date and title variables expand; custom templates persist. Cheaper substitute that fails the checkpoint: static boilerplate with no variables.
+**Treatment:** A template picker on new; date and title variables expand; custom templates persist. **Decided 2026-09-16 (§17 validation):** "on new" reads as a separate entry that creates a new tab from a template: Ctrl+N, the strip + button, and Ctrl+T stay blank (parity, §2-owned; cost of rerouting them through the picker: their drives plus the parity proofs). The picker opens on Ctrl+Shift+E (free in-tree; T taken by new-tab/reopen, E for tEmplate) with the menu trigger deferred to the menu owner per its engine-trigger rule (contract: command ShowTemplates, always enabled, handler MainWindow.ShowTemplatesPanelAsync; recorded both sides); choosing a template opens an untitled tab with the expanded body, dirty via NotifyEdited (mirrors the restore fill path), `{date}` the locale short date of use (local today). The title box is the `{title}` prompt and doubles as the custom-template name: "Save current as template" stores the active tab's buffer under it (empty name disables; mirrors §16 Take), which is what makes item 3 user-reachable (cost: one button plus the drive). Cheaper substitute that fails the checkpoint: static boilerplate with no variables.
 
-**Chrome:** Consume the shared dialog styles. Do not invent a second picker treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/StatsDialog/SnapshotsDialog (default WinUI styling, template rows as use-buttons). **Corrected 2026-09-16 (§17 validation):** no shared dialog styles exist in the tree (same finding as §16); the dialog follows the existing code-built dialog pattern instead. Do not invent a second picker treatment.
 
 **Needs:** Windows host (build/test)
 
-- [ ] The picker lists built-in templates on new. Done when: every built-in opens expanded. **Corrected 2026-09-14:** the seed named no built-ins; they are Blank note, Meeting notes, and Daily journal (adding one costs one static plus a picker row).
-- [x] Date and title variables expand. Done when: fixtures show correct expansion. **Corrected 2026-09-14:** `{date}` is the locale short date, `{title}` comes from the picker prompt (empty means "Untitled"), unknown braces stay literal.
-- [x] Custom templates persist across restarts. Done when: a user template survives relaunch. **Corrected 2026-09-14:** customs live as `.txt` files in `%LocalAppData%/IntelligentNotepad/templates/` (same root as the settings seam).
-- [ ] Commit: `"notepad-core: template new files"`
+- [x] The picker lists built-in templates on new. Done when: every built-in opens expanded. **Corrected 2026-09-14:** the seed named no built-ins; they are Blank note, Meeting notes, and Daily journal (adding one costs one static plus a picker row). **Driven 2026-09-16:** `PickerListsBuiltInsAndUsesMeetingNotes` (all three listed, Meeting notes opens with title plus locale date) plus `BlankNoteOpensCleanEmptyTab`, green.
+- [x] Date and title variables expand. Done when: fixtures show correct expansion. **Corrected 2026-09-14:** `{date}` is the locale short date, `{title}` comes from the picker prompt (empty means "Untitled"), unknown braces stay literal. **Re-proved 2026-09-16:** neutral `TemplateTests` 5/5 plus `UnknownBracesStayLiteralInRoom` (custom with braces expands title and keeps `{unknown}`), green.
+- [x] Custom templates persist across restarts. Done when: a user template survives relaunch. **Corrected 2026-09-14:** customs live as `.txt` files in `%LocalAppData%/IntelligentNotepad/templates/` (same root as the settings seam). **Re-proved 2026-09-16:** `SaveCurrentPersistsAcrossRelaunch` (save in the room, relaunch, still listed and usable) plus `EmptyTitleDisablesSave`, green.
+- [x] Commit: `"notepad-core: template new files"`
 
 **Test checkpoint:** picker, variables, and custom persistence are all driven in the room. Cheaper substitute that fails: templates that never update.
 
