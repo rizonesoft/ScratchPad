@@ -55,7 +55,7 @@ track: N1
 |  11   |   §11   | App icon wiring | §1 |  [x]   |
 |  12   |   §12   | Split view | §1, §2, D02 T01 §1 |  [ ]   |
 |  13   |   §13   | Pinned tabs | §2, §6 |  [x]   |
-|  14   |   §14   | Text statistics panel | §1 |  [ ]   |
+|  14   |   §14   | Text statistics panel | §1 |  [x]   |
 |  15   |   §15   | Distraction-free focus mode | §1, D01 T02 §1 |  [ ]   |
 |  16   |   §16   | File snapshots | §5, §7 |  [ ]   |
 |  17   |   §17   | New-file templates | §2 |  [ ]   |
@@ -465,11 +465,17 @@ Why this section exists: writers who measure want top words, sentence lengths, a
 
 - [x] The panel lists top words with counts. Done when: counts match a fixture document exactly. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (fixture-exact rows in a right-aligned label/value grid, panel contained in the window), green in the §14 filter run. Two transient fused-word reads disclosed (UIA settling mid-render; fixed by box-write readback plus stable-double-read section polling, green since).
 - [x] The panel shows sentence length distribution. Done when: lengths match the fixture. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (7 fixture-exact rows including buckets) plus `EmptyTabsShowZeros` (all-zero rows), green in the §14 filter run.
-- [x] Repetition flags call out overused words. Done when: a seeded repeat is flagged. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (seeded `cat` flagged, stopword `The` excluded), green in the §14 filter run.
+- [x] Repetition flags call out overused words. Done when: a seeded repeat is flagged. **Driven 2026-09-15:** `PanelListsFixtureExactStats` (seeded `cat` flagged, stopword `The` excluded) plus `LongRepetitionListTruncatesWithTrailer` (50-row cap, `+10 more` trailer exact), green in the §14 filter run.
 - [x] Stats compute on open and refresh on demand only. Done when: typing benchmarks show no recompute. Proven 2026-09-14 (neutral half): `StatsController` computes on open, ignores provider changes until `Refresh` (compute-count test, 9/9 `TextStatsTests` green, re-proven 9/9 this run). **Bound 2026-09-15:** `StatsDialog` constructs a fresh controller per open over the active tab's buffer with a Refresh control; `RefreshAndReopenRecompute` drives reopen-recompute plus Refresh in the room, green in the §14 filter run.
-- [ ] Commit: `"notepad-core: show text statistics"`
+- [x] Commit: `"notepad-core: show text statistics"` (`b247cff` plus round-1 `ab51d4f`).
 
 **Test checkpoint:** words, lengths, flags, and on-demand refresh are all driven in the room. Cheaper substitute that fails: stats that never update.
+
+> **Verified:** 2026-09-16 | §14 | Text statistics panel: Ctrl+Shift+G dialog with fixture-exact top words, sentence distribution, and repetition flags over the active tab's buffer, compute on open with on-demand Refresh, menu trigger deferred to the menu owner with a recorded contract; StatsPanel 4/4, TextStats 9/9, full gate Smoke 1/1 Unit 182/182 Protocol 35/35 UI 66 plus 1 pre-existing quarantine of 67, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 0-1, candidate b247cff plus ab51d4f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s14.md
+> **CRUD:** applicable | open wrote a fresh compute (read back via exact rows); Refresh wrote a recompute (read back via re-rendered rows); close wrote nothing (reopen recomputes); settings and session untouched by the panel
+> **Duration:** 1519
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 15. Distraction-Free Focus Mode
 
