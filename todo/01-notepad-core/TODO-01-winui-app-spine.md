@@ -66,7 +66,7 @@ track: N1
 |  16   |   §16   | File snapshots | §5, §7 |  [x]   |
 |  17   |   §17   | New-file templates | §2 |  [x]   |
 |  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [x]   |
-|  19   |   §19   | Encrypted notes | §4, §5 |  [ ]   |
+|  19   |   §19   | Encrypted notes | §4, §5 |  [x]   |
 |  20   |   §20   | Backup on save | §5 |  [ ]   |
 |  21   |   §21   | Reload prompt on external change | §4 |  [ ]   |
 |  22   |   §22   | First-line titles for untitled tabs | §2 |  [ ]   |
@@ -605,6 +605,12 @@ Why this section exists: some notes need a password. Files lock with a clearly s
 - [x] Commit: `"notepad-core: lock notes with a password"`
 
 **Test checkpoint:** stated algorithm, lock, unlock, loud failure, and memory-only keys are all driven in the room. Cheaper substitute that fails: encryption nobody can audit.
+
+> **Verified:** 2026-09-16 | §19 | Encrypted notes: AES-256-GCM plus PBKDF2-SHA256-600k with a stated header and doc plus pinned vector, Ctrl+Shift+L lock dialog, unlock on open with in-dialog retry, re-lock on every write with restore ghosting, menu trigger deferred to the menu owner with a recorded contract; UI EncryptedNotesTests 6/6, Unit NoteCryptoTests 16/16, full gate Smoke 1/1 Unit 219/219 Protocol 35/35 UI 90 plus 1 pre-existing quarantine of 91, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate f0937c8 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s19.md
+> **CRUD:** applicable | lock wrote ciphertext over the source (read back locked, no plaintext); unlock wrote a buffer (read back exact); wrong password wrote nothing (file bytes read back untouched); re-lock wrote ciphertext again (read back decrypting to the edit); app data scanned clean of the password
+> **Duration:** 31
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 20. Backup on Save
 
