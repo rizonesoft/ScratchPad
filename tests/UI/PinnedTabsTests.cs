@@ -57,7 +57,7 @@ public sealed class PinnedTabsTests
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    WaitForTabName(window, 1, "persist13.txt");
+                    WaitForTabName(window, 1, TabAccessibilityName.For("persist13.txt", isDirty: false));
                     TabItemAt(window, 1).DoubleClick();
                     Assert.Contains(file, WaitForPinnedFiles(file));
                     Assert.NotNull(WaitForPin(window, 1));
@@ -76,7 +76,7 @@ public sealed class PinnedTabsTests
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    WaitForTabName(window, 1, "persist13.txt");
+                    WaitForTabName(window, 1, TabAccessibilityName.For("persist13.txt", isDirty: false));
                     Assert.NotNull(WaitForPin(window, 1));
                 }
                 finally
@@ -119,8 +119,8 @@ public sealed class PinnedTabsTests
                 Assert.NotNull(closeOthers);
                 closeOthers.Invoke();
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                Assert.Equal("a13.txt", TabItemAt(window, 0).Name);
-                Assert.Equal("c13.txt", TabItemAt(window, 1).Name);
+                Assert.Equal(TabAccessibilityName.For("a13.txt", isDirty: false), TabItemAt(window, 0).Name);
+                Assert.Equal(TabAccessibilityName.For("c13.txt", isDirty: false), TabItemAt(window, 1).Name);
                 Assert.NotNull(WaitForPin(window, 1));
             }
             finally
@@ -162,9 +162,9 @@ public sealed class PinnedTabsTests
                 Assert.NotNull(closeRight);
                 closeRight.Invoke();
                 Assert.Equal(3, WaitForTabCount(window, 3));
-                Assert.Equal("Untitled", TabItemAt(window, 0).Name);
-                Assert.Equal("a13.txt", TabItemAt(window, 1).Name);
-                Assert.Equal("b13.txt", TabItemAt(window, 2).Name);
+                Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
+                Assert.Equal(TabAccessibilityName.For("a13.txt", isDirty: false), TabItemAt(window, 1).Name);
+                Assert.Equal(TabAccessibilityName.For("b13.txt", isDirty: false), TabItemAt(window, 2).Name);
                 Assert.NotNull(WaitForPin(window, 2));
             }
             finally
@@ -205,9 +205,9 @@ public sealed class PinnedTabsTests
                 SelectTab(window, 2);
                 Press(window, VirtualKeyShort.KEY_W, withControl: true);
                 Assert.Equal(3, WaitForTabCount(window, 3));
-                Assert.Equal("Untitled", TabItemAt(window, 0).Name);
-                Assert.Equal("a13.txt", TabItemAt(window, 1).Name);
-                Assert.Equal("c13.txt", TabItemAt(window, 2).Name);
+                Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
+                Assert.Equal(TabAccessibilityName.For("a13.txt", isDirty: false), TabItemAt(window, 1).Name);
+                Assert.Equal(TabAccessibilityName.For("c13.txt", isDirty: false), TabItemAt(window, 2).Name);
                 // Review round 1: the feed mirrors live pin state, so the
                 // closed tab's entry goes with it (no orphan jump pin).
                 Assert.True(WaitForPinnedFilesGone(b));

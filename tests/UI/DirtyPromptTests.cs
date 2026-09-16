@@ -38,7 +38,7 @@ public sealed class DirtyPromptTests
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    WaitForTabName(window, 0, "save7.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("save7.txt", isDirty: true));
                     Assert.Equal("edited séven", BoxText(window));
                     Press(window, VirtualKeyShort.KEY_W, withControl: true);
                     var dialog = WaitForPrompt(window);
@@ -141,7 +141,7 @@ public sealed class DirtyPromptTests
                     var dialog = WaitForPrompt(window);
                     AnswerPrompt(window, dialog, "Cancel");
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    WaitForTabName(window, 0, "keep7.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("keep7.txt", isDirty: true));
                     Assert.Equal("edited keep", BoxText(window));
                     Assert.Equal("base keep", File.ReadAllText(file));
                     Press(window, VirtualKeyShort.KEY_W, withControl: true);
@@ -230,8 +230,8 @@ public sealed class DirtyPromptTests
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    WaitForTabName(window, 0, "win7.txt");
-                    WaitForTabName(window, 1, "unsaved win");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("win7.txt", isDirty: true));
+                    WaitForTabName(window, 1, TabAccessibilityName.For("unsaved win", isDirty: true));
                     SelectTab(window, 0);
                     Assert.Equal("edited win", BoxText(window));
                     SelectTab(window, 1);
@@ -314,8 +314,8 @@ public sealed class DirtyPromptTests
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    WaitForTabName(window, 0, "crash7.txt");
-                    WaitForTabName(window, 1, "K7B");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("crash7.txt", isDirty: true));
+                    WaitForTabName(window, 1, TabAccessibilityName.For("K7B", isDirty: true));
                     SelectTab(window, 0);
                     Assert.Contains("K7A", BoxText(window), StringComparison.Ordinal);
                     SelectTab(window, 1);
@@ -365,7 +365,7 @@ public sealed class DirtyPromptTests
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    Assert.Equal("Untitled", TabItemAt(window, 0).Name);
+                    Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
                     ContentBox(window).Focus();
                     Keyboard.Type("F7");
                     var deleted = Retry.While(
@@ -415,7 +415,7 @@ public sealed class DirtyPromptTests
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    WaitForTabName(window, 0, "unsaved seven");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("unsaved seven", isDirty: true));
                     Press(window, VirtualKeyShort.KEY_W, withControl: true);
                     var dialog = WaitForPrompt(window);
                     Assert.Contains("unsaved seven.txt", PromptText(dialog), StringComparison.Ordinal);

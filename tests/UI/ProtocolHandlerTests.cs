@@ -59,7 +59,7 @@ public sealed class ProtocolHandlerTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "linked 26.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("linked 26.txt", isDirty: false));
                 Assert.Equal("linked bytes", BoxText(window));
             }
             finally
@@ -87,7 +87,7 @@ public sealed class ProtocolHandlerTests
         try
         {
             Assert.Equal(1, WaitForTabCount(window, 1));
-            WaitForTabName(window, 0, "Untitled");
+            WaitForTabName(window, 0, TabAccessibilityName.For("Untitled", isDirty: false));
             Thread.Sleep(1000);
             Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")));
         }
@@ -117,7 +117,7 @@ public sealed class ProtocolHandlerTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "shell26.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("shell26.txt", isDirty: false));
             }
             finally
             {

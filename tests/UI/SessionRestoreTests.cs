@@ -54,9 +54,9 @@ public sealed class SessionRestoreTests
                 try
                 {
                     Assert.Equal(3, WaitForTabCount(window, 3));
-                    WaitForTabName(window, 0, "alpha.txt");
-                    WaitForTabName(window, 1, "unsaved one");
-                    WaitForTabName(window, 2, "bravo.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("alpha.txt", isDirty: false));
+                    WaitForTabName(window, 1, TabAccessibilityName.For("unsaved one", isDirty: true));
+                    WaitForTabName(window, 2, TabAccessibilityName.For("bravo.txt", isDirty: true));
                     Assert.Equal("alpha one\ntwo\nthree", NormalizeBreaks(BoxText(window)));
 
                     // Restore sets carets: typing lands at the seeded offset.
@@ -150,7 +150,7 @@ public sealed class SessionRestoreTests
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    Assert.Equal("Untitled", TabItemAt(window, 0).Name);
+                    Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
                     Assert.Equal(string.Empty, ContentBox(window).Text);
                 }
                 finally
@@ -208,7 +208,7 @@ public sealed class SessionRestoreTests
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    WaitForTabName(window, 0, "clean.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("clean.txt", isDirty: false));
                     Assert.Equal("clean profile", BoxText(window).Replace("\r\n", "\n", StringComparison.Ordinal));
                 }
                 finally
@@ -265,8 +265,8 @@ public sealed class SessionRestoreTests
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    WaitForTabName(window, 0, "good.txt");
-                    WaitForTabName(window, 1, "missing.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("good.txt", isDirty: false));
+                    WaitForTabName(window, 1, TabAccessibilityName.For("missing.txt", isDirty: false));
                     Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")));
 
                     // The notice is lazy: activating the ghost raises it.
@@ -321,7 +321,7 @@ public sealed class SessionRestoreTests
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    WaitForTabName(window, 0, "good.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("good.txt", isDirty: false));
                 }
                 finally
                 {
@@ -391,7 +391,7 @@ public sealed class SessionRestoreTests
                             return false;
                         }
 
-                        Window? match = found.FirstOrDefault(w => TabItems(w).Any(t => string.Equals(t.Name, "wina.txt", StringComparison.Ordinal)));
+                        Window? match = found.FirstOrDefault(w => TabItems(w).Any(t => string.Equals(t.Name, TabAccessibilityName.For("wina.txt", isDirty: false), StringComparison.Ordinal)));
                         if (match is null)
                         {
                             return false;
@@ -410,7 +410,7 @@ public sealed class SessionRestoreTests
                 Assert.Equal(2, TabItems(one).Count);
                 Assert.Contains("win one unsaved", BoxText(one), StringComparison.Ordinal);
                 Assert.Single(TabItems(two));
-                WaitForTabName(two, 0, "winb.txt");
+                WaitForTabName(two, 0, TabAccessibilityName.For("winb.txt", isDirty: false));
 
                 // Non-last close drops the closing window's tabs (stock:
                 // nothing merges); the survivor alone snapshots.
@@ -435,7 +435,7 @@ public sealed class SessionRestoreTests
                 {
                     Assert.Single(app.GetAllTopLevelWindows(automation));
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    WaitForTabName(window, 0, "wina.txt");
+                    WaitForTabName(window, 0, TabAccessibilityName.For("wina.txt", isDirty: false));
                 }
                 finally
                 {

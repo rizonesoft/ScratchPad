@@ -846,15 +846,15 @@ Why this section exists: stock tab UIA names carry ". Modified." / ". Unmodified
 
 **Job:** The user can hear tab dirty state by name. Consumer: screen readers and UIA clients, which read the tab names §3 exposes.
 
-**Treatment:** Tab UIA names carry the stock dirty/clean suffixes, updating with the §2 model. Cheaper substitute that fails the checkpoint: names that update on selection only.
+**Treatment:** Tab UIA names carry the stock dirty/clean suffixes, updating with the §2 model. **Decided 2026-09-16 (§28 validation):** form `{name}. Modified.` / `{name}. Unmodified.` (run-1 recon, both halves live-proven: Modified in §22, Unmodified by a §28 probe reading `Untitled. Unmodified.` on a fresh clean tab). Both `SetName` sites route through the run-2 `TabAccessibilityName.For`; live tracking rides the existing `IsDirty` to `RefreshHeader` path (no new hookup). Every exact-name UI assert migrates to the suffix matching the tab's settled dirty state (mechanical, file by file, focused runs). Cheaper substitute that fails the checkpoint: names that update on selection only.
 
 **Chrome:** No visual surface; the accessible name is the surface.
 
 **Needs:** Windows host (build/test)
 
-- [ ] Tab UIA names carry the stock Modified/Unmodified suffixes. Done when: names match stock under host drive.
-- [ ] Suffixes track the §2 dirty model live. Done when: edits flip the suffix.
-- [ ] Commit: `"notepad-core: name tabs for accessibility"`
+- [x] Tab UIA names carry the stock Modified/Unmodified suffixes. Done when: names match stock under host drive. **Driven 2026-09-16:** `TabNamesCarryStockSuffixes` (literal stock punctuation on clean tabs) plus a live stock probe reading `Untitled. Unmodified.` (Modified half §22-proven), green.
+- [x] Suffixes track the §2 dirty model live. Done when: edits flip the suffix. **Driven 2026-09-16:** `SuffixFlipsLiveWithDirty` (edit flips Modified, close-plus-save and reopen flips Unmodified), green.
+- [x] Commit: `"notepad-core: name tabs for accessibility"`
 
 **Test checkpoint:** stock-matching names and live tracking are driven in the room. Cheaper substitute that fails: accessible names that lie about dirty state.
 

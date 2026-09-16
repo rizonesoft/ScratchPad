@@ -42,7 +42,7 @@ public sealed class TabBarTests
             Assert.NotNull(tabs);
             var items = TabItems(window);
             Assert.Single(items);
-            Assert.Equal("Untitled", items[0].Name);
+            Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), items[0].Name);
             Assert.NotNull(FindButton(window, "Add New Tab"));
             Assert.NotNull(FindById(window, "TabContentBox"));
             // Clean resting tab: X glyph present, no dirty dot.
@@ -80,10 +80,10 @@ public sealed class TabBarTests
             ContentBox(window).Text = "BBB";
             SelectTab(window, 2);
             ContentBox(window).Text = "CCC";
-            WaitForTabName(window, 0, "AAA");
-            WaitForTabName(window, 1, "BBB");
-            WaitForTabName(window, 2, "CCC");
-            Assert.Equal("AAA", TabItemAt(window, 0).Name);
+            WaitForTabName(window, 0, TabAccessibilityName.For("AAA", isDirty: true));
+            WaitForTabName(window, 1, TabAccessibilityName.For("BBB", isDirty: true));
+            WaitForTabName(window, 2, TabAccessibilityName.For("CCC", isDirty: true));
+            Assert.Equal(TabAccessibilityName.For("AAA", isDirty: true), TabItemAt(window, 0).Name);
             SelectTab(window, 0);
             Assert.Equal("AAA", WaitForContent(window, "AAA"));
 
@@ -104,7 +104,7 @@ public sealed class TabBarTests
             // proves which tab went. Dirty closes have their own drives.
             SelectTab(window, 2);
             ContentBox(window).Text = string.Empty;
-            WaitForTabName(window, 2, "Untitled");
+            WaitForTabName(window, 2, TabAccessibilityName.For("Untitled", isDirty: false));
 
             // Ctrl+W closes the active tab; the neighbor takes selection.
             Press(window, VirtualKeyShort.KEY_W, withControl: true);
@@ -157,7 +157,7 @@ public sealed class TabBarTests
 
             for (int i = 0; i < 10; i++)
             {
-                WaitForTabName(window, i, $"TAB{i}");
+                WaitForTabName(window, i, TabAccessibilityName.For($"TAB{i}", isDirty: true));
             }
 
             // Ctrl+3 is positional; Ctrl+9 selects the last tab (probed).
@@ -172,7 +172,7 @@ public sealed class TabBarTests
             Press(window, VirtualKeyShort.TAB, withControl: true, withShift: true);
             Assert.Equal("TAB8", WaitForContent(window, "TAB8"));
             ContentBox(window).Text = string.Empty;
-            WaitForTabName(window, 8, "Untitled");
+            WaitForTabName(window, 8, TabAccessibilityName.For("Untitled", isDirty: false));
             Press(window, VirtualKeyShort.KEY_W, withControl: true);
             Assert.Equal(9, WaitForTabCount(window, 9));
             Press(window, VirtualKeyShort.KEY_T, withControl: true, withShift: true);
@@ -206,9 +206,9 @@ public sealed class TabBarTests
             ContentBox(window).Text = "BBB";
             SelectTab(window, 2);
             ContentBox(window).Text = "CCC";
-            WaitForTabName(window, 0, "AAA");
-            WaitForTabName(window, 1, "BBB");
-            WaitForTabName(window, 2, "CCC");
+            WaitForTabName(window, 0, TabAccessibilityName.For("AAA", isDirty: true));
+            WaitForTabName(window, 1, TabAccessibilityName.For("BBB", isDirty: true));
+            WaitForTabName(window, 2, TabAccessibilityName.For("CCC", isDirty: true));
 
             // Real mouse travel like the middle-click drive: pin topmost so an
             // overlapping window cannot receive the drag (which would pass
@@ -350,9 +350,9 @@ public sealed class TabBarTests
             ContentBox(window).Text = "BBB";
             SelectTab(window, 2);
             ContentBox(window).Text = "CCC";
-            WaitForTabName(window, 0, "AAA");
-            WaitForTabName(window, 1, "BBB");
-            WaitForTabName(window, 2, "CCC");
+            WaitForTabName(window, 0, TabAccessibilityName.For("AAA", isDirty: true));
+            WaitForTabName(window, 1, TabAccessibilityName.For("BBB", isDirty: true));
+            WaitForTabName(window, 2, TabAccessibilityName.For("CCC", isDirty: true));
 
             // Real right-button input like the middle-click drive: pin topmost
             // so an overlapping window cannot swallow the clicks instead.
@@ -396,22 +396,22 @@ public sealed class TabBarTests
         dontSave.Invoke();
         Assert.True(WaitForGone(window, "SavePromptDialog", TimeSpan.FromSeconds(10)), "prompt did not close on Don't save");
         Assert.Equal(2, WaitForTabCount(window, 2));
-        Assert.Equal("AAA", TabItemAt(window, 0).Name);
-        Assert.Equal("BBB", TabItemAt(window, 1).Name);
+        Assert.Equal(TabAccessibilityName.For("AAA", isDirty: true), TabItemAt(window, 0).Name);
+        Assert.Equal(TabAccessibilityName.For("BBB", isDirty: true), TabItemAt(window, 1).Name);
 
         // Clean tabs close silent.
         SelectTab(window, 0);
         ContentBox(window).Text = string.Empty;
-        WaitForTabName(window, 0, "Untitled");
+        WaitForTabName(window, 0, TabAccessibilityName.For("Untitled", isDirty: false));
         SelectTab(window, 1);
         ContentBox(window).Text = string.Empty;
-        WaitForTabName(window, 1, "Untitled");
+        WaitForTabName(window, 1, TabAccessibilityName.For("Untitled", isDirty: false));
         TabItemAt(window, 0).RightClick();
         var closeOthers = WaitForMenuItem(window, "Close other tabs");
         Assert.NotNull(closeOthers);
         closeOthers.Invoke();
         Assert.Equal(1, WaitForTabCount(window, 1));
-        Assert.Equal("Untitled", TabItemAt(window, 0).Name);
+        Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
 
         TabItemAt(window, 0).RightClick();
         var newTab = WaitForMenuItem(window, "New tab");
@@ -438,15 +438,15 @@ public sealed class TabBarTests
             ContentBox(window).Text = "AAA";
             SelectTab(window, 1);
             ContentBox(window).Text = "BBB";
-            WaitForTabName(window, 0, "AAA");
-            WaitForTabName(window, 1, "BBB");
+            WaitForTabName(window, 0, TabAccessibilityName.For("AAA", isDirty: true));
+            WaitForTabName(window, 1, TabAccessibilityName.For("BBB", isDirty: true));
 
             // Middle-click the non-active tab: cursor position wins. Clean
             // only the clicked tab so its close runs silent while the AAA
             // survivor proves which tab went.
             SelectTab(window, 1);
             ContentBox(window).Text = string.Empty;
-            WaitForTabName(window, 1, "Untitled");
+            WaitForTabName(window, 1, TabAccessibilityName.For("Untitled", isDirty: false));
             SelectTab(window, 0);
             // Real input needs the top of the Z order, not just focus: an
             // overlapping window would receive (and keep) the click instead.

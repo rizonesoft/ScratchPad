@@ -24,11 +24,11 @@ public sealed class UntitledTitleTests
         Assert.NotNull(window);
         try
         {
-            WaitForTabName(window, 0, "Untitled");
+            WaitForTabName(window, 0, TabAccessibilityName.For("Untitled", isDirty: false));
             ContentBox(window).Text = "My first line\nsecond line";
-            WaitForTabName(window, 0, "My first line");
+            WaitForTabName(window, 0, TabAccessibilityName.For("My first line", isDirty: true));
             ContentBox(window).Text = "   \n";
-            WaitForTabName(window, 0, "Untitled");
+            WaitForTabName(window, 0, TabAccessibilityName.For("Untitled", isDirty: true));
         }
         finally
         {
@@ -47,10 +47,10 @@ public sealed class UntitledTitleTests
         try
         {
             ContentBox(window).Text = "   spaced out   ";
-            WaitForTabName(window, 0, "spaced out");
+            WaitForTabName(window, 0, TabAccessibilityName.For("spaced out", isDirty: true));
             string forty = new('y', 40);
             ContentBox(window).Text = forty;
-            WaitForTabName(window, 0, forty[..35]);
+            WaitForTabName(window, 0, TabAccessibilityName.For(forty[..35], isDirty: true));
         }
         finally
         {

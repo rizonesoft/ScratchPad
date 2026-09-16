@@ -34,7 +34,7 @@ public sealed class MultiWindowTests
                 ? windows[1]
                 : windows[0];
             Assert.NotEqual(first.BoundingRectangle.Location, second.BoundingRectangle.Location);
-            Assert.Equal("Untitled", TabItemAt(second, 0).Name);
+            Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(second, 0).Name);
             Assert.Null(second.FindFirstDescendant(cf => cf.ByAutomationId("WhatsNewDialog")));
             second.Close();
             Assert.Single(WaitForWindowCount(app, automation, 1));

@@ -102,7 +102,7 @@ public sealed class JumpListTaskTests
                 using var second = LaunchAppWithArgs(LaunchArgs.NewNoteFlag);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Assert.Equal(3, WaitForTabCount(window, 3));
-                WaitForTabName(window, 2, "Untitled");
+                WaitForTabName(window, 2, TabAccessibilityName.For("Untitled", isDirty: false));
                 Assert.Equal(2, WaitForSelectedTab(window, 2));
                 Assert.Empty(LaunchDrops.Drain());
             }
@@ -134,7 +134,7 @@ public sealed class JumpListTaskTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "file25.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("file25.txt", isDirty: false));
                 Assert.Equal(0, WaitForSelectedTab(window, 0));
             }
             finally
@@ -167,7 +167,7 @@ public sealed class JumpListTaskTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "pinlaunch25.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("pinlaunch25.txt", isDirty: false));
             }
             finally
             {
@@ -198,7 +198,7 @@ public sealed class JumpListTaskTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "reclaunch25.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("reclaunch25.txt", isDirty: false));
             }
             finally
             {

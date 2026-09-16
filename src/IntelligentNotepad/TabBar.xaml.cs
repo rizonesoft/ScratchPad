@@ -751,7 +751,7 @@ public sealed partial class TabBar : UserControl
         // the tabs).
         var item = new TabViewItem { Header = header, Tag = tab, MaxWidth = 134, MinHeight = 34, VerticalAlignment = VerticalAlignment.Bottom };
         headers[tab.Id] = (dot, name, pin);
-        AutomationProperties.SetName(item, tab.DisplayName);
+        AutomationProperties.SetName(item, TabAccessibilityName.For(tab.DisplayName, tab.IsDirty));
         // Stock hides the X on dirty tabs until hover (D01 T01 §2 recon), so
         // closability tracks dirty-or-hovered. Keyboard, menu, and middle
         // closes bypass the glyph and work regardless.
@@ -809,7 +809,7 @@ public sealed partial class TabBar : UserControl
 
         if (ContainerFor(tab) is TabViewItem item)
         {
-            AutomationProperties.SetName(item, tab.DisplayName);
+            AutomationProperties.SetName(item, TabAccessibilityName.For(tab.DisplayName, tab.IsDirty));
             item.IsClosable = hovered.Contains(tab.Id) || !tab.IsDirty;
         }
 

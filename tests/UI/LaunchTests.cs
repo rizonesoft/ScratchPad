@@ -38,7 +38,7 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "launch8.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("launch8.txt", isDirty: false));
                 SelectTab(window, 1);
                 Assert.Equal("launch eight", BoxText(window));
             }
@@ -73,8 +73,8 @@ public sealed class LaunchTests
             {
                 Assert.Equal(3, WaitForTabCount(window, 3));
                 Assert.Single(app.GetAllTopLevelWindows(automation));
-                WaitForTabName(window, 1, "m81.txt");
-                WaitForTabName(window, 2, "m82.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("m81.txt", isDirty: false));
+                WaitForTabName(window, 2, TabAccessibilityName.For("m82.txt", isDirty: false));
             }
             finally
             {
@@ -108,7 +108,7 @@ public sealed class LaunchTests
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Assert.Single(first.GetAllTopLevelWindows(automation));
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "redir8.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("redir8.txt", isDirty: false));
                 Assert.Empty(LaunchDrops.Drain());
             }
             finally
@@ -207,7 +207,7 @@ public sealed class LaunchTests
                 var dialog = WaitForDialog(window, "CreateFileDialog");
                 AnswerDialog(window, dialog, "CreateFileDialog", "Yes");
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "yes8.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("yes8.txt", isDirty: false));
                 Assert.False(File.Exists(missing));
                 SelectTab(window, 1);
                 ContentBox(window).Focus();
@@ -259,7 +259,7 @@ public sealed class LaunchTests
                 }
 
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "enter8.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("enter8.txt", isDirty: false));
                 Assert.False(File.Exists(missing));
             }
             finally
@@ -357,7 +357,7 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "big8.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("big8.txt", isDirty: false));
                 SelectTab(window, 1);
                 Assert.Equal(4 * 1024 * 1024, BoxText(window).Length);
             }
@@ -401,7 +401,7 @@ public sealed class LaunchTests
                 SettleForProviders();
                 var fileWindow = windows.Select(w => (Window: w, Tabs: TabItems(w).Count)).OrderByDescending(pair => pair.Tabs).First().Window;
                 Assert.Equal(1, WaitForTabCount(fileWindow, 1));
-                WaitForTabName(fileWindow, 0, "w8.txt");
+                WaitForTabName(fileWindow, 0, TabAccessibilityName.For("w8.txt", isDirty: false));
                 Assert.Empty(LaunchDrops.Drain());
             }
             finally
@@ -435,8 +435,8 @@ public sealed class LaunchTests
             {
                 Assert.Equal(3, WaitForTabCount(window, 3));
                 Assert.Single(app.GetAllTopLevelWindows(automation));
-                WaitForTabName(window, 1, "w81.txt");
-                WaitForTabName(window, 2, "w82.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("w81.txt", isDirty: false));
+                WaitForTabName(window, 2, TabAccessibilityName.For("w82.txt", isDirty: false));
             }
             finally
             {
@@ -559,7 +559,7 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                WaitForTabName(window, 1, "dbl8.txt");
+                WaitForTabName(window, 1, TabAccessibilityName.For("dbl8.txt", isDirty: false));
             }
             finally
             {
