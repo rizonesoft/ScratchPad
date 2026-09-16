@@ -400,9 +400,15 @@ public sealed class SnapshotTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250)).Result;
         Assert.NotNull(dialog);
-        var btn = dialog.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button).And(cf.ByName(button)));
+        // The dialog element exists before its buttons render; every other
+        // action lookup in this file retries, this one did not (gate-only
+        // null under load, D01 T01 §22 review round 1).
+        var btn = Retry.WhileNull(
+            () => dialog.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button).And(cf.ByName(button)))?.AsButton(),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
         Assert.NotNull(btn);
-        btn.AsButton().Invoke();
+        btn.Invoke();
         var gone = Retry.While(
             () => window.FindFirstDescendant(cf => cf.ByAutomationId("SavePromptDialog")),
             found => found is not null,
