@@ -18,6 +18,8 @@ track: N1
 > **Corrected 2026-09-15 (phase-1 run 3):** `D01 T01` has shipped §§1-9 and §27 since, so the shell, tab model and bar, file engines, session restore, prompts, multi-window, and chrome repair all exist behind the T01-whole gate this file waits on; §8 is implemented but unstamped. Still true: no menu items, no settings store, no status bar.
 >
 > **Corrected 2026-09-16 (§2 validation):** `ShellSettings` (settings.json seam: geometry, theme, opening, startup, recents, pins, jump-list hash, whatsnew) exists since D01 T01; "no settings store" now means no single-writer store. §2 adopts its keys (same file, same names, per the header note) and takes over writes; D01 T02 §1 has shipped since (menu bar with all items).
+>
+> **Corrected 2026-09-16 (phase-1 run 4 repair):** §§1-3 have shipped and stamped since (menu bar, single-writer store, settings page); open work is §§4-12. Still true: no status bar, no print path.
 
 ## Inputs
 
@@ -153,6 +155,8 @@ Why this section exists: the settings page is the store made visible. Every cont
 > **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 4. Status Bar
+
+> **Started:** 2026-09-16T13:22:00Z
 
 Why this section exists: the status bar is always visible, so any staleness is always visible. It shows live truth for the active tab.
 
