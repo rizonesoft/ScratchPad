@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§25-26, 28-30 (§§21-22, §24 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §26, §§28-30 (§§21-22, §24, §25 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -76,7 +76,7 @@ track: N1
 |  22   |   §22   | First-line titles for untitled tabs | §2 |  [x]   |
 |  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
 |  24   |   §24   | Share target | §1, §2 |  [x]   |
-|  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
+|  25   |   §25   | Jump list tasks | §2, §6, §13 |  [x]   |
 |  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
@@ -768,6 +768,12 @@ Why this section exists: new note and pinned notes on the taskbar icon. (Jump-li
 - [x] Commit: `"notepad-core: task the jump list"`
 
 **Test checkpoint:** tasks, new, pinned, and recent launches are all driven in the room. Cheaper substitute that fails: a jump list that jumps nowhere.
+
+> **Verified:** 2026-09-16 | §25 | Jump list tasks: static new-note task commits ahead of the pin/recent feed, the flag opens or selects a fresh tab on fresh and redirected paths with files-first ordering, verbatim feed arguments launch to their files; UI JumpListTaskTests 5/5, Unit launch/feed 29/29, full gate Smoke 1/1 Unit 236/236 Protocol 35/35 UI 108 plus 1 pre-existing quarantine of 109, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate fcdd3b4 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s25.md
+> **CRUD:** applicable | task commit wrote the task plus pin plus recent to the taskbar list (read back with titles, args, groups); redirected flag wrote a third active untitled tab (read back); fresh flag-plus-file selected the spare (read back via selection); verbatim args wrote file tabs (names read back)
+> **Duration:** 90
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 26. Protocol Handler
 
