@@ -41,7 +41,7 @@ track: N1
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Menu bar with all items and enablement | D01 T01 §1 |  [x]   |
-|   2   |   §2    | Settings store with one writer | D01 T01 §1 |  [ ]   |
+|   2   |   §2    | Settings store with one writer | D01 T01 §1 |  [x]   |
 |   3   |   §3    | Settings page | §2 |  [ ]   |
 |   4   |   §4    | Status bar | D01 T01 §1 |  [ ]   |
 |   5   |   §5    | Print path | §1 |  [ ]   |
@@ -106,6 +106,12 @@ Why this section exists: settings with two writers disagree. One store, one writ
 - [x] Commit: `"notepad-core: add the settings store"`
 
 **Test checkpoint:** `dotnet test --filter SettingsStore` green, including corrupt-store reset and live propagation. Cheaper substitute that fails: settings scattered across the registry and config files.
+
+> **Verified:** 2026-09-16 | §2 | Single-writer settings store: every tunable owned by the store (adopted shell keys plus font family/style/size, wrap, status bar, zoom default), all production mutation through Update and all persists through the atomic snapshot write (Save delegates for test seeding), the unversioned file migrating in memory with lazy persist, corrupt/null/future files resetting to defaults with the flag surfaced once at startup through the notice dialog, live Changed plus a reentrancy guard with the cached window copy removed, schema with consumers and default sources in docs/settings-schema.md, fresh-install defaults pinned from the recorded stock probes; checkpoint Unit 10/10 plus UI 1/1 with the notice drive named, full gate Smoke 1/1 Unit 285/285 Protocol 35/35 UI 145 plus 1 pre-existing quarantine of 146, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** round 1, candidate abae736 -- `adversarial` approve (1 advisory: persist catch scope complete only while the path stays fixed, dispositioned in findings) · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T02-s2.md
+> **CRUD:** applicable | Update wrote settings (read back via the reopened store plus file asserts); the corrupt launch wrote defaults plus the notice (read back via restored keys and the dismissed dialog); pin, recents, geometry, and jumplist wrote through Update (read back via Load probes in the green UI suite); reentrant Update wrote nothing further (read back via the throw assert)
+> **Duration:** 93
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 3. Settings Page
 
