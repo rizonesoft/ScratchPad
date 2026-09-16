@@ -26,6 +26,7 @@ public sealed partial class MainWindow : Window, IDisposable
     bool snapshotsDialogOpen;
     bool templatesDialogOpen;
     bool exportDialogOpen;
+    bool lockDialogOpen;
 
     private MiddleClickHook? middleClick;
 
@@ -112,6 +113,10 @@ public sealed partial class MainWindow : Window, IDisposable
             // in-tree (X for eXport); the menu trigger is deferred to
             // D01 T02 §1.
             AddAccel(root, VirtualKey.X, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowExportPanelAsync(); });
+            // D01 T01 §19: lock files with a password. Ctrl+Shift+L is free
+            // in-tree (L for lock); the menu trigger is deferred to D01 T02
+            // §1, and unlock rides the open path below.
+            AddAccel(root, VirtualKey.L, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowLockPanelAsync(); });
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
@@ -311,6 +316,13 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             if (!File.Exists(path) || new FileInfo(path).Length > int.MaxValue)
             {
+                return null;
+            }
+
+            if (IsLockedFile(path))
+            {
+                // D01 T01 §19: locked files restore as ghosts (no password
+                // at startup); the ghost sits quiet since the file exists.
                 return null;
             }
 
@@ -585,11 +597,55 @@ public sealed partial class MainWindow : Window, IDisposable
         };
     }
 
+    // D01 T01 §19: lock the active tab's file with a password. The dialog
+    // collects the password; NoteCrypto.Relock (the single-homed re-lock)
+    // encodes, locks, and commits, marking the tab locked and clean.
+    internal async Task ShowLockPanelAsync()
+    {
+        if (lockDialogOpen || Content?.XamlRoot is not XamlRoot xamlRoot)
+        {
+            return;
+        }
+
+        lockDialogOpen = true;
+        try
+        {
+            Tab? active = tabs.ActiveTab;
+            var dialog = new LockDialog(active?.FilePath, password => LockActiveTab(active, password))
+            {
+                XamlRoot = xamlRoot,
+            };
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            lockDialogOpen = false;
+        }
+    }
+
+    void LockActiveTab(Tab? tab, string password)
+    {
+        if (tab?.FilePath is null)
+        {
+            throw new ArgumentException("Save the file before locking.", nameof(tab));
+        }
+
+        NoteCrypto.RelockOrThrow(tab, ActiveTabText(), password);
+    }
+
     static SaveResult SaveSnapshotBuffer(Tab? tab, string text)
     {
         if (tab?.FilePath is null)
         {
             return new SaveFailed("No file path.");
+        }
+
+        if (tab.IsLocked)
+        {
+            // D01 T01 §19: the restore-save branch cannot prompt for a
+            // password (sync seam), so it fails safe: the restore aborts
+            // with buffer and disk untouched, per the §16 failure rule.
+            return new SaveFailed("File is locked.");
         }
 
         var spec = new SaveSpec(tab.Encoding, tab.HasBom, tab.LineEnding);

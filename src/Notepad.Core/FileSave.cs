@@ -115,6 +115,34 @@ public static class FileSave
         }
     }
 
+    // Atomic bytes twin of SaveFile, owned by D01 T01 §19: encrypted notes
+    // commit ciphertext through the same temp-plus-rename and failure map,
+    // minus the text encoding arm (bytes arrive already encoded).
+    public static SaveResult SaveBytes(string path, byte[] bytes, Action? faultBeforeCommit = null)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(bytes);
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        string temp = Path.Combine(directory!, $".~{Guid.NewGuid():N}.tmp");
+        try
+        {
+            File.WriteAllBytes(temp, bytes);
+            faultBeforeCommit?.Invoke();
+            File.Move(temp, path, overwrite: true);
+            return new SaveSuccess();
+        }
+        catch (Exception ex) when (RedirectsToSaveAs(ex))
+        {
+            DeleteQuietly(temp);
+            return new SaveRedirect(ex.Message);
+        }
+        catch (Exception ex) when ((ex is IOException or NotSupportedException) && !RedirectsToSaveAs(ex))
+        {
+            DeleteQuietly(temp);
+            return new SaveFailed(ex.Message);
+        }
+    }
+
     // Read-only and locked destinations redirect to Save As (probed: stock
     // opens Save As for both, bytes intact). One outcome, no reason: Windows
     // reports both as UnauthorizedAccessException, so the OS does not

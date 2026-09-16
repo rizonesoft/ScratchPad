@@ -43,6 +43,12 @@ sealed partial class MainWindow
                 continue;
             }
 
+            if (IsLockedFile(path))
+            {
+                await UnlockAndOpenAsync(path).ConfigureAwait(true);
+                continue;
+            }
+
             var options = new OpenOptions(OpenOptions.DefaultMaxBytes, LogTimestamp.Format(DateTime.Now));
             OpenResult result = await FileOpen.OpenFileAsync(path, options).ConfigureAwait(true);
             switch (result)
@@ -54,6 +60,52 @@ sealed partial class MainWindow
                     await ShowFailureAsync(failed.Failure, failed.Detail).ConfigureAwait(true);
                     break;
             }
+        }
+    }
+
+    // D01 T01 §19: locked files detour through the unlock prompt before
+    // any bytes render. The prompt retries in-dialog; Cancel skips the file
+    // with no tab and nothing rendered.
+    async Task UnlockAndOpenAsync(string path)
+    {
+        XamlRoot? root = await WaitForXamlRootAsync().ConfigureAwait(true);
+        if (root is null)
+        {
+            return;
+        }
+
+        var dialog = new UnlockDialog(Path.GetFileName(path), password => UnlockDetected(path, password)) { XamlRoot = root };
+        await dialog.ShowAsync();
+    }
+
+    void UnlockDetected(string path, string password)
+    {
+        DetectedFile detected = FileOpen.Detect(NoteCrypto.Unlock(File.ReadAllBytes(path), password));
+        Tab tab = tabs.OpenTab(path, detected);
+        tab.IsLocked = true;
+        TextBox box = tabBar!.ContentFor(tab);
+        box.Text = detected.Text;
+        tab.MarkSaved();
+    }
+
+    static bool IsLockedFile(string path)
+    {
+        try
+        {
+            byte[] prefix = new byte[NoteCrypto.Magic.Length + 1];
+            using (FileStream stream = File.OpenRead(path))
+            {
+                if (stream.Read(prefix, 0, prefix.Length) < prefix.Length)
+                {
+                    return false;
+                }
+            }
+
+            return NoteCrypto.IsLocked(prefix);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

@@ -175,6 +175,22 @@ public sealed class Tab : INotifyPropertyChanged
         }
     }
 
+    // Lock state, owned by D01 T01 §19: the tab's file holds ciphertext, so
+    // every file write re-locks instead of saving plaintext. Memory only,
+    // never persisted: locked-ness re-derives from the file bytes at open.
+    public bool IsLocked
+    {
+        get;
+        set
+        {
+            if (field != value)
+            {
+                field = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public bool IsDirty
     {
         get;

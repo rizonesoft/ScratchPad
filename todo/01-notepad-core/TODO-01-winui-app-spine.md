@@ -24,6 +24,8 @@ track: N1
 > **Corrected 2026-09-16 (phase-1 run 3, §17 validation):** §§14, 16 have shipped since (stats panel, file snapshots). Open: §§17-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §18 validation):** §17 has shipped since (new-file templates). Open: §§18-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-16 (phase-1 run 3, §19 validation):** §18 has shipped since (export across formats). Open: §§19-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -581,24 +583,26 @@ Why this section exists: Markdown, HTML, or plain text out of any view, to file.
 
 ## 19. Encrypted Notes
 
+> **Started:** 2026-09-16T01:40:00Z
+
 Why this section exists: some notes need a password. Files lock with a clearly stated algorithm, and a wrong password fails loud instead of producing garbage.
 
 **Fidelity:** new build, no baseline (stock Notepad encrypts nothing).
 
 **Job:** The user can lock files with a password and unlock them later. Consumer: the file reader (§4) and writer (§5), which decrypt around the existing encoding path.
 
-**Treatment:** Password-derived key with a stated algorithm (AES-256-GCM via platform crypto is the default; the section records the final choice); a wrong password fails loud before any bytes render. Cheaper substitute that fails the checkpoint: obfuscation, or silent mojibake on a wrong password.
+**Treatment:** Password-derived key with a stated algorithm (AES-256-GCM via platform crypto is the default; the section records the final choice); a wrong password fails loud before any bytes render. **Decided 2026-09-16 (§19 validation):** final choice is AES-256-GCM (.NET AesGcm, CNG on Windows) with PBKDF2-HMAC-SHA256 at 600,000 iterations (OWASP password-storage guidance), 16-byte salt, 12-byte nonce, 16-byte tag, the header line bound as AAD. File layout: `IntelligentNotepad-Encrypted-1` plus LF, one JSON header line (`alg`, `kdf`, `iter`, `salt`, `nonce`, b64), LF, then raw ciphertext plus tag; unknown algorithms and corrupt headers fail loud like wrong passwords (no oracle detail). The doc is `docs/encrypted-notes.md` with a pinned test vector. Lock opens on Ctrl+Shift+L (free in-tree, L for lock) with the menu trigger deferred to the menu owner per its engine-trigger rule (contract: command LockFile, always enabled, handler MainWindow.ShowLockPanelAsync; recorded both sides); unlock rides the open path (launch-args and drops now, the T02 Open trigger reuses it), never a separate command. The lock dialog carries password plus confirm boxes (must match, non-empty); the unlock dialog carries password plus Unlock/Cancel with inline retry on a wrong password. Saves never silently decrypt: locked-origin tabs (`Tab.IsLocked`, memory only, never persisted) re-lock on every file write (close-save shows the lock dialog, Cancel aborts the close with nothing written; the snapshot-restore Save branch fails safe so the restore aborts; no direct save key exists yet and the T02 one reuses this rule); the plaintext escape hatch waits on Save As (copy to a new tab meanwhile). Restore ghosts locked files (no password at startup; the password is never persisted). Memory-only means key bytes cleared after use with the password living only in the dialog; the drive scans app data for the password and asserts the ciphertext holds no plaintext. Cheaper substitute that fails the checkpoint: obfuscation, or silent mojibake on a wrong password.
 
-**Chrome:** Consume the shared dialog styles. Do not invent a second lock treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with SavePromptDialog/StatsDialog/SnapshotsDialog/TemplatesDialog/ExportDialog (default WinUI styling, PasswordBox inputs). **Corrected 2026-09-16 (§19 validation):** no shared dialog styles exist in the tree (same finding as §16/§17/§18); the dialogs follow the existing code-built dialog pattern instead. Do not invent a second lock treatment.
 
 **Needs:** Windows host (build/test)
 
-- [ ] The algorithm, KDF, and parameters are stated in the file header and in docs. Done when: a reader implements decrypt from the doc alone.
-- [ ] Locking a file writes the encrypted form through §5. Done when: the ciphertext round-trips byte-identical.
-- [ ] Unlocking with the right password restores the exact bytes. Done when: round-trip fixtures pass across encodings.
-- [ ] A wrong password fails loud with no partial render. Done when: the failure path is driven and nothing leaks.
-- [ ] The password never persists; the key lives in memory only. Done when: no password or key bytes reach disk or logs.
-- [ ] Commit: `"notepad-core: lock notes with a password"`
+- [x] The algorithm, KDF, and parameters are stated in the file header and in docs. Done when: a reader implements decrypt from the doc alone. **Driven 2026-09-16:** `docs/encrypted-notes.md` (layout, parameters, normative decrypt steps) with `DocumentedVectorPinsCiphertext` (vector cross-checked against an independent Python implementation), green.
+- [x] Locking a file writes the encrypted form through §5. Done when: the ciphertext round-trips byte-identical. **Driven 2026-09-16:** `LockUnlockRoundTripsExactBytes` (lock in the room, ciphertext holds no plaintext, source path overwritten with locked bytes) plus `RelockMarksTabLockedAndClean`, green.
+- [x] Unlocking with the right password restores the exact bytes. Done when: round-trip fixtures pass across encodings. **Driven 2026-09-16:** `LockUnlockRestoresExactBytes` theory over UTF-8/BOM/UTF-16LE/UTF-16BE/ANSI plus the room unlock half of `LockUnlockRoundTripsExactBytes`, green.
+- [x] A wrong password fails loud with no partial render. Done when: the failure path is driven and nothing leaks. **Driven 2026-09-16:** `WrongPasswordFailsLoudWithNothingRendered` (inline error, no new tab, file bytes untouched) plus `TamperedCiphertextFailsLikeWrongPassword` and `TamperedHeaderFailsLoud`, green.
+- [x] The password never persists; the key lives in memory only. Done when: no password or key bytes reach disk or logs. **Driven 2026-09-16:** `PasswordNeverReachesDisk` (lock plus unlock, then app-data scan finds no password) plus `RelockOnCloseSaveKeepsCiphertext` and `RestoreGhostsLockedFile`, green.
+- [x] Commit: `"notepad-core: lock notes with a password"`
 
 **Test checkpoint:** stated algorithm, lock, unlock, loud failure, and memory-only keys are all driven in the room. Cheaper substitute that fails: encryption nobody can audit.
 

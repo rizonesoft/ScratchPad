@@ -466,7 +466,7 @@ public sealed partial class TabBar : UserControl
         switch (await AskSaveAsync(tab).ConfigureAwait(true))
         {
             case SaveAnswer.Save:
-                return TrySaveAndClose(tab, model);
+                return await TrySaveAndCloseAsync(tab, model).ConfigureAwait(true);
             case SaveAnswer.DontSave:
                 boxes.Remove(tab.Id);
                 model.CloseTab(tab, null, 0, discardUnsaved: true);
@@ -486,7 +486,7 @@ public sealed partial class TabBar : UserControl
     // at T02 §1-time) also keep the tab open. Every keep-open path
     // returns true: the user vetoed nothing, so batch closes continue
     // past them instead of aborting.
-    bool TrySaveAndClose(Tab tab, TabModel model)
+    async Task<bool> TrySaveAndCloseAsync(Tab tab, TabModel model)
     {
         if (tab.FilePath is null)
         {
@@ -494,6 +494,32 @@ public sealed partial class TabBar : UserControl
         }
 
         string text = boxes.TryGetValue(tab.Id, out TextBox? box) ? box.Text ?? string.Empty : string.Empty;
+        if (tab.IsLocked)
+        {
+            // D01 T01 §19: locked tabs re-lock on save, never write
+            // plaintext. Cancel aborts the close with nothing written.
+            if (XamlRoot is null)
+            {
+                return false;
+            }
+
+            bool relocked = false;
+            var dialog = new LockDialog(tab.FilePath, password =>
+            {
+                NoteCrypto.RelockOrThrow(tab, text, password);
+                relocked = true;
+            })
+            { XamlRoot = XamlRoot };
+            await dialog.ShowAsync();
+            if (!relocked)
+            {
+                return false;
+            }
+
+            CloseClean(tab, model);
+            return true;
+        }
+
         var spec = new SaveSpec(tab.Encoding, tab.HasBom, tab.LineEnding);
         switch (FileSave.SaveFile(tab.FilePath, text, spec))
         {
