@@ -23,6 +23,7 @@ internal interface IMenuHost
     void SearchBing();
     void DefineBing();
     void ShowFontSettings();
+    void SetStatusBarVisible(bool visible);
     Task ShowStatsAsync();
     Task ShowSnapshotsAsync();
     Task ShowTemplatesAsync();
@@ -106,6 +107,14 @@ internal sealed partial class AppMenuBar : MenuBar
         }
 
         item.IsEnabled = enabled;
+    }
+
+    // D01 T02 §4: syncs the View toggle's check to the store (startup
+    // and any external settings change); user clicks flow back through
+    // OnViewStatusBar.
+    public void SetStatusBarChecked(bool visible)
+    {
+        MenuViewStatusBar.IsChecked = visible;
     }
 
     public void RefreshRecents()
@@ -202,6 +211,10 @@ internal sealed partial class AppMenuBar : MenuBar
     void OnEditFont(object sender, RoutedEventArgs e) => host?.ShowFontSettings();
 
     void OnEditDefineBing(object sender, RoutedEventArgs e) => host?.DefineBing();
+
+    // D01 T02 §4: ToggleMenuFlyoutItem flips IsChecked before Click
+    // fires, so the handler reads the new state straight off the item.
+    void OnViewStatusBar(object sender, RoutedEventArgs e) => host?.SetStatusBarVisible(MenuViewStatusBar.IsChecked);
 
     void OnToolsStats(object sender, RoutedEventArgs e)
     {

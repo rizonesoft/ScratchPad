@@ -160,23 +160,25 @@ Why this section exists: the settings page is the store made visible. Every cont
 
 Why this section exists: the status bar is always visible, so any staleness is always visible. It shows live truth for the active tab.
 
-**Fidelity:** Notepad status bar -- `resources/baseline/status-bar/`. Segments, order, and click behaviors match the capture.
+**Fidelity:** Notepad status bar -- `resources/baseline/status-bar/`. Segments, order, and click behaviors match the capture. **Corrected 2026-09-16 (§4 validation):** the seed dir never existed (same seed error as §§1/3); stock status-bar crops are filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names by this section's capture-first drive, and the app side is the main-window golden (status band included), refreshed per procedure with the diff confined to that band.
 
 **Job:** The user can read line/column, zoom, encoding, and line endings at a glance. Consumer: none, this surface is the consumer.
 
 **Treatment:** Live-bound status segments per the capture. Cheaper substitute that fails the checkpoint: labels updated only on save.
 
-**Chrome:** Consume the shared status styles. Do not invent a second status treatment.
+**Chrome:** Consume the shared status styles. Do not invent a second status treatment. **Corrected 2026-09-16 (§4 validation):** no shared status styles exist (App.xaml carries only the WinUI defaults, verified this run), so this section establishes the status treatment as first consumer with stock WinUI controls; §§7/9/11 consume it.
 
 **Groomed 2026-09-13:** Notepad audit: the document-total count, the Markdown view toggle, and CR display are now explicit.
 
-- [ ] `src/Notepad/StatusBar.xaml` binds line/column, zoom, encoding, and line endings to the active tab. Done when: every keystroke and switch updates it.
-- [ ] Clicking a segment opens its Notepad behavior (encoding menu, line-ending menu, zoom control). Done when: each click path is driven.
+**Needs:** Windows host (build/test)
+
+- [ ] `src/IntelligentNotepad/StatusBar.xaml` (+ `.xaml.cs`) binds line/column, zoom, encoding, and line endings to the active tab. Done when: every keystroke and switch updates it. **Corrected 2026-09-16 (§4 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3). **Recorded 2026-09-16:** this section measures and records the per-keystroke status-update latency bar that §9 item 4 measures against.
+- [ ] ~~Clicking a segment opens its Notepad behavior (encoding menu, line-ending menu, zoom control). Done when: each click path is driven.~~ **Struck 2026-09-16:** stock 11.2607.14.0 plain-text segments are static Text (single-click probed twice foreground-pinned plus double-click once across EOL/encoding/zoom/count/LnCol: no popup, no state change, frames plus UIA dumps agree); parity is no click path. The only clickable strip element is the Formatted switch (item 7, Button). No replacement: there is no stock behavior to build. Parity negative driven: `StatusSegmentsHaveNoClickPath`.
 - [ ] CRLF/LF and tab/space counts follow Notepad's rules exactly. Done when: the math fixtures pass.
 - [ ] A selection shows its character count as Notepad does. Done when: the selection-count fixtures pass.
 - [ ] The bar hides and shows per the View menu with the choice persisted. Done when: the toggle is driven. **Recorded 2026-09-16:** D01 T02 §1 ships View > Status bar disabled and unchecked; this section enables it through the `MenuCommands` registry and drives the toggle on landing.
 - [ ] With no selection the bar shows the document-total character count; with a selection it shows selected-plus-total counts. Done when: the count fixtures pass. Source: https://blogs.windows.com/windows-insider/2023/12/07/announcing-windows-11-insider-preview-build-23601-dev-channel/
-- [ ] The bar offers the formatted-versus-syntax Markdown view switch routed to D02 T04 §3. Done when: the switch drives the view change.
+- [ ] The bar offers the formatted-versus-syntax Markdown view switch routed to D02 T04 §3. Done when: the switch drives the view change. **Decided 2026-09-16 (§4 validation):** the §1 item-2 pending-owner pattern: this section renders the switch disabled with its stock label, and D02 T04 §3 enables it alongside the View pair and drives the view change on landing (enablement line recorded on its item 5).
 - [ ] The line-ending segment displays CR alongside CRLF and LF per the detected convention. Done when: the CR fixture passes.
 - [ ] Commit: `"notepad-core: build the status bar"`
 

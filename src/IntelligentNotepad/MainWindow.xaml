@@ -22,7 +22,7 @@
             <RowDefinition Height="43" />
             <RowDefinition Height="32" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="32" />
+            <RowDefinition x:Name="StatusRow" Height="32" />
         </Grid.RowDefinitions>
 
         <ContentControl x:Name="TabRegion" Grid.Row="0" AutomationProperties.AutomationId="TabRegion" AutomationProperties.Name="Tab region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
@@ -45,7 +45,7 @@
 
         <ContentControl x:Name="EditorRegion" Grid.Row="2" AutomationProperties.AutomationId="EditorRegion" AutomationProperties.Name="Editor region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
 
-        <ContentControl x:Name="StatusRegion" Grid.Row="3" AutomationProperties.AutomationId="StatusRegion" AutomationProperties.Name="Status region" Background="Transparent" />
+        <ContentControl x:Name="StatusRegion" Grid.Row="3" AutomationProperties.AutomationId="StatusRegion" AutomationProperties.Name="Status region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
 
         <!-- Settings overlay, owned by D01 T02 §3: covers all rows like
              stock (tabs, menus, editor, status all hide behind it). -->

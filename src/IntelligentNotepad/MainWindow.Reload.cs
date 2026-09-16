@@ -336,8 +336,7 @@ sealed partial class MainWindow
         }
 
         DetectedFile detected = FileOpen.Detect(disk);
-        TextBox box = tabBar.ContentFor(tab);
-        box.Text = detected.Text;
+        tabBar.SetBoxText(tab, detected.Text);
         tab.ApplySave(tab.FilePath, new SaveSpec(detected.EncodingName, detected.HasBom, detected.LineEnding.Dominant));
         reloadBaselines[FullPathOrEmpty(tab.FilePath)] = SHA256.HashData(disk);
     }

@@ -83,8 +83,7 @@ sealed partial class MainWindow
         DetectedFile detected = FileOpen.Detect(NoteCrypto.Unlock(File.ReadAllBytes(path), password));
         Tab tab = tabs.OpenTab(path, detected);
         tab.IsLocked = true;
-        TextBox box = tabBar!.ContentFor(tab);
-        box.Text = detected.Text;
+        tabBar!.SetBoxText(tab, detected.Text);
         // D01 T01 §21: the unlocked encoding applies (without this a UTF-16
         // note silently re-locks as UTF-8); ApplySave also marks clean.
         tab.ApplySave(path, new SaveSpec(detected.EncodingName, detected.HasBom, detected.LineEnding.Dominant));
@@ -115,8 +114,7 @@ sealed partial class MainWindow
     {
         var detected = new DetectedFile(opened.Text, opened.EncodingName, opened.HasBom, opened.LineEnding);
         Tab tab = tabs.OpenTab(path, detected);
-        TextBox box = tabBar!.ContentFor(tab);
-        box.Text = opened.Text;
+        tabBar!.SetBoxText(tab, opened.Text);
         tab.MarkSaved();
     }
 

@@ -21,6 +21,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private readonly TabModel tabs = new();
 
     private TabBar? tabBar;
+
+    // D01 T02 §4: the status strip plus the box it currently follows.
+    // Caret moves do not change Text, so the active box needs its own
+    // SelectionChanged hook, re-hung on every tab switch.
+    private StatusBar? statusBar;
+    private TextBox? hookedBox;
     bool statsDialogOpen;
     bool snapshotsDialogOpen;
     bool templatesDialogOpen;
@@ -58,6 +64,8 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 app.NotifyTabsEdited();
             }
+
+            RefreshStatusBar();
         };
         // D01 T01 §13: pin toggles re-commit the jump list (pins feed it).
         tabBar.PinToggled += (_, _) => App.RefreshJumpList();
@@ -69,6 +77,14 @@ public sealed partial class MainWindow : Window, IDisposable
         MenuRegion.Bind(this);
         // D01 T02 §3: the settings page is live, so Edit > Font enables.
         MenuRegion.SetEnabled("MenuEditFont", true);
+
+        // D01 T02 §4: the status strip lives in the shell's fourth row;
+        // the View toggle enables here and the store owns its state.
+        statusBar = new StatusBar();
+        StatusRegion.Content = statusBar;
+        MenuRegion.SetEnabled("MenuViewStatusBar", true);
+        MenuRegion.SetStatusBarChecked(SettingsStore.Shared.Current.ShowStatusBar);
+        ApplyStatusVisibility();
         // D01 T02 §3: theme changes (and any sibling-window update) apply
         // live; the handler only reads, never writes back.
         SettingsStore.Shared.Changed += OnSettingsChanged;
@@ -248,15 +264,14 @@ public sealed partial class MainWindow : Window, IDisposable
 
         Tab tab = tabs.OpenTab(path, detected);
         tab.IsPinned = saved.IsPinned;
-        TextBox box = tabBar!.ContentFor(tab);
-        box.Text = detected.Text;
+        tabBar!.SetBoxText(tab, detected.Text);
         // Explicit: programmatic Text sets on pre-show boxes do not reliably
         // raise TextChanged (observed: restored untitled tabs kept a clean
         // model under filled boxes), so restore notifies directly instead of
         // depending on the event. Duplicate calls are safe (same content).
         tab.NotifyEdited(detected.Text);
         tab.MarkSaved();
-        box.SelectionStart = Math.Min(Math.Max(0, saved.Caret), box.Text.Length);
+        tabBar!.SetSelectionStart(tab, saved.Caret);
     }
 
     private void RestoreBufferTab(SessionTab saved)
@@ -286,8 +301,7 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         }
 
-        TextBox box = tabBar!.ContentFor(tab);
-        box.Text = content;
+        TextBox box = tabBar!.SetBoxText(tab, content);
         // Explicit for the same pre-show reason as the clean-file path: the
         // model must match the filled box even if TextChanged never fires.
         tab.NotifyEdited(content);
@@ -379,6 +393,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 tab.PropertyChanged += ActiveTab_PropertyChanged;
             }
         }
+
+        RefreshStatusBar();
     }
 
     private void ActiveTab_PropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -388,6 +404,14 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             UpdateTitle();
         }
+
+        // D01 T02 §4: encoding, line endings, and renames (mode follows
+        // the path suffix) all re-render the strip.
+        if (sender is Tab changed && ReferenceEquals(changed, tabs.ActiveTab)
+            && e.PropertyName is nameof(Tab.DisplayName) or nameof(Tab.Encoding) or nameof(Tab.LineEnding))
+        {
+            RefreshStatusBar();
+        }
     }
 
     private void ShowActiveTab()
@@ -395,6 +419,69 @@ public sealed partial class MainWindow : Window, IDisposable
         EditorRegion.Content = tabs.ActiveTab is Tab active && tabBar is not null
             ? tabBar.ContentFor(active)
             : null;
+        HookActiveBox();
+        RefreshStatusBar();
+    }
+
+    // D01 T02 §4: follows the active box's caret. Unhooks the old box
+    // first so a closed tab never updates the strip behind the new one.
+    private void HookActiveBox()
+    {
+        if (hookedBox is not null)
+        {
+            hookedBox.SelectionChanged -= ActiveBox_SelectionChanged;
+            hookedBox = null;
+        }
+
+        if (tabs.ActiveTab is Tab active && tabBar is not null)
+        {
+            hookedBox = tabBar.ContentFor(active);
+            hookedBox.SelectionChanged += ActiveBox_SelectionChanged;
+        }
+    }
+
+    private void ActiveBox_SelectionChanged(object sender, RoutedEventArgs e) => RefreshStatusBar();
+
+    // D01 T02 §4: re-renders the strip from the active tab. Null tab
+    // shows the empty defaults (stock has no zero-tab state to match).
+    private void RefreshStatusBar()
+    {
+        if (statusBar is null)
+        {
+            return;
+        }
+
+        if (tabs.ActiveTab is not Tab active || tabBar is null)
+        {
+            statusBar.Show(StatusView.Empty(SettingsStore.Shared.Current.ZoomDefault));
+            return;
+        }
+
+        TextBox box = tabBar.ContentFor(active);
+        statusBar.Show(StatusView.Compute(
+            box.Text,
+            box.SelectionStart,
+            box.SelectionStart,
+            box.SelectionLength,
+            active.Encoding,
+            active.LineEnding,
+            SettingsStore.Shared.Current.ZoomDefault,
+            StatusSegments.IsMarkdownFile(active.FilePath)));
+    }
+
+    // D01 T02 §4: the toggle collapses the strip and its 32-DIP row
+    // together, so the editor grows like stock (a bare Visibility flip
+    // would leave a gap).
+    private void ApplyStatusVisibility()
+    {
+        bool visible = SettingsStore.Shared.Current.ShowStatusBar;
+        StatusRegion.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        StatusRow.Height = new GridLength(visible ? 32 : 0);
+    }
+
+    public void SetStatusBarVisible(bool visible)
+    {
+        SettingsStore.Shared.Update(fresh => fresh.ShowStatusBar = visible);
     }
 
     // D01 T01 §14: the stats panel over the active tab's buffer (empty
@@ -464,7 +551,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 {
                     if (active is not null && tabBar is not null)
                     {
-                        tabBar.ContentFor(active).Text = restored;
+                        tabBar.SetBoxText(active, restored);
                     }
                 },
                 () => active is null ? "Untitled.txt" : TabBar.PromptName(active),
@@ -517,8 +604,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         Tab tab = tabs.NewTab();
-        TextBox box = tabBar.ContentFor(tab);
-        box.Text = expanded;
+        tabBar.SetBoxText(tab, expanded);
         // Explicit like the restore fill path: pre-show boxes do not
         // reliably raise TextChanged, so the model is notified directly.
         // Blank bodies stay clean (untitled tabs are dirty exactly when
@@ -717,6 +803,12 @@ public sealed partial class MainWindow : Window, IDisposable
     public void Dispose()
     {
         SettingsStore.Shared.Changed -= OnSettingsChanged;
+        if (hookedBox is not null)
+        {
+            hookedBox.SelectionChanged -= ActiveBox_SelectionChanged;
+            hookedBox = null;
+        }
+
         middleClick?.Dispose();
     }
 
@@ -770,7 +862,17 @@ public sealed partial class MainWindow : Window, IDisposable
 
     void OnSettingsChanged(object? sender, EventArgs e)
     {
-        DispatcherQueue.TryEnqueue(ApplyTheme);
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            ApplyTheme();
+
+            // D01 T02 §4: the toggle and the zoom default live in the
+            // store, so every settings change re-applies the strip and
+            // re-syncs the menu check (another window may have flipped it).
+            MenuRegion.SetStatusBarChecked(SettingsStore.Shared.Current.ShowStatusBar);
+            ApplyStatusVisibility();
+            RefreshStatusBar();
+        });
     }
 
     void ApplyTheme()

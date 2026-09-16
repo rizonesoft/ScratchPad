@@ -158,7 +158,7 @@
                 </MenuFlyoutItem.KeyboardAccelerators>
             </MenuFlyoutItem>
         </MenuFlyoutSubItem>
-        <ToggleMenuFlyoutItem x:Name="MenuViewStatusBar" Text="Status bar" AutomationProperties.AutomationId="MenuViewStatusBar" IsEnabled="False" IsChecked="False" />
+        <ToggleMenuFlyoutItem x:Name="MenuViewStatusBar" Text="Status bar" AutomationProperties.AutomationId="MenuViewStatusBar" IsEnabled="False" IsChecked="False" Click="OnViewStatusBar" />
         <ToggleMenuFlyoutItem x:Name="MenuViewWordWrap" Text="Word wrap" AutomationProperties.AutomationId="MenuViewWordWrap" IsEnabled="False" IsChecked="False" />
         <MenuFlyoutSubItem x:Name="MenuViewMarkdown" Text="Markdown" AutomationProperties.AutomationId="MenuViewMarkdown">
             <MenuFlyoutItem x:Name="MenuViewMarkdownFormatted" Text="Formatted" AutomationProperties.AutomationId="MenuViewMarkdownFormatted" IsEnabled="False" />

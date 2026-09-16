@@ -101,7 +101,7 @@ public sealed class MenuBarTests
                     "MenuEditTimeDate",
                 ]
             ),
-            ("MenuView", ["MenuViewStatusBar", "MenuViewWordWrap"]),
+            ("MenuView", ["MenuViewWordWrap"] /* StatusBar enabled by D01 T02 §4, asserted below */),
         ];
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -126,13 +126,25 @@ public sealed class MenuBarTests
                 }
 
                 OpenMenu(window, "MenuView");
-                foreach (string id in new[] { "MenuViewStatusBar", "MenuViewWordWrap" })
+                foreach (string id in new[] { "MenuViewWordWrap" })
                 {
                     var toggle = window.FindFirstDescendant(cf => cf.ByAutomationId(id));
                     Assert.NotNull(toggle);
                     Assert.True(toggle.Patterns.Toggle.IsSupported, id);
                     Assert.Equal(
                         FlaUI.Core.Definitions.ToggleState.Off,
+                        toggle.Patterns.Toggle.Pattern.ToggleState);
+                }
+
+                // D01 T02 §4 enabled the Status bar toggle (default store
+                // state is visible, so it ships enabled and checked).
+                {
+                    var toggle = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuViewStatusBar"));
+                    Assert.NotNull(toggle);
+                    Assert.True(toggle.IsEnabled);
+                    Assert.True(toggle.Patterns.Toggle.IsSupported);
+                    Assert.Equal(
+                        FlaUI.Core.Definitions.ToggleState.On,
                         toggle.Patterns.Toggle.Pattern.ToggleState);
                 }
 

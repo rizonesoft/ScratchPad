@@ -397,6 +397,28 @@ public sealed partial class TabBar : UserControl
         return box;
     }
 
+    // D01 T02 §4: programmatic fills go through here. Pre-show boxes
+    // do not reliably raise TextChanged (see the restore/template
+    // callouts), so the fill announces itself and TabsEdited
+    // subscribers (checkpoint feed, status strip) never miss one.
+    // Model notification stays with the callers, which already handle
+    // clean-vs-dirty explicitly; returns the box for follow-up sets.
+    public TextBox SetBoxText(Tab tab, string text)
+    {
+        TextBox box = ContentFor(tab);
+        box.Text = text;
+        TabsEdited?.Invoke(this, EventArgs.Empty);
+        return box;
+    }
+
+    // D01 T02 §4: caret restores go through here so callers without
+    // the box in scope still clamp against its real length.
+    public void SetSelectionStart(Tab tab, int caret)
+    {
+        TextBox box = ContentFor(tab);
+        box.SelectionStart = Math.Min(Math.Max(0, caret), box.Text.Length);
+    }
+
     public void NewTab() => Model?.NewTab();
 
     public void CycleNext() => Cycle(1);
@@ -438,7 +460,7 @@ public sealed partial class TabBar : UserControl
         {
             // Re-fires NotifyEdited with the same content the model already
             // recorded; the tab state is unchanged by the duplicate call.
-            box.Text = peek.Contents;
+            SetBoxText(tab, peek.Contents);
             box.SelectionStart = Math.Min(peek.CaretOffset, box.Text.Length);
         }
         // Clean saved tabs reopen contentless until §4 wires file loading;
