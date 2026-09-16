@@ -866,13 +866,15 @@ Why this section exists: stock tab UIA names carry ". Modified." / ". Unmodified
 
 ## 29. Open with Explicit Encoding
 
+> **Started:** 2026-09-16T06:09:39Z
+
 Why this section exists: stock's Open dialog offers an Encoding picker defaulting to Auto-Detect (probed 2026-09-15); §4 matches the default by always auto-detecting, so files stock's detector misreads have no recourse here. This section adds the override.
 
 **Fidelity:** stock Open dialog Encoding picker -- `resources/baseline/stock/notepad-open-dialog-n11.2607.14.0-win25h2.png`. Option list and behavior match the capture.
 
 **Job:** The user can open a file forcing an encoding. Consumer: the §4 open path, which decodes with the forced encoding instead of detecting.
 
-**Treatment:** An encoding option on the open flow offering the §5 encoding list plus Auto-Detect; the forced encoding flows into `FileOpen` as a decode override, and the tab records it as its encoding. Cheaper substitute that fails the checkpoint: an option that re-detects and ignores the choice.
+**Treatment:** An encoding option on the open flow offering the §5 encoding list plus Auto-Detect; the forced encoding flows into `FileOpen` as a decode override, and the tab records it as its encoding. Cheaper substitute that fails the checkpoint: an option that re-detects and ignores the choice. **Corrected 2026-09-16 (§29 validation):** this section is a neutral engine section like §§4-5: no rendered Open dialog exists yet (the D01 T02 §1 trigger owns the first open entry point), so the in-dialog picker rendering lands with that trigger and this section ships the option-list spec plus the `FileOpen` decode override, fully driven through neutral seams. The trigger contract ("Open applies the §29 option list and passes the choice as the forced encoding") is recorded on D01 T02 §1 item 5.
 
 **Chrome:** Consume the shared dialog styles. Do not invent a second picker treatment.
 
@@ -881,11 +883,11 @@ Why this section exists: stock's Open dialog offers an Encoding picker defaultin
 - -> XREF: D01 T01 §4 -- the open path and detector this overrides; §4 item 7 points here for the non-default half
 - -> SOURCE: stock-open-dialog probe 2026-09-15 (Encoding Auto-Detect default with picker options)
 
-- [ ] The open flow offers Auto-Detect plus every §5 encoding. Done when: the option list matches the capture.
-- [ ] Opening with a forced encoding decodes with it, bypassing §4 detection. Done when: a 1252 file forced to UTF-8 shows replacement characters, driven.
-- [ ] Auto-Detect behaves exactly as §4 alone. Done when: the §4 fixture matrix passes through this path unchanged.
-- [ ] The tab records the forced encoding for §5's save path. Done when: save offers the forced encoding back.
-- [ ] Commit: `"notepad-core: open with explicit encoding"`
+- [x] The open flow offers Auto-Detect plus every §5 encoding. Done when: the option list matches the capture. Probed 2026-09-16: expanded picker reads Auto-Detect, ANSI, UTF-16 LE, UTF-16 BE, UTF-8, UTF-8 with BOM (capture `resources/baseline/stock/notepad-open-encoding-items-n11.2607.14.0-win25h2.png`, live UIA dump agrees item for item). The list ships as `OpenDialogDefaults.EncodingOptions` and is pinned verbatim (`EncodingOptionsMatchStockCaptureVerbatim`, tail tied to `SaveDialogDefaults.OfferedEncodings`); rendering lands with the D01 T02 §1 Open trigger.
+- [x] Opening with a forced encoding decodes with it, bypassing §4 detection. Done when: a 1252 file forced to UTF-8 shows replacement characters, driven. **Default 2026-09-16:** forced decode uses replacement fallback (never throws; a failing forced open would strand the misread files this section exists for) and strips a leading BOM only when it matches the forced encoding's own preamble (forcing right behaves like detection; forcing wrong decodes the signature as text); unknown names throw `ArgumentOutOfRangeException` (only offered names ever arrive). **Driven 2026-09-16:** `ForcedUtf8On1252ShowsReplacementCharacters` (U+FFFD present, differs from detected text) plus `ForcedUtf8OnInvalidBytesShowsExactReplacements` plus `ForcedCorrectEncodingMatchesDetection` plus `ForcedMismatchedBomDecodesAsText` plus `ForcedUnknownNameThrows`.
+- [x] Auto-Detect behaves exactly as §4 alone. Done when: the §4 fixture matrix passes through this path unchanged. **Driven 2026-09-16:** `AutoDetectEquivalenceAcrossFixtureMatrix` (all 12 fixtures record-equal through `Detect(bytes, null)`) plus `ForcedEncodingDefaultsToAutoDetect` (null default).
+- [x] The tab records the forced encoding for §5's save path. Done when: save offers the forced encoding back. **Driven 2026-09-16:** `ForcedEncodingFlowsFromOpenThroughTabToSave` (temp 1252-forced-UTF-8 open names UTF-8, `OpenTab` records it, `SaveFile` with the tab spec writes UTF-8 bytes read back exact); the Save As prefill rendering rides the D01 T02 §1 trigger contract recorded there.
+- [x] Commit: `"notepad-core: open with explicit encoding"`
 
 **Test checkpoint:** option list, forced decode, auto-detect equivalence, and save handoff are all driven in the room. Cheaper substitute that fails: a picker that detects anyway.
 

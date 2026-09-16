@@ -37,6 +37,73 @@ public static class FileOpen
         return new DetectedFile(text, name, preamble > 0, eol);
     }
 
+    // Explicit-encoding open, owned by D01 T01 §29. A forced name bypasses
+    // detection entirely: the bytes decode in the named encoding, undecodable
+    // sequences render as U+FFFD (replacement fallback, never a throw: a
+    // forced open that fails would strand files the detector misreads, which
+    // is the case this section exists for), and a leading BOM is stripped
+    // only when it matches the forced encoding's own preamble (forcing the
+    // right encoding behaves like detection; forcing a wrong one decodes the
+    // signature bytes as text, honestly). Null means Auto-Detect: identical
+    // to Detect(bytes). Unknown names throw: the UI only offers known names,
+    // so anything else is a programming error, not user input.
+    public static DetectedFile Detect(byte[] bytes, string? forcedEncodingName)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        if (forcedEncodingName is null)
+        {
+            return Detect(bytes);
+        }
+
+        (Encoding encoding, int preamble) = ForcedEncoding(forcedEncodingName, bytes);
+        string text = encoding.GetString(bytes, preamble, bytes.Length - preamble);
+        LineEndingInfo eol = DetectLineEnding(text);
+        return new DetectedFile(text, forcedEncodingName, preamble > 0, eol);
+    }
+
+    static (Encoding Encoding, int Preamble) ForcedEncoding(string name, byte[] bytes)
+    {
+        if (name == AnsiName)
+        {
+            return (Encoding.GetEncoding(1252), 0);
+        }
+
+        if (name == Utf16LeName)
+        {
+            return (Encoding.Unicode, StartsWith(bytes, [0xFF, 0xFE]) ? 2 : 0);
+        }
+
+        if (name == Utf16BeName)
+        {
+            return (Encoding.BigEndianUnicode, StartsWith(bytes, [0xFE, 0xFF]) ? 2 : 0);
+        }
+
+        if (name == Utf8Name || name == Utf8BomName)
+        {
+            return (Encoding.UTF8, StartsWith(bytes, [0xEF, 0xBB, 0xBF]) ? 3 : 0);
+        }
+
+        throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown forced encoding.");
+    }
+
+    static bool StartsWith(byte[] bytes, byte[] prefix)
+    {
+        if (bytes.Length < prefix.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < prefix.Length; i++)
+        {
+            if (bytes[i] != prefix[i])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static async Task<OpenResult> OpenFileAsync(
         string path,
         OpenOptions options,
@@ -87,7 +154,7 @@ public static class FileOpen
                 }
             }
 
-            DetectedFile detected = Detect(bytes);
+            DetectedFile detected = Detect(bytes, options.ForcedEncoding);
             string text = detected.Text;
             if (IsLogFile(text))
             {
@@ -314,6 +381,11 @@ public sealed record OpenOptions(long MaxBytes, string LogTimestamp)
     public const long DefaultMaxBytes = 1024L * 1024 * 1024;
 
     public long ProgressThresholdBytes { get; init; } = FileOpen.DefaultProgressThresholdBytes;
+
+    // Explicit-encoding override, owned by D01 T01 §29. Null is Auto-Detect
+    // (the dialog default); a name from OpenDialogDefaults.EncodingOptions
+    // bypasses detection. Unknown names throw out of Detect.
+    public string? ForcedEncoding { get; init; }
 }
 
 public enum OpenFailure
@@ -360,15 +432,28 @@ public static class OpenMessages
     };
 }
 
-// Open dialog defaults, owned by D01 T01 §4 item 7. Stock's type dropdown
-// defaults to "Text documents (*.txt)" with an all-files switch and
-// Encoding "Auto-Detect" (capture
-// `notepad-open-dialog-n11.2607.14.0-win25h2.png`); we always auto-detect,
-// so the spec is the filter list only, first entry default. Explicit
-// encoding is D01 T01 §29. Applied to the picker by the D01 T02 §1 trigger.
+// Open dialog defaults, owned by D01 T01 §4 item 7 (filter) and §29
+// (encoding list). Stock's type dropdown defaults to
+// "Text documents (*.txt)" with an all-files switch and Encoding
+// "Auto-Detect" (capture `notepad-open-dialog-n11.2607.14.0-win25h2.png`);
+// the expanded Encoding list is Auto-Detect plus the §5 list in order
+// (capture `notepad-open-encoding-items-n11.2607.14.0-win25h2.png`, UIA
+// dump agrees). Applied to the picker by the D01 T02 §1 trigger.
 public static class OpenDialogDefaults
 {
     public static IReadOnlyList<string> FileTypeFilter { get; } = [".txt", "*"];
+
+    public const string AutoDetectName = "Auto-Detect";
+
+    public static IReadOnlyList<string> EncodingOptions { get; } =
+    [
+        AutoDetectName,
+        FileOpen.AnsiName,
+        FileOpen.Utf16LeName,
+        FileOpen.Utf16BeName,
+        FileOpen.Utf8Name,
+        FileOpen.Utf8BomName,
+    ];
 }
 
 public sealed record DetectedFile(string Text, string EncodingName, bool HasBom, LineEndingInfo LineEnding);
