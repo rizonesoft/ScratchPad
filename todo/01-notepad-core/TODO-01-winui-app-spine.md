@@ -777,22 +777,24 @@ Why this section exists: new note and pinned notes on the taskbar icon. (Jump-li
 
 ## 26. Protocol Handler
 
+> **Started:** 2026-09-16T05:09:17Z
+
 Why this section exists: links can open a path in the app.
 
 **Fidelity:** new build, no baseline (stock Notepad handles no protocol).
 
 **Job:** The user can open app paths from links. Consumer: the file opener (§4), which opens the carried path; the association path (§8), which shares registration mechanics.
 
-**Treatment:** Registered protocol links carry a path; activation opens it through §4; malformed links decline. Cheaper substitute that fails the checkpoint: a protocol that opens the app and drops the path.
+**Treatment:** Registered protocol links carry a path; activation opens it through §4; malformed links decline. **Decided 2026-09-16 (§26 validation):** scheme `intelligent-notepad` (verified unclaimed in HKCU and HKCR; cost of renaming: one const plus keys plus drives). Link form `intelligent-notepad://<url-encoded absolute path>`, parsed by hand (prefix strip, unescape, rooted check; no `Uri` authority quirks). Malformed (empty, relative, bad escapes) is ignored into the existing bare path (a window, nothing opened; matches the unknown-flag rule, cost: the ignore branch). Well-formed but missing reuses the §4/§8 missing path (no fork). Other schemes stay file args (non-interference). Registration mirrors §8 (HKCU plans in Core with foreign-claim backup, registrar executes, `/register-protocol` and `/unregister-protocol` verbs drive). Cross-process: the secondary parses URL to path before filing, so only paths cross in drops and redirect needs no new machinery. Cheaper substitute that fails the checkpoint: a protocol that opens the app and drops the path.
 
 **Chrome:** No new surface; the opened file is the surface.
 
 **Needs:** Windows host (build/test)
 
-- [ ] The protocol scheme is registered (name recorded here). Done when: links offer the app.
-- [ ] Activation opens the carried path through §4. Done when: the open path is driven.
-- [ ] Malformed links decline gracefully. Done when: the negative path is driven.
-- [ ] Commit: `"notepad-core: handle the protocol"`
+- [x] The protocol scheme is registered (name recorded here). Done when: links offer the app. **Driven 2026-09-16:** `ProtocolVerbsCycleCleanly` (register asserts keys, unregister restores prior state; scheme `intelligent-notepad`), green.
+- [x] Activation opens the carried path through §4. Done when: the open path is driven. **Driven 2026-09-16:** `LinkOpensTheCarriedFile` (encoded argv link opens tab with bytes) plus `ShellLinkOpensTheFile` (shell-executed link end to end), green.
+- [x] Malformed links decline gracefully. Done when: the negative path is driven. **Driven 2026-09-16:** `MalformedLinksOpenBareWindow` (empty plus relative: bare window, no offer), green.
+- [x] Commit: `"notepad-core: handle the protocol"`
 
 **Test checkpoint:** registration, open, and graceful decline are all driven in the room. Cheaper substitute that fails: links that open the wrong file.
 

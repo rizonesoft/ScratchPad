@@ -1,0 +1,274 @@
+using System.Diagnostics;
+using FlaUI.Core;
+using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Tools;
+using FlaUI.UIA3;
+using Microsoft.Win32;
+using Notepad.Core;
+using Xunit;
+
+namespace UI;
+
+// D01 T01 §26: the intelligent-notepad:// protocol. Registration cycles
+// through the verbs with the live keys read back; links open their
+// carried file fresh; malformed links open a bare window with nothing
+// offered; a shell-executed link proves the click path end to end.
+[Collection("UI tests")]
+public sealed class ProtocolHandlerTests
+{
+    [Fact]
+    public void ProtocolVerbsCycleCleanly()
+    {
+        RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
+        (string? Default, string? Command) before = SnapshotScheme();
+        try
+        {
+            Assert.Equal(0, RunHeadless("/register-protocol", TimeSpan.FromSeconds(20)));
+            Assert.Equal(ProtocolAssociation.Description, ReadDefault(ProtocolAssociation.SchemeKey));
+            Assert.NotNull(ReadString(ProtocolAssociation.SchemeKey, "URL Protocol"));
+            string? command = ReadString(ProtocolAssociation.SchemeKey + @"\shell\open\command", string.Empty);
+            Assert.NotNull(command);
+            Assert.Contains(".exe", command, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("%1", command, StringComparison.Ordinal);
+            Assert.Equal(0, RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20)));
+            Assert.Equal(before, SnapshotScheme());
+            Assert.False(KeyExists(ProtocolAssociation.SchemeKey));
+            Assert.False(KeyExists(ProtocolAssociation.BackupKey));
+        }
+        finally
+        {
+            RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
+        }
+    }
+
+    [Fact]
+    public void LinkOpensTheCarriedFile()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "linked 26.txt");
+        File.WriteAllText(file, "linked bytes");
+        SeedFresh();
+        try
+        {
+            string url = ProtocolAssociation.Scheme + "://" + Uri.EscapeDataString(file);
+            using var app = LaunchAppWithArgs($"\"{url}\"");
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(2, WaitForTabCount(window, 2));
+                WaitForTabName(window, 1, "linked 26.txt");
+                Assert.Equal("linked bytes", BoxText(window));
+            }
+            finally
+            {
+                CloseAll(app, automation);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    [Theory]
+    [InlineData("intelligent-notepad://")]
+    [InlineData("intelligent-notepad://relative/x.txt")]
+    public void MalformedLinksOpenBareWindow(string link)
+    {
+        SeedFresh();
+        using var app = LaunchAppWithArgs($"\"{link}\"");
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            Assert.Equal(1, WaitForTabCount(window, 1));
+            WaitForTabName(window, 0, "Untitled");
+            Thread.Sleep(1000);
+            Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("MissingFileDialog")));
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
+    }
+
+    [Fact]
+    public void ShellLinkOpensTheFile()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "shell26.txt");
+        File.WriteAllText(file, "shell bytes");
+        SeedFresh();
+        Assert.Equal(0, RunHeadless("/register-protocol", TimeSpan.FromSeconds(20)));
+        try
+        {
+            string url = ProtocolAssociation.Scheme + "://" + Uri.EscapeDataString(file);
+            using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            Assert.NotNull(process);
+            using var app = Application.Attach(process.Id);
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(2, WaitForTabCount(window, 2));
+                WaitForTabName(window, 1, "shell26.txt");
+            }
+            finally
+            {
+                CloseAll(app, automation);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+            RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
+        }
+    }
+
+    static (string? Default, string? Command) SnapshotScheme() =>
+        (ReadDefault(ProtocolAssociation.SchemeKey),
+            ReadString(ProtocolAssociation.SchemeKey + @"\shell\open\command", string.Empty));
+
+    static string? ReadDefault(string keyPath) => ReadString(keyPath, string.Empty);
+
+    static string? ReadString(string keyPath, string valueName)
+    {
+        using RegistryKey? key = Registry.CurrentUser.OpenSubKey(keyPath);
+        return key?.GetValue(valueName) as string;
+    }
+
+    static bool KeyExists(string keyPath)
+    {
+        using RegistryKey? key = Registry.CurrentUser.OpenSubKey(keyPath);
+        return key is not null;
+    }
+
+    static string AppExePath()
+    {
+        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
+        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+        {
+            appPath = Path.ChangeExtension(appPath, ".exe");
+        }
+
+        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
+        return appPath;
+    }
+
+    static Application LaunchAppWithArgs(string args)
+    {
+        LaunchDrops.Drain();
+        return Application.Launch(AppExePath(), args);
+    }
+
+    static int RunHeadless(string args, TimeSpan timeout)
+    {
+        using var process = Process.Start(new ProcessStartInfo(AppExePath(), args) { UseShellExecute = false });
+        Assert.NotNull(process);
+        Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
+        return process.ExitCode;
+    }
+
+    static void SeedFresh() => SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
+
+    static void SeedSettings(ShellSettings settings)
+    {
+        settings.Save();
+        SessionData.Delete();
+        LaunchDrops.Drain();
+    }
+
+    static string NewTempDir()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    static void DeleteDir(string dir)
+    {
+        try
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort cleanup; the test result does not depend on it.
+        }
+    }
+
+    static TextBox ContentBox(Window window)
+    {
+        var box = Retry.WhileNull(
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(box);
+        return box;
+    }
+
+    static string BoxText(Window window) => ContentBox(window).Text ?? string.Empty;
+
+    static List<AutomationElement> TabItems(Window window) =>
+        window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
+
+    static int WaitForTabCount(Window window, int expected)
+    {
+        var result = Retry.While(
+            () => TabItems(window).Count,
+            count => count != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true);
+        return result.Result;
+    }
+
+    static void WaitForTabName(Window window, int index, string expected)
+    {
+        string? NameAt()
+        {
+            var found = TabItems(window);
+            return found.Count > index ? found[index].Name : null;
+        }
+
+        var result = Retry.While(
+            NameAt,
+            name => name != expected,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.Equal(expected, result);
+    }
+
+    static void CloseAll(Application app, UIA3Automation automation)
+    {
+        foreach (var window in app.GetAllTopLevelWindows(automation))
+        {
+            try
+            {
+                window.Close();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
+            {
+                // Already gone; the exit wait below is the real assertion.
+            }
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!app.HasExited && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(100);
+        }
+
+        if (!app.HasExited)
+        {
+            app.Kill();
+        }
+    }
+}

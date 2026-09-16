@@ -10,7 +10,8 @@ namespace IntelligentNotepad;
 // and the prior-default backups. Register reads each live default before
 // claiming so unregister can restore it; when the live claim is foreign,
 // unregister leaves it alone (FileAssociation.PlanRelease). Explorer is
-// notified after each run so Default Apps and Open With refresh.
+// notified after each run so Default Apps and Open With refresh. D01 T01
+// §26 adds the protocol claim in the same shape (backup, claim, restore).
 internal static class FileAssociationRegistrar
 {
     public static void Register(string exePath)
@@ -74,6 +75,54 @@ internal static class FileAssociationRegistrar
     }
 
     public static string? CurrentClaim(string extension) => ReadDefault(FileAssociation.ExtensionKey(extension));
+
+    // Protocol claim, owned by D01 T01 §26. Same shape as extensions:
+    // back up the live scheme claim, then claim it; unregister restores
+    // a prior foreign claim or removes our tree.
+    public static void RegisterProtocol(string exePath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(exePath);
+        string? priorDefault = ReadDefault(ProtocolAssociation.SchemeKey);
+        string? priorCommand = ReadString(ProtocolAssociation.SchemeKey + @"\shell\open\command", string.Empty);
+        foreach (RegistrySetValue write in ProtocolAssociation.PlanBackup(priorDefault, priorCommand))
+        {
+            WriteString(write.KeyPath, write.ValueName, write.Value);
+        }
+
+        foreach (RegistrySetValue write in ProtocolAssociation.PlanRegister(exePath))
+        {
+            WriteString(write.KeyPath, write.ValueName, write.Value);
+        }
+
+        NotifyShell();
+    }
+
+    public static void UnregisterProtocol()
+    {
+        string? current = ReadDefault(ProtocolAssociation.SchemeKey);
+        bool hadPrior = ReadString(ProtocolAssociation.BackupKey, "HadPrior") == "1";
+        string? priorDefault = ReadString(ProtocolAssociation.BackupKey, "PriorDefault");
+        string? priorCommand = ReadString(ProtocolAssociation.BackupKey, "PriorCommand");
+        (IReadOnlyList<RegistrySetValue> sets, IReadOnlyList<RegistryDeleteValue> deletes, bool deleteTree) =
+            ProtocolAssociation.PlanRelease(current, hadPrior, priorDefault, priorCommand);
+        foreach (RegistrySetValue write in sets)
+        {
+            WriteString(write.KeyPath, write.ValueName, write.Value);
+        }
+
+        foreach (RegistryDeleteValue delete in deletes)
+        {
+            DeleteValue(delete.KeyPath, delete.ValueName);
+        }
+
+        if (deleteTree)
+        {
+            DeleteTree(ProtocolAssociation.SchemeKey);
+        }
+
+        DeleteTree(ProtocolAssociation.BackupKey);
+        NotifyShell();
+    }
 
     static string? ReadDefault(string keyPath) => ReadString(keyPath, string.Empty);
 

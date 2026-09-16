@@ -38,6 +38,16 @@ partial class App
             return RunVerb(() => FileAssociationRegistrar.Unregister(Path.GetFileName(ExePath())));
         }
 
+        if (request.RegisterProtocol)
+        {
+            return RunVerb(() => FileAssociationRegistrar.RegisterProtocol(ExePath()));
+        }
+
+        if (request.UnregisterProtocol)
+        {
+            return RunVerb(() => FileAssociationRegistrar.UnregisterProtocol());
+        }
+
         if (request.IsPrint)
         {
             PrintSeam.Print(request.PrintFile!, request.PrintPrinter);

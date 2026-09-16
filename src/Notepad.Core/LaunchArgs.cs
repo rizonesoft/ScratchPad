@@ -14,11 +14,13 @@ public sealed record LaunchRequest(
     string? PrintPrinter,
     bool RegisterAssociations,
     bool UnregisterAssociations,
-    bool NewNote)
+    bool NewNote,
+    bool RegisterProtocol,
+    bool UnregisterProtocol)
 {
     public bool IsPrint => PrintFile is not null;
 
-    public bool IsVerb => RegisterAssociations || UnregisterAssociations;
+    public bool IsVerb => RegisterAssociations || UnregisterAssociations || RegisterProtocol || UnregisterProtocol;
 }
 
 public static class LaunchArgs
@@ -35,6 +37,10 @@ public static class LaunchArgs
     // path opens (or selects) a fresh tab for it, fresh or redirected.
     public const string NewNoteFlag = "/new-note";
 
+    public const string RegisterProtocolFlag = "/register-protocol";
+
+    public const string UnregisterProtocolFlag = "/unregister-protocol";
+
     // Parses raw process args (argv without the exe). workingDirectory
     // roots relative paths; absolute paths pass through untouched.
     // Incomplete flags (/p with no file, /pt with no printer) are ignored,
@@ -49,13 +55,27 @@ public static class LaunchArgs
         bool register = false;
         bool unregister = false;
         bool newNote = false;
+        bool registerProtocol = false;
+        bool unregisterProtocol = false;
         List<string> rest = new(args);
         for (int i = 0; i < rest.Count; i++)
         {
             string arg = rest[i];
             if (!IsFlag(arg))
             {
-                files.Add(Root(arg, workingDirectory));
+                // D01 T01 §26: our-scheme links map to their carried path;
+                // malformed links are ignored (bare path downstream) while
+                // other schemes keep the §8 file-args reading.
+                string? link = ProtocolAssociation.TryParseLink(arg);
+                if (link is not null)
+                {
+                    files.Add(link);
+                }
+                else if (!arg.StartsWith(ProtocolAssociation.Scheme + "://", StringComparison.OrdinalIgnoreCase))
+                {
+                    files.Add(Root(arg, workingDirectory));
+                }
+
                 continue;
             }
 
@@ -79,12 +99,18 @@ public static class LaunchArgs
                 case "/NEW-NOTE" or "-NEW-NOTE":
                     newNote = true;
                     break;
+                case "/REGISTER-PROTOCOL" or "-REGISTER-PROTOCOL":
+                    registerProtocol = true;
+                    break;
+                case "/UNREGISTER-PROTOCOL" or "-UNREGISTER-PROTOCOL":
+                    unregisterProtocol = true;
+                    break;
                 default:
                     break;
             }
         }
 
-        if (register || unregister)
+        if (register || unregister || registerProtocol || unregisterProtocol)
         {
             files.Clear();
             printFile = null;
@@ -92,7 +118,7 @@ public static class LaunchArgs
             newNote = false;
         }
 
-        return new LaunchRequest(files, printFile, printPrinter, register, unregister, newNote);
+        return new LaunchRequest(files, printFile, printPrinter, register, unregister, newNote, registerProtocol, unregisterProtocol);
     }
 
     static bool IsFlag(string arg) => arg.StartsWith('/') || arg.StartsWith('-');

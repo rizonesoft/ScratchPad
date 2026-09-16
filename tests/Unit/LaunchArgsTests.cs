@@ -121,4 +121,57 @@ public sealed class LaunchArgsTests
         Assert.True(request.RegisterAssociations);
         Assert.False(request.NewNote);
     }
+
+    [Theory]
+    [InlineData("/register-protocol")]
+    [InlineData("-register-protocol")]
+    public void RegisterProtocolFlagParses(string flag)
+    {
+        LaunchRequest request = LaunchArgs.Parse([flag, "a.txt"], WorkDir);
+        Assert.True(request.RegisterProtocol);
+        Assert.False(request.UnregisterProtocol);
+        Assert.True(request.IsVerb);
+        Assert.Empty(request.Files);
+    }
+
+    [Fact]
+    public void UnregisterProtocolFlagParses()
+    {
+        LaunchRequest request = LaunchArgs.Parse(["/unregister-protocol"], WorkDir);
+        Assert.True(request.UnregisterProtocol);
+        Assert.True(request.IsVerb);
+    }
+
+    [Fact]
+    public void ProtocolVerbsClearNewNote()
+    {
+        LaunchRequest request = LaunchArgs.Parse(["/new-note", "/register-protocol"], WorkDir);
+        Assert.True(request.RegisterProtocol);
+        Assert.False(request.NewNote);
+    }
+
+    [Fact]
+    public void WellFormedLinkMapsToItsPath()
+    {
+        LaunchRequest request = LaunchArgs.Parse(["intelligent-notepad://C%3A/docs/a%20b.txt"], WorkDir);
+        Assert.Equal(["C:/docs/a b.txt"], request.Files);
+    }
+
+    [Theory]
+    [InlineData("intelligent-notepad://")]
+    [InlineData("intelligent-notepad://relative/x.txt")]
+    [InlineData("intelligent-notepad://%ZZ")]
+    public void MalformedLinksAreIgnored(string link)
+    {
+        LaunchRequest request = LaunchArgs.Parse([link], WorkDir);
+        Assert.Empty(request.Files);
+        Assert.False(request.IsVerb);
+    }
+
+    [Fact]
+    public void OtherSchemesStayFileArgs()
+    {
+        LaunchRequest request = LaunchArgs.Parse(["other://x"], WorkDir);
+        Assert.Equal([@"C:\work\other:\x"], request.Files);
+    }
 }
