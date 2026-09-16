@@ -633,7 +633,7 @@ Why this section exists: saves overwrite. A timestamped .bak sibling beside the 
 
 - [x] Every save writes a timestamped .bak sibling first. Done when: the sibling predates the save under host drive. **Driven 2026-09-16:** `SaveWritesSiblingWithPreSaveBytes` (sibling holds the pre-save bytes, file holds the edit) plus `SecondSaveKeepsPreSaveBytesInSibling` and `SaveBytesBacksUpToo`, green.
 - [x] Retention caps the sibling count. Done when: old siblings rotate out at the cap. **Driven 2026-09-16:** `RotationEvictsOldestSeededSibling` (seeded cap plus one save evicts the oldest, foreign `.bak` untouched) plus `RetentionRotatesPastFive` (seven real saves hold five) and `ForeignBakFilesAreLeftAlone`, green.
-- [x] A crashed save leaves the newest .bak intact. Done when: the failure path is driven. **Driven 2026-09-16:** `FailedSaveStillWritesSibling` (read-only destination: save redirects, sibling holds the original, file untouched) plus `FaultBeforeCommitLeavesSiblingAndOriginalIntact` (injected fault: sibling plus original intact), green.
+- [x] A crashed save leaves the newest .bak intact. Done when: the failure path is driven. **Driven 2026-09-16:** `FailedSaveStillWritesSibling` (read-only file: save redirects, sibling holds the original, file untouched) plus `FaultBeforeCommitLeavesSiblingAndOriginalIntact` (injected fault: sibling plus original intact), green.
 - [x] Commit: `"notepad-core: back up on save"`
 
 **Test checkpoint:** sibling, retention, and crash safety are all driven in the room. Cheaper substitute that fails: backups that pile up forever.
