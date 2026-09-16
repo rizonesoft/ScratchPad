@@ -734,9 +734,9 @@ Why this section exists: Windows apps share text; we receive it into a new tab. 
 
 **Needs:** Windows host (build/test)
 
-- [x] Shared text opens in a new untitled tab. Done when: the receive path is driven.
-- [x] Non-text shares decline gracefully. Done when: the negative path is driven.
-- [ ] Commit: `"notepad-core: receive shared text"`
+- [x] Shared text opens in a new untitled tab. Done when: the receive path is driven. **Driven 2026-09-16:** `SharedTextOpensAnUntitledTabWithTheText` (untitled, text, dirty, active), green.
+- [x] Non-text shares decline gracefully. Done when: the negative path is driven. **Driven 2026-09-16:** `EmptyShareDeclinesWithoutATab` (null plus empty, model untouched), green.
+- [x] Commit: `"notepad-core: receive shared text"`
 
 **Test checkpoint:** receive and graceful decline are driven in the room (registration is D07 T01 §7's). Cheaper substitute that fails: a target that eats shares silently.
 
