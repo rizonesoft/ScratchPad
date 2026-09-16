@@ -56,6 +56,42 @@ public sealed class TemplateTests
     }
 
     [Fact]
+    public void DailyJournalOpensExpanded()
+    {
+        CleanTemplates();
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        try
+        {
+            using var app = LaunchApp();
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                var dialog = WaitForDialog(window, "TemplatesDialog");
+                var frame = window.BoundingRectangle;
+                var panel = dialog.BoundingRectangle;
+                Assert.True(frame.Contains(panel), $"panel {panel} escapes window {frame}");
+                SetTitle(dialog, "ignored");
+                InvokeUse(dialog, "Daily journal");
+                Assert.Equal(2, WaitForTabCount(window, 2));
+                string today = DateOnly.FromDateTime(DateTime.Now).ToString("d", CultureInfo.CurrentCulture);
+                Assert.Equal($"# {today}\n\n## Highlights\n\n", WaitForBoxText(window, $"# {today}\n\n## Highlights\n\n"));
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            CleanTemplates();
+        }
+    }
+
+    [Fact]
     public void BlankNoteOpensCleanEmptyTab()
     {
         CleanTemplates();
