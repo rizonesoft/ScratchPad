@@ -63,7 +63,7 @@ track: N1
 |  15   |   §15   | Distraction-free focus mode | §1, D01 T02 §1 |  [ ]   |
 |  16   |   §16   | File snapshots | §5, §7 |  [x]   |
 |  17   |   §17   | New-file templates | §2 |  [x]   |
-|  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [ ]   |
+|  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [x]   |
 |  19   |   §19   | Encrypted notes | §4, §5 |  [ ]   |
 |  20   |   §20   | Backup on save | §5 |  [ ]   |
 |  21   |   §21   | Reload prompt on external change | §4 |  [ ]   |
@@ -572,6 +572,12 @@ Why this section exists: Markdown, HTML, or plain text out of any view, to file.
 - [x] Commit: `"notepad-core: export formats"`
 
 **Test checkpoint:** export and fidelity are all driven in the room. Cheaper substitute that fails: HTML that drops structure.
+
+> **Verified:** 2026-09-16 | §18 | Export as Markdown, HTML, plain text: Ctrl+Shift+X dialog converting the live buffer through the shared UI-free converter and writing beside the source with a safe default name, HTML as a document shell, untitled save-first state, menu trigger deferred to the menu owner with a recorded contract; UI ExportTests 4/4, Unit FormatConverterTests 13/13, full gate Smoke 1/1 Unit 203/203 Protocol 35/35 UI 84 plus 1 pre-existing quarantine of 85, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate 29b9f2f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s18.md
+> **CRUD:** applicable | each export wrote converted bytes beside the source (read back exact, source untouched); the failure path is undriven (invalid names fail gracefully by construction, advisory); session untouched beyond the suite's standard cleanup
+> **Duration:** 14
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 19. Encrypted Notes
 
