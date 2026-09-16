@@ -28,6 +28,8 @@ track: N1
 > **Corrected 2026-09-16 (phase-1 run 3, §19 validation):** §18 has shipped since (export across formats). Open: §§19-22, 24-26, 28, 29 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§21-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -646,23 +648,25 @@ Why this section exists: saves overwrite. A timestamped .bak sibling beside the 
 
 ## 21. Reload Prompt on External Change
 
+> **Started:** 2026-09-16T02:32:00Z
+
 Why this section exists: files change behind us (sync tools, other editors). The app notices and asks instead of silently overwriting or showing stale bytes.
 
 **Fidelity:** new build, no baseline (the capture session records whether stock prompts; this section defines our behavior either way).
 
 **Job:** The user can choose keep or reload when the file changes on disk. Consumer: the open document, which refreshes or holds per the answer.
 
-**Treatment:** A watcher notices external change; a prompt offers reload or keep; dirty documents resolve both sides explicitly. Cheaper substitute that fails the checkpoint: silent reload that eats edits, or no notice at all.
+**Treatment:** A watcher notices external change; a prompt offers reload or keep; dirty documents resolve both sides explicitly. **Decided 2026-09-16 (§21 validation):** one `FileWatcher` per pathed tab, lifecycle driven by tab add/remove plus path changes (ghosts included, no special case). Self-writes never prompt: `FileSave` raises `WroteFile` (path plus bytes) after every commit, windows hash it into a per-path baseline and drop pending prompts; a watcher event whose disk hash matches the baseline is ours and ignored. Disk bytes matching the buffer auto-resolve clean with no prompt (covers touch-only writes and convergent edits). Otherwise the tab pends: the prompt shows immediately when window and tab are both active, else on the next activation that makes them so. The prompt is a pure reload-or-keep dialog (dirty text names the discarded edits explicitly; Cancel keeps); reload fills from disk with the detected spec applied and refreshes the baseline, keep holds the buffer dirty with the baseline refreshed so later writes prompt again. Reload on a deleted file reuses the missing-file dialog and keeps the buffer; reload on a locked file routes through the unlock detour (cancel keeps). Watcher buffer overflow can drop events (FileSystemWatcher limit, no Error hook; cost: the hook plus a rescan). No trigger or menu entry (reactive, nothing to defer). Cheaper substitute that fails the checkpoint: silent reload that eats edits, or no notice at all.
 
-**Chrome:** Consume the shared dialog styles. Do not invent a second reload treatment.
+**Chrome:** Consume the code-built ContentDialog treatment shared with the other dialogs (default WinUI styling, Reload primary plus Keep secondary). **Corrected 2026-09-16 (§21 validation):** no shared dialog styles exist in the tree (same finding as §16-§20); the dialog follows the existing code-built dialog pattern instead. Do not invent a second reload treatment.
 
 **Needs:** Windows host (build/test)
 
-- [ ] External change raises the prompt on a clean document. Done when: the prompt is driven under host file writes.
-- [ ] Reload refreshes from disk; keep holds the buffer. Done when: both answers are driven.
-- [ ] A dirty document resolves explicitly with no silent data loss either way. Done when: both paths are driven.
-- [ ] Unsaved (never-pathed) documents never prompt. Done when: the negative test passes.
-- [ ] Commit: `"notepad-core: prompt on external change"`
+- [x] External change raises the prompt on a clean document. Done when: the prompt is driven under host file writes. **Driven 2026-09-16:** `CleanChangePromptsAndReloadRefreshes` (host write raises the prompt with clean text), green.
+- [x] Reload refreshes from disk; keep holds the buffer. Done when: both answers are driven. **Driven 2026-09-16:** reload half of `CleanChangePromptsAndReloadRefreshes` plus `KeepHoldsBufferAndDirties` (buffer held, tab dirtied, close prompts), green.
+- [x] A dirty document resolves explicitly with no silent data loss either way. Done when: both paths are driven. **Driven 2026-09-16:** `DirtyReloadDiscardsEdits` (prompt names the discard, disk wins) plus `DirtyKeepPreservesEdits` (edits win), green.
+- [x] Unsaved (never-pathed) documents never prompt. Done when: the negative test passes. **Driven 2026-09-16:** `UntitledAndIdenticalWritesNeverPrompt` (untitled typing plus identical-bytes write stay silent) plus `DeletedFileReloadFailsLoud` and `LockedReloadRoutesThroughUnlock`, green.
+- [x] Commit: `"notepad-core: prompt on external change"`
 
 **Test checkpoint:** prompt, both answers, dirty resolution, and the unsaved negative are all driven in the room. Cheaper substitute that fails: a prompt that defaults to data loss.
 

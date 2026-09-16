@@ -81,6 +81,7 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         tabs.PropertyChanged += Tabs_PropertyChanged;
         tabs.Tabs.CollectionChanged += Tabs_CollectionChanged;
+        StartReloadWatching();
         if (restore is null)
         {
             tabs.NewTab();
@@ -177,6 +178,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             ShowActiveTab();
             UpdateTitle();
+            _ = CheckPendingReloadsAsync();
             // The lazy missing notice: owed once per restored-missing tab, on
             // first activation (stock shows it then, never at restore). If the
             // tree is not visual yet the flag stays for the next activation.
@@ -807,6 +809,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void OnClosed(object sender, WindowEventArgs args)
     {
         closed = true;
+        StopReloadWatching();
 
         // No close prompt here, by probe, not by omission (D01 T01 §7):
         // stock closes windows with dirty tabs silently for one tab and

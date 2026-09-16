@@ -66,16 +66,16 @@ sealed partial class MainWindow
     // D01 T01 §19: locked files detour through the unlock prompt before
     // any bytes render. The prompt retries in-dialog; Cancel skips the file
     // with no tab and nothing rendered.
-    async Task UnlockAndOpenAsync(string path)
+    async Task<bool> UnlockAndOpenAsync(string path)
     {
         XamlRoot? root = await WaitForXamlRootAsync().ConfigureAwait(true);
         if (root is null)
         {
-            return;
+            return false;
         }
 
         var dialog = new UnlockDialog(Path.GetFileName(path), password => UnlockDetected(path, password)) { XamlRoot = root };
-        await dialog.ShowAsync();
+        return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
     void UnlockDetected(string path, string password)
@@ -85,7 +85,9 @@ sealed partial class MainWindow
         tab.IsLocked = true;
         TextBox box = tabBar!.ContentFor(tab);
         box.Text = detected.Text;
-        tab.MarkSaved();
+        // D01 T01 §21: the unlocked encoding applies (without this a UTF-16
+        // note silently re-locks as UTF-8); ApplySave also marks clean.
+        tab.ApplySave(path, new SaveSpec(detected.EncodingName, detected.HasBom, detected.LineEnding.Dominant));
     }
 
     static bool IsLockedFile(string path)

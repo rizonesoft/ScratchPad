@@ -83,6 +83,11 @@ public static class FileSave
     // pre-save bytes in a timestamped sibling first, capped at this many.
     public const int MaxBackups = 5;
 
+    // Raised after every committed write (path plus the bytes landed),
+    // owned by D01 T01 §21: windows baseline their reload watchers from it
+    // so our own saves never prompt. Failures and redirects never raise.
+    public static event EventHandler<FileWroteEventArgs>? WroteFile;
+
     public static SaveResult SaveFile(string path, string text, SaveSpec spec, Action? faultBeforeCommit = null)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -104,6 +109,7 @@ public static class FileSave
             File.WriteAllBytes(temp, bytes);
             faultBeforeCommit?.Invoke();
             File.Move(temp, path, overwrite: true);
+            WroteFile?.Invoke(null, new FileWroteEventArgs(path, bytes));
             RotateBackups(path);
             return new SaveSuccess();
         }
@@ -148,6 +154,7 @@ public static class FileSave
             File.WriteAllBytes(temp, bytes);
             faultBeforeCommit?.Invoke();
             File.Move(temp, path, overwrite: true);
+            WroteFile?.Invoke(null, new FileWroteEventArgs(path, bytes));
             RotateBackups(path);
             return new SaveSuccess();
         }
@@ -398,6 +405,23 @@ public static class FileSave
 public sealed record SaveSpec(string EncodingName, bool HasBom, string LineEnding);
 
 public sealed record SaveAsChoice(string Path, string EncodingName, bool HasBom, string LineEnding);
+
+public sealed class FileWroteEventArgs : EventArgs
+{
+    public FileWroteEventArgs(string path, byte[] bytes)
+    {
+        Path = path;
+        Bytes = bytes;
+    }
+
+    public string Path { get; }
+
+    // The landed bytes, shared by reference so windows can hash without a
+    // second copy; subscribers treat it as read-only (the array is fresh
+    // from Encode or the locker on every raise).
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Performance", "CA1819", Justification = "Event payload handoff; copying per save would double large-file write cost.")]
+    public byte[] Bytes { get; }
+}
 
 public abstract record SaveResult;
 

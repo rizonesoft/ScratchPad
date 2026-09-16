@@ -367,4 +367,57 @@ public sealed class FileSaveTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void WroteFileFiresWithLandedBytes()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string path = Path.Combine(dir, "note.txt");
+            var seen = new List<(string Path, byte[] Bytes)>();
+            void OnWrote(object? s, FileWroteEventArgs a) => seen.Add((a.Path, a.Bytes));
+            FileSave.WroteFile += OnWrote;
+            try
+            {
+                var spec = new SaveSpec(FileOpen.Utf8Name, false, LineEndings.Crlf);
+                Assert.IsType<SaveSuccess>(FileSave.SaveFile(path, "hi\r\n", spec));
+                Assert.IsType<SaveSuccess>(FileSave.SaveBytes(path, [0x07]));
+            }
+            finally
+            {
+                FileSave.WroteFile -= OnWrote;
+            }
+
+            Assert.Equal(2, seen.Count);
+            Assert.All(seen, entry => Assert.Equal(path, entry.Path));
+            Assert.Equal("hi\r\n", System.Text.Encoding.UTF8.GetString(seen[0].Bytes));
+            Assert.Equal([0x07], seen[1].Bytes);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void WroteFileStaysSilentOnFailure()
+    {
+        int count = 0;
+        void OnWrote(object? s, FileWroteEventArgs a) => count++;
+        FileSave.WroteFile += OnWrote;
+        try
+        {
+            string missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nope.txt");
+            var spec = new SaveSpec(FileOpen.Utf8Name, false, LineEndings.Crlf);
+            Assert.IsType<SaveFailed>(FileSave.SaveFile(missing, "x", spec));
+        }
+        finally
+        {
+            FileSave.WroteFile -= OnWrote;
+        }
+
+        Assert.Equal(0, count);
+    }
 }
