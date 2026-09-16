@@ -51,6 +51,7 @@ track: N1
 |   9   |   §9    | Live counts in the status bar | §4 |  [ ]   |
 |  10   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
 |  11   |   §11   | Session word goal | §4, §9 |  [ ]   |
+|  12   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
 
 ---
 
@@ -115,6 +116,8 @@ Why this section exists: settings with two writers disagree. One store, one writ
 
 ## 3. Settings Page
 
+> **Started:** 2026-09-16T11:40:00Z
+
 Why this section exists: the settings page is the store made visible. Every control binds to the store, and the store is the only writer.
 
 **Fidelity:** Notepad settings page -- `resources/baseline/settings/`. Control order, labels, and grouping match the capture.
@@ -126,6 +129,8 @@ Why this section exists: the settings page is the store made visible. Every cont
 **Chrome:** Consume the shared settings styles. Do not invent a second settings treatment.
 
 **Groomed 2026-09-13:** Notepad audit: the gear entry point and About info on the Settings page are now explicit.
+
+- -> XREF: D01 T02 §12 -- owns the Recent Files card's key and behavior; the card ships disabled here
 
 - [ ] `src/Notepad/SettingsPage.xaml` binds every control to the §2 store. Done when: changing each control changes the store and the app behavior.
 - [ ] App theme (light, dark, use-system) matches Notepad's options and applies live. Done when: each theme is driven with capture comparison.
@@ -307,6 +312,22 @@ Why this section exists: a word goal with a thin progress line for the session. 
 - [ ] Commit: `"notepad-core: goal the session"`
 
 **Test checkpoint:** set, fill, and session-death are all driven in the room. Cheaper substitute that fails: a goal that follows you home.
+
+## 12. Recent Files Display Toggle
+
+Why this section exists: stock's Opening Notepad group carries a Recent Files toggle, on by default; the §3 page renders the card disabled until this section binds it. The toggle is display-side only: recording never stops, so flipping it destroys nothing.
+
+**Probed 2026-09-16 (§3 validation, stock 11.2607.14.0):** the toggle reads On; toggling off leaves the File > Recent entry in place (menu dump), so the entry stays and the contents hide. Exact stock semantics (record vs display) unconfirmed; display-side is the recorded default (reversible; a recording-side toggle would destroy user data on an unconfirmed control, cost: the submenu plus jump-list branches).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T02 §3 -- the disabled Recent Files card this section enables, binds, and drives
+- [ ] The store carries a `ShowRecentFiles` key defaulting true, with a schema-doc row naming this section as consumer. Done when: the key round-trips and the doc row exists.
+- [ ] Toggle-off shows the Recents submenu empty state and omits recents from the jump-list feed; toggle-on restores both. Done when: each state is driven.
+- [ ] The §3 Recent Files card is enabled and bound to the key. Done when: the card drive passes both ways.
+- [ ] Commit: `"notepad-core: toggle recent-files display"`
+
+**Test checkpoint:** Key round-trip, submenu empty state, jump-list omission, and both card directions driven. Cheaper substitute that fails: a toggle that stops recording recents.
 
 ## Verification
 
