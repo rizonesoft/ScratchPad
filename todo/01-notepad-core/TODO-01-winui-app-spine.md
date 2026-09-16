@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§21-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§22, 24-26, 28-30 (§21 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -72,7 +72,7 @@ track: N1
 |  18   |   §18   | Export as Markdown, HTML, plain text | §5 |  [x]   |
 |  19   |   §19   | Encrypted notes | §4, §5 |  [x]   |
 |  20   |   §20   | Backup on save | §5 |  [x]   |
-|  21   |   §21   | Reload prompt on external change | §4 |  [ ]   |
+|  21   |   §21   | Reload prompt on external change | §4 |  [x]   |
 |  22   |   §22   | First-line titles for untitled tabs | §2 |  [ ]   |
 |  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
 |  24   |   §24   | Share target | §1, §2 |  [ ]   |
@@ -669,6 +669,12 @@ Why this section exists: files change behind us (sync tools, other editors). The
 - [x] Commit: `"notepad-core: prompt on external change"`
 
 **Test checkpoint:** prompt, both answers, dirty resolution, and the unsaved negative are all driven in the room. Cheaper substitute that fails: a prompt that defaults to data loss.
+
+> **Verified:** 2026-09-16 | §21 | Reload prompt on external change: per-tab watchers pend on foreign bytes and ask when window and tab are both active; reload fills with the detected spec applied, keep and Cancel hold the buffer dirty; own commits baseline via WroteFile and never prompt; convergent bytes auto-resolve clean; deleted files reuse the missing-file dialog, locked files route through the unlock detour; UI ReloadTests 8/8, Unit WroteFile contract 2/2, full gate Smoke 1/1 Unit 226/226 Protocol 35/35 UI 101 plus 1 pre-existing quarantine of 102, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidates e71fa04 plus 5c2c1e6 (review fix: dirty-dot Keep postcondition, path-filtered static-event tests, Cancel drive) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s21.md
+> **CRUD:** applicable | reload replaced the buffer with the disk bytes (box read back exact); keep held the buffer and dirtied (close prompted, Don't-save closed); Cancel kept like keep (close prompted); own save raised no prompt (dialog absent); untitled typing plus identical-bytes writes stayed silent
+> **Duration:** 65
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 22. First-Line Titles for Untitled Tabs
 
