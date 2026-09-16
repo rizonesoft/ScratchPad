@@ -72,7 +72,7 @@ Why this section exists: the find bar is the surface users touch. It must place,
 
 **Groomed 2026-09-13:** Notepad audit: the exact exposed option set, F3/Shift+F3, and within-session memory with autofill are now explicit.
 
-- [ ] `src/Notepad/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes.
+- [ ] `src/Notepad/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Find, Find next, and Find previous disabled; this section enables all three through the `MenuCommands` registry and drives them on landing.
 - [ ] Enter, Shift+Enter, Escape, and option toggles flow as Notepad's. Done when: the keyboard flow is driven.
 - [ ] No-match and wrap-around feedback match Notepad's. Done when: both are driven.
 - [ ] The bar exposes exactly Match case and Wrap around under More options; no whole-word toggle and no Up/Down direction radio appear. Done when: the capture comparison confirms the set. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
@@ -94,7 +94,7 @@ Why this section exists: replace mutates through undo. The mode must match Notep
 
 **Chrome:** Consume the shared bar styles. Do not invent a second replace treatment.
 
-- [ ] Replace and replace-all honor the §1 options and report Notepad's count. Done when: the count fixtures pass.
+- [ ] Replace and replace-all honor the §1 options and report Notepad's count. Done when: the count fixtures pass. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Replace disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] Every replace is one undo unit per Notepad's grouping. Done when: undo-after-replace fixtures pass.
 - [ ] Replace-all across a dirty buffer keeps dirty semantics exact. Done when: the dirty fixtures pass.
 - [ ] Commit: `"editor: add replace mode"`
@@ -113,7 +113,7 @@ Why this section exists: small surface, exact behavior. Validation, errors, and 
 
 **Chrome:** Consume the shared dialog styles. Do not invent a second dialog treatment.
 
-- [ ] `src/Notepad/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven.
+- [ ] `src/Notepad/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Go to disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] Valid input lands the caret exactly (line, column rules as Notepad's). Done when: the landing fixtures pass.
 - [ ] The dialog remembers nothing it should not and persists nothing. Done when: the behavior is recorded and tested.
 - [ ] Commit: `"editor: add go-to-line"`

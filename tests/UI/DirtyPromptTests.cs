@@ -420,6 +420,12 @@ public sealed class DirtyPromptTests
                     var dialog = WaitForPrompt(window);
                     Assert.Contains("unsaved seven.txt", PromptText(dialog), StringComparison.Ordinal);
                     AnswerPrompt(window, dialog, "Save");
+                    // D01 T02 §1 contract change: the §7 keep-open fallback
+                    // stood only until the Save As dialog existed. Save now
+                    // opens it inline; Cancel keeps the tab dirty with
+                    // nothing written.
+                    var saveAs = WaitForNativeModal(window, "Save As");
+                    CancelNativeModal(window, saveAs, "Save As");
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     Assert.Equal("unsaved seven", BoxText(window));
                     Assert.Empty(Directory.GetFiles(dir));
@@ -487,6 +493,49 @@ public sealed class DirtyPromptTests
                 }
             });
         return string.Join(" // ", texts);
+    }
+
+    static Window WaitForNativeModal(Window window, string title)
+    {
+        var modal = Retry.WhileNull(
+            () =>
+            {
+                try
+                {
+                    return window.ModalWindows.FirstOrDefault(m => m.Title == title);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
+                {
+                    return null;
+                }
+            },
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(modal);
+        return modal;
+    }
+
+    static void CancelNativeModal(Window window, Window modal, string title)
+    {
+        var cancel = modal.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button).And(cf.ByName("Cancel")));
+        Assert.NotNull(cancel);
+        cancel.AsButton().Invoke();
+        var gone = Retry.While(
+            () =>
+            {
+                try
+                {
+                    return window.ModalWindows.FirstOrDefault(m => m.Title == title);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
+                {
+                    return null;
+                }
+            },
+            found => found is not null,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250));
+        Assert.Null(gone.Result);
     }
 
     static void AnswerPrompt(Window window, AutomationElement dialog, string button)

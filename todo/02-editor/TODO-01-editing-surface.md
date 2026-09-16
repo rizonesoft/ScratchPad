@@ -101,7 +101,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 **Groomed 2026-09-13:** Notepad audit: CF_TEXT-only paste, color emoji, text drag-drop, Ctrl+click paragraph, and spaceless double-click are now explicit.
 
 - [ ] `src/Notepad/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes.
-- [ ] Cut, copy, paste, and paste-as-behavior match Notepad including formats offered. Done when: clipboard round-trips are driven.
+- [ ] Cut, copy, paste, and paste-as-behavior match Notepad including formats offered. Done when: clipboard round-trips are driven. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Cut, Copy, Paste, Delete, and Select all disabled; this section enables all five through the `MenuCommands` registry and drives them on landing.
 - [ ] Drag-select, double-click word, triple-click line match Notepad. Done when: each gesture is driven.
 - [ ] IME and accessibility (narrator, keyboard-only use) behave as Notepad's. Done when: the accessibility checks pass.
 - [ ] Paste accepts only CF_TEXT from the clipboard and strips all formatting, so every paste is effectively plain text. Done when: formatted-paste round-trips yield raw text. Source: https://en.wikipedia.org/wiki/Windows_Notepad
@@ -117,7 +117,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 Why this section exists: undo is the user's memory. Its grouping and limits must match Notepad's, or trust in the surface breaks.
 
-- [ ] `src/Notepad.Core/UndoStack.cs` groups edits as Notepad groups them (typing bursts, single operations). Done when: the grouping fixtures pass.
+- [ ] `src/Notepad.Core/UndoStack.cs` groups edits as Notepad groups them (typing bursts, single operations). Done when: the grouping fixtures pass. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Undo disabled (stock has no Redo item); this section enables Undo through the `MenuCommands` registry and drives it on landing.
 - [ ] Undo and redo limits, and the dirty-flag interaction (undo-to-clean clears dirty), match Notepad. Done when: the fixtures pass.
 - [ ] Undo across save boundaries behaves as Notepad's. Done when: the save-interaction fixtures pass.
 - [ ] Redo clears exactly when Notepad clears it. Done when: the fixtures pass.
@@ -142,9 +142,9 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 - [ ] Zoom steps, shortcuts, and limits match Notepad; the level persists through the settings store. Done when: each step is driven and persistence proven.
 - [ ] Word wrap toggles per Notepad with the choice persisted; wrapped and unwrapped caret math both hold. Done when: the wrap fixtures pass.
 - [ ] The status bar zoom readout stays in sync (with `D01 T02 §4`). Done when: the sync is driven.
-- [ ] Zoom keys are exactly Ctrl+Plus, Ctrl+Minus, Ctrl+0 for 100%, and Ctrl+mouse-wheel. Done when: each key is driven.
+- [ ] Zoom keys are exactly Ctrl+Plus, Ctrl+Minus, Ctrl+0 for 100%, and Ctrl+mouse-wheel. Done when: each key is driven. **Recorded 2026-09-16:** D01 T02 §1 ships View > Zoom in, Zoom out, Restore default zoom, and Word wrap disabled; this section enables all four through the `MenuCommands` registry and drives them on landing.
 - [ ] The line/column readout with wrap on follows Notepad's logical-versus-visual rule recorded from the capture. Done when: the wrap-on fixtures pass.
-- [ ] F5 inserts the current time and date at the caret; the exact format is recorded from the capture. Done when: the insert is driven and matches the capture. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
+- [ ] F5 inserts the current time and date at the caret; the exact format is recorded from the capture. Done when: the insert is driven and matches the capture. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/ **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Time/Date disabled; this section enables it through the `MenuCommands` registry and drives the shared insert on landing.
 - [ ] Commit: `"editor: match zoom and word wrap"`
 
 **Test checkpoint:** Steps, shortcuts, persistence, and wrap math all driven; capture comparison passes. Cheaper substitute that fails: zoom that works but with different steps than Notepad.

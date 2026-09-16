@@ -48,7 +48,7 @@ track: N2
 
 Why this section exists: formatting is data on top of the buffer, not a second buffer. The model decides what Markdown means here, once.
 
-- [ ] `src/Notepad.Core/FormatModel.cs` represents Notepad's styles as annotations on the §2 buffer. Done when: the model fixtures pass.
+- [ ] `src/Notepad.Core/FormatModel.cs` represents Notepad's styles as annotations on the §2 buffer. Done when: the model fixtures pass. **Recorded 2026-09-16:** D01 T02 §1 ships File > New Markdown tab disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] The supported syntax is exactly Notepad's (no extra Markdown dialect). Done when: the syntax list is recorded from the source and tested.
 - [ ] Annotations survive edits, undo, and save/load without drifting from the text. Done when: the stability fixtures pass.
 - [ ] Commit: `"editor: add the format model"`
@@ -76,7 +76,7 @@ Why this section exists: the toolbar is the surface. Bold, italic, lists, nested
 - [ ] Nested lists preserve structure across copy and paste; list continuation and renumbering are recorded from the capture. Done when: the clipboard round-trips pass. Source: https://learn.microsoft.com/en-us/windows-insider/release-notes/apps/notepad
 - [ ] Links insert through the toolbar or Ctrl+K with anchor text, and Ctrl+click opens them in the default browser; hand-typed Markdown link syntax works too, and editing or removing a link is recorded from the capture. Done when: insert, open, edit, and remove are driven. Source: https://www.windowslatest.com/2025/07/02/windows-11-notepads-rich-text-formatting-markdown-is-now-available/
 - [ ] Link opening gates schemes as Notepad does post-CVE-2026-20841: http/https open directly, every other scheme warns and requires confirmation. Done when: adversarial fixtures (file, ms-appinstaller, custom schemes) pass. Source: https://www.ghacks.net/2026/02/12/windows-11-notepad-bug-let-markdown-links-run-files-without-warning/
-- [ ] Clear Formatting strips styles, hyperlinks, and headings from the selection (or the document with no selection) through the toolbar button, Ctrl+Space, and the Edit menu. Done when: all three paths are driven. Source: https://allthings.how/how-to-remove-text-formatting-in-notepad-on-windows-11/
+- [ ] Clear Formatting strips styles, hyperlinks, and headings from the selection (or the document with no selection) through the toolbar button, Ctrl+Space, and the Edit menu. Done when: all three paths are driven. Source: https://allthings.how/how-to-remove-text-formatting-in-notepad-on-windows-11/ **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Clear Formatting disabled; this section enables it through the `MenuCommands` registry as part of the Edit-menu path.
 - [ ] Commit: `"editor: build the formatting toolbar"`
 
 **Test checkpoint:** Toolbar, nesting, and undo driven; capture comparison passes. Cheaper substitute that fails: styles that apply but never show active.
@@ -91,7 +91,7 @@ Why this section exists: users type Markdown by hand. It must render, and the fi
 - [ ] Save writes clean Markdown source, byte-stable across open-format-save cycles. Done when: the round-trip fixtures pass.
 - [ ] Malformed or partial syntax renders as literal text, never corrupts. Done when: the malformed fixtures pass.
 - [ ] Non-Markdown files are unaffected: no syntax is ever injected into plain text. Done when: the plain-text fixtures pass.
-- [ ] The formatted-versus-syntax view switch from the View menu and status bar changes rendering without touching the source. Done when: the switch is driven both ways. Source: https://blogs.windows.com/windows-insider/2025/05/30/text-formatting-in-notepad-begin-rolling-out-to-windows-insiders/
+- [ ] The formatted-versus-syntax view switch from the View menu and status bar changes rendering without touching the source. Done when: the switch is driven both ways. Source: https://blogs.windows.com/windows-insider/2025/05/30/text-formatting-in-notepad-begin-rolling-out-to-windows-insiders/ **Recorded 2026-09-16:** D01 T02 §1 ships View > Formatted and Syntax disabled; this section enables both through the `MenuCommands` registry and drives the switch on landing.
 - [ ] Saving formatted content as .txt warns that formatting is lost and strips it; saving as .md retains it. Done when: both paths are driven. Source: https://www.ghacks.net/2025/07/09/we-take-a-closer-look-at-notepads-formatting-options/
 - [ ] Formatting activates per tab: a blank tab stays plain until formatting is used in it. Done when: the activation fixtures pass. Source: https://www.ghacks.net/2025/07/09/we-take-a-closer-look-at-notepads-formatting-options/
 - [ ] Commit: `"editor: render Markdown with source fidelity"`

@@ -48,6 +48,8 @@ public sealed partial class MainWindow : Window, IDisposable
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;
         tabBar = new TabBar { Model = tabs };
+        tabBar.SaveAsFallbackAsync = SaveAsForTabAsync;
+        tabBar.ReportSaveFailureAsync = ShowSaveFailureAsync;
         WireFileDrops();
         // Crash checkpoint feed (D01 T01 §7): every box edit restarts
         // the App debounce, so a kill restores seconds-old buffers.
@@ -65,6 +67,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // subclasses nothing. First activation owns the install.
         Activated += OnFirstActivated;
         TabRegion.Content = tabBar;
+        MenuRegion.Bind(this);
         // Layout passes also fire during teardown, when transforms and the
         // AppWindow are half-disconnected; touching them stows a crash
         // (0xC000027B). The closed flag parks this handler for those passes.
@@ -99,25 +102,9 @@ public sealed partial class MainWindow : Window, IDisposable
                 _ => ElementTheme.Default,
             };
             AddTabAccelerators(root, tabBar);
-            AddAccel(root, VirtualKey.N, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, OpenNewWindow);
-            // D01 T01 §14: stats panel. Ctrl+Shift+G is free in-tree with no
-            // stock meaning; the menu trigger is deferred to D01 T02 §1.
-            AddAccel(root, VirtualKey.G, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowStatsPanelAsync(); });
-            // D01 T01 §16: file snapshots. Ctrl+Shift+H is free in-tree
-            // (H for history); the menu trigger is deferred to D01 T02 §1.
-            AddAccel(root, VirtualKey.H, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowSnapshotsPanelAsync(); });
-            // D01 T01 §17: new-from-template picker. Ctrl+Shift+E is free
-            // in-tree (T taken by new-tab/reopen, E for tEmplate); the menu
-            // trigger is deferred to D01 T02 §1.
-            AddAccel(root, VirtualKey.E, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowTemplatesPanelAsync(); });
-            // D01 T01 §18: export across formats. Ctrl+Shift+X is free
-            // in-tree (X for eXport); the menu trigger is deferred to
-            // D01 T02 §1.
-            AddAccel(root, VirtualKey.X, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowExportPanelAsync(); });
-            // D01 T01 §19: lock files with a password. Ctrl+Shift+L is free
-            // in-tree (L for lock); the menu trigger is deferred to D01 T02
-            // §1, and unlock rides the open path below.
-            AddAccel(root, VirtualKey.L, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, () => { _ = ShowLockPanelAsync(); });
+            // D01 T02 §1: the menu bar owns Ctrl+Shift+N/G/H/E/X/L through
+            // its own accelerators; the pre-menu AddAccel bindings lived
+            // here and would double-fire beside it.
             // Loaded, not Activated: first-run must show even when the window
             // opens behind others (CI launches never take the foreground).
             root.Loaded += OnFirstLoaded;
@@ -150,7 +137,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private static void AddTabAccelerators(UIElement scope, TabBar bar)
     {
         AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);
-        AddAccel(scope, VirtualKey.W, VirtualKeyModifiers.Control, bar.RequestCloseActive);
+        // D01 T02 §1: Ctrl+W belongs to File > Close tab now.
         AddAccel(scope, VirtualKey.Tab, VirtualKeyModifiers.Control, bar.CycleNext);
         AddAccel(scope, VirtualKey.Tab, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, bar.CyclePrevious);
         AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control | VirtualKeyModifiers.Shift, bar.ReopenLast);
@@ -383,6 +370,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     RecentFiles.NoteClosed(fresh.RecentFiles, tab.FilePath);
                     fresh.Save();
                     App.RefreshJumpList();
+                    MenuRegion.RefreshRecents();
                 }
             }
         }

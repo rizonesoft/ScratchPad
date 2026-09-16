@@ -33,6 +33,13 @@ public sealed partial class TabBar : UserControl
         set => SetValue(ModelProperty, value);
     }
 
+    // D01 T02 §1: close-save outlets. MainWindow sets both; the Save As
+    // dialog did not exist before §1, so a null hook keeps the old
+    // keep-open fallback instead of crashing a bare TabBar.
+    public Func<Tab, Task<bool>>? SaveAsFallbackAsync { get; set; }
+
+    public Func<string, Task>? ReportSaveFailureAsync { get; set; }
+
     // Per-tab content boxes. §3 scaffolding: the TextBox stands in for the
     // D02 T01 editor so switching, dirty tracking, and the close prompt are
     // drivable now. D02 replaces ContentFor callers with the real editor.
@@ -479,17 +486,22 @@ public sealed partial class TabBar : UserControl
     }
 
     // Save half of the §7 answer matrix. Pathed tabs save in place via
-    // the §5 engine and close; untitled tabs stay open because stock
-    // answers with the Save As dialog, which lands with D01 T02 §1
-    // (the keep-open cancel-outcome, probed, loses nothing). Redirects
-    // (locked/read-only need the same dialog) and failures (reported
-    // at T02 §1-time) also keep the tab open. Every keep-open path
+    // the §5 engine and close; untitled tabs open Save As inline (D01 T02
+    // §1 owns the dialog; Cancel keeps the tab open with no loss, the
+    // probed cancel-outcome). Redirects (locked/read-only) open the same
+    // dialog; failures report through the notice. Every keep-open path
     // returns true: the user vetoed nothing, so batch closes continue
     // past them instead of aborting.
     async Task<bool> TrySaveAndCloseAsync(Tab tab, TabModel model)
     {
         if (tab.FilePath is null)
         {
+            if (SaveAsFallbackAsync is null || !await SaveAsFallbackAsync(tab).ConfigureAwait(true))
+            {
+                return true;
+            }
+
+            CloseClean(tab, model);
             return true;
         }
 
@@ -527,11 +539,20 @@ public sealed partial class TabBar : UserControl
                 tab.ApplySave(tab.FilePath, spec);
                 CloseClean(tab, model);
                 return true;
-            case SaveRedirect redirect:
-                Debug.WriteLine($"Save redirected to Save As, tab kept: {redirect.Detail}");
+            case SaveRedirect:
+                if (SaveAsFallbackAsync is null || !await SaveAsFallbackAsync(tab).ConfigureAwait(true))
+                {
+                    return true;
+                }
+
+                CloseClean(tab, model);
                 return true;
             case SaveFailed failed:
-                Debug.WriteLine($"Save failed, tab kept: {failed.Detail}");
+                if (ReportSaveFailureAsync is not null)
+                {
+                    await ReportSaveFailureAsync(failed.Detail).ConfigureAwait(true);
+                }
+
                 return true;
             default:
                 return true;
