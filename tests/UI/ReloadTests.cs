@@ -71,7 +71,53 @@ public sealed class ReloadTests
                 window.Focus();
                 File.WriteAllText(file, "changed\n");
                 var dialog = WaitForDialog(window, "ReloadDialog");
+                // External change must not dirty the buffer: no dot before Keep.
+                Assert.Null(window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList()[1].FindFirstDescendant(cf => cf.ByName("•")));
                 AnswerDialog(window, dialog, "ReloadDialog", "Keep");
+                // Box text alone cannot prove Keep ran (the buffer never
+                // changed, only the disk did), and Ctrl+W before the handler
+                // marks dirty closes with no prompt. The dirty dot is the
+                // true postcondition: it appears only via IsDirty.
+                WaitForDirtyDot(window, 1);
+                Assert.Equal("original\n", WaitForBoxText(window, "original\n"));
+                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                var prompt = WaitForDialog(window, "SavePromptDialog");
+                AnswerPrompt(window, prompt, "Don't save");
+                Assert.Equal(1, WaitForTabCount(window, 1));
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    [Fact]
+    public void CancelKeepsLikeKeep()
+    {
+        string dir = NewTempDir();
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        try
+        {
+            string file = SeedFile(dir, "reload21.txt", "original\n");
+            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(2, WaitForTabCount(window, 2));
+                SelectTab(window, 1);
+                window.Focus();
+                File.WriteAllText(file, "changed\n");
+                var dialog = WaitForDialog(window, "ReloadDialog");
+                AnswerDialog(window, dialog, "ReloadDialog", "Cancel");
+                WaitForDirtyDot(window, 1);
                 Assert.Equal("original\n", WaitForBoxText(window, "original\n"));
                 Press(window, VirtualKeyShort.KEY_W, withControl: true);
                 var prompt = WaitForDialog(window, "SavePromptDialog");
@@ -394,6 +440,25 @@ public sealed class ReloadTests
         }
 
         return normalized;
+    }
+
+    static void WaitForDirtyDot(Window window, int index)
+    {
+        // The dot Ellipse is named U+2022 and collapses when clean, which
+        // removes it from the UIA tree: presence proves IsDirty.
+        AutomationElement? DotAt()
+        {
+            var items = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
+            return items.Count > index
+                ? items[index].FindFirstDescendant(cf => cf.ByName("•"))
+                : null;
+        }
+
+        var dot = Retry.WhileNull(
+            DotAt,
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(dot);
     }
 
     static int WaitForTabCount(Window window, int expected)

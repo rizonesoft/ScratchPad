@@ -377,7 +377,15 @@ public sealed class FileSaveTests
         {
             string path = Path.Combine(dir, "note.txt");
             var seen = new List<(string Path, byte[] Bytes)>();
-            void OnWrote(object? s, FileWroteEventArgs a) => seen.Add((a.Path, a.Bytes));
+            // The event is static and Unit collections run in parallel, so a
+            // concurrent test's save would land here too. Filter to our path.
+            void OnWrote(object? s, FileWroteEventArgs a)
+            {
+                if (string.Equals(a.Path, path, StringComparison.Ordinal))
+                {
+                    seen.Add((a.Path, a.Bytes));
+                }
+            }
             FileSave.WroteFile += OnWrote;
             try
             {
@@ -405,11 +413,18 @@ public sealed class FileSaveTests
     public void WroteFileStaysSilentOnFailure()
     {
         int count = 0;
-        void OnWrote(object? s, FileWroteEventArgs a) => count++;
+        string missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nope.txt");
+        // Static event plus parallel collections: only our path counts.
+        void OnWrote(object? s, FileWroteEventArgs a)
+        {
+            if (string.Equals(a.Path, missing, StringComparison.Ordinal))
+            {
+                count++;
+            }
+        }
         FileSave.WroteFile += OnWrote;
         try
         {
-            string missing = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "nope.txt");
             var spec = new SaveSpec(FileOpen.Utf8Name, false, LineEndings.Crlf);
             Assert.IsType<SaveFailed>(FileSave.SaveFile(missing, "x", spec));
         }
