@@ -77,6 +77,7 @@ track: N1
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
 |  28   |   §28   | UIA tab accessibility names | §3 |  [ ]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [ ]   |
+|  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [ ]   |
 
 ---
 
@@ -831,6 +832,29 @@ Why this section exists: stock's Open dialog offers an Encoding picker defaultin
 - [ ] Commit: `"notepad-core: open with explicit encoding"`
 
 **Test checkpoint:** option list, forced decode, auto-detect equivalence, and save handoff are all driven in the room. Cheaper substitute that fails: a picker that detects anyway.
+
+## 30. Locked-Tab Residue Hardening
+
+Why this section exists: §19 locks the file but the decrypted buffer still rests on disk outside it: snapshot sidecars (§16) store buffer bytes, and session restore (§6) plus the crash checkpoint (§7, same file) persist dirty buffers. The password and key stay memory-only per §19; this section extends the guarantee to the buffer.
+
+**Fidelity:** new build, no baseline (stock Notepad encrypts nothing).
+
+**Job:** Locked tabs leave no plaintext on disk outside the locked file. Consumer: the §19 lock flow, which gains residue-free persistence.
+
+**Treatment:** Takes on locked tabs are refused with an inline note in the versions dialog (a state, not a deferral, mirrors the §16 save-first note; prompting for a re-lock password per take is the rejected alternative, cost one dialog plus the drives). Session and checkpoint persistence omit locked-tab buffers (path-only entries, which restore as ghosts through the §19 ghost rule). Residues written before this section ships are left in place and named in the §19 doc (no retroactive wipe; cost: a one-way migration). Cheaper substitute that fails the checkpoint: a unit-only assertion with the room paths untouched.
+
+**Chrome:** Reuse the save-first note treatment. Do not invent a second refusal treatment.
+
+**Needs:** Windows host (build/test)
+
+- -> SOURCE: §19 review advisory (a), 2026-09-16 (decrypted-buffer residues in snapshots, session, and checkpoint)
+
+- [ ] Takes on locked tabs are refused with an inline note and no sidecar written. Done when: the room shows the note and the sidecar directory stays absent.
+- [ ] Session and checkpoint persistence omit locked-tab buffers. Done when: path-only entries restore as ghosts, driven.
+- [ ] Room drives prove no plaintext reaches disk for locked tabs. Done when: the sidecar scan and the app-data scan both come back clean.
+- [ ] Commit: `"notepad-core: harden locked-tab residues"`
+
+**Test checkpoint:** refused takes, path-only persistence, and both disk scans are all driven in the room. Cheaper substitute that fails: plaintext asserted absent only where the test looked before.
 
 ## Verification
 
