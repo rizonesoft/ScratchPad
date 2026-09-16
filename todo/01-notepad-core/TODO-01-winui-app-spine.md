@@ -678,6 +678,8 @@ Why this section exists: files change behind us (sync tools, other editors). The
 
 ## 22. First-Line Titles for Untitled Tabs
 
+> **Started:** 2026-09-16T03:26:36Z
+
 Why this section exists: untitled tabs show their first line as the live default. Agent suggestions live at D05 T02 §9.
 
 **Fidelity:** new build, no baseline (the capture session confirms the first-line default against stock; this section defines it either way).
@@ -686,13 +688,13 @@ Why this section exists: untitled tabs show their first line as the live default
 
 **Treatment:** First line as the live default, trimmed per §2's auto-name rule. Cheaper substitute that fails the checkpoint: static "Untitled" for every blank tab.
 
-**Chrome:** Consume the shared tab styles. Do not invent a second title treatment.
+**Chrome:** Consume the shared tab styles. **Corrected 2026-09-16 (§22 validation):** no shared tab styles exist in the tree (same finding as §16-§21 for dialogs; `TabBar.xaml` carries no shared resources); titles flow through the existing header binding (`RefreshHeader` writes `tab.DisplayName`), which this section reuses. Do not invent a second title treatment.
 
 **Needs:** Windows host (build/test)
 
-- [x] Untitled tabs show the first line as their live default. Proven by D01 T01 §2 shipped test UntitledShowsFirstLineOnly; bedtime UI drive re-confirms at the surface. Done when: typing the first line renames the tab under host drive.
-- [ ] The first-line default is confirmed against the stock capture or the difference recorded. Done when: the capture comparison or the recorded difference exists.
-- [ ] Commit: `"notepad-core: title untitled tabs from the first line"`
+- [x] Untitled tabs show the first line as their live default. Proven by D01 T01 §2 shipped test UntitledShowsFirstLineOnly; bedtime UI drive re-confirms at the surface. **Corrected 2026-09-16 (§22 validation):** un-ticked, the tick was half-true: the §2 proof is a model unit test and the "bedtime" surface drive never happened (the day/night regime is retired); the Done-when demands host drive, which this section performs now. **Driven 2026-09-16:** `TypingFirstLineRenamesTab` (type renames, whitespace restores Untitled) plus `FirstLineTrimsAndTruncates` (trim plus 35-cap), green. Done when: typing the first line renames the tab under host drive.
+- [x] The first-line default is confirmed against the stock capture or the difference recorded. Done when: the capture comparison or the recorded difference exists. **Driven 2026-09-16:** one-shot stock drive (deleted after): tab `PROBE22` from first line `PROBE22 ` (trim confirmed), 40-char line titled `PROBE22-abcdefghijklmnopqrstuvwxyz0` (35-cap confirmed), UIA `…. Modified.` corroborates the §28 recon; crops filed under `resources/baseline/stock/`, no difference to record.
+- [x] Commit: `"notepad-core: title untitled tabs from the first line"`
 
 **Test checkpoint:** live default and capture confirmation are driven in the room. Cheaper substitute that fails: tabs that all read Untitled.
 
