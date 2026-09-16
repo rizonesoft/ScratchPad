@@ -29,7 +29,7 @@ track: N1
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
-> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§24-26, 28-30 (§§21-22 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+> **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: §§25-26, 28-30 (§§21-22, §24 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 
 ## Inputs
 
@@ -75,7 +75,7 @@ track: N1
 |  21   |   §21   | Reload prompt on external change | §4 |  [x]   |
 |  22   |   §22   | First-line titles for untitled tabs | §2 |  [x]   |
 |  23   |   §23   | Side-by-side tab diff | §2, §12 |  [ ]   |
-|  24   |   §24   | Share target | §1, §2 |  [ ]   |
+|  24   |   §24   | Share target | §1, §2 |  [x]   |
 |  25   |   §25   | Jump list tasks | §2, §6, §13 |  [ ]   |
 |  26   |   §26   | Protocol handler | §4, §8 |  [ ]   |
 |  27   |   §27   | Tab-strip chrome parity repair | §1, §3 |  [x]   |
@@ -739,6 +739,12 @@ Why this section exists: Windows apps share text; we receive it into a new tab. 
 - [x] Commit: `"notepad-core: receive shared text"`
 
 **Test checkpoint:** receive and graceful decline are driven in the room (registration is D07 T01 §7's). Cheaper substitute that fails: a target that eats shares silently.
+
+> **Verified:** 2026-09-16 | §24 | Share receive path: text opens an untitled dirty active tab, null/empty declines with the model untouched, registration plus activation routing deferred to the named release section; Unit ShareReceiverTests 3/3, full gate Smoke 1/1 Unit 226/226 Protocol 35/35 UI 103 plus 1 pre-existing quarantine of 104, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** rounds 1, candidate 5dff99f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s24.md
+> **CRUD:** applicable | receive wrote a tab with the text (read back via untitled, first-line, dirty, active asserts); decline wrote nothing (model read back empty)
+> **Duration:** 40
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 25. Jump List Tasks
 
