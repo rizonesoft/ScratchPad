@@ -45,7 +45,7 @@ track: N1
 |   1   |   §1    | Menu bar with all items and enablement | D01 T01 §1 |  [x]   |
 |   2   |   §2    | Settings store with one writer | D01 T01 §1 |  [x]   |
 |   3   |   §3    | Settings page | §2 |  [x]   |
-|   4   |   §4    | Status bar | D01 T01 §1 |  [ ]   |
+|   4   |   §4    | Status bar | D01 T01 §1 |  [x]   |
 |   5   |   §5    | Print path | §1 |  [ ]   |
 |   6   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
 |   7   |   §7    | Reading level in the status bar | §4 |  [ ]   |
@@ -172,17 +172,26 @@ Why this section exists: the status bar is always visible, so any staleness is a
 
 **Needs:** Windows host (build/test)
 
-- [ ] `src/IntelligentNotepad/StatusBar.xaml` (+ `.xaml.cs`) binds line/column, zoom, encoding, and line endings to the active tab. Done when: every keystroke and switch updates it. **Corrected 2026-09-16 (§4 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3). **Recorded 2026-09-16:** this section measures and records the per-keystroke status-update latency bar that §9 item 4 measures against.
+- -> XREF: D02 T04 §3 -- owns the Formatted-switch enablement; the switch ships disabled here
+
+- [x] `src/IntelligentNotepad/StatusBar.xaml` (+ `.xaml.cs`) binds line/column, zoom, encoding, and line endings to the active tab. Done when: every keystroke and switch updates it. **Corrected 2026-09-16 (§4 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3). **Recorded 2026-09-16:** this section measures and records the per-keystroke status-update latency bar that §9 item 4 measures against.
 - [ ] ~~Clicking a segment opens its Notepad behavior (encoding menu, line-ending menu, zoom control). Done when: each click path is driven.~~ **Struck 2026-09-16:** stock 11.2607.14.0 plain-text segments are static Text (single-click probed twice foreground-pinned plus double-click once across EOL/encoding/zoom/count/LnCol: no popup, no state change, frames plus UIA dumps agree); parity is no click path. The only clickable strip element is the Formatted switch (item 7, Button). No replacement: there is no stock behavior to build. Parity negative driven: `StatusSegmentsHaveNoClickPath`.
-- [ ] CRLF/LF and tab/space counts follow Notepad's rules exactly. Done when: the math fixtures pass.
-- [ ] A selection shows its character count as Notepad does. Done when: the selection-count fixtures pass.
-- [ ] The bar hides and shows per the View menu with the choice persisted. Done when: the toggle is driven. **Recorded 2026-09-16:** D01 T02 §1 ships View > Status bar disabled and unchecked; this section enables it through the `MenuCommands` registry and drives the toggle on landing.
-- [ ] With no selection the bar shows the document-total character count; with a selection it shows selected-plus-total counts. Done when: the count fixtures pass. Source: https://blogs.windows.com/windows-insider/2023/12/07/announcing-windows-11-insider-preview-build-23601-dev-channel/
-- [ ] The bar offers the formatted-versus-syntax Markdown view switch routed to D02 T04 §3. Done when: the switch drives the view change. **Decided 2026-09-16 (§4 validation):** the §1 item-2 pending-owner pattern: this section renders the switch disabled with its stock label, and D02 T04 §3 enables it alongside the View pair and drives the view change on landing (enablement line recorded on its item 5).
-- [ ] The line-ending segment displays CR alongside CRLF and LF per the detected convention. Done when: the CR fixture passes.
-- [ ] Commit: `"notepad-core: build the status bar"`
+- [x] CRLF/LF and tab/space counts follow Notepad's rules exactly. Done when: the math fixtures pass.
+- [x] A selection shows its character count as Notepad does. Done when: the selection-count fixtures pass.
+- [x] The bar hides and shows per the View menu with the choice persisted. Done when: the toggle is driven. **Recorded 2026-09-16:** D01 T02 §1 ships View > Status bar disabled and unchecked; this section enables it through the `MenuCommands` registry and drives the toggle on landing.
+- [x] With no selection the bar shows the document-total character count; with a selection it shows selected-plus-total counts. Done when: the count fixtures pass. Source: https://blogs.windows.com/windows-insider/2023/12/07/announcing-windows-11-insider-preview-build-23601-dev-channel/
+- [x] The bar offers the formatted-versus-syntax Markdown view switch routed to D02 T04 §3. Done when: the switch drives the view change. **Decided 2026-09-16 (§4 validation):** the §1 item-2 pending-owner pattern: this section renders the switch disabled with its stock label, and D02 T04 §3 enables it alongside the View pair and drives the view change on landing (enablement line recorded on its item 5).
+- [x] The line-ending segment displays CR alongside CRLF and LF per the detected convention. Done when: the CR fixture passes.
+- [x] Commit: `"notepad-core: build the status bar"`
 
 **Test checkpoint:** UI drive proves live updates on edit, switch, and setting change; click paths driven; math fixtures green. Cheaper substitute that fails: a status bar that updates on a timer instead of on state.
+
+> **Verified:** 2026-09-16 | §4 | Status strip live-bound to the active tab: six segments in stock order (Ln/Col, count, mode left; zoom, EOL, encoding right) refreshing on every keystroke, caret move, tab switch, edit, per-tab property change, and settings change; neutral StatusSegments plus StatusBar control with stock WinUI treatment; programmatic fills through SetBoxText (8 sites) with TabsEdited announce; View > Status bar toggle enabled through the §1 registry, collapsing the 32-DIP row with the choice persisted; click paths struck (stock segments are static Text, parity negative driven); Formatted switch rendered disabled with its stock label, enablement owned by D02 T04 §3 (bidirectional); CR segment plus 1 MiB/500 ms latency bar recorded for §9; main golden refreshed (all 933 diffs confined to the status band); coverage 8 strip drives plus 46 math fixtures plus golden pair; cheap gate Smoke 1/1 Unit 331/331 Protocol 35/35, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** round 2, candidate fbf0088 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve (2 advisories, dispositioned in findings). Round 1 found 1 record defect (deferral owner syntax plus one-sided XREF, validator-caught), fixed and re-validated; pre-findings folds (Dispose unhook, golden refresh, TODO-04 enablement line) ride the unpushed candidate, the round-2 XREF bullets ride this Ship commit. Raw findings: docs/reviews/01-notepad-core/D01-T02-s4.md
+> **CRUD:** applicable | Every strip drive wrote tab content or settings (read back via UIA segment asserts); toggle wrote visibility (read back via the collapsed row plus reopened store); fills wrote boxes (read back via refreshed segment text); golden wrote the baseline (read back via fresh compare)
+> **Duration:** 485
+> **Implementer:** Muse Code (Meta Muse Spark)
+> **Deferred:** Formatted-switch enablement -> XREF: D02 T04 §3 (item: "The formatted-versus-syntax view switch from the View menu and status bar") -- status-bar switch ships disabled in §4; §3 enables it alongside the View pair and drives both entries
 
 ## 5. Print Path
 
