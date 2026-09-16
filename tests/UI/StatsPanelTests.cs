@@ -40,6 +40,9 @@ public sealed class StatsPanelTests
             var frame = window.BoundingRectangle;
             var panel = dialog.BoundingRectangle;
             Assert.True(frame.Contains(panel), $"panel {panel} escapes window {frame}");
+            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            Thread.Sleep(500);
+            Assert.Equal(1, CountDialogs(window));
             CloseDialog(window, dialog);
         }
         finally
@@ -74,6 +77,34 @@ public sealed class StatsPanelTests
             refresh.Invoke();
             Assert.Equal(expected, WaitForSections(second, 4, 0, 0).Top);
             CloseDialog(window, second);
+        }
+        finally
+        {
+            CloseApp(app, window);
+            SessionData.Delete();
+        }
+    }
+
+    [Fact]
+    public void LongRepetitionListTruncatesWithTrailer()
+    {
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            string text = string.Join(" ", Enumerable.Range(1, 60).SelectMany(i => Enumerable.Repeat($"w{i:000}", 3)));
+            SetBoxText(window, text);
+            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            var dialog = WaitForDialog(window, "StatsDialog");
+            var sections = WaitForSections(dialog, 0, 0, 51);
+            Assert.Equal(51, sections.Repeated.Count);
+            Assert.Equal("w001", sections.Repeated[0]);
+            Assert.Equal("w050", sections.Repeated[49]);
+            Assert.Equal("+10 more", sections.Repeated[50]);
+            CloseDialog(window, dialog);
         }
         finally
         {
@@ -212,6 +243,9 @@ public sealed class StatsPanelTests
         Thread.Sleep(1500);
         return dialog;
     }
+
+    static int CountDialogs(Window window) =>
+        window.FindAllDescendants(cf => cf.ByAutomationId("StatsDialog")).Length;
 
     static TextBox ContentBox(Window window)
     {

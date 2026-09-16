@@ -22,6 +22,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private readonly TabModel tabs = new();
 
     private TabBar? tabBar;
+    bool statsDialogOpen;
 
     private MiddleClickHook? middleClick;
 
@@ -389,13 +390,25 @@ public sealed partial class MainWindow : Window, IDisposable
     // while typing, and Refresh re-reads on demand.
     internal async Task ShowStatsPanelAsync()
     {
-        if (Content?.XamlRoot is not XamlRoot xamlRoot)
+        // Review round 1: never stack two dialogs (a second ShowAsync
+        // throws); the modal usually swallows the repeat press, so the
+        // flag is belt-and-braces and the single-dialog drive below is
+        // the observable contract.
+        if (statsDialogOpen || Content?.XamlRoot is not XamlRoot xamlRoot)
         {
             return;
         }
 
-        var dialog = new StatsDialog(new ActiveTabTextProvider(ActiveTabText)) { XamlRoot = xamlRoot };
-        await dialog.ShowAsync();
+        statsDialogOpen = true;
+        try
+        {
+            var dialog = new StatsDialog(new ActiveTabTextProvider(ActiveTabText)) { XamlRoot = xamlRoot };
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            statsDialogOpen = false;
+        }
     }
 
     string ActiveTabText()
