@@ -42,7 +42,7 @@ track: N1
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Menu bar with all items and enablement | D01 T01 §1 |  [x]   |
 |   2   |   §2    | Settings store with one writer | D01 T01 §1 |  [x]   |
-|   3   |   §3    | Settings page | §2 |  [ ]   |
+|   3   |   §3    | Settings page | §2 |  [x]   |
 |   4   |   §4    | Status bar | D01 T01 §1 |  [ ]   |
 |   5   |   §5    | Print path | §1 |  [ ]   |
 |   6   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
@@ -144,7 +144,13 @@ Why this section exists: the settings page is the store made visible. Every cont
 - [x] About and app-version info live on the Settings page itself; there is no separate Help menu or About dialog. Done when: the capture comparison confirms placement. **Probed 2026-09-16 (stock 11.2607.14.0):** About is a right-side panel (name, version, copyright, 4 Microsoft legal links, Send feedback, Help). **Decided 2026-09-16 (§3 validation):** ours carries our name and the assembly version; the support rows are omitted (Microsoft-support surfaces with no product equivalent; one card each to add) and copyright/publisher rows land with D07 identity. The version number itself belongs to the release packaging work (D07 T01 §1 pins identity); this page displays whatever the assembly says.
 - [x] Commit: `"notepad-core: build the settings page"`
 
-**Test checkpoint:** UI drive changes every control and proves the behavior change; reset driven; capture comparison passes. Cheaper substitute that fails: controls that write the UI but not the store.
+**Test checkpoint:** UI drive changes every bound control and proves the behavior change; no-reset negative driven; capture comparison passes. Cheaper substitute that fails: controls that write the UI but not the store.
+
+> **Verified:** 2026-09-16 | §3 | Settings page in stock order: 13 cards across 6 groups (App theme, Font, Word wrap, Opening files, When Notepad starts bound live through Update-only writes; Formatting, Spell check, Autocorrect, Recent Files, Writing tools disabled with owner recorded; About panel with name and assembly version), gear entry with back return, Edit > Font enabled with jump to the expanded Font card, theme live through the store Changed event, page-half extension pattern recorded; reset struck (no stock control, parity negative driven); main golden refreshed (gear plus settled labels, all 598 diffs confined to the menu band) with a capture settle-wait; coverage 11 page drives plus 27 menu drives; full gate Smoke 1/1 Unit 285/285 Protocol 35/35 UI 156 plus 1 pre-existing quarantine of 157, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Review:** round 2, candidate 224998a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve (2 advisories, dispositioned in findings). Round 1 found 2 defects (unknown Opening value display, null-key preview crash), both fixed and re-verified; fixes ride this Ship commit, the candidate being pushed. Raw findings: docs/reviews/01-notepad-core/D01-T02-s3.md
+> **CRUD:** applicable | Every card drive wrote settings (read back via reopened store asserts); theme flip wrote and re-rendered (read back via store plus pixel diff); font jump wrote nothing (read back via the expanded onscreen card); disabled cards wrote nothing (read back via UIA disabled asserts); golden wrote the baseline (read back via fresh compare)
+> **Duration:** 91
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 4. Status Bar
 

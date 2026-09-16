@@ -125,7 +125,8 @@ internal sealed partial class SettingsPage : UserControl
             SelectCombo(FontSizeCombo, current.FontSize.ToString(CultureInfo.InvariantCulture));
             UpdateFontPreview();
             WordWrapToggle.IsOn = current.WordWrap;
-            SelectCombo(OpeningCombo, OpeningOptions.FirstOrDefault(o => o.Value == current.OpenIn).Label);
+            string openingLabel = OpeningOptions.FirstOrDefault(o => o.Value == current.OpenIn).Label ?? current.OpenIn;
+            SelectCombo(OpeningCombo, openingLabel);
             CheckRadio(WhenStartsContinue, WhenStartsFresh, null, WhenStartsOptions, current.WhenStarts);
         }
         finally
@@ -165,13 +166,17 @@ internal sealed partial class SettingsPage : UserControl
 
     void UpdateFontPreview()
     {
+        // A hand-emptied file can omit keys (the store backfills nothing):
+        // the page shows defaults rather than crashing the settings open.
         ShellSettings current = SettingsStore.Shared.Current;
-        FontPreview.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily(current.FontFamily);
+        string family = current.FontFamily ?? "Consolas";
+        string style = current.FontStyle ?? "Regular";
+        FontPreview.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily(family);
         FontPreview.FontSize = current.FontSize;
-        FontPreview.FontStyle = current.FontStyle.Contains("Italic", StringComparison.Ordinal)
+        FontPreview.FontStyle = style.Contains("Italic", StringComparison.Ordinal)
             ? Windows.UI.Text.FontStyle.Italic
             : Windows.UI.Text.FontStyle.Normal;
-        FontPreview.FontWeight = current.FontStyle.Contains("Bold", StringComparison.Ordinal)
+        FontPreview.FontWeight = style.Contains("Bold", StringComparison.Ordinal)
             ? Microsoft.UI.Text.FontWeights.Bold
             : Microsoft.UI.Text.FontWeights.Normal;
     }
