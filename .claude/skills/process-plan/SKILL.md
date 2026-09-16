@@ -47,6 +47,14 @@ Record these lines **in the run's findings file**, not as the turn's last words:
 
 If no phase has a ready row, every remaining `[ ]` row is blocked. Report them and stop. That is a genuine halt, and it is the only one this skill has.
 
+### Run guard
+
+A run without a guard dies silently when the session stalls, so starting the first phase also starts the run guard, always. List the harness scheduled jobs: if no Run-guard heartbeat for this workspace exists, create one on `*/10 * * * *` (recurring, fires during active runs) with the canonical prompt below, and record its job id in the run's findings file. If a guard for this workspace already exists, adopt it: record its id and do not create a second. If the harness offers no scheduled jobs, record that the run is unguarded instead of pretending otherwise.
+
+Canonical prompt (fill `<N>`, `<date>`, `<workspace>`; the run file is `docs/phase-runs/<date>-phase-<N>.md`):
+
+Run-guard heartbeat for the intelligent-notepad Phase <N> run (workspace <workspace>). Decide read-only FIRST whether the run is live: it is live if ANY of these hold: (a) any file under src/ tests/ todo/ resources/ docs/ modified in the last 25 minutes (find -newermt, excluding bin/obj); (b) any Muse session log under ~/.local/share/muse/sessions appended in the last 25 minutes; (c) any dotnet/testhost/probe process running for this repo. If live: take NO guard action (no audit, no new run, no guard commits) and CONTINUE the run work in progress in this same turn (process-plan: pick up exactly where the session left off; never end the turn on this heartbeat while work remains). Completion condition: the run is done only when todo/implementation-plan.md shows every row [x] (all sections shipped and stamped) or every leftover row is blocked and the run file records PARKED; until then, each heartbeat keeps processing (audit, then process-phase on the first ready phase). Blocked rows re-evaluate every heartbeat: re-run `query ready` rather than trusting a previous blocked list, since a row whose blockers have all shipped is ready now and ships in table order. If NOT live (a/b/c all stale/absent) AND the run file exists with NEITHER a "## Closeout" header NOR a "PARKED" marker AND `python3 scripts/todo-graph.py query ready` from the workspace root prints at least one ready row: the run stalled with no live writer, so resume it (audit, then process-phase on the first ready phase), single writer, trunk main, never --no-verify, never force-push. This guard is deleted at run closeout; do not extend it.
+
 ## 2. After a phase closeout or park
 
 `process-phase` ends in exactly one of three ways: the phase table is all `[x]` and closeout is written; every leftover `[ ]` row is blocked and it parked; or the operator paused it.
@@ -57,7 +65,7 @@ A parked phase is **not** complete, and it is **not** a stall. Do not call it ei
 python3 scripts/todo-graph.py query ready
 ```
 
-If another phase has a ready row, start `process-phase` on it in the same turn. Same session, same rules. If no phase has a ready row, the remaining leftovers are blocked or the plan is done: report which.
+If another phase has a ready row, re-point the guard to the new phase's run file (delete, recreate, record the new id) and start `process-phase` on it in the same turn. Same session, same rules. If no phase has a ready row, the remaining leftovers are blocked or the plan is done: delete the guard, record the deletion in the findings file, and report which.
 
 ## 3. Deny
 
@@ -67,3 +75,4 @@ If another phase has a ready row, start `process-phase` on it in the same turn. 
 - Do not claim a phase is complete while its table has `[ ]` rows.
 - Do not treat a named phase as the whole plan. Chaining is this skill's job, and only this skill's.
 - Do not end the turn on the audit table. Starting is the next action, in the same turn.
+- Do not start a run without starting its guard, and do not end, stop, or pause a run without deleting it.
