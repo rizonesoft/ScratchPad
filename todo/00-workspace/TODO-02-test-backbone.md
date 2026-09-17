@@ -39,6 +39,7 @@ track: W0
 |   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [x]   |
 |   6   |   §6    | Golden comparison deterministic on CI | §3 |  [x]   |
 |   7   |   §7    | CI evidence capture pipeline | D01 T02 §14 |  [x]   |
+|   8   |   §8    | Focus-free UI suite conversion | §2 |  [ ]   |
 
 ---
 
@@ -200,6 +201,21 @@ Why this section exists: eyeball-evidence crops (D01 T02 §14 item 4 is the firs
 > **CRUD:** applicable | CI runs wrote conclusions plus artifacts (read back via success, job conclusions, artifact names plus bytes); downloads wrote frames (read back via PIL size plus extrema, then eyeballed); crops wrote PNGs (read back via dims plus eyeball); reruns wrote attempts (read back via conclusions per attempt); filings wrote sections (read back via validate plus plan --check)
 > **Duration:** 152
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 8. Focus-Free UI Suite Conversion
+
+Why this section exists: the UI suite cannot run while the operator works. Measured 2026-09-17: 104 focus-dependent input calls (`Keyboard.Press` 61, `Keyboard.Pressing` 34, `Keyboard.Type` 9, `Mouse.*` 8) that need the app in the foreground, so a full run steals focus repeatedly and mistypes into operator windows on any timing slip. CI no longer runs UI tests (operator decision 2026-09-17: CI proves build plus launch smoke only), so the per-section regression gate must run on the dev box without interrupting it. -> SOURCE: focus-free-mandate-2026-09-17 (operator instruction: uninterrupted per-section full-suite runs on Venom-PC, plus the suite input audit of the same day).
+
+**Needs:** Windows host (build/test)
+
+- [ ] Every `Keyboard.*` and `Mouse.*` call in `tests/UI/` is dispositioned to convert-to-pattern, fence-as-interactive, or keep-with-reason, recorded as an audit table. Done when: the table quotes all 104 calls with a disposition each.
+- [ ] Convertibles move to UIA patterns (`ValuePattern`, `InvokePattern`, selection) behind one shared helper, and the converted tests stay green locally. Done when: `dotnet test tests/UI` passes with zero focus-dependent calls outside the fenced set.
+- [ ] True-interactive tests (whose point is physical input: shortcuts, focus behavior) are fenced behind a trait excluded from the default run and runnable visibly on demand. Done when: the default run activates no window (proven by a foreground log) and the fenced set passes visibly.
+- [ ] Spooler-dependent tests run under a full-token wrapper (scheduled-task or equivalent), since agent-spawned processes enumerate zero printers while WMI sees the spooler. Done when: the §5 print golden test passes from the agent context. -> SOURCE: `EnumPrinters` probe 2026-09-17 (raw API count 8, .NET `InstalledPrinters` 0, medium integrity, session 1).
+- [ ] `docs/testing.md` documents the uninterrupted gate: the exact default-run command, the fenced on-demand command, and what green means for each. Done when: a second section can follow it without asking.
+- [ ] Commit: `"workspace: convert UI suite to focus-free input"`
+
+**Test checkpoint:** The default `tests/UI` run passes locally while the operator's foreground window never changes (foreground log quoted); the fenced set passes in a visible on-demand run. Cheaper substitute that fails: running the suite while the operator is away and calling it uninterrupted.
 
 ## Verification
 
