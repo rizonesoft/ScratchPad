@@ -3479,7 +3479,7 @@ track: Z1
             encoding="utf-8",
         )
         (rev_dir / "90-panel-clean.md").write_text(
-            "# Review: fixture\n\n## Opus panel\n\n"
+            "# Review: Opus Panel Enforcement fixture\n\n## Opus panel\n\n"
             "**adversarial: approve**\n**consistency: advisory**\n"
             "**integration: needs-attention**\n**record: approve**\n",
             encoding="utf-8",
@@ -3526,7 +3526,7 @@ track: Z1
             True,
         )
         check(
-            "clean panel stays silent",
+            "clean panel stays silent despite a panel-naming title",
             any("TODO-06-panel.md" in ln and "§5" in ln and "FATAL" in ln for ln in panel_out),
             False,
         )

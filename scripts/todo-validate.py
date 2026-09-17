@@ -26,6 +26,9 @@ def validate(graph, _args) -> int:
     # pre-convention kinds moves here -- queryable via `warnings --acked`,
     # never printed as WARN. The stamped/open distinction is the row's `[x]`
     # plus the Verified stamp, both already parsed; never a ref allowlist.
+    # PANEL_CUTOFF below is not a third ack cutoff: it grandfathers a FATAL
+    # (rule 16), acks nothing, and moves no warning. It sits with the other
+    # cutoffs for discoverability only.
     # "Pre-convention" is DATE-BOUND PER RULE (terminal integration findings):
     # only a stamp dated on or before the RULE'S OWN cutoff qualifies, so a
     # later stamp carrying the same defect stays in the live channel instead
@@ -401,11 +404,15 @@ def validate(graph, _args) -> int:
     # than via pre_convention() deliberately: that predicate conjoins
     # row-status [x], but the stamp is the claim here, so an undated stamp
     # fails closed (evaluated, not skipped) per the file convention that
-    # an undated stamp never acks.
+    # an undated stamp never acks. Unreachable today (the parser dates
+    # every covered section), kept as defense if that invariant changes.
     PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
     PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
     FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
-    PANEL_HEADING_RE = re.compile(r"^#{1,4}\s+.*opus panel", re.IGNORECASE | re.MULTILINE)
+    # Level 2+ and STARTING with the words: a `# Review:` title may itself
+    # mention the Opus panel (D00-T01-s9.md does), and matching it would
+    # slice the verdicts away and false-fire on a clean file.
+    PANEL_HEADING_RE = re.compile(r"^#{2,4}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
