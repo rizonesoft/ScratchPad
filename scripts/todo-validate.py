@@ -473,18 +473,35 @@ def validate(graph, _args) -> int:
             fence = None  # (char, run length, opener lineno) while inside one
             for fence_lineno, ln in enumerate(text.splitlines(), start=1):
                 stripped = ln.strip()
-                if stripped.startswith("```") or stripped.startswith("~~~"):
+                # A fence marker indented 4+ spaces (a tab counts 4) is an
+                # indented code block in CommonMark, never a fence: without
+                # this, quoted content mis-toggles the tracker and a real
+                # panel misreports as unbalanced.
+                indent = ln[: len(ln) - len(ln.lstrip())]
+                indented_code = len(indent.replace("\t", "    ")) >= 4
+                fence_run = 0
+                if not indented_code and (
+                    stripped.startswith("```") or stripped.startswith("~~~")
+                ):
                     ch = stripped[0]
-                    run = len(stripped) - len(stripped.lstrip(ch))
+                    fence_run = len(stripped) - len(stripped.lstrip(ch))
+                if fence_run:
                     if fence is None:
-                        fence = (ch, run, fence_lineno)
-                    elif ch == fence[0] and run >= fence[1]:
+                        fence = (ch, fence_run, fence_lineno)
+                    elif (
+                        ch == fence[0]
+                        and fence_run >= fence[1]
+                        and stripped[fence_run:] == ""
+                    ):
+                        # CommonMark close: same char, run at least the
+                        # opener's, and no info string. A ```text line (or a
+                        # shorter or other-char run) inside a fence is
+                        # content, never a close; without the info-string
+                        # bar, quoted verdicts leak out and satisfy the rule.
+                        # Same-length nesting cannot exist, so genuinely
+                        # crossed fences fall out as unbalanced below instead
+                        # of mis-toggling.
                         fence = None
-                    # Else a shorter or other-char run inside a fence is
-                    # content (the ```` outer / ``` inner nesting idiom),
-                    # matching CommonMark close rules; same-length nesting
-                    # cannot exist, so genuinely crossed fences fall out as
-                    # unbalanced below instead of mis-toggling.
                     continue
                 if fence is None:
                     kept.append(ln)
