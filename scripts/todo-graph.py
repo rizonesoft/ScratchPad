@@ -3403,6 +3403,9 @@ track: Z1
 |   6   |   §6    | Cutoff stamp, no panel | - |  [x]   |
 |   7   |   §7    | Latest round noncompliant | - |  [x]   |
 |   8   |   §8    | Latest round clean | - |  [x]   |
+|   9   |   §9    | Fenced panel quote | - |  [x]   |
+|  10   |   §10   | Level-5 tail after panel | - |  [x]   |
+|  11   |   §11   | Level-5 panel heading | - |  [x]   |
 
 ---
 
@@ -3485,6 +3488,36 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §8 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-multi-clean.md
+
+## 9. Fenced panel quote
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §9 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fenced.md
+
+## 10. Level-5 tail after panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §10 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-l5tail.md
+
+## 11. Level-5 panel heading
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §11 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-l5head.md
 """,
             encoding="utf-8",
         )
@@ -3518,6 +3551,27 @@ track: Z1
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: needs-attention**\n"
             "\n## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-fenced.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n"
+            "\n```markdown\n## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-l5tail.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\n##### Leftover notes\n\n"
+            "Filed leftovers: integration approve, record approve tracked in T99.\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-l5head.md").write_text(
+            "# Review: fixture\n\n##### Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
@@ -3586,6 +3640,24 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§8" in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        check(
+            "fenced panel quote neither satisfies nor displaces",
+            any("TODO-06-panel.md" in ln and "§9" in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "level-5 tail after the panel cannot supply verdicts",
+            any(
+                "TODO-06-panel.md" in ln and "§10" in ln and "lacks verdicts for: integration, record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "level-5 panel heading is accepted",
+            any("TODO-06-panel.md" in ln and "§11" in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -3593,6 +3665,9 @@ track: Z1
             "90-panel-clean.md",
             "90-panel-multi-stale.md",
             "90-panel-multi-clean.md",
+            "90-panel-fenced.md",
+            "90-panel-l5tail.md",
+            "90-panel-l5head.md",
         ):
             (rev_dir / extra).unlink()
         check(

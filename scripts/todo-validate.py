@@ -411,8 +411,11 @@ def validate(graph, _args) -> int:
     FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
     # Level 2+ and STARTING with the words: a `# Review:` title may itself
     # mention the Opus panel (D00-T01-s9.md does), and matching it would
-    # slice the verdicts away and false-fire on a clean file.
-    PANEL_HEADING_RE = re.compile(r"^#{2,4}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
+    # slice the verdicts away and false-fire on a clean file. Levels run
+    # to 6 (the documented "or deeper"), and any heading level ends the
+    # panel section, so a `##### Leftover notes` tail after the panel can
+    # neither supply lens verdicts nor displace the record.
+    PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -442,6 +445,22 @@ def validate(graph, _args) -> int:
                     f"{where} names findings {m.group(1)}, which does not exist",
                 )
                 continue
+            # Fenced code blocks are invisible to the scan: findings files
+            # quote the mandated panel shape inside fences (the skill shows
+            # it), and a quoted `## Opus panel (round N)` must neither
+            # satisfy the rule nor, under last-wins, displace the real
+            # panel. Backtick and tilde fences both toggle; indented code
+            # cannot fake a heading (the regex anchors at column 0).
+            kept = []
+            in_fence = False
+            for ln in text.splitlines():
+                s = ln.strip()
+                if s.startswith("```") or s.startswith("~~~"):
+                    in_fence = not in_fence
+                    continue
+                if not in_fence:
+                    kept.append(ln)
+            text = "\n".join(kept)
             heads = list(PANEL_HEADING_RE.finditer(text))
             if not heads:
                 flag(
@@ -453,7 +472,7 @@ def validate(graph, _args) -> int:
             # so reading the first would validate a superseded round and
             # never the verdicts that authorize the stamp.
             panel = text[heads[-1].end():]
-            nxt = re.search(r"^#{1,4}\s+", panel, re.MULTILINE)
+            nxt = re.search(r"^#{1,6}\s+", panel, re.MULTILINE)
             if nxt:
                 panel = panel[:nxt.start()]
             missing = [
