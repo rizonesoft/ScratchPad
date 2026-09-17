@@ -2,7 +2,7 @@
 schema_version: 1
 id: repo-and-toolchain
 domain: 00-workspace
-status: done
+status: active
 title: "TODO-01 -- Repo and Toolchain"
 track: W0
 ---
@@ -40,6 +40,7 @@ track: W0
 |   6   |   §6    | Developer bootstrap doc | §1 |  [x]   |
 |   7   |   §7    | TODO graph checks in CI | §3 |  [x]   |
 |   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
+|   9   |   §9    | Opus panel enforcement in the validator | §7 |  [ ]   |
 
 ---
 
@@ -220,6 +221,18 @@ Why this section exists: the shared VM refuses both input interception (`SetWind
 - [ ] Commit: `"workspace: enable input capability on Conclave-PC"`
 
 **Test checkpoint:** Hook probe true, `SendInput` injects, full UI suite green on the VM; the host change recorded and minimal. Cheaper substitute that fails: disabling real-time protection host-wide instead of the narrow exclusion.
+
+## 9. Opus Panel Enforcement in the Validator
+
+Why this section exists: `review-todo-section` requires lens verdicts from the headless Opus panel, but a skill sentence alone cannot stop an agent from stamping without running it. The validator already owns stamp rules, so the panel requirement lands there as a FATAL class: a stamp whose findings lack Opus verdicts reads as evidence while verifying nothing. Hooks that auto-run the panel are out of scope by design (minutes and dollars inside a commit hook, needs auth, fragile); the rule enforces the record, which defeats forgetfulness, not forgery.
+
+- [ ] `stamp-no-opus-panel` lands in `SEVERITY_MAP` as FATAL with its `todo/README.md` table row in the same position (the self-test compares map and table row-for-row). Done when: both edits exist and the map/table test passes.
+- [ ] `todo-validate.py` gains the rule: a section in `verified_sections` stamped after 2026-09-17 must name a findings file in its `Review:` line (`Raw findings: <path>`) that exists and carries an `Opus panel` heading plus all four lens verdicts (`adversarial`, `consistency`, `integration`, `record`, each with `approve`/`needs-attention`/`advisory`); stamps on or before 2026-09-17 are grandfathered by date (the rule postdates them, §6 included). Done when: the rule fires on a fresh violator and stays silent on the live tree.
+- [ ] Self-test fixtures plus cases cover the rule: missing findings file, present file without the panel heading, panel heading with a missing lens verdict, pre-cutoff stamp without a panel (passes), and a clean panel (passes). Done when: each case asserts and the suite count is quoted.
+- [ ] `self-test` green at the new count, the count in `AGENTS.md` updated to match, and live-tree `validate` still 0 fatal. Done when: all three are quoted.
+- [ ] Commit: `"workspace: enforce Opus panel evidence in the validator"`
+
+**Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count; a fixture stamp dated after the cutoff without panel evidence fails `validate` with a FATAL naming the section. Cheaper substitute that fails: an untested rule, or a grandfather clause that also swallows fresh stamps.
 
 ## Verification
 
