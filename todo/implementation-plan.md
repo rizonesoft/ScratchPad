@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **50 of 172 sections complete (29%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **50 of 174 sections complete (29%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -54,7 +54,7 @@ Each clause already has an owner, and this table is where to look when asking "i
 
 ## Where the project stands
 
-The generated Progress line at the top is the phase-plan snapshot; `python3 scripts/todo-graph.py query stats` is the full graph/item snapshot. Those are the only current totals. **Corrected 2026-09-17:** was "Nothing is built yet: Phase 0 is the first ready work"; Phase 0 is nearly complete (only `D00 T01 §12` hooks and `D00 T02 §8` focus-free conversion open) and Phase 1 (Notepad parity) is in progress with the window, tabs, files, menus, and settings spine shipped.
+The generated Progress line at the top is the phase-plan snapshot; `python3 scripts/todo-graph.py query stats` is the full graph/item snapshot. Those are the only current totals. **Corrected 2026-09-17:** was "Nothing is built yet: Phase 0 is the first ready work"; Phase 0 is nearly complete (only `D00 T01 §§12-13` hooks plus environment-gated queries and `D00 T02 §§8-9` focus-free conversion plus nightly-run governance open) and Phase 1 (Notepad parity) is in progress with the window, tabs, files, menus, and settings spine shipped.
 
 Every open section is in scope and must appear in exactly one phase. A dependency may park a row; it does not remove it. `plan --check` is the proof.
 
@@ -97,6 +97,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups     |   4   |
 | [x] | `D00 T01 §11` | Quote-end lookahead removal              |   4   |
 | [ ] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits |   3   |
+| [ ] | `D00 T01 §13` | Environment-gated ready queries          |   5   |
 | [x] | `D00 T02 §1`  | Unit test project and framework          |   5   |
 | [x] | `D00 T02 §2`  | UI automation driver spike               |   5   |
 | [x] | `D00 T02 §3`  | Golden capture store and refresh         |   5   |
@@ -105,6 +106,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §6`  | Golden comparison deterministic on CI    |   7   |
 | [x] | `D00 T02 §7`  | CI evidence capture pipeline             |   4   |
 | [ ] | `D00 T02 §8`  | Focus-free UI suite conversion           |   6   |
+| [ ] | `D00 T02 §9`  | Nightly full-suite regression run        |   5   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 

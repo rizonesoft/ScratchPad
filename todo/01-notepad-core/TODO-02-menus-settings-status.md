@@ -450,6 +450,7 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D01 T02 §10 -- accent themes compose with this finetune; this section preserves the accent coloring §10 themes.
+- -> XREF: D00 T01 §13 -- the environment gate's first proving instance; this section's display-session requirement is what the marker names.
 
 - [ ] Same-machine stock-versus-app palette probes are captured and their sampled values recorded. Done when: the A/B numbers are quoted per surface.
 - [ ] Chrome brushes match stock within tolerance with the Mica backdrop and accent-conditional rules untouched. Done when: per-surface deltas are quoted and the Mica plus accent drives stay green.

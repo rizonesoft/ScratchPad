@@ -15,6 +15,8 @@ track: W0
 > **Current state:** Only `D00 T01 §5`'s `dotnet test` wiring and smoke test exist. The framework is xUnit (operator stack decision); no UI driver exists, no captures exist. This file builds the backbone; `D06 T01` decides what runs on it.
 >
 > **Corrected 2026-09-17 (groom):** §§1-7 have shipped since (unit project, FlaUI driver spike, capture store, loopback fixture, soak procedure, golden determinism, CI evidence pipeline). Open: §8 only, in progress; since 2026-09-17 the suites it wires run locally on the dev box, not in CI.
+>
+> **Filed 2026-09-17:** §9 (nightly full-suite regression run). Open: §§8-9.
 
 ## Inputs
 
@@ -42,6 +44,7 @@ track: W0
 |   6   |   §6    | Golden comparison deterministic on CI | §3 |  [x]   |
 |   7   |   §7    | CI evidence capture pipeline | D01 T02 §14 |  [x]   |
 |   8   |   §8    | Focus-free UI suite conversion | §2 |  [ ]   |
+|   9   |   §9    | Nightly full-suite regression run | §8 |  [ ]   |
 
 ---
 
@@ -141,6 +144,8 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 
 Why this section exists: UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks.
 
+- -> XREF: D00 T02 §9 -- flakes the nightly run surfaces quarantine by this procedure; soak stays the flake-hunting repeat loop, the nightly run stays the regression proof.
+
 - [x] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
 - [x] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
 - [x] A quarantined test owes a fix or a removal decision within a committed window. Done when: the window and the escalation are written.
@@ -212,6 +217,8 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §9 -- the nightly run executes this fence; the two tiers (default plus fenced) are that run's two halves.
+
 - [x] Every `Keyboard.*` and `Mouse.*` call in `tests/UI/` is dispositioned to convert-to-pattern, fence-as-interactive, or keep-with-reason, recorded as an audit table. Done when: the table quotes all 112 calls with a disposition each. **Corrected 2026-09-17 (§8 validation):** filed as 104; re-derived 112. Done: `docs/ui-input-audit.md` quotes all 112 (final: 88 convert, 24 fence, 0 keep). **Corrected 2026-09-17 (§8 item 2):** scope grew three more times during implementation: 22 cursor-moving `.Click()`/`.DoubleClick()`/`.RightClick()` sites (final: 1 convert, 17 fence, 4 keep-with-reason) plus 51 `.Focus()` sites (dispositioned by rule: dropped in default tests, kept in fenced tests) plus 2 raw `mouse_event` helpers (both fence), all appended to the same table with per-row corrections. Full inventory is 187 sites.
 - [ ] Convertibles move to UIA patterns (`ValuePattern`, `InvokePattern`, selection) behind one shared helper, and the converted tests stay green locally. Done when: the default trait-filtered run passes with zero focus-dependent calls outside the fenced set. **Corrected 2026-09-17 (§8 validation):** filed as unfiltered `dotnet test tests/UI`, which contradicts item 3's fence; the gate is the default run.
 - [ ] True-interactive tests (whose point is physical input: shortcuts, focus behavior) are fenced behind a trait excluded from the default run and runnable visibly on demand. Done when: the default run activates no window (proven by a foreground log) and the fenced set passes visibly.
@@ -221,6 +228,24 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 - [ ] Commit: `"workspace: convert UI suite to focus-free input"`
 
 **Test checkpoint:** The default `tests/UI` run passes locally while the operator's foreground window never changes (foreground log quoted); the fenced set passes in a visible on-demand run. Cheaper substitute that fails: running the suite while the operator is away and calling it uninterrupted.
+
+## 9. Nightly Full-Suite Regression Run
+
+Why this section exists: the fenced Interactive set has no owner, no schedule, and no record: per-section gates prove the background-safe default run, and nothing proves the whole. The nightly run closes that: one governed full-suite execution while the operator sleeps, with its evidence filed where the next morning finds it.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §8 -- the fence this run executes; the two tiers (default plus fenced) are this run's two halves.
+- -> XREF: D00 T02 §5 -- flakes this run surfaces quarantine by that procedure; soak stays the flake-hunting repeat loop, this run stays the regression proof.
+
+- [ ] `docs/testing.md` carries the nightly procedure: trigger (operator bedtime call), the two commands (background-safe default run with foreground proof, then the full solution run with the fenced set), and the pass/fail bar for each half. Done when: a second operator can run it without asking.
+- [ ] Nightly logs land under `build/nightly/YYYY-MM-DD-{default,full}.log` (ignored scratch, never committed) with the run's section range and HEAD recorded at the top. Done when: the convention is written and the first logs follow it.
+- [ ] The morning report names per-half counts (passed, failed, skipped-with-reason) and files every failure as a finding in the owning file before the next section starts. Done when: the report format is written with one worked example.
+- [ ] The fenced half executes inside the quiet-hours window with zero quiet-hours skips (citing the §8 gate proof, not re-owning it). Done when: the full log shows the fenced count executed.
+- [ ] The first governed run executes the procedure end to end on a bedtime trigger and its evidence (both logs plus the morning report) is quoted here. Done when: the log paths and the report are cited with their outcomes.
+- [ ] Commit: `"workspace: govern the nightly regression run"`
+
+**Test checkpoint:** Procedure, log convention, and report format written; first governed run quoted with both logs; fenced half executed in-window. Cheaper substitute that fails: an ad-hoc night run whose evidence lives in chat.
 
 ## Verification
 

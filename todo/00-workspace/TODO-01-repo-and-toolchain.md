@@ -15,6 +15,8 @@ track: W0
 > **Current state:** The repo holds only `todo/`, `scripts/`, `docs/`, and root docs. No source tree, no solution, no CI. The first section that touches the .NET SDK decides the layout below; until then every path in this file is a proposal, not a fact.
 >
 > **Corrected 2026-09-17 (groom):** §§1-7 and §§9-11 have shipped since (layout and SDK pin, scaffold, CI, warning gates, test wiring, bootstrap doc, graph checks, panel enforcement plus follow-ups, lookahead removal); §8 moved to `docs/testing.md` 2026-09-14. Open: §12 only.
+>
+> **Filed 2026-09-17:** §13 (environment-gated ready queries). Open: §§12-13.
 
 ## Inputs
 
@@ -46,6 +48,7 @@ track: W0
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [x]   |
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
 |  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [ ]   |
+|  13   |   §13   | Environment-gated ready queries | §7 |  [ ]   |
 
 ---
 
@@ -198,6 +201,8 @@ Why this section exists: the second developer (or a fresh agent session) should 
 
 Why this section exists: the plan is load-bearing, so a broken plan must fail the build like any other defect.
 
+- -> XREF: D00 T01 §13 -- the environment gate extends these checks; the new query split and marker rule ride the same gates.
+
 - [x] CI runs `python3 scripts/todo-graph.py self-test` on every push touching `scripts/` or `todo/`. Done when: the run shows the case count and zero failures.
 - [x] CI runs `python3 scripts/todo-graph.py validate` on the same pushes. Done when: a probe FATAL (reverted immediately) fails the run.
 - [x] CI runs `python3 scripts/todo-graph.py plan --sync` followed by a clean-tree check (or `plan --check` once the JSON paths are committed), so a stale projection fails the run. Done when: a hand-flipped plan box fails the run.
@@ -300,6 +305,22 @@ Why this section exists: no git hooks are installed in this clone (only `.git/ho
 - [ ] Commit: `"workspace: gate TODO edits with repo hooks"`
 
 **Test checkpoint:** FATAL fixture refused locally; setup step followed cold. Cheaper substitute that fails: hooks documented but installing nothing.
+
+## 13. Environment-Gated Ready Queries
+
+Why this section exists: `query ready` answers dependency readiness only, so an environment-blocked section (display session, spooler visibility, credentials, API keys) shows ready in every context and burns a park cycle each run. D01 T02 §15 is the standing instance: dependency-ready, unrunnable without a display session.
+
+- -> XREF: D00 T01 §7 -- the graph checks this feature extends; the new query split and marker rule ride the same gates.
+- -> XREF: D01 T02 §15 -- the first gated consumer; its display-session requirement is the feature's proving instance.
+
+- [ ] The marker is decided (a new line plus closed vocabulary, or a `Needs:` extension with reasons; `Needs:` is taken by the host closed list, so a bare reuse collides) and recorded in `todo/README.md` with the full value list. Done when: the format doc carries the line spec and every value's meaning.
+- [ ] `query ready` splits output into runnable-now versus runnable-elsewhere from the marker plus the runner's context (local context by default, explicit context flag for planning), with the split explained per row. Done when: `query ready` in this context parks §15 with its requirement named, and in a display context lists it runnable.
+- [ ] The validator gates the marker (unknown values FATAL, shipped sections grandfathered or marked with reasons) with self-test cases proving the rule plus the split. Done when: self-test grows by the new cases, all green, and the live tree validates silent.
+- [ ] The known environmentally-gated open sections are marked, §15 first with its display-session requirement, each requirement named from evidence. Done when: every mark cites the measurement that convicted it.
+- [ ] `process-plan` and `process-phase` offer only runnable-now rows in the current context (runnable-elsewhere rows stay visible, never offered). Done when: both skill docs carry the rule.
+- [ ] Commit: `"workspace: gate ready queries on environment"`
+
+**Test checkpoint:** Marker spec in the format doc; split proven in both contexts; self-test green with the new cases; live tree silent; known sections marked with cited evidence; skills offer runnable-now only. Cheaper substitute that fails: a comment convention no query reads.
 
 ## Verification
 
