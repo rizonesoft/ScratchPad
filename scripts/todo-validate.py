@@ -425,7 +425,7 @@ def validate(graph, _args) -> int:
     # the boundary moved from the slice to the line.)
     PANEL_VERDICT_RES = {
         lens: re.compile(
-            r"^[ \t]{0,3}[*`_>~-][ *`_>~-]*`?"
+            r"^[ \t]{0,3}[*`>-][ *`>-]*`?"
             + lens
             + r"`?[^\w\n]{1,4}("
             + "|".join(PANEL_VERDICTS)
@@ -470,22 +470,29 @@ def validate(graph, _args) -> int:
             # panel. Backtick and tilde fences both toggle; indented code
             # cannot fake a heading (the regex anchors at column 0).
             kept = []
-            in_fence = False
-            fence_open = 0
+            fence = None  # (char, run length, opener lineno) while inside one
             for fence_lineno, ln in enumerate(text.splitlines(), start=1):
-                s = ln.strip()
-                if s.startswith("```") or s.startswith("~~~"):
-                    if not in_fence:
-                        fence_open = fence_lineno
-                    in_fence = not in_fence
+                stripped = ln.strip()
+                if stripped.startswith("```") or stripped.startswith("~~~"):
+                    ch = stripped[0]
+                    run = len(stripped) - len(stripped.lstrip(ch))
+                    if fence is None:
+                        fence = (ch, run, fence_lineno)
+                    elif ch == fence[0] and run >= fence[1]:
+                        fence = None
+                    # Else a shorter or other-char run inside a fence is
+                    # content (the ```` outer / ``` inner nesting idiom),
+                    # matching CommonMark close rules; same-length nesting
+                    # cannot exist, so genuinely crossed fences fall out as
+                    # unbalanced below instead of mis-toggling.
                     continue
-                if not in_fence:
+                if fence is None:
                     kept.append(ln)
-            if in_fence:
+            if fence is not None:
                 flag(
                     "stamp-no-opus-panel",
                     f"{where} findings {m.group(1)} has an unbalanced fence "
-                    f"opened at line {fence_open}",
+                    f"opened at line {fence[2]}",
                 )
                 continue
             text = "\n".join(kept)

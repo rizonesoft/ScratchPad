@@ -3409,6 +3409,9 @@ track: Z1
 |  12   |   §12   | Unheaded prose after panel | - |  [x]   |
 |  13   |   §13   | Unbalanced fence | - |  [x]   |
 |  14   |   §14   | Fence-only panel | - |  [x]   |
+|  15   |   §15   | Fenced heading plus bare prose | - |  [x]   |
+|  16   |   §16   | Fenced heading plus marker verdicts | - |  [x]   |
+|  17   |   §17   | Nested four-backtick fence | - |  [x]   |
 
 ---
 
@@ -3551,6 +3554,36 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §14 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fenceonly.md
+
+## 15. Fenced heading plus bare prose
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §15 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fencedhead-bare.md
+
+## 16. Fenced heading plus marker verdicts
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §16 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fencedhead-marked.md
+
+## 17. Nested four-backtick fence
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §17 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-nestedfence.md
 """,
             encoding="utf-8",
         )
@@ -3626,6 +3659,28 @@ track: Z1
             "# Review: fixture\n\n```markdown\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-fencedhead-bare.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\n```text\n##### Leftover notes\n```\n\n"
+            "Filed leftovers: integration approve, record approve tracked in T99.\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-fencedhead-marked.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\n```text\n##### Leftover notes\n```\n\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-nestedfence.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n"
+            "\n````\nQuoted example:\n```\n## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n```\n````\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -3734,6 +3789,24 @@ track: Z1
             ),
             True,
         )
+        check(
+            "fenced heading plus bare prose still fires",
+            any(
+                "TODO-06-panel.md" in ln and "§15 " in ln and "lacks verdicts for: integration, record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "quoted headings are not structure, marker verdicts count",
+            any("TODO-06-panel.md" in ln and "§16 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "four-backtick fence survives an inner fence",
+            any("TODO-06-panel.md" in ln and "§17 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -3747,6 +3820,9 @@ track: Z1
             "90-panel-bareprose.md",
             "90-panel-unbalanced.md",
             "90-panel-fenceonly.md",
+            "90-panel-fencedhead-bare.md",
+            "90-panel-fencedhead-marked.md",
+            "90-panel-nestedfence.md",
         ):
             (rev_dir / extra).unlink()
         check(
