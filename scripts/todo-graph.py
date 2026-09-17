@@ -3474,14 +3474,14 @@ track: Z1
         )
         (rev_dir / "90-panel-partial.md").write_text(
             "# Review: fixture\n\n## Opus panel\n\n"
-            "**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n",
+            "**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n"
+            "\n## Gates re-run\n\nrecord approve appears outside the panel section only.\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-clean.md").write_text(
             "# Review: fixture\n\n## Opus panel\n\n"
             "**adversarial: approve**\n**consistency: advisory**\n"
-            "**integration: needs-attention**\n**record: approve**\n"
-            "\n## Gates re-run\n\nrecord approve appears again outside the panel section.\n",
+            "**integration: needs-attention**\n**record: approve**\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()

@@ -38,6 +38,7 @@ def validate(graph, _args) -> int:
     # 17 acknowledged, and every one of them is stamped 2026-08-21 or earlier.
     FIDELITY_ACK_CUTOFF = "2026-08-27"
     FILTER_ACK_CUTOFF = "2026-08-22"
+    PANEL_CUTOFF = "2026-09-17"
 
     def pre_convention(sec, cutoff: str) -> bool:
         return (
@@ -392,11 +393,15 @@ def validate(graph, _args) -> int:
     # (findings file exists, has an `Opus panel` section, all four lenses
     # carry a verdict word), which defeats forgetfulness; it cannot prove
     # Opus ran rather than a hand-typed verdict, and does not try.
-    # Grandfathering is date-bound like rule 8b/13: stamps on or before
-    # the rule's landing date predate enforcement (§6 stamped 2026-09-17
-    # without a panel and stays silent). FATAL, not WARN: an unpaneled
-    # stamp reads as reviewed evidence while verifying nothing.
-    PANEL_CUTOFF = "2026-09-17"
+    # Grandfathering is date-bound like rule 8b/13 (cutoff declared
+    # beside the others above): stamps on or before the rule's landing
+    # date predate enforcement (§6 stamped 2026-09-17 without a panel and
+    # stays silent). FATAL, not WARN: an unpaneled stamp reads as reviewed
+    # evidence while verifying nothing. The date test is open-coded rather
+    # than via pre_convention() deliberately: that predicate conjoins
+    # row-status [x], but the stamp is the claim here, so an undated stamp
+    # fails closed (evaluated, not skipped) per the file convention that
+    # an undated stamp never acks.
     PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
     PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
     FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
@@ -405,9 +410,10 @@ def validate(graph, _args) -> int:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
                 continue
-            if s.stamped_on is None or s.stamped_on <= PANEL_CUTOFF:
+            if s.stamped_on is not None and s.stamped_on <= PANEL_CUTOFF:
                 continue
-            where = f"{t.path}:{s.line}: §{num} stamped {s.stamped_on}"
+            stamp_day = s.stamped_on if s.stamped_on is not None else "undated"
+            where = f"{t.path}:{s.line}: §{num} stamped {stamp_day}"
             body = getattr(s, "review_body", None) or ""
             m = FINDINGS_RE.search(body)
             if not m:
