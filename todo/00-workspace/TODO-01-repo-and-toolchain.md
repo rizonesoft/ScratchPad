@@ -40,7 +40,7 @@ track: W0
 |   6   |   §6    | Developer bootstrap doc | §1 |  [x]   |
 |   7   |   §7    | TODO graph checks in CI | §3 |  [x]   |
 |   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
-|   9   |   §9    | Opus panel enforcement in the validator | §7 |  [ ]   |
+|   9   |   §9    | Opus panel enforcement in the validator | §7 |  [x]   |
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [ ]   |
 
 ---
@@ -238,6 +238,12 @@ Why this section exists: `review-todo-section` requires lens verdicts from the h
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count; a fixture stamp dated after the cutoff without panel evidence fails `validate` with a FATAL naming the section. Cheaper substitute that fails: an untested rule, or a grandfather clause that also swallows fresh stamps.
 
 - -> XREF: D00 T01 §10 -- round-5 panel residuals (unheaded-prose verdicts, unbalanced fence, fence-only fixture) filed there
+
+> **Verified:** 2026-09-17 | §9 | self-test 405/405 (12 panel cases, each mutation-proven); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 6de1d9a f405c7a 8ea92aa b922ded 2305e87 with zero needs-attention at close; live drives (post-cutoff paneled stamp silent, unpointed stamp 1 fatal) reverted clean
+> **Review:** round 5 (FINAL), candidates 6de1d9a f405c7a 8ea92aa b922ded 2305e87 -- `adversarial` advisory · `consistency` advisory · `integration` approve · `record` advisory. Leftovers filed at D00 T01 §10. Raw findings: docs/reviews/00-workspace/D00-T01-s9.md
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); live drives wrote temp stamp edits (reverted clean, read back via validate output); filing wrote §10 plus its plan row (read back via plan --check current)
+> **Duration:** 28
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 10. Opus Panel Rule Hardening Follow-ups
 
