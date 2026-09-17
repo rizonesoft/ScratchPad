@@ -16,7 +16,7 @@ Install order: git first (if missing), then clone, then provision (which install
 
 ## Steps
 
-1. `git clone https://github.com/rizonesoft/intelligent-notepad.git` and `cd intelligent-notepad`.
+1. `git clone https://github.com/rizonesoft/ScratchPad.git` and `cd ScratchPad`.
 2. Provision the SDK. Linux: `./tools/provision.sh`. Windows: `powershell -ExecutionPolicy Bypass -File tools\provision.ps1`. Expect it to end with `ready in .../.tools/dotnet-<rid>` after printing `dotnet --info` for SDK 10.0.401.
 3. Put the repo-local SDK on the path. Linux: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0`. Windows: `$env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"; $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH; $env:DOTNET_MULTILEVEL_LOOKUP = "0"`. Every SDK command below needs these set; step output that says otherwise means you skipped this step (see failure 1).
 4. Build. Linux: `dotnet build src/Notepad.Neutral.slnf`. Windows: `dotnet build src/ScratchPad.slnx`. Expect `Build succeeded` with `0 Warning(s)`.

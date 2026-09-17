@@ -4,7 +4,7 @@ Agent instructions for this repository. Human orientation lives in `README.md`. 
 
 ## What is here
 
-`intelligent-notepad` is the monorepo for an exact Windows 11 Notepad clone (C#, WinUI 3 on .NET) with Claude Code and Codex inside via the Agent Client Protocol. Day 1: the plan and its tooling. `src/` lands with `D00 T01 §2`.
+`ScratchPad` is the monorepo for an exact Windows 11 Notepad clone (C#, WinUI 3 on .NET) with Claude Code and Codex inside via the Agent Client Protocol. Day 1: the plan and its tooling. `src/` lands with `D00 T01 §2`.
 
 | Path | Purpose |
 | ---- | ------- |
@@ -23,7 +23,7 @@ The app runs on Windows only; neutral libraries build and test anywhere with the
 
 `todo/` is the live execution plan; **format spec: `todo/README.md`.** Markdown is canonical and `build/` holds derived, gitignored projections.
 
-Eight flat-numbered domains `00`-`07`: `00-workspace` (toolchain/CI/this system/test backbone), `01-notepad-core` (window/tabs/files/menus/settings), `02-editor` (text surface/find), `03-acp-client` (protocol), `04-agents` (launch/sessions/auth), `05-ai-surface` (chat/consent/diff), `06-quality` (test strategy/conformance), `07-release` (packaging/update). Numbers are stable addresses: a new domain appends after `07`.
+Nine flat-numbered domains `00`-`08`: `00-workspace` (toolchain/CI/this system/test backbone), `01-notepad-core` (window/tabs/files/menus/settings), `02-editor` (text surface/find), `03-acp-client` (protocol), `04-agents` (launch/sessions/auth), `05-ai-surface` (chat/consent/diff), `06-quality` (test strategy/conformance), `07-release` (packaging/update), `08-voice` (speech engines/surface). Numbers are stable addresses: a new domain appends after `08`.
 
 Files are `todo/NN-domain/TODO-NN-short-name.md`. The **Implementation Order table is the dependency graph**: every `## N.` section has exactly one row and vice versa, and a row flips to `[x]` only when a `Verified:` stamp covers it. Cross-references use `§N` / `TNN §N` / `DNN TNN §N` and must be bidirectional.
 
@@ -51,7 +51,7 @@ Answer from source first (captures, protocol docs, code). When an unanswered que
 ## Validation
 
 ```bash
-python3 scripts/todo-graph.py self-test      # 391 cases, must stay green
+python3 scripts/todo-graph.py self-test      # 393 cases, must stay green
 python3 scripts/todo-graph.py validate       # FATAL blocks; new WARN* blocks until fixed or accepted
 python3 scripts/todo-graph.py query ready    # dependency-safe work right now
 python3 scripts/todo-graph.py query blocked  # sections waiting on something

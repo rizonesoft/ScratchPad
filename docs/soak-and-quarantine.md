@@ -17,8 +17,8 @@ Results stay under `TestResults/` (gitignored): the per-run console log plus the
 
 | Date | Run | Result |
 | ---- | --- | ------ |
-| 2026-09-14 | [34808621885](https://github.com/rizonesoft/intelligent-notepad/actions/runs/34808621885) (dispatch) | success, 22 passed, 0 failed |
-| 2026-09-14 | [34809456063](https://github.com/rizonesoft/intelligent-notepad/actions/runs/34809456063) (dispatch, after red-repeat fix) | success, 22 passed, 0 failed |
+| 2026-09-14 | [34808621885](https://github.com/rizonesoft/ScratchPad/actions/runs/34808621885) (dispatch) | success, 22 passed, 0 failed |
+| 2026-09-14 | [34809456063](https://github.com/rizonesoft/ScratchPad/actions/runs/34809456063) (dispatch, after red-repeat fix) | success, 22 passed, 0 failed |
 
 ## Quarantine
 
