@@ -19,6 +19,11 @@ Store: `src/Notepad.Core/SettingsStore.cs` (owned by D01 T02 §2), file `%LocalA
 | `PinnedFiles` | string[] | empty | User data, pin order | Pin state, jump list |
 | `JumpListHash` | string | empty | Computed feed fingerprint | JumpListService commit-on-change |
 | `WhatsNewSeen` | bool | false | First-run latch | MainWindow first-run gate |
+| `PrintHeader` | string | `&f` | Documented stock default (support codes article) | D01 T02 §5 print header |
+| `PrintFooter` | string | `Page &p` | Documented stock default (support codes article) | D01 T02 §5 print footer |
+| `PrintMarginLeft/Top/Right/Bottom` | int | 100 | PageSetupDialog standard default (stock 11.x unprobed) | D01 T02 §5 print margins |
+| `PrintLandscape` | bool | false | Portrait default | D01 T02 §5 print orientation |
+| `PrintPaperRawKind` | int | 0 (OS default) | Follow-system default | D01 T02 §5 print paper |
 
 Future keys observed on stock 11.2607.14.0: spellcheck plus autocorrect (D02 T03 §4), formatting (D02 T04 §5), writing tools (D05 T02 §6 item 10), recent-files toggle (D01 T02 §12). Owners add their keys on landing following the extension pattern above (new property, default with a recorded source, row in this table).
 

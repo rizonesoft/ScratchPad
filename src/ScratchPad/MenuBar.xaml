@@ -40,8 +40,8 @@
                 <KeyboardAccelerator Modifiers="Control,Menu" Key="S" />
             </MenuFlyoutItem.KeyboardAccelerators>
         </MenuFlyoutItem>
-        <MenuFlyoutItem x:Name="MenuFilePageSetup" Text="Page setup" AutomationProperties.AutomationId="MenuFilePageSetup" IsEnabled="False" />
-        <MenuFlyoutItem x:Name="MenuFilePrint" Text="Print" AutomationProperties.AutomationId="MenuFilePrint" IsEnabled="False">
+        <MenuFlyoutItem x:Name="MenuFilePageSetup" Text="Page setup" AutomationProperties.AutomationId="MenuFilePageSetup" IsEnabled="False" Click="OnFilePageSetup" />
+        <MenuFlyoutItem x:Name="MenuFilePrint" Text="Print" AutomationProperties.AutomationId="MenuFilePrint" IsEnabled="False" Click="OnFilePrint">
             <MenuFlyoutItem.KeyboardAccelerators>
                 <KeyboardAccelerator Modifiers="Control" Key="P" />
             </MenuFlyoutItem.KeyboardAccelerators>

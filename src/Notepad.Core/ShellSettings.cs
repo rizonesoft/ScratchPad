@@ -42,6 +42,27 @@ public sealed class ShellSettings
     // checked); consumed by D01 T02 §4.
     public bool ShowStatusBar { get; set; } = true;
 
+    // Page Setup set, owned by D01 T02 §5. Header/footer templates use the
+    // documented codes with stock defaults (&f, "Page &p"); margins are
+    // hundredths of an inch at the PageSetupDialog standard default of 100
+    // (stock 11.x margin defaults unprobed; cost: four ints). Landscape
+    // off; paper 0 means the OS default (a set RawKind names DMPAPER_*).
+    public string PrintHeader { get; set; } = PrintCodes.DefaultHeader;
+
+    public string PrintFooter { get; set; } = PrintCodes.DefaultFooter;
+
+    public int PrintMarginLeft { get; set; } = 100;
+
+    public int PrintMarginTop { get; set; } = 100;
+
+    public int PrintMarginRight { get; set; } = 100;
+
+    public int PrintMarginBottom { get; set; } = 100;
+
+    public bool PrintLandscape { get; set; }
+
+    public int PrintPaperRawKind { get; set; }
+
     // Default zoom percent for fresh tabs, owned by D01 T02 §2. Stock
     // exposes no zoom setting; 100 is a recorded default (cost: one int).
     // Consumed by D02 T01 §5.

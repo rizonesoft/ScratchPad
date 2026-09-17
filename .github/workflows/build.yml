@@ -142,5 +142,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: golden-failures-windows-x64
-          path: tests/UI/bin/Debug/net10.0-windows10.0.19041.0/golden-failure-*.png
+          path: |
+            tests/UI/bin/Debug/net10.0-windows10.0.19041.0/golden-failure-*.png
+            tests/UI/bin/Debug/net10.0-windows10.0.19041.0/golden-failure-*.pdf
           if-no-files-found: ignore

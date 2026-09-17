@@ -14,6 +14,8 @@ internal interface IMenuHost
     Task SaveAsync();
     Task SaveAsAsync();
     Task SaveAllAsync();
+    void ShowPageSetup();
+    Task PrintAsync();
     void CloseTab();
     void CloseWindow();
     void Exit();
@@ -197,6 +199,16 @@ internal sealed partial class AppMenuBar : MenuBar
         if (host is not null)
         {
             _ = host.SaveAllAsync();
+        }
+    }
+
+    void OnFilePageSetup(object sender, RoutedEventArgs e) => host?.ShowPageSetup();
+
+    void OnFilePrint(object sender, RoutedEventArgs e)
+    {
+        if (host is not null)
+        {
+            _ = host.PrintAsync();
         }
     }
 

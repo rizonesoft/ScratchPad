@@ -241,6 +241,40 @@ sealed partial class MainWindow : IMenuHost
         await dialog.ShowAsync();
     }
 
+    void IMenuHost.ShowPageSetup()
+    {
+        PrintService.ShowPageSetup(WindowNative.GetWindowHandle(this));
+    }
+
+    async Task IMenuHost.PrintAsync()
+    {
+        Tab? active = tabs.ActiveTab;
+        if (active is null || tabBar is null)
+        {
+            return;
+        }
+
+        string text = tabBar.ContentFor(active).Text ?? string.Empty;
+        string name = active.FilePath is null
+            ? "Untitled"
+            : System.IO.Path.GetFileName(active.FilePath);
+        // Runs on the UI thread: the OS print dialog is modal here, and
+        // the print follows inline (stock blocks the same way).
+        PrintService.PrintOutcome outcome = PrintService.PrintInteractive(
+            WindowNative.GetWindowHandle(this), text, name, SettingsStore.Shared.Current);
+        if (!outcome.Printed && outcome.Error is not null)
+        {
+            XamlRoot? root = await WaitForXamlRootAsync().ConfigureAwait(true);
+            if (root is null)
+            {
+                return;
+            }
+
+            var dialog = new PrintFailureDialog(outcome.Error) { XamlRoot = root };
+            await dialog.ShowAsync();
+        }
+    }
+
     void IMenuHost.CloseTab() => tabBar?.RequestCloseActive();
 
     void IMenuHost.CloseWindow() => Close();

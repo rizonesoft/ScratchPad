@@ -516,10 +516,13 @@ public sealed class LaunchTests
         }
     }
 
-    [Theory]
-    [InlineData("/p")]
-    [InlineData("/pt")]
-    public void PrintFlagsExitWithoutWindows(string flag)
+    // D01 T02 §5 absorbed PrintSeam: /p /pt print-then-close for real.
+    // /p targets the OS default printer, discovered at runtime: exit 0
+    // with no windows when one exists (plus a next-to-source PDF when the
+    // default is Print to PDF), exit 2 naming the missing printer when
+    // none exists. Either way no window may appear.
+    [Fact]
+    public void PrintFlagPrintsThenCloses()
     {
         string dir = NewTempDir();
         string file = Path.Combine(dir, "print8.txt");
@@ -527,9 +530,46 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
-            string args = flag == "/p" ? $"{flag} \"{file}\"" : $"{flag} \"{file}\" \"NoSuchPrinter8\"";
-            int exit = RunHeadless(args, TimeSpan.FromSeconds(20));
-            Assert.Equal(0, exit);
+            string? def = DefaultPrinterName();
+            (int exit, string stderr) = RunHeadlessCapture($"/p \"{file}\"", TimeSpan.FromMinutes(2));
+            if (def is null)
+            {
+                Assert.Equal(2, exit);
+                Assert.Contains("not installed", stderr, StringComparison.OrdinalIgnoreCase);
+            }
+            else
+            {
+                Assert.Equal(0, exit);
+                if (def.Equals("Microsoft Print to PDF", StringComparison.OrdinalIgnoreCase))
+                {
+                    Assert.True(File.Exists(Path.ChangeExtension(file, ".pdf")), "expected next-to-source PDF");
+                }
+            }
+
+            Assert.Empty(RunningAppProcesses());
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    // /pt to a bogus printer: the failure path reports on stderr, writes
+    // nothing, and exits 2 (D01 T02 §5 item 3).
+    [Fact]
+    public void PrintToBogusPrinterExits2()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "print8.txt");
+        File.WriteAllText(file, "print me");
+        SeedFresh();
+        try
+        {
+            (int exit, string stderr) = RunHeadlessCapture($"/pt \"{file}\" \"NoSuchPrinter8\"", TimeSpan.FromSeconds(30));
+            Assert.Equal(2, exit);
+            Assert.Contains("NoSuchPrinter8", stderr, StringComparison.Ordinal);
+            Assert.False(File.Exists(Path.ChangeExtension(file, ".pdf")), "failure must write nothing");
             Assert.Empty(RunningAppProcesses());
         }
         finally
@@ -632,6 +672,24 @@ public sealed class LaunchTests
         Assert.NotNull(process);
         Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
         return process.ExitCode;
+    }
+
+    static (int Exit, string Stderr) RunHeadlessCapture(string args, TimeSpan timeout)
+    {
+        using var process = Process.Start(new ProcessStartInfo(AppExePath(), args)
+        {
+            UseShellExecute = false,
+            RedirectStandardError = true,
+        });
+        Assert.NotNull(process);
+        Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
+        return (process.ExitCode, process.StandardError.ReadToEnd());
+    }
+
+    static string? DefaultPrinterName()
+    {
+        string name = new System.Drawing.Printing.PrinterSettings().PrinterName;
+        return string.IsNullOrEmpty(name) ? null : name;
     }
 
     static List<Process> RunningAppProcesses() =>

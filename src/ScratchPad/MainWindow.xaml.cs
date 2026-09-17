@@ -126,6 +126,10 @@ public sealed partial class MainWindow : Window, IDisposable
         // D01 T02 §3: the settings page is live, so Edit > Font enables.
         MenuRegion.SetEnabled("MenuEditFont", true);
 
+        // D01 T02 §5: the print engine is live, so Page Setup and Print enable.
+        MenuRegion.SetEnabled("MenuFilePageSetup", true);
+        MenuRegion.SetEnabled("MenuFilePrint", true);
+
         // D01 T02 §4: the status strip lives in the shell's fourth row;
         // the View toggle enables here and the store owns its state.
         statusBar = new StatusBar();

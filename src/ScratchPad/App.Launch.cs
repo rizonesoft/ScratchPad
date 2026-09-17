@@ -50,7 +50,18 @@ partial class App
 
         if (request.IsPrint)
         {
-            PrintSeam.Print(request.PrintFile!, request.PrintPrinter);
+            // D01 T02 §5 absorbs PrintSeam here: /p /pt print-then-close
+            // for real. Failures report on stderr and exit 2 (distinct
+            // from verb-error 1; default, cost: one stock probe of /pt to
+            // a bogus printer, which we cannot stage headless).
+            PrintService.PrintOutcome outcome =
+                PrintService.PrintFile(request.PrintFile!, request.PrintPrinter);
+            if (!outcome.Printed)
+            {
+                Console.Error.WriteLine(outcome.Error);
+                return 2;
+            }
+
             return 0;
         }
 
