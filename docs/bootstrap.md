@@ -26,9 +26,9 @@ Install order: git first (if missing), then clone, then provision (which install
 
 ## Git hooks (one-time for existing clones)
 
-New clones get the commit gate from the provisioner. A clone provisioned before 2026-09-17 wires it by hand once: `git config core.hooksPath tools/githooks`, then verify with `git config --get core.hooksPath` (expect `tools/githooks`).
+New clones get the commit gate from the provisioner. If the provisioner never printed `git hooks wired to tools/githooks`, wire it by hand once: `git config core.hooksPath tools/githooks`, then verify with `git config --get core.hooksPath` (expect `tools/githooks`).
 
-The hook runs `scripts/todo-graph.py validate` on every commit and refuses the commit when the graph carries a FATAL, so a broken plan never reaches trunk. It needs Python 3 on PATH (Linux: inbox; Windows: see Prerequisites).
+The hook validates the staged tree with `scripts/todo-graph.py validate` on every commit and refuses the commit when it is red (a FATAL, or a warning no baseline entry covers). It needs Python 3 on PATH (Linux: inbox; Windows: see Prerequisites).
 
 ## OS boundary
 

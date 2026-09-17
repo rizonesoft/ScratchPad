@@ -6,6 +6,8 @@ on:
     paths:
       - 'scripts/**'
       - 'todo/**'
+      - 'tools/githooks/**'
+      - '.gitattributes'
       - '.github/workflows/plan.yml'
 
 jobs:
@@ -21,3 +23,8 @@ jobs:
         run: |
           python3 scripts/todo-graph.py plan --sync
           test -z "$(git status --porcelain)" || { echo "stale plan projection:"; git status --porcelain; git diff --stat; exit 1; }
+      - name: Assert commit hook is intact
+        run: |
+          test "$(git ls-files -s tools/githooks/pre-commit | cut -d' ' -f1)" = "100755" || { echo "hook index mode is not 100755"; exit 1; }
+          git show HEAD:tools/githooks/pre-commit > /tmp/hook-blob || exit 1
+          if grep -q $'\r' /tmp/hook-blob; then echo "hook blob carries CR"; exit 1; fi
