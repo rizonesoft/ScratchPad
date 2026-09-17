@@ -47,7 +47,7 @@ track: W0
 |   9   |   §9    | Opus panel enforcement in the validator | §7 |  [x]   |
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [x]   |
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
-|  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [ ]   |
+|  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [x]   |
 |  13   |   §13   | Environment-gated ready queries | §7 |  [ ]   |
 
 ---
@@ -308,9 +308,15 @@ Why this section exists: no git hooks are installed in this clone (only `.git/ho
 
 - [x] A committed hooks dir (plus `core.hooksPath` wiring documented in the toolchain setup) runs `validate` on pre-commit and blocks the commit on FATAL. Done when: a FATAL fixture commit is refused locally. Done: `tools/githooks/pre-commit` (100755, LF-pinned in .gitattributes) validates the staged tree in a temp index checkout and refuses when red; `provision.sh`/`provision.ps1` wire `core.hooksPath` up front for new clones (script-first per §6); staged FATAL refused (exit 1), unstaged FATAL no longer blocks a clean staged commit, path-limited commits covered via the temporary index (measured T4 refused); a wiring failure warns and exits 0 (Decided).
 - [x] The setup docs name the one-time step for existing clones. Done when: the step is followed cold from the docs. Done: `docs/bootstrap.md` "Git hooks" section plus the Windows Python 3 prereq row; step followed cold in a Linux clone (staged FATAL refused) and end to end on Windows via git.exe (fixture refused, clean commit passes).
-- [x] Commit: `"workspace: gate TODO edits with repo hooks"` Ship `01fb330`; fix-forwards `d4e1f9c` (self-review), `2fa3f30` (round-1 lenses).
+- [x] Commit: `"workspace: gate TODO edits with repo hooks"` Ship `01fb330`; fix-forwards `d4e1f9c` (self-review), `2fa3f30` (round-1 lenses), `5a8a2a2` (round-2 lenses).
 
 **Test checkpoint:** FATAL fixture refused locally; setup step followed cold. Cheaper substitute that fails: hooks documented but installing nothing.
+
+> **Verified:** 2026-09-17 | §12 | staged FATAL refused exit 1 (Linux T1, Windows W1 via git.exe); clean staged commits pass (T2 with warning, T3 0s silent, W2); path-limited refused via the temp index (T4, GIT_INDEX_FILE measured); autocrlf=true checkout od LF; assert step positive plus pin/index-removal negatives; self-test 422/422, validate 0 fatal, plan current
+> **Review:** rounds 1-3, candidates 01fb330 d4e1f9c 2fa3f30 5a8a2a2 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` advisory (candidate list completed in this stamp). Raw findings: docs/reviews/00-workspace/D00-T01-s12.md
+> **CRUD:** applicable | hook plus provisioners plus workflow plus docs written and read back via execution (snippet runs, interop git.exe and PowerShell runs, CI provision steps green); fixtures planted and reverted byte-identical (cmp) with scratch clones removed after each probe
+> **Duration:** 44
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 13. Environment-Gated Ready Queries
 
