@@ -42,7 +42,7 @@ track: W0
 |   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
 |   9   |   §9    | Opus panel enforcement in the validator | §7 |  [x]   |
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [x]   |
-|  11   |   §11   | Quote-end lookahead removal | §10 |  [ ]   |
+|  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
 
 ---
 
@@ -279,6 +279,12 @@ Why this section exists: the round-5 Opus panel on §10 (final round, max 5 reac
 - [x] Commit: `"workspace: remove quote-end lookahead from panel rule"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at 422/422; the two round-5 adversarial probe shapes are fixtures (§25 silent, §26 firing) with cases, plus §27 locking the forward window and §28 the blank rule; refreshed mutation map, every line re-measured this round: §17/§18/§19/§20/§22/§23/§28 fail exactly their case under their own fix's revert; shared machinery fails together (anchored-to-substring to §12/§15/§20; unbalanced-flag removal to §13/§23/§27/§28; quote handling removal to §21/§27/§28; strip tracking removal with the flag kept to §9/§13/§14/§16/§17/§18/§21/§23/§27/§28; lookahead restored to §25/§26/§27/§28; early-close block dropped to §24/§25/§26/§27/§28). Cheaper substitute that fails: bounding the lookahead window instead of deleting the branch (a 2-line bound fails exactly §27 and §28).
+
+> **Verified:** 2026-09-17 | §11 | self-test 422/422 (4 new panel cases §§25-28, full 13-mutation battery measured); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 3375f2f f847d09 0aaab16 77016ec ba9be18 closing with all four lenses approve and zero leftovers; blank-line rebuttal overturned by spec citation and fixed with §28 in the same round
+> **Review:** round 5 (FINAL), candidates 3375f2f f847d09 0aaab16 77016ec ba9be18 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. No leftovers. Raw findings: docs/reviews/00-workspace/D00-T01-s11.md
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); mutation battery wrote temp rule edits (restored exact, read back via failure sets and byte compare); blank-line probe wrote a temp TODO plus findings (removed after, read back via rule silence)
+> **Duration:** 29
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
