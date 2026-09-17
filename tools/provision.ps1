@@ -43,6 +43,12 @@ try {
     $Sdks = & dotnet --list-sdks
   } finally { Pop-Location }
   if (-not ($Sdks -match ('^' + [regex]::Escape($Version) + ' '))) { throw "provision.ps1: installed SDK is not $Version" }
+  $HooksDir = Join-Path $Root 'tools/githooks'
+  if ((Test-Path $HooksDir) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+    & git -C $Root config core.hooksPath 'tools/githooks'
+    if ($LASTEXITCODE -eq 0) { Write-Output "provision.ps1: git hooks wired to tools/githooks" }
+    else { Write-Warning "provision.ps1: tools/githooks not wired (git config exit $LASTEXITCODE)" }
+  } else { Write-Warning "provision.ps1: tools/githooks not wired (not present or git missing)" }
   Write-Output "provision.ps1: .NET SDK $Version ready in $Dest"
 } finally {
   Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue

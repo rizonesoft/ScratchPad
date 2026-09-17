@@ -34,4 +34,10 @@ tar -xzf "$WORK/sdk.tar.gz" -C "$DEST"
 export DOTNET_ROOT="$DEST" DOTNET_MULTILEVEL_LOOKUP=0 PATH="$DEST:$PATH"
 dotnet --info
 dotnet --list-sdks | grep -qF "${VERSION} [" || { echo "provision.sh: installed SDK is not $VERSION" >&2; exit 1; }
+if [ -d "$ROOT/tools/githooks" ] && command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+  git -C "$ROOT" config core.hooksPath tools/githooks
+  echo "provision.sh: git hooks wired to tools/githooks"
+else
+  echo "provision.sh: warning: tools/githooks not wired (no git checkout or dir missing)" >&2
+fi
 echo "provision.sh: .NET SDK $VERSION ready in $DEST"

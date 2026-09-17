@@ -1,0 +1,14 @@
+#!/bin/sh
+# pre-commit: refuse the commit when the TODO graph carries a FATAL (D00 T01 §12).
+# Installed per clone via `git config core.hooksPath tools/githooks` (see docs/bootstrap.md).
+set -u
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "pre-commit: not inside a git work tree" >&2; exit 1; }
+cd "$ROOT" || exit 1
+pick_python() {
+  if command -v python3 >/dev/null 2>&1; then printf 'python3'; return 0; fi
+  if command -v python >/dev/null 2>&1; then printf 'python'; return 0; fi
+  if command -v py >/dev/null 2>&1; then printf 'py'; return 0; fi
+  return 1
+}
+PY="$(pick_python)" || { echo "pre-commit: no python3, python, or py on PATH; install Python 3 per docs/bootstrap.md prerequisites so the TODO gate can run" >&2; exit 1; }
+"$PY" scripts/todo-graph.py validate || { echo "pre-commit: todo-graph validate is red; fix the FATALs above and retry" >&2; exit 1; }

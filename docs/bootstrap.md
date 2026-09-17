@@ -9,6 +9,7 @@ From zero to a green build and test run. Script-first: the provisioner installs 
 | git | any 2.x | clone plus the commit stamp `SourceLink` reads |
 | Linux: python3, curl, tar, sha512sum | inbox on Ubuntu 24.04 | the provisioner checks and names anything missing |
 | Windows: PowerShell 5.1 or later | inbox | run the provisioner with `-ExecutionPolicy Bypass` |
+| Windows: Python 3 | 3.x, `py --version` works | for the pre-commit TODO gate; install from python.org or `winget install Python.Python.3` |
 | .NET SDK 10.0.401 | exact, from `global.json` | installed repo-local by the provisioner; never install it by hand |
 | WindowsAppRuntime 2.x | launch only | needed to RUN the stub, not to build or test; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` |
 
@@ -22,6 +23,12 @@ Install order: git first (if missing), then clone, then provision (which install
 4. Build. Linux: `dotnet build src/Notepad.Neutral.slnf`. Windows: `dotnet build src/ScratchPad.slnx`. Expect `Build succeeded` with `0 Warning(s)`.
 5. Test. Linux: `dotnet test src/Notepad.Neutral.slnf`. Windows: `dotnet test src/ScratchPad.slnx`. Expect `Passed!` with 1/1.
 6. (Windows only) Run the stub: `src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe`. Expect a window whose title carries the stub version and runtime.
+
+## Git hooks (one-time for existing clones)
+
+New clones get the commit gate from the provisioner. A clone provisioned before 2026-09-17 wires it by hand once: `git config core.hooksPath tools/githooks`, then verify with `git config --get core.hooksPath` (expect `tools/githooks`).
+
+The hook runs `scripts/todo-graph.py validate` on every commit and refuses the commit when the graph carries a FATAL, so a broken plan never reaches trunk. It needs Python 3 on PATH (Linux: inbox; Windows: see Prerequisites).
 
 ## OS boundary
 

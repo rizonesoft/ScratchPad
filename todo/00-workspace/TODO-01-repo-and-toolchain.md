@@ -296,13 +296,15 @@ Why this section exists: the round-5 Opus panel on §10 (final round, max 5 reac
 
 ## 12. Repo-Managed Git Hooks Gating TODO Edits
 
+> **Started:** 2026-09-17T23:13:52Z
+
 Why this section exists: no git hooks are installed in this clone (only `.git/hooks/*.sample`), so a validator FATAL reached `main` in `871bde8` and was fixed after the fact in `2916e66`. CI plan-gates backstops pushes, but trunk pushes land before any gate runs. Committed hooks close the hole for every clone.
 
-- -> SOURCE: fatal-on-main-871bde8 (Needs-line prose tripped the closed-list FATAL; landed and fixed 4 minutes apart with no local gate)
+- -> SOURCE: fatal-on-main-871bde8 (Needs-line prose tripped the closed-list FATAL; landed and fixed seconds apart with no local gate) **Corrected 2026-09-17 (§12 validation):** filed as "4 minutes apart"; committer times are 19:46:24/19:46:46 +0200, 22 seconds apart.
 
-- [ ] A committed hooks dir (plus `core.hooksPath` wiring documented in the toolchain setup) runs `validate` on pre-commit and blocks the commit on FATAL. Done when: a FATAL fixture commit is refused locally.
-- [ ] The setup docs name the one-time step for existing clones. Done when: the step is followed cold from the docs.
-- [ ] Commit: `"workspace: gate TODO edits with repo hooks"`
+- [x] A committed hooks dir (plus `core.hooksPath` wiring documented in the toolchain setup) runs `validate` on pre-commit and blocks the commit on FATAL. Done when: a FATAL fixture commit is refused locally. Done: `tools/githooks/pre-commit` (100755) runs `validate` and refuses on FATAL; `provision.sh`/`provision.ps1` auto-wire `core.hooksPath` for new clones (script-first per §6); incident-shape fixture refused locally, exit 1.
+- [x] The setup docs name the one-time step for existing clones. Done when: the step is followed cold from the docs. Done: `docs/bootstrap.md` "Git hooks" section plus the Windows Python 3 prereq row; step followed cold in a fresh clone with the gate proven there.
+- [x] Commit: `"workspace: gate TODO edits with repo hooks"`
 
 **Test checkpoint:** FATAL fixture refused locally; setup step followed cold. Cheaper substitute that fails: hooks documented but installing nothing.
 
