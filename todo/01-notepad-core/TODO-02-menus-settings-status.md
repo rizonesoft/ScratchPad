@@ -215,7 +215,9 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 
 **Groomed 2026-09-13:** Notepad audit: header/footer codes with defaults and command-line print routing are now explicit.
 
-**Needs:** Windows host (build/test). **Corrected 2026-09-17 (§5 validation):** the seed carried no `Needs` although printing, the OS dialogs, and PDF output are Windows-only; every sibling declares it.
+**Needs:** Windows host (build/test)
+
+**Corrected 2026-09-17 (§5 validation):** the seed carried no `Needs` although printing, the OS dialogs, and PDF output are Windows-only; every sibling declares it.
 
 - [ ] `src/ScratchPad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output. **Corrected 2026-09-17 (§5 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4). **Recorded 2026-09-16:** D01 T02 §1 ships File > Print and File > Page setup disabled; this section enables both through the `MenuCommands` registry and drives them on landing. PrintSeam.cs (D01 T01 §8) absorbs here per its header; the render engine is the implementer's choice with reasons (must print-to-PDF headless on CI).
 - [ ] Page setup persists per Notepad's behavior. Done when: the persistence is driven. **Decided 2026-09-17 (§5 validation):** behavior means the Page Setup dialog set (header, footer, margins, orientation, paper) surviving restarts and applying to prints, persisted in the §2 store (same file, new keys, schema-doc rows); stock's own storage location is not probed (default, costs one migrator if stock parity ever demands its exact keys).
