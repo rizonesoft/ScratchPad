@@ -434,6 +434,25 @@ def validate(graph, _args) -> int:
         )
         for lens in PANEL_LENSES
     }
+
+    def _fence_shape(line):
+        # (quote depth, marker char, marker run, info string) for a fence
+        # marker line; (quote depth, "", 0, "") otherwise. Blockquote
+        # prefixes never hide a fence, but depth is tracked so a quoted
+        # close cannot close an unquoted fence and vice versa. Markers
+        # indented 4+ past the quote prefix are indented code, not fences.
+        m = re.match(r"(?:[ \t]{0,3}>[ \t]?)+", line)
+        qd = m.group(0).count(">") if m else 0
+        rest = line[m.end():] if m else line
+        stripped = rest.strip()
+        indent = rest[: len(rest) - len(rest.lstrip())]
+        if len(indent.replace("\t", "    ")) >= 4:
+            return qd, "", 0, ""
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            ch = stripped[0]
+            run = len(stripped) - len(stripped.lstrip(ch))
+            return qd, ch, run, stripped[run:]
+        return qd, "", 0, ""
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -470,50 +489,53 @@ def validate(graph, _args) -> int:
             # panel. Backtick and tilde fences both toggle; indented code
             # cannot fake a heading (the regex anchors at column 0).
             kept = []
-            fence = None  # (char, run length, opener lineno) while inside one
-            for fence_lineno, ln in enumerate(text.splitlines(), start=1):
-                # Blockquote prefixes do not hide fences: `> ``` ` opens a
-                # fenced block inside the quote, and since `>` is a verdict
-                # marker, quoted verdicts inside an untracked quote-fence
-                # would satisfy the rule. Only fence detection sees the
-                # unquoted line; the kept text stays original.
-                unquoted = re.sub(r"^(?:[ \t]{0,3}>[ \t]?)+", "", ln)
-                stripped = unquoted.strip()
-                # A fence marker indented 4+ spaces (a tab counts 4) is an
-                # indented code block in CommonMark, never a fence: without
-                # this, quoted content mis-toggles the tracker and a real
-                # panel misreports as unbalanced.
-                indent = unquoted[: len(unquoted) - len(unquoted.lstrip())]
-                indented_code = len(indent.replace("\t", "    ")) >= 4
-                fence_run = 0
-                fence_ch = ""
-                if not indented_code and (
-                    stripped.startswith("```") or stripped.startswith("~~~")
-                ):
-                    fence_ch = stripped[0]
-                    fence_run = len(stripped) - len(stripped.lstrip(fence_ch))
+            fence = None  # (char, run, opener lineno, quote depth) in one
+            raw_lines = text.splitlines()
+            for fence_lineno, ln in enumerate(raw_lines, start=1):
+                qd, fence_ch, fence_run, info = _fence_shape(ln)
+                if fence is not None and qd < fence[3] and ln.strip() != "":
+                    # Below the open fence's quote depth: either the quote
+                    # ended (closing the fence with it) or a lazy content
+                    # line (a same-depth close still ahead). Lookahead
+                    # distinguishes them; blank lines are always content.
+                    closes_ahead = False
+                    for ahead_ln in raw_lines[fence_lineno:]:
+                        a_qd, a_ch, a_run, a_info = _fence_shape(ahead_ln)
+                        if (
+                            a_qd == fence[3]
+                            and a_ch == fence[0]
+                            and a_run >= fence[1]
+                            and a_info == ""
+                        ):
+                            closes_ahead = True
+                            break
+                    if not closes_ahead:
+                        fence = None  # quote ended; reprocess line below
+                    else:
+                        continue  # lazy content inside the quoted fence
                 if fence_run:
                     if fence is None:
                         # CommonMark: a backtick in a backtick-fence info
                         # string makes the line a paragraph, never a fence.
                         # (Tilde info strings may hold anything.)
-                        if fence_ch == "`" and "`" in stripped[fence_run:]:
+                        if fence_ch == "`" and "`" in info:
                             kept.append(ln)
                         else:
-                            fence = (fence_ch, fence_run, fence_lineno)
+                            fence = (fence_ch, fence_run, fence_lineno, qd)
                     elif (
-                        fence_ch == fence[0]
+                        qd == fence[3]
+                        and fence_ch == fence[0]
                         and fence_run >= fence[1]
-                        and stripped[fence_run:] == ""
+                        and info == ""
                     ):
-                        # CommonMark close: same char, run at least the
-                        # opener's, and no info string. A ```text line (or a
-                        # shorter or other-char run) inside a fence is
-                        # content, never a close; without the info-string
-                        # bar, quoted verdicts leak out and satisfy the rule.
-                        # Same-length nesting cannot exist, so genuinely
-                        # crossed fences fall out as unbalanced below instead
-                        # of mis-toggling.
+                        # CommonMark close: same quote depth and char, run
+                        # at least the opener's, and no info string. A
+                        # ```text line, a shorter or other-char run, or a
+                        # close at another quote depth is content, never a
+                        # close; without these bars, quoted verdicts leak
+                        # out and satisfy the rule. Same-length nesting
+                        # cannot exist, so genuinely crossed fences fall out
+                        # as unbalanced below instead of mis-toggling.
                         fence = None
                     continue
                 if fence is None:

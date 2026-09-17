@@ -3417,6 +3417,8 @@ track: Z1
 |  20   |   §20   | Underscore and tilde markers rejected | - |  [x]   |
 |  21   |   §21   | Blockquoted fence is still a fence | - |  [x]   |
 |  22   |   §22   | Backtick info string is a paragraph | - |  [x]   |
+|  23   |   §23   | Quoted close cannot close unquoted fence | - |  [x]   |
+|  24   |   §24   | Ended quote ends its fence | - |  [x]   |
 
 ---
 
@@ -3639,6 +3641,26 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §22 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tickinfo.md
+
+## 23. Quoted close cannot close unquoted fence
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §23 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-xquote-close.md
+
+## 24. Ended quote ends its fence
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §24 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quoteend.md
 """,
             encoding="utf-8",
         )
@@ -3768,6 +3790,20 @@ track: Z1
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "```md `inline`\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-xquote-close.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\n```\n> ```\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-quoteend.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "> ```\n> quoted code\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
@@ -3929,6 +3965,19 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§22 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        check(
+            "quoted close cannot close an unquoted fence",
+            any(
+                "TODO-06-panel.md" in ln and "§23 " in ln and "unbalanced fence opened at line 8" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "ended quote ends its fence",
+            any("TODO-06-panel.md" in ln and "§24 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -3950,6 +3999,8 @@ track: Z1
             "90-panel-oddmarkers.md",
             "90-panel-quotefence.md",
             "90-panel-tickinfo.md",
+            "90-panel-xquote-close.md",
+            "90-panel-quoteend.md",
         ):
             (rev_dir / extra).unlink()
         check(
