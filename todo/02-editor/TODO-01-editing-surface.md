@@ -90,7 +90,7 @@ Why this section exists: the buffer is the source of truth for every character. 
 
 Why this section exists: the surface must look and select like Notepad, and the clipboard must round-trip through the platform.
 
-**Fidelity:** Notepad editor area -- `resources/baseline/editor/`. Font rendering, caret shape, selection color, and margins match the capture.
+**Fidelity:** Notepad editor area -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Font rendering, caret shape, selection color, and margins match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/editor/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can see and select text as in Notepad. Consumer: the shell, which hosts the surface; the clipboard, which receives cuts and copies.
 
@@ -100,7 +100,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 **Groomed 2026-09-13:** Notepad audit: CF_TEXT-only paste, color emoji, text drag-drop, Ctrl+click paragraph, and spaceless double-click are now explicit.
 
-- [ ] `src/Notepad/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes. **Recorded 2026-09-16 (D01 T02 §3 validation):** the rendered font reads the D01 T02 §2 store keys (family, style, size) with a live Changed subscription; the D01 T02 §3 settings page binds the picking controls.
+- [ ] `src/ScratchPad/EditorSurface.xaml` renders the §2 buffer with the Notepad font, caret, and selection. Done when: the capture comparison passes. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5). **Recorded 2026-09-16 (D01 T02 §3 validation):** the rendered font reads the D01 T02 §2 store keys (family, style, size) with a live Changed subscription; the D01 T02 §3 settings page binds the picking controls.
 - [ ] Cut, copy, paste, and paste-as-behavior match Notepad including formats offered. Done when: clipboard round-trips are driven. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Cut, Copy, Paste, Delete, and Select all disabled; this section enables all five through the `MenuCommands` registry and drives them on landing.
 - [ ] Drag-select, double-click word, triple-click line match Notepad. Done when: each gesture is driven.
 - [ ] IME and accessibility (narrator, keyboard-only use) behave as Notepad's. Done when: the accessibility checks pass.
@@ -129,7 +129,7 @@ Why this section exists: undo is the user's memory. Its grouping and limits must
 
 Why this section exists: zoom and wrap are small, visible, and easy to get subtly wrong. Match Notepad exactly, including persistence.
 
-**Fidelity:** Notepad zoom and wrap behaviors -- `resources/baseline/editor/`. Zoom levels, wrap toggle placement, and status-bar readout match.
+**Fidelity:** Notepad zoom and wrap behaviors -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Zoom levels, wrap toggle placement, and status-bar readout match. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/editor/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can zoom and toggle wrap as in Notepad. Consumer: the settings store, which persists the choice.
 
@@ -153,7 +153,7 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 
 Why this section exists: right-click is a surface too. The context menu must carry Notepad's items in Notepad's order, all working.
 
-**Fidelity:** Notepad editor context menu -- `resources/baseline/editor-context/`. Items, order, separators, and enablement match.
+**Fidelity:** Notepad editor context menu -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Items, order, separators, and enablement match. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/editor-context/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can cut, copy, paste, and select through right-click. Consumer: the same handlers the keyboard and main menu use.
 
@@ -176,12 +176,12 @@ Why this section exists: right-click is a surface too. The context menu must car
 Why this section exists: Notepad opens big files without dying. Our surface commits to a budget and degrades honestly past it.
 
 - [ ] `docs/large-file-budget.md` records the size budget and the expected behavior at and past it (measured, not guessed). Done when: the numbers come from runs.
-- [ ] Typing latency at the budget size stays within the committed bound. Done when: the perf test measures it in CI.
+- [ ] Typing latency at the budget size stays within the committed bound. Done when: the perf test measures it in the local run on the dev box. **Corrected 2026-09-17 (groom):** was "in CI"; CI runs no suites since 2026-09-17.
 - [ ] Past the budget the app degrades honestly (a notice, read-only mode, or chunked load) rather than hanging. Done when: the degradation is driven.
-- [ ] Memory use at the budget size stays within the committed bound. Done when: the perf test measures it in CI.
+- [ ] Memory use at the budget size stays within the committed bound. Done when: the perf test measures it in the local run on the dev box. **Corrected 2026-09-17 (groom):** was "in CI"; CI runs no suites since 2026-09-17.
 - [ ] Commit: `"editor: commit the large-file budget"`
 
-**Test checkpoint:** Perf tests measure latency and memory in CI; degradation driven. Cheaper substitute that fails: a budget nobody measures.
+**Test checkpoint:** Perf tests measure latency and memory in the local run; degradation driven. Cheaper substitute that fails: a budget nobody measures.
 
 ## 8. Selection Utilities: Case, Sort, Dedupe
 

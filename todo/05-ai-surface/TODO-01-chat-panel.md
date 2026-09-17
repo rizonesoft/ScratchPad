@@ -58,7 +58,7 @@ Why this section exists: the panel is new, so its contract is settled before its
 **Chrome:** Consume the shared panel styles. Do not invent a second panel treatment.
 
 - [ ] `docs/ai-panel-contract.md` specifies placement, transcript shape, update ordering, and stop-reason display. Done when: the doc exists and `D03 T01 §5` delivers to it.
-- [ ] `src/Notepad/ChatPanel.xaml` hosts the transcript region, input region, and agent picker per the contract. Done when: the regions render.
+- [ ] `src/ScratchPad/ChatPanel.xaml` hosts the transcript region, input region, and agent picker per the contract. Done when: the regions render. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5).
 - [ ] The panel opens, closes, and persists its visibility through the settings store. Done when: the toggle is driven.
 - [ ] Commit: `"ai-surface: settle the panel shell and transcript contract"`
 
@@ -76,9 +76,9 @@ Why this section exists: streaming is the product feel. Updates render as they a
 
 **Chrome:** Consume the shared transcript styles. Do not invent a second message treatment.
 
-- [ ] `src/Notepad/TranscriptView.xaml` renders text, code, tool-call, and plan blocks by kind. Done when: each kind is driven with a scripted turn.
+- [ ] `src/ScratchPad/TranscriptView.xaml` renders text, code, tool-call, and plan blocks by kind. Done when: each kind is driven with a scripted turn. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5).
 - [ ] Out-of-order arrivals still render in order; duplicates never render twice. Done when: the ordering fixtures pass.
-- [ ] Long transcripts virtualize so the panel stays responsive. Done when: the perf budget is measured in CI.
+- [ ] Long transcripts virtualize so the panel stays responsive. Done when: the perf budget is measured in the local run on the dev box. **Corrected 2026-09-17 (groom):** was "measured in CI"; CI runs no suites since 2026-09-17.
 - [ ] Stop reasons render visibly at turn end. Done when: each reason is driven.
 - [ ] Commit: `"ai-surface: render the streaming transcript"`
 

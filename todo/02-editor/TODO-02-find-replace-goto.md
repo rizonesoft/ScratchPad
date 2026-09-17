@@ -62,7 +62,7 @@ Why this section exists: the UI is thin; the engine carries the semantics. Case,
 
 Why this section exists: the find bar is the surface users touch. It must place, behave, and count like Notepad's.
 
-**Fidelity:** Notepad find bar -- `resources/baseline/find-bar/`. Placement, options, match counter, and keyboard flow match the capture.
+**Fidelity:** Notepad find bar -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Placement, options, match counter, and keyboard flow match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/find-bar/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can find text as in Notepad. Consumer: the caret, which lands on the match.
 
@@ -72,7 +72,7 @@ Why this section exists: the find bar is the surface users touch. It must place,
 
 **Groomed 2026-09-13:** Notepad audit: the exact exposed option set, F3/Shift+F3, and within-session memory with autofill are now explicit.
 
-- [ ] `src/Notepad/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Find, Find next, and Find previous disabled; this section enables all three through the `MenuCommands` registry and drives them on landing.
+- [ ] `src/ScratchPad/FindBar.xaml` binds to the §1 engine with Notepad's options and counter. Done when: the capture comparison passes. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5). **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Find, Find next, and Find previous disabled; this section enables all three through the `MenuCommands` registry and drives them on landing.
 - [ ] Enter, Shift+Enter, Escape, and option toggles flow as Notepad's. Done when: the keyboard flow is driven.
 - [ ] No-match and wrap-around feedback match Notepad's. Done when: both are driven.
 - [ ] The bar exposes exactly Match case and Wrap around under More options; no whole-word toggle and no Up/Down direction radio appear. Done when: the capture comparison confirms the set. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
@@ -86,7 +86,7 @@ Why this section exists: the find bar is the surface users touch. It must place,
 
 Why this section exists: replace mutates through undo. The mode must match Notepad's replace, replace-all, and count reporting.
 
-**Fidelity:** Notepad replace mode -- `resources/baseline/find-bar/`. Layout and count reporting match the capture.
+**Fidelity:** Notepad replace mode -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Layout and count reporting match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/find-bar/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can replace text as in Notepad. Consumer: the buffer, through the undoable edit path, and the caret.
 
@@ -105,7 +105,7 @@ Why this section exists: replace mutates through undo. The mode must match Notep
 
 Why this section exists: small surface, exact behavior. Validation, errors, and landing must match Notepad's.
 
-**Fidelity:** Notepad go-to dialog -- `resources/baseline/goto/`. Layout, validation, and error text match the capture.
+**Fidelity:** Notepad go-to dialog -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Layout, validation, and error text match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/goto/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can jump to a line as in Notepad. Consumer: the caret, which lands on the line.
 
@@ -113,7 +113,7 @@ Why this section exists: small surface, exact behavior. Validation, errors, and 
 
 **Chrome:** Consume the shared dialog styles. Do not invent a second dialog treatment.
 
-- [ ] `src/Notepad/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Go to disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
+- [ ] `src/ScratchPad/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5). **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Go to disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] Valid input lands the caret exactly (line, column rules as Notepad's). Done when: the landing fixtures pass.
 - [ ] The dialog remembers nothing it should not and persists nothing. Done when: the behavior is recorded and tested.
 - [ ] Commit: `"editor: add go-to-line"`
@@ -129,7 +129,7 @@ Why this section exists: find options persist across sessions in Notepad, and th
 - [ ] Search in a dirty, wrapped, or zoomed buffer behaves identically. Done when: the combination fixtures pass.
 - [ ] Commit: `"editor: persist find options and cover edge cases"`
 
-**Test checkpoint:** Persistence driven; perf budget measured in CI; combination fixtures green. Cheaper substitute that fails: options kept in memory only.
+**Test checkpoint:** Persistence driven; perf budget measured in the local run; combination fixtures green. Cheaper substitute that fails: options kept in memory only. **Corrected 2026-09-17 (groom):** was "measured in CI"; CI runs no suites since 2026-09-17.
 
 ## 6. Find Across All Open Tabs
 

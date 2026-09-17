@@ -9,10 +9,12 @@ track: W0
 
 # TODO-01 -- Repo and Toolchain
 
-> **Goal:** A clean checkout builds the app and runs the tests with one command each, on a pinned .NET toolchain, with CI proving the same on Linux and Windows runners on every push.
+> **Goal:** A clean checkout builds the app and runs the tests with one command each, on a pinned .NET toolchain, with CI proving the build plus launch smoke on Linux and Windows runners on every push. **Corrected 2026-09-17 (groom):** was "CI proving the same"; since 2026-09-17 CI proves build plus launch smoke only and the suites run locally on the dev box.
 
 > [!IMPORTANT]
 > **Current state:** The repo holds only `todo/`, `scripts/`, `docs/`, and root docs. No source tree, no solution, no CI. The first section that touches the .NET SDK decides the layout below; until then every path in this file is a proposal, not a fact.
+>
+> **Corrected 2026-09-17 (groom):** §§1-7 and §§9-11 have shipped since (layout and SDK pin, scaffold, CI, warning gates, test wiring, bootstrap doc, graph checks, panel enforcement plus follow-ups, lookahead removal); §8 moved to `docs/testing.md` 2026-09-14. Open: §12 only.
 
 ## Inputs
 
@@ -22,7 +24,7 @@ track: W0
 ## Outcome
 
 - A clean checkout builds with one command and tests with one command, on Linux or Windows.
-- CI on Linux and Windows runners builds and tests every push to `main`.
+- CI on Linux and Windows runners builds every push to `main` and smoke-launches the app; the unit, UI, and protocol suites run locally on the dev box. **Corrected 2026-09-17 (groom):** was "builds and tests every push"; CI narrowed to build plus launch smoke 2026-09-17.
 - Compiler warnings and static analysis gate the build, not a wiki page.
 - The TODO graph's own checks run in CI so a broken plan fails the build.
 

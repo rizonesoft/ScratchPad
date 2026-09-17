@@ -62,7 +62,7 @@ Why this section exists: the UI is thin; the engine carries the semantics. Langu
 
 Why this section exists: the red squiggle is the surface users see. It must render, offer, and apply exactly as Notepad's.
 
-**Fidelity:** Notepad spellcheck UI -- `resources/baseline/spellcheck/`. Squiggle style, suggestion menu, and apply behavior match the capture.
+**Fidelity:** Notepad spellcheck UI -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Squiggle style, suggestion menu, and apply behavior match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/spellcheck/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can see and fix misspellings as in Notepad. Consumer: the buffer, through the undoable edit path.
 
@@ -95,7 +95,7 @@ Why this section exists: autocorrect changes text the user did not explicitly ch
 
 Why this section exists: Notepad lets users disable spelling globally or per file type. The toggles live in the settings store with the editor as consumer.
 
-**Fidelity:** Notepad spelling settings -- `resources/baseline/settings/`. Toggle placement and per-type list match the capture.
+**Fidelity:** Notepad spelling settings -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Toggle placement and per-type list match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/settings/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can scope spelling to the file types they want. Consumer: the settings store, which the spelling engine reads.
 

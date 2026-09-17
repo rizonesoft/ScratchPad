@@ -22,10 +22,12 @@ track: N1
 > **Corrected 2026-09-16 (phase-1 run 4 repair):** §§1-3 have shipped and stamped since (menu bar, single-writer store, settings page); open work is §§4-12. Still true: no status bar, no print path.
 >
 > **Corrected 2026-09-17 (rename filing):** §§1-4 have shipped and stamped since (menu bar, single-writer store, settings page, status bar); open work is §§5-15. §§13-15 (ScratchPad rename completion, title-bar icon, chrome color finetune) keep their §13-15 addresses and sequence before §5 in the Order column and the plan.
+>
+> **Corrected 2026-09-17 (groom):** §§13-14 have shipped and stamped since (rename completion, title-bar icon) and §16 (quarantine the MenuBarTests flakes) was filed. Open work is §§5-12, §15, §16; since 2026-09-17 the suites proving them run locally on the dev box, not in CI.
 
 ## Inputs
 
-- `resources/baseline/` captures of menus, settings, status bar, and print dialog
+- `resources/baseline/` captures of menus, settings, and status bar, plus the §5 spec-constructed print goldens. **Corrected 2026-09-17 (groom):** was "and print dialog"; per the §5 validation no dialog capture is owed (Page Setup and Print are OS dialogs §5 binds but does not build).
 - [`01-notepad-core/TODO-01-winui-app-spine.md`](./TODO-01-winui-app-spine.md) -- the shell and tab model these surfaces hang off
 - -> XREF: D05 T03 §3 -- slash commands versus palette split; the palette lists without reimplementing
 
@@ -59,7 +61,7 @@ track: N1
 |  13   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
 |  14   |   §11   | Session word goal | §4, §9 |  [ ]   |
 |  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
-|  16   |   §16   | Quarantine the MenuBarTests CI flakes | §1 |  [ ]   |
+|  16   |   §16   | Quarantine the MenuBarTests flakes | §1 |  [ ]   |
 
 ---
 
@@ -219,7 +221,7 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 
 **Corrected 2026-09-17 (§5 validation):** the seed carried no `Needs` although printing, the OS dialogs, and PDF output are Windows-only; every sibling declares it.
 
-- [ ] `src/ScratchPad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output. **Corrected 2026-09-17 (§5 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4). **Recorded 2026-09-16:** D01 T02 §1 ships File > Print and File > Page setup disabled; this section enables both through the `MenuCommands` registry and drives them on landing. PrintSeam.cs (D01 T01 §8) absorbs here per its header; the render engine is the implementer's choice with reasons (must print-to-PDF headless on CI).
+- [ ] `src/ScratchPad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output. **Corrected 2026-09-17 (§5 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4). **Recorded 2026-09-16:** D01 T02 §1 ships File > Print and File > Page setup disabled; this section enables both through the `MenuCommands` registry and drives them on landing. PrintSeam.cs (D01 T01 §8) absorbs here per its header; the render engine is the implementer's choice with reasons (must print-to-PDF headless on the dev box. **Corrected 2026-09-17 (groom):** was "headless on CI"; CI runs no suites since 2026-09-17).
 - [ ] Page setup persists per Notepad's behavior. Done when: the persistence is driven. **Decided 2026-09-17 (§5 validation):** behavior means the Page Setup dialog set (header, footer, margins, orientation, paper) surviving restarts and applying to prints, persisted in the §2 store (same file, new keys, schema-doc rows); stock's own storage location is not probed (default, costs one migrator if stock parity ever demands its exact keys).
 - [ ] Print failure (no printer, cancelled dialog) reports and changes nothing. Done when: both paths are driven. **Decided 2026-09-17 (§5 validation):** no-printer drives through `/pt` to a bogus printer (in-tree precedent `NoSuchPrinter8`); cancel drives through UIA dismiss of the OS dialog.
 - [ ] Header and footer codes &l, &c, &r, &d, &t, &f, and &p render as Notepad's, defaulting to header &f and footer Page &p; custom codes re-enter each print and an empty box prints nothing. Done when: print-to-PDF fixtures cover every code. Source: https://support.microsoft.com/en-gb/topic/how-to-use-notepad-to-create-a-log-file-dd228763-76de-a7a7-952b-d5ae203c4e12
@@ -233,11 +235,11 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 Why this section exists: menus rot one item at a time. The audit makes "every control works or names its owner" a repeatable check, not a launch-day hope.
 
 - [ ] `docs/menu-audit.md` enumerates every menu item, shortcut, and enablement rule from the capture, each resolved to working or to a named owning section. Done when: no item is unaccounted. **Recorded 2026-09-16 (D01 T02 §1 review):** two advisories disposition here: (1) WinUI renders accelerator text `Delete`/`Ctrl++`/`Ctrl+-` on the disabled Delete/Zoom items where stock reads `Del`/`Ctrl+Plus`/`Ctrl+Minus` (correct keys, no XAML text override exists); confirm the keys against the captures and leave text rendering to the D02 owners' landing drives unless an override surfaces. (2) Stock renders glyph icons on the Markdown Formatted/Syntax pair; ours ships plain pending D02 T04 §3; confirm icon parity with that owner's landing.
-- [ ] `tests/UI/MenuAuditTest` invokes every working item and shortcut through the real menu. Done when: `dotnet test --filter MenuAudit` passes on a Windows runner in CI.
-- [ ] The audit runs in CI so a newly dead item fails the build. Done when: a deliberately deadened probe item fails the run (reverted immediately).
+- [ ] `tests/UI/MenuAuditTest` invokes every working item and shortcut through the real menu. Done when: `dotnet test --filter MenuAudit` passes in the local full run on the dev box. **Corrected 2026-09-17 (groom):** was "on a Windows runner in CI"; CI runs no suites since 2026-09-17, and the audit drives the real menu, so it rides the fenced Interactive run.
+- [ ] The audit runs in the local full suite so a newly dead item fails the run. Done when: a deliberately deadened probe item fails the run (reverted immediately). **Corrected 2026-09-17 (groom):** was "runs in CI"; same CI narrowing.
 - [ ] Commit: `"notepad-core: audit menu and shortcut completeness"`
 
-**Test checkpoint:** Audit green in CI; probe dead item fails; every item working or owner-named. Cheaper substitute that fails: a spreadsheet audit nobody reruns.
+**Test checkpoint:** Audit green in the local full run; probe dead item fails; every item working or owner-named. Cheaper substitute that fails: a spreadsheet audit nobody reruns.
 
 ## 7. Reading Level in the Status Bar
 
@@ -274,7 +276,7 @@ Why this section exists: every command in one fuzzy list: menu items, agent acti
 
 **Needs:** Windows host (build/test)
 
-- [ ] `src/Notepad/CommandRegistry.cs` names every §1 menu item plus the D05 T02 §6 selection actions with shortcuts. Done when: the registry test enumerates them.
+- [ ] `src/ScratchPad/CommandRegistry.cs` names every §1 menu item plus the D05 T02 §6 selection actions with shortcuts. Done when: the registry test enumerates them. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4/5).
 - [ ] The palette lists fuzzy-matched entries with shortcuts shown. Done when: driven.
 - [ ] Invoking from the palette equals invoking from the menu. Done when: the equivalence test passes.
 - [ ] The slash-command overlap resolves per the D05 T03 §3 XREF with no double implementation. Done when: the split is recorded and tested.
@@ -457,11 +459,11 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 
 **Test checkpoint:** A/B probes recorded; deltas quoted; theme matrix green; goldens refreshed with confined diffs. Cheaper substitute that fails: eyeballed colors with no sampled numbers.
 
-## 16. Quarantine the MenuBarTests CI Flakes
+## 16. Quarantine the MenuBarTests Flakes
 
-Why this section exists: three `MenuBarTests` failed nondeterministically on CI within the hours (details in the SOURCE line), each red-then-green with no test-affecting change between, which is exactly the D00 T02 §5 quarantine criterion. Until they are quarantined, every main run gambles on them.
+Why this section exists: three `MenuBarTests` failed nondeterministically on CI within the hours (details in the SOURCE line), each red-then-green with no test-affecting change between, which is exactly the D00 T02 §5 quarantine criterion. Until they are quarantined, every full run gambles on them. **Corrected 2026-09-17 (groom):** UI suites left CI the day this section was filed, so the quarantine proves on the local full run, not a main CI run; the CI signatures below stay as the filing evidence.
 
-**Job:** The suite stays green without the flakes while their owners get a fix-or-remove window. Consumer: every main CI run.
+**Job:** The suite stays green without the flakes while their owners get a fix-or-remove window. Consumer: every local full run.
 
 **Treatment:** Quarantine by the D00 T02 §5 procedure verbatim (prove, Skip with the quarantine stamp, quarantine-list rows), one row per test. No test logic changes; the fix-or-remove window that follows belongs to the owners, not this section. Cheaper substitute that fails the checkpoint: re-running red builds until one goes green.
 
@@ -471,13 +473,13 @@ Why this section exists: three `MenuBarTests` failed nondeterministically on CI 
 - [ ] `FileSaveAllWalksDirtyTabs` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
 - [ ] `ToolsMenuInvokesStats` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
 - [ ] `FileMenuLiveAcceleratorsWork` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
-- [ ] A main CI run is green with all three tests skipped. Done when: the run id is quoted with the 3-skip line.
-- [ ] Commit: `"notepad-core: quarantine the MenuBarTests CI flakes"`
+- [ ] A local full run is green with all three tests skipped. Done when: the run output is quoted with the 3-skip line.
+- [ ] Commit: `"notepad-core: quarantine the MenuBarTests flakes"`
 
-**Test checkpoint:** All three Skips plus all three rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
+**Test checkpoint:** All three Skips plus all three rows land; local full run green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
 
 ## Verification
 
 - [ ] `dotnet test` green
-- [ ] Every menu item working or owner-named, proven in CI
+- [ ] Every menu item working or owner-named, proven in the local full run **Corrected 2026-09-17 (groom):** was "proven in CI"; CI runs no suites since 2026-09-17.
 - [ ] `python3 scripts/todo-graph.py validate` clean

@@ -14,6 +14,8 @@ track: N2
 
 > [!IMPORTANT]
 > **Current state:** No grammar exists. The `D02 T01` buffer and caret model (open) carry the text this file checks; the `D01 T02 §2` store (open) carries the toggles; the `D02 T03 §2` squiggle treatment (open) is the sibling pattern the underlines mirror. Harper is not vendored. Filed 2026-09-14 from the operator brainstorm as beyond-parity scope, scheduled after the parity base by table order.
+>
+> **Corrected 2026-09-17 (groom):** the `D01 T02 §2` store shipped 2026-09-16; only its grammar keys are future. The other `(open)` markers still hold.
 
 ## Inputs
 

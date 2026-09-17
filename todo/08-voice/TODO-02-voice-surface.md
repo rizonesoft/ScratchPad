@@ -14,6 +14,8 @@ track: V1
 
 > [!IMPORTANT]
 > **Current state:** No voice UI exists. The `D08 T01` engines (open, filed together) carry speech; the `D02 T01` buffer and caret model (open) is the text source and sink; the `D01 T02 §2` store (open) carries provider and voice choice. Filed 2026-09-14 with T01, scheduled Phase 3 by domain order.
+>
+> **Corrected 2026-09-17 (groom):** the `D01 T02 §2` store shipped 2026-09-16; only its provider and voice keys are future. The other `(open)` markers still hold.
 
 ## Inputs
 

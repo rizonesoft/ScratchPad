@@ -14,6 +14,8 @@ track: Q1
 
 > [!IMPORTANT]
 > **Current state:** No strategy is written. The `D00 T02` harnesses exist (or land first); this file decides what runs on them and what "complete" means.
+>
+> **Recorded 2026-09-17 (groom):** since 2026-09-17 CI proves build plus launch smoke only and the suites run locally on the dev box, so the `in CI` enforcement below is a placement §1 must decide per layer (CI vs local runs), not a settled fact. §1 stays the strategy owner; this note only records the constraint.
 
 ## Inputs
 
@@ -23,7 +25,7 @@ track: Q1
 ## Outcome
 
 - Every layer (unit, integration, UI, protocol, perf) has an owner, a suite, and a bar.
-- Coverage is measured per layer with a committed floor that CI enforces.
+- Coverage is measured per layer with a committed floor that the §1 placement enforces (CI or local runs). **Corrected 2026-09-17 (groom):** was "that CI enforces"; CI runs no suites since 2026-09-17, so §1 places each enforcement.
 - UI suites drive the real app for every Notepad surface and every AI surface.
 - Flakes are quarantined by procedure with a fix window, never deleted.
 
@@ -49,7 +51,7 @@ Why this section exists: "automatic and complete" without a written definition i
 - [ ] `docs/test-strategy.md` defines the layers (unit, integration, UI, protocol, perf), each with owner, suite location, and bar. Done when: every layer names all three.
 - [ ] The doc defines what "complete" means per layer (behavior coverage, not line coverage alone). Done when: each definition is falsifiable.
 - [ ] The doc maps every domain's surfaces to the suites that prove them. Done when: no surface is unmapped.
-- [ ] The doc sets the platform rule for Windows-semantics unit tests (JumpList, protocol-association, launch-args path suites): they skip honestly or live in a Windows-only suite, and `dotnet test src/Notepad.Neutral.slnf` is green on Linux. Done when: the neutral suite passes on Linux with every platform skip named. -> SOURCE: phase-1 run 4 (2026-09-16), 16 Linux failures while the same suites stand 285/285 on Windows.
+- [ ] The doc sets the platform rule for Windows-semantics unit tests (JumpList, protocol-association, launch-args path suites): neutral code never branches on the running OS for Windows-path strings (the `WindowsPath` rule, D00 T02 §6 track A), and `dotnet test src/Notepad.Neutral.slnf` is green on Linux. Done when: the neutral suite passes on Linux with the rule stated. **Corrected 2026-09-17 (groom):** was "they skip honestly or live in a Windows-only suite ... with every platform skip named"; D00 T02 §6 fixed the 16 Linux failures at root (explicit Windows-path handling, suites passing on Linux, not skipping). -> SOURCE: phase-1 run 4 (2026-09-16), 16 Linux failures while the same suites stand 285/285 on Windows.
 - [ ] Commit: `"quality: write the automated test strategy"`
 
 **Test checkpoint:** A reviewer verifies every surface maps to a suite and every bar is falsifiable; gaps are filed, not waived. Cheaper substitute that fails: a strategy that says "test everything".
@@ -73,7 +75,7 @@ Why this section exists: the clone claim is proven surface by surface, automatic
 - [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
 - [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
 - [ ] The suites run in CI on a Windows runner. Done when: the CI log shows them green.
-- [ ] Found 2026-09-14: `tests/UI/MainWindowTests.cs` `PollThemeSide` captures without `UiDpi.Enter`, so at 150 percent session DPI the reads virtualize to black; on Conclave-PC `ThemesRenderWithMica` light fails while dark and system pass vacuously. Harden the capture path (PMV2-aware captures or a non-black guard) and re-prove the matrix. Done when: `dotnet test tests/UI --filter ThemesRenderWithMica` passes on Conclave-PC with center pixels verified non-black in all three themes.
+- [ ] Found 2026-09-14: `tests/UI/MainWindowTests.cs` `PollThemeSide` captures without `UiDpi.Enter`, so at 150 percent session DPI the reads virtualize to black; on Conclave-PC `ThemesRenderWithMica` light fails while dark and system pass vacuously. Harden the capture path (PMV2-aware captures or a non-black guard) and re-prove the matrix. Done when: `dotnet test tests/UI --filter ThemesRenderWithMica` passes on the dev box with center pixels verified non-black in all three themes. **Corrected 2026-09-17 (groom):** was "passes on Conclave-PC"; the Conclave-PC VM retired 2026-09-14, so the matrix re-proves on the dev box at 150 percent.
 - [ ] Commit: `"quality: drive Notepad parity in UI suites"`
 
 **Test checkpoint:** Suites green in CI; deliberate deviations fail; coverage table fully mapped. Cheaper substitute that fails: parity checked by hand before release.

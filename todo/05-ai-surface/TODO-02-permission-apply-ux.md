@@ -59,7 +59,7 @@ Why this section exists: consent the user does not understand is not consent. Th
 
 **Chrome:** Consume the shared prompt styles. Do not invent a second prompt treatment.
 
-- [ ] `src/Notepad/PermissionPrompt.xaml` renders kind, scope, risk summary, and allow/deny/scope choices per the `D03 T02 §1` contract. Done when: the contract test passes against the real prompt.
+- [ ] `src/ScratchPad/PermissionPrompt.xaml` renders kind, scope, risk summary, and allow/deny/scope choices per the `D03 T02 §1` contract. Done when: the contract test passes against the real prompt. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5).
 - [ ] Timeout and dismiss count as deny, visibly. Done when: both are driven.
 - [ ] Scope choices (once, session, always-for-scope) map exactly to `D03 T02 §4` grants. Done when: the mapping test passes.
 - [ ] Prompts queue without loss when several arrive at once. Done when: the queue test passes.
@@ -100,7 +100,7 @@ Why this section exists: no agent edit reaches the buffer unseen. The diff shows
 
 - [ ] Proposed edits render as diffs against the current buffer with hunk accept/reject. Done when: the hunk matrix is driven.
 - [ ] Diffs rebase honestly when the buffer changed since the proposal; stale hunks are marked, never silently applied. Done when: the staleness test passes.
-- [ ] Large diffs virtualize within the perf budget. Done when: the budget is measured in CI.
+- [ ] Large diffs virtualize within the perf budget. Done when: the budget is measured in the local run on the dev box. **Corrected 2026-09-17 (groom):** was "measured in CI"; CI runs no suites since 2026-09-17.
 - [ ] Commit: `"ai-surface: review agent edits as diffs"`
 
 **Test checkpoint:** Hunk matrix, staleness, and perf driven. Cheaper substitute that fails: whole-file accept with no hunk granularity.

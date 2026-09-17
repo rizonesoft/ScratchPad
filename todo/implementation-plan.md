@@ -54,7 +54,7 @@ Each clause already has an owner, and this table is where to look when asking "i
 
 ## Where the project stands
 
-The generated Progress line at the top is the phase-plan snapshot; `python3 scripts/todo-graph.py query stats` is the full graph/item snapshot. Those are the only current totals. Nothing is built yet: Phase 0 (toolchain, CI, test backbone) is the first ready work.
+The generated Progress line at the top is the phase-plan snapshot; `python3 scripts/todo-graph.py query stats` is the full graph/item snapshot. Those are the only current totals. **Corrected 2026-09-17:** was "Nothing is built yet: Phase 0 is the first ready work"; Phase 0 is nearly complete (only `D00 T01 §12` hooks and `D00 T02 §8` focus-free conversion open) and Phase 1 (Notepad parity) is in progress with the window, tabs, files, menus, and settings spine shipped.
 
 Every open section is in scope and must appear in exactly one phase. A dependency may park a row; it does not remove it. `plan --check` is the proof.
 
@@ -70,11 +70,11 @@ Chase them in this order. The first gates the whole build.
 
 ### 1. A Windows 11 host to run the app
 
-The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere with the repo-local SDK, while the app itself runs on Windows only. Until `D00 T01 §1` pins the SDK, every implementation section waits. Scripts and plan checks run anywhere; app launch, UI suites, captures, and packaging need Windows.
+The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere with the repo-local SDK, while the app itself runs on Windows only. **Corrected 2026-09-17:** the SDK pin (`D00 T01 §1`) shipped, so the wait is over; the standing fact is the OS boundary. Scripts and plan checks run anywhere; app launch, UI suites, captures, and packaging need the Windows 11 host (Venom-PC), with the UI suites driving the real binary on its interactive session.
 
 ### 2. Linux and Windows CI runners
 
-`D00 T01 §3` owns them. Until CI runs the build and tests, gates are prose. No implementation section is blocked on CI existing, but no section's evidence is trustworthy without it.
+`D00 T01 §3` owns them. **Corrected 2026-09-17:** was "Until CI runs the build and tests, gates are prose"; since 2026-09-17 CI gates the build plus launch smoke plus the TODO graph checks only, and the UI suites run locally on the dev box (background-safe default run per section, full fenced run on its own cadence). No implementation section is blocked on CI existing, but no section's build evidence is trustworthy without it, and no section's UI evidence is trustworthy without the local runs.
 
 ### 3. Codex and Claude Code adapters for compatibility runs
 
@@ -135,7 +135,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §10` | Custom accent themes                                                |   5   |
 | [ ] | `D01 T02 §11` | Session word goal                                                   |   4   |
 | [ ] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
-| [ ] | `D01 T02 §16` | Quarantine the MenuBarTests CI flakes                               |   5   |
+| [ ] | `D01 T02 §16` | Quarantine the MenuBarTests flakes                                  |   5   |
 | [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   5   |
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |   5   |
 | [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |   5   |

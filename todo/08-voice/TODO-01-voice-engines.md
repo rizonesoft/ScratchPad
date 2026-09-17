@@ -14,6 +14,8 @@ track: V1
 
 > [!IMPORTANT]
 > **Current state:** No speech exists. `D08 T02` (open, filed together) is the surface consuming these engines; the `D01 T02 §2` store (open) carries provider and voice choice through that file. No models vendored. Filed 2026-09-14 from the operator brainstorm as beyond-parity scope, scheduled Phase 3 (last build phase) by domain order per operator instruction.
+>
+> **Corrected 2026-09-17 (groom):** the `D01 T02 §2` store shipped 2026-09-16; only its provider and voice keys are future. The `D08 T02` marker still holds.
 
 ## Inputs
 

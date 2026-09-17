@@ -30,6 +30,8 @@ track: N1
 > **Corrected 2026-09-16 (phase-1 run 3, §20 validation):** §19 has shipped since (encrypted notes) and §30 was filed (locked-tab residue hardening). Open: §§20-22, 24-26, 28-30 (§10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
 >
 > **Corrected 2026-09-16 (phase-1 run 3, §21 validation):** §20 has shipped since (backup on save). Open: none (§§21-22, §§24-26, §§28-30 stamped this run; §10, §12, §15, §23 moved out). Later sections still host a placeholder until D02 T01 lands.
+>
+> **Corrected 2026-09-17 (groom):** §32 (quarantine the AppIcon and Launch flakes) was filed and shipped since. Open: still none; every section is stamped or moved. File closeout belongs to `process-todo-file`, not this groom.
 
 ## Inputs
 

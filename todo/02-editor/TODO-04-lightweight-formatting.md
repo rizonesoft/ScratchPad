@@ -59,7 +59,7 @@ Why this section exists: formatting is data on top of the buffer, not a second b
 
 Why this section exists: the toolbar is the surface. Bold, italic, lists, nested lists, and strikethrough must behave as Notepad's.
 
-**Fidelity:** Notepad formatting toolbar -- `resources/baseline/formatting/`. Buttons, order, and active states match the capture.
+**Fidelity:** Notepad formatting toolbar -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Buttons, order, and active states match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/formatting/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can format text as in Notepad. Consumer: the buffer annotations, through the undoable edit path.
 
@@ -69,7 +69,7 @@ Why this section exists: the toolbar is the surface. Bold, italic, lists, nested
 
 **Groomed 2026-09-13:** Notepad audit: headings, nested-list clipboard, links with the scheme gate, and Clear Formatting are now explicit.
 
-- [ ] `src/Notepad/FormatToolbar.xaml` offers Notepad's inline styles and lists with active states. Done when: the capture comparison passes.
+- [ ] `src/ScratchPad/FormatToolbar.xaml` offers Notepad's inline styles and lists with active states. Done when: the capture comparison passes. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5).
 - [ ] Nested lists indent and outdent as Notepad's. Done when: the nesting fixtures pass.
 - [ ] Every format change is undoable per Notepad's grouping. Done when: the undo fixtures pass.
 - [ ] Headings apply through the H1 toolbar picker with title, subtitle, section, and subsection levels. Done when: each level is driven. Source: https://www.windowslatest.com/2025/07/02/windows-11-notepads-rich-text-formatting-markdown-is-now-available/
@@ -104,7 +104,7 @@ Why this section exists: users type Markdown by hand. It must render, and the fi
 
 Why this section exists: tables are the newest formatting surface. Both entry paths (toolbar, Markdown pipes) must work and agree.
 
-**Fidelity:** Notepad tables -- `resources/baseline/formatting/`. Grid behavior and pipe-syntax rendering match the capture.
+**Fidelity:** Notepad tables -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Grid behavior and pipe-syntax rendering match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/formatting/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
 **Job:** The user can make tables as in Notepad. Consumer: the buffer annotations and the saved Markdown source.
 
