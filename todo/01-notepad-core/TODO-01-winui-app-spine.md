@@ -82,6 +82,7 @@ track: N1
 |  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
+|  31   |   §31   | Fresh launch opens a truly empty tab | §2 |  [ ]   |
 
 ---
 
@@ -929,6 +930,29 @@ Why this section exists: §19 locks the file but the decrypted buffer still rest
 > **CRUD:** applicable | refusal wrote no sidecar (read back via dir absence); session plus checkpoint wrote path-only entries (read back via null Content plus the clean app-data scan); relaunch wrote a ghost (read back via empty box, no unlock prompt, still-locked bytes)
 > **Duration:** 22
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 31. Fresh Launch Opens a Truly Empty Tab
+
+Why this section exists: the first CI evidence frame (D00 T02 §7, run 35230396785) shows a fresh-profile launch whose Untitled tab reads "4 characters" and carries a dirty dot: the new tab holds 4 characters it should not. Stock opens empty and clean.
+
+**Fidelity:** stock fresh window -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` (one empty Untitled tab). Our fresh launch matches: zero characters, no dirty dot.
+
+**Job:** The user starts from nothing, not from phantom content. Consumer: the §2 new-tab path, which gains the empty-clean guarantee.
+
+**Treatment:** Name the 4 characters' source (seeded content, restore residue, or counter artifact against `StatusSegments.CountCharacters`, which reads 0 for empty) and fix at the root. Cheaper substitute that fails the checkpoint: clearing the box after launch while the source still seeds.
+
+**Chrome:** No visual change; the empty tab already renders.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §7 -- filed from its evidence frame; the fix re-proves on a fresh frame.
+- -> SOURCE: CI-evidence-frame-35230396785 (fresh-profile launch, Untitled reads "4 characters" with dirty dot; `src/Notepad.Core/StatusSegments.cs:51` reads 0 for empty, so the doc holds 4 real chars)
+
+- [ ] The 4 characters' source is named with evidence (seeded content, restore residue, or counter artifact). Done when: the source is quoted here.
+- [ ] Fresh-profile launch opens one empty Untitled tab reading "0 characters" with no dirty dot. Done when: a UI drive launches clean-profile and asserts both.
+- [ ] Commit: `"notepad-core: open fresh tabs truly empty"`
+
+**Test checkpoint:** Clean-profile launch driven empty and clean; the source named. Cheaper substitute that fails: a unit-only assertion with the launch path undriven.
 
 ## Verification
 
