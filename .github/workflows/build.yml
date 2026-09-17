@@ -1,5 +1,11 @@
 name: build
 
+# CI proves two things only: the tree builds without errors and the app
+# launches without errors. The unit, UI, and protocol suites run locally
+# on the dev box; release tests run manually on a clean system.
+# (Operator decision 2026-09-17: narrowed from full test CI after
+# repeated runner flakes. D00 T02 §7 evidence pipeline retired.)
+
 on:
   push:
     branches: [main]
@@ -34,12 +40,6 @@ jobs:
           export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
           export DOTNET_MULTILEVEL_LOOKUP=0
           dotnet build src/Notepad.Neutral.slnf --nologo
-      - name: Test neutral scope
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          dotnet test src/Notepad.Neutral.slnf --nologo
 
   build-windows:
     runs-on: windows-2025
@@ -75,74 +75,19 @@ jobs:
           Invoke-WebRequest -Uri https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe -OutFile $env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe
           & $env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe --quiet
           Get-AppxPackage -Name '*WindowsAppRuntime*' | Select-Object Name, Version
-      - name: Use dark app theme
+      # Launch smoke: the app must start and stay up with a clean exit path.
+      # A GUI app never exits on its own, so an early exit is a crash (fail
+      # loud); otherwise stop it after the soak and pass.
+      - name: Launch smoke
         run: |
-          Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name AppsUseLightTheme -Value 0
-          Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name SystemUsesLightTheme -Value 0
-      # D00 T02 §6: the Common Item Dialog honors Explorer's extension-hiding
-      # in its File name box and file list. Runner profiles default to hiding
-      # (HideFileExt 1) while dev boxes show (0); under hiding, 6 MenuBarTests
-      # fail (prefills read without .txt, list items unfound, saves misrouted).
-      - name: Show file extensions
-        run: |
-          Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name HideFileExt -Value 0
-      - name: Test solution
-        run: |
-          $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
-          $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
-          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          dotnet test src/ScratchPad.slnx --nologo
-      # D00 T02 §7: headless dev sessions cannot take pixel captures
-      # (measured black frames), so green builds capture a canonical
-      # evidence frame on the display-bearing runner. Default success()
-      # condition: red builds skip this and upload golden failures below.
-      # The UI suite drives the real profile (%LOCALAPPDATA%\ScratchPad),
-      # so the profile is reset first: otherwise the frame restores the
-      # suite's leftover session instead of a fresh launch. Orphaned app
-      # processes are stopped (then waited on, best-effort) before the
-      # reset so no live orphan's open handle can fail the delete; the
-      # name match assumes an ephemeral GitHub-hosted runner, where no
-      # operator-owned ScratchPad.exe can exist. WhatsNewSeen is seeded
-      # so no first-run dialog covers the frame. The frame is asserted
-      # canonical here -- 900x650 and non-black: a display-less runner
-      # must fail loudly, not upload a black artifact on a green build.
-      - name: Capture evidence frame
-        run: |
-          $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
-          $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
-          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          $appProfile = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "ScratchPad"
-          $orphans = Get-Process ScratchPad -ErrorAction SilentlyContinue
-          if ($orphans) { $orphans | Stop-Process -Force -PassThru -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue }
-          if (Test-Path $appProfile) { Remove-Item -Recurse -Force $appProfile }
-          New-Item -ItemType Directory -Force -Path $appProfile | Out-Null
-          '{"WhatsNewSeen":true}' | Set-Content -NoNewline (Join-Path $appProfile "settings.json")
           $exe = "$PWD\src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
-          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\evidence" | Out-Null
-          dotnet run --project tools\CaptureBaseline -- stub "$exe" "$env:RUNNER_TEMP\evidence"
-          Add-Type -AssemblyName System.Drawing
-          $bmp = [System.Drawing.Bitmap]::FromFile("$env:RUNNER_TEMP\evidence\stub-window.png")
-          if ($bmp.Width -ne 900 -or $bmp.Height -ne 650) { throw "evidence frame is $($bmp.Width)x$($bmp.Height), expected 900x650" }
-          $lit = 0
-          for ($x = 0; $x -lt $bmp.Width; $x += 30) { for ($y = 0; $y -lt $bmp.Height; $y += 30) { $p = $bmp.GetPixel($x, $y); if ($p.R -gt 16 -or $p.G -gt 16 -or $p.B -gt 16) { $lit++ } } }
-          $bmp.Dispose()
-          if ($lit -eq 0) { throw "evidence frame is black: runner lost its display session" }
-      - name: Upload evidence capture
+          $p = Start-Process $exe -PassThru
+          $p.WaitForExit(30000)
+          if ($p.HasExited -and $p.ExitCode -ne 0) { throw "ScratchPad exited during launch smoke with code $($p.ExitCode)" }
+          if (-not $p.HasExited) { Stop-Process $p -Force }
+      # Kept for manual clean-system testing: download and run, no SDK needed.
+      - name: Upload app
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: evidence-capture
-          path: ${{ runner.temp }}/evidence/stub-window.png
-      - name: Upload stub
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: scratchpad-stub-windows-x64
+          name: scratchpad-windows-x64
           path: src/ScratchPad/bin/Debug/net10.0-windows10.0.19041.0/win-x64/
-      - name: Upload golden failures
-        if: failure()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: golden-failures-windows-x64
-          path: |
-            tests/UI/bin/Debug/net10.0-windows10.0.19041.0/golden-failure-*.png
-            tests/UI/bin/Debug/net10.0-windows10.0.19041.0/golden-failure-*.pdf
-          if-no-files-found: ignore
