@@ -705,6 +705,10 @@ SEVERITY_MAP: dict[str, str] = {
     # that pointer, so a dead pointer would hide work (writers-and-reviewers §2).
     "moved-target-missing": "fatal",
     "pending-control-contract": "fatal",
+    # a stamp dated after the Opus-panel rule landed whose findings carry no
+    # panel verdicts reads as reviewed evidence while verifying nothing --
+    # the same lie as a malformed stamp, so the same severity (D00 T01 §9).
+    "stamp-no-opus-panel": "fatal",
 }
 
 
@@ -3365,6 +3369,175 @@ track: Z1
             True,
         )
         bad.unlink()
+        # Rule 16 (D00 T01 §9): a stamp dated after the Opus-panel rule
+        # landed must name findings carrying the panel's verdicts. One
+        # fixture TODO carries all six shapes; the findings files live
+        # under the fixture root's docs/ so the TODO_DIR.parent lookup
+        # resolves exactly as on the live tree. Assertions follow the
+        # round-2 lesson above: on the LINE (fixture plus sentence), never
+        # on the buffer, because cmd_validate walks the whole tree.
+        panel_todo = root / "todo" / "90-selftest" / "TODO-06-panel.md"
+        panel_todo.write_text(
+            """---
+schema_version: 1
+id: self-test-panel
+domain: 90-selftest
+status: active
+title: "TODO-06 -- Self-test panel"
+track: Z1
+---
+
+# TODO-06 -- Self-test panel
+
+> **Goal:** Fixture. Never shipped, never read by a human.
+
+## Implementation Order
+
+| Order | Section | Deliverable | Depends On | Status |
+| :---: | :-----: | ----------- | ---------- | :----: |
+|   1   |   §1    | Findings without panel | - |  [x]   |
+|   2   |   §2    | Findings file missing | - |  [x]   |
+|   3   |   §3    | Review names no file | - |  [x]   |
+|   4   |   §4    | Panel missing a lens | - |  [x]   |
+|   5   |   §5    | Clean panel | - |  [x]   |
+|   6   |   §6    | Cutoff stamp, no panel | - |  [x]   |
+
+---
+
+## 1. Findings without panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §1 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-nopanel.md
+
+## 2. Findings file missing
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §2 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-absent.md
+
+## 3. Review names no file
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §3 | fixture
+> **Review:** round 1, session lenses only
+
+## 4. Panel missing a lens
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §4 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-partial.md
+
+## 5. Clean panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §5 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+
+## 6. Cutoff stamp, no panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-17 | §6 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-absent.md
+""",
+            encoding="utf-8",
+        )
+        rev_dir = root / "docs" / "reviews"
+        rev_dir.mkdir(parents=True)
+        (rev_dir / "90-panel-nopanel.md").write_text(
+            "# Review: fixture\n\n## Self-review\n\nSession lenses only, no panel.\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-partial.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-clean.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: advisory**\n"
+            "**integration: needs-attention**\n**record: approve**\n"
+            "\n## Gates re-run\n\nrecord approve appears again outside the panel section.\n",
+            encoding="utf-8",
+        )
+        pbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            cmd_validate(None)
+        panel_out = pbuf.getvalue().splitlines()
+        check(
+            "stamp-no-opus-panel is a FATAL class",
+            SEVERITY_MAP.get("stamp-no-opus-panel"),
+            "fatal",
+        )
+        check(
+            "findings without the panel heading fire",
+            any(
+                "TODO-06-panel.md" in ln and "§1" in ln and "carry no `Opus panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "missing findings file fires",
+            any(
+                "TODO-06-panel.md" in ln and "§2" in ln and "does not exist" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "Review line without a findings path fires",
+            any(
+                "TODO-06-panel.md" in ln and "§3" in ln and "names no findings file" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "panel missing one lens names it",
+            any(
+                "TODO-06-panel.md" in ln and "§4" in ln and "lacks verdicts for: record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "clean panel stays silent",
+            any("TODO-06-panel.md" in ln and "§5" in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "cutoff-dated stamp without a panel stays silent",
+            any("TODO-06-panel.md" in ln and "§6" in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        panel_todo.unlink()
+        for extra in ("90-panel-nopanel.md", "90-panel-partial.md", "90-panel-clean.md"):
+            (rev_dir / extra).unlink()
         check(
             "progress leaves duration null where no stamp recorded one",
             by_id[0]["sections"][1].get("duration_minutes"),

@@ -385,6 +385,77 @@ def validate(graph, _args) -> int:
         for lineno, detail in t.malformed_stamps:
             flag("malformed-stamp", f"{t.path}:{lineno}: refused '> **Verified:** {detail}")
 
+    # 16. a stamp dated after the Opus-panel rule landed must point at
+    # findings carrying the panel's verdicts (D00 T01 §9). The skill makes
+    # headless-Opus lens verdicts mandatory; this rule is what stops a
+    # session stamping without running the panel. It enforces the RECORD
+    # (findings file exists, has an `Opus panel` section, all four lenses
+    # carry a verdict word), which defeats forgetfulness; it cannot prove
+    # Opus ran rather than a hand-typed verdict, and does not try.
+    # Grandfathering is date-bound like rule 8b/13: stamps on or before
+    # the rule's landing date predate enforcement (§6 stamped 2026-09-17
+    # without a panel and stays silent). FATAL, not WARN: an unpaneled
+    # stamp reads as reviewed evidence while verifying nothing.
+    PANEL_CUTOFF = "2026-09-17"
+    PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
+    PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
+    FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
+    PANEL_HEADING_RE = re.compile(r"^#{1,4}\s+.*opus panel", re.IGNORECASE | re.MULTILINE)
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is None or s.stamped_on <= PANEL_CUTOFF:
+                continue
+            where = f"{t.path}:{s.line}: §{num} stamped {s.stamped_on}"
+            body = getattr(s, "review_body", None) or ""
+            m = FINDINGS_RE.search(body)
+            if not m:
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} names no findings file in its Review: line "
+                    f"(needs 'Raw findings: <path>' to panel verdicts)",
+                )
+                continue
+            # TODO_DIR.parent, not REPO: the self-test rebinds TODO_DIR to a
+            # fixture tree, and findings paths are repo-relative (rule 12's
+            # lesson applied one level up).
+            findings = graph.TODO_DIR.parent / m.group(1)
+            try:
+                text = findings.read_text(encoding="utf-8")
+            except OSError:
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} names findings {m.group(1)}, which does not exist",
+                )
+                continue
+            hm = PANEL_HEADING_RE.search(text)
+            if not hm:
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} findings {m.group(1)} carry no `Opus panel` section",
+                )
+                continue
+            panel = text[hm.end():]
+            nxt = re.search(r"^#{1,4}\s+", panel, re.MULTILINE)
+            if nxt:
+                panel = panel[:nxt.start()]
+            missing = [
+                lens
+                for lens in PANEL_LENSES
+                if not re.search(
+                    lens + r"\W{0,12}\b(" + "|".join(PANEL_VERDICTS) + r")\b",
+                    panel,
+                    re.IGNORECASE,
+                )
+            ]
+            if missing:
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} findings {m.group(1)} panel lacks verdicts for: "
+                    + ", ".join(missing),
+                )
+
     # The warning BASELINE. A count that only grows is a count nobody reads,
     # and 17 of these have stood for over a week: 15 name STAMPED sections
     # whose warning text says in as many words "do not reopen the stamp to add
