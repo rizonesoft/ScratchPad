@@ -53,6 +53,7 @@ A coverage claim rests on the source it was derived from. This table was derived
 
 ## Active TODOs
 
+- [00 Workspace] [TODO-02 Test Backbone](./00-workspace/TODO-02-test-backbone.md) -- golden comparison deterministic on CI (§6); harness otherwise shipped.
 - [01 Notepad Core] [TODO-01 WinUI App Spine](./01-notepad-core/TODO-01-winui-app-spine.md) -- window, tab model, file IO with encoding detection, open/save round-trips.
 - [01 Notepad Core] [TODO-02 Menus, Settings and Status](./01-notepad-core/TODO-02-menus-settings-status.md) -- full menu bar, settings page, status bar, print slice.
 - [02 Editor] [TODO-01 Editing Surface](./02-editor/TODO-01-editing-surface.md) -- text engine, caret and selection, undo/redo, zoom, wrap, line endings.
@@ -77,7 +78,6 @@ A coverage claim rests on the source it was derived from. This table was derived
 ## Completed TODOs
 
 - [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- completed 2026-09-14.
-- [00 Workspace] [TODO-02 Test Backbone](./00-workspace/TODO-02-test-backbone.md) -- completed 2026-09-14.
 
 ## Queries
 

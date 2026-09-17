@@ -2,7 +2,7 @@
 schema_version: 1
 id: test-backbone
 domain: 00-workspace
-status: done
+status: active
 title: "TODO-02 -- Test Backbone"
 track: W0
 ---
@@ -37,6 +37,7 @@ track: W0
 |   3   |   §3    | Golden capture store and refresh | §2 |  [x]   |
 |   4   |   §4    | ACP loopback fixture | §1 |  [x]   |
 |   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [x]   |
+|   6   |   §6    | Golden comparison deterministic on CI | §3 |  [ ]   |
 
 ---
 
@@ -149,6 +150,22 @@ Why this section exists: UI and protocol tests flake. Without a procedure, flake
 > **CRUD:** applicable | probe wrote pass/fail outcomes (read back across six runs); quarantine wrote a skip (read back via Skipped count with suite green); soak wrote trx plus artifacts (read back via 22 Passed lines per run); removal wrote a decision row (read back in the doc)
 > **Duration:** 24
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 6. Golden Comparison Deterministic on CI
+
+Why this section exists: the golden tests pass on the capture machine and fail on CI for identical code, so every Windows build is red and no push proves itself. Since run 35098508920 (2026-09-16, `224998a`) the `build-windows` job fails at the Test step with `golden-failure-*.png` artifacts (79 KB at run 35100444585, 153 KB at run 35152942415), while the same commits passed the golden tests on Conclave-PC at stamp time (the D01 T02 §3 and §4 reviews quote the suites green). Measured 2026-09-17: the committed goldens are pixel-identical across refreshes inside the compared region yet mathematically flat (backdrop patch red channel mean 45.0, stdev 0.00, no Mica noise), i.e. captured without Mica rendering; `resources/baseline/tolerance.json` allows 0.1% (`maxDifferentFraction` 0.001, `perPixelDelta` 96, top 8% / sides 2% / bottom 3% cropped). A second signature sits in the same window: run 35082905551 (`b5ec3ac`) failed on Windows with NO golden artifacts, a functional failure of unnamed cause (job logs need repo admin rights; unauthenticated API reads return 403). Paths below assume the landed D01 T02 §13 rename (`src/ScratchPad.slnx`); pre-rename the solution is `src/IntelligentNotepad.slnx`.
+
+- [ ] Download `golden-failures-windows-x64` from run `35152942415` (operator step, needs auth) and record the failing test names plus each measured diff fraction against the 0.1% threshold in this section. Done when: test names and diff numbers are quoted here. -> SOURCE: CI build runs 35098508920/35100444585/35152942415 (2026-09-16), golden-failure artifacts on Windows, identical code green on Conclave-PC at stamp time.
+- [ ] Name the single renderer difference between the CI fresh capture and the committed golden (Mica present/absent, font smoothing, DPI/scale resampling, DWM composition) with a side-by-side pixel measurement recorded in `docs/reviews/00-workspace/D00-T02-s6.md`. Done when: the difference is named with pixel evidence, not a guess.
+- [ ] Fix the diagnosed cause at its root in `tests/UI/GoldenComparer.cs`, `tests/UI/UiCapture.cs`, or `resources/baseline/tolerance.json` (mask the unstable region, normalize the unstable rendering, or assert the rendering precondition before capture). Done when: the fix and the rejected alternatives are recorded with reasons.
+- [ ] `resources/baseline/README.md` gains the environment precondition the diagnosis found, with its verification command. Done when: the doc states the precondition and how to check it.
+- [ ] Re-prove the full UI suite on a Windows host and quote the next CI `build-windows` job green with zero golden-failure artifacts. Done when: both greens are quoted with the run id.
+- [ ] Retire or name the `b5ec3ac` non-golden signature: re-run the current UI suite on Windows; green retires it as unreproduced (recorded here with cause unknown), red names the failing test and folds it into this section's fix. Done when: the signature is retired-with-record or named.
+- [ ] Commit: `"workspace: make golden comparison deterministic on CI"`
+
+**Test checkpoint:** `dotnet test src/ScratchPad.slnx` green on a Windows host and the CI `build-windows` job green with no `golden-failures-windows-x64` artifact. Cheaper substitute that fails: raising `maxDifferentFraction` until CI passes without a named renderer cause.
+
+**Needs:** Windows host (build/test)
 
 ## Verification
 
