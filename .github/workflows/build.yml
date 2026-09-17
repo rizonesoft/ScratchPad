@@ -92,6 +92,23 @@ jobs:
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
           dotnet test src/ScratchPad.slnx --nologo
+      # D00 T02 §7: headless dev sessions cannot take pixel captures
+      # (measured black frames), so green builds capture a canonical
+      # evidence frame on the display-bearing runner. Default success()
+      # condition: red builds skip this and upload golden failures below.
+      - name: Capture evidence frame
+        run: |
+          $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
+          $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
+          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          $exe = "$PWD\src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
+          New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\evidence" | Out-Null
+          dotnet run --project tools\CaptureBaseline -- stub "$exe" "$env:RUNNER_TEMP\evidence"
+      - name: Upload evidence capture
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: evidence-capture
+          path: ${{ runner.temp }}/evidence/stub-window.png
       - name: Upload stub
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

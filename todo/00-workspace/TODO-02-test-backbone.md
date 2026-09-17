@@ -180,6 +180,8 @@ Why this section exists: the golden tests pass on the capture machine and fail o
 
 ## 7. CI Evidence Capture Pipeline
 
+> **Started:** 2026-09-17T13:58:00Z
+
 Why this section exists: eyeball-evidence crops (D01 T02 §14 item 4 is the first) cannot be taken from a window-station-less session: screen reads return black and input is dead, measured on Venom-PC (golden fresh byte-identical to a black frame, `CopyFromScreen` invalid handle). CI windows runners have displays, so the pipeline captures there: a windows-job step runs `tools/CaptureBaseline` against the built exe and uploads the PNG as an artifact, and the evidence procedure (download, eyeball checklist, commit naming) lands in `resources/baseline/README.md`. -> XREF: D01 T02 §14 (first consumer; its item 4 is deferred here); -> SOURCE: CI-evidence-gap-2026-09-17 (Venom-PC headless session, black captures, D01 T02 §14 item 4 blocked).
 
 - [ ] The windows CI job captures the built app and uploads the PNG as an `evidence-capture` artifact on green builds (red builds already upload golden failures). Done when: a main run carries the artifact with a non-black 900x650 PNG. First use is this section's item 2, not a synthetic probe.
