@@ -102,14 +102,15 @@ Why this section exists: budgets nobody measures are decorations. The perf tests
 
 ## 6. Flake Policy and Quarantine Operation
 
-Why this section exists: the quarantine procedure from `D00 T02 §5` needs an operator: triage cadence, fix windows, and escalation.
+Why this section exists: the quarantine procedure from `D00 T02 §5` needs an operator: triage cadence, fix windows, and escalation. Mass-failure runs need the same operator with a different verdict: a runner incident, not N test quarantines.
 
 - [ ] The flake policy sets triage cadence, fix window, and escalation for quarantined tests. Done when: the policy is written in the strategy doc.
 - [ ] A quarantined test is retried on its schedule and either reinstated or removed with a recorded decision. Done when: the lifecycle is demonstrated once for real.
 - [ ] Quarantine size is reported in CI; growth past the committed limit fails the run. Done when: the limit is tested.
+- [ ] Mass-failure runs (many tests red at once on binaries proven green before and after) are triaged as runner incidents with a recorded verdict, not filed as N test quarantines. Done when: the 2026-09-17 incident series (runs 35238610077, 35241743948) is recorded as the first verdict under the policy, with its evidence (TODO-only or docs-only commits, adjacent greens, same image).
 - [ ] Commit: `"quality: operate the flake policy"`
 
-**Test checkpoint:** Lifecycle demonstrated for real; quarantine growth fails CI. Cheaper substitute that fails: quarantine as a trash can with no triage.
+**Test checkpoint:** Lifecycle demonstrated for real; quarantine growth fails CI; one incident verdict recorded. Cheaper substitute that fails: quarantine as a trash can with no triage.
 
 ## Verification
 

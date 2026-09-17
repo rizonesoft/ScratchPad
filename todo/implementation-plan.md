@@ -254,7 +254,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D06 T01 §3` | Notepad parity UI suites                        |   5   |
 | [ ] | `D06 T01 §4` | AI surface UI suites                            |   4   |
 | [ ] | `D06 T01 §5` | Perf budgets enforced in CI                     |   4   |
-| [ ] | `D06 T01 §6` | Flake policy and quarantine operation           |   4   |
+| [ ] | `D06 T01 §6` | Flake policy and quarantine operation           |   5   |
 | [ ] | `D06 T02 §1` | Scripted agent library                          |   4   |
 | [ ] | `D06 T02 §2` | Schema pin and drift detection                  |   4   |
 | [ ] | `D06 T02 §3` | Version matrix (v1 and v2)                      |   4   |
