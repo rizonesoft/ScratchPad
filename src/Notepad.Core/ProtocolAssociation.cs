@@ -2,9 +2,9 @@ namespace Notepad.Core;
 
 // Custom protocol registration plans, owned by D01 T01 §26. Mirrors the
 // FileAssociation shape: pure plans in Core, executed against HKCU by the
-// app registrar, driven through verbs. The scheme carries absolute paths
-// as `scratchpad://<url-encoded absolute path>`; the launch
-// parser maps well-formed links to files and ignores the rest.
+// app registrar, driven through verbs. The scheme carries absolute paths as
+// `scratchpad://<url-encoded absolute path>`; the launch parser maps
+// well-formed links to files and ignores the rest.
 public static class ProtocolAssociation
 {
     public const string Scheme = "scratchpad";

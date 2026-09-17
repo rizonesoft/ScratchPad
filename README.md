@@ -76,7 +76,7 @@ The TODO system (graph script, format, skills, plan mechanics) is a day-1 port o
 Ported deliberately later, when the repo earns them:
 
 - `plan-gate.py` (routing authority with host probes and clock parks): `query ready` plus the phase tables route until then.
-- External review panel scripts (`review-batch`, `review-rounds`, `review-families`, `review-slices`): the session performs the lenses itself per `review-todo-section` until then.
+- External review panel scripts (`review-batch`, `review-rounds`, `review-families`, `review-slices`): lens verdicts come from the headless Opus panel per `review-todo-section` until then.
 - `section_commit_gate.py` (stamp provenance at commit time): `validate` plus review carry the contract until then.
 - Run-guard Stop hook: `process-phase` holds completion-first as procedure until then.
 - `coming-soon-inspect.py`: the `pending-control-contract` severity class stays reserved until it lands.

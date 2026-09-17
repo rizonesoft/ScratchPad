@@ -7,7 +7,7 @@ description: Quality-gate a just-implemented TODO section -- self-review, indepe
 
 The gate between "code exists" and "the row says `[x]`". Nothing else may flip that row.
 
-**Review is mandatory.** A `Verified:` stamp whose `Review:` line does not record real review work, with a committed findings file, is not a valid stamp. Until the external review panel is wired (see Deferred in the repo README), the session performs the lenses itself, in separate passes, against the recorded candidate: and the findings file is what makes that honest.
+**Review is mandatory.** A `Verified:` stamp whose `Review:` line does not record real review work, with a committed findings file, is not a valid stamp. Self-review stays in-session, but the lens verdicts come from the headless Opus panel below, never from the implementing session alone: and the findings file is what makes that honest.
 
 ## Use this skill when
 
@@ -76,7 +76,25 @@ Run each lens as a separate pass over the candidate, recording findings in the f
 | `design` | On a surface: judge the RENDERED surface against the baseline or contract, never source alone. Screenshots or driven captures, not impressions. |
 | `record` | Is the record honest: does the stamp's evidence match what ran, do deferrals name owners, is the row flip earned? |
 
-Each lens ends in a verdict: `approve`, `needs-attention` (with findings), or `advisory` (noted, not blocking). Findings are fixed in the candidate and the affected lens re-runs: iterate until no lens reports anything the plan would fix, with a cap of 4 rounds. A unit patched three rounds running is stopped and re-thought instead of patched again.
+Each lens ends in a verdict: `approve`, `needs-attention` (with findings), or `advisory` (noted, not blocking). Findings are fixed in the candidate and the affected lens re-runs: iterate until no lens reports anything the plan would fix, with a cap of 5 rounds. A unit patched three rounds running is stopped and re-thought instead of patched again.
+
+### The headless Opus panel
+
+Run the lenses through headless Claude Code on Opus, with the candidate diff and the section contract inline (no tools needed, nothing to install):
+
+```bash
+git show <candidate> > /tmp/review-diff.patch
+{ echo 'You are an independent code reviewer. Review the candidate diff below against the section contract below it.';
+  echo 'Return one verdict per lens (approve / needs-attention / advisory): adversarial, consistency, integration, record.';
+  echo 'Every non-approve verdict names files with line numbers and the exact defect. No other text.';
+  echo '--- SECTION CONTRACT ---'; <section text: Why, items with Done-whens, checkpoint>;
+  echo '--- CANDIDATE DIFF ---'; cat /tmp/review-diff.patch; } > /tmp/review-prompt.md
+claude "$(cat /tmp/review-prompt.md)" -p --model opus --allowedTools Read
+```
+
+(Prompt first as the positional argument, `--allowedTools` last: the flag is variadic and swallows anything after it. `Read` keeps the panel read-only; the diff and contract ride inline.)
+
+Record the panel's per-lens verdicts verbatim in the findings file under an `Opus panel` heading. A `needs-attention` verdict opens a fix-loop round: fix in the candidate, commit the fix, and re-run the panel against the NEW candidate diff with the prior verdicts appended (so fixed findings stay fixed and only live ones re-report). The loop is bounded, never infinite: at most 5 panel rounds per review, and a unit patched in 3 consecutive rounds is stopped and re-thought instead of patched again. If round 5 still reports `needs-attention`, file each leftover through `add-todo` (a new section, or an item on an existing section when small), record the filed refs in the findings file, and stamp with the `Review:` line naming the filed follow-ups: tracked work, not dropped work. If the panel is unreachable (no CLI, auth failure), stop and say so: a session-only lens pass is not a substitute, and filing the outage does not earn the stamp.
 
 ### 4. Re-run the gates
 

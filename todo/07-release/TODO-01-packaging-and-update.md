@@ -50,7 +50,7 @@ Why this section exists: the package is the product as the user meets it. It bui
 
 **Groomed 2026-09-13:** Notepad audit: the x64 plus ARM64 architecture matrix is now explicit.
 
-- -> XREF: D01 T02 §13 -- the rename this packaging pins (exe, AppId, ProgId); §13 lands first so identity is final.
+- -> XREF: D01 T02 §13 -- the rename this packaging pins (exe, AppId, ProgId, URL scheme); §13 lands first so identity is final.
 
 - [ ] CI builds a signed MSIX from the §-chosen packaging project. Done when: the artifact downloads from the run.
 - [ ] Package identity (name, publisher, version from the build) is pinned and recorded. Done when: the identity doc exists.

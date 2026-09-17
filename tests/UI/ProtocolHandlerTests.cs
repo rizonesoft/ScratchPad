@@ -10,8 +10,8 @@ using Xunit;
 
 namespace UI;
 
-// D01 T01 §26: the scratchpad:// protocol. Registration cycles
-// through the verbs with the live keys read back; links open their
+// D01 T01 §26: the scratchpad:// protocol. Registration cycles through
+// the verbs with the live keys read back; links open their
 // carried file fresh; malformed links open a bare window with nothing
 // offered; a shell-executed link proves the click path end to end.
 [Collection("UI tests")]
