@@ -98,17 +98,22 @@ jobs:
       # condition: red builds skip this and upload golden failures below.
       # The UI suite drives the real profile (%LOCALAPPDATA%\ScratchPad),
       # so the profile is reset first: otherwise the frame restores the
-      # suite's leftover session instead of a fresh launch. WhatsNewSeen
-      # is seeded so no first-run dialog covers the frame. The frame is
-      # asserted non-black here: a display-less runner must fail loudly,
-      # not upload a black artifact on a green build.
+      # suite's leftover session instead of a fresh launch. Orphaned app
+      # processes are stopped (and waited on) before the reset so no dead
+      # handle can fail the delete; the name match assumes an ephemeral
+      # GitHub-hosted runner, where no operator-owned ScratchPad.exe can
+      # exist. WhatsNewSeen is seeded so no first-run dialog covers the
+      # frame. The frame is asserted canonical here -- 900x650 and
+      # non-black: a display-less runner must fail loudly, not upload a
+      # black artifact on a green build.
       - name: Capture evidence frame
         run: |
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
           $appProfile = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "ScratchPad"
-          Get-Process ScratchPad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $orphans = Get-Process ScratchPad -ErrorAction SilentlyContinue
+          if ($orphans) { $orphans | Stop-Process -Force -PassThru -ErrorAction SilentlyContinue | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue }
           if (Test-Path $appProfile) { Remove-Item -Recurse -Force $appProfile }
           New-Item -ItemType Directory -Force -Path $appProfile | Out-Null
           '{"WhatsNewSeen":true}' | Set-Content -NoNewline (Join-Path $appProfile "settings.json")
