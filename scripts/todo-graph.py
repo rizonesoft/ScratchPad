@@ -3421,6 +3421,7 @@ track: Z1
 |  24   |   §24   | Ended quote ends its fence | - |  [x]   |
 |  25   |   §25   | Later quoted block swallows nothing | - |  [x]   |
 |  26   |   §26   | Quoted fence never hides a later panel | - |  [x]   |
+|  27   |   §27   | No lookahead window of any size | - |  [x]   |
 
 ---
 
@@ -3683,6 +3684,16 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §26 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quotehide.md
+
+## 27. No lookahead window of any size
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §27 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-window1.md
 """,
             encoding="utf-8",
         )
@@ -3845,6 +3856,13 @@ track: Z1
             "## Opus panel (round 2)\n\n"
             "**adversarial: needs-attention**\n"
             "\n> ```\n> tail\n> ```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-window1.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n"
+            "\n> ```\nplain\n> ```\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -4031,6 +4049,14 @@ track: Z1
             ),
             True,
         )
+        check(
+            "no lookahead window of any size",
+            any(
+                "TODO-06-panel.md" in ln and "§27 " in ln and "unbalanced fence opened at line 12" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -4056,6 +4082,7 @@ track: Z1
             "90-panel-quoteend.md",
             "90-panel-laterquote.md",
             "90-panel-quotehide.md",
+            "90-panel-window1.md",
         ):
             (rev_dir / extra).unlink()
         check(
