@@ -82,7 +82,7 @@ track: N1
 |  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
-|  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §8, §11 |  [ ]   |
+|  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [ ]   |
 
 ---
 
@@ -942,12 +942,12 @@ Why this section exists: two more UI tests failed nondeterministically on the D0
 **Treatment:** Quarantine by the D00 T02 §5 procedure verbatim (prove, Skip with the quarantine stamp, quarantine-list rows), one row per test. No test logic changes; the fix-or-remove window that follows belongs to the owners, not this section. Cheaper substitute that fails the checkpoint: re-running red builds until one goes green.
 
 - -> XREF: D00 T02 §7 -- filed from its pipeline run; the flakes red-flagged its round-2 run.
-- -> SOURCE: CI-flakes-2026-09-17b (`UI.AppIconTests.WindowChromeIconMatchesAsset`: UIA/COM timeout; `UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates`: `Assert.NotNull` in `WaitForDialog`; both red on run 35234746568 attempt 1, green on the `--failed` rerun of the same commit. Same slow-runner family as the D01 T02 §16 trio; the owners confirm via soak.)
+- -> SOURCE: CI-flakes-2026-09-17b (`UI.AppIconTests.WindowChromeIconMatchesAsset`: UIA/COM timeout at attach (`AppIconTests.cs:40`); `UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates`: `Assert.NotNull` in `WaitForDialog` for `SavePromptDialog` (call site `LaunchTests.cs:216`; the `CreateFileDialog` offer passed); both red on run 35234746568 attempt 1, green on the `--failed` rerun of the same commit. Same slow-runner family as the D01 T02 §16 trio; the owners confirm via soak.) **Corrected 2026-09-17 (§32 panel round 1):** the seed named the offer dialog as the failing surface; the stack proves the Ctrl+W save prompt, owned by §7, so the owner moved from §8 and the Depends On follows.
 
-- [x] `WindowChromeIconMatchesAsset` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S32 chrome-icon-uia-timeout")]` on `tests/UI/AppIconTests.cs:35`; row added with the UIA-timeout signature, both runs quoted, owner D01 T01 §11, due 2026-09-24.
-- [x] `MissingFileOfferYesBindsTabAndSaveCreates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S32 missing-offer-dialog-null")]` on `tests/UI/LaunchTests.cs:193`; row added with the null-dialog signature, both runs quoted, owner D01 T01 §8, due 2026-09-24.
-- [ ] A main CI run is green with both tests skipped. Done when: the run id is quoted with the skip line.
-- [ ] Commit: `"notepad-core: quarantine the AppIcon and Launch CI flakes"`
+- [x] `WindowChromeIconMatchesAsset` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S11 chrome-icon-uia-timeout")]` on `tests/UI/AppIconTests.cs:35` (**Corrected 2026-09-17 (§32 panel round 1):** the owner slot first named the quarantining section §32; the procedure names the owning section); row added with the UIA-timeout signature, both runs quoted, owner D01 T01 §11, due 2026-09-24.
+- [x] `MissingFileOfferYesBindsTabAndSaveCreates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S7 save-prompt-dialog-null")]` on `tests/UI/LaunchTests.cs:193`; row added with the save-prompt null signature (call site `:216`, offer dialog passed), both runs quoted, owner D01 T01 §7, due 2026-09-24. **Corrected 2026-09-17 (§32 panel round 1):** id, owner slot, and signature first named the offer dialog; the stack proves the save prompt.
+- [x] A main CI run is green with both tests skipped. Done when: the run id is quoted with the skip line. Done: run 35247431391 success both jobs, UI.dll 167 passed, 3 skipped (1 pre-existing plus the 2 new), 0 failed.
+- [x] Commit: `"notepad-core: quarantine the AppIcon and Launch CI flakes"`. Done: `869c49a`, pushed.
 
 **Test checkpoint:** Both Skips plus both rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
 

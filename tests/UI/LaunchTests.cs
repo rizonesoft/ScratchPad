@@ -190,7 +190,7 @@ public sealed class LaunchTests
         }
     }
 
-    [Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S32 missing-offer-dialog-null")]
+    [Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S7 save-prompt-dialog-null")]
     public void MissingFileOfferYesBindsTabAndSaveCreates()
     {
         string dir = NewTempDir();

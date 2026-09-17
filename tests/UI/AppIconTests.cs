@@ -32,7 +32,7 @@ public sealed class AppIconTests
         Assert.Equal(0, DiffPixels(got, want));
     }
 
-    [Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S32 chrome-icon-uia-timeout")]
+    [Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S11 chrome-icon-uia-timeout")]
     public void WindowChromeIconMatchesAsset()
     {
         using var app = Application.Launch(AppExePath(), string.Empty);
