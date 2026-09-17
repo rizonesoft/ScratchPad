@@ -10,6 +10,18 @@ Stock captures were taken from `Microsoft.WindowsNotepad` 11.2607.14.0 on Window
 
 Run `dotnet run --project tools/CaptureBaseline -- notepad resources/baseline/stock` for stock surfaces or `dotnet run --project tools/CaptureBaseline -- stub <path-to-ScratchPad.exe> resources/baseline/app` for app goldens (Windows only, pinned SDK on the path). Rename stock captures with their source versions (`-<app>-n<notepad-version>-win<windows-version>.png`) and eyeball every capture before committing: the window must be foreground, unoccluded, and at canonical size. Custom sizes pass `--width`/`--height`, but the committed canonical size in `tolerance.json` is what the comparer uses, so keep them in sync.
 
+## Evidence procedure
+
+Eyeball-evidence crops (raw, human-judgment only, not canonical goldens) come from the `evidence-capture` artifact, never from an operator screenshot: every green `build-windows` run captures a canonical 900x650 frame of the built exe via `tools/CaptureBaseline stub` (dark theme, fresh profile) and uploads it as `stub-window.png`. To produce a crop:
+
+1. Download the artifact from a green main run at or after the commit under evidence: `gh run download <run-id> -n evidence-capture -D /tmp/evidence`.
+2. Verify the frame before trusting it: `python3 -c "from PIL import Image; im=Image.open('/tmp/evidence/stub-window.png'); print(im.size, im.convert('L').getextrema())"` must print `(900, 650)` and an extrema max well above 0 (a black frame reads max 0). The window must be foreground, unoccluded, and at canonical size.
+3. Crop the region with PIL and record the box in the committing section's item: `Image.open('/tmp/evidence/stub-window.png').crop((left, top, right, bottom)).save('<name>-evidence.png')`.
+4. Eyeball the crop against the checklist: foreground, unoccluded, intended pixels only, nothing else in frame.
+5. Commit the crop beside its siblings in `resources/baseline/app/` with a message naming the change.
+
+This procedure was first used for real by D00 T02 §7 item 2 (the §14 dressed-tab-row crop from run 35230396785, box (8, 0, 328, 110)).
+
 ## Tolerance policy
 
 `tolerance.json` is the committed comparison contract: canonical dimensions, the relative crop that drops the version-carrying title bar (top 8%) and rounded-corner edges (2% sides, 3% bottom), the per-pixel channel delta that counts as different, and the maximum different-pixel fraction that still passes. Numbers were set by measurement on real CI pixels: at delta 96 the cross-DPI rasterization noise is 128 pixels (0.031%) while a 10px shift is 736 pixels (0.180%), so the 0.1% threshold clears noise by 3x and still catches the shift at nearly 2x margin. The delta sits between anti-aliasing fringe physics and content-change physics; low-contrast content below delta 96 needs its own policy. Change these numbers only with new measurements quoted in the committing review.
