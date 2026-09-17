@@ -442,14 +442,17 @@ def validate(graph, _args) -> int:
                     f"{where} names findings {m.group(1)}, which does not exist",
                 )
                 continue
-            hm = PANEL_HEADING_RE.search(text)
-            if not hm:
+            heads = list(PANEL_HEADING_RE.finditer(text))
+            if not heads:
                 flag(
                     "stamp-no-opus-panel",
                     f"{where} findings {m.group(1)} carry no `Opus panel` section",
                 )
                 continue
-            panel = text[hm.end():]
+            # The LAST panel section is the record: fix-loop rounds append,
+            # so reading the first would validate a superseded round and
+            # never the verdicts that authorize the stamp.
+            panel = text[heads[-1].end():]
             nxt = re.search(r"^#{1,4}\s+", panel, re.MULTILINE)
             if nxt:
                 panel = panel[:nxt.start()]

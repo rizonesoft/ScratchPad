@@ -3401,6 +3401,8 @@ track: Z1
 |   4   |   §4    | Panel missing a lens | - |  [x]   |
 |   5   |   §5    | Clean panel | - |  [x]   |
 |   6   |   §6    | Cutoff stamp, no panel | - |  [x]   |
+|   7   |   §7    | Latest round noncompliant | - |  [x]   |
+|   8   |   §8    | Latest round clean | - |  [x]   |
 
 ---
 
@@ -3463,6 +3465,26 @@ track: Z1
 
 > **Verified:** 2026-09-17 | §6 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-absent.md
+
+## 7. Latest round noncompliant
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §7 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-multi-stale.md
+
+## 8. Latest round clean
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §8 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-multi-clean.md
 """,
             encoding="utf-8",
         )
@@ -3482,6 +3504,22 @@ track: Z1
             "# Review: Opus Panel Enforcement fixture\n\n## Opus panel\n\n"
             "**adversarial: approve**\n**consistency: advisory**\n"
             "**integration: needs-attention**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-multi-stale.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n"
+            "\n## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-multi-clean.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: needs-attention**\n"
+            "\n## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -3535,8 +3573,27 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§6" in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        check(
+            "superseded clean round does not excuse a live gap",
+            any(
+                "TODO-06-panel.md" in ln and "§7" in ln and "lacks verdicts for:" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "superseded gap does not taint a clean latest round",
+            any("TODO-06-panel.md" in ln and "§8" in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         panel_todo.unlink()
-        for extra in ("90-panel-nopanel.md", "90-panel-partial.md", "90-panel-clean.md"):
+        for extra in (
+            "90-panel-nopanel.md",
+            "90-panel-partial.md",
+            "90-panel-clean.md",
+            "90-panel-multi-stale.md",
+            "90-panel-multi-clean.md",
+        ):
             (rev_dir / extra).unlink()
         check(
             "progress leaves duration null where no stamp recorded one",
