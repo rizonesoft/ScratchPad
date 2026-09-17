@@ -75,11 +75,13 @@ public sealed partial class MainWindow : Window, IDisposable
         // The HWND is not valid in the constructor; installing here silently
         // subclasses nothing. First activation owns the install.
         Activated += OnFirstActivated;
-        // D01 T02 §14: the extended chrome draws no caption glyph, so the
-        // 16px raster of the shipped asset pins left of the tab strip in
-        // our own row (stock placement per the §14 Fidelity capture). The
-        // image takes no input, keeping tab gestures and drag rectangles
-        // exactly as measured; see UpdateDragRects.
+        // D01 T02 §14: the extended chrome draws no caption glyph, so a
+        // raster of the shipped asset pins left of the tab strip in our own
+        // row (stock placement per the §14 Fidelity capture). The image takes
+        // no input, keeping tab gestures intact; drag rectangles map through
+        // TabRegion at the UpdateDragRects call site. Decode state rides
+        // HelpText so the UI drive proves the glyph rendered, not merely
+        // that a 16-DIP box exists.
         var titleIcon = new Image
         {
             Width = 16,
@@ -88,10 +90,18 @@ public sealed partial class MainWindow : Window, IDisposable
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Left,
             IsHitTestVisible = false,
-            Source = new BitmapImage(new Uri("ms-appx:///titlebar-icon-16.png")),
         };
         AutomationProperties.SetAutomationId(titleIcon, "TitleBarIcon");
         AutomationProperties.SetName(titleIcon, "Application icon");
+        AutomationProperties.SetHelpText(titleIcon, "loading");
+        titleIcon.Loaded += (_, _) =>
+        {
+            double scale = titleIcon.XamlRoot?.RasterizationScale ?? 1;
+            string asset = scale >= 1.5 ? "titlebar-icon-32.png" : "titlebar-icon-16.png";
+            titleIcon.Source = new BitmapImage(new Uri($"ms-appx:///{asset}"));
+        };
+        titleIcon.ImageOpened += (_, _) => AutomationProperties.SetHelpText(titleIcon, "loaded");
+        titleIcon.ImageFailed += (_, e) => AutomationProperties.SetHelpText(titleIcon, "failed: " + e.ErrorMessage);
         var tabRow = new Grid();
         tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -796,7 +806,23 @@ public sealed partial class MainWindow : Window, IDisposable
         double leftDip = AppWindow.TitleBar.LeftInset / scale;
         double captionDip = AppWindow.TitleBar.RightInset / scale;
         tabBar.SetCaptionInset(captionDip);
-        double contentRight = Math.Max(leftDip, tabBar.TabStripContentRight());
+        // D01 T02 §14: TabStripContentRight is TabBar-local, but the drag
+        // rectangles are window-space. Before the title icon the TabBar
+        // filled TabRegion so both agreed; now the icon column offsets the
+        // TabBar origin, and using local x would start the drag rect inside
+        // the tab content (over the add button, swallowing its clicks into
+        // caption drag). Map through TabRegion instead.
+        double tabBarLeft;
+        try
+        {
+            tabBarLeft = tabBar.TransformToVisual(TabRegion).TransformPoint(new Point(0, 0)).X;
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        double contentRight = Math.Max(leftDip, tabBarLeft + tabBar.TabStripContentRight());
         double stripWidth = TabRegion.ActualWidth;
         double stripHeight = TabRegion.ActualHeight;
         var rect = new RectInt32(

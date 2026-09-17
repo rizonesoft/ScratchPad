@@ -38,6 +38,16 @@ public sealed class TitleBarIconTests
                 double expected = 16.0 * GetDpiForWindow(hwnd) / 96.0;
                 Assert.InRange(rect.Width, expected - 1, expected + 1);
                 Assert.InRange(rect.Height, expected - 1, expected + 1);
+                // Geometry alone cannot tell a rendered glyph from a box
+                // whose source never loaded, so the app reports decode
+                // state on HelpText (ImageOpened/ImageFailed) and the drive
+                // waits for it instead of trusting the rectangle.
+                var help = Retry.While(
+                    () => icon.Properties.HelpText.ValueOrDefault,
+                    text => text != "loaded",
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(250));
+                Assert.Equal("loaded", help.Result);
             }
             finally
             {
@@ -99,6 +109,62 @@ public sealed class TitleBarIconTests
         }
     }
 
+    [Fact]
+    public void AddButtonRealClickOpensTab()
+    {
+        // The §14 drag-rect regression (caption rect over the add button)
+        // is invisible to UIA invoke, which bypasses hit-testing: only a
+        // real cursor click through the caption zone proves the button
+        // still receives its clicks. Needs a display like its TabBarTests
+        // input siblings, green on CI.
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            Assert.Equal(1, WaitForTabCount(window, 1));
+            var add = FindButton(window, "Add New Tab");
+            Assert.NotNull(add);
+            UiDpi.PinTopmost(window, true);
+            try
+            {
+                LeftClick(add);
+            }
+            finally
+            {
+                UiDpi.PinTopmost(window, false);
+            }
+
+            Assert.Equal(2, WaitForTabCount(window, 2));
+        }
+        finally
+        {
+            CloseApp(app, window);
+        }
+    }
+
+    static void LeftClick(AutomationElement element)
+    {
+        const uint down = 0x0002;
+        const uint up = 0x0004;
+        var previous = UiDpi.Enter();
+        try
+        {
+            var point = element.GetClickablePoint();
+            ClickNative.SetCursorPos((int)point.X, (int)point.Y);
+            Thread.Sleep(100);
+            ClickNative.MouseEvent(down, 0, 0, 0, UIntPtr.Zero);
+            Thread.Sleep(100);
+            ClickNative.MouseEvent(up, 0, 0, 0, UIntPtr.Zero);
+        }
+        finally
+        {
+            UiDpi.Exit(previous);
+        }
+    }
+
     static int WaitForTabCount(Window window, int expected)
     {
         var result = Retry.While(
@@ -141,6 +207,25 @@ public sealed class TitleBarIconTests
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
     static extern uint GetDpiForWindow(nint hWnd);
+
+    static Button? FindButton(AutomationElement scope, string name)
+    {
+        return Retry.WhileNull(
+            () => scope.FindAllDescendants(cf => cf.ByControlType(ControlType.Button)).FirstOrDefault(button => button.Name == name)?.AsButton(),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+    }
+
+    static class ClickNative
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+        internal static extern bool SetCursorPos(int x, int y);
+
+        [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "mouse_event")]
+        [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+        internal static extern void MouseEvent(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);
+    }
 
     static void CloseApp(Application app, Window? window)
     {

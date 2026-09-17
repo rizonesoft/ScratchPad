@@ -289,8 +289,9 @@ public sealed partial class TabBar : UserControl
         zeroTabMarginApplied = true;
     }
 
-    // Right edge, in DIP, of the interactive strip (tabs plus the add
-    // button). MainWindow drags the window from everything right of here.
+    // Right edge, in TabBar-local DIP, of the interactive strip (tabs
+    // plus the add button). MainWindow drags the window from everything
+    // right of here and maps this into window space at the call site.
     internal double TabStripContentRight()
     {
         double right = 0;

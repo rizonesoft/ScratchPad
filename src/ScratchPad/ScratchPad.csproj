@@ -28,6 +28,9 @@
     <Content Include="..\..\resources\titlebar-icon-16.png" Link="titlebar-icon-16.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\..\resources\titlebar-icon-32.png" Link="titlebar-icon-32.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
