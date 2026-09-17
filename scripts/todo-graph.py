@@ -3415,6 +3415,8 @@ track: Z1
 |  18   |   §18   | Info-string fence never closes | - |  [x]   |
 |  19   |   §19   | Indented fence markers are content | - |  [x]   |
 |  20   |   §20   | Underscore and tilde markers rejected | - |  [x]   |
+|  21   |   §21   | Blockquoted fence is still a fence | - |  [x]   |
+|  22   |   §22   | Backtick info string is a paragraph | - |  [x]   |
 
 ---
 
@@ -3617,6 +3619,26 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §20 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-oddmarkers.md
+
+## 21. Blockquoted fence is still a fence
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §21 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quotefence.md
+
+## 22. Backtick info string is a paragraph
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §22 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tickinfo.md
 """,
             encoding="utf-8",
         )
@@ -3734,6 +3756,19 @@ track: Z1
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "_integration: approve_\n~record: approve~\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-quotefence.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\n> ```\n> **integration: approve**\n> **record: approve**\n> ```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-tickinfo.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "```md `inline`\n"
+            "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -3881,6 +3916,19 @@ track: Z1
             ),
             True,
         )
+        check(
+            "blockquoted fence still hides quoted verdicts",
+            any(
+                "TODO-06-panel.md" in ln and "§21 " in ln and "lacks verdicts for: integration, record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "backtick info string is a paragraph, not a fence",
+            any("TODO-06-panel.md" in ln and "§22 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -3900,6 +3948,8 @@ track: Z1
             "90-panel-infostring.md",
             "90-panel-indentedfence.md",
             "90-panel-oddmarkers.md",
+            "90-panel-quotefence.md",
+            "90-panel-tickinfo.md",
         ):
             (rev_dir / extra).unlink()
         check(

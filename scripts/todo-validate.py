@@ -472,24 +472,37 @@ def validate(graph, _args) -> int:
             kept = []
             fence = None  # (char, run length, opener lineno) while inside one
             for fence_lineno, ln in enumerate(text.splitlines(), start=1):
-                stripped = ln.strip()
+                # Blockquote prefixes do not hide fences: `> ``` ` opens a
+                # fenced block inside the quote, and since `>` is a verdict
+                # marker, quoted verdicts inside an untracked quote-fence
+                # would satisfy the rule. Only fence detection sees the
+                # unquoted line; the kept text stays original.
+                unquoted = re.sub(r"^(?:[ \t]{0,3}>[ \t]?)+", "", ln)
+                stripped = unquoted.strip()
                 # A fence marker indented 4+ spaces (a tab counts 4) is an
                 # indented code block in CommonMark, never a fence: without
                 # this, quoted content mis-toggles the tracker and a real
                 # panel misreports as unbalanced.
-                indent = ln[: len(ln) - len(ln.lstrip())]
+                indent = unquoted[: len(unquoted) - len(unquoted.lstrip())]
                 indented_code = len(indent.replace("\t", "    ")) >= 4
                 fence_run = 0
+                fence_ch = ""
                 if not indented_code and (
                     stripped.startswith("```") or stripped.startswith("~~~")
                 ):
-                    ch = stripped[0]
-                    fence_run = len(stripped) - len(stripped.lstrip(ch))
+                    fence_ch = stripped[0]
+                    fence_run = len(stripped) - len(stripped.lstrip(fence_ch))
                 if fence_run:
                     if fence is None:
-                        fence = (ch, fence_run, fence_lineno)
+                        # CommonMark: a backtick in a backtick-fence info
+                        # string makes the line a paragraph, never a fence.
+                        # (Tilde info strings may hold anything.)
+                        if fence_ch == "`" and "`" in stripped[fence_run:]:
+                            kept.append(ln)
+                        else:
+                            fence = (fence_ch, fence_run, fence_lineno)
                     elif (
-                        ch == fence[0]
+                        fence_ch == fence[0]
                         and fence_run >= fence[1]
                         and stripped[fence_run:] == ""
                     ):
