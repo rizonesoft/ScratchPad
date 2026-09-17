@@ -43,6 +43,7 @@ track: W0
 |   9   |   §9    | Opus panel enforcement in the validator | §7 |  [x]   |
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [x]   |
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
+|  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [ ]   |
 
 ---
 
@@ -285,6 +286,18 @@ Why this section exists: the round-5 Opus panel on §10 (final round, max 5 reac
 > **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); mutation battery wrote temp rule edits (restored exact, read back via failure sets and byte compare); blank-line probe wrote a temp TODO plus findings (removed after, read back via rule silence)
 > **Duration:** 29
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 12. Repo-Managed Git Hooks Gating TODO Edits
+
+Why this section exists: no git hooks are installed in this clone (only `.git/hooks/*.sample`), so a validator FATAL reached `main` in `871bde8` and was fixed after the fact in `2916e66`. CI plan-gates backstops pushes, but trunk pushes land before any gate runs. Committed hooks close the hole for every clone.
+
+- -> SOURCE: fatal-on-main-871bde8 (Needs-line prose tripped the closed-list FATAL; landed and fixed 4 minutes apart with no local gate)
+
+- [ ] A committed hooks dir (plus `core.hooksPath` wiring documented in the toolchain setup) runs `validate` on pre-commit and blocks the commit on FATAL. Done when: a FATAL fixture commit is refused locally.
+- [ ] The setup docs name the one-time step for existing clones. Done when: the step is followed cold from the docs.
+- [ ] Commit: `"workspace: gate TODO edits with repo hooks"`
+
+**Test checkpoint:** FATAL fixture refused locally; setup step followed cold. Cheaper substitute that fails: hooks documented but installing nothing.
 
 ## Verification
 
