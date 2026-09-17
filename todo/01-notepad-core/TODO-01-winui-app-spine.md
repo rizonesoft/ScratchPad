@@ -82,7 +82,7 @@ track: N1
 |  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
-|  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [ ]   |
+|  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [x]   |
 
 ---
 
@@ -946,10 +946,16 @@ Why this section exists: two more UI tests failed nondeterministically on the D0
 
 - [x] `WindowChromeIconMatchesAsset` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S11 chrome-icon-uia-timeout")]` on `tests/UI/AppIconTests.cs:35` (**Corrected 2026-09-17 (§32 panel round 1):** the owner slot first named the quarantining section §32; the procedure names the owning section); row added with the UIA-timeout signature, both runs quoted, owner D01 T01 §11, due 2026-09-24.
 - [x] `MissingFileOfferYesBindsTabAndSaveCreates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S7 save-prompt-dialog-null")]` on `tests/UI/LaunchTests.cs:193`; row added with the save-prompt null signature (call site `:216`, offer dialog passed), both runs quoted, owner D01 T01 §7, due 2026-09-24. **Corrected 2026-09-17 (§32 panel round 1):** id, owner slot, and signature first named the offer dialog; the stack proves the save prompt.
-- [x] A main CI run is green with both tests skipped. Done when: the run id is quoted with the skip line. Done: run 35247431391 success both jobs, UI.dll 167 passed, 3 skipped (1 pre-existing plus the 2 new), 0 failed.
+- [x] A main CI run is green with both tests skipped. Done when: the run id is quoted with the skip line. Done: run 35247431391 success both jobs, UI.dll 167 passed, 3 skipped, 0 failed. **Corrected 2026-09-17 (§32 panel round 2):** that run predates the corrected Skip strings, so the standing evidence is run 35249487881 attempt 3 on `cd0e338`: success both jobs, UI.dll 167 passed, 3 skipped, 0 failed (attempts 1-2 red-flagged the §16-filed `ToolsMenuInvokesStats` flake twice running, green 40 min before and after on identical UI code).
 - [x] Commit: `"notepad-core: quarantine the AppIcon and Launch CI flakes"`. Done: `869c49a`, pushed.
 
 **Test checkpoint:** Both Skips plus both rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
+
+> **Verified:** 2026-09-17 | §32 | AppIcon and Launch flakes quarantined by the §5 procedure: `WindowChromeIconMatchesAsset` Skipped (`chrome-icon-uia-timeout`, owner §11) and `MissingFileOfferYesBindsTabAndSaveCreates` Skipped (`save-prompt-dialog-null`, owner §7, failing surface corrected from the offer dialog to the Ctrl+W save prompt per the stack); both rows carry stable signatures, quoted red-then-green proof (run 35234746568 attempt 1 red, rerun green), and 2026-09-24 dues; ship run 35249487881 attempt 3 success both jobs, UI.dll 167 passed, 3 skipped, 0 failed (attempts 1-2 red-flagged the §16-filed `ToolsMenuInvokesStats` flake)
+> **Review:** rounds 1-2, candidates 869c49a cd0e338 -- Opus panel `adversarial` advisory · `consistency` advisory · `integration` approve · `record` advisory, all four round-2 advisories fixed in the stamp commit (findings file ships, §8 coverage note, HEAD run re-quote, evidence-map wording). Raw findings: docs/reviews/01-notepad-core/D01-T01-s32.md
+> **CRUD:** applicable | CI runs wrote conclusions plus suite counts (read back via success, Passed/Skipped/Failed per attempt); Skips wrote skips (read back via the 3-skip line); rows wrote procedure state (read back via signatures, owners, dues)
+> **Duration:** 62
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
