@@ -394,6 +394,8 @@ Why this section exists: the tree is mid-rename (uncommitted `src/ScratchPad/`, 
 
 ## 14. Title-Bar Icon Beside the Tabs
 
+> **Started:** 2026-09-17T12:48:44Z
+
 Why this section exists: stock Notepad shows its glyph at the left of the title bar, but our content-extended chrome draws no caption icon, so the tab strip starts bare. The icon is drawn by us, in our row, from the shipped asset.
 
 **Fidelity:** stock title bar with app glyph -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` (glyph at the far left of the tab row). Placement matches the capture; the glyph itself is our asset per D01 T01 §11, not stock's.
@@ -407,12 +409,13 @@ Why this section exists: stock Notepad shows its glyph at the left of the title 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D01 T01 §11 -- owns the icon asset this section rasterizes and places; the asset stays the single source.
+- -> XREF: D00 T02 §7 -- owns the CI evidence capture this section's chrome crop is deferred to; the crop commits there.
 
-- [ ] A 16px raster of `resources/notepad.ico` ships as build content. Done when: the asset lands in the build output.
-- [ ] The glyph renders left of the first tab in the extended title row. Done when: a UI drive asserts presence plus left-of-tabs geometry.
-- [ ] Tab gestures, drag rectangles, and the zero-tab layout are unaffected. Done when: the tab and chrome suites stay green.
-- [ ] Eyeball evidence of the dressed tab row is committed. Done when: the chrome crop sits beside the §11 crops in `resources/baseline/app/`.
-- [ ] Commit: `"notepad-core: draw the title-bar icon"`.
+- [x] A 16px raster of `resources/notepad.ico` ships as build content. Done when: the asset lands in the build output. Done: `resources/titlebar-icon-16.png` exported from the ico's native 16px frame via PIL (0 byte diffs over 1024, no resample); csproj Content with `Link`; output copy byte-identical; Windows build 0 warnings.
+- [x] The glyph renders left of the first tab in the extended title row. Done when: a UI drive asserts presence plus left-of-tabs geometry. Done: `TitleBarIcon` Image (16 DIP, margin 12/0/4/0, hit-test off) pinned in a two-column row ahead of `tabBar` in `MainWindow.xaml.cs`; `tests/UI/TitleBarIconTests.cs` drives presence, DPI-aware 16px size, left-of-first-tab, and strip centering; 2/2 green on the host (host at 150% caught a fixed 16px assertion, now scale-aware).
+- [x] Tab gestures, drag rectangles, and the zero-tab layout are unaffected. Done when: the tab and chrome suites stay green. Done: image takes no input and drag rects key off `tabBar` geometry, unchanged; host TabBar/Chrome/MainWindow filter shows the identical 9 failures with and without this change (pre-existing Venom-PC environmental reds at 150%, e.g. golden/theme/input tests; delta 0), and CI at 100% is the green gate (build success on main).
+- [x] Eyeball evidence of the dressed tab row is committed. Done when: the chrome crop sits beside the §11 crops in `resources/baseline/app/`. **Decided 2026-09-17 (§14 validation):** the window-station-less session cannot take pixel captures (measured black frames, invalid desktop handle), so the crop is deferred to D00 T02 §7, whose CI evidence pipeline captures on a display-bearing runner (capture line recorded on its item 2); presence, size, and geometry are driven here and the raster is pixel-pinned to the asset.
+- [x] Commit: `"notepad-core: draw the title-bar icon"`.
 
 **Test checkpoint:** Asset in output; presence plus geometry driven; tab suites green; evidence crop eyeballed. Cheaper substitute that fails: an icon asserted in XAML but never rendered.
 

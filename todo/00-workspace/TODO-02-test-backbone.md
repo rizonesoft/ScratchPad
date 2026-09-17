@@ -38,6 +38,7 @@ track: W0
 |   4   |   §4    | ACP loopback fixture | §1 |  [x]   |
 |   5   |   §5    | Soak and quarantine procedure | §1, §2 |  [x]   |
 |   6   |   §6    | Golden comparison deterministic on CI | §3 |  [x]   |
+|   7   |   §7    | CI evidence capture pipeline | D01 T02 §14 |  [ ]   |
 
 ---
 
@@ -176,6 +177,17 @@ Why this section exists: the golden tests pass on the capture machine and fail o
 > **CRUD:** applicable | CI runs wrote conclusions plus artifacts (read back via success, suite counts, artifact names); golden artifacts wrote PNGs (read back via md5, pixels, PIL comparer replica to exact CI counts); registry wrote HideFileExt flips (read back via 6/6 reproductions, restored to 0); comparer wrote blurred diffs (read back via wobble pin green and shift probe red); suites wrote passes (read back via Passed/Failed counts on both OSes)
 > **Duration:** 61
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 7. CI Evidence Capture Pipeline
+
+Why this section exists: eyeball-evidence crops (D01 T02 §14 item 4 is the first) cannot be taken from a window-station-less session: screen reads return black and input is dead, measured on Venom-PC (golden fresh byte-identical to a black frame, `CopyFromScreen` invalid handle). CI windows runners have displays, so the pipeline captures there: a windows-job step runs `tools/CaptureBaseline` against the built exe and uploads the PNG as an artifact, and the evidence procedure (download, eyeball checklist, commit naming) lands in `resources/baseline/README.md`. -> XREF: D01 T02 §14 (first consumer; its item 4 is deferred here); -> SOURCE: CI-evidence-gap-2026-09-17 (Venom-PC headless session, black captures, D01 T02 §14 item 4 blocked).
+
+- [ ] The windows CI job captures the built app and uploads the PNG as an `evidence-capture` artifact on green builds (red builds already upload golden failures). Done when: a main run carries the artifact with a non-black 900x650 PNG. First use is this section's item 2, not a synthetic probe.
+- [ ] Eyeball evidence of the dressed tab row is committed. Done when: the chrome crop sits beside the §11 crops in `resources/baseline/app/`, captured via item 1's pipeline and eyeballed (glyph present left of the first tab, 16px, stock placement).
+- [ ] `resources/baseline/README.md` documents the evidence procedure: which artifact, the eyeball checklist (foreground, unoccluded, canonical size, intended pixels only), and the commit naming. Done when: item 2 is produced by following the procedure verbatim.
+- [ ] Commit: `"workspace: capture UI evidence on CI"`
+
+**Test checkpoint:** CI artifact present and non-black; §14 crop committed and eyeballed; a second section could follow the procedure without asking. Cheaper substitute that fails: an operator capture with no pipeline behind it.
 
 ## Verification
 
