@@ -933,6 +933,8 @@ Why this section exists: §19 locks the file but the decrypted buffer still rest
 
 ## 32. Quarantine the AppIcon and Launch CI Flakes
 
+> **Started:** 2026-09-17T16:36:00Z
+
 Why this section exists: two more UI tests failed nondeterministically on the D00 T02 §7 round-2 run (details in the SOURCE line), each red-then-green on the same commit, which is exactly the D00 T02 §5 quarantine criterion. (D01 T01 §31 was filed and unfiled the same day on a falsified premise; its address stays vacant, so this section takes §32.)
 
 **Job:** The suite stays green without the flakes while their owners get a fix-or-remove window. Consumer: every main CI run.
@@ -942,8 +944,8 @@ Why this section exists: two more UI tests failed nondeterministically on the D0
 - -> XREF: D00 T02 §7 -- filed from its pipeline run; the flakes red-flagged its round-2 run.
 - -> SOURCE: CI-flakes-2026-09-17b (`UI.AppIconTests.WindowChromeIconMatchesAsset`: UIA/COM timeout; `UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates`: `Assert.NotNull` in `WaitForDialog`; both red on run 35234746568 attempt 1, green on the `--failed` rerun of the same commit. Same slow-runner family as the D01 T02 §16 trio; the owners confirm via soak.)
 
-- [ ] `WindowChromeIconMatchesAsset` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
-- [ ] `MissingFileOfferYesBindsTabAndSaveCreates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
+- [x] `WindowChromeIconMatchesAsset` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S32 chrome-icon-uia-timeout")]` on `tests/UI/AppIconTests.cs:35`; row added with the UIA-timeout signature, both runs quoted, owner D01 T01 §11, due 2026-09-24.
+- [x] `MissingFileOfferYesBindsTabAndSaveCreates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs. Done: `[Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S32 missing-offer-dialog-null")]` on `tests/UI/LaunchTests.cs:193`; row added with the null-dialog signature, both runs quoted, owner D01 T01 §8, due 2026-09-24.
 - [ ] A main CI run is green with both tests skipped. Done when: the run id is quoted with the skip line.
 - [ ] Commit: `"notepad-core: quarantine the AppIcon and Launch CI flakes"`
 
