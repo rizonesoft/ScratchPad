@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private readonly TabModel tabs = new();
 
     private TabBar? tabBar;
+    private Image? titleIconRef;
 
     // D01 T02 §4: the status strip plus the box it currently follows.
     // Caret moves do not change Text, so the active box needs its own
@@ -80,7 +81,8 @@ public sealed partial class MainWindow : Window, IDisposable
         // row (stock placement per the §14 Fidelity capture). The image takes
         // no input, keeping tab gestures intact; drag rectangles map through
         // TabRegion at the UpdateDragRects call site. Decode state rides
-        // HelpText so the UI drive proves the glyph rendered, not merely
+        // ItemStatus (never Name/HelpText, which stay clean for assistive
+        // tech) so the UI drive proves the glyph rendered, not merely
         // that a 16-DIP box exists.
         var titleIcon = new Image
         {
@@ -93,15 +95,18 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         AutomationProperties.SetAutomationId(titleIcon, "TitleBarIcon");
         AutomationProperties.SetName(titleIcon, "Application icon");
-        AutomationProperties.SetHelpText(titleIcon, "loading");
+        AutomationProperties.SetItemStatus(titleIcon, "loading");
         titleIcon.Loaded += (_, _) =>
         {
-            double scale = titleIcon.XamlRoot?.RasterizationScale ?? 1;
-            string asset = scale >= 1.5 ? "titlebar-icon-32.png" : "titlebar-icon-16.png";
-            titleIcon.Source = new BitmapImage(new Uri($"ms-appx:///{asset}"));
+            SelectTitleIconAsset();
+            if (titleIcon.XamlRoot is XamlRoot xamlRoot)
+            {
+                xamlRoot.Changed += (_, _) => SelectTitleIconAsset();
+            }
         };
-        titleIcon.ImageOpened += (_, _) => AutomationProperties.SetHelpText(titleIcon, "loaded");
-        titleIcon.ImageFailed += (_, e) => AutomationProperties.SetHelpText(titleIcon, "failed: " + e.ErrorMessage);
+        titleIcon.ImageOpened += (_, _) => AutomationProperties.SetItemStatus(titleIcon, "loaded");
+        titleIcon.ImageFailed += (_, e) => AutomationProperties.SetItemStatus(titleIcon, "failed: " + e.ErrorMessage);
+        titleIconRef = titleIcon;
         var tabRow = new Grid();
         tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
@@ -795,6 +800,21 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private double lastTopGap;
 
+    // D01 T02 §14: native frame per display scale, re-selected when the
+    // window moves across monitors so a 200% display never upscales
+    // the 16px source.
+    private void SelectTitleIconAsset()
+    {
+        if (titleIconRef is null)
+        {
+            return;
+        }
+
+        double scale = titleIconRef.XamlRoot?.RasterizationScale ?? 1;
+        string asset = scale >= 1.5 ? "titlebar-icon-32.png" : "titlebar-icon-16.png";
+        titleIconRef.Source = new BitmapImage(new Uri($"ms-appx:///{asset}"));
+    }
+
     private void UpdateDragRects()
     {
         if (tabBar is null || Content?.XamlRoot is not XamlRoot xamlRoot)
@@ -817,7 +837,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             tabBarLeft = tabBar.TransformToVisual(TabRegion).TransformPoint(new Point(0, 0)).X;
         }
-        catch (InvalidOperationException)
+        catch (Exception ex) when (ex is InvalidOperationException || ex is System.Runtime.InteropServices.COMException)
         {
             return;
         }
