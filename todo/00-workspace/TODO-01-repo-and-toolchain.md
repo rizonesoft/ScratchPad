@@ -41,6 +41,7 @@ track: W0
 |   7   |   §7    | TODO graph checks in CI | §3 |  [x]   |
 |   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
 |   9   |   §9    | Opus panel enforcement in the validator | §7 |  [ ]   |
+|  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [ ]   |
 
 ---
 
@@ -235,6 +236,19 @@ Why this section exists: `review-todo-section` requires lens verdicts from the h
 - [x] Commit: `"workspace: enforce Opus panel evidence in the validator"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count; a fixture stamp dated after the cutoff without panel evidence fails `validate` with a FATAL naming the section. Cheaper substitute that fails: an untested rule, or a grandfather clause that also swallows fresh stamps.
+
+- -> XREF: D00 T01 §10 -- round-5 panel residuals (unheaded-prose verdicts, unbalanced fence, fence-only fixture) filed there
+
+## 10. Opus Panel Rule Hardening Follow-ups
+
+Why this section exists: the round-5 Opus panel on §9 (final round, all lenses advisory or better) left three residual notes on the `stamp-no-opus-panel` rule that are coverage, not defects, and the heading-scan unit had been patched in three consecutive rounds, so the skill's stop-and-re-think clause routed them here instead of a fourth patch. -> XREF: D00 T01 §9 (filed from its round-5 panel); -> SOURCE: Opus panel round 5 on candidate `2305e87`, transcribed in `docs/reviews/00-workspace/D00-T01-s9.md`.
+
+- [ ] An incomplete panel followed by unheaded prose still draws its missing verdicts from that prose (measured: bare `Filed leftovers: integration approve, record approve` line after a two-lens panel stays silent; same when the leftover heading hides inside a fence, since the strip removes the terminator). Re-think the unit (prose-boundary verdict search or explicit panel-end marker) rather than patching the scan a fourth time. Done when: the chosen shape is recorded with its cost, fixtures lock both directions, and the suite count is quoted.
+- [ ] An unbalanced fence swallows the rest of the file, so an unterminated fence before a complete panel misreports as `carry no Opus panel section`. Done when: the failure names the real defect (unbalanced fence with its line) or the strip tolerates it, with a fixture locking the behavior.
+- [ ] The fence-only direction is unfixtured: `90-panel-fenced.md` proves a fenced quote cannot displace a real panel, but no fixture proves a fenced quote alone cannot satisfy the rule (probed manually: fires correctly today). Done when: a fence-only findings fixture plus its case assert the FATAL, and the check name no longer over-claims.
+- [ ] Commit: `"workspace: harden Opus panel rule per round-5 notes"`
+
+**Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with a case per residual; each new fixture is mutation-proven (revert its fix, exactly its case fails). Cheaper substitute that fails: a fourth scan patch without the re-think, or fixtures that pass vacuously.
 
 ## Verification
 
