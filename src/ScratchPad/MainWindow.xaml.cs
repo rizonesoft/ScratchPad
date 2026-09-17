@@ -84,8 +84,9 @@ public sealed partial class MainWindow : Window, IDisposable
         // no input, keeping tab gestures intact; drag rectangles map through
         // TabRegion at the UpdateDragRects call site. Decode state rides
         // ItemStatus so the UI drive proves the glyph rendered, not merely
-        // that a 16-DIP box exists. Name and HelpText stay as authored;
-        // ItemStatus transitions are observable to UIA clients that ask.
+        // that a 16-DIP box exists. Name is the only other automation
+        // property set; ItemStatus transitions are observable to UIA
+        // clients that ask.
         // (Raw view would hide the icon from AT entirely, but measured:
         // both UIA drives failed to find it with Raw set and passed after
         // the revert, so control view it is.)
