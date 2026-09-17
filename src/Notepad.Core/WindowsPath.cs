@@ -68,7 +68,9 @@ public static class WindowsPath
     // GetFullPath normalization on Windows, textually: forward slashes
     // flip, repeat separators collapse (the UNC prefix pair survives),
     // single dots drop, and double dots pop (clamped at the root, as the
-    // BCL clamps C:\..\x to C:\x).
+    // BCL clamps C:\..\x to C:\x). Bare dot segments with no root resolve
+    // to empty: there is no current directory for Windows paths on a
+    // foreign OS, so the BCL's resolve-against-CWD has no counterpart.
     public static string Normalize(string path)
     {
         ArgumentException.ThrowIfNullOrEmpty(path);
