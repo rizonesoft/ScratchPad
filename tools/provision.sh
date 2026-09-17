@@ -8,10 +8,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RID="linux-x64"
 
-for tool in python3 curl sha512sum tar; do
-  command -v "$tool" >/dev/null || { echo "provision.sh: missing required tool: $tool" >&2; exit 1; }
-done
-
 if [ -d "$ROOT/tools/githooks" ] && command -v git >/dev/null 2>&1 && git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   if git -C "$ROOT" config core.hooksPath tools/githooks; then
     echo "provision.sh: git hooks wired to tools/githooks"
@@ -21,6 +17,10 @@ if [ -d "$ROOT/tools/githooks" ] && command -v git >/dev/null 2>&1 && git -C "$R
 else
   echo "provision.sh: warning: tools/githooks not wired (no git checkout or dir missing)" >&2
 fi
+
+for tool in python3 curl sha512sum tar; do
+  command -v "$tool" >/dev/null || { echo "provision.sh: missing required tool: $tool" >&2; exit 1; }
+done
 
 VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sdk"]["version"])' "$ROOT/global.json")"
 test -n "$VERSION" || { echo "provision.sh: no sdk.version in $ROOT/global.json" >&2; exit 1; }

@@ -1,6 +1,6 @@
 #!/bin/sh
 # pre-commit: refuse the commit when the staged tree fails TODO-graph validation (D00 T01 §12).
-# Validates the index (what will be committed) in a temp checkout, never the worktree.
+# Validates the index (what will be committed) in a temp checkout; the worktree gets an advisory probe only, never a refusal.
 # Installed per clone via `git config core.hooksPath tools/githooks` (see docs/bootstrap.md).
 set -u
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "pre-commit: not inside a git work tree" >&2; exit 1; }

@@ -28,3 +28,4 @@ jobs:
           test "$(git ls-files -s tools/githooks/pre-commit | cut -d' ' -f1)" = "100755" || { echo "hook index mode is not 100755"; exit 1; }
           git show HEAD:tools/githooks/pre-commit > /tmp/hook-blob || exit 1
           if grep -q $'\r' /tmp/hook-blob; then echo "hook blob carries CR"; exit 1; fi
+          git check-attr eol -- tools/githooks/pre-commit | grep -q ': eol: lf$' || { echo "hook eol pin missing"; exit 1; }
