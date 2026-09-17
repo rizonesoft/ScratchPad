@@ -1,6 +1,6 @@
 {
   "solution": {
-    "path": "IntelligentNotepad.slnx",
+    "path": "ScratchPad.slnx",
     "projects": [
       "Notepad.Core/Notepad.Core.csproj",
       "Notepad.Acp/Notepad.Acp.csproj",

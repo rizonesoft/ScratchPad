@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Xunit;
 
-namespace IntelligentNotepad.Protocol.Tests;
+namespace ScratchPad.Protocol.Tests;
 
 // D00 T02 §4 item 3: the fixture validates incoming messages and fails loudly on violations.
 public sealed class LoopbackValidationTests

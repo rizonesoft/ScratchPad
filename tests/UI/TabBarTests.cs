@@ -37,7 +37,7 @@ public sealed class TabBarTests
         Assert.NotNull(window);
         try
         {
-            Assert.Equal("Untitled - Intelligent Notepad", window.Title);
+            Assert.Equal("Untitled - ScratchPad", window.Title);
             var tabs = FindById(window, "Tabs");
             Assert.NotNull(tabs);
             var items = TabItems(window);
@@ -121,7 +121,7 @@ public sealed class TabBarTests
             CloseActiveViaGlyph(window);
             Assert.Equal(0, WaitForTabCount(window, 0));
             Assert.False(app.HasExited);
-            Assert.Equal("Untitled - Intelligent Notepad", window.Title);
+            Assert.Equal("Untitled - ScratchPad", window.Title);
         }
         finally
         {

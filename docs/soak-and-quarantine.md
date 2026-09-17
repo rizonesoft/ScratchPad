@@ -8,7 +8,7 @@ Soak runs locally, usually as an unattended bedtime run: the full suite for the 
 
 | Host | Command |
 | --- | ----- |
-| Windows | `.tools\dotnet-win-x64\dotnet.exe test src/IntelligentNotepad.slnx --logger trx`, then the UI and Protocol suites x5 |
+| Windows | `.tools\dotnet-win-x64\dotnet.exe test src/ScratchPad.slnx --logger trx`, then the UI and Protocol suites x5 |
 | Linux | `.tools/dotnet-linux-x64/dotnet test src/Notepad.Neutral.slnf --logger trx`, then the Protocol suite x5 |
 
 Results stay under `TestResults/` (gitignored): the per-run console log plus the trx files, with golden-failure captures kept alongside on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.

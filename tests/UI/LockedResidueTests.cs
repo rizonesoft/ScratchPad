@@ -100,7 +100,7 @@ public sealed class LockedResidueTests
             Assert.Null(entry.Content);
             string appData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "IntelligentNotepad");
+                "ScratchPad");
             foreach (string dataFile in Directory.EnumerateFiles(appData, "*", SearchOption.AllDirectories))
             {
                 string content;

@@ -65,11 +65,11 @@ public sealed class MultiWindowTests
             Assert.Equal(2, WaitForTabCount(second, 2));
             Assert.Single(TabItems(first));
             ContentBox(second).Text = "WINDOW2";
-            Assert.Equal("Untitled - Intelligent Notepad", first.Title);
+            Assert.Equal("Untitled - ScratchPad", first.Title);
             Assert.Equal(string.Empty, ContentBox(first).Text);
             second.Close();
             Assert.Single(WaitForWindowCount(app, automation, 1));
-            Assert.Equal("Untitled - Intelligent Notepad", first.Title);
+            Assert.Equal("Untitled - ScratchPad", first.Title);
         }
         finally
         {

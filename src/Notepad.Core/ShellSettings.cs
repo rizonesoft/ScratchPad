@@ -86,9 +86,7 @@ public sealed class ShellSettings
     [System.Text.Json.Serialization.JsonExtensionData]
     public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
-    public static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "IntelligentNotepad", "settings.json");
+    public static string FilePath => Path.Combine(AppDataDir.Root, "settings.json");
 
     public static ShellSettings Load() => SettingsStore.LoadFrom(FilePath).Settings;
 

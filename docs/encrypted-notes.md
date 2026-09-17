@@ -10,7 +10,7 @@ Some notes need a password. A locked file carries its parameters in a stated hea
 
 ## File layout
 
-1. Magic line: `IntelligentNotepad-Encrypted-1` plus LF (`0x0A`).
+1. Magic line: `ScratchPad-Encrypted-1` plus LF (`0x0A`).
 2. Header line: one JSON object plus LF, no spaces: `{"Alg":"AES-256-GCM","Kdf":"PBKDF2-SHA256","Iter":600000,"Salt":"<base64>","Nonce":"<base64>"}`.
 3. Body: raw ciphertext bytes plus the raw 16-byte tag.
 

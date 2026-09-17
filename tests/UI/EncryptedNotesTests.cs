@@ -212,7 +212,7 @@ public sealed class EncryptedNotesTests
 
             string appData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "IntelligentNotepad");
+                "ScratchPad");
             foreach (string dataFile in Directory.EnumerateFiles(appData, "*", SearchOption.AllDirectories))
             {
                 string content;

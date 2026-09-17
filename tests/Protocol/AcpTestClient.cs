@@ -5,7 +5,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace IntelligentNotepad.Protocol.Tests;
+namespace ScratchPad.Protocol.Tests;
 
 sealed class AcpTestClient : IAsyncDisposable
 {

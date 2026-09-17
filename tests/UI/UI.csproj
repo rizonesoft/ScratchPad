@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\IntelligentNotepad\IntelligentNotepad.csproj" />
+    <ProjectReference Include="..\..\src\ScratchPad\ScratchPad.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <Target Name="ResolveAppPath" BeforeTargets="Build" DependsOnTargets="PrepareForBuild">
-    <MSBuild Projects="..\..\src\IntelligentNotepad\IntelligentNotepad.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+    <MSBuild Projects="..\..\src\ScratchPad\ScratchPad.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
       <Output TaskParameter="TargetOutputs" ItemName="AppTargetPath" />
     </MSBuild>
     <WriteLinesToFile File="$(OutputPath)apppath.txt" Lines="@(AppTargetPath)" Overwrite="true" />

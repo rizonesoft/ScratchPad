@@ -109,7 +109,7 @@ public sealed class TabModelTests
         tab.FilePath = "/tmp/notes/Implementation.txt";
         tab.MarkSaved();
         Assert.Equal("Implementation.txt", tab.DisplayName);
-        Assert.Equal("Implementation.txt - Intelligent Notepad", tab.WindowTitle("Intelligent Notepad"));
+        Assert.Equal("Implementation.txt - ScratchPad", tab.WindowTitle("ScratchPad"));
     }
 
     [Fact]
@@ -117,10 +117,10 @@ public sealed class TabModelTests
     {
         var model = new TabModel();
         Tab tab = model.NewTab();
-        Assert.Equal("Untitled - Intelligent Notepad", tab.WindowTitle("Intelligent Notepad"));
+        Assert.Equal("Untitled - ScratchPad", tab.WindowTitle("ScratchPad"));
 
         tab.NotifyEdited("hello");
-        Assert.Equal("*hello - Intelligent Notepad", tab.WindowTitle("Intelligent Notepad"));
+        Assert.Equal("*hello - ScratchPad", tab.WindowTitle("ScratchPad"));
     }
 
     [Fact]

@@ -1,6 +1,6 @@
 # TODO System -- Format Spec
 
-The `todo/` tree is the live execution plan for the Intelligent Notepad build. Markdown is canonical; the graph cache is a derived read-only projection rebuilt by `scripts/todo-graph.py`.
+The `todo/` tree is the live execution plan for the ScratchPad build. Markdown is canonical; the graph cache is a derived read-only projection rebuilt by `scripts/todo-graph.py`.
 
 One rule governs everything below: **a TODO section must be implementable by someone with zero conversation context.** A fresh session starts with none, and a session that hits the usage limit resumes cold. If a section only makes sense to someone who was in the room, it is not done.
 
@@ -87,7 +87,7 @@ superseded_by: other-todo-id       # optional -- set with status: superseded
 
 One paragraph of context: why this section exists and what it must not break.
 
-- [ ] `src/IntelligentNotepad.slnx` builds clean with the pinned .NET SDK. Done when: a clean checkout builds with one command and the smoke test passes. Cheaper substitute: a solution that builds only on the author's machine.
+- [ ] `src/ScratchPad.slnx` builds clean with the pinned .NET SDK. Done when: a clean checkout builds with one command and the smoke test passes. Cheaper substitute: a solution that builds only on the author's machine.
 - [ ] Another concrete item. Max 30 per section. See Work items below.
 - [ ] Commit: `"notepad-core: scaffold solution + test wiring"`
 

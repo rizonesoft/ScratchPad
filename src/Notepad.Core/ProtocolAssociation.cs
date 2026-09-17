@@ -9,7 +9,7 @@ public static class ProtocolAssociation
 {
     public const string Scheme = "intelligent-notepad";
 
-    public const string Description = "URL:IntelligentNotepad Protocol";
+    public const string Description = "URL:ScratchPad Protocol";
 
     public static string SchemeKey => @"Software\Classes\" + Scheme;
 

@@ -212,7 +212,7 @@ public sealed class JumpListTaskTests
         }
     }
 
-    const string AppUserModelId = "Rizonesoft.IntelligentNotepad";
+    const string AppUserModelId = "Rizonesoft.ScratchPad";
 
     [DllImport("shell32.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

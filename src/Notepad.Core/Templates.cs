@@ -30,7 +30,7 @@ public static class Templates
 }
 
 // Custom templates as .txt files in a directory; the app passes
-// %LocalAppData%/IntelligentNotepad/templates. Variables expand at use time,
+// %LocalAppData%/ScratchPad/templates. Variables expand at use time,
 // never at save time, so a saved custom stays a template.
 public sealed class TemplateStore
 {

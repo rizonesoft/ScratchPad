@@ -7,6 +7,9 @@ namespace Notepad.Core;
 // Password file locking, owned by D01 T01 §19. UI-free: AES-256-GCM with a
 // PBKDF2-HMAC-SHA256 key, parameters stated in docs/encrypted-notes.md.
 // Layout: `IntelligentNotepad-Encrypted-1` plus LF, one JSON header line,
+// then the ciphertext. The magic keeps the pre-rename product name on
+// purpose: it is a persisted format marker, and renaming it would orphan
+// every locked note with zero user benefit.
 // LF, then raw ciphertext plus the 16-byte tag. The header line is bound as
 // associated data, so tampered parameters fail authentication exactly like
 // a wrong password: loud, with no oracle detail and no partial output.

@@ -1,0 +1,11 @@
+<Solution>
+  <Project Path="../tests/Smoke/Smoke.csproj" />
+  <Project Path="../tests/Unit/Unit.csproj" />
+  <Project Path="../tests/Fixtures/AcpLoopback/AcpLoopback.csproj" />
+  <Project Path="../tests/Protocol/Protocol.csproj" />
+  <Project Path="../tests/UI/UI.csproj" />
+  <Project Path="ScratchPad/ScratchPad.csproj" />
+  <Project Path="Notepad.Acp/Notepad.Acp.csproj" />
+  <Project Path="Notepad.Agents/Notepad.Agents.csproj" />
+  <Project Path="Notepad.Core/Notepad.Core.csproj" />
+</Solution>

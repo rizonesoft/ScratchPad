@@ -420,7 +420,7 @@ public sealed class SettingsPageTests
                 OpenSettings(window);
                 var name = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAboutName"));
                 Assert.NotNull(name);
-                Assert.Equal("Intelligent Notepad", name.Properties.Name.ValueOrDefault);
+                Assert.Equal("ScratchPad", name.Properties.Name.ValueOrDefault);
                 var version = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAboutVersion"));
                 Assert.NotNull(version);
                 Assert.True(

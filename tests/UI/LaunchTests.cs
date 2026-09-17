@@ -602,7 +602,7 @@ public sealed class LaunchTests
     // Mirrors JumpListService.AppId (the app assembly is a black box to
     // these tests): the read-back below runs under the same identity
     // the app commits with.
-    const string AppUserModelId = "Rizonesoft.IntelligentNotepad";
+    const string AppUserModelId = "Rizonesoft.ScratchPad";
 
     [System.Runtime.InteropServices.DllImport("shell32.dll", ExactSpelling = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]

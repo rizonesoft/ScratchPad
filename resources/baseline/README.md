@@ -8,7 +8,7 @@ Stock captures were taken from `Microsoft.WindowsNotepad` 11.2607.14.0 on Window
 
 ## Capture procedure
 
-Run `dotnet run --project tools/CaptureBaseline -- notepad resources/baseline/stock` for stock surfaces or `dotnet run --project tools/CaptureBaseline -- stub <path-to-IntelligentNotepad.exe> resources/baseline/app` for app goldens (Windows only, pinned SDK on the path). Rename stock captures with their source versions (`-<app>-n<notepad-version>-win<windows-version>.png`) and eyeball every capture before committing: the window must be foreground, unoccluded, and at canonical size. Custom sizes pass `--width`/`--height`, but the committed canonical size in `tolerance.json` is what the comparer uses, so keep them in sync.
+Run `dotnet run --project tools/CaptureBaseline -- notepad resources/baseline/stock` for stock surfaces or `dotnet run --project tools/CaptureBaseline -- stub <path-to-ScratchPad.exe> resources/baseline/app` for app goldens (Windows only, pinned SDK on the path). Rename stock captures with their source versions (`-<app>-n<notepad-version>-win<windows-version>.png`) and eyeball every capture before committing: the window must be foreground, unoccluded, and at canonical size. Custom sizes pass `--width`/`--height`, but the committed canonical size in `tolerance.json` is what the comparer uses, so keep them in sync.
 
 ## Tolerance policy
 

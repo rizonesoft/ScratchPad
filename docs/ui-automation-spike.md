@@ -1,10 +1,10 @@
 # UI Automation Driver Spike
 
-Both required contenders were driven against the stub on 2026-09-14 (throwaway rigs outside the repo, pinned SDK 10.0.401, stub `IntelligentNotepad.exe` Debug build). Every number below is measured, not quoted.
+Both required contenders were driven against the stub on 2026-09-14 (throwaway rigs outside the repo, pinned SDK 10.0.401, stub `ScratchPad.exe` Debug build). Every number below is measured, not quoted.
 
 ## FlaUI (UIA3, in-process)
 
-Packages `FlaUI.Core` and `FlaUI.UIA3`, version 5.0.0 (latest, February 2025), restored from NuGet with no install step and no server process. Launch plus window attach took 506 ms with the full versioned title read back; finding the `Intelligent Notepad stub` TextBlock by Name took 35 ms; a window screenshot took 198 ms and 106 KB, verified by eye to show the real window; a coordinate click took 177 ms with no crash; Close exited cleanly. Out-of-process UIA3 traverses our unpackaged WinUI 3 content with no `E_UNEXPECTED` at any island boundary, so the traversal risk reported against other WinUI 3 apps does not apply to our binary.
+Packages `FlaUI.Core` and `FlaUI.UIA3`, version 5.0.0 (latest, February 2025), restored from NuGet with no install step and no server process. Launch plus window attach took 506 ms with the full versioned title read back; finding the `ScratchPad stub` TextBlock by Name took 35 ms; a window screenshot took 198 ms and 106 KB, verified by eye to show the real window; a coordinate click took 177 ms with no crash; Close exited cleanly. Out-of-process UIA3 traverses our unpackaged WinUI 3 content with no `E_UNEXPECTED` at any island boundary, so the traversal risk reported against other WinUI 3 apps does not apply to our binary.
 
 ## WinAppDriver (WebDriver server)
 
@@ -20,7 +20,7 @@ FlaUI wins: maintained, in-process, no install or server, fastest on every measu
 
 ## tests/UI and UISmoke
 
-`tests/UI/` targets `net10.0-windows10.0.19041.0`, so it builds only on Windows and stays out of `src/Notepad.Neutral.slnf`; the full solution runs it. `UISmoke.StubWindowLaunchesShowsTitleAndCloses` launches the stub, asserts the title starts with `Intelligent Notepad (stub `, closes, and fails loud if the process survives. The app path resolves at build time: a `ResolveAppPath` target queries the app project's `GetTargetPath` into `apppath.txt`, and the test swaps the returned `.dll` for the apphost `.exe` (asserted to exist), because `GetTargetPath` names the managed assembly, not the launchable app. A failed drive saves `uismoke-failure.png` to the temp directory and prints the path. The attach timeout is 15 seconds for CI slowness. Selector convention: AutomationId or Name only, never ControlType conditions, which are flaky on headless server CI runners. CI failure signature, seen once for real: if the WindowsAppRuntime framework is missing on the runner, the app never starts and the drive attaches to a crash dialog titled `IntelligentNotepad.exe - ...` instead; the `Install WindowsAppRuntime` CI step exists because of that run.
+`tests/UI/` targets `net10.0-windows10.0.19041.0`, so it builds only on Windows and stays out of `src/Notepad.Neutral.slnf`; the full solution runs it. `UISmoke.StubWindowLaunchesShowsTitleAndCloses` launches the stub, asserts the title starts with `ScratchPad (stub `, closes, and fails loud if the process survives. The app path resolves at build time: a `ResolveAppPath` target queries the app project's `GetTargetPath` into `apppath.txt`, and the test swaps the returned `.dll` for the apphost `.exe` (asserted to exist), because `GetTargetPath` names the managed assembly, not the launchable app. A failed drive saves `uismoke-failure.png` to the temp directory and prints the path. The attach timeout is 15 seconds for CI slowness. Selector convention: AutomationId or Name only, never ControlType conditions, which are flaky on headless server CI runners. CI failure signature, seen once for real: if the WindowsAppRuntime framework is missing on the runner, the app never starts and the drive attaches to a crash dialog titled `ScratchPad.exe - ...` instead; the `Install WindowsAppRuntime` CI step exists because of that run.
 
 ## Gaps
 

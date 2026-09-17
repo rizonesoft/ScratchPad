@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Xunit;
 
-namespace IntelligentNotepad.Protocol.Tests;
+namespace ScratchPad.Protocol.Tests;
 
 // D00 T02 §4 item 2: each injected fault has a test proving the client survives it.
 public sealed class LoopbackFaultTests

@@ -18,11 +18,11 @@ public sealed record RegistryDeleteKey(string KeyPath);
 
 public static class FileAssociation
 {
-    public const string ProgId = "IntelligentNotepad.Document";
+    public const string ProgId = "ScratchPad.Document";
 
-    public const string FriendlyTypeName = "Intelligent Notepad Document";
+    public const string FriendlyTypeName = "ScratchPad Document";
 
-    public const string BackupRoot = @"Software\IntelligentNotepad\AssocBackup";
+    public const string BackupRoot = @"Software\ScratchPad\AssocBackup";
 
     public static readonly IReadOnlyList<string> ClaimedExtensions =
         [".txt", ".log", ".ini", ".inf", ".ps1", ".psd1", ".psm1", ".scp", ".wtx"];

@@ -87,7 +87,7 @@ jobs:
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          dotnet build src/IntelligentNotepad.slnx --nologo
+          dotnet build src/ScratchPad.slnx --nologo
       - name: Install WindowsAppRuntime
         run: |
           Invoke-WebRequest -Uri https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe -OutFile $env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe
@@ -102,7 +102,7 @@ jobs:
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          dotnet test src/IntelligentNotepad.slnx --nologo --logger "trx;LogFileName=soak-windows.trx" --results-directory TestResults
+          dotnet test src/ScratchPad.slnx --nologo --logger "trx;LogFileName=soak-windows.trx" --results-directory TestResults
       - name: Repeat UI suite
         run: |
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"

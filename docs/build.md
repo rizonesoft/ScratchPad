@@ -12,11 +12,11 @@ Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -Ex
 
 ## Build commands
 
-Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/IntelligentNotepad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under per-project `bin/` and `obj/`, publish output under `dist/`, all gitignored.
+Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/ScratchPad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under per-project `bin/` and `obj/`, publish output under `dist/`, all gitignored.
 
 ## Test
 
-Linux runs the neutral scope including smoke: `dotnet test src/Notepad.Neutral.slnf`. Windows runs the same tests through the full solution: `dotnet test src/IntelligentNotepad.slnx`. Run only the smoke test with `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
+Linux runs the neutral scope including smoke: `dotnet test src/Notepad.Neutral.slnf`. Windows runs the same tests through the full solution: `dotnet test src/ScratchPad.slnx`. Run only the smoke test with `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
 
 ## Warnings and analysis
 
@@ -24,8 +24,8 @@ Warnings fail the build everywhere: `Directory.Build.props` sets `TreatWarningsA
 
 ## Run the stub (Windows)
 
-Build the solution, then run `src\IntelligentNotepad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\IntelligentNotepad.exe` directly. The window title carries the stub version and runtime (for example `Intelligent Notepad (stub 0.0.0+<sha>, .NET 10.0.12)`).
+Build the solution, then run `src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe` directly. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
 
 ## Provenance
 
-The app stamps the git commit into the binary via `SourceRevisionId`, so the provenance of a binary is answerable from the binary: `([System.Diagnostics.FileVersionInfo]::GetVersionInfo('IntelligentNotepad.exe')).ProductVersion` prints `0.0.0+<sha>`. Package versions are locked by `src/IntelligentNotepad/packages.lock.json`; the stub itself is version 0.0.0 and real release versions arrive with D07.
+The app stamps the git commit into the binary via `SourceRevisionId`, so the provenance of a binary is answerable from the binary: `([System.Diagnostics.FileVersionInfo]::GetVersionInfo('ScratchPad.exe')).ProductVersion` prints `0.0.0+<sha>`. Package versions are locked by `src/ScratchPad/packages.lock.json`; the stub itself is version 0.0.0 and real release versions arrive with D07.

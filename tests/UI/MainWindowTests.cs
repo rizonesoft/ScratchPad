@@ -31,7 +31,7 @@ public sealed class MainWindowTests
         Assert.NotNull(window);
         try
         {
-            Assert.Equal("Untitled - Intelligent Notepad", window.Title);
+            Assert.Equal("Untitled - ScratchPad", window.Title);
             Assert.NotNull(FindById(window, "MenuRegion"));
             Assert.NotNull(FindById(window, "TabRegion"));
             Assert.NotNull(FindById(window, "EditorRegion"));
@@ -108,7 +108,7 @@ public sealed class MainWindowTests
         Assert.NotNull(window);
         try
         {
-            Assert.Equal("Untitled - Intelligent Notepad", window.Title);
+            Assert.Equal("Untitled - ScratchPad", window.Title);
             Assert.NotNull(FindById(window, "EditorRegion"));
             UiDpi.PinTopmost(window, true);
             try

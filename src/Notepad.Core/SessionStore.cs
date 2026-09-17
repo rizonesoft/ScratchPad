@@ -49,9 +49,7 @@ public sealed class SessionData
         && string.IsNullOrEmpty(Windows[0].Tabs[0].Content)
         && !Windows[0].Tabs[0].IsPinned;
 
-    public static string FilePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "IntelligentNotepad", "session.json");
+    public static string FilePath => Path.Combine(AppDataDir.Root, "session.json");
 
     public static SessionData Load() => LoadFrom(FilePath);
 
@@ -138,7 +136,7 @@ public sealed class SessionWindow
 // Per window:
 // the ordered tab list plus Active (tab index). Global: ActiveWindow. No
 // rects (stock does not restore geometry). The file lives at
-// %LocalAppData%\IntelligentNotepad\session.json, written atomically via
+// %LocalAppData%\ScratchPad\session.json, written atomically via
 // temp-plus-move; it is never synced, never attached to telemetry, and never
 // written to logs. Unsaved buffers exist on this disk only.
 public sealed class SessionTab

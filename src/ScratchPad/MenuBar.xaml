@@ -1,0 +1,196 @@
+<MenuBar
+    x:Class="ScratchPad.AppMenuBar"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- D01 T02 §1: full Notepad menu structure. Labels, order, separators,
+         and shortcuts read off the stock captures; pending-owner items
+         carry IsEnabled="False" and flip live through MenuCommands. -->
+
+    <MenuBarItem x:Name="MenuFile" Title="File" AccessKey="F" AutomationProperties.AutomationId="MenuFile">
+        <MenuFlyoutItem x:Name="MenuFileNewTab" Text="New tab" AutomationProperties.AutomationId="MenuFileNewTab" Click="OnFileNewTab">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="N" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileNewWindow" Text="New window" AutomationProperties.AutomationId="MenuFileNewWindow" Click="OnFileNewWindow">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="N" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileNewMarkdownTab" Text="New Markdown tab" AutomationProperties.AutomationId="MenuFileNewMarkdownTab" IsEnabled="False" />
+        <MenuFlyoutItem x:Name="MenuFileOpen" Text="Open" AutomationProperties.AutomationId="MenuFileOpen" Click="OnFileOpen">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="O" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSubItem x:Name="MenuFileRecent" Text="Recent" AutomationProperties.AutomationId="MenuFileRecent" />
+        <MenuFlyoutItem x:Name="MenuFileSave" Text="Save" AutomationProperties.AutomationId="MenuFileSave" Click="OnFileSave">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="S" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileSaveAs" Text="Save as" AutomationProperties.AutomationId="MenuFileSaveAs" Click="OnFileSaveAs">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="S" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileSaveAll" Text="Save all" AutomationProperties.AutomationId="MenuFileSaveAll" Click="OnFileSaveAll">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Menu" Key="S" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFilePageSetup" Text="Page setup" AutomationProperties.AutomationId="MenuFilePageSetup" IsEnabled="False" />
+        <MenuFlyoutItem x:Name="MenuFilePrint" Text="Print" AutomationProperties.AutomationId="MenuFilePrint" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="P" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileCloseTab" Text="Close tab" AutomationProperties.AutomationId="MenuFileCloseTab" Click="OnFileCloseTab">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="W" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileCloseWindow" Text="Close window" AutomationProperties.AutomationId="MenuFileCloseWindow" Click="OnFileCloseWindow">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="W" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuFileExit" Text="Exit" AutomationProperties.AutomationId="MenuFileExit" Click="OnFileExit" />
+    </MenuBarItem>
+
+    <MenuBarItem x:Name="MenuEdit" Title="Edit" AccessKey="E" AutomationProperties.AutomationId="MenuEdit">
+        <MenuFlyoutItem x:Name="MenuEditUndo" Text="Undo" AutomationProperties.AutomationId="MenuEditUndo" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="Z" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem x:Name="MenuEditCut" Text="Cut" AutomationProperties.AutomationId="MenuEditCut" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="X" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditCopy" Text="Copy" AutomationProperties.AutomationId="MenuEditCopy" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="C" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditPaste" Text="Paste" AutomationProperties.AutomationId="MenuEditPaste" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="V" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditDelete" Text="Delete" AutomationProperties.AutomationId="MenuEditDelete" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Key="Delete" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem x:Name="MenuEditClearFormatting" Text="Clear formatting" AutomationProperties.AutomationId="MenuEditClearFormatting" IsEnabled="False" />
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem x:Name="MenuEditSearchBing" Text="Search with Bing" AutomationProperties.AutomationId="MenuEditSearchBing" Click="OnEditSearchBing">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="E" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditDefineBing" Text="Define with Bing" AutomationProperties.AutomationId="MenuEditDefineBing" Click="OnEditDefineBing">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="E" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem x:Name="MenuEditFind" Text="Find" AutomationProperties.AutomationId="MenuEditFind" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="F" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditFindNext" Text="Find next" AutomationProperties.AutomationId="MenuEditFindNext" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Key="F3" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditFindPrevious" Text="Find previous" AutomationProperties.AutomationId="MenuEditFindPrevious" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Shift" Key="F3" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditReplace" Text="Replace" AutomationProperties.AutomationId="MenuEditReplace" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="H" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditGoTo" Text="Go to" AutomationProperties.AutomationId="MenuEditGoTo" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="G" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem x:Name="MenuEditSelectAll" Text="Select all" AutomationProperties.AutomationId="MenuEditSelectAll" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control" Key="A" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuEditTimeDate" Text="Time/Date" AutomationProperties.AutomationId="MenuEditTimeDate" IsEnabled="False">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Key="F5" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutSeparator />
+        <MenuFlyoutItem x:Name="MenuEditFont" Text="Font" AutomationProperties.AutomationId="MenuEditFont" IsEnabled="False" Click="OnEditFont" />
+    </MenuBarItem>
+
+    <MenuBarItem x:Name="MenuView" Title="View" AccessKey="V" AutomationProperties.AutomationId="MenuView">
+        <MenuFlyoutSubItem x:Name="MenuViewZoom" Text="Zoom" AutomationProperties.AutomationId="MenuViewZoom">
+            <MenuFlyoutItem x:Name="MenuViewZoomIn" Text="Zoom in" AutomationProperties.AutomationId="MenuViewZoomIn" IsEnabled="False">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Modifiers="Control" Key="Add" />
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem x:Name="MenuViewZoomOut" Text="Zoom out" AutomationProperties.AutomationId="MenuViewZoomOut" IsEnabled="False">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Modifiers="Control" Key="Subtract" />
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+            <MenuFlyoutItem x:Name="MenuViewZoomRestore" Text="Restore default zoom" AutomationProperties.AutomationId="MenuViewZoomRestore" IsEnabled="False">
+                <MenuFlyoutItem.KeyboardAccelerators>
+                    <KeyboardAccelerator Modifiers="Control" Key="Number0" />
+                </MenuFlyoutItem.KeyboardAccelerators>
+            </MenuFlyoutItem>
+        </MenuFlyoutSubItem>
+        <ToggleMenuFlyoutItem x:Name="MenuViewStatusBar" Text="Status bar" AutomationProperties.AutomationId="MenuViewStatusBar" IsEnabled="False" IsChecked="False" Click="OnViewStatusBar" />
+        <ToggleMenuFlyoutItem x:Name="MenuViewWordWrap" Text="Word wrap" AutomationProperties.AutomationId="MenuViewWordWrap" IsEnabled="False" IsChecked="False" />
+        <MenuFlyoutSubItem x:Name="MenuViewMarkdown" Text="Markdown" AutomationProperties.AutomationId="MenuViewMarkdown">
+            <MenuFlyoutItem x:Name="MenuViewMarkdownFormatted" Text="Formatted" AutomationProperties.AutomationId="MenuViewMarkdownFormatted" IsEnabled="False" />
+            <MenuFlyoutItem x:Name="MenuViewMarkdownSyntax" Text="Syntax" AutomationProperties.AutomationId="MenuViewMarkdownSyntax" IsEnabled="False" />
+        </MenuFlyoutSubItem>
+    </MenuBarItem>
+
+    <MenuBarItem x:Name="MenuTools" Title="Tools" AccessKey="T" AutomationProperties.AutomationId="MenuTools">
+        <MenuFlyoutItem x:Name="MenuToolsStats" Text="Statistics" AutomationProperties.AutomationId="MenuToolsStats" Click="OnToolsStats">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="G" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuToolsSnapshots" Text="Snapshots" AutomationProperties.AutomationId="MenuToolsSnapshots" Click="OnToolsSnapshots">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="H" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuToolsTemplates" Text="Templates" AutomationProperties.AutomationId="MenuToolsTemplates" Click="OnToolsTemplates">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="E" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuToolsExport" Text="Export" AutomationProperties.AutomationId="MenuToolsExport" Click="OnToolsExport">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="X" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+        <MenuFlyoutItem x:Name="MenuToolsLock" Text="Lock file" AutomationProperties.AutomationId="MenuToolsLock" Click="OnToolsLock">
+            <MenuFlyoutItem.KeyboardAccelerators>
+                <KeyboardAccelerator Modifiers="Control,Shift" Key="L" />
+            </MenuFlyoutItem.KeyboardAccelerators>
+        </MenuFlyoutItem>
+    </MenuBarItem>
+</MenuBar>

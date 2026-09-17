@@ -14,9 +14,7 @@ public sealed record LaunchDrop(IReadOnlyList<string> Files, bool NewNote = fals
 
 public static class LaunchDrops
 {
-    public static string DirectoryPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "IntelligentNotepad", "launch-drops");
+    public static string DirectoryPath => Path.Combine(AppDataDir.Root, "launch-drops");
 
     public static void Write(IReadOnlyList<string> files, string? directory = null, bool newNote = false)
     {

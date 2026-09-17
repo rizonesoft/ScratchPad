@@ -190,7 +190,7 @@ public sealed class SessionRestoreTests
 
             string settingsPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "IntelligentNotepad", "settings.json");
+                "ScratchPad", "settings.json");
             if (File.Exists(settingsPath))
             {
                 File.Delete(settingsPath);

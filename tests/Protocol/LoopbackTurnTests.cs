@@ -1,7 +1,7 @@
 using System.Text.Json.Nodes;
 using Xunit;
 
-namespace IntelligentNotepad.Protocol.Tests;
+namespace ScratchPad.Protocol.Tests;
 
 // D00 T02 §4 item 1: a full prompt turn against the scripted fake agent.
 public sealed class LoopbackTurnTests

@@ -399,7 +399,7 @@ public sealed class TemplateTests
     {
         return Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "IntelligentNotepad", "templates");
+            "ScratchPad", "templates");
     }
 
     static void CleanTemplates()
