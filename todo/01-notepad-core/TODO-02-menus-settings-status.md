@@ -20,6 +20,8 @@ track: N1
 > **Corrected 2026-09-16 (§2 validation):** `ShellSettings` (settings.json seam: geometry, theme, opening, startup, recents, pins, jump-list hash, whatsnew) exists since D01 T01; "no settings store" now means no single-writer store. §2 adopts its keys (same file, same names, per the header note) and takes over writes; D01 T02 §1 has shipped since (menu bar with all items).
 >
 > **Corrected 2026-09-16 (phase-1 run 4 repair):** §§1-3 have shipped and stamped since (menu bar, single-writer store, settings page); open work is §§4-12. Still true: no status bar, no print path.
+>
+> **Corrected 2026-09-17 (rename filing):** §§1-4 have shipped and stamped since (menu bar, single-writer store, settings page, status bar); open work is §§5-15. §§13-15 (ScratchPad rename completion, title-bar icon, chrome color finetune) keep their §13-15 addresses and sequence before §5 in the Order column and the plan.
 
 ## Inputs
 
@@ -46,14 +48,17 @@ track: N1
 |   2   |   §2    | Settings store with one writer | D01 T01 §1 |  [x]   |
 |   3   |   §3    | Settings page | §2 |  [x]   |
 |   4   |   §4    | Status bar | D01 T01 §1 |  [x]   |
-|   5   |   §5    | Print path | §1 |  [ ]   |
-|   6   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
-|   7   |   §7    | Reading level in the status bar | §4 |  [ ]   |
-|   8   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
-|   9   |   §9    | Live counts in the status bar | §4 |  [ ]   |
-|  10   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
-|  11   |   §11   | Session word goal | §4, §9 |  [ ]   |
-|  12   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
+|   5   |   §13   | ScratchPad rename completion | D01 T01 §1 |  [ ]   |
+|   6   |   §14   | Title-bar icon beside the tabs | §13, D01 T01 §11 |  [ ]   |
+|   7   |   §15   | Chrome color finetune against stock | §13, D01 T01 §1 |  [ ]   |
+|   8   |   §5    | Print path | §1 |  [ ]   |
+|   9   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
+|  10   |   §7    | Reading level in the status bar | §4 |  [ ]   |
+|  11   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
+|  12   |   §9    | Live counts in the status bar | §4 |  [ ]   |
+|  13   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
+|  14   |   §11   | Session word goal | §4, §9 |  [ ]   |
+|  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
 
 ---
 
@@ -307,6 +312,8 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D01 T02 §15 -- chrome color finetune preserves the accent coloring this gallery themes.
+
 - [ ] The gallery lists the built-in accent themes. Done when: every theme renders its swatch.
 - [ ] Preview applies live before commit. Done when: hovering previews and leaving restores.
 - [ ] The chosen accent persists across restarts through §2. Done when: relaunch keeps it.
@@ -351,6 +358,78 @@ Why this section exists: stock's Opening Notepad group carries a Recent Files to
 - [ ] Commit: `"notepad-core: toggle recent-files display"`
 
 **Test checkpoint:** Key round-trip, submenu empty state, jump-list omission, and both card directions driven. Cheaper substitute that fails: a toggle that stops recording recents.
+
+## 13. ScratchPad Rename Completion
+
+Why this section exists: the tree is mid-rename (uncommitted `src/ScratchPad/`, renamed solution, migrated settings path), and nothing else should land until the rename is verified whole and committed alone. A mechanical rename mixed with behavior changes is unreviewable.
+
+**Fidelity:** renamed surfaces read ScratchPad with nothing else redrawn: the About panel name, window titles, and the refreshed settings golden; the main golden is pixel-identical. Deviations: none beyond the name.
+
+**Job:** The user can run the app under its final name with prior settings carried over. Consumer: the settings and session stores, which read the migrated paths.
+
+**Treatment:** Verify-everything, commit-once mechanical rename. Cheaper substitute that fails the checkpoint: committing the tree with stale references left for later.
+
+**Chrome:** No new chrome. Do not restyle anything in the rename commit.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D07 T01 §1 -- packaging pins the renamed identity (exe, AppId, ProgId); the rename lands first so identity is final.
+
+- [ ] Zero stale `IntelligentNotepad` references outside the documented keep-list (the `NoteCrypto` lock magic, historical reviews and phase-runs, ignored scratch). Done when: the grep is quoted clean with each keep named.
+- [ ] `src/ScratchPad.slnx` builds on Windows and `src/Notepad.Neutral.slnf` builds from Linux, both with zero warnings. Done when: both commands are quoted green.
+- [ ] Cheap gate plus the title, settings-name, migration, and golden suites are green. Done when: Smoke/Unit/Protocol plus the UI subset outputs are quoted.
+- [ ] The legacy `%LocalAppData%\IntelligentNotepad` folder migrates once to `%LocalAppData%\ScratchPad` and is never deleted. Done when: the migration fixtures pass and a live launch with seeded legacy data proves the copy.
+- [ ] Commit: `"chore: rename IntelligentNotepad to ScratchPad"` (rename only; the stats fix and any other behavior work ride separately).
+
+**Test checkpoint:** Grep clean; both-OS builds green; gates quoted; migration proven live; exactly one commit containing only the rename.
+
+## 14. Title-Bar Icon Beside the Tabs
+
+Why this section exists: stock Notepad shows its glyph at the left of the title bar, but our content-extended chrome draws no caption icon, so the tab strip starts bare. The icon is drawn by us, in our row, from the shipped asset.
+
+**Fidelity:** stock title bar with app glyph -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` (glyph at the far left of the tab row). Placement matches the capture; the glyph itself is our asset per D01 T01 §11, not stock's.
+
+**Job:** The user can recognize the app at a glance in its own title bar. Consumer: none, this surface is the consumer.
+
+**Treatment:** App-drawn 16px image pinned left of the tab strip inside the extended chrome. Cheaper substitute that fails the checkpoint: relying on the caption icon the extended chrome never draws.
+
+**Chrome:** Consume the shipped `resources/notepad.ico` via a rasterized content asset. Do not redraw or recolor it.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T01 §11 -- owns the icon asset this section rasterizes and places; the asset stays the single source.
+
+- [ ] A 16px raster of `resources/notepad.ico` ships as build content. Done when: the asset lands in the build output.
+- [ ] The glyph renders left of the first tab in the extended title row. Done when: a UI drive asserts presence plus left-of-tabs geometry.
+- [ ] Tab gestures, drag rectangles, and the zero-tab layout are unaffected. Done when: the tab and chrome suites stay green.
+- [ ] Eyeball evidence of the dressed tab row is committed. Done when: the chrome crop sits beside the §11 crops in `resources/baseline/app/`.
+- [ ] Commit: `"notepad-core: draw the title-bar icon"`.
+
+**Test checkpoint:** Asset in output; presence plus geometry driven; tab suites green; evidence crop eyeballed. Cheaper substitute that fails: an icon asserted in XAML but never rendered.
+
+## 15. Chrome Color Finetune Against Stock
+
+Why this section exists: side by side with stock, our chrome reads slightly off (editor surface and title zone sample lighter than the captures). This section closes the gap without touching what makes the window ours: Mica stays, accent coloring stays.
+
+**Fidelity:** stock main window in dark and light -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` and its `-light-` twin. Chrome surfaces match the captures within the golden tolerance; Mica and accent behavior match stock behavior, not flat colors.
+
+**Job:** The user can hold our window against Notepad's and see the same chrome. Consumer: none, this surface is the consumer.
+
+**Treatment:** Brush-level adjustments against same-machine stock probes, Mica and accent rules preserved. Cheaper substitute that fails the checkpoint: flat colors that match one wallpaper and break the backdrop.
+
+**Chrome:** Consume the WinUI theme resources; adjust values, never replace the Mica backdrop or the accent pipeline. Do not invent a second theme system (D01 T02 §10 owns accents).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T02 §10 -- accent themes compose with this finetune; this section preserves the accent coloring §10 themes.
+
+- [ ] Same-machine stock-versus-app palette probes are captured and their sampled values recorded. Done when: the A/B numbers are quoted per surface.
+- [ ] Chrome brushes match stock within tolerance with the Mica backdrop and accent-conditional rules untouched. Done when: per-surface deltas are quoted and the Mica plus accent drives stay green.
+- [ ] Dark, light, and system themes are all driven. Done when: the theme matrix passes.
+- [ ] Goldens refresh per procedure with diffs confined to chrome bands. Done when: inspected diffs are quoted.
+- [ ] Commit: `"notepad-core: finetune chrome colors"`.
+
+**Test checkpoint:** A/B probes recorded; deltas quoted; theme matrix green; goldens refreshed with confined diffs. Cheaper substitute that fails: eyeballed colors with no sampled numbers.
 
 ## Verification
 
