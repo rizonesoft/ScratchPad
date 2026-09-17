@@ -95,7 +95,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §7`  | TODO graph checks in CI                  |   5   |
 | [x] | `D00 T01 §9`  | Opus panel enforcement in the validator  |   5   |
 | [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups     |   4   |
-| [ ] | `D00 T01 §11` | Quote-end lookahead removal              |   3   |
+| [ ] | `D00 T01 §11` | Quote-end lookahead removal              |   4   |
 | [x] | `D00 T02 §1`  | Unit test project and framework          |   5   |
 | [x] | `D00 T02 §2`  | UI automation driver spike               |   5   |
 | [x] | `D00 T02 §3`  | Golden capture store and refresh         |   5   |

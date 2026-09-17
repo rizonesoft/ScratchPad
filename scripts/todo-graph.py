@@ -3421,7 +3421,8 @@ track: Z1
 |  24   |   §24   | Ended quote ends its fence | - |  [x]   |
 |  25   |   §25   | Later quoted block swallows nothing | - |  [x]   |
 |  26   |   §26   | Quoted fence never hides a later panel | - |  [x]   |
-|  27   |   §27   | No lookahead window of any size | - |  [x]   |
+|  27   |   §27   | No forward lookahead window | - |  [x]   |
+|  28   |   §28   | Blank ends a quoted fence | - |  [x]   |
 
 ---
 
@@ -3685,7 +3686,7 @@ track: Z1
 > **Verified:** 2026-09-20 | §26 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quotehide.md
 
-## 27. No lookahead window of any size
+## 27. No forward lookahead window
 
 - [x] Did the thing
 - [x] Commit: `"selftest: panel"`
@@ -3694,6 +3695,16 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §27 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-window1.md
+
+## 28. Blank ends a quoted fence
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §28 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-blankquote.md
 """,
             encoding="utf-8",
         )
@@ -3863,6 +3874,13 @@ track: Z1
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n"
             "\n> ```\nplain\n> ```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-blankquote.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "> ```\n> quoted code\n\n> ```\n"
+            "> **adversarial: approve**\n> **consistency: approve**\n"
+            "> **integration: approve**\n> **record: approve**\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -4050,9 +4068,17 @@ track: Z1
             True,
         )
         check(
-            "no lookahead window of any size",
+            "no forward lookahead window",
             any(
                 "TODO-06-panel.md" in ln and "§27 " in ln and "unbalanced fence opened at line 12" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "blank ends a quoted fence",
+            any(
+                "TODO-06-panel.md" in ln and "§28 " in ln and "unbalanced fence opened at line 8" in ln
                 for ln in panel_out
             ),
             True,
@@ -4083,6 +4109,7 @@ track: Z1
             "90-panel-laterquote.md",
             "90-panel-quotehide.md",
             "90-panel-window1.md",
+            "90-panel-blankquote.md",
         ):
             (rev_dir / extra).unlink()
         check(

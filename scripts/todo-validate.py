@@ -493,15 +493,19 @@ def validate(graph, _args) -> int:
             raw_lines = text.splitlines()
             for fence_lineno, ln in enumerate(raw_lines, start=1):
                 qd, fence_ch, fence_run, info = _fence_shape(ln)
-                if fence is not None and qd < fence[3] and ln.strip() != "":
+                if fence is not None and qd < fence[3]:
                     # Below the open fence's quote depth, the quote ended,
                     # closing the fence with it: CommonMark laziness never
                     # applies to fenced-code content, so there is no
                     # lookahead for a later same-depth close (its
                     # whole-remainder scan let later quoted blocks swallow
-                    # the lines between, hiding whole panels). Blank lines
-                    # are always content. Reprocess the line below: it may
-                    # open a new fence at its own depth.
+                    # the lines between, hiding whole panels). A blank line
+                    # is not a blockquote continuation line (CommonMark
+                    # 0.31.2 section 5.1, example 228), so it ends a quoted
+                    # fence too; an unquoted fence needs no such bar because
+                    # its depth already matches (0 < 0 is false), keeping
+                    # blank lines legal content there. Reprocess the line
+                    # below: it may open a new fence at its own depth.
                     fence = None
                 if fence_run:
                     if fence is None:
