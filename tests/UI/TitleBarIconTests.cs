@@ -43,12 +43,12 @@ public sealed class TitleBarIconTests
                 // state on ItemStatus (ImageOpened/ImageFailed; Name and
                 // HelpText stay clean for assistive tech) and the drive
                 // waits for it instead of trusting the rectangle.
-                var help = Retry.While(
+                var status = Retry.While(
                     () => icon.Properties.ItemStatus.ValueOrDefault,
                     text => text != "loaded",
                     TimeSpan.FromSeconds(10),
                     TimeSpan.FromMilliseconds(250));
-                Assert.Equal("loaded", help.Result);
+                Assert.Equal("loaded", status.Result);
             }
             finally
             {
@@ -116,8 +116,8 @@ public sealed class TitleBarIconTests
         // The §14 drag-rect regression (caption rect over the add button)
         // is invisible to UIA invoke, which bypasses hit-testing: only a
         // real cursor click through the caption zone proves the button
-        // still receives its clicks. Needs a display like its TabBarTests
-        // input siblings, green on CI.
+        // still receives its clicks. A plain Fact, red on headless hosts
+        // exactly like its TabBarTests input siblings; CI is the gate.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();

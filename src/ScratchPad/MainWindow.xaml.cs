@@ -24,6 +24,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private TabBar? tabBar;
     private Image? titleIconRef;
+    private bool titleIconScaleHooked;
+    private string titleIconAsset = string.Empty;
 
     // D01 T02 §4: the status strip plus the box it currently follows.
     // Caret moves do not change Text, so the active box needs its own
@@ -81,9 +83,11 @@ public sealed partial class MainWindow : Window, IDisposable
         // row (stock placement per the §14 Fidelity capture). The image takes
         // no input, keeping tab gestures intact; drag rectangles map through
         // TabRegion at the UpdateDragRects call site. Decode state rides
-        // ItemStatus (never Name/HelpText, which stay clean for assistive
-        // tech) so the UI drive proves the glyph rendered, not merely
-        // that a 16-DIP box exists.
+        // ItemStatus so the UI drive proves the glyph rendered, not merely
+        // that a 16-DIP box exists. Name and HelpText stay clean; the icon
+        // is unfocusable so readers announce nothing unprompted. (Raw view
+        // would hide it from AT entirely, but measured: FlaUI's descendant
+        // search misses raw-view elements too, so control view it is.)
         var titleIcon = new Image
         {
             Width = 16,
@@ -99,8 +103,9 @@ public sealed partial class MainWindow : Window, IDisposable
         titleIcon.Loaded += (_, _) =>
         {
             SelectTitleIconAsset();
-            if (titleIcon.XamlRoot is XamlRoot xamlRoot)
+            if (!titleIconScaleHooked && titleIcon.XamlRoot is XamlRoot xamlRoot)
             {
+                titleIconScaleHooked = true;
                 xamlRoot.Changed += (_, _) => SelectTitleIconAsset();
             }
         };
@@ -805,13 +810,19 @@ public sealed partial class MainWindow : Window, IDisposable
     // the 16px source.
     private void SelectTitleIconAsset()
     {
-        if (titleIconRef is null)
+        if (closed || titleIconRef is null)
         {
             return;
         }
 
         double scale = titleIconRef.XamlRoot?.RasterizationScale ?? 1;
         string asset = scale >= 1.5 ? "titlebar-icon-32.png" : "titlebar-icon-16.png";
+        if (asset == titleIconAsset)
+        {
+            return;
+        }
+
+        titleIconAsset = asset;
         titleIconRef.Source = new BitmapImage(new Uri($"ms-appx:///{asset}"));
     }
 
@@ -837,7 +848,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             tabBarLeft = tabBar.TransformToVisual(TabRegion).TransformPoint(new Point(0, 0)).X;
         }
-        catch (Exception ex) when (ex is InvalidOperationException || ex is System.Runtime.InteropServices.COMException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.COMException)
         {
             return;
         }
