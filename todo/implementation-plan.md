@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **48 of 170 sections complete (28%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **49 of 170 sections complete (29%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -102,7 +102,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §4`  | ACP loopback fixture                     |   5   |
 | [x] | `D00 T02 §5`  | Soak and quarantine procedure            |   5   |
 | [x] | `D00 T02 §6`  | Golden comparison deterministic on CI    |   7   |
-| [ ] | `D00 T02 §7`  | CI evidence capture pipeline             |   4   |
+| [x] | `D00 T02 §7`  | CI evidence capture pipeline             |   4   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 

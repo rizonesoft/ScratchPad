@@ -99,13 +99,13 @@ jobs:
       # The UI suite drives the real profile (%LOCALAPPDATA%\ScratchPad),
       # so the profile is reset first: otherwise the frame restores the
       # suite's leftover session instead of a fresh launch. Orphaned app
-      # processes are stopped (and waited on) before the reset so no dead
-      # handle can fail the delete; the name match assumes an ephemeral
-      # GitHub-hosted runner, where no operator-owned ScratchPad.exe can
-      # exist. WhatsNewSeen is seeded so no first-run dialog covers the
-      # frame. The frame is asserted canonical here -- 900x650 and
-      # non-black: a display-less runner must fail loudly, not upload a
-      # black artifact on a green build.
+      # processes are stopped (then waited on, best-effort) before the
+      # reset so no live orphan's open handle can fail the delete; the
+      # name match assumes an ephemeral GitHub-hosted runner, where no
+      # operator-owned ScratchPad.exe can exist. WhatsNewSeen is seeded
+      # so no first-run dialog covers the frame. The frame is asserted
+      # canonical here -- 900x650 and non-black: a display-less runner
+      # must fail loudly, not upload a black artifact on a green build.
       - name: Capture evidence frame
         run: |
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"

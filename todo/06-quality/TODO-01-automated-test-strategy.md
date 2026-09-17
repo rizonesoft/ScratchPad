@@ -104,6 +104,8 @@ Why this section exists: budgets nobody measures are decorations. The perf tests
 
 Why this section exists: the quarantine procedure from `D00 T02 §5` needs an operator: triage cadence, fix windows, and escalation. Mass-failure runs need the same operator with a different verdict: a runner incident, not N test quarantines.
 
+- -> XREF: D00 T02 §7 -- the incident-triage item is filed from its round-4 run; its review record carries the incident evidence.
+
 - [ ] The flake policy sets triage cadence, fix window, and escalation for quarantined tests. Done when: the policy is written in the strategy doc.
 - [ ] A quarantined test is retried on its schedule and either reinstated or removed with a recorded decision. Done when: the lifecycle is demonstrated once for real.
 - [ ] Quarantine size is reported in CI; growth past the committed limit fails the run. Done when: the limit is tested.
