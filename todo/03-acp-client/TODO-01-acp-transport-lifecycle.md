@@ -14,6 +14,8 @@ track: A1
 
 > [!IMPORTANT]
 > **Current state:** No protocol code exists. The `D00 T02 §4` loopback fixture is the test peer for every section here; no section in this file may require a real agent or network access to prove itself.
+>
+> **Corrected 2026-09-14:** the project shells (`src/Notepad.Acp/`, `src/Notepad.Agents/`), the loopback fixture, and the Protocol suite (8/8) exist since D00 T02 §4; what is missing is the real client, which this file builds.
 
 ## Inputs
 
@@ -48,7 +50,11 @@ track: A1
 
 ## 1. JSON-RPC Message Layer
 
+> **Started:** 2026-09-14T23:12:00Z
+
 Why this section exists: every byte on the wire goes through this layer. Correct framing and schema validation here is correctness everywhere.
+
+**Decided 2026-09-14:** "the ACP schema" at this layer means the JSON-RPC 2.0 envelope plus the ACP framing rules from [transports](https://agentclientprotocol.com/protocol/v1/transports) (single message per line, no batches, no embedded newlines, UTF-8); per-method params/result shapes validate in §§3-5 where the methods land, since this layer cannot validate methods it does not know. Tests need no loopback: the codec and the correlation registry are pure and prove themselves in-process. D03 tests live in `tests/Protocol/` with a new `ProjectReference` to `src/Notepad.Acp/`.
 
 - [ ] `src/Notepad.Acp/JsonRpc.cs` encodes and decodes JSON-RPC 2.0 requests, responses, and notifications. Done when: the codec fixtures pass, including batch-free single-message framing.
 - [ ] Outgoing messages validate against the ACP schema before send; violations fail loudly in tests. Done when: a deliberately malformed message fails the test.
