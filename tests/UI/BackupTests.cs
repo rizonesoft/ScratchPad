@@ -24,16 +24,18 @@ public sealed class BackupTests
         try
         {
             string file = SeedFile(dir, "bak20.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "edited");
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 AnswerPrompt(window, "Save");
                 Assert.Equal(1, WaitForTabCount(window, 1));
                 string sibling = Assert.Single(FileSave.BackupSiblings(file));
@@ -71,16 +73,18 @@ public sealed class BackupTests
 
             string foreign = Path.Combine(dir, "bak20.txt.old.bak");
             File.WriteAllText(foreign, "mine\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "edited");
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 AnswerPrompt(window, "Save");
                 Assert.Equal(1, WaitForTabCount(window, 1));
             }
@@ -113,16 +117,18 @@ public sealed class BackupTests
             File.SetAttributes(file, FileAttributes.ReadOnly);
             try
             {
+                nint fgBefore = UiForeground.Capture();
                 using var app = LaunchAppWithArgs($"\"{file}\"");
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
                     SelectTab(window, 1);
                     SetBoxText(window, "edited");
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     AnswerPrompt(window, "Save");
                     Assert.Equal(2, WaitForTabCount(window, 2));
                     string sibling = Assert.Single(WaitForSiblings(file, 1));
@@ -230,32 +236,6 @@ public sealed class BackupTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250));
         return result.Result;
-    }
-
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
     }
 
     static string AppExePath()

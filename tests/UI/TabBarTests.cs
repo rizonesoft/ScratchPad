@@ -31,9 +31,11 @@ public sealed class TabBarTests
     public void InitialTabRendersFromModel()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -57,7 +59,8 @@ public sealed class TabBarTests
 
     // The section checkpoint: open three tabs, switch, close each. Reorder is
     // covered by DragAttemptLeavesOrderUnchanged (parity is no-reorder).
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void ThreeTabsSwitchAndClose()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -69,8 +72,8 @@ public sealed class TabBarTests
         {
             window.Focus();
             Thread.Sleep(300);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
             Assert.Equal(3, WaitForTabCount(window, 3));
 
             // Distinct content per tab proves the switch actually moves.
@@ -88,15 +91,15 @@ public sealed class TabBarTests
             Assert.Equal("AAA", WaitForContent(window, "AAA"));
 
             // Ctrl+Tab cycles sequentially and wraps; Ctrl+1/3 jump.
-            Press(window, VirtualKeyShort.TAB, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.TAB, withControl: true);
             Assert.Equal("BBB", WaitForContent(window, "BBB"));
-            Press(window, VirtualKeyShort.TAB, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.TAB, withControl: true);
             Assert.Equal("CCC", WaitForContent(window, "CCC"));
-            Press(window, VirtualKeyShort.TAB, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.TAB, withControl: true);
             Assert.Equal("AAA", WaitForContent(window, "AAA"));
-            Press(window, VirtualKeyShort.KEY_3, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_3, withControl: true);
             Assert.Equal("CCC", WaitForContent(window, "CCC"));
-            Press(window, VirtualKeyShort.KEY_1, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_1, withControl: true);
             Assert.Equal("AAA", WaitForContent(window, "AAA"));
 
             // Clearing an untitled box flips it back to clean, so each close
@@ -107,7 +110,7 @@ public sealed class TabBarTests
             WaitForTabName(window, 2, TabAccessibilityName.For("Untitled", isDirty: false));
 
             // Ctrl+W closes the active tab; the neighbor takes selection.
-            Press(window, VirtualKeyShort.KEY_W, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_W, withControl: true);
             Assert.Equal(2, WaitForTabCount(window, 2));
             Assert.Equal("BBB", WaitForContent(window, "BBB"));
 
@@ -129,7 +132,8 @@ public sealed class TabBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void NumberShortcutsAndReopenMatchNotepad()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -161,21 +165,21 @@ public sealed class TabBarTests
             }
 
             // Ctrl+3 is positional; Ctrl+9 selects the last tab (probed).
-            Press(window, VirtualKeyShort.KEY_3, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_3, withControl: true);
             Assert.Equal("TAB2", WaitForContent(window, "TAB2"));
-            Press(window, VirtualKeyShort.KEY_9, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_9, withControl: true);
             Assert.Equal("TAB9", WaitForContent(window, "TAB9"));
 
             // Shift+Tab walks back one. Clearing the box makes the close a
             // clean empty-untitled close, which stacks nothing: reopen is a
             // no-op (Notepad's no-restore parity for empty untitled tabs).
-            Press(window, VirtualKeyShort.TAB, withControl: true, withShift: true);
+            UiInput.Press(window, VirtualKeyShort.TAB, withControl: true, withShift: true);
             Assert.Equal("TAB8", WaitForContent(window, "TAB8"));
             ContentBox(window).Text = string.Empty;
             WaitForTabName(window, 8, TabAccessibilityName.For("Untitled", isDirty: false));
-            Press(window, VirtualKeyShort.KEY_W, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_W, withControl: true);
             Assert.Equal(9, WaitForTabCount(window, 9));
-            Press(window, VirtualKeyShort.KEY_T, withControl: true, withShift: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true, withShift: true);
             Thread.Sleep(500);
             Assert.Equal(9, WaitForTabCount(window, 9));
         }
@@ -185,7 +189,8 @@ public sealed class TabBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void DragAttemptLeavesOrderUnchanged()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -197,8 +202,8 @@ public sealed class TabBarTests
         {
             window.Focus();
             Thread.Sleep(300);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
             Assert.Equal(3, WaitForTabCount(window, 3));
             SelectTab(window, 0);
             ContentBox(window).Text = "AAA";
@@ -262,19 +267,19 @@ public sealed class TabBarTests
     public void DirtyClosePromptsAndCancelKeepsTheTab()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
-            window.Focus();
-            Thread.Sleep(300);
             ContentBox(window).Text = "FIRST";
             Assert.StartsWith("*", WaitForTitle(window, "*"), StringComparison.Ordinal);
             Assert.NotNull(TabItemAt(window, 0).FindFirstDescendant(cf => cf.ByName("•")));
 
-            Press(window, VirtualKeyShort.KEY_W, withControl: true);
+            UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
             var dialog = WaitForDialog(window);
             Assert.NotNull(dialog);
             var message = dialog.FindFirstDescendant(cf => cf.ByText("Do you want to save changes to FIRST.txt?"));
@@ -296,7 +301,8 @@ public sealed class TabBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void DontSaveClosesAndNeverReopens()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -309,7 +315,7 @@ public sealed class TabBarTests
             window.Focus();
             Thread.Sleep(300);
             ContentBox(window).Text = "FIRST";
-            Press(window, VirtualKeyShort.KEY_W, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_W, withControl: true);
             var dialog = WaitForDialog(window);
             Assert.NotNull(dialog);
             var dontSave = FindButton(dialog, "Don't save");
@@ -319,7 +325,7 @@ public sealed class TabBarTests
             Assert.Equal(0, WaitForTabCount(window, 0));
 
             // Notepad's no-restore parity: discarded closes never reopen.
-            Press(window, VirtualKeyShort.KEY_T, withControl: true, withShift: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true, withShift: true);
             Thread.Sleep(500);
             Assert.Equal(0, WaitForTabCount(window, 0));
         }
@@ -329,7 +335,8 @@ public sealed class TabBarTests
         }
     }
 
-    [Fact(Skip = "QUARANTINED 2026-09-15 D01-T01-S3 ctxmenu-name-race")]
+    [InteractiveFact(Skip = "QUARANTINED 2026-09-15 D01-T01-S3 ctxmenu-name-race")]
+    [Trait("Category", "Interactive")]
     public void ContextMenuMatchesNotepad()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -341,8 +348,8 @@ public sealed class TabBarTests
         {
             window.Focus();
             Thread.Sleep(300);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
             Assert.Equal(3, WaitForTabCount(window, 3));
             SelectTab(window, 0);
             ContentBox(window).Text = "AAA";
@@ -421,6 +428,7 @@ public sealed class TabBarTests
     }
 
     [HookFact]
+    [Trait("Category", "Interactive")]
     public void MiddleClickClosesTheTabUnderTheCursor()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -432,7 +440,7 @@ public sealed class TabBarTests
         {
             window.Focus();
             Thread.Sleep(300);
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
             Assert.Equal(2, WaitForTabCount(window, 2));
             SelectTab(window, 0);
             ContentBox(window).Text = "AAA";
@@ -473,9 +481,11 @@ public sealed class TabBarTests
     public void OverflowShrinksTabsWithoutScrollChrome()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -529,31 +539,6 @@ public sealed class TabBarTests
         }
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static void SelectTab(Window window, int index)
     {

@@ -30,9 +30,11 @@ public sealed class JumpListTaskTests
         SeedSettings(seeded);
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -127,9 +129,11 @@ public sealed class JumpListTaskTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\" {LaunchArgs.NewNoteFlag}");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -160,9 +164,11 @@ public sealed class JumpListTaskTests
         {
             // Verbatim feed arguments: this is the task-to-launch contract.
             string args = JumpListFeed.Build([pin], null).Single().Arguments;
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs(args);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -191,9 +197,11 @@ public sealed class JumpListTaskTests
         try
         {
             string args = JumpListFeed.Build(null, [rec]).Single().Arguments;
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs(args);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {

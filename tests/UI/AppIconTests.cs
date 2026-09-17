@@ -35,9 +35,11 @@ public sealed class AppIconTests
     [Fact(Skip = "QUARANTINED 2026-09-17 D01-T01-S11 chrome-icon-uia-timeout")]
     public void WindowChromeIconMatchesAsset()
     {
+        nint fgBefore = UiForeground.Capture();
         using var app = Application.Launch(AppExePath(), string.Empty);
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {

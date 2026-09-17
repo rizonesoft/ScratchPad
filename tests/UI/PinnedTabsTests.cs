@@ -16,7 +16,8 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class PinnedTabsTests
 {
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void DoubleClickTogglesPinGlyph()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -26,7 +27,7 @@ public sealed class PinnedTabsTests
         Assert.NotNull(window);
         try
         {
-            Press(window, VirtualKeyShort.KEY_T, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.KEY_T, withControl: true);
             Assert.Equal(2, WaitForTabCount(window, 2));
             TabItemAt(window, 1).DoubleClick();
             Assert.NotNull(WaitForPin(window, 1));
@@ -40,7 +41,8 @@ public sealed class PinnedTabsTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void PinsSurviveRelaunch()
     {
         string dir = NewTempDir();
@@ -95,7 +97,8 @@ public sealed class PinnedTabsTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void CloseOthersSkipsPinned()
     {
         string dir = NewTempDir();
@@ -138,7 +141,8 @@ public sealed class PinnedTabsTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void CloseRightSkipsPinned()
     {
         string dir = NewTempDir();
@@ -182,7 +186,8 @@ public sealed class PinnedTabsTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void SingleCloseStillClosesPinned()
     {
         string dir = NewTempDir();
@@ -203,7 +208,7 @@ public sealed class PinnedTabsTests
                 Assert.NotNull(WaitForPin(window, 2));
                 Assert.Contains(b, WaitForPinnedFiles(b));
                 SelectTab(window, 2);
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.Press(window, VirtualKeyShort.KEY_W, withControl: true);
                 Assert.Equal(3, WaitForTabCount(window, 3));
                 Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
                 Assert.Equal(TabAccessibilityName.For("a13.txt", isDirty: false), TabItemAt(window, 1).Name);
@@ -353,24 +358,6 @@ public sealed class PinnedTabsTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250)).Result;
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

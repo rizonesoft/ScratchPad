@@ -18,9 +18,11 @@ public sealed class UntitledTitleTests
     public void TypingFirstLineRenamesTab()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -40,9 +42,11 @@ public sealed class UntitledTitleTests
     public void FirstLineTrimsAndTruncates()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {

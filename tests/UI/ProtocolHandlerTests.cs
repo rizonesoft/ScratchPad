@@ -52,9 +52,11 @@ public sealed class ProtocolHandlerTests
         try
         {
             string url = ProtocolAssociation.Scheme + "://" + Uri.EscapeDataString(file);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{url}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -80,9 +82,11 @@ public sealed class ProtocolHandlerTests
     public void MalformedLinksOpenBareWindow(string link)
     {
         SeedFresh();
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchAppWithArgs($"\"{link}\"");
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {

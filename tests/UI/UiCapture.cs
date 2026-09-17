@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
@@ -124,6 +125,7 @@ internal static class UiCapture
         // even on light-system machines. First-run has its own driven test.
         new Notepad.Core.ShellSettings { WhatsNewSeen = true, Theme = "dark" }.Save();
 
+        nint fgBefore = UiForeground.Capture();
         using var app = Application.Launch(appPath);
         try
         {
@@ -134,31 +136,22 @@ internal static class UiCapture
                 throw new InvalidOperationException("app showed no main window");
             }
 
+            UiForeground.Restore(fgBefore);
+
             var scale = DisplayScale();
-            if (!Place(window, 50, 50, (int)Math.Round(tolerance.CanonicalWidth * scale), (int)Math.Round(tolerance.CanonicalHeight * scale)))
+            if (!Place(window, 10000, 10000, (int)Math.Round(tolerance.CanonicalWidth * scale), (int)Math.Round(tolerance.CanonicalHeight * scale)))
             {
                 throw new InvalidOperationException("app window refused placement");
             }
 
             prepare?.Invoke(window);
-            var raw = Path.Combine(Path.GetTempPath(), $"golden-fresh-{Guid.NewGuid():N}.png");
-            PinTopmost(window, true);
-            Thread.Sleep(250);
-            window.CaptureToFile(raw);
-            PinTopmost(window, false);
+            using var shot = PrintCapture(window);
             window.Close();
-            Bitmap canonical;
-            using (var shot = new Bitmap(raw))
-            {
-                // Scale and raw size pin the capture environment in the test
-                // log (D00 T02 §6): cross-DPI rasterization noise is diagnosed
-                // from these two numbers, not from guesses.
-                Console.WriteLine($"capture: scale={scale} raw={shot.Width}x{shot.Height}");
-                canonical = GoldenComparer.Canonicalize(shot, tolerance.CanonicalWidth, tolerance.CanonicalHeight);
-            }
-
-            File.Delete(raw);
-            return canonical;
+            // Scale and raw size pin the capture environment in the test
+            // log (D00 T02 §6): cross-DPI rasterization noise is diagnosed
+            // from these two numbers, not from guesses.
+            Console.WriteLine($"capture: scale={scale} raw={shot.Width}x{shot.Height}");
+            return GoldenComparer.Canonicalize(shot, tolerance.CanonicalWidth, tolerance.CanonicalHeight);
         }
         finally
         {
@@ -185,15 +178,60 @@ internal static class UiCapture
         return dpi <= 0 ? 1.0 : dpi / 96.0;
     }
 
+    // DWM-surface capture that works off-screen (spiked D00 T02 §8:
+    // off-screen and on-screen PrintWindow renders are pixel-identical
+    // at 28.3 mean red). DPI-aware internally: testhost is unaware, so
+    // raw bounds would virtualize and clip the bitmap.
+    internal static Bitmap PrintCapture(Window window)
+    {
+        var previous = UiDpi.Enter();
+        try
+        {
+            var rect = window.BoundingRectangle;
+            var capture = new Bitmap((int)rect.Width, (int)rect.Height, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(capture))
+            {
+                nint hdc = g.GetHdc();
+                try
+                {
+                    const uint renderFullContent = 0x00000002;
+                    _ = NativePrint.PrintWindow(
+                        window.Properties.NativeWindowHandle.Value, hdc, renderFullContent);
+                }
+                finally
+                {
+                    g.ReleaseHdc(hdc);
+                }
+            }
+
+            return capture;
+        }
+        finally
+        {
+            UiDpi.Exit(previous);
+        }
+    }
+
+    static class NativePrint
+    {
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool PrintWindow(nint hWnd, nint hdc, uint flags);
+    }
+
     static void PinTopmost(Window window, bool topmost) => UiDpi.PinTopmost(window, topmost);
 
     // SetWindowPos directly, verified with one retry: mirrors the capture tool exactly.
+    // Shows no-activate before verifying: minimized-start windows (background
+    // runs) report the minimized rect until shown, so a pre-show verify fails.
     static bool Place(Window window, int x, int y, int width, int height)
     {
         const uint flags = 0x0004 | 0x0010;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             NativeMethods.Move(window.Properties.NativeWindowHandle.Value, x, y, width, height, flags);
+            UiForeground.Show(window);
             Thread.Sleep(500);
             var rect = window.BoundingRectangle;
             if (Math.Abs(rect.Width - width) <= 2 && Math.Abs(rect.Height - height) <= 2)

@@ -28,9 +28,11 @@ public sealed class ChromeTests
         }
 
         new SessionData { Windows = [new SessionWindow { Tabs = tabs }] }.Save();
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -66,14 +68,16 @@ public sealed class ChromeTests
     public void ZeroTabsCentersAddButton()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
             Assert.Equal(1, WaitForTabCount(window, 1));
-            Press(window, VirtualKeyShort.KEY_W, withControl: true);
+            UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
             Assert.Equal(0, WaitForTabCount(window, 0));
             double delta = 0;
             var centered = Retry.While(
@@ -113,17 +117,6 @@ public sealed class ChromeTests
     static List<AutomationElement> TabItems(Window window) =>
         window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static Application LaunchApp()
     {

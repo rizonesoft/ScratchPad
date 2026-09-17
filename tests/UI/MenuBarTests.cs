@@ -54,9 +54,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -90,7 +92,7 @@ public sealed class MenuBarTests
     {
         (string Top, string[] Ids)[] menus =
         [
-            ("MenuFile", ["MenuFileNewMarkdownTab", "MenuFilePageSetup", "MenuFilePrint"]),
+            ("MenuFile", ["MenuFileNewMarkdownTab"] /* PageSetup and Print enabled by the D01 T02 §5 scaffold; that section drives them on landing */),
             (
                 "MenuEdit",
                 [
@@ -106,9 +108,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -122,7 +126,7 @@ public sealed class MenuBarTests
                         Assert.False(item.IsEnabled, id);
                     }
 
-                    DismissMenu();
+                    DismissMenu(window, top);
                 }
 
                 OpenMenu(window, "MenuView");
@@ -148,7 +152,7 @@ public sealed class MenuBarTests
                         toggle.Patterns.Toggle.Pattern.ToggleState);
                 }
 
-                DismissMenu();
+                DismissMenu(window, "MenuView");
                 OpenMenu(window, "MenuView");
                 OpenSubmenu(window, "MenuViewZoom");
                 foreach (string id in new[] { "MenuViewZoomIn", "MenuViewZoomOut", "MenuViewZoomRestore" })
@@ -158,8 +162,8 @@ public sealed class MenuBarTests
                     Assert.False(item.IsEnabled, id);
                 }
 
-                DismissMenu();
-                DismissMenu();
+                DismissMenu(window, "MenuView");
+                DismissMenu(window, "MenuView");
                 OpenMenu(window, "MenuView");
                 OpenSubmenu(window, "MenuViewMarkdown");
                 foreach (string id in new[] { "MenuViewMarkdownFormatted", "MenuViewMarkdownSyntax" })
@@ -169,8 +173,8 @@ public sealed class MenuBarTests
                     Assert.False(item.IsEnabled, id);
                 }
 
-                DismissMenu();
-                DismissMenu();
+                DismissMenu(window, "MenuView");
+                DismissMenu(window, "MenuView");
             }
             finally
             {
@@ -199,9 +203,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -222,7 +228,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void AccessKeysOpenEachMenu()
     {
         (VirtualKeyShort Key, string Menu, string First)[] cases =
@@ -255,7 +262,8 @@ public sealed class MenuBarTests
                         TimeSpan.FromSeconds(5),
                         TimeSpan.FromMilliseconds(250)).Result;
                     Assert.NotNull(item);
-                    DismissMenu();
+                    Keyboard.Press(VirtualKeyShort.ESCAPE);
+                    Thread.Sleep(350);
                     Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId(first)));
                 }
             }
@@ -270,7 +278,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileMenuLiveAcceleratorsWork()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -283,13 +292,13 @@ public sealed class MenuBarTests
                 Assert.NotNull(window);
                 try
                 {
-                    Press(window, VirtualKeyShort.KEY_N, withControl: true);
+                    UiInput.Press(window, VirtualKeyShort.KEY_N, withControl: true);
                     Assert.Equal(2, WaitForTabCount(window, 2));
-                    Press(window, VirtualKeyShort.KEY_O, withControl: true);
+                    UiInput.Press(window, VirtualKeyShort.KEY_O, withControl: true);
                     var open = WaitForNativeModal(window, "Open");
                     CancelNativeModal(window, open, "Open");
                     SetBoxText(window, "accel work");
-                    Press(window, VirtualKeyShort.KEY_S, withControl: true, withShift: true);
+                    UiInput.Press(window, VirtualKeyShort.KEY_S, withControl: true, withShift: true);
                     var saveAs = WaitForNativeModal(window, "Save As");
                     try
                     {
@@ -317,7 +326,7 @@ public sealed class MenuBarTests
                 try
                 {
                     SetBoxText(window, "accel close");
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true, withShift: true);
+                    UiInput.Press(window, VirtualKeyShort.KEY_W, withControl: true, withShift: true);
                     Assert.True(SpinWait.SpinUntil(() => app.HasExited, TimeSpan.FromSeconds(10)));
                     Assert.True(app.HasExited);
                 }
@@ -385,7 +394,8 @@ public sealed class MenuBarTests
                 Assert.True(item.IsEnabled, id);
             }
 
-            DismissMenu();
+            Keyboard.Press(VirtualKeyShort.ESCAPE);
+            Thread.Sleep(350);
         }
     }
 
@@ -395,9 +405,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -422,9 +434,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -456,7 +470,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileOpenShowsPickerWithEncodingList()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -499,7 +514,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileOpenLoadsFileWithForcedEncoding()
     {
         string dir = NewTempDir();
@@ -538,7 +554,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileOpenOpensExactlyOneFile()
     {
         string dir = NewTempDir();
@@ -610,7 +627,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileOpenMissingNameOffersCreate()
     {
         string dir = NewTempDir();
@@ -667,9 +685,11 @@ public sealed class MenuBarTests
         try
         {
             string file = SeedFile(dir, "saveme.txt", "original");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -695,7 +715,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileSaveOnUntitledOpensSaveAs()
     {
         string dir = NewTempDir();
@@ -709,7 +730,7 @@ public sealed class MenuBarTests
             try
             {
                 SetBoxText(window, "unsaved work");
-                Press(window, VirtualKeyShort.KEY_S, withControl: true);
+                UiInput.Press(window, VirtualKeyShort.KEY_S, withControl: true);
                 var dialog = WaitForNativeModal(window, "Save As");
                 try
                 {
@@ -735,7 +756,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileSaveAsWritesChosenPathAndEncoding()
     {
         string dir = NewTempDir();
@@ -785,7 +807,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileSaveAsPrefillsEncodingAndEol()
     {
         string dir = NewTempDir();
@@ -844,7 +867,8 @@ public sealed class MenuBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void FileSaveAllWalksDirtyTabs()
     {
         string dir = NewTempDir();
@@ -863,7 +887,7 @@ public sealed class MenuBarTests
                 SetBoxText(window, "one edited");
                 SelectTab(window, 0);
                 SetBoxText(window, "two new");
-                Press(window, VirtualKeyShort.KEY_S, withControl: true, withAlt: true);
+                UiInput.Press(window, VirtualKeyShort.KEY_S, withControl: true, withAlt: true);
                 string target = Path.Combine(dir, "second.txt");
                 var dialog = WaitForNativeModal(window, "Save As");
                 SetFileNameText(dialog, target);
@@ -910,9 +934,11 @@ public sealed class MenuBarTests
         try
         {
             string file = SeedFile(dir, "recent.txt", "remember me");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -934,15 +960,15 @@ public sealed class MenuBarTests
                 OpenMenu(window, "MenuFile");
                 OpenSubmenu(window, "MenuFileRecent");
                 ClickSubmenuItem(window, "MenuFileRecentClear");
-                DismissMenu();
+                DismissMenu(window, "MenuFile");
                 Thread.Sleep(500);
                 OpenMenu(window, "MenuFile");
                 OpenSubmenu(window, "MenuFileRecent");
                 var empty = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFileRecentEmpty"));
                 Assert.NotNull(empty);
                 Assert.Equal("No recent files", empty.Name);
-                DismissMenu();
-                DismissMenu();
+                DismissMenu(window, "MenuFile");
+                DismissMenu(window, "MenuFile");
             }
             finally
             {
@@ -964,9 +990,11 @@ public sealed class MenuBarTests
         try
         {
             string file = SeedFile(dir, "gone.txt", "here then gone");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -1012,9 +1040,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -1049,19 +1079,23 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 SetBoxText(window, "window close body");
                 ClickMenuItem(window, "MenuFile", "MenuFileCloseWindow");
                 Assert.True(SpinWait.SpinUntil(() => app.HasExited, TimeSpan.FromSeconds(10)));
             }
 
+            nint fgBefore2 = UiForeground.Capture();
             using var app2 = LaunchApp();
             using var automation2 = new UIA3Automation();
             var window2 = UiApp.Attach(app2, automation2, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window2, fgBefore2);
             Assert.NotNull(window2);
             try
             {
@@ -1086,9 +1120,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             ClickMenuItem(window, "MenuFile", "MenuFileExit");
             Assert.True(SpinWait.SpinUntil(() => app.HasExited, TimeSpan.FromSeconds(10)));
@@ -1106,9 +1142,11 @@ public sealed class MenuBarTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -1120,7 +1158,7 @@ public sealed class MenuBarTests
                     Assert.True(item.IsEnabled, id);
                 }
 
-                DismissMenu();
+                DismissMenu(window, "MenuEdit");
             }
             finally
             {
@@ -1155,9 +1193,11 @@ public sealed class MenuBarTests
         try
         {
             string file = SeedFile(dir, "tools.txt", "tool body here");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -1201,18 +1241,54 @@ public sealed class MenuBarTests
 
     static void OpenMenu(Window window, string topId)
     {
-        // Foreground first: a click into an inactive window's menu is eaten
-        // by activation instead of dispatching (Tools dialog no-show).
-        // Then Escape to a known-closed state: Invoke toggles, so opening
-        // over a lingering menu shuts it and the follow-up click eats
-        // itself on the closing animation (Recent close2 no-op).
-        window.Focus();
-        Thread.Sleep(150);
-        DismissMenu();
+        // No Focus: Invoke dispatches on background windows (spiked D00
+        // T02 §8), and the default suite never activates. Invoke toggles,
+        // so a lingering open menu shuts on the first Invoke; the MenuOpen
+        // check heals that by invoking again instead of Escape-dismissing
+        // to a known-closed state first.
         var top = window.FindFirstDescendant(cf => cf.ByAutomationId(topId));
         Assert.NotNull(top);
         top.Patterns.Invoke.Pattern.Invoke();
         Thread.Sleep(600);
+        if (!MenuOpen(top))
+        {
+            top.Patterns.Invoke.Pattern.Invoke();
+            Thread.Sleep(600);
+        }
+    }
+
+    static void DismissMenu(Window window, string topId)
+    {
+        var top = window.FindFirstDescendant(cf => cf.ByAutomationId(topId));
+        if (top is null || !MenuOpen(top))
+        {
+            return;
+        }
+
+        top.Patterns.Invoke.Pattern.Invoke();
+        Thread.Sleep(400);
+    }
+
+    static bool MenuOpen(AutomationElement top)
+    {
+        var expand = top.Patterns.ExpandCollapse.PatternOrDefault;
+        if (expand is null)
+        {
+            return true;
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (expand.ExpandCollapseState == FlaUI.Core.Definitions.ExpandCollapseState.Expanded)
+            {
+                return true;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        return false;
     }
 
     static void OpenSubmenu(Window window, string subId)
@@ -1232,12 +1308,6 @@ public sealed class MenuBarTests
         }
 
         Thread.Sleep(600);
-    }
-
-    static void DismissMenu()
-    {
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Thread.Sleep(350);
     }
 
     static void ClickMenuItem(Window window, string topId, string itemId, bool expectClose = true)
@@ -1362,7 +1432,7 @@ public sealed class MenuBarTests
             })
             .Select(m => m.ControlType == ControlType.Separator ? string.Empty : m.Name)
             .ToList();
-        DismissMenu();
+        DismissMenu(window, topId);
         return names;
     }
 
@@ -1392,8 +1462,8 @@ public sealed class MenuBarTests
             })
             .Select(m => m.Name)
             .ToList();
-        DismissMenu();
-        DismissMenu();
+        DismissMenu(window, topId);
+        DismissMenu(window, topId);
         return names;
     }
 
@@ -1700,14 +1770,8 @@ public sealed class MenuBarTests
 
     static void SelectAll(Window window)
     {
-        window.Focus();
-        Thread.Sleep(150);
-        using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-        {
-            Keyboard.Press(VirtualKeyShort.KEY_A);
-        }
-
-        Thread.Sleep(250);
+        var box = ContentBox(window);
+        UiInput.SelectAllText(box);
     }
 
     static int WaitForTabCount(Window window, int expected)
@@ -1723,40 +1787,6 @@ public sealed class MenuBarTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false, bool withAlt = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        var mods = new List<VirtualKeyShort>();
-        if (withControl)
-        {
-            mods.Add(VirtualKeyShort.CONTROL);
-        }
-
-        if (withShift)
-        {
-            mods.Add(VirtualKeyShort.SHIFT);
-        }
-
-        if (withAlt)
-        {
-            mods.Add(VirtualKeyShort.ALT);
-        }
-
-        if (mods.Count > 0)
-        {
-            using (Keyboard.Pressing(mods.ToArray()))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

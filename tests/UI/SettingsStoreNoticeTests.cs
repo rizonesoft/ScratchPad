@@ -24,9 +24,11 @@ public sealed class SettingsStoreNoticeTests
             SessionData.Delete();
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
             File.WriteAllText(settingsPath, "{not json!!!");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {

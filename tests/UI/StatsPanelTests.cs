@@ -22,14 +22,16 @@ public sealed class StatsPanelTests
     public void PanelListsFixtureExactStats()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
             SetBoxText(window, FixtureText);
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var dialog = WaitForDialog(window, "StatsDialog");
             var sections = WaitForSections(dialog, 5, 7, 1);
             Assert.Equal(["The: 3", "cat: 3", "ate: 1", "sat: 1", "slept: 1"], sections.Top);
@@ -40,7 +42,7 @@ public sealed class StatsPanelTests
             var frame = window.BoundingRectangle;
             var panel = dialog.BoundingRectangle;
             Assert.True(frame.Contains(panel), $"panel {panel} escapes window {frame}");
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             Thread.Sleep(500);
             Assert.Equal(1, CountDialogs(window));
             CloseDialog(window, dialog);
@@ -56,19 +58,21 @@ public sealed class StatsPanelTests
     public void RefreshAndReopenRecompute()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
             SetBoxText(window, "hello world");
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var first = WaitForDialog(window, "StatsDialog");
             Assert.Equal(["hello: 1", "world: 1"], WaitForSections(first, 2, 0, 0).Top);
             CloseDialog(window, first);
             SetBoxText(window, "one two three four");
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var second = WaitForDialog(window, "StatsDialog");
             string[] expected = ["four: 1", "one: 1", "three: 1", "two: 1"];
             Assert.Equal(expected, WaitForSections(second, 4, 0, 0).Top);
@@ -89,15 +93,17 @@ public sealed class StatsPanelTests
     public void LongRepetitionListTruncatesWithTrailer()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
             string text = string.Join(" ", Enumerable.Range(1, 60).SelectMany(i => Enumerable.Repeat($"w{i:000}", 3)));
             SetBoxText(window, text);
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var dialog = WaitForDialog(window, "StatsDialog");
             var sections = WaitForSections(dialog, 0, 0, 51);
             Assert.Equal(51, sections.Repeated.Count);
@@ -117,16 +123,18 @@ public sealed class StatsPanelTests
     public void EmptyTabsShowZeros()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
             Assert.Equal(1, WaitForTabCount(window, 1));
-            Press(window, VirtualKeyShort.KEY_W, withControl: true);
+            UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
             Assert.Equal(0, WaitForTabCount(window, 0));
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var dialog = WaitForDialog(window, "StatsDialog");
             var sections = WaitForSections(dialog, 0, 7, 0);
             Assert.Empty(sections.Top);
@@ -150,14 +158,16 @@ public sealed class StatsPanelTests
     public void ValuesAlignToDialogRightEdge()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
             SetBoxText(window, FixtureText);
-            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var dialog = WaitForDialog(window, "StatsDialog");
             _ = WaitForSections(dialog, 5, 7, 1);
             var value = dialog.FindFirstDescendant(cf => cf.ByName("3.0"));
@@ -320,31 +330,6 @@ public sealed class StatsPanelTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

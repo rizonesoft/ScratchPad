@@ -23,9 +23,11 @@ public sealed class TabAccessibilityTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -54,9 +56,11 @@ public sealed class TabAccessibilityTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -68,7 +72,7 @@ public sealed class TabAccessibilityTests
                 // in-place save trigger exists in Phase 1 (menus own it),
                 // so the clean flip goes through close-plus-save and the
                 // relaunch reopens the saved bytes clean.
-                PressClose(window);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 AnswerPrompt(window, "Save");
                 // Dismissal is not completion: poll the landed bytes.
                 var landed = Retry.While(
@@ -120,15 +124,6 @@ public sealed class TabAccessibilityTests
         Thread.Sleep(150);
     }
 
-    static void PressClose(Window window)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        using (FlaUI.Core.Input.Keyboard.Pressing(FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL))
-        {
-            FlaUI.Core.Input.Keyboard.Press(FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_W);
-        }
-    }
 
     static void AnswerPrompt(Window window, string button)
     {

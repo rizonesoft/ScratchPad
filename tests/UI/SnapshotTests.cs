@@ -24,16 +24,18 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "snap16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "version one");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 TakeSnapshot(dialog, "v1");
                 Assert.NotNull(WaitForRestore(dialog, "v1"));
@@ -63,15 +65,17 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "clean16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 TakeSnapshot(dialog, "v1");
                 InvokeRestore(dialog, "v1");
@@ -100,21 +104,23 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "dont16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "version one");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 TakeSnapshot(dialog, "v1");
                 CloseDialog(window, dialog);
                 SetBoxText(window, "version two");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 dialog = WaitForDialog(window, "SnapshotsDialog");
                 InvokeRestore(dialog, "v1");
                 AnswerPrompt(window, "Don't save");
@@ -142,21 +148,23 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "cancel16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "version one");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 TakeSnapshot(dialog, "v1");
                 CloseDialog(window, dialog);
                 SetBoxText(window, "version two");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 dialog = WaitForDialog(window, "SnapshotsDialog");
                 InvokeRestore(dialog, "v1");
                 AnswerPrompt(window, "Cancel");
@@ -184,21 +192,23 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "save16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "version one");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 TakeSnapshot(dialog, "v1");
                 CloseDialog(window, dialog);
                 SetBoxText(window, "version two");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 dialog = WaitForDialog(window, "SnapshotsDialog");
                 InvokeRestore(dialog, "v1");
                 AnswerPrompt(window, "Save");
@@ -227,16 +237,18 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "locked16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "version one");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 TakeSnapshot(dialog, "v1");
                 CloseDialog(window, dialog);
@@ -244,7 +256,7 @@ public sealed class SnapshotTests
                 File.SetAttributes(file, FileAttributes.ReadOnly);
                 try
                 {
-                    Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                    UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                     dialog = WaitForDialog(window, "SnapshotsDialog");
                     InvokeRestore(dialog, "v1");
                     AnswerPrompt(window, "Save");
@@ -278,16 +290,18 @@ public sealed class SnapshotTests
         try
         {
             string file = SeedFile(dir, "keep16.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "versioned");
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 for (int i = 1; i <= 11; i++)
                 {
@@ -316,13 +330,15 @@ public sealed class SnapshotTests
     public void UntitledShowsSaveFirstNote()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
-            Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
             var dialog = WaitForDialog(window, "SnapshotsDialog");
             Assert.NotNull(dialog.FindFirstDescendant(cf => cf.ByAutomationId("SnapshotsSaveFirst")));
             Assert.Null(dialog.FindFirstDescendant(cf => cf.ByAutomationId("SnapshotNameBox")));
@@ -489,31 +505,6 @@ public sealed class SnapshotTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

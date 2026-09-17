@@ -25,9 +25,11 @@ public sealed class MainWindowTests
     public void ShellRegionsExistAndTitleFollowsConvention()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -63,9 +65,12 @@ public sealed class MainWindowTests
         Assert.True(result.Match, $"shell golden mismatch: {result.DifferentFraction:P3} different");
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void GeometryRestoresAcrossLaunches()
     {
+        // Fenced: restored screen geometry IS the point, and off-screen
+        // placement destroys its premise (D00 T02 §8).
         SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 120, Y = 130, Width = 800, Height = 600 });
         using (var app = LaunchApp())
         {
@@ -102,9 +107,11 @@ public sealed class MainWindowTests
     public void ThemesRenderWithMica(string theme, int brightnessBound)
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true, Theme = theme });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -135,22 +142,13 @@ public sealed class MainWindowTests
         string rgb = string.Empty;
         while (DateTime.UtcNow < deadline)
         {
-            var shot = Path.Combine(Path.GetTempPath(), $"shell-theme-{theme}-{Guid.NewGuid():N}.png");
-            try
+            using var bitmap = UiCapture.PrintCapture(window);
+            var center = bitmap.GetPixel(bitmap.Width / 2, bitmap.Height / 2);
+            brightness = (center.R + center.G + center.B) / 3;
+            rgb = $"RGB({center.R},{center.G},{center.B})";
+            if (expectLight == brightness > brightnessBound)
             {
-                window.CaptureToFile(shot);
-                using var bitmap = new Bitmap(shot);
-                var center = bitmap.GetPixel(bitmap.Width / 2, bitmap.Height / 2);
-                brightness = (center.R + center.G + center.B) / 3;
-                rgb = $"RGB({center.R},{center.G},{center.B})";
-                if (expectLight == brightness > brightnessBound)
-                {
-                    break;
-                }
-            }
-            finally
-            {
-                File.Delete(shot);
+                break;
             }
 
             Thread.Sleep(250);
@@ -176,9 +174,11 @@ public sealed class MainWindowTests
         }
 
         SessionData.Delete();
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {

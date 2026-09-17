@@ -19,9 +19,11 @@ public sealed class TitleBarIconTests
     public void TitleBarIconPresentAndSized()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -64,9 +66,11 @@ public sealed class TitleBarIconTests
     public void TitleBarIconLeftOfFirstTab()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -109,14 +113,16 @@ public sealed class TitleBarIconTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void AddButtonRealClickOpensTab()
     {
         // The §14 drag-rect regression (caption rect over the add button)
         // is invisible to UIA invoke, which bypasses hit-testing: only a
         // real cursor click through the caption zone proves the button
-        // still receives its clicks. A plain Fact, red on headless hosts
-        // exactly like its TabBarTests input siblings; CI is the gate.
+        // still receives its clicks. Fenced Interactive (D00 T02 §8): it
+        // needs the cursor and the foreground, so it runs visibly on
+        // demand, never in the default background run.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();

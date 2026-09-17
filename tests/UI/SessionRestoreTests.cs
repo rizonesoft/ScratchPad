@@ -16,7 +16,8 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class SessionRestoreTests
 {
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void QuitAndRelaunchRestoresTabsContentsAndCarets()
     {
         string dir = NewTempDir();
@@ -142,10 +143,12 @@ public sealed class SessionRestoreTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
@@ -200,10 +203,12 @@ public sealed class SessionRestoreTests
             {
                 Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 2 }] }],
             }.Save();
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
@@ -257,10 +262,12 @@ public sealed class SessionRestoreTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
@@ -313,10 +320,12 @@ public sealed class SessionRestoreTests
             SessionTab kept = Assert.Single(Assert.Single(snap.Windows).Tabs);
             Assert.Equal(good, kept.Path);
 
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
@@ -374,10 +383,12 @@ public sealed class SessionRestoreTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(first, fgBefore);
                 Assert.NotNull(first);
                 Assert.Equal(2, WaitForWindowCount(app, automation, 2).Length);
                 Window? one = null;
@@ -407,6 +418,8 @@ public sealed class SessionRestoreTests
                 Assert.True(identified);
                 Assert.NotNull(one);
                 Assert.NotNull(two);
+                UiForeground.PlaceOffscreen(one);
+                UiForeground.PlaceOffscreen(two);
                 Assert.Equal(2, TabItems(one).Count);
                 Assert.Contains("win one unsaved", BoxText(one), StringComparison.Ordinal);
                 Assert.Single(TabItems(two));
@@ -426,10 +439,12 @@ public sealed class SessionRestoreTests
             SessionData snap = SessionData.Load();
             Assert.Equal(2, Assert.Single(snap.Windows).Tabs.Count);
 
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
@@ -482,17 +497,19 @@ public sealed class SessionRestoreTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(12, WaitForTabCount(window, 12));
                     for (int left = 11; left >= 0; left--)
                     {
-                        Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                        UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                         Assert.Equal(left, WaitForTabCount(window, left));
                     }
                 }
@@ -536,10 +553,12 @@ public sealed class SessionRestoreTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
@@ -636,31 +655,6 @@ public sealed class SessionRestoreTests
         SessionData.Delete();
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static TextBox ContentBox(Window window)
     {

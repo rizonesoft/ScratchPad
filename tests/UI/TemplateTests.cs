@@ -24,14 +24,16 @@ public sealed class TemplateTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(1, WaitForTabCount(window, 1));
-                Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                 var dialog = WaitForDialog(window, "TemplatesDialog");
                 Assert.NotNull(WaitForUse(dialog, "Blank note"));
                 Assert.NotNull(WaitForUse(dialog, "Meeting notes"));
@@ -62,13 +64,15 @@ public sealed class TemplateTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
-                Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                 var dialog = WaitForDialog(window, "TemplatesDialog");
                 var frame = window.BoundingRectangle;
                 var panel = dialog.BoundingRectangle;
@@ -98,13 +102,15 @@ public sealed class TemplateTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
-                Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                 var dialog = WaitForDialog(window, "TemplatesDialog");
                 InvokeUse(dialog, "Blank note");
                 Assert.Equal(2, WaitForTabCount(window, 2));
@@ -129,15 +135,17 @@ public sealed class TemplateTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     SetBoxText(window, "retro body {title}");
-                    Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                    UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                     var dialog = WaitForDialog(window, "TemplatesDialog");
                     SaveCurrent(dialog, "retro");
                     Assert.NotNull(WaitForUse(dialog, "retro"));
@@ -149,14 +157,16 @@ public sealed class TemplateTests
                 }
             }
 
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
-                    Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                    UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                     var dialog = WaitForDialog(window, "TemplatesDialog");
                     Assert.NotNull(WaitForUse(dialog, "retro"));
                     SetTitle(dialog, "R2");
@@ -183,14 +193,16 @@ public sealed class TemplateTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 SetBoxText(window, "{title} {unknown}");
-                Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                 var dialog = WaitForDialog(window, "TemplatesDialog");
                 SaveCurrent(dialog, "braces");
                 SetTitle(dialog, "T");
@@ -216,13 +228,15 @@ public sealed class TemplateTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
-                Press(window, VirtualKeyShort.KEY_E, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsTemplates");
                 var dialog = WaitForDialog(window, "TemplatesDialog");
                 var save = dialog.FindFirstDescendant(cf => cf.ByAutomationId("SaveTemplateButton"))?.AsButton();
                 Assert.NotNull(save);
@@ -369,31 +383,6 @@ public sealed class TemplateTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string TemplatesDir()
     {

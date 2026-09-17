@@ -52,7 +52,7 @@ public partial class App : Application
                 AddWindow(record);
             }
 
-            windows[Math.Clamp(session.ActiveWindow, 0, windows.Count - 1)].Activate();
+            ShowWindow(windows[Math.Clamp(session.ActiveWindow, 0, windows.Count - 1)]);
         }
         else
         {
@@ -84,7 +84,22 @@ public partial class App : Application
         var window = new MainWindow(firstWindow: windows.Count == 0, restore: restore);
         windows.Add(window);
         window.Closed += (_, _) => windows.Remove(window);
+        ShowWindow(window);
+    }
+
+    // Single show funnel (D00 T02 §8): test runs export
+    // SCRATCHPAD_BACKGROUND=1 so every window starts minimized with no
+    // flash and no foreground steal; the suite moves each window
+    // off-screen and shows it no-activate before driving. Unset means
+    // stock behavior: activate exactly as before.
+    private static void ShowWindow(Window window)
+    {
         window.Activate();
+        if (Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1"
+            && window is MainWindow main)
+        {
+            main.MinimizeForBackground();
+        }
     }
 
     // Session snapshot on window close (D01 T01 §6), called from

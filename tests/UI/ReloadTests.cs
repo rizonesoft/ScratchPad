@@ -24,15 +24,16 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                window.Focus();
                 File.WriteAllText(file, "changed\n");
                 var dialog = WaitForDialog(window, "ReloadDialog");
                 Assert.Contains("Reload?", DialogText(dialog), StringComparison.Ordinal);
@@ -60,15 +61,16 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                window.Focus();
                 File.WriteAllText(file, "changed\n");
                 var dialog = WaitForDialog(window, "ReloadDialog");
                 // External change must not dirty the buffer: no dot before Keep.
@@ -80,7 +82,7 @@ public sealed class ReloadTests
                 // true postcondition: it appears only via IsDirty.
                 WaitForDirtyDot(window, 1);
                 Assert.Equal("original\n", WaitForBoxText(window, "original\n"));
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 var prompt = WaitForDialog(window, "SavePromptDialog");
                 AnswerPrompt(window, prompt, "Don't save");
                 Assert.Equal(1, WaitForTabCount(window, 1));
@@ -105,21 +107,22 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                window.Focus();
                 File.WriteAllText(file, "changed\n");
                 var dialog = WaitForDialog(window, "ReloadDialog");
                 AnswerDialog(window, dialog, "ReloadDialog", "Cancel");
                 WaitForDirtyDot(window, 1);
                 Assert.Equal("original\n", WaitForBoxText(window, "original\n"));
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 var prompt = WaitForDialog(window, "SavePromptDialog");
                 AnswerPrompt(window, prompt, "Don't save");
                 Assert.Equal(1, WaitForTabCount(window, 1));
@@ -144,16 +147,17 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "my edits");
-                window.Focus();
                 File.WriteAllText(file, "changed\n");
                 var dialog = WaitForDialog(window, "ReloadDialog");
                 Assert.Contains("discard", DialogText(dialog), StringComparison.Ordinal);
@@ -180,16 +184,17 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 SetBoxText(window, "my edits");
-                window.Focus();
                 File.WriteAllText(file, "changed\n");
                 var dialog = WaitForDialog(window, "ReloadDialog");
                 AnswerDialog(window, dialog, "ReloadDialog", "Keep");
@@ -215,9 +220,11 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -225,7 +232,6 @@ public sealed class ReloadTests
                 SelectTab(window, 0);
                 SetBoxText(window, "untitled typing");
                 SelectTab(window, 1);
-                window.Focus();
                 File.WriteAllText(file, "original\n");
                 Thread.Sleep(2500);
                 Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId("ReloadDialog")));
@@ -250,15 +256,16 @@ public sealed class ReloadTests
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                window.Focus();
                 File.Delete(file);
                 var dialog = WaitForDialog(window, "ReloadDialog");
                 AnswerDialog(window, dialog, "ReloadDialog", "Reload");
@@ -287,9 +294,11 @@ public sealed class ReloadTests
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             File.WriteAllBytes(file, NoteCrypto.Lock(File.ReadAllBytes(file), "reload-21"));
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -298,7 +307,6 @@ public sealed class ReloadTests
                 InvokeByName(unlock, "Unlock");
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 Assert.Equal("original\n", WaitForBoxText(window, "original\n"));
-                window.Focus();
                 File.WriteAllBytes(file, NoteCrypto.Lock("v2\n"u8.ToArray(), "reload-21"));
                 var reload = WaitForDialog(window, "ReloadDialog");
                 AnswerDialog(window, reload, "ReloadDialog", "Reload");
@@ -471,31 +479,6 @@ public sealed class ReloadTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

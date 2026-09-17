@@ -51,6 +51,17 @@ public sealed partial class MainWindow : Window, IDisposable
     // on first activation (D01 T01 §6). Once per tab instance.
     private readonly HashSet<Guid> missingNotice = new();
 
+    // Background-test support (D00 T02 §8): minimizes immediately after
+    // Activate so the window never paints and never steals foreground.
+    // The suite moves it off-screen and re-shows it no-activate.
+    internal void MinimizeForBackground()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter presenter)
+        {
+            presenter.Minimize();
+        }
+    }
+
     public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {
         this.firstWindow = firstWindow;

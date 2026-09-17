@@ -31,9 +31,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -65,9 +67,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{first}\" \"{second}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -164,9 +168,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{missing}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -198,9 +204,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{missing}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -210,9 +218,8 @@ public sealed class LaunchTests
                 WaitForTabName(window, 1, TabAccessibilityName.For("yes8.txt", isDirty: false));
                 Assert.False(File.Exists(missing));
                 SelectTab(window, 1);
-                ContentBox(window).Focus();
-                Keyboard.Type("bound eight");
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.AppendText(ContentBox(window), "bound eight");
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 var prompt = WaitForDialog(window, "SavePromptDialog");
                 AnswerDialog(window, prompt, "SavePromptDialog", "Save");
                 Assert.Equal("bound eight", WaitForFileContent(missing));
@@ -230,7 +237,8 @@ public sealed class LaunchTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void MissingFileOfferEnterAcceptsAsYes()
     {
         string dir = NewTempDir();
@@ -284,9 +292,11 @@ public sealed class LaunchTests
         try
         {
             using var hold = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -317,9 +327,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -350,9 +362,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -427,9 +441,11 @@ public sealed class LaunchTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{first}\" \"{second}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -465,9 +481,11 @@ public sealed class LaunchTests
         SeedSettings(seeded);
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -592,9 +610,11 @@ public sealed class LaunchTests
             int firstSpace = command.IndexOf(' ', StringComparison.Ordinal);
             string exe = command[..firstSpace].Trim('"');
             string args = command[(firstSpace + 1)..].Replace("%1", file, StringComparison.Ordinal);
+            nint fgBefore = UiForeground.Capture();
             using var app = Application.Launch(exe, args);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -854,24 +874,6 @@ public sealed class LaunchTests
         Thread.Sleep(150);
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static TextBox ContentBox(Window window)
     {

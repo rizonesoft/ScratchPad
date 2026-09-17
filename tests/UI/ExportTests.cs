@@ -26,15 +26,17 @@ public sealed class ExportTests
         try
         {
             string file = SeedFile(dir, "export18.md", SeedBody);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                Press(window, VirtualKeyShort.KEY_X, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsExport");
                 var dialog = WaitForDialog(window, "ExportDialog");
                 Assert.Equal("export18-export", NameBoxText(dialog));
                 InvokeExport(dialog, "Export Markdown");
@@ -64,15 +66,17 @@ public sealed class ExportTests
         try
         {
             string file = SeedFile(dir, "export18.md", SeedBody);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                Press(window, VirtualKeyShort.KEY_X, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsExport");
                 var dialog = WaitForDialog(window, "ExportDialog");
                 InvokeExport(dialog, "Export HTML");
                 Assert.Equal("Exported export18-export.html.", WaitForStatus(dialog, "Exported export18-export.html."));
@@ -104,15 +108,17 @@ public sealed class ExportTests
         try
         {
             string file = SeedFile(dir, "export18.md", SeedBody);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
-                Press(window, VirtualKeyShort.KEY_X, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsExport");
                 var dialog = WaitForDialog(window, "ExportDialog");
                 InvokeExport(dialog, "Export Plain Text");
                 Assert.Equal("Exported export18-export.txt.", WaitForStatus(dialog, "Exported export18-export.txt."));
@@ -141,13 +147,15 @@ public sealed class ExportTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
-                Press(window, VirtualKeyShort.KEY_X, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsExport");
                 var dialog = WaitForDialog(window, "ExportDialog");
                 Assert.NotNull(dialog.FindFirstDescendant(cf => cf.ByAutomationId("ExportSaveFirst")));
                 Assert.Null(dialog.FindFirstDescendant(cf => cf.ByName("Export Markdown")));
@@ -255,31 +263,6 @@ public sealed class ExportTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

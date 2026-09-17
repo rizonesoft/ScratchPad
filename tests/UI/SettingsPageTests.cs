@@ -34,9 +34,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -72,9 +74,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -113,9 +117,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -156,9 +162,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -186,9 +194,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -216,9 +226,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -247,9 +259,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -289,9 +303,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -338,15 +354,14 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
-                window.Focus();
-                Thread.Sleep(150);
-                DismissMenu();
                 var top = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuEdit"));
                 Assert.NotNull(top);
                 top.Patterns.Invoke.Pattern.Invoke();
@@ -411,9 +426,11 @@ public sealed class SettingsPageTests
         try
         {
             SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -639,16 +656,15 @@ public sealed class SettingsPageTests
         }
         finally
         {
-            Keyboard.Press(VirtualKeyShort.ESCAPE);
-            Thread.Sleep(300);
+            UiInput.Collapse(combo);
         }
     }
 
     static Bitmap CaptureShot(Window window)
     {
-        // In-memory capture: CaptureToFile holds the file open past return
-        // (read-back races a lock), while Capture hands over a Bitmap.
-        return window.Capture();
+        // DWM-surface capture: works off-screen, where screen-rect reads
+        // go black (D00 T02 §8).
+        return UiCapture.PrintCapture(window);
     }
 
     static double DiffFraction(Bitmap a, Bitmap b)
@@ -672,12 +688,6 @@ public sealed class SettingsPageTests
         }
 
         return (double)different / total;
-    }
-
-    static void DismissMenu()
-    {
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Thread.Sleep(350);
     }
 
     static void InvokeOrClick(AutomationElement item)

@@ -16,9 +16,12 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class MultiWindowTests
 {
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void CtrlShiftNOpensSecondWindowAtCascade()
     {
+        // Fenced: cascade placement IS the point, and off-screen
+        // placement destroys its premise (D00 T02 §8).
         SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 100, Y = 100, Width = 900, Height = 650 });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -27,7 +30,7 @@ public sealed class MultiWindowTests
         try
         {
             Assert.Single(app.GetAllTopLevelWindows(automation));
-            Press(first, VirtualKeyShort.KEY_N, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(first, "MenuFile", "MenuFileNewWindow");
             Window[] windows = WaitForWindowCount(app, automation, 2);
             Assert.Equal(2, windows.Length);
             Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
@@ -49,19 +52,22 @@ public sealed class MultiWindowTests
     public void WindowsKeepIndependentTabs()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(first, fgBefore);
         Assert.NotNull(first);
         try
         {
-            Press(first, VirtualKeyShort.KEY_N, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(first, "MenuFile", "MenuFileNewWindow");
             Window[] windows = WaitForWindowCount(app, automation, 2);
             Assert.Equal(2, windows.Length);
             Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
                 ? windows[1]
                 : windows[0];
-            Press(second, VirtualKeyShort.KEY_T, withControl: true);
+            UiForeground.PlaceOffscreen(second);
+            UiInput.InvokeMenuItem(second, "MenuFile", "MenuFileNewTab");
             Assert.Equal(2, WaitForTabCount(second, 2));
             Assert.Single(TabItems(first));
             ContentBox(second).Text = "WINDOW2";
@@ -77,7 +83,8 @@ public sealed class MultiWindowTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void TabDragOutsideStripDetachesNothing()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -141,13 +148,15 @@ public sealed class MultiWindowTests
         // the dialog because the open first-run dialog swallows Ctrl+Shift+N
         // (standard ContentDialog modality); the mechanism is direction-free.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(first, fgBefore);
         Assert.NotNull(first);
         try
         {
-            Press(first, VirtualKeyShort.KEY_N, withControl: true, withShift: true);
+            UiInput.InvokeMenuItem(first, "MenuFile", "MenuFileNewWindow");
             Window[] windows = WaitForWindowCount(app, automation, 2);
             Assert.Equal(2, windows.Length);
             Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
@@ -186,31 +195,6 @@ public sealed class MultiWindowTests
         SessionData.Delete();
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static TextBox ContentBox(Window window)
     {

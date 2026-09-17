@@ -26,9 +26,11 @@ public sealed class StatusBarTests
         try
         {
             string file = SeedFile(dir, "counts.txt", "a\tb\r\ncde\r\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -50,7 +52,8 @@ public sealed class StatusBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void KeystrokesAndCaretMovesUpdateStrip()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -66,7 +69,7 @@ public sealed class StatusBarTests
             Keyboard.Press(VirtualKeyShort.ENTER);
             WaitForSegmentName(window, "StatusCount", "2 characters");
             WaitForSegmentName(window, "StatusLineColumn", "Line 2,\nColumn 1");
-            Press(window, VirtualKeyShort.HOME, withControl: true);
+            UiInput.Press(window, VirtualKeyShort.HOME, withControl: true);
             WaitForSegmentName(window, "StatusLineColumn", "Line 1,\nColumn 1");
             Keyboard.Press(VirtualKeyShort.RIGHT);
             WaitForSegmentName(window, "StatusLineColumn", "Line 1,\nColumn 2");
@@ -85,17 +88,18 @@ public sealed class StatusBarTests
         try
         {
             string file = SeedFile(dir, "first.txt", "a\tb\r\ncde\r\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 WaitForSegmentName(window, "StatusCount", "8 characters");
-                Press(window, VirtualKeyShort.KEY_T, withControl: true);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileNewTab");
                 WaitForSegmentName(window, "StatusCount", "0 characters");
-                ContentBox(window).Focus();
-                Keyboard.Type("hello");
+                UiInput.AppendText(ContentBox(window), "hello");
                 WaitForSegmentName(window, "StatusCount", "5 characters");
                 var items = TabItems(window);
                 var target = items.FirstOrDefault(item => string.Equals(
@@ -103,7 +107,9 @@ public sealed class StatusBarTests
                     TabAccessibilityName.For("first.txt", isDirty: false),
                     StringComparison.Ordinal));
                 Assert.NotNull(target);
-                target.Click();
+                var select = target.Patterns.SelectionItem.PatternOrDefault;
+                Assert.NotNull(select);
+                select.Select();
                 WaitForSegmentName(window, "StatusCount", "8 characters");
             }
             finally
@@ -121,9 +127,11 @@ public sealed class StatusBarTests
     public void ToggleHidesBarAndPersistsAcrossRelaunch()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
@@ -140,9 +148,11 @@ public sealed class StatusBarTests
             }
         }
 
+        nint fgBefore2 = UiForeground.Capture();
         using var relaunch = LaunchApp();
         using var automation2 = new UIA3Automation();
         var window2 = UiApp.Attach(relaunch, automation2, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window2, fgBefore2);
         Assert.NotNull(window2);
         try
         {
@@ -156,7 +166,8 @@ public sealed class StatusBarTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void StatusSegmentsHaveNoClickPath()
     {
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
@@ -204,9 +215,11 @@ public sealed class StatusBarTests
         try
         {
             string file = SeedFile(dir, "doc.md", "# T\r\n\r\nbody\r\n");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -242,9 +255,11 @@ public sealed class StatusBarTests
         try
         {
             string file = SeedFile(dir, "classic.txt", "aa\rbb\r");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -271,9 +286,11 @@ public sealed class StatusBarTests
         {
             string file = Path.Combine(dir, "wide.txt");
             File.WriteAllText(file, "hi", System.Text.Encoding.Unicode);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -410,19 +427,37 @@ public sealed class StatusBarTests
 
     static void OpenMenu(Window window, string topId)
     {
-        window.Focus();
-        Thread.Sleep(150);
-        DismissMenu();
         var top = window.FindFirstDescendant(cf => cf.ByAutomationId(topId));
         Assert.NotNull(top);
         top.Patterns.Invoke.Pattern.Invoke();
         Thread.Sleep(600);
+        if (!MenuOpen(top))
+        {
+            top.Patterns.Invoke.Pattern.Invoke();
+            Thread.Sleep(600);
+        }
     }
 
-    static void DismissMenu()
+    static bool MenuOpen(AutomationElement top)
     {
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
-        Thread.Sleep(350);
+        var expand = top.Patterns.ExpandCollapse.PatternOrDefault;
+        if (expand is null)
+        {
+            return true;
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (expand.ExpandCollapseState == FlaUI.Core.Definitions.ExpandCollapseState.Expanded)
+            {
+                return true;
+            }
+
+            Thread.Sleep(250);
+        }
+
+        return false;
     }
 
     static void ToggleStatusBar(Window window)
@@ -434,20 +469,4 @@ public sealed class StatusBarTests
         Thread.Sleep(500);
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-    }
 }

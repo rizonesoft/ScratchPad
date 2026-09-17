@@ -1,6 +1,6 @@
 # Testing
 
-Unit, smoke, UI-automation, and protocol tests each have a harness under `tests/`, and one `dotnet test` run executes every suite the host OS supports: `dotnet test src/Notepad.Neutral.slnf` on Linux, `dotnet test src/ScratchPad.slnx` on Windows.
+Unit, smoke, UI-automation, and protocol tests each have a harness under `tests/`, and one `dotnet test` run executes every suite the host OS supports: `dotnet test src/Notepad.Neutral.slnf` on Linux, `dotnet test src/ScratchPad.slnx` on Windows. The Windows run includes the fenced interactive UI tests (below), so it owns the foreground while it runs; the per-section gate is the default-filtered run, which never does.
 
 ## Framework
 
@@ -18,7 +18,15 @@ Run everything for the host OS with the `dotnet test` commands above. Run one su
 
 ## UI suite preconditions
 
-The UI suite drives real windows and native dialogs, so two machine settings must match CI: dark app theme (`AppsUseLightTheme` 0, else goldens mismatch) and visible file extensions (`HideFileExt` 0, else dialog prefill reads, file-list names, and save routing shift and 6 MenuBarTests fail). CI sets both before the test step; on a dev box verify with `(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize').AppsUseLightTheme` and `(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced').HideFileExt`.
+The UI suite drives real windows and native dialogs, so two machine settings must match the golden-capture environment: dark app theme (`AppsUseLightTheme` 0, else goldens mismatch) and visible file extensions (`HideFileExt` 0, else dialog prefill reads, file-list names, and save routing shift and 6 MenuBarTests fail). Verify with `(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize').AppsUseLightTheme` and `(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced').HideFileExt`. (CI set both before its test step until 2026-09-17, when UI tests left CI; the settings still gate local runs.)
+
+## Uninterrupted gate (D00 T02 §8)
+
+Default run, background-safe: `dotnet test tests/UI --filter "Category!=Interactive" -e SCRATCHPAD_BACKGROUND=1`. The `-e` flag is load-bearing: it is the only channel that reaches the app through the test host (shell exports do not propagate, measured 2026-09-17), and it makes every window start minimized. The suite then moves each window off-screen and drives it through UIA patterns: no pixels, no foreground, no cursor. Fenced run, visibly on demand: `dotnet test tests/UI --filter "Category=Interactive"` with no `-e` flag. Fenced tests own the foreground and the cursor (physical keys, drags, dialog clicks, geometry asserts), so run them when the interruption is yours to spend.
+
+Foreground proof rides alongside the default run: `tools/ForegroundLog/bin/Debug/net10.0-windows10.0.19041.0/ForegroundLog.exe <seconds> <logpath>` polls the foreground window and exits 1 naming the run red if ScratchPad ever held it. Green means the default suite passed with zero failures AND the log flagged zero foreground holds; a passing suite with a flagged log is a gate failure (some test activated a window). The fenced set is green when it passes visibly. The input audit behind the split lives in `docs/ui-input-audit.md`.
+
+Quiet hours hard-gate the fenced set: every `Category=Interactive` test runs under `[InteractiveFact]`, which reports Skipped outside the foreground window (02:00-06:50 local, operator schedule 2026-09-17), so even an unfiltered daytime run cannot interrupt. `SCRATCHPAD_INTERACTIVE_WINDOW` (`HH:mm-HH:mm`) moves the window and `SCRATCHPAD_INTERACTIVE_FORCE=1` runs regardless for an explicitly accepted interruption; unparseable config fails closed to skip. A reflection guard (`QuietHoursTests.EveryGatedTestCarriesTheInteractiveTrait`) fails any gated test missing its trait. A daytime full-solution run reads green-plus-skipped, never fully proven; only the nighttime run executes the fenced set.
 
 ## Golden captures
 
@@ -26,4 +34,4 @@ The UI suite drives real windows and native dialogs, so two machine settings mus
 
 ## Quarantine
 
-Flaky tests are quarantined by procedure (`docs/soak-and-quarantine.md`, T02 §5), never deleted or silently skipped. CI telemetry and VM-based runs were retired on 2026-09-14 (the word telemetry went missing in that edit; CI itself still gates every push); all suites also run locally on the dev box, with the UI suite driving the real binary on the interactive session.
+Flaky tests are quarantined by procedure (`docs/soak-and-quarantine.md`, T02 §5), never deleted or silently skipped. CI telemetry and VM-based runs were retired on 2026-09-14; UI tests left CI on 2026-09-17 (CI gates build plus launch smoke only), so all suites run locally on the dev box, with the UI suite driving the real binary on the interactive session.

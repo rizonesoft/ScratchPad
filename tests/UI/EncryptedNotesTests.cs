@@ -26,16 +26,18 @@ public sealed class EncryptedNotesTests
         try
         {
             string file = SeedFile(dir, "lock19.txt", SeedBody);
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
                     SelectTab(window, 1);
-                    Press(window, VirtualKeyShort.KEY_L, withControl: true, withShift: true);
+                    UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsLock");
                     var dialog = WaitForDialog(window, "LockDialog");
                     SetPassword(dialog, "LockPasswordBox", "pw19-room");
                     SetPassword(dialog, "LockConfirmBox", "pw19-room");
@@ -52,10 +54,12 @@ public sealed class EncryptedNotesTests
                 }
             }
 
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
@@ -89,9 +93,11 @@ public sealed class EncryptedNotesTests
             string file = SeedFile(dir, "lock19.txt", SeedBody);
             byte[] before = NoteCrypto.Lock(File.ReadAllBytes(file), "right-19");
             File.WriteAllBytes(file, before);
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -124,9 +130,11 @@ public sealed class EncryptedNotesTests
         {
             string file = SeedFile(dir, "lock19.txt", SeedBody);
             File.WriteAllBytes(file, NoteCrypto.Lock(File.ReadAllBytes(file), "relock-19"));
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -135,7 +143,7 @@ public sealed class EncryptedNotesTests
                 InvokeUnlock(unlock);
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SetBoxText(window, "edited after unlock");
-                Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 AnswerPrompt(window, "Save");
                 var relock = WaitForDialog(window, "LockDialog");
                 SetPassword(relock, "LockPasswordBox", "relock-19");
@@ -169,16 +177,18 @@ public sealed class EncryptedNotesTests
         try
         {
             string file = SeedFile(dir, "lock19.txt", SeedBody);
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(2, WaitForTabCount(window, 2));
                     SelectTab(window, 1);
-                    Press(window, VirtualKeyShort.KEY_L, withControl: true, withShift: true);
+                    UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsLock");
                     var dialog = WaitForDialog(window, "LockDialog");
                     SetPassword(dialog, "LockPasswordBox", password);
                     SetPassword(dialog, "LockConfirmBox", password);
@@ -192,10 +202,12 @@ public sealed class EncryptedNotesTests
                 }
             }
 
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
@@ -248,9 +260,11 @@ public sealed class EncryptedNotesTests
             {
                 Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 0 }] }],
             }.Save();
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -277,13 +291,15 @@ public sealed class EncryptedNotesTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
-                Press(window, VirtualKeyShort.KEY_L, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsLock");
                 var dialog = WaitForDialog(window, "LockDialog");
                 Assert.NotNull(dialog.FindFirstDescendant(cf => cf.ByAutomationId("LockSaveFirst")));
                 Assert.Null(dialog.FindFirstDescendant(cf => cf.ByAutomationId("LockButton")));
@@ -460,31 +476,6 @@ public sealed class EncryptedNotesTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {

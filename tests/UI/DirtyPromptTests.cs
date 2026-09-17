@@ -30,17 +30,19 @@ public sealed class DirtyPromptTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     WaitForTabName(window, 0, TabAccessibilityName.For("save7.txt", isDirty: true));
                     Assert.Equal("edited séven", BoxText(window));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var dialog = WaitForPrompt(window);
                     Assert.Contains(file, PromptText(dialog), StringComparison.Ordinal);
                     AnswerPrompt(window, dialog, "Save");
@@ -80,15 +82,17 @@ public sealed class DirtyPromptTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var dialog = WaitForPrompt(window);
                     Assert.Contains(file, PromptText(dialog), StringComparison.Ordinal);
                     AnswerPrompt(window, dialog, "Don't save");
@@ -128,23 +132,25 @@ public sealed class DirtyPromptTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     Assert.Equal("edited keep", BoxText(window));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var dialog = WaitForPrompt(window);
                     AnswerPrompt(window, dialog, "Cancel");
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     WaitForTabName(window, 0, TabAccessibilityName.For("keep7.txt", isDirty: true));
                     Assert.Equal("edited keep", BoxText(window));
                     Assert.Equal("base keep", File.ReadAllText(file));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var again = WaitForPrompt(window);
                     AnswerPrompt(window, again, "Don't save");
                     Assert.Equal(0, WaitForTabCount(window, 0));
@@ -193,10 +199,12 @@ public sealed class DirtyPromptTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 window.Close();
@@ -222,10 +230,12 @@ public sealed class DirtyPromptTests
             }
 
             Assert.Equal("base win", File.ReadAllText(file));
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
@@ -236,7 +246,7 @@ public sealed class DirtyPromptTests
                     Assert.Equal("edited win", BoxText(window));
                     SelectTab(window, 1);
                     Assert.Equal("unsaved win", BoxText(window));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var dialog = WaitForPrompt(window);
                     AnswerPrompt(window, dialog, "Cancel");
                     Assert.Equal(2, WaitForTabCount(window, 2));
@@ -276,19 +286,19 @@ public sealed class DirtyPromptTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 Assert.Equal(1, WaitForTabCount(window, 1));
                 Assert.Equal("base crash", BoxText(window));
-                ContentBox(window).Focus();
-                Keyboard.Type("K7A");
-                Press(window, VirtualKeyShort.KEY_T, withControl: true);
+                                UiInput.AppendText(ContentBox(window), "K7A");
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileNewTab");
                 Assert.Equal(2, WaitForTabCount(window, 2));
-                ContentBox(window).Focus();
-                Keyboard.Type("K7B");
+                                UiInput.AppendText(ContentBox(window), "K7B");
                 var checkpointed = Retry.While(
                     () => CheckpointHas("K7A", "K7B"),
                     done => !done,
@@ -306,10 +316,12 @@ public sealed class DirtyPromptTests
             }
 
             Assert.Equal("base crash", File.ReadAllText(file));
+            nint fgBefore2 = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore2);
                 Assert.NotNull(window);
                 try
                 {
@@ -357,17 +369,18 @@ public sealed class DirtyPromptTests
         }.Save();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(window, 0).Name);
-                    ContentBox(window).Focus();
-                    Keyboard.Type("F7");
+                                        UiInput.AppendText(ContentBox(window), "F7");
                     var deleted = Retry.While(
                         () => File.Exists(SessionData.FilePath),
                         exists => exists,
@@ -396,7 +409,8 @@ public sealed class DirtyPromptTests
         }
     }
 
-    [Fact]
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void UntitledSaveKeepsTabDirtyWithNothingWritten()
     {
         string dir = NewTempDir();
@@ -414,9 +428,11 @@ public sealed class DirtyPromptTests
                 Assert.NotNull(window);
                 try
                 {
+                    // Fenced: the native Save As modal steals foreground and
+                    // pixels, which the default run forbids (D00 T02 §8).
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     WaitForTabName(window, 0, TabAccessibilityName.For("unsaved seven", isDirty: true));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var dialog = WaitForPrompt(window);
                     Assert.Contains("unsaved seven.txt", PromptText(dialog), StringComparison.Ordinal);
                     AnswerPrompt(window, dialog, "Save");
@@ -429,7 +445,7 @@ public sealed class DirtyPromptTests
                     Assert.Equal(1, WaitForTabCount(window, 1));
                     Assert.Equal("unsaved seven", BoxText(window));
                     Assert.Empty(Directory.GetFiles(dir));
-                    Press(window, VirtualKeyShort.KEY_W, withControl: true);
+                    UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                     var again = WaitForPrompt(window);
                     AnswerPrompt(window, again, "Don't save");
                     Assert.Equal(0, WaitForTabCount(window, 0));
@@ -584,31 +600,6 @@ public sealed class DirtyPromptTests
         SessionData.Delete();
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static TextBox ContentBox(Window window)
     {

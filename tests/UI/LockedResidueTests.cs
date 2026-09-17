@@ -28,16 +28,18 @@ public sealed class LockedResidueTests
         try
         {
             string file = SeedFile(dir, "residue30.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using var app = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 SelectTab(window, 1);
                 LockActiveTab(window);
-                Press(window, VirtualKeyShort.KEY_H, withControl: true, withShift: true);
+                UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsSnapshots");
                 var dialog = WaitForDialog(window, "SnapshotsDialog");
                 var note = Retry.WhileNull(
                     () =>
@@ -75,10 +77,12 @@ public sealed class LockedResidueTests
         try
         {
             string file = SeedFile(dir, "ghost30.txt", "seed");
+            nint fgBefore = UiForeground.Capture();
             using (var app = LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
                 Assert.NotNull(window);
                 try
                 {
@@ -116,9 +120,11 @@ public sealed class LockedResidueTests
                 Assert.DoesNotContain(Secret, content, StringComparison.Ordinal);
             }
 
+            nint fgBefore2 = UiForeground.Capture();
             using var app2 = LaunchApp();
             using var automation2 = new UIA3Automation();
             var window2 = UiApp.Attach(app2, automation2, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window2, fgBefore2);
             Assert.NotNull(window2);
             try
             {
@@ -143,7 +149,7 @@ public sealed class LockedResidueTests
 
     static void LockActiveTab(Window window)
     {
-        Press(window, VirtualKeyShort.KEY_L, withControl: true, withShift: true);
+        UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsLock");
         var dialog = WaitForDialog(window, "LockDialog");
         SetPassword(dialog, "LockPasswordBox", Password);
         SetPassword(dialog, "LockConfirmBox", Password);
@@ -282,31 +288,6 @@ public sealed class LockedResidueTests
         return result.Result;
     }
 
-    static void Press(Window window, VirtualKeyShort key, bool withControl, bool withShift = false)
-    {
-        window.Focus();
-        Thread.Sleep(150);
-        if (withShift)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else if (withControl)
-        {
-            using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-            {
-                Keyboard.Press(key);
-            }
-        }
-        else
-        {
-            Keyboard.Press(key);
-        }
-
-        Thread.Sleep(250);
-    }
 
     static string AppExePath()
     {
