@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **43 of 164 sections complete (26%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **44 of 164 sections complete (27%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -118,7 +118,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T02 §2`  | Settings store with one writer                                      |   5   |
 | [x] | `D01 T02 §3`  | Settings page                                                       |   7   |
 | [x] | `D01 T02 §4`  | Status bar                                                          |   6   |
-| [ ] | `D01 T02 §13` | ScratchPad rename completion                                        |   6   |
+| [x] | `D01 T02 §13` | ScratchPad rename completion                                        |   6   |
 | [ ] | `D01 T02 §14` | Title-bar icon beside the tabs                                      |   5   |
 | [ ] | `D01 T02 §15` | Chrome color finetune against stock                                 |   5   |
 | [ ] | `D01 T02 §5`  | Print path                                                          |   4   |
