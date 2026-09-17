@@ -35,7 +35,7 @@ public static class JumpListFeed
                 continue;
             }
 
-            items.Add(new JumpListItem(Path.GetFileName(path), Quote(path), PinnedCategory));
+            items.Add(new JumpListItem(WindowsPath.GetFileName(path), Quote(path), PinnedCategory));
         }
 
         int recentCount = 0;
@@ -47,7 +47,7 @@ public static class JumpListFeed
             }
 
             recentCount++;
-            items.Add(new JumpListItem(Path.GetFileName(path), Quote(path), RecentCategory));
+            items.Add(new JumpListItem(WindowsPath.GetFileName(path), Quote(path), RecentCategory));
         }
 
         return items;

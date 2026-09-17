@@ -79,6 +79,13 @@ jobs:
         run: |
           Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name AppsUseLightTheme -Value 0
           Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name SystemUsesLightTheme -Value 0
+      # D00 T02 §6: the Common Item Dialog honors Explorer's extension-hiding
+      # in its File name box and file list. Runner profiles default to hiding
+      # (HideFileExt 1) while dev boxes show (0); under hiding, 6 MenuBarTests
+      # fail (prefills read without .txt, list items unfound, saves misrouted).
+      - name: Show file extensions
+        run: |
+          Set-ItemProperty -Path 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name HideFileExt -Value 0
       - name: Test solution
         run: |
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"

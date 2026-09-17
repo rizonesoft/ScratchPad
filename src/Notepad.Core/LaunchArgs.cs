@@ -124,5 +124,5 @@ public static class LaunchArgs
     static bool IsFlag(string arg) => arg.StartsWith('/') || arg.StartsWith('-');
 
     static string Root(string path, string workingDirectory) =>
-        Path.IsPathFullyQualified(path) ? path : Path.GetFullPath(Path.Combine(workingDirectory, path));
+        WindowsPath.IsRooted(path) ? path : WindowsPath.Combine(workingDirectory, path);
 }

@@ -56,7 +56,7 @@ public static class ProtocolAssociation
         // (observed 2026-09-16: ...shellprobe26.txt/); without the trim
         // the path fails File.Exists and misroutes to the missing offer.
         path = path.TrimEnd('/', '\\');
-        return Path.IsPathFullyQualified(path) ? path : null;
+        return WindowsPath.IsRooted(path) ? path : null;
     }
 
     public static IReadOnlyList<RegistrySetValue> PlanBackup(string? priorDefault, string? priorCommand) =>

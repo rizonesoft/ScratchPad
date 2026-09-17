@@ -74,14 +74,25 @@ internal static class GoldenComparer
         }
 
         using var canonical = Canonicalize(fresh, tolerance.CanonicalWidth, tolerance.CanonicalHeight);
+        // Cross-DPI rasterization noise (D00 T02 §6): goldens rendered at
+        // 150% device DPI and downscaled differ from native-100% CI renders
+        // at glyph edges with large per-channel deltas (measured 1128px and
+        // 3414px on identical chrome, 2026-09-17). A 3x3 box blur on both
+        // sides collapses that single-pixel noise (to 18px and 21px) while a
+        // 10px layout shift still reads 1069px against the 500px threshold,
+        // so delta 96 and 0.1% stand unchanged. The TenPixelShift probe below
+        // guards this: if blur ever blinds a real shift, the probe goes green
+        // and fails the suite.
+        using var goldenSoft = BoxBlur(golden);
+        using var freshSoft = BoxBlur(canonical);
         var left = (int)(tolerance.CanonicalWidth * tolerance.CropSideFraction);
         var top = (int)(tolerance.CanonicalHeight * tolerance.CropTopFraction);
         var right = tolerance.CanonicalWidth - (int)(tolerance.CanonicalWidth * tolerance.CropSideFraction);
         var bottom = tolerance.CanonicalHeight - (int)(tolerance.CanonicalHeight * tolerance.CropBottomFraction);
 
         var rect = new Rectangle(0, 0, canonical.Width, canonical.Height);
-        var goldenData = golden.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-        var freshData = canonical.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        var goldenData = goldenSoft.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        var freshData = freshSoft.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         try
         {
             var length = goldenData.Stride * goldenData.Height;
@@ -121,8 +132,69 @@ internal static class GoldenComparer
         }
         finally
         {
-            golden.UnlockBits(goldenData);
-            canonical.UnlockBits(freshData);
+            goldenSoft.UnlockBits(goldenData);
+            freshSoft.UnlockBits(freshData);
+        }
+    }
+
+    internal static Bitmap BoxBlur(Bitmap source)
+    {
+        var rect = new Rectangle(0, 0, source.Width, source.Height);
+        var data = source.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
+        {
+            var length = data.Stride * data.Height;
+            var src = new byte[length];
+            Marshal.Copy(data.Scan0, src, 0, length);
+            var dst = new byte[length];
+            for (var y = 0; y < data.Height; y++)
+            {
+                var y0 = Math.Max(y - 1, 0);
+                var y1 = Math.Min(y + 1, data.Height - 1);
+                for (var x = 0; x < data.Width; x++)
+                {
+                    var x0 = Math.Max(x - 1, 0);
+                    var x1 = Math.Min(x + 1, data.Width - 1);
+                    var sum0 = 0;
+                    var sum1 = 0;
+                    var sum2 = 0;
+                    var count = 0;
+                    for (var yy = y0; yy <= y1; yy++)
+                    {
+                        for (var xx = x0; xx <= x1; xx++)
+                        {
+                            var off = yy * data.Stride + xx * 4;
+                            sum0 += src[off];
+                            sum1 += src[off + 1];
+                            sum2 += src[off + 2];
+                            count++;
+                        }
+                    }
+
+                    var dout = y * data.Stride + x * 4;
+                    dst[dout] = (byte)(sum0 / count);
+                    dst[dout + 1] = (byte)(sum1 / count);
+                    dst[dout + 2] = (byte)(sum2 / count);
+                    dst[dout + 3] = src[y * data.Stride + x * 4 + 3];
+                }
+            }
+
+            var blurred = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppArgb);
+            var outData = blurred.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                Marshal.Copy(dst, 0, outData.Scan0, length);
+            }
+            finally
+            {
+                blurred.UnlockBits(outData);
+            }
+
+            return blurred;
+        }
+        finally
+        {
+            source.UnlockBits(data);
         }
     }
 }

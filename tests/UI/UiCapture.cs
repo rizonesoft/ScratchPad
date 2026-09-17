@@ -150,6 +150,10 @@ internal static class UiCapture
             Bitmap canonical;
             using (var shot = new Bitmap(raw))
             {
+                // Scale and raw size pin the capture environment in the test
+                // log (D00 T02 §6): cross-DPI rasterization noise is diagnosed
+                // from these two numbers, not from guesses.
+                Console.WriteLine($"capture: scale={scale} raw={shot.Width}x{shot.Height}");
                 canonical = GoldenComparer.Canonicalize(shot, tolerance.CanonicalWidth, tolerance.CanonicalHeight);
             }
 

@@ -16,10 +16,14 @@ xUnit v3 with the Microsoft Testing Platform runner was evaluated twice and ship
 
 Run everything for the host OS with the `dotnet test` commands above. Run one suite with `dotnet test tests/Unit` (or `tests/Smoke`, `tests/UI`). Filter within a run with `--filter`, for example `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
 
+## UI suite preconditions
+
+The UI suite drives real windows and native dialogs, so two machine settings must match CI: dark app theme (`AppsUseLightTheme` 0, else goldens mismatch) and visible file extensions (`HideFileExt` 0, else dialog prefill reads, file-list names, and save routing shift and 6 MenuBarTests fail). CI sets both before the test step; on a dev box verify with `(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize').AppsUseLightTheme` and `(Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced').HideFileExt`.
+
 ## Golden captures
 
 `resources/baseline/` holds stock Notepad reference captures plus goldens of our own surfaces at canonical size; `tests/UI` compares fresh captures against them under the committed `tolerance.json` policy. Captures come from `tools/CaptureBaseline`; the refresh procedure in `resources/baseline/README.md` governs re-capturing after intentional changes.
 
 ## Quarantine
 
-Flaky tests are quarantined by procedure (`docs/soak-and-quarantine.md`, T02 §5), never deleted or silently skipped. CI and VM-based runs were retired on 2026-09-14; all suites run locally on the dev box, with the UI suite driving the real binary on the interactive session.
+Flaky tests are quarantined by procedure (`docs/soak-and-quarantine.md`, T02 §5), never deleted or silently skipped. CI telemetry and VM-based runs were retired on 2026-09-14 (the word telemetry went missing in that edit; CI itself still gates every push); all suites also run locally on the dev box, with the UI suite driving the real binary on the interactive session.

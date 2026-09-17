@@ -5,7 +5,9 @@ namespace Unit;
 
 // D01 T01 §8: command-line launch parser. End-to-end honor (files opening
 // per mode, verbs answering, print exiting) is driven by the UI suite;
-// these pin the grammar branches.
+// these pin the grammar branches. Expectations are Windows-spelling
+// literals, never Path.Combine: the contract is Windows paths on every OS
+// (D00 T02 §6), and Combine spells the join per the runner OS.
 public sealed class LaunchArgsTests
 {
     const string WorkDir = "C:\\work";
@@ -23,7 +25,7 @@ public sealed class LaunchArgsTests
     public void SingleFileRootsAgainstWorkDir()
     {
         LaunchRequest request = LaunchArgs.Parse(["note.txt"], WorkDir);
-        Assert.Equal([Path.Combine(WorkDir, "note.txt")], request.Files);
+        Assert.Equal([@"C:\work\note.txt"], request.Files);
     }
 
     [Fact]
@@ -37,7 +39,7 @@ public sealed class LaunchArgsTests
     public void MultipleFilesKeepOrder()
     {
         LaunchRequest request = LaunchArgs.Parse(["b.txt", "a.txt"], WorkDir);
-        Assert.Equal([Path.Combine(WorkDir, "b.txt"), Path.Combine(WorkDir, "a.txt")], request.Files);
+        Assert.Equal([@"C:\work\b.txt", @"C:\work\a.txt"], request.Files);
     }
 
     [Fact]
@@ -45,7 +47,7 @@ public sealed class LaunchArgsTests
     {
         LaunchRequest request = LaunchArgs.Parse(["/p", "note.txt"], WorkDir);
         Assert.True(request.IsPrint);
-        Assert.Equal(Path.Combine(WorkDir, "note.txt"), request.PrintFile);
+        Assert.Equal(@"C:\work\note.txt", request.PrintFile);
         Assert.Null(request.PrintPrinter);
         Assert.Empty(request.Files);
     }
@@ -55,7 +57,7 @@ public sealed class LaunchArgsTests
     {
         LaunchRequest request = LaunchArgs.Parse(["/pt", "note.txt", "HP Laser"], WorkDir);
         Assert.True(request.IsPrint);
-        Assert.Equal(Path.Combine(WorkDir, "note.txt"), request.PrintFile);
+        Assert.Equal(@"C:\work\note.txt", request.PrintFile);
         Assert.Equal("HP Laser", request.PrintPrinter);
     }
 
@@ -79,7 +81,7 @@ public sealed class LaunchArgsTests
     public void UnknownFlagsAreIgnored()
     {
         LaunchRequest request = LaunchArgs.Parse(["/nosuchflag", "a.txt"], WorkDir);
-        Assert.Equal([Path.Combine(WorkDir, "a.txt")], request.Files);
+        Assert.Equal([@"C:\work\a.txt"], request.Files);
         Assert.False(request.IsPrint);
     }
 
@@ -111,7 +113,7 @@ public sealed class LaunchArgsTests
     {
         LaunchRequest request = LaunchArgs.Parse(["a.txt", "/new-note"], WorkDir);
         Assert.True(request.NewNote);
-        Assert.Equal([Path.Combine(WorkDir, "a.txt")], request.Files);
+        Assert.Equal([@"C:\work\a.txt"], request.Files);
     }
 
     [Fact]
