@@ -40,8 +40,7 @@ public sealed class TitleBarIconTests
                 Assert.InRange(rect.Height, expected - 1, expected + 1);
                 // Geometry alone cannot tell a rendered glyph from a box
                 // whose source never loaded, so the app reports decode
-                // state on ItemStatus (ImageOpened/ImageFailed; Name and
-                // HelpText stay clean for assistive tech) and the drive
+                // state on ItemStatus (ImageOpened/ImageFailed) and the drive
                 // waits for it instead of trusting the rectangle.
                 var status = Retry.While(
                     () => icon.Properties.ItemStatus.ValueOrDefault,

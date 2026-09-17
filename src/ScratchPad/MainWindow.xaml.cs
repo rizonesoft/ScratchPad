@@ -84,10 +84,11 @@ public sealed partial class MainWindow : Window, IDisposable
         // no input, keeping tab gestures intact; drag rectangles map through
         // TabRegion at the UpdateDragRects call site. Decode state rides
         // ItemStatus so the UI drive proves the glyph rendered, not merely
-        // that a 16-DIP box exists. Name and HelpText stay clean; the icon
-        // is unfocusable so readers announce nothing unprompted. (Raw view
-        // would hide it from AT entirely, but measured: FlaUI's descendant
-        // search misses raw-view elements too, so control view it is.)
+        // that a 16-DIP box exists. Name and HelpText stay as authored;
+        // ItemStatus transitions are observable to UIA clients that ask.
+        // (Raw view would hide the icon from AT entirely, but measured:
+        // both UIA drives failed to find it with Raw set and passed after
+        // the revert, so control view it is.)
         var titleIcon = new Image
         {
             Width = 16,
