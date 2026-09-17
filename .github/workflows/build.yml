@@ -107,15 +107,17 @@ jobs:
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
-          $profile = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "ScratchPad"
-          if (Test-Path $profile) { Remove-Item -Recurse -Force $profile }
-          New-Item -ItemType Directory -Force -Path $profile | Out-Null
-          '{"WhatsNewSeen":true}' | Set-Content -NoNewline (Join-Path $profile "settings.json")
+          $appProfile = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "ScratchPad"
+          Get-Process ScratchPad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          if (Test-Path $appProfile) { Remove-Item -Recurse -Force $appProfile }
+          New-Item -ItemType Directory -Force -Path $appProfile | Out-Null
+          '{"WhatsNewSeen":true}' | Set-Content -NoNewline (Join-Path $appProfile "settings.json")
           $exe = "$PWD\src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\evidence" | Out-Null
           dotnet run --project tools\CaptureBaseline -- stub "$exe" "$env:RUNNER_TEMP\evidence"
           Add-Type -AssemblyName System.Drawing
           $bmp = [System.Drawing.Bitmap]::FromFile("$env:RUNNER_TEMP\evidence\stub-window.png")
+          if ($bmp.Width -ne 900 -or $bmp.Height -ne 650) { throw "evidence frame is $($bmp.Width)x$($bmp.Height), expected 900x650" }
           $lit = 0
           for ($x = 0; $x -lt $bmp.Width; $x += 30) { for ($y = 0; $y -lt $bmp.Height; $y += 30) { $p = $bmp.GetPixel($x, $y); if ($p.R -gt 16 -or $p.G -gt 16 -or $p.B -gt 16) { $lit++ } } }
           $bmp.Dispose()
