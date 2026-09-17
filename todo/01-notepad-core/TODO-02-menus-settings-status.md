@@ -201,9 +201,11 @@ Why this section exists: the status bar is always visible, so any staleness is a
 
 ## 5. Print Path
 
+> **Started:** 2026-09-17T17:55:00Z
+
 Why this section exists: Notepad prints. The slice is small but must be exact: headers, footers, margins, and wrapping as Notepad does them.
 
-**Fidelity:** Notepad print output and dialog -- `resources/baseline/print/`. Header/footer codes and layout match.
+**Fidelity:** Notepad print output and dialog -- `resources/baseline/print/`. Header/footer codes and layout match. **Corrected 2026-09-17 (§5 validation):** the seed dir never existed and no stock print artifacts are capturable from a window-station-less session (Server CI runners ship classic notepad, not 11.x); this section creates the dir holding spec-constructed PDF goldens with a provenance README instead. No dialog capture is owed: Page Setup and Print are OS dialogs this section binds but does not build. **Decided 2026-09-17 (§5 validation):** byte-for-byte can only mean self-consistency (two PDF engines never byte-match), so the checkpoint's golden is constructed from the documented code spec plus Page Setup defaults, and parity lives in item 4's per-code coverage; a Win11 session diffing our PDF against stock's stays unfiled future work (cost: one capture session).
 
 **Job:** The user can print the active document as Notepad prints it. Consumer: the printer (or PDF), which receives Notepad's layout.
 
@@ -213,9 +215,11 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 
 **Groomed 2026-09-13:** Notepad audit: header/footer codes with defaults and command-line print routing are now explicit.
 
-- [ ] `src/Notepad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output. **Recorded 2026-09-16:** D01 T02 §1 ships File > Print and File > Page setup disabled; this section enables both through the `MenuCommands` registry and drives them on landing.
-- [ ] Page setup persists per Notepad's behavior. Done when: the persistence is driven.
-- [ ] Print failure (no printer, cancelled dialog) reports and changes nothing. Done when: both paths are driven.
+**Needs:** Windows host (build/test). **Corrected 2026-09-17 (§5 validation):** the seed carried no `Needs` although printing, the OS dialogs, and PDF output are Windows-only; every sibling declares it.
+
+- [ ] `src/ScratchPad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output. **Corrected 2026-09-17 (§5 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4). **Recorded 2026-09-16:** D01 T02 §1 ships File > Print and File > Page setup disabled; this section enables both through the `MenuCommands` registry and drives them on landing. PrintSeam.cs (D01 T01 §8) absorbs here per its header; the render engine is the implementer's choice with reasons (must print-to-PDF headless on CI).
+- [ ] Page setup persists per Notepad's behavior. Done when: the persistence is driven. **Decided 2026-09-17 (§5 validation):** behavior means the Page Setup dialog set (header, footer, margins, orientation, paper) surviving restarts and applying to prints, persisted in the §2 store (same file, new keys, schema-doc rows); stock's own storage location is not probed (default, costs one migrator if stock parity ever demands its exact keys).
+- [ ] Print failure (no printer, cancelled dialog) reports and changes nothing. Done when: both paths are driven. **Decided 2026-09-17 (§5 validation):** no-printer drives through `/pt` to a bogus printer (in-tree precedent `NoSuchPrinter8`); cancel drives through UIA dismiss of the OS dialog.
 - [ ] Header and footer codes &l, &c, &r, &d, &t, &f, and &p render as Notepad's, defaulting to header &f and footer Page &p; custom codes re-enter each print and an empty box prints nothing. Done when: print-to-PDF fixtures cover every code. Source: https://support.microsoft.com/en-gb/topic/how-to-use-notepad-to-create-a-log-file-dd228763-76de-a7a7-952b-d5ae203c4e12
 - [ ] Command-line printing (/P, /PT) routed from D01 T01 §8 completes through this path. Done when: print-then-close is driven.
 - [ ] Commit: `"notepad-core: add the print path"`
