@@ -143,6 +143,36 @@ public sealed class StatsPanelTests
         }
     }
 
+    // Values sit on the dialog's right edge, not beside their labels:
+    // the Mean-length value's right edge must land within dialog padding
+    // of the dialog frame (60 physical px covers 150% DPI plus margin).
+    [Fact]
+    public void ValuesAlignToDialogRightEdge()
+    {
+        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            SetBoxText(window, FixtureText);
+            Press(window, VirtualKeyShort.KEY_G, withControl: true, withShift: true);
+            var dialog = WaitForDialog(window, "StatsDialog");
+            _ = WaitForSections(dialog, 5, 7, 1);
+            var value = dialog.FindFirstDescendant(cf => cf.ByName("3.0"));
+            Assert.NotNull(value);
+            double gap = dialog.BoundingRectangle.Right - value.BoundingRectangle.Right;
+            Assert.True(gap >= 0 && gap <= 60, $"value right edge sits {gap:0}px from the dialog edge");
+            CloseDialog(window, dialog);
+        }
+        finally
+        {
+            CloseApp(app, window);
+            SessionData.Delete();
+        }
+    }
+
     // Plain StackPanels never materialize in the UIA tree (dump-proven:
     // the dialog flattens to title, headings, rows, buttons), so sections
     // slice by heading text in document order instead of AutomationId.
