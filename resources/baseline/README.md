@@ -12,12 +12,12 @@ Run `dotnet run --project tools/CaptureBaseline -- notepad resources/baseline/st
 
 ## Evidence procedure
 
-Eyeball-evidence crops (raw, human-judgment only, not canonical goldens) come from the `evidence-capture` artifact, never from an operator screenshot: every green `build-windows` run captures a canonical 900x650 frame of the built exe via `tools/CaptureBaseline stub` (dark theme, fresh profile) and uploads it as `stub-window.png`. To produce a crop:
+Eyeball-evidence crops (raw, human-judgment only, not canonical goldens) come from the `evidence-capture` artifact, never from an operator screenshot: every green `build-windows` run captures a canonical 900x650 frame of the built exe via `tools/CaptureBaseline stub` (dark theme, fresh profile) and uploads it as `stub-window.png` (the profile is reset before capture with only `WhatsNewSeen` seeded, so the frame is a fresh launch with no first-run dialog and no suite-residue session). To produce a crop:
 
 1. Download the artifact from a green main run at or after the commit under evidence: `gh run download <run-id> -n evidence-capture -D /tmp/evidence`.
 2. Verify the frame before trusting it: `python3 -c "from PIL import Image; im=Image.open('/tmp/evidence/stub-window.png'); print(im.size, im.convert('L').getextrema())"` must print `(900, 650)` and an extrema max well above 0 (a black frame reads max 0). The window must be foreground, unoccluded, and at canonical size.
-3. Crop the region with PIL and record the box in the committing section's item: `Image.open('/tmp/evidence/stub-window.png').crop((left, top, right, bottom)).save('<name>-evidence.png')`.
-4. Eyeball the crop against the checklist: foreground, unoccluded, intended pixels only, nothing else in frame.
+3. Crop the region with PIL and record the box in the committing section's item: `Image.open('/tmp/evidence/stub-window.png').crop((left, top, right, bottom)).save('<name>-evidence.png')`. Inset the box past any translucent window-border bleed: the first real use found see-through edge pixels of a background window in the left 8px and started the box at x=8.
+4. Eyeball the crop against the checklist: foreground, unoccluded, intended pixels only, no border-bleed pixels, nothing else in frame.
 5. Commit the crop beside its siblings in `resources/baseline/app/` with a message naming the change.
 
 This procedure was first used for real by D00 T02 §7 item 2 (the §14 dressed-tab-row crop from run 35230396785, box (8, 0, 328, 110)).

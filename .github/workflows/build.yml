@@ -96,14 +96,30 @@ jobs:
       # (measured black frames), so green builds capture a canonical
       # evidence frame on the display-bearing runner. Default success()
       # condition: red builds skip this and upload golden failures below.
+      # The UI suite drives the real profile (%LOCALAPPDATA%\ScratchPad),
+      # so the profile is reset first: otherwise the frame restores the
+      # suite's leftover session instead of a fresh launch. WhatsNewSeen
+      # is seeded so no first-run dialog covers the frame. The frame is
+      # asserted non-black here: a display-less runner must fail loudly,
+      # not upload a black artifact on a green build.
       - name: Capture evidence frame
         run: |
           $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          $profile = Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "ScratchPad"
+          if (Test-Path $profile) { Remove-Item -Recurse -Force $profile }
+          New-Item -ItemType Directory -Force -Path $profile | Out-Null
+          '{"WhatsNewSeen":true}' | Set-Content -NoNewline (Join-Path $profile "settings.json")
           $exe = "$PWD\src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
           New-Item -ItemType Directory -Force -Path "$env:RUNNER_TEMP\evidence" | Out-Null
           dotnet run --project tools\CaptureBaseline -- stub "$exe" "$env:RUNNER_TEMP\evidence"
+          Add-Type -AssemblyName System.Drawing
+          $bmp = [System.Drawing.Bitmap]::FromFile("$env:RUNNER_TEMP\evidence\stub-window.png")
+          $lit = 0
+          for ($x = 0; $x -lt $bmp.Width; $x += 30) { for ($y = 0; $y -lt $bmp.Height; $y += 30) { $p = $bmp.GetPixel($x, $y); if ($p.R -gt 16 -or $p.G -gt 16 -or $p.B -gt 16) { $lit++ } } }
+          $bmp.Dispose()
+          if ($lit -eq 0) { throw "evidence frame is black: runner lost its display session" }
       - name: Upload evidence capture
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
