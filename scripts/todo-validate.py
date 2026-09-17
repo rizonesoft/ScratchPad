@@ -494,25 +494,15 @@ def validate(graph, _args) -> int:
             for fence_lineno, ln in enumerate(raw_lines, start=1):
                 qd, fence_ch, fence_run, info = _fence_shape(ln)
                 if fence is not None and qd < fence[3] and ln.strip() != "":
-                    # Below the open fence's quote depth: either the quote
-                    # ended (closing the fence with it) or a lazy content
-                    # line (a same-depth close still ahead). Lookahead
-                    # distinguishes them; blank lines are always content.
-                    closes_ahead = False
-                    for ahead_ln in raw_lines[fence_lineno:]:
-                        a_qd, a_ch, a_run, a_info = _fence_shape(ahead_ln)
-                        if (
-                            a_qd == fence[3]
-                            and a_ch == fence[0]
-                            and a_run >= fence[1]
-                            and a_info == ""
-                        ):
-                            closes_ahead = True
-                            break
-                    if not closes_ahead:
-                        fence = None  # quote ended; reprocess line below
-                    else:
-                        continue  # lazy content inside the quoted fence
+                    # Below the open fence's quote depth, the quote ended,
+                    # closing the fence with it: CommonMark laziness never
+                    # applies to fenced-code content, so there is no
+                    # lookahead for a later same-depth close (its
+                    # whole-remainder scan let later quoted blocks swallow
+                    # the lines between, hiding whole panels). Blank lines
+                    # are always content. Reprocess the line below: it may
+                    # open a new fence at its own depth.
+                    fence = None
                 if fence_run:
                     if fence is None:
                         # CommonMark: a backtick in a backtick-fence info

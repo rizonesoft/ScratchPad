@@ -3419,6 +3419,8 @@ track: Z1
 |  22   |   §22   | Backtick info string is a paragraph | - |  [x]   |
 |  23   |   §23   | Quoted close cannot close unquoted fence | - |  [x]   |
 |  24   |   §24   | Ended quote ends its fence | - |  [x]   |
+|  25   |   §25   | Later quoted block swallows nothing | - |  [x]   |
+|  26   |   §26   | Quoted fence never hides a later panel | - |  [x]   |
 
 ---
 
@@ -3661,6 +3663,26 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §24 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quoteend.md
+
+## 25. Later quoted block swallows nothing
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §25 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-laterquote.md
+
+## 26. Quoted fence never hides a later panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §26 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quotehide.md
 """,
             encoding="utf-8",
         )
@@ -3805,6 +3827,24 @@ track: Z1
             "> ```\n> quoted code\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-laterquote.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "> ```\n> quoted code\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n"
+            "\n> ```\n> tail\n> ```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-quotehide.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n"
+            "\n> ```\n> quoted code\n\n"
+            "## Opus panel (round 2)\n\n"
+            "**adversarial: needs-attention**\n"
+            "\n> ```\n> tail\n> ```\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -3978,6 +4018,19 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§24 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        check(
+            "later quoted block swallows nothing",
+            any("TODO-06-panel.md" in ln and "§25 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "quoted fence never hides a later panel",
+            any(
+                "TODO-06-panel.md" in ln and "§26 " in ln and "lacks verdicts for: consistency, integration, record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -4001,6 +4054,8 @@ track: Z1
             "90-panel-tickinfo.md",
             "90-panel-xquote-close.md",
             "90-panel-quoteend.md",
+            "90-panel-laterquote.md",
+            "90-panel-quotehide.md",
         ):
             (rev_dir / extra).unlink()
         check(
