@@ -133,7 +133,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §10` | Custom accent themes                                                |   5   |
 | [ ] | `D01 T02 §11` | Session word goal                                                   |   4   |
 | [ ] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
-| [ ] | `D01 T02 §16` | Quarantine the MenuBarTests CI flakes                               |   4   |
+| [ ] | `D01 T02 §16` | Quarantine the MenuBarTests CI flakes                               |   5   |
 | [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   5   |
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |   5   |
 | [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |   5   |
@@ -177,7 +177,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §28` | UIA tab accessibility names                                         |   3   |
 | [x] | `D01 T01 §29` | Open with explicit encoding                                         |   4   |
 | [x] | `D01 T01 §30` | Locked-tab residue hardening                                        |   4   |
-| [ ] | `D01 T01 §31` | Fresh launch opens a truly empty tab                                |   3   |
+| [ ] | `D01 T01 §32` | Quarantine the AppIcon and Launch CI flakes                         |   4   |
 | [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   5   |
 | [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   4   |
 | [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |

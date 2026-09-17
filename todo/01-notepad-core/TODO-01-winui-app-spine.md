@@ -82,7 +82,7 @@ track: N1
 |  28   |   §28   | UIA tab accessibility names | §3 |  [x]   |
 |  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
-|  31   |   §31   | Fresh launch opens a truly empty tab | §2 |  [ ]   |
+|  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §8, §11 |  [ ]   |
 
 ---
 
@@ -931,28 +931,23 @@ Why this section exists: §19 locks the file but the decrypted buffer still rest
 > **Duration:** 22
 > **Implementer:** Muse Code (Meta Muse Spark)
 
-## 31. Fresh Launch Opens a Truly Empty Tab
+## 32. Quarantine the AppIcon and Launch CI Flakes
 
-Why this section exists: the first CI evidence frame (D00 T02 §7, run 35230396785) shows a fresh-profile launch whose Untitled tab reads "4 characters" and carries a dirty dot: the new tab holds 4 characters it should not. Stock opens empty and clean.
+Why this section exists: two more UI tests failed nondeterministically on the D00 T02 §7 round-2 run (details in the SOURCE line), each red-then-green on the same commit, which is exactly the D00 T02 §5 quarantine criterion. (D01 T01 §31 was filed and unfiled the same day on a falsified premise; its address stays vacant, so this section takes §32.)
 
-**Fidelity:** stock fresh window -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png` (one empty Untitled tab). Our fresh launch matches: zero characters, no dirty dot.
+**Job:** The suite stays green without the flakes while their owners get a fix-or-remove window. Consumer: every main CI run.
 
-**Job:** The user starts from nothing, not from phantom content. Consumer: the §2 new-tab path, which gains the empty-clean guarantee.
+**Treatment:** Quarantine by the D00 T02 §5 procedure verbatim (prove, Skip with the quarantine stamp, quarantine-list rows), one row per test. No test logic changes; the fix-or-remove window that follows belongs to the owners, not this section. Cheaper substitute that fails the checkpoint: re-running red builds until one goes green.
 
-**Treatment:** Name the 4 characters' source (seeded content, restore residue, or counter artifact against `StatusSegments.CountCharacters`, which reads 0 for empty) and fix at the root. Cheaper substitute that fails the checkpoint: clearing the box after launch while the source still seeds.
+- -> XREF: D00 T02 §7 -- filed from its pipeline run; the flakes red-flagged its round-2 run.
+- -> SOURCE: CI-flakes-2026-09-17b (`UI.AppIconTests.WindowChromeIconMatchesAsset`: UIA/COM timeout; `UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates`: `Assert.NotNull` in `WaitForDialog`; both red on run 35234746568 attempt 1, green on the `--failed` rerun of the same commit. Same slow-runner family as the D01 T02 §16 trio; the owners confirm via soak.)
 
-**Chrome:** No visual change; the empty tab already renders.
+- [ ] `WindowChromeIconMatchesAsset` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
+- [ ] `MissingFileOfferYesBindsTabAndSaveCreates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
+- [ ] A main CI run is green with both tests skipped. Done when: the run id is quoted with the skip line.
+- [ ] Commit: `"notepad-core: quarantine the AppIcon and Launch CI flakes"`
 
-**Needs:** Windows host (build/test)
-
-- -> XREF: D00 T02 §7 -- filed from its evidence frame; the fix re-proves on a fresh frame.
-- -> SOURCE: CI-evidence-frame-35230396785 (fresh-profile launch, Untitled reads "4 characters" with dirty dot; `src/Notepad.Core/StatusSegments.cs:51` reads 0 for empty, so the doc holds 4 real chars)
-
-- [ ] The 4 characters' source is named with evidence (seeded content, restore residue, or counter artifact). Done when: the source is quoted here.
-- [ ] Fresh-profile launch opens one empty Untitled tab reading "0 characters" with no dirty dot. Done when: a UI drive launches clean-profile and asserts both.
-- [ ] Commit: `"notepad-core: open fresh tabs truly empty"`
-
-**Test checkpoint:** Clean-profile launch driven empty and clean; the source named. Cheaper substitute that fails: a unit-only assertion with the launch path undriven.
+**Test checkpoint:** Both Skips plus both rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
 
 ## Verification
 

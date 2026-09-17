@@ -453,21 +453,22 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 
 ## 16. Quarantine the MenuBarTests CI Flakes
 
-Why this section exists: two `MenuBarTests` failed nondeterministically on CI within the hour (details in the SOURCE line), each red-then-green with no test-affecting change between, which is exactly the D00 T02 §5 quarantine criterion. Until they are quarantined, every main run gambles on them.
+Why this section exists: three `MenuBarTests` failed nondeterministically on CI within the hours (details in the SOURCE line), each red-then-green with no test-affecting change between, which is exactly the D00 T02 §5 quarantine criterion. Until they are quarantined, every main run gambles on them.
 
 **Job:** The suite stays green without the flakes while their owners get a fix-or-remove window. Consumer: every main CI run.
 
 **Treatment:** Quarantine by the D00 T02 §5 procedure verbatim (prove, Skip with the quarantine stamp, quarantine-list rows), one row per test. No test logic changes; the fix-or-remove window that follows belongs to the owners, not this section. Cheaper substitute that fails the checkpoint: re-running red builds until one goes green.
 
 - -> XREF: D00 T02 §7 -- filed from its pipeline run; the flakes blocked its first artifact.
-- -> SOURCE: CI-flakes-2026-09-17 (`UI.MenuBarTests.FileSaveAllWalksDirtyTabs`: COMException UIA timeout in `WaitForNativeModalGone`, red on run 35230396785 attempt 1, green on the rerun of the same commit; `UI.MenuBarTests.ToolsMenuInvokesStats`: `Assert.NotNull` in `OpenToolsDialog`, red on run 35230230322, green on run 35230396785 whose tree differs only in workflow YAML plus TODO prose, i.e. a bit-identical test binary. Both smell like slow-runner load; the owners confirm via soak.)
+- -> SOURCE: CI-flakes-2026-09-17 (`UI.MenuBarTests.FileSaveAllWalksDirtyTabs`: COMException UIA timeout in `WaitForNativeModalGone`, red on run 35230396785 attempt 1, green on the rerun of the same commit; `UI.MenuBarTests.ToolsMenuInvokesStats`: `Assert.NotNull` in `OpenToolsDialog`, red on run 35230230322, green on run 35230396785 whose tree differs only in workflow YAML plus TODO prose, i.e. a bit-identical test binary; `UI.MenuBarTests.FileMenuLiveAcceleratorsWork`: `Assert.NotNull`, red on run 35234746568 attempt 1, green on the rerun of the same commit. All smell like slow-runner load; the owners confirm via soak.)
 
 - [ ] `FileSaveAllWalksDirtyTabs` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
 - [ ] `ToolsMenuInvokesStats` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
-- [ ] A main CI run is green with both tests skipped. Done when: the run id is quoted with the 2-skip line.
+- [ ] `FileMenuLiveAcceleratorsWork` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
+- [ ] A main CI run is green with all three tests skipped. Done when: the run id is quoted with the 3-skip line.
 - [ ] Commit: `"notepad-core: quarantine the MenuBarTests CI flakes"`
 
-**Test checkpoint:** Both Skips plus both rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
+**Test checkpoint:** All three Skips plus all three rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
 
 ## Verification
 
