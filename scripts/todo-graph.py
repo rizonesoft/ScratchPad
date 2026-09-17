@@ -3406,6 +3406,9 @@ track: Z1
 |   9   |   §9    | Fenced panel quote | - |  [x]   |
 |  10   |   §10   | Level-5 tail after panel | - |  [x]   |
 |  11   |   §11   | Level-5 panel heading | - |  [x]   |
+|  12   |   §12   | Unheaded prose after panel | - |  [x]   |
+|  13   |   §13   | Unbalanced fence | - |  [x]   |
+|  14   |   §14   | Fence-only panel | - |  [x]   |
 
 ---
 
@@ -3518,6 +3521,36 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §11 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-l5head.md
+
+## 12. Unheaded prose after panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §12 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-bareprose.md
+
+## 13. Unbalanced fence
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §13 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-unbalanced.md
+
+## 14. Fence-only panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §14 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fenceonly.md
 """,
             encoding="utf-8",
         )
@@ -3576,6 +3609,25 @@ track: Z1
             "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
+        (rev_dir / "90-panel-bareprose.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\nFiled leftovers: integration approve, record approve tracked in T99.\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-unbalanced.md").write_text(
+            "# Review: fixture\n\n```diff\n+## Opus panel (round 0)\n\n"
+            "## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-fenceonly.md").write_text(
+            "# Review: fixture\n\n```markdown\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n```\n",
+            encoding="utf-8",
+        )
         pbuf = _mio.StringIO()
         with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -3588,7 +3640,7 @@ track: Z1
         check(
             "findings without the panel heading fire",
             any(
-                "TODO-06-panel.md" in ln and "§1" in ln and "carry no `Opus panel` section" in ln
+                "TODO-06-panel.md" in ln and "§1 " in ln and "carry no `Opus panel` section" in ln
                 for ln in panel_out
             ),
             True,
@@ -3596,7 +3648,7 @@ track: Z1
         check(
             "missing findings file fires",
             any(
-                "TODO-06-panel.md" in ln and "§2" in ln and "does not exist" in ln
+                "TODO-06-panel.md" in ln and "§2 " in ln and "does not exist" in ln
                 for ln in panel_out
             ),
             True,
@@ -3604,7 +3656,7 @@ track: Z1
         check(
             "Review line without a findings path fires",
             any(
-                "TODO-06-panel.md" in ln and "§3" in ln and "names no findings file" in ln
+                "TODO-06-panel.md" in ln and "§3 " in ln and "names no findings file" in ln
                 for ln in panel_out
             ),
             True,
@@ -3612,51 +3664,75 @@ track: Z1
         check(
             "panel missing one lens names it",
             any(
-                "TODO-06-panel.md" in ln and "§4" in ln and "lacks verdicts for: record" in ln
+                "TODO-06-panel.md" in ln and "§4 " in ln and "lacks verdicts for: record" in ln
                 for ln in panel_out
             ),
             True,
         )
         check(
             "clean panel stays silent despite a panel-naming title",
-            any("TODO-06-panel.md" in ln and "§5" in ln and "FATAL" in ln for ln in panel_out),
+            any("TODO-06-panel.md" in ln and "§5 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
         check(
             "cutoff-dated stamp without a panel stays silent",
-            any("TODO-06-panel.md" in ln and "§6" in ln and "FATAL" in ln for ln in panel_out),
+            any("TODO-06-panel.md" in ln and "§6 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
         check(
             "superseded clean round does not excuse a live gap",
             any(
-                "TODO-06-panel.md" in ln and "§7" in ln and "lacks verdicts for:" in ln
+                "TODO-06-panel.md" in ln and "§7 " in ln and "lacks verdicts for:" in ln
                 for ln in panel_out
             ),
             True,
         )
         check(
             "superseded gap does not taint a clean latest round",
-            any("TODO-06-panel.md" in ln and "§8" in ln and "FATAL" in ln for ln in panel_out),
+            any("TODO-06-panel.md" in ln and "§8 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
         check(
-            "fenced panel quote neither satisfies nor displaces",
-            any("TODO-06-panel.md" in ln and "§9" in ln and "FATAL" in ln for ln in panel_out),
+            "fenced panel quote cannot displace the real panel",
+            any("TODO-06-panel.md" in ln and "§9 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
         check(
             "level-5 tail after the panel cannot supply verdicts",
             any(
-                "TODO-06-panel.md" in ln and "§10" in ln and "lacks verdicts for: integration, record" in ln
+                "TODO-06-panel.md" in ln and "§10 " in ln and "lacks verdicts for: integration, record" in ln
                 for ln in panel_out
             ),
             True,
         )
         check(
             "level-5 panel heading is accepted",
-            any("TODO-06-panel.md" in ln and "§11" in ln and "FATAL" in ln for ln in panel_out),
+            any("TODO-06-panel.md" in ln and "§11 " in ln and "FATAL" in ln for ln in panel_out),
             False,
+        )
+        check(
+            "unheaded prose after the panel cannot supply verdicts",
+            any(
+                "TODO-06-panel.md" in ln and "§12 " in ln and "lacks verdicts for: integration, record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "unbalanced fence names the fence, not the panel",
+            any(
+                "TODO-06-panel.md" in ln and "§13 " in ln and "unbalanced fence opened at line 3" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "fenced panel quote alone cannot satisfy the rule",
+            any(
+                "TODO-06-panel.md" in ln and "§14 " in ln and "carry no `Opus panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
         )
         panel_todo.unlink()
         for extra in (
@@ -3668,6 +3744,9 @@ track: Z1
             "90-panel-fenced.md",
             "90-panel-l5tail.md",
             "90-panel-l5head.md",
+            "90-panel-bareprose.md",
+            "90-panel-unbalanced.md",
+            "90-panel-fenceonly.md",
         ):
             (rev_dir / extra).unlink()
         check(

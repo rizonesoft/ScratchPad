@@ -416,6 +416,24 @@ def validate(graph, _args) -> int:
     # panel section, so a `##### Leftover notes` tail after the panel can
     # neither supply lens verdicts nor displace the record.
     PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
+    # Verdicts are line-anchored, never substring: the mandated shape puts
+    # each verdict on its own marker-led line, so unheaded prose after an
+    # incomplete panel (or a mid-line mention anywhere) must not supply a
+    # verdict. The marker run is required and same-line: a bare `record
+    # approve` prose line, even at column 0, does not count. (D00 T01 §10
+    # re-think: the heading-scan unit had three consecutive patches, so
+    # the boundary moved from the slice to the line.)
+    PANEL_VERDICT_RES = {
+        lens: re.compile(
+            r"^[ \t]{0,3}[*`_>~-][ *`_>~-]*`?"
+            + lens
+            + r"`?[^\w\n]{1,4}("
+            + "|".join(PANEL_VERDICTS)
+            + r")\b",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        for lens in PANEL_LENSES
+    }
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -453,13 +471,23 @@ def validate(graph, _args) -> int:
             # cannot fake a heading (the regex anchors at column 0).
             kept = []
             in_fence = False
-            for ln in text.splitlines():
+            fence_open = 0
+            for fence_lineno, ln in enumerate(text.splitlines(), start=1):
                 s = ln.strip()
                 if s.startswith("```") or s.startswith("~~~"):
+                    if not in_fence:
+                        fence_open = fence_lineno
                     in_fence = not in_fence
                     continue
                 if not in_fence:
                     kept.append(ln)
+            if in_fence:
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} findings {m.group(1)} has an unbalanced fence "
+                    f"opened at line {fence_open}",
+                )
+                continue
             text = "\n".join(kept)
             heads = list(PANEL_HEADING_RE.finditer(text))
             if not heads:
@@ -478,11 +506,7 @@ def validate(graph, _args) -> int:
             missing = [
                 lens
                 for lens in PANEL_LENSES
-                if not re.search(
-                    lens + r"\W{0,12}\b(" + "|".join(PANEL_VERDICTS) + r")\b",
-                    panel,
-                    re.IGNORECASE,
-                )
+                if not PANEL_VERDICT_RES[lens].search(panel)
             ]
             if missing:
                 flag(
