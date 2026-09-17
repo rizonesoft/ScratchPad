@@ -155,14 +155,14 @@ public sealed class LaunchArgsTests
     [Fact]
     public void WellFormedLinkMapsToItsPath()
     {
-        LaunchRequest request = LaunchArgs.Parse(["intelligent-notepad://C%3A/docs/a%20b.txt"], WorkDir);
+        LaunchRequest request = LaunchArgs.Parse(["scratchpad://C%3A/docs/a%20b.txt"], WorkDir);
         Assert.Equal(["C:/docs/a b.txt"], request.Files);
     }
 
     [Theory]
-    [InlineData("intelligent-notepad://")]
-    [InlineData("intelligent-notepad://relative/x.txt")]
-    [InlineData("intelligent-notepad://%ZZ")]
+    [InlineData("scratchpad://")]
+    [InlineData("scratchpad://relative/x.txt")]
+    [InlineData("scratchpad://%ZZ")]
     public void MalformedLinksAreIgnored(string link)
     {
         LaunchRequest request = LaunchArgs.Parse([link], WorkDir);

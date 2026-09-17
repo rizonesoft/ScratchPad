@@ -10,33 +10,33 @@ public sealed class ProtocolAssociationTests
     [Fact]
     public void EncodedAbsolutePathParses()
     {
-        Assert.Equal("C:/docs/a b.txt", ProtocolAssociation.TryParseLink("intelligent-notepad://C%3A/docs/a%20b.txt"));
+        Assert.Equal("C:/docs/a b.txt", ProtocolAssociation.TryParseLink("scratchpad://C%3A/docs/a%20b.txt"));
     }
 
     [Fact]
     public void BackslashPathParses()
     {
-        Assert.Equal(@"C:\x\y.txt", ProtocolAssociation.TryParseLink(@"intelligent-notepad://C:\x\y.txt"));
+        Assert.Equal(@"C:\x\y.txt", ProtocolAssociation.TryParseLink(@"scratchpad://C:\x\y.txt"));
     }
 
     [Fact]
     public void SchemeMatchesCaseInsensitively()
     {
-        Assert.Equal("C:/x.txt", ProtocolAssociation.TryParseLink("INTELLIGENT-NOTEPAD://C:/x.txt"));
+        Assert.Equal("C:/x.txt", ProtocolAssociation.TryParseLink("SCRATCHPAD://C:/x.txt"));
     }
 
     [Theory]
-    [InlineData("intelligent-notepad://C:/x.txt/", "C:/x.txt")]
-    [InlineData("intelligent-notepad://C%3A%5Cx.txt%5C", @"C:\x.txt")]
+    [InlineData("scratchpad://C:/x.txt/", "C:/x.txt")]
+    [InlineData("scratchpad://C%3A%5Cx.txt%5C", @"C:\x.txt")]
     public void ShellTrailingSlashIsTrimmed(string link, string expected)
     {
         Assert.Equal(expected, ProtocolAssociation.TryParseLink(link));
     }
 
     [Theory]
-    [InlineData("intelligent-notepad://")]
-    [InlineData("intelligent-notepad://relative/x.txt")]
-    [InlineData("intelligent-notepad://%ZZ")]
+    [InlineData("scratchpad://")]
+    [InlineData("scratchpad://relative/x.txt")]
+    [InlineData("scratchpad://%ZZ")]
     [InlineData("http://example.com/x.txt")]
     [InlineData("note.txt")]
     public void NonLinksReturnNull(string arg)
