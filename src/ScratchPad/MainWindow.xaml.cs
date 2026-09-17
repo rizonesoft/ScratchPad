@@ -3,8 +3,10 @@ using System.ComponentModel;
 using System.Diagnostics;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media.Imaging;
 using Notepad.Core;
 using Windows.Foundation;
 using Windows.Graphics;
@@ -73,7 +75,31 @@ public sealed partial class MainWindow : Window, IDisposable
         // The HWND is not valid in the constructor; installing here silently
         // subclasses nothing. First activation owns the install.
         Activated += OnFirstActivated;
-        TabRegion.Content = tabBar;
+        // D01 T02 §14: the extended chrome draws no caption glyph, so the
+        // 16px raster of the shipped asset pins left of the tab strip in
+        // our own row (stock placement per the §14 Fidelity capture). The
+        // image takes no input, keeping tab gestures and drag rectangles
+        // exactly as measured; see UpdateDragRects.
+        var titleIcon = new Image
+        {
+            Width = 16,
+            Height = 16,
+            Margin = new Thickness(12, 0, 4, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            IsHitTestVisible = false,
+            Source = new BitmapImage(new Uri("ms-appx:///titlebar-icon-16.png")),
+        };
+        AutomationProperties.SetAutomationId(titleIcon, "TitleBarIcon");
+        AutomationProperties.SetName(titleIcon, "Application icon");
+        var tabRow = new Grid();
+        tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        tabRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(titleIcon, 0);
+        Grid.SetColumn(tabBar, 1);
+        tabRow.Children.Add(titleIcon);
+        tabRow.Children.Add(tabBar);
+        TabRegion.Content = tabRow;
         MenuRegion.Bind(this);
         // D01 T02 §3: the settings page is live, so Edit > Font enables.
         MenuRegion.SetEnabled("MenuEditFont", true);
