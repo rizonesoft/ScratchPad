@@ -41,7 +41,7 @@ track: W0
 |   7   |   §7    | TODO graph checks in CI | §3 |  [x]   |
 |   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
 |   9   |   §9    | Opus panel enforcement in the validator | §7 |  [x]   |
-|  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [ ]   |
+|  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [x]   |
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [ ]   |
 
 ---
@@ -260,6 +260,12 @@ Why this section exists: the round-5 Opus panel on §9 (final round, all lenses 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with a case per residual; each new fixture is mutation-proven, measured revert to failures: §17/§18/§19/§20/§21/§22/§23/§24 fail exactly their case under their own fix's revert; shared machinery fails together (anchored-to-substring reverts to §12/§15/§20; unbalanced-flag removal to §13/§23; strip tracking removal with the flag kept to §9/§13/§14/§16/§17/§18/§21/§23). Cheaper substitute that fails: a fourth scan patch without the re-think, or fixtures that pass vacuously.
 
 - -> XREF: D00 T01 §11 -- round-5 leftovers (quote-end lookahead removal, lazy-comment correction, README alignment) filed there
+
+> **Verified:** 2026-09-17 | §10 | self-test 418/418 (13 new panel cases §§12-24, full 11-mutation battery measured); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates f8740c2 7f7fcfa 9c4dc55 fe5e6cc b6c858b closing with one needs-attention filed, not patched, per max-5; live panels re-probed passing under the anchored regex; self-application drive (post-cutoff §9 stamp) silent, reverted clean
+> **Review:** round 5 (FINAL), candidates f8740c2 7f7fcfa 9c4dc55 fe5e6cc b6c858b -- `adversarial` needs-attention · `consistency` advisory · `integration` advisory · `record` approve. Leftovers filed at D00 T01 §11. Raw findings: docs/reviews/00-workspace/D00-T01-s10.md
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); mutation battery wrote temp rule edits (restored exact, read back via failure sets and byte compare); filing wrote §11 plus its plan row (read back via plan --check current)
+> **Duration:** 44
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 11. Quote-End Lookahead Removal
 
