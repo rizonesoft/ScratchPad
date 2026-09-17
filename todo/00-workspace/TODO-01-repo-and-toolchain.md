@@ -42,6 +42,7 @@ track: W0
 |   8   |   §8    | Conclave-PC input capability for automation | -- |  [ ]   |
 |   9   |   §9    | Opus panel enforcement in the validator | §7 |  [x]   |
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [ ]   |
+|  11   |   §11   | Quote-end lookahead removal | §10 |  [ ]   |
 
 ---
 
@@ -257,6 +258,18 @@ Why this section exists: the round-5 Opus panel on §9 (final round, all lenses 
 - [x] Commit: `"workspace: harden Opus panel rule per round-5 notes"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with a case per residual; each new fixture is mutation-proven, measured revert to failures: §17/§18/§19/§20/§21/§22/§23/§24 fail exactly their case under their own fix's revert; shared machinery fails together (anchored-to-substring reverts to §12/§15/§20; unbalanced-flag removal to §13/§23; strip tracking removal with the flag kept to §9/§13/§14/§16/§17/§18/§21/§23). Cheaper substitute that fails: a fourth scan patch without the re-think, or fixtures that pass vacuously.
+
+- -> XREF: D00 T01 §11 -- round-5 leftovers (quote-end lookahead removal, lazy-comment correction, README alignment) filed there
+
+## 11. Quote-End Lookahead Removal
+
+Why this section exists: the round-5 Opus panel on §10 (final round, max 5 reached) left one needs-attention: the quote-end lookahead scans the whole remainder for a same-depth close, so a later quoted fence retroactively swallows the lines between (false FATAL on a §24 shape plus a later quoted block; fail-open swallowing a round-2 panel so stale round-1 verdicts read as the record). The same round's consistency lens supplies the fix direction: CommonMark laziness never applies to fenced-code content, so an unquoted non-blank line after a quoted fence always ends quote and fence, and the lookahead branch (plus its lazy comment) should be deleted, not bounded. -> XREF: D00 T01 §10 (filed from its round-5 panel); -> SOURCE: Opus-panel-D00-T01-s10-round-5 (candidate `b6c858b`, NEW-13/14/15; transcribed in `docs/reviews/00-workspace/D00-T01-s10.md`).
+
+- [ ] Delete the quote-end lookahead: an unquoted non-blank line below the open fence's quote depth always closes the fence (no ahead scan). Done when: §24 still passes unmodified, new fixtures lock both round-5 probe shapes (§24 shape plus a later balanced quoted block stays silent; round-2 heading after a quoted fence fires naming the missing lenses), and the mutation map in the checkpoint is re-measured.
+- [ ] Correct the record the lookahead left behind: the lazy-content comment in `todo-validate.py`, and the unconditional "an ended quote ends its fence" in `todo/README.md` (the skill already states the no-close-ahead condition; after deletion both state the unconditional rule truthfully). Done when: comment and both docs describe the same rule and no probe distinguishes them.
+- [ ] Commit: `"workspace: remove quote-end lookahead from panel rule"`
+
+**Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count; the two NEW-13 probe shapes are fixtures with cases; the §10 checkpoint mutation map is refreshed by measurement, not edited by reasoning. Cheaper substitute that fails: bounding the lookahead window instead of deleting the branch.
 
 ## Verification
 
