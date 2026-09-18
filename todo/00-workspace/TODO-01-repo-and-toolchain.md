@@ -18,6 +18,8 @@ track: W0
 >
 > **Filed 2026-09-17:** §13 (environment-gated ready queries). Open: §§12-13.
 
+> **Filed 2026-09-18:** §14 (plan reviews with a second-family reviewer). Open: §§8, 14.
+
 ## Inputs
 
 - [Windows App SDK and WinUI 3 docs for .NET](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/) -- WinUI 3 with .NET: SDK and workload requirements
@@ -49,6 +51,7 @@ track: W0
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
 |  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [x]   |
 |  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
+|  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [ ]   |
 
 ---
 
@@ -341,6 +344,20 @@ Why this section exists: `query ready` answers dependency readiness only, so an 
 > **CRUD:** applicable | self-test wrote the gamma fixture under a temp root (unlinked after, read back via case assertions); live typo and no-values probes reverted clean (read back via query output); skills and docs wrote prose (read back via grep sweeps)
 > **Duration:** 45
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 14. Plan Reviews with a Second-Family Reviewer
+
+Why this section exists: the Opus panel gates what a section built, but no lens asks whether the plan around it is complete (a missing print function, a settings card no section themes, a protocol behavior no test locks). One second-family round per stamped section catches those plan gaps while the context is hot, and its feedback lands as tracked work through `add-todo`, never as inline scope creep.
+
+- -> XREF: D00 T01 §9 -- the Opus panel this plan review complements; the panel gates the build, the plan review audits the plan.
+
+- [ ] `review-todo-section` gains a plan-review step: after the stamp, one round over the section plus its Depends and XREF neighbors asking for gaps, inconsistencies, faults, improvements, and premium wins, with the feedback synthesized into `add-todo` filings (micro/small items, new sections, new domains) by the implementing session, never applied blind. Done when: the skill names the timing (post-stamp, advisory, never blocks), the scope (section plus connected sections), and the filing route.
+- [ ] The reviewer is one `gpt-5.6-sol` round at high reasoning effort through the codex runner in read-only sandbox, with the section text plus neighbor sections inline. Done when: the skill pins the exact command shape and the model name reads `gpt-5.6-sol` (lowercase; the uppercase variant fails model resolution, probed 2026-09-18).
+- [ ] Runner failure fails silent onto an Opus high-effort round: any nonzero exit, auth failure, or model-resolution failure runs the headless panel command once with `--effort high` over the same prompt, and if that also fails the outage is recorded in the findings file and the run continues. Done when: the skill names both fallback rungs and the record-the-outage rule, and a forced failure (bogus model name) is observed to reach the Opus rung.
+- [ ] Both runners are smoke-probed with a verbatim-echo prompt before the skill lands. Done when: the `gpt-5.6-sol` high probe and the Opus high probe each return the echo, quoted in the commit or findings.
+- [ ] Commit: `"workspace: add second-family plan reviews"`
+
+**Test checkpoint:** Skill carries timing, scope, reviewer, and both fallback rungs; probes quoted; forced failure reaches the Opus rung; outage rule recorded. Cheaper substitute that fails: a second-family round with no fallback, which blocks the run on every runner outage.
 
 ## Verification
 

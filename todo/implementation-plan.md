@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **52 of 174 sections complete (30%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **52 of 175 sections complete (30%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -84,29 +84,30 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 0 -- Workspace spine: toolchain, CI, and the test backbone
 
-|  ✔  | Section       | Deliverable                              | Items |
-| :-: | ------------- | ---------------------------------------- | :---: |
-| [x] | `D00 T01 §1`  | Repo layout and toolchain pin            |   5   |
-| [x] | `D00 T01 §2`  | Solution scaffold with one-command build |   5   |
-| [x] | `D00 T01 §3`  | CI on Linux and Windows runners          |   5   |
-| [x] | `D00 T01 §4`  | Warning and analysis gates               |   5   |
-| [x] | `D00 T01 §5`  | Test wiring and first smoke test         |   5   |
-| [x] | `D00 T01 §6`  | Developer bootstrap doc                  |   4   |
-| [x] | `D00 T01 §7`  | TODO graph checks in CI                  |   5   |
-| [x] | `D00 T01 §9`  | Opus panel enforcement in the validator  |   5   |
-| [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups     |   4   |
-| [x] | `D00 T01 §11` | Quote-end lookahead removal              |   4   |
-| [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits |   3   |
-| [x] | `D00 T01 §13` | Environment-gated ready queries          |   5   |
-| [x] | `D00 T02 §1`  | Unit test project and framework          |   5   |
-| [x] | `D00 T02 §2`  | UI automation driver spike               |   5   |
-| [x] | `D00 T02 §3`  | Golden capture store and refresh         |   5   |
-| [x] | `D00 T02 §4`  | ACP loopback fixture                     |   5   |
-| [x] | `D00 T02 §5`  | Soak and quarantine procedure            |   5   |
-| [x] | `D00 T02 §6`  | Golden comparison deterministic on CI    |   7   |
-| [x] | `D00 T02 §7`  | CI evidence capture pipeline             |   4   |
-| [ ] | `D00 T02 §8`  | Focus-free UI suite conversion           |   6   |
-| [ ] | `D00 T02 §9`  | Nightly full-suite regression run        |   5   |
+|  ✔  | Section       | Deliverable                                | Items |
+| :-: | ------------- | ------------------------------------------ | :---: |
+| [x] | `D00 T01 §1`  | Repo layout and toolchain pin              |   5   |
+| [x] | `D00 T01 §2`  | Solution scaffold with one-command build   |   5   |
+| [x] | `D00 T01 §3`  | CI on Linux and Windows runners            |   5   |
+| [x] | `D00 T01 §4`  | Warning and analysis gates                 |   5   |
+| [x] | `D00 T01 §5`  | Test wiring and first smoke test           |   5   |
+| [x] | `D00 T01 §6`  | Developer bootstrap doc                    |   4   |
+| [x] | `D00 T01 §7`  | TODO graph checks in CI                    |   5   |
+| [x] | `D00 T01 §9`  | Opus panel enforcement in the validator    |   5   |
+| [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups       |   4   |
+| [x] | `D00 T01 §11` | Quote-end lookahead removal                |   4   |
+| [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits   |   3   |
+| [x] | `D00 T01 §13` | Environment-gated ready queries            |   5   |
+| [ ] | `D00 T01 §14` | Plan reviews with a second-family reviewer |   5   |
+| [x] | `D00 T02 §1`  | Unit test project and framework            |   5   |
+| [x] | `D00 T02 §2`  | UI automation driver spike                 |   5   |
+| [x] | `D00 T02 §3`  | Golden capture store and refresh           |   5   |
+| [x] | `D00 T02 §4`  | ACP loopback fixture                       |   5   |
+| [x] | `D00 T02 §5`  | Soak and quarantine procedure              |   5   |
+| [x] | `D00 T02 §6`  | Golden comparison deterministic on CI      |   7   |
+| [x] | `D00 T02 §7`  | CI evidence capture pipeline               |   4   |
+| [ ] | `D00 T02 §8`  | Focus-free UI suite conversion             |   6   |
+| [ ] | `D00 T02 §9`  | Nightly full-suite regression run          |   5   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 
