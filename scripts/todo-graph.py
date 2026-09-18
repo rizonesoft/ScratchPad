@@ -3716,8 +3716,10 @@ track: Z1
 |  29   |   §29   | GPT fallback clean | - |  [x]   |
 |  30   |   §30   | GPT panel missing the outage note | - |  [x]   |
 |  31   |   §31   | GPT panel missing a lens | - |  [x]   |
-|  32   |   §32   | Opus governs over a clean GPT panel | - |  [x]   |
+|  32   |   §32   | Last GPT panel governs over a broken earlier Opus panel | - |  [x]   |
 |  33   |   §33   | Fenced GPT quote alone satisfies nothing | - |  [x]   |
+|  34   |   §34   | Last Opus panel governs over a clean earlier GPT panel | - |  [x]   |
+|  35   |   §35   | Trailing heading ends the GPT panel section | - |  [x]   |
 
 ---
 
@@ -4031,7 +4033,7 @@ track: Z1
 > **Verified:** 2026-09-20 | §31 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptpartial.md
 
-## 32. Opus governs over a clean GPT panel
+## 32. Last GPT panel governs over a broken earlier Opus panel
 
 - [x] Did the thing
 - [x] Commit: `"selftest: panel"`
@@ -4050,6 +4052,26 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §33 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptfenced.md
+
+## 34. Last Opus panel governs over a clean earlier GPT panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §34 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-opuslast.md
+
+## 35. Trailing heading ends the GPT panel section
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §35 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gpttail.md
 """,
             encoding="utf-8",
         )
@@ -4263,6 +4285,24 @@ track: Z1
             "Opus outage: quoted example.\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-opuslast.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: CLI missing on PATH.\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gpttail.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: model error (overloaded).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "\n##### Leftover notes\n\n"
+            "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -4486,18 +4526,37 @@ track: Z1
             ),
             True,
         )
+        # §32 expectation flipped 2026-09-18 (round-1 adversarial): the old
+        # expectation (an Opus section anywhere excuses the GPT last)
+        # contradicts the documented last-wins rule and leaves the
+        # authorizing round unvalidated, so the expectation was wrong, not
+        # the code it has now. The flipped pair (§32 silent, §34 fires)
+        # jointly locks last-wins across families.
         check(
-            "Opus panel governs over a clean later GPT panel",
-            any(
-                "TODO-06-panel.md" in ln and "§32 " in ln and "panel lacks verdicts for: record" in ln
-                for ln in panel_out
-            ),
-            True,
+            "last GPT panel governs over a broken earlier Opus panel",
+            any("TODO-06-panel.md" in ln and "§32 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
         )
         check(
             "fenced GPT quote alone cannot satisfy the rule",
             any(
                 "TODO-06-panel.md" in ln and "§33 " in ln and "carry no `Opus panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "last Opus panel governs over a clean earlier GPT panel",
+            any(
+                "TODO-06-panel.md" in ln and "§34 " in ln and "panel lacks verdicts for: record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "trailing heading ends the GPT panel section",
+            any(
+                "TODO-06-panel.md" in ln and "§35 " in ln and "GPT panel lacks verdicts for: integration, record" in ln
                 for ln in panel_out
             ),
             True,
@@ -4534,6 +4593,8 @@ track: Z1
             "90-panel-gptpartial.md",
             "90-panel-gptopus.md",
             "90-panel-gptfenced.md",
+            "90-panel-opuslast.md",
+            "90-panel-gpttail.md",
         ):
             (rev_dir / extra).unlink()
         check(

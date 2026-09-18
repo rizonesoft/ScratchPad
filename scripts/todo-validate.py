@@ -417,9 +417,11 @@ def validate(graph, _args) -> int:
     # D00 T01 §14 extends the record, not the bar: when the Opus panel is
     # unreachable the skill runs the same four lenses through the GPT
     # fallback rung, recorded under a `GPT panel` heading with an Opus
-    # outage note, and that record satisfies this rule. When both headings
-    # exist the Opus section governs (the fallback never displaces a real
-    # panel); the honesty limit is unchanged (a mislabeled heading defeats
+    # outage note, and that record satisfies this rule. The LAST panel
+    # section of either family governs: a fallback round authorizes the
+    # stamp exactly like an Opus round, so last-wins crosses families and
+    # a superseded section of either family never validates the stamp.
+    # The honesty limit is unchanged (a mislabeled heading defeats
     # forgetfulness, not forgery).
     # Grandfathering is date-bound like rule 8b/13 (cutoff declared
     # beside the others above): stamps on or before the rule's landing
@@ -584,10 +586,15 @@ def validate(graph, _args) -> int:
                     f"{where} findings {m.group(1)} carry no `Opus panel` section",
                 )
                 continue
-            if not heads:
+            last_is_gpt = gpt_heads and (
+                not heads or gpt_heads[-1].start() > heads[-1].start()
+            )
+            if last_is_gpt:
                 # GPT fallback path: same verdict bar as the Opus panel,
-                # plus the Opus outage note that earns the fallback. The
-                # LAST GPT section is the record, mirroring last-wins.
+                # plus the Opus outage note that earns the fallback. Taken
+                # when the last panel section of either family is GPT: a
+                # fallback round authorizes the stamp, so an Opus section
+                # anywhere earlier never excuses a defective GPT last.
                 gpt = text[gpt_heads[-1].end():]
                 nxt = re.search(r"^#{1,6}\s+", gpt, re.MULTILINE)
                 if nxt:
@@ -609,9 +616,10 @@ def validate(graph, _args) -> int:
                         f"{where} findings {m.group(1)} GPT panel lacks the Opus outage note",
                     )
                 continue
-            # The LAST panel section is the record: fix-loop rounds append,
-            # so reading the first would validate a superseded round and
-            # never the verdicts that authorize the stamp.
+            # The LAST panel section of either family is the record (the
+            # branch above took the GPT-last case): fix-loop rounds append,
+            # so reading anything but the last would validate a superseded
+            # round and never the verdicts that authorize the stamp.
             panel = text[heads[-1].end():]
             nxt = re.search(r"^#{1,6}\s+", panel, re.MULTILINE)
             if nxt:
