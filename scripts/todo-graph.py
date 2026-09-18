@@ -1087,7 +1087,17 @@ RUN_ID_RE = re.compile(r"\brun\s+(\S+?)(?=[,;)]|\s|$)")
 SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
 # A clearance names the commit that carries the fix (D00 T01 §19 item 8):
 # `fix <sha>` in the target section, proven against the commit's tree.
-FIX_COMMIT_RE = re.compile(r"\bfix\s+([0-9a-fA-F]{7,40})\b")
+# Multi-commit fix loops name the range instead (D00 T01 §22 item 3):
+# `fix <base>..<tip>` proves the tip tree, base-to-tip ancestry, and a
+# touch inside the range. Shorts stay legal: git refuses ambiguous
+# ones, so resolution failure fails closed like any unprovable leg.
+FIX_COMMIT_RE = re.compile(r"\bfix\s+([0-9a-fA-F]{7,40})(?:\.\.([0-9a-fA-F]{7,40}))?\b")
+# A clearance names its proof (D00 T01 §22 item 1): `proof
+# <finding-id> <path>[::<test>]` in the target section, resolved at
+# the fix tip tree. The query proves the pointer names this row and
+# resolves; the target's own review attests the test exercises the
+# finding's acceptance condition.
+PROOF_RE = re.compile(r"\bproof\s+(\S+)\s+(\S+)")
 OWNER_RE = re.compile(r"\bowner\s+([A-Za-z0-9_.-]+)")
 DUE_RE = re.compile(r"\bdue\s+(\d{4}-\d{2}-\d{2})")
 FOLLOWS_OUTAGE_RE = re.compile(r"\bfollows-outage\b")
@@ -1152,6 +1162,82 @@ def git_commit_touches(sha: str, repo_path: str) -> bool | None:
 
         out = subprocess.run(
             ["git", "-C", str(REPO), "show", "--pretty=format:", "--name-only", sha, "--", repo_path],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return repo_path in out.stdout.decode("utf-8", "replace").splitlines()
+
+
+def git_commit_date(sha: str) -> str | None:
+    """Committer day of a commit (UTC, `%Y-%m-%d`), or None when unprovable.
+
+    The clearance recency leg (D00 T01 §22 item 2): the fix must
+    postdate the review day. Committer date, not author date: landing
+    day is the ordered event. Off-shape output reads None, never
+    raises; the self-test patches this name, never a repo.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "log", "-1", "--pretty=%cs", sha],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    day = out.stdout.decode("utf-8", "replace").strip()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
+        return None
+    return day
+
+
+def git_is_ancestor(base: str, tip: str) -> bool | None:
+    """Whether base is an ancestor of tip, or None when unprovable. The
+    range sanity leg (D00 T01 §22 item 3): a fix loop is linear, so a
+    tip that does not descend from its base fails closed."""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "merge-base", "--is-ancestor", base, tip],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode == 0:
+        return True
+    if out.returncode == 1:
+        return False
+    return None
+
+
+def git_range_touches(base: str, tip: str, repo_path: str) -> bool | None:
+    """Whether a non-merge commit in base..tip touched a path, or None
+    when unprovable. The range touch leg (D00 T01 §22 item 3)."""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "log",
+                "--no-merges",
+                "--pretty=format:",
+                "--name-only",
+                f"{base}..{tip}",
+                "--",
+                repo_path,
+            ],
             capture_output=True,
             timeout=30,
         )
@@ -2018,18 +2104,31 @@ def cmd_query(args) -> int:
                             # non-merge commit that touched the target file
                             # and whose tree contains the ID (fix-commit
                             # attribution bound to the target's post-finding
-                            # stamp; D00 T01 §19 item 8). Stated boundary
-                            # (review R5): bytes prove attribution, not
-                            # remediation: a fix commit that only adds the
-                            # back-link still clears, because the semantic
-                            # proof that the work fixed the finding is the
-                            # target's own review and stamp, which is what
-                            # the post-finding stamp leg binds. A sha whose
-                            # tree lacks the ID, that never touched the
-                            # file, or that git cannot prove fails closed,
-                            # as do unresolvable, unverified, pre-dated,
-                            # unlinked, and unnamed targets (D00 T01 §17
-                            # item 8).
+                            # stamp; D00 T01 §19 item 8). Ranges name
+                            # `fix <base>..<tip>` instead: the tip tree
+                            # carries the ID, the tip descends from the
+                            # base, and a non-merge commit inside the
+                            # range touched the file (D00 T01 §22 item 3).
+                            # The fix committer day must postdate the
+                            # review day (same-day fails closed,
+                            # deterministically; day stamps cannot order
+                            # within a day, so commit-order would need a
+                            # stored review commit that does not exist:
+                            # D00 T01 §22 item 2). And the target names
+                            # `proof <finding-id> <path>[::<test>]`
+                            # resolving at the fix tip tree (D00 T01 §22
+                            # item 1). Stated boundary (review R5, narrowed
+                            # by §22): bytes prove attribution plus a named
+                            # proof pointer, not remediation: the semantic
+                            # proof that the test exercises the finding's
+                            # acceptance condition is the target's own
+                            # review and stamp. A sha whose tree lacks the
+                            # ID, that never touched the file, that git
+                            # cannot prove, that predates the review, or
+                            # whose proof names nothing resolving fails
+                            # closed, as do unresolvable, unverified,
+                            # pre-dated, unlinked, and unnamed targets
+                            # (D00 T01 §17 item 8).
                             refs = [xm.group(0) for xm in XREF_RE.finditer(rest)]
                             provable = bool(refs)
                             reviewer_day = s.stamped_on or "\uffff"  # undated reviewer fails closed
@@ -2069,13 +2168,45 @@ def cmd_query(args) -> int:
                                     target_texts[tpath].splitlines()[tgt_start - 1:tgt_end - 1]
                                 )
                                 fm = FIX_COMMIT_RE.search(tgt_text)
-                                fixed = git_file_at(fm.group(1), tpath) if fm else None
+                                if fm is None:
+                                    provable = False
+                                    break
+                                base, tip = fm.group(1), fm.group(2) or fm.group(1)
+                                fixed = git_file_at(tip, tpath)
                                 if fixed is None or not re.search(
                                     r"\b" + re.escape(lr.group(1)) + r"\b", fixed
                                 ):
                                     provable = False
                                     break
-                                if not git_commit_touches(fm.group(1), tpath):
+                                if fm.group(2) is not None:
+                                    if not git_is_ancestor(base, tip):
+                                        provable = False
+                                        break
+                                    if not git_range_touches(base, tip, tpath):
+                                        provable = False
+                                        break
+                                elif not git_commit_touches(tip, tpath):
+                                    provable = False
+                                    break
+                                fix_day = git_commit_date(tip)
+                                if fix_day is None or fix_day <= reviewer_day:
+                                    provable = False
+                                    break
+                                proof_ok = False
+                                for pm in PROOF_RE.finditer(tgt_text):
+                                    if pm.group(1).lower() != lr.group(1).lower():
+                                        continue
+                                    ppath, _, pname = pm.group(2).partition("::")
+                                    pbytes = git_file_at(tip, ppath)
+                                    if pbytes is None:
+                                        continue
+                                    if pname and not re.search(
+                                        r"\b" + re.escape(pname) + r"\b", pbytes
+                                    ):
+                                        continue
+                                    proof_ok = True
+                                    break
+                                if not proof_ok:
                                     provable = False
                                     break
                             if not provable:
@@ -5878,6 +6009,7 @@ track: Z1
         d4 = (date.today() + timedelta(days=2)).isoformat()
         d2 = (date.today() + timedelta(days=3)).isoformat()
         d5 = (date.today() + timedelta(days=4)).isoformat()
+        d1 = (date.today() + timedelta(days=1)).isoformat()
         marker_todo.write_text(
             """---
 schema_version: 1
@@ -5942,6 +6074,12 @@ track: Z1
 |  45   |   §45   | Finding acceptances cover | - |  [x]   |
 |  46   |   §46   | Outage acceptance covers | - |  [x]   |
 |  47   |   §47   | Grandfathered unmarked stamp | - |  [x]   |
+|  48   |   §48   | Proof-negative targets | - |  [x]   |
+|  49   |   §49   | Same-day fix target | - |  [x]   |
+|  50   |   §50   | Pre-day fix target | - |  [x]   |
+|  51   |   §51   | Range fix target | - |  [x]   |
+|  52   |   §52   | Untouched range target | - |  [x]   |
+|  53   |   §53   | Forked range target | - |  [x]   |
 
 ---
 
@@ -5963,6 +6101,10 @@ track: Z1
 **Test checkpoint:** `true`
 
 -> SOURCE: fixture-health D90-T07-S4-PR1 D90-T07-S4-PR2 D90-T07-S4-PR11 fix aaa1111
+
+proof PR1 tests/fix-proof.py::test_clearance
+proof D90-T07-S4-PR1 tests/fix-proof.py::test_clearance
+proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D2__ | §2 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
@@ -5989,7 +6131,7 @@ track: Z1
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53 (run 20260920-D90-T07-S4-gpt)
 
 ## 5. Unbalanced findings probe
 
@@ -6467,6 +6609,97 @@ track: Z1
 
 > **Verified:** 2026-09-18 | §47 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+
+## 48. Proof-negative targets
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureclear D90-T07-S4-PR60 D90-T07-S4-PR61 D90-T07-S4-PR62 fix fff0001
+
+proof D90-T07-S4-PR61 tests/nope.py
+proof D90-T07-S4-PR62 tests/fix-proof.py::test_missing_name
+
+> **Verified:** __D5__ | §48 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 49. Same-day fix target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturedate1 D90-T07-S4-PR63 fix ddd0001
+
+proof D90-T07-S4-PR63 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §49 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 50. Pre-day fix target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturedate2 D90-T07-S4-PR64 fix ddd0002
+
+proof D90-T07-S4-PR64 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §50 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 51. Range fix target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturerange1 D90-T07-S4-PR65 fix eee0001..eee0002
+
+proof D90-T07-S4-PR65 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §51 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 52. Untouched range target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturerange2 D90-T07-S4-PR66 fix eee0003..eee0004
+
+proof D90-T07-S4-PR66 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §52 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 53. Forked range target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturerange3 D90-T07-S4-PR67 fix eee0005..eee0006
+
+proof D90-T07-S4-PR67 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §53 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -6513,6 +6746,16 @@ track: Z1
             # its tree but never touched the target file (an unrelated
             # commit that happens to contain the citation).
             "- [D90-T07-S4-PR24] [critical] Untouched fix -> filed §25\n"
+            # §22 probes: proof, recency, and range legs (§§48-53 stamp
+            # post-finding with back-links; each row isolates one leg).
+            "- [D90-T07-S4-PR60] [critical] Missing proof stays -> filed §48\n"
+            "- [D90-T07-S4-PR61] [critical] Unresolvable proof stays -> filed §48\n"
+            "- [D90-T07-S4-PR62] [critical] Nameless proof stays -> filed §48\n"
+            "- [D90-T07-S4-PR63] [critical] Same-day fix stays -> filed §49\n"
+            "- [D90-T07-S4-PR64] [critical] Pre-day fix stays -> filed §50\n"
+            "- [D90-T07-S4-PR65] [critical] Range fix clears -> filed §51\n"
+            "- [D90-T07-S4-PR66] [critical] Untouched range stays -> filed §52\n"
+            "- [D90-T07-S4-PR67] [critical] Forked range stays -> filed §53\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -6847,6 +7090,42 @@ track: Z1
             ("aaa1111", marker_todo.as_posix()): True,
             ("ccc3333", marker_todo.as_posix()): False,
         }
+        # §22 clearance profiles: `fff0001` passes every leg but proof
+        # (PR40-42 stay for the proof leg), `ddd0001` lands same-day and
+        # `ddd0002` pre-day (PR43-44 stay for recency), the `eee0001..2`
+        # range clears (PR45), `eee0003..4` never touched (PR46 stays),
+        # `eee0005..6` is forked (PR47 stays). Every leg except the
+        # probed one passes, so a broken leg clears its row and fails
+        # the probe instead of hiding behind an earlier leg.
+        _proof_ok = "def test_clearance():\n    pass\n"
+        _proof_bare = "def test_other():\n    pass\n"
+        _mtxt = marker_todo.read_text(encoding="utf-8")
+        for _sha in ("fff0001", "ddd0001", "ddd0002", "eee0002", "eee0004", "eee0006"):
+            canned_git[(_sha, marker_todo.as_posix())] = _mtxt
+            canned_touches[(_sha, marker_todo.as_posix())] = True
+        canned_git[("aaa1111", "tests/fix-proof.py")] = _proof_ok
+        canned_git[("fff0001", "tests/fix-proof.py")] = _proof_bare
+        for _sha in ("ddd0001", "ddd0002", "eee0002", "eee0004", "eee0006"):
+            canned_git[(_sha, "tests/fix-proof.py")] = _proof_ok
+        canned_dates = {
+            "aaa1111": d2,
+            "fff0001": d5,
+            "ddd0001": d4,
+            "ddd0002": d1,
+            "eee0002": d5,
+            "eee0004": d5,
+            "eee0006": d5,
+        }
+        canned_ancestors = {
+            ("eee0001", "eee0002"): True,
+            ("eee0003", "eee0004"): True,
+            ("eee0005", "eee0006"): False,
+        }
+        canned_range_touches = {
+            ("eee0001", "eee0002", marker_todo.as_posix()): True,
+            ("eee0003", "eee0004", marker_todo.as_posix()): False,
+            ("eee0005", "eee0006", marker_todo.as_posix()): True,
+        }
         # Rule-23 negatives, written after the migration loop so they stay
         # bare: one file without any line, one with a run-less line plus an
         # off-shape-run line. Neither carries a Plan review section, so
@@ -6869,8 +7148,14 @@ track: Z1
         )
         _real_git_file_at = git_file_at
         _real_git_touches = git_commit_touches
+        _real_git_date = git_commit_date
+        _real_git_ancestor = git_is_ancestor
+        _real_git_range = git_range_touches
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
+        globals()["git_commit_date"] = lambda sha: canned_dates.get(sha)
+        globals()["git_is_ancestor"] = lambda a, b: canned_ancestors.get((a, b))
+        globals()["git_range_touches"] = lambda a, b, p: canned_range_touches.get((a, b, p))
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -7532,6 +7817,36 @@ track: Z1
             # substring, so a plain `in` would false-fire.
             any(re.search(r"\bPR1\b", ln) for ln in health_lines),
             False,
+        )
+        check(
+            "clearance needs a resolving proof",
+            (
+                any("D90-T07-S4-PR60" in ln for ln in health_lines)
+                and any("D90-T07-S4-PR61" in ln for ln in health_lines)
+                and any("D90-T07-S4-PR62" in ln for ln in health_lines)
+            ),
+            True,
+        )
+        check(
+            "clearance fails a same-day or pre-day fix",
+            (
+                any("D90-T07-S4-PR63" in ln for ln in health_lines)
+                and any("D90-T07-S4-PR64" in ln for ln in health_lines)
+            ),
+            True,
+        )
+        check(
+            "clearance clears a proven range",
+            any("D90-T07-S4-PR65" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance fails an untouched or forked range",
+            (
+                any("D90-T07-S4-PR66" in ln for ln in health_lines)
+                and any("D90-T07-S4-PR67" in ln for ln in health_lines)
+            ),
+            True,
         )
         check(
             "plan-health clears the rejected critical",
@@ -8235,6 +8550,9 @@ track: Z1
         )
         globals()["git_file_at"] = _real_git_file_at
         globals()["git_commit_touches"] = _real_git_touches
+        globals()["git_commit_date"] = _real_git_date
+        globals()["git_is_ancestor"] = _real_git_ancestor
+        globals()["git_range_touches"] = _real_git_range
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.

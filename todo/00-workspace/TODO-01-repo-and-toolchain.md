@@ -601,14 +601,18 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 ## 22. Clearance Binding
 
+> **Started:** 2026-09-18T16:36:24Z
+
 Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes clearance (PR9, PR10, PR11n) as the third of the four-way split. Clearance must bind the finding to proof the defect is fixed, on a deterministic clock, under an immutable candidate identity. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s22 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)).
 
-- [ ] Clearance binds acceptance-condition evidence: the target's review names the test or proof that exercises the finding's acceptance condition (PR9 D00-T01-S19-PR9). Done when: the skill plus query enforce the binding with fixtures.
-- [ ] Same-day chronology goes deterministic: UTC timestamps or commit-order semantics replace day granularity for clearance ordering (PR10 D00-T01-S19-PR10). Done when: same-day fixes evaluate deterministically with fixtures.
-- [ ] Fix ranges replace the single sha: multi-commit fix loops name the range tip and the touch leg checks the range (PR11n D00-T01-S19-PR11). Done when: the token shape plus query follow with fixtures.
-- [ ] Commit: `"workspace: bind clearance per sixth live round"`
+- [x] Clearance binds acceptance-condition evidence: the target's review names the test or proof that exercises the finding's acceptance condition (PR9 D00-T01-S19-PR9). Done when: the skill plus query enforce the binding with fixtures. Done: `proof <finding-id> <path>[::<test>]` in the target section, resolved at the fix tip tree (path must exist there, a named test must read word-bounded in its bytes); the query fails closed on missing or unresolvable proof; the skill mandates the pointer and states the boundary (bytes prove attribution plus the pointer, the target's review attests the test exercises the condition). PR60/61/62 lock missing, unresolvable, and nameless; PR1 keeps clearing with three proof lines.
+- [x] Same-day chronology goes deterministic: UTC timestamps or commit-order semantics replace day granularity for clearance ordering (PR10 D00-T01-S19-PR10). Done when: same-day fixes evaluate deterministically with fixtures. Done: `git_commit_date` reads the fix committer day (UTC); clearance needs it strictly after the review day, so same-day fixes fail closed deterministically (day stamps cannot order within a day). Commit-order rejected with reason (no stored review commit to order against; ancestry adopted for ranges in item 3 instead). Considered and deferred: Duration-end ordering would clear same-day fixes but needs a Duration trust model plus a fallback matrix; cost of changing is a dual-clock rule. PR63/64 lock same-day and pre-day stays.
+- [x] Fix ranges replace the single sha: multi-commit fix loops name the range tip and the touch leg checks the range (PR11n D00-T01-S19-PR11). Done when: the token shape plus query follow with fixtures. Done: `fix <base>..<tip>`; the tip tree carries the ID, the tip must descend from the base (`git_is_ancestor`), a non-merge commit in the range must touch the file (`git_range_touches`), and recency plus proof read at the tip. Single-sha clearances unchanged; shorts stay legal (git refuses ambiguous ones). PR65 clears, PR66/67 stay for untouched and forked ranges.
+- [x] Commit: `"workspace: bind clearance per sixth live round"`
 
 **Test checkpoint:** a cleared critical names its proof, its clock reading is unambiguous, and its candidate identity is immutable. Cheaper substitute that fails: a longer sha.
+
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the query, fixtures, skill, and ticks (read back via self-test 703/703, live validate 0 fatal, plan --check current); filing none (no new work filed)
 
 ## 23. Ledger, Provenance, and Output Hardening
 
