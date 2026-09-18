@@ -68,16 +68,18 @@ track: W0
 |  20   |   §20   | Run-identity reconciliation | §19 |  [x]   |
 |  21   |   §21   | Accountability records and surfacing | §19 |  [x]   |
 |  22   |   §22   | Clearance binding | §19 |  [x]   |
-|  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [ ]   |
-|  24   |   §24   | Lineage residuals and run inspection | §20 |  [ ]   |
+|  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [x]   |
+|  24   |   §24   | Lineage residuals and run inspection | §20, §23 |  [ ]   |
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [ ]   |
 |  26   |   §26   | Grandfathered migration execution | §21 |  [ ]   |
 |  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
 |  30   |   §30   | Clearance fixture residuals | §22 |  [ ]   |
-|  31   |   §31   | Clearance causality and precision | §22 |  [ ]   |
+|  31   |   §31   | Clearance causality and precision | §22, §23 |  [ ]   |
 |  32   |   §32   | Clearance governance and diagnostics | §22 |  [ ]   |
+|  33   |   §33   | Provenance residuals | §23 |  [ ]   |
+|  34   |   §34   | Amendment and runner residuals | §20, §23 |  [ ]   |
 
 ---
 
@@ -625,7 +627,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 > **Started:** 2026-09-18T17:53:46Z
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes ledger, provenance, and output (PR12, PR15n, PR19n) as the last of the four-way split, plus the plan-runner CLI drift found running this review (`codex exec --reasoning` rejected by the installed CLI; `-c model_reasoning_effort='"high"'` used instead). The seventh plan review then added a provenance-run equality rule (PR7) to the open section. Amendments must stay linked, provenance must be checkable, outputs must be bounded, and the runner template must match the installed CLI. -> XREF: D00 T01 §19 (filed from its plan review); -> XREF: D00 T01 §20 (PR7 joiner from its plan review); -> XREF: D00 T01 §22 (PR8 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s23 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)); plan-review-D00-T01-s20-2026-09-18 (PR7 equality; ledger in the §20 findings file); plan-review-D00-T01-s22-2026-09-18 D00-T01-S22-PR8 (causal ancestry joiner; ledger in the §22 findings file).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes ledger, provenance, and output (PR12, PR15n, PR19n) as the last of the four-way split, plus the plan-runner CLI drift found running this review (`codex exec --reasoning` rejected by the installed CLI; `-c model_reasoning_effort='"high"'` used instead). The seventh plan review then added a provenance-run equality rule (PR7) to the open section. Amendments must stay linked, provenance must be checkable, outputs must be bounded, and the runner template must match the installed CLI. -> XREF: D00 T01 §19 (filed from its plan review); -> XREF: D00 T01 §20 (PR7 joiner from its plan review); -> XREF: D00 T01 §22 (PR8 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s23 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)); plan-review-D00-T01-s20-2026-09-18 (PR7 equality; ledger in the §20 findings file); plan-review-D00-T01-s22-2026-09-18 D00-T01-S22-PR8 (causal ancestry joiner; ledger in the §22 findings file). -> XREF: D00 T01 §33 (tenth plan-review provenance filings); -> XREF: D00 T01 §34 (tenth plan-review amendment and runner filings); -> XREF: D00 T01 §24 (PR12 joiner filed there); -> XREF: D00 T01 §31 (PR9 joiner filed there).
 
 - [x] Supersedes-link validation: a superseding row's target exists, matches the finding, stays acyclic, and reads as current in plan-health (PR12 D00-T01-S19-PR12). Done when: the validator enforces all four with fixtures. Done: `supersedes <finding-id>` after the disposition; rule 25 enforces target existence, same-namespace equivalence, and acyclicity (self-links included); plan-health reads the un-superseded head of each chain as current. Only exactly ID-shaped tokens link, so prose titles stay silent with no date scope. §57 locks unknown, foreign, pair-cycle, and self-cycle fires plus the valid chain's silence; the query checks lock head-current and target-skip.
 - [x] Provenance shape rule: fields present, candidate resolves in git, path exists; the digest stays attested (PR15n D00-T01-S19-PR15). Done when: the validator enforces the checkable shape with fixtures. Done: rule 23 requires a git-resolving candidate (`rev-parse --verify --quiet <sha>^{object}`, shorts legal like elsewhere; unresolvable git skips the leg, rule-22 precedent), an existing repo-relative path, and keeps the digest attested (presence plus shape, never re-verified). §30 locks unresolving, missing-path, and absolute-path fires plus the unprovable skip. **Corrected 2026-09-18 (review R1):** `cat-file -e` exits 128 for absent shorts (indistinguishable from fatal); rev-parse carries the three states. **Corrected 2026-09-18 (review R1):** unprovable candidates skip instead of FATALing, so gitless exports keep validating. **Corrected 2026-09-18 (review R2):** bare rev-parse exits 0 for an absent full-length hex (no existence check); the `^{object}` peel forces it (absent short/full exit 1, present exit 0, no-git 128, all probed).
@@ -637,14 +639,21 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 **Test checkpoint:** amendments link or fail, provenance parses or fails, hostile output exhausts nothing, and the runner template runs as written. Cheaper substitute that fails: trusting prose.
 
+> **Verified:** 2026-09-18 | §23 | self-test 737/737 (22 new: supersession links, provenance legs, output bounds, ancestry, count-cap error, CLI bound); live validate 0 fatal 0 warnings; 4 Opus panel rounds over candidates b8f0bb8 218e4f9 119ba85 17b5b41 3c7b0fb, final round all approve; plan review 22 findings, 14 filed at §§33-34 plus §24 and §31 joiners, 7 rejected, 1 duplicate
+> **Review:** round 4 (FINAL), candidates b8f0bb8 218e4f9 119ba85 17b5b41 3c7b0fb -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1 bounded CLI read plus rev-parse resolves plus unprovable skips plus count-cap error, R2 peeled existence check plus count-cap supersession note, R3 peel correction note plus plan re-sync. Raw findings: docs/reviews/00-workspace/D00-T01-s23.md
+> **Plan review:** GPT high, filed D00 T01 §33, D00 T01 §34, D00 T01 §24, D00 T01 §31 (run 20260918-D00-T01-S23-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, query, validator, fixtures, skill, README, and ticks (read back via self-test 737/737, live validate 0 fatal, plan --check current); filing opened §§33-34 plus §24 and §31 joiners plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-18T17:53:46Z to 2026-09-18T18:36:40Z
+
 ## 24. Lineage Residuals and Run Inspection
 
-Why this section exists: the seventh live plan review (§20 plus §19 plus §17, `gpt-5.6-sol` high) returned 18 findings; 6 survive synthesis, 2 join the open §§21 and 23 (PR9, PR7), and 4 land here (PR2, PR5, PR15, PR18) with 10 rejected and 2 duplicate with reasons in the §20 findings file. Lineage must close its gaps (singleton ancestry, manifest runs, forks) and the operator needs one run view, not manual joins. -> XREF: D00 T01 §20 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s20-2026-09-18 (`gpt-5.6-sol` high over §20 plus §19 plus §17, 18 findings, 4 filed here, 2 filed in §§21/23, 10 rejected and 2 duplicate with reasons in the §20 findings file).
+Why this section exists: the seventh live plan review (§20 plus §19 plus §17, `gpt-5.6-sol` high) returned 18 findings; 6 survive synthesis, 2 join the open §§21 and 23 (PR9, PR7), and 4 land here (PR2, PR5, PR15, PR18) with 10 rejected and 2 duplicate with reasons in the §20 findings file. The tenth plan review then added a ledger-row fork rule (PR12) to the open section. Lineage must close its gaps (singleton ancestry, manifest runs, forks) and the operator needs one run view, not manual joins. -> XREF: D00 T01 §20 (filed from its plan review); -> XREF: D00 T01 §23 (PR12 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s20-2026-09-18 (`gpt-5.6-sol` high over §20 plus §19 plus §17, 18 findings, 4 filed here, 2 filed in §§21/23, 10 rejected and 2 duplicate with reasons in the §20 findings file); plan-review-D00-T01-s23-2026-09-18 (PR12 row forks; ledger in the §23 findings file).
 
 - [ ] Singleton supersedes fires: a genesis marker carrying `supersedes <run>` names ancestry it cannot have (PR2 D00-T01-S20-PR2). Done when: the validator fires on the contradictory singleton with a fixture.
 - [ ] Post-cutoff manifests require the run: the optional field stays for pre-cutoff records only (PR5 D00-T01-S20-PR5). Done when: the validator fires on a run-less post-cutoff manifest with a fixture.
 - [ ] Lineage forks fire: two successors claiming one predecessor breaks the directed chain (cycles already impossible: supersedes edges point strictly backward) (PR15 D00-T01-S20-PR15). Done when: the validator fires on the second claim with a fixture.
 - [ ] Run inspection query: one ID resolves to candidate, scope, findings, marker lineage, outage state, and verified artifacts (PR18 D00-T01-S20-PR18). Done when: the query emits it with fixtures.
+- [ ] Ledger-row forks fire: two rows superseding one target breaks the single-current-head read (PR12 D00-T01-S23-PR12). Done when: the validator fires on the second claim with a fixture.
 - [ ] Commit: `"workspace: lineage residuals per seventh live round"`
 
 **Test checkpoint:** singletons carry no ancestry, new manifests carry runs, chains fork nowhere, and one query explains any run. Cheaper substitute that fails: prose restating the gaps.
@@ -725,13 +734,14 @@ Why this section exists: the §22 panel's round 5 (the cap) reported one adversa
 
 ## 31. Clearance Causality and Precision
 
-Why this section exists: the ninth live plan review (§22 plus §19 plus §30 plus transitive §17, `gpt-5.6-sol` high) returned 12 findings; all 12 file across §§31-32 plus §23 and §30 joiners, none rejected. This section takes causality and precision (PR1, PR2, PR3, PR4, PR9): the fix must predate the review that attests it, attribution must resolve to the target section, touches must postdate the finding, ranges must mean what they claim, and proof must bind execution. -> XREF: D00 T01 §22 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s22-2026-09-18-s31 D00-T01-S22-PR1 D00-T01-S22-PR2 D00-T01-S22-PR3 D00-T01-S22-PR4 D00-T01-S22-PR9 (`gpt-5.6-sol` high over §22 plus §19 plus §30 plus transitive §17, 12 findings, all filed across §§31-32 plus §23 and §30 joiners).
+Why this section exists: the ninth live plan review (§22 plus §19 plus §30 plus transitive §17, `gpt-5.6-sol` high) returned 12 findings; all 12 file across §§31-32 plus §23 and §30 joiners, none rejected. The tenth plan review then added a strict-ancestry rule (PR9) to the open section. This section takes causality and precision (PR1, PR2, PR3, PR4, PR9, plus S23-PR9 strict ancestry): the fix must predate the review that attests it, attribution must resolve to the target section, touches must postdate the finding, ranges must mean what they claim, proof must bind execution, and the fix must strictly descend from the reviewed candidate. -> XREF: D00 T01 §22 (filed from its plan review); -> XREF: D00 T01 §23 (PR9 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s22-2026-09-18-s31 D00-T01-S22-PR1 D00-T01-S22-PR2 D00-T01-S22-PR3 D00-T01-S22-PR4 D00-T01-S22-PR9 (`gpt-5.6-sol` high over §22 plus §19 plus §30 plus transitive §17, 12 findings, all filed across §§31-32 plus §23 and §30 joiners); plan-review-D00-T01-s23-2026-09-18 D00-T01-S23-PR9 (strict ancestry joiner; ledger in the §23 findings file).
 
 - [ ] Fix predates attestation: clearance requires the fix timestamp before the target review end, with a day fallback, so no review attests a candidate that did not yet exist (PR1 D00-T01-S22-PR1). Done when: the leg ships with fixtures.
 - [ ] Attribution resolves to the section: the back-link and touch prove against the resolved target section at the tip, not the whole file, so an ID and touch elsewhere cannot satisfy them (PR2 D00-T01-S22-PR2). Done when: section-scoped proof ships with fixtures.
 - [ ] Touches postdate the finding: range clearance requires a qualifying target-file touch after the finding review, so an old touch plus an unrelated later tip cannot clear (PR3 D00-T01-S22-PR3). Done when: the touch-recency leg ships with fixtures.
 - [ ] Ranges mean linear loops: `base..tip` enforces the intended ancestry or first-parent topology, or the intent is restated to match merged history (PR4 D00-T01-S22-PR4). Done when: topology ships or the rule says what it means, with fixtures.
 - [ ] Proof binds execution: the pointer resolves to the exact live-proof command, result, digest, and candidate, so stale or unexecuted tests cannot support clearance (PR9 D00-T01-S22-PR9). Done when: execution binding ships with fixtures.
+- [ ] Ancestry goes strict: the fix must descend strictly from the reviewed candidate, so the same commit cannot both carry the defect and remediate it (PR9 D00-T01-S23-PR9). Done when: self-ancestry fails clearance with fixtures.
 - [ ] Commit: `"workspace: harden clearance causality per ninth live round"`
 
 **Test checkpoint:** every clearance proves what happened, where, when, and on whose evidence. Cheaper substitute that fails: bytes that merely mention the finding.
@@ -748,6 +758,34 @@ Why this section exists: the ninth live plan review (§22 plus §19 plus §30 pl
 - [ ] Commit: `"workspace: govern clearance diagnostics per ninth live round"`
 
 **Test checkpoint:** clocks are checkable, failures explain themselves, and no real work reads as zero. Cheaper substitute that fails: a silent fallback.
+
+## 33. Provenance Residuals
+
+Why this section exists: the tenth live plan review (§23 plus §19 plus §20 plus §22 plus transitive §17, `gpt-5.6-sol` high) returned 22 findings; 14 file across §§33-34 plus §24 and §31 joiners, with 7 rejected and 1 duplicate with reasons in the §23 findings file. This section takes provenance (PR1, PR2, PR3, PR4n, PR5, PR7, PR8): degradation must surface, candidates must be commits with canonical IDs, paths must bind to the candidate tree, and runs must bind to their record. -> XREF: D00 T01 §23 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s23-2026-09-18-s33 D00-T01-S23-PR1 D00-T01-S23-PR2 D00-T01-S23-PR3 D00-T01-S23-PR4 D00-T01-S23-PR5 D00-T01-S23-PR7 D00-T01-S23-PR8 (`gpt-5.6-sol` high over §23 plus §19 plus §20 plus §22 plus transitive §17, 22 findings, 14 filed across §§33-34 plus §24 and §31 joiners).
+
+- [ ] Skipped legs surface: unresolvable git degrades the candidate leg visibly instead of silently, so `validate 0 fatal` never hides unverifiable evidence (PR1 D00-T01-S23-PR1). Done when: the degraded state reports with fixtures.
+- [ ] Candidates pin to commits: resolution peels to a commit object, so blobs, trees, and tags cannot pass as candidates (PR2 D00-T01-S23-PR2). Done when: non-commit candidates fail with fixtures.
+- [ ] IDs canonicalize after resolution: the recorded short resolves once and the full object ID is what later legs compare, so history growth cannot ambiguate identities (PR3 D00-T01-S23-PR3). Done when: canonical comparison ships with fixtures.
+- [ ] Paths verify at the candidate: the artifact path must exist in the recorded candidate's tree, not just the current checkout (PR4n D00-T01-S23-PR4). Done when: the candidate-tree leg ships with fixtures.
+- [ ] Path adversarial fixtures: traversal, escaping symlinks, and non-file paths fail loudly with stated rules (PR5 D00-T01-S23-PR5). Done when: the fixtures plus rules ship.
+- [ ] Runs bind to their record: each provenance line names the exact marker and manifest it attests, not any marker in the section (PR7 D00-T01-S23-PR7). Done when: the per-line binding ships with fixtures.
+- [ ] Mandate skips cross-reference: pre-mandate exemptions name the cutoff plus the §21 inventory, owner, and deadline (PR8 D00-T01-S23-PR8). Done when: the references ship.
+- [ ] Commit: `"workspace: harden provenance per tenth live round"`
+
+**Test checkpoint:** every skip is visible, every candidate is a commit with a canonical ID, every path binds to its tree, and every run binds to its record. Cheaper substitute that fails: a resolving short and an existing path.
+
+## 34. Amendment and Runner Residuals
+
+Why this section exists: the tenth live plan review (§23 plus §19 plus §20 plus §22 plus transitive §17, `gpt-5.6-sol` high) returned 22 findings; 14 file across §§33-34 plus §24 and §31 joiners, with 7 rejected and 1 duplicate with reasons in the §23 findings file. This section takes amendment semantics (PR13, PR14), runner boundaries (PR16, PR17), and the atomic review run (PR22): amendments must preserve identity and accountability, the runner must bound its producer, and the manual glue wants one command. -> XREF: D00 T01 §23 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s23-2026-09-18-s34 D00-T01-S23-PR13 D00-T01-S23-PR14 D00-T01-S23-PR16 D00-T01-S23-PR17 D00-T01-S23-PR22 (`gpt-5.6-sol` high over §23 plus §19 plus §20 plus §22 plus transitive §17, 22 findings, 14 filed across §§33-34 plus §24 and §31 joiners).
+
+- [ ] Amendments preserve finding identity: a stable identity or subject fingerprint rides across supersession, so unrelated same-namespace rows cannot link (PR13 D00-T01-S23-PR13). Done when: the identity ships with fixtures.
+- [ ] Amendments keep accountability: the transition contract states which lifecycle, severity, owner, due, proof, and rationale the head inherits or restates (PR14 D00-T01-S23-PR14). Done when: the contract ships with fixtures.
+- [ ] Runner bounds its producer: streaming byte, line, token, and wall-clock limits bite at the runner boundary, not just the checker (PR16 D00-T01-S23-PR16). Done when: the limits ship with fixtures.
+- [ ] Malformed bytes fail stably: invalid UTF-8, NULs, and decoder failures are bounded validation failures with stable diagnostics, never crashes (PR17 D00-T01-S23-PR17). Done when: the fixtures plus diagnostics ship.
+- [ ] One atomic review run: a single command mints the run, executes bounded, validates output, stores the artifact content-addressed, records provenance, and updates the ledger (PR22 D00-T01-S23-PR22). Done when: the command ships with fixtures.
+- [ ] Commit: `"workspace: harden amendments and runner per tenth live round"`
+
+**Test checkpoint:** amendments keep identity and accountability, hostile bytes fail stably inside bounded runners, and one command runs a review end to end. Cheaper substitute that fails: manual glue plus a trivial probe.
 
 ## Verification
 
