@@ -13,14 +13,18 @@ import secrets
 
 PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
 PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
-# Runner-output verdicts only (the prompt mandates `**<lens>: <verdict>**`
-# headers): the lens opens the line, so a detail line quoting another lens
-# (`- `consistency: approve` is wrong`) never reads as a verdict. Bold
-# without a colon (`**adversarial** approve`) is accepted; dash- or
-# quote-opened lines are details, never verdicts.
+# Runner-output verdicts only (the prompt mandates bare `**<lens>:
+# <verdict>**` headers, nothing else on the line): the line opens with
+# `**`, names one lens and one verdict, and ends (an optional ` (N)`
+# count and closing `**` aside). End-anchoring is what keeps a detail
+# line quoting a header (`**record: approve** claim is stale`) a detail;
+# dash-, backtick-, or bare-lens-opened lines are details, never
+# verdicts. Stated residual: a detail line consisting of exactly a bare
+# header for an already-seen lens still reads as a repeat (quoting with
+# any surrounding prose is safe).
 _PANEL_LINE_RE = re.compile(
-    r"^\s*\*{0,2}\s*`?(adversarial|consistency|integration|record)`?\*{0,2}\s*:?\s*"
-    r"(approve|needs-attention|advisory)\b"
+    r"^\s*\*{2}\s*(adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
+    r"(approve|needs-attention|advisory)\s*(?:\(\d+\))?\*{0,2}\s*$"
 )
 
 

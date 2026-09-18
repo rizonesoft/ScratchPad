@@ -5937,6 +5937,22 @@ track: Z1
             True,
         )
         check(
+            "header quote with trailing prose stays a detail",
+            rp.check_panel_output(
+                "**adversarial: needs-attention**\n**record: approve** claim is stale\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            True,
+        )
+        check(
+            "backtick-opened verdict line fails as off-shape",
+            rp.check_panel_output(
+                "`adversarial` approve\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n"
+            )[0],
+            False,
+        )
+        check(
             "dash-opened verdict line fails as off-shape",
             rp.check_panel_output(
                 "- `adversarial` needs-attention: x\n**consistency: approve**\n"
