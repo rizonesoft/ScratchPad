@@ -52,7 +52,7 @@ Answer from source first (captures, protocol docs, code). When an unanswered que
 ## Validation
 
 ```bash
-python3 scripts/todo-graph.py self-test      # 614 cases, must stay green
+python3 scripts/todo-graph.py self-test      # 615 cases, must stay green
 python3 scripts/todo-graph.py validate       # FATAL blocks; new WARN* blocks until fixed or accepted
 python3 scripts/todo-graph.py query ready    # dependency-safe work right now
 python3 scripts/todo-graph.py query blocked  # sections waiting on something

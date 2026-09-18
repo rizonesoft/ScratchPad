@@ -1667,13 +1667,16 @@ def cmd_query(args) -> int:
                             due = dd.group(0) if dd else ""
                         else:
                             due = ""
-                        if sev == "major" and disp == "accepted":
-                            # Accepted majors age visibly (D00 T01 §17 item
-                            # 11): known wrong plan behavior must not sit
-                            # invisible. Overdue is past the constant below.
-                            # Missing owner or due surfaces (D00 T01 §19
-                            # item 7); the validator requires both on new
-                            # rows, the query reports the gap everywhere.
+                        if sev == "major" and disp in ("accepted", "deferred"):
+                            # Open majors age visibly (D00 T01 §17 item 11,
+                            # §19 review R3: deferred majors count too, or
+                            # triaging down a level hides them from the
+                            # dimension that exists to watch them). Known
+                            # wrong plan behavior must not sit invisible.
+                            # Overdue is past the constant below. Missing
+                            # owner or due surfaces (D00 T01 §19 item 7);
+                            # the validator requires both on new rows, the
+                            # query reports the gap everywhere.
                             since = s.stamped_on or ""
                             majors.append(
                                 (
@@ -1882,7 +1885,7 @@ def cmd_query(args) -> int:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  {acct}")
         print(
-            f"accepted majors     {len(majors_sorted)} "
+            f"open majors         {len(majors_sorted)} "
             f"({sum(1 for m in majors_sorted if m[3])} overdue)"
         )
         for f, pr, day, od, own, due in majors_sorted:
@@ -5720,6 +5723,9 @@ track: Z1
             # `due` spelled): validator-legal, and the query reports its
             # review date as the due date instead of UNACCOUNTABLE.
             "- [PR18] [critical] Waiting on trigger -> deferred owner ann date 2099-04-04 trigger fix-lands\n"
+            # R3 probe: a deferred major is an open major too (it used to
+            # drop out of the majors dimension entirely).
+            "- [PR19] [major] Waiting major -> deferred owner ann date 2099-05-05 trigger fix-lands\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -6371,6 +6377,14 @@ track: Z1
             "plan-health reports the deferred date as the due date",
             any(
                 "PR18" in ln and "due 2099-04-04" in ln and "UNACCOUNTABLE" not in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "plan-health lists the deferred major",
+            any(
+                "PR19" in ln and "due 2099-05-05" in ln and "OVERDUE" not in ln
                 for ln in health_lines
             ),
             True,
