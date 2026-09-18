@@ -67,7 +67,7 @@ track: W0
 |  19   |   §19   | Fourth plan-review residuals | §17 |  [x]   |
 |  20   |   §20   | Run-identity reconciliation | §19 |  [x]   |
 |  21   |   §21   | Accountability records and surfacing | §19 |  [x]   |
-|  22   |   §22   | Clearance binding | §19 |  [ ]   |
+|  22   |   §22   | Clearance binding | §19 |  [x]   |
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [ ]   |
 |  24   |   §24   | Lineage residuals and run inspection | §20 |  [ ]   |
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [ ]   |
@@ -615,7 +615,11 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 **Test checkpoint:** a cleared critical names its proof, its clock reading is unambiguous, and its candidate identity is immutable. Cheaper substitute that fails: a longer sha.
 
-> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the query, fixtures, skill, and ticks (read back via self-test 715/715, live validate 0 fatal, plan --check current); filing none (no new work filed)
+> **Verified:** 2026-09-18 | §22 | self-test 715/715 (16 new: proof, recency, ranges, instants, Duration hardening, ordering units); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 1ce9aa1 527154c acf8888 6da4e37 99d8cde, final round adversarial needs-attention filed as §30, consistency approve, integration approve, record approve; plan review 12 findings, all filed at §§31-32 plus §23 and §30 joiners
+> **Review:** round 5 (FINAL), candidates 1ce9aa1 527154c acf8888 6da4e37 99d8cde -- `adversarial` needs-attention (filed D00 T01 §30) · `consistency` approve · `integration` approve · `record` approve; R1 instant ordering plus unix recency plus base-excluded ranges, R2 tested ordering helpers plus pre-completion naming plus token docs, R3 Duration parse hardening plus last-wins plus computed minutes, R4 inverted and unshaped fixtures plus progress docstring, R5 proof-mismatch and fix-less fixtures filed as §30. Raw findings: docs/reviews/00-workspace/D00-T01-s22.md
+> **Plan review:** GPT high, filed D00 T01 §31, D00 T01 §32, D00 T01 §23, D00 T01 §30 (run 20260918-D00-T01-S22-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the query, fixtures, skill, README, and ticks (read back via self-test 715/715, live validate 0 fatal, plan --check current); filing opened §§30-32 plus §23 joiner plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-18T16:36:24Z to 2026-09-18T17:27:07Z
 
 ## 23. Ledger, Provenance, and Output Hardening
 
