@@ -98,7 +98,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §11` | Quote-end lookahead removal                |   4   |
 | [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits   |   3   |
 | [x] | `D00 T01 §13` | Environment-gated ready queries            |   5   |
-| [ ] | `D00 T01 §14` | Plan reviews with a second-family reviewer |   5   |
+| [ ] | `D00 T01 §14` | Plan reviews with a second-family reviewer |   6   |
 | [x] | `D00 T02 §1`  | Unit test project and framework            |   5   |
 | [x] | `D00 T02 §2`  | UI automation driver spike                 |   5   |
 | [x] | `D00 T02 §3`  | Golden capture store and refresh           |   5   |
