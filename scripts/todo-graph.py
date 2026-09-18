@@ -868,12 +868,14 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
 # Lines that open a PR shape but fail LEDGER_ROW_RE are malformed rows;
 # any other `- [` line is prose (citation link, checkbox, bracket label).
-# The second alternative catches a mangled namespace (`D00-T1x-S15-PR4`):
-# an opener containing an uppercase PR with an ID tail is a ledger
-# attempt even when the namespace half is mistyped. Case-sensitive PR
-# keeps prose openers (`agentclientprotocol.com`, `note`) silent.
+# The second alternative catches a mangled namespace (`D00-T1x-S15-PR4`,
+# any case like the row pattern): a single whitespace-free opener token
+# containing PR with a digit/§ tail is a ledger attempt even when the
+# namespace half is mistyped. The single-token shape keeps prose openers
+# (`see PR12 upstream`, `Fixed in PR12`, `agentclientprotocol.com`,
+# `note`, `expr`) silent: a space, or PR without an ID tail, is prose.
 LEDGER_LIKE_RE = re.compile(
-    r"^\s*-\s*\[(?:(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR|[^\]\n]*?(?-i:PR)[0-9§\]])",
+    r"^\s*-\s*\[(?:(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR|[^\]\n\s]*PR[0-9§][^\]\n\s]*\])",
     re.IGNORECASE,
 )
 LEDGER_ROW_RE = re.compile(
@@ -4959,7 +4961,7 @@ track: Z1
 |   6   |   §6    | Unresolvable marker filing | - |  [x]   |
 |   7   |   §7    | Outage marker skips filing checks | - |  [x]   |
 |   8   |   §8    | Malformed ledger row | - |  [x]   |
-|   9   |   §9    | Shared findings reported once | - |  [x]   |
+|   9   |   §9    | Complete marker over shared findings | - |  [x]   |
 
 ---
 
@@ -5109,11 +5111,20 @@ track: Z1
             # label must NOT trip the malformed-row gate (round-1
             # adversarial), while a mangled namespace MUST (round-2
             # adversarial: the ID half came out wrong, which is exactly
-            # what the gate exists to catch). The §8 count check proves both.
+            # what the gate exists to catch), in either case (round-3
+            # adversarial: the row pattern is case-insensitive, so the
+            # trigger is too). Three more decoys stay silent: prose
+            # mentioning a PR number (bracket label and citation link)
+            # and a single token whose PR has no ID tail. The §8 count
+            # check proves all of it: three firing rows, six silent decoys.
             "- [ ] follow-up checkbox\n"
             "- [agentclientprotocol.com](https://example.com) citation\n"
             "- [note] bracket label\n"
-            "- [D00-T1x-S15-PR4] [major] Mangled namespace -> filed §2\n",
+            "- [D00-T1x-S15-PR4] [major] Mangled namespace -> filed §2\n"
+            "- [d00-t1x-s15-pr4] [major] Mangled lowercase -> filed §2\n"
+            "- [see PR12 upstream] prose about a pull request\n"
+            "- [Fixed in PR12](https://example.com/pull/12)\n"
+            "- [expr] single-token prose\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -5209,9 +5220,9 @@ track: Z1
             True,
         )
         check(
-            "§8 fires exactly twice (PRX plus mis-namespaced; rules 16, 17a, 17b all silent on it)",
+            "§8 fires exactly three times (PRX plus mis-namespaced x2; rules 16, 17a, 17b all silent on it)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§8 " in ln and "FATAL" in ln),
-            2,
+            3,
         )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
         # Presence assertions, never counts: neighbor fixtures share the
