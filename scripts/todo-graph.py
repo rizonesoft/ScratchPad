@@ -1199,6 +1199,8 @@ def cmd_query(args) -> int:
             # declared context can name them (`--context` choices are closed).
             missing = [v for v in s.requires if v not in ctx]
             missing += [f"unknown:{v}" for v in s.requires_unknown]
+            if s.requires_has_line and not s.requires and not s.requires_unknown:
+                missing.append("no values (see validate)")
             (elsewhere if missing else now).append((r, missing))
         for (t, num, s, _), _missing in now:
             flag = " 🔒" if t.frozen else ""
@@ -1207,7 +1209,7 @@ def cmd_query(args) -> int:
             print(f"\nrunnable elsewhere (context: {ctx_note}):")
             for (t, num, s, _), missing in elsewhere:
                 flag = " 🔒" if t.frozen else ""
-                reqs = ", ".join(s.requires + [f"unknown:{v}" for v in s.requires_unknown])
+                reqs = ", ".join(s.requires + [f"unknown:{v}" for v in s.requires_unknown]) or s.requires_raw
                 print(f"{t.domain}/{Path(t.path).name} §{num}{flag}  {s.deliverable}  requires {reqs} (missing: {', '.join(missing)})")
         print(f"\n{len(now)} runnable now, {len(elsewhere)} runnable elsewhere")
     else:  # blocked
@@ -1350,9 +1352,9 @@ def requires_missing_for_ref(raw: str, todos: list[Todo]) -> list[str]:
     if target is None or sec not in target.sections:
         return []
     section = target.sections[sec]
-    if section.requires_unknown:
+    if section.requires_unknown or (section.requires_has_line and not section.requires):
         # Never read as runnable: `validate` refuses the value.
-        return [f"unknown:{v}" for v in section.requires_unknown]
+        return [f"unknown:{v}" for v in section.requires_unknown] or ["unknown:no-values"]
     have = detect_context()
     return [v for v in section.requires if v not in have]
 
@@ -1468,8 +1470,9 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         keys = ', '.join(s.needs) if s.needs else 'UNKNOWN -- not in the closed list'
         print(f"needs      {keys} ({s.needs_raw}); plan-gate.py host-probe decides whether it can start")
     if s.requires_has_line:
-        if s.requires_unknown:
-            print(f"requires   {s.requires_raw}; INVALID -- unknown value(s): {', '.join(s.requires_unknown)} (see validate)")
+        if s.requires_unknown or not s.requires:
+            bad = f"unknown value(s): {', '.join(s.requires_unknown)}" if s.requires_unknown else "no values"
+            print(f"requires   {s.requires_raw}; INVALID -- {bad} (see validate)")
         else:
             have = detect_context()
             missing = [v for v in s.requires if v not in have]
@@ -2811,6 +2814,8 @@ def cmd_self_test(_args) -> int:
             code, lines = ready_lines(context=["display-session"])
             check("an unknown value parks even in a display context",
                   (code, any("unknown:printerz" in ln and "§1" in ln for ln in lines)), (0, True))
+            check("a mark with no values parks even in a display context",
+                  (code, any("no values (see validate)" in ln and "§3" in ln for ln in lines)), (0, True))
             code, lines = ready_lines()
             check("query ready without a context flag still exits 0",
                   code, 0)
