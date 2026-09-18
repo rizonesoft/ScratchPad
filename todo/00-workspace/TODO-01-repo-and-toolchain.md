@@ -66,7 +66,7 @@ track: W0
 |  18   |   §18   | Checker count residual | §17 |  [x]   |
 |  19   |   §19   | Fourth plan-review residuals | §17 |  [x]   |
 |  20   |   §20   | Run-identity reconciliation | §19 |  [x]   |
-|  21   |   §21   | Accountability records and surfacing | §19 |  [ ]   |
+|  21   |   §21   | Accountability records and surfacing | §19 |  [x]   |
 |  22   |   §22   | Clearance binding | §19 |  [ ]   |
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [ ]   |
 |  24   |   §24   | Lineage residuals and run inspection | §20 |  [ ]   |
@@ -593,7 +593,11 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 **Test checkpoint:** every accountability path ends in a named owner or a shaped acceptance record, and one summary tells the operator what to do next. Cheaper substitute that fails: more dimensions nobody reads.
 
-> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, query, fixtures, skill, README, AGENTS, ticks, and Current state (read back via self-test 699/699, live validate 0 fatal, plan --check current); filing none (no new work filed)
+> **Verified:** 2026-09-18 | §21 | self-test 699/699 (46 new: partial coherence, acceptances, migration gate, summary, review-round locks); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates d5d9385 9ba77f9 de721b4 9e6e087 d6ad768 081d0a6 569c503 196007a, final round adversarial approve, consistency needs-attention filed as §25, integration approve, record approve; plan review 25 findings, 22 filed at §§26-29 plus §25 item, 3 rejected
+> **Review:** round 5 (FINAL), candidates d5d9385 9ba77f9 de721b4 9e6e087 d6ad768 081d0a6 569c503 196007a -- `adversarial` approve · `consistency` needs-attention (filed D00 T01 §25) · `integration` approve · `record` approve; R1 case-fold plus provenance gate plus schema comment plus counts, R2 review-rationale surfacing plus check help, R3 post-dated gate plus provenance docs, R4 review-window leg plus total degraded key, R5 comment-sync filed as §25. Raw findings: docs/reviews/00-workspace/D00-T01-s21.md
+> **Plan review:** GPT high, filed D00 T01 §26, D00 T01 §27, D00 T01 §28, D00 T01 §29, D00 T01 §25 (run 20260918-D00-T01-S21-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, query, fixtures, skill, README, AGENTS, ticks, and Current state (read back via self-test 699/699, live validate 0 fatal, plan --check current); filing opened §§25-29 plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-18T14:54:33Z to 2026-09-18T16:35:19Z
 
 ## 22. Clearance Binding
 
