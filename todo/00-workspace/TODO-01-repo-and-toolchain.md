@@ -48,7 +48,7 @@ track: W0
 |  10   |   §10   | Opus panel rule hardening follow-ups | §9 |  [x]   |
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
 |  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [x]   |
-|  13   |   §13   | Environment-gated ready queries | §7 |  [ ]   |
+|  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
 
 ---
 
@@ -335,6 +335,12 @@ Why this section exists: `query ready` answers dependency readiness only, so an 
 - [x] Commit: `"workspace: gate ready queries on environment"`
 
 **Test checkpoint:** Marker spec in the format doc; split proven in both contexts; self-test green with the new cases; live tree silent; known sections marked with cited evidence; skills offer runnable-now only. Cheaper substitute that fails: a comment convention no query reads.
+
+> **Verified:** 2026-09-18 | §13 | split live (12 runnable now, 1 elsewhere locally with §15 named; --context display-session lists 13); resolve prints the missing-here verdict; requires-unknown plus requires-no-reason FATALs live; Phase 1 first_ready moved §15 to §5; skills hold elsewhere rows back at select, start, and authoring; self-test 446/446 (+24 cases); live validate 0 fatal 0 warnings; plan current
+> **Review:** rounds 1-5 (FINAL), candidates 21c53b2 ceae321 5c29b83 3b0653b 2a697a4 3f922ce 9a20476 -- `adversarial` approve · `consistency` advisory (blank-line separation, fixed post-panel in 9a20476) · `integration` advisory (authoring prompts, fixed post-panel in 9a20476) · `record` approve. No leftovers. Raw findings: docs/reviews/00-workspace/D00-T01-s13.md
+> **CRUD:** applicable | self-test wrote the gamma fixture under a temp root (unlinked after, read back via case assertions); live typo and no-values probes reverted clean (read back via query output); skills and docs wrote prose (read back via grep sweeps)
+> **Duration:** 45
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
