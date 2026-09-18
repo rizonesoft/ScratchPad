@@ -900,10 +900,22 @@ SEVERITY_MAP: dict[str, str] = {
     # line, or a provenance line outside the field shape or without a
     # shaped run ID: unattributed live quotes (D00 T01 §20).
     "provenance-malformed": "fatal",
+    # a `Risk accepted:` line outside the record shape, with an
+    # uncoverable target, or expiring before it is recorded: an
+    # unauditable waiver (D00 T01 §21).
+    "risk-acceptance-malformed": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
+# The grandfathered migration deadline (D00 T01 §21 item 3): past this
+# date, unmigrated batches read OVERDUE and fail `--check`.
+MIGRATION_DEADLINE = "2026-12-31"
+
+
+def migration_overdue_today(today: str) -> bool:
+    """Whether the grandfathered migration is past its deadline."""
+    return today > MIGRATION_DEADLINE
 PLAN_REVIEW_CUTOFF = "2026-09-18"
 # An open major older than this many days past its review's stamp is
 # overdue by age (D00 T01 §17 item 11; §19 collects accepted plus
@@ -924,10 +936,91 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # `due`, and `escalation` (overdue is an old review OR a blown row due
 # date), and criticals carry `owner`, `due`, `overdue`, and
 # `escalation`.
-PLAN_HEALTH_SCHEMA = "plan-health/2"
+PLAN_HEALTH_SCHEMA = "plan-health/3"
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
+FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
+# A risk acceptance terminates one escalation (D00 T01 §21 item 2):
+# target (a finding ID, a run ID, or `outage <rung>`), approver,
+# record date, expiry, review date, and a free-text rationale tail.
+# Semicolon-separated like provenance; the rationale rides last so it
+# may itself contain semicolons.
+RISK_ACCEPTED_RE = re.compile(
+    r"^Risk accepted:\s*(.+?);\s*approver\s+([A-Za-z0-9_.-]+);\s*date\s+(\d{4}-\d{2}-\d{2});\s*"
+    r"expires\s+(\d{4}-\d{2}-\d{2});\s*review\s+(\d{4}-\d{2}-\d{2});\s*rationale\s+(.+?)\s*$"
+)
+RISK_TARGET_RE = re.compile(r"(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+$", re.IGNORECASE)
+
+
+def risk_target_kind(target: str) -> str | None:
+    """Classify a risk-acceptance target (D00 T01 §21 item 2).
+
+    Returns `finding` for a ledger row ID (namespaced or bare `PRn`,
+    file-scoped at cover time), `run` for a shaped run ID, `outage`
+    for `outage <rung>`, or None when the target names nothing
+    coverable. One classifier serves the validator's shape leg and
+    the query's covering lookup.
+    """
+    if RISK_TARGET_RE.match(target):
+        return "finding"
+    if RUN_ID_SHAPE_RE.match(target):
+        return "run"
+    if target.lower().startswith("outage ") and len(target.strip()) > 7:
+        return "outage"
+    return None
+
+
+def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str]]:
+    """Parse live `Risk accepted:` lines from fence-stripped findings text.
+
+    Returns (target, approver, expires, kind) per well-formed line, in
+    file order. Malformed or uncoverable lines are skipped, never fatal:
+    they are the validator's to flag (rule 24); the query only consults
+    acceptances for live escalations, so a bad line fails loud as a
+    persisting escalation, never as a query crash.
+    """
+    out = []
+    for ln in stripped_text.splitlines():
+        if not ln.startswith("Risk accepted:"):
+            continue
+        am = RISK_ACCEPTED_RE.match(ln)
+        if am is None:
+            continue
+        kind = risk_target_kind(am.group(1))
+        if kind is None:
+            continue
+        out.append((am.group(1), am.group(2), am.group(4), kind))
+    return out
+
+
+def acceptances_in(ftext: str) -> list[tuple[str, str, str, str]]:
+    """Parse `Risk accepted:` lines from raw findings text (fences strip first)."""
+    stripped, _u = strip_fenced_code(ftext)
+    return acceptance_lines(stripped)
+
+
+def dim_failing(name: str, entries: list) -> bool:
+    """Whether a plan-health dimension fails the gate (D00 T01 §21 items 2, 4).
+
+    Criticals and majors fail on any UNCOVERED entry: a live risk
+    acceptance terminates the escalation including the gate, while every
+    uncovered entry fails exactly as before (no gate weakening). Degraded
+    fails only on owed states (outage or retry-owed) without a live
+    acceptance: a bare partial is a complete review whose spare failed,
+    so it lists but never fails (a gate that fails with nothing owed
+    names no next action). All other dimensions fail on non-emptiness,
+    unchanged.
+    """
+    if name == "degraded":
+        return any(
+            ("outage" in e.get("state", "") or "retry-owed" in e.get("state", ""))
+            and not e.get("accepted_by")
+            for e in entries
+        )
+    if name in ("criticals", "majors"):
+        return any(not e.get("accepted_by") for e in entries)
+    return bool(entries)
 # The ledger is a structured block (D00 T01 §19 item 10), not prose the
 # query squints at: rows live between `Ledger:` and `End of ledger`,
 # every non-blank line inside is a row or malformed, and `- [` lines
@@ -1470,7 +1563,7 @@ def cmd_query(args) -> int:
         print(f"\n{len(present)} present, {len(missing)} missing")
         return 0
 
-    if what == "plan-health":
+    if what in ("plan-health", "summary"):
         # D00 T01 §15: governance visibility for the review loop. All
         # dimensions are mechanical (marker presence, heading scans, ledger
         # rows, graph edges); nothing here judges prose quality. D00 T01
@@ -1479,7 +1572,9 @@ def cmd_query(args) -> int:
         # retry-owed with accountable degraded states, flags removed scope,
         # requires post-finding verified remediation for clearance, follows
         # overdue majors, names grandfathered stamps, versions the JSON,
-        # and lists legacy-unshaped records.
+        # and lists legacy-unshaped records. D00 T01 §21 item 4: `query
+        # summary` shares this collection and renders the operator digest
+        # (text-only, like ready/blocked/stats; machines read --json).
         by_id = {t.id: t for t in todos if t.id}
         by_key = {(t.domain, t.number): t for t in todos}
 
@@ -1534,6 +1629,18 @@ def cmd_query(args) -> int:
         degraded = []
         grandfathered = []
         today = datetime.now(timezone.utc).date().isoformat()
+        acc_cache: dict[str, list] = {}
+
+        def file_acceptances(path: str) -> list:
+            if path not in acc_cache:
+                try:
+                    acc_cache[path] = acceptances_in(
+                        (TODO_DIR.parent / path).read_text(encoding="utf-8")
+                    )
+                except OSError:
+                    acc_cache[path] = []
+            return acc_cache[path]
+
         for t in todos:
             for num in sorted(t.verified_sections):
                 s = t.sections.get(num)
@@ -1546,7 +1653,13 @@ def cmd_query(args) -> int:
                     # stamps stay in `marked`; only the invisible set lists
                     # here.
                     if not body:
-                        grandfathered.append((f"{t.path} §{num}", s.stamped_on or "undated"))
+                        grandfathered.append(
+                            (
+                                f"{t.path} §{num}",
+                                s.stamped_on or "undated",
+                                migration_overdue_today(today),
+                            )
+                        )
                     else:
                         marked[(t.id, num)] = s.stamped_on or "undated"
                     continue
@@ -1561,7 +1674,12 @@ def cmd_query(args) -> int:
                     # names its escalation (D00 T01 §19 item 6: recipient
                     # operator, trigger the passed due date, action a
                     # rerun or recorded risk acceptance, terminal state a
-                    # superseding marker or the acceptance note).
+                    # superseding marker or the acceptance note). D00 T01
+                    # §21 item 1: a bare `partial` is a complete review
+                    # whose spare failed, so missing fields are not
+                    # unaccountable (the validator forbids accountability
+                    # fields there); overdue still reads the due date,
+                    # which only owed states can carry on a clean tree.
                     state = ""
                     if "outage:" in body.lower():
                         state = "outage"
@@ -1575,6 +1693,36 @@ def cmd_query(args) -> int:
                         owner = om.group(1) if om else ""
                         due = dm.group(1) if dm else ""
                         overdue = bool(due and due < today)
+                        # A live risk acceptance terminates the escalation
+                        # (D00 T01 §21 item 2): run targets match the
+                        # marker's run through the -r1 synonym, outage
+                        # targets match the marker's rung, and finding
+                        # targets never cover markers. Bare partials carry
+                        # no escalation, so nothing consults for them.
+                        ab, ae = "", ""
+                        if "outage" in state or "retry-owed" in state:
+                            fm = FINDINGS_RE.search(s.review_body or "")
+                            rm = RUN_ID_RE.search(body)
+                            mrun = normalize_run_id(rm.group(1)) if rm else None
+                            omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
+                            orung = omt.group(1).strip() if omt else None
+                            if fm:
+                                for tgt, appr, exp, kind in file_acceptances(fm.group(1)):
+                                    if exp < today:
+                                        continue
+                                    if (
+                                        kind == "run"
+                                        and mrun is not None
+                                        and normalize_run_id(tgt) == mrun
+                                    ) or (
+                                        kind == "outage"
+                                        and orung is not None
+                                        and tgt[7:].strip().lower() == orung
+                                    ):
+                                        ab, ae = appr, exp
+                                        break
+                            if ab:
+                                overdue = False
                         degraded.append(
                             {
                                 "ref": f"{t.path} §{num}",
@@ -1587,6 +1735,8 @@ def cmd_query(args) -> int:
                                     if overdue
                                     else ""
                                 ),
+                                "accepted_by": ab,
+                                "accepted_expires": ae,
                             }
                         )
                 else:
@@ -1619,7 +1769,6 @@ def cmd_query(args) -> int:
                 # gap no work can clear.
                 if dep not in marked and dep in uncoverable:
                     uncovered.append((labels.get(dep, f"{dep[0]} §{dep[1]}"), labels.get(key, f"{key[0]} §{key[1]}")))
-        findings_path_re = re.compile(r"Raw findings:\s*(\S+\.md)")
         gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
         outage_re = re.compile(r"opus outage", re.IGNORECASE)
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
@@ -1635,7 +1784,7 @@ def cmd_query(args) -> int:
                 s = t.sections.get(num)
                 if s is None:
                     continue
-                m = findings_path_re.search(s.review_body or "")
+                m = FINDINGS_RE.search(s.review_body or "")
                 if not m:
                     continue
                 owners.setdefault(m.group(1), []).append((t, num))
@@ -1723,6 +1872,16 @@ def cmd_query(args) -> int:
                             due = dd.group(0) if dd else ""
                         else:
                             due = ""
+                        # A live acceptance for this row terminates its
+                        # escalation (D00 T01 §21 item 2); file-scoped, so
+                        # bare PRn targets are unambiguous here.
+                        ab, ae = "", ""
+                        for tgt, appr, exp, kind in file_acceptances(m.group(1)):
+                            if exp < today:
+                                continue
+                            if kind == "finding" and tgt == lr.group(1):
+                                ab, ae = appr, exp
+                                break
                         if sev == "major" and disp in ("accepted", "deferred"):
                             # Open majors age visibly (D00 T01 §17 item 11,
                             # §19 review R3: deferred majors count too, or
@@ -1739,6 +1898,8 @@ def cmd_query(args) -> int:
                             row_overdue = bool(not since or since < old_line) or bool(
                                 due and due < today
                             )
+                            if ab:
+                                row_overdue = False
                             majors.append(
                                 (
                                     m.group(1),
@@ -1752,6 +1913,8 @@ def cmd_query(args) -> int:
                                         if row_overdue
                                         else ""
                                     ),
+                                    ab,
+                                    ae,
                                 )
                             )
                             continue
@@ -1759,6 +1922,8 @@ def cmd_query(args) -> int:
                             continue
                         if disp in ("accepted", "deferred"):
                             crow_overdue = bool(due and due < today)
+                            if ab:
+                                crow_overdue = False
                             criticals.append(
                                 (
                                     m.group(1),
@@ -1771,6 +1936,8 @@ def cmd_query(args) -> int:
                                         if crow_overdue
                                         else ""
                                     ),
+                                    ab,
+                                    ae,
                                 )
                             )
                         elif disp == "filed":
@@ -1847,6 +2014,8 @@ def cmd_query(args) -> int:
                                     break
                             if not provable:
                                 crow_overdue = bool(due and due < today)
+                                if ab:
+                                    crow_overdue = False
                                 criticals.append(
                                     (
                                         m.group(1),
@@ -1859,6 +2028,8 @@ def cmd_query(args) -> int:
                                             if crow_overdue
                                             else ""
                                         ),
+                                        ab,
+                                        ae,
                                     )
                                 )
         for path in sorted(unshaped):
@@ -1876,8 +2047,8 @@ def cmd_query(args) -> int:
         degraded_sorted = sorted(
             degraded, key=lambda d: (d["ref"], d["state"], d["owner"], d["due"])
         )
-        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6]))
-        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5]))
+        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]))
+        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]))
         stale_sorted = sorted(stale, key=lambda e: (e[0], e[1]))
         uncovered_sorted = sorted(uncovered)
         unmarked_sorted = sorted(unmarked)
@@ -1903,8 +2074,17 @@ def cmd_query(args) -> int:
             "fallback": fallback_sorted,
             "outages": outages_sorted,
             "criticals": [
-                {"id": pr, "file": f, "owner": own, "due": due, "overdue": od, "escalation": esc}
-                for f, pr, own, due, od, esc in criticals_sorted
+                {
+                    "id": pr,
+                    "file": f,
+                    "owner": own,
+                    "due": due,
+                    "overdue": od,
+                    "escalation": esc,
+                    "accepted_by": ab,
+                    "accepted_expires": ae,
+                }
+                for f, pr, own, due, od, esc, ab, ae in criticals_sorted
             ],
             "majors": [
                 {
@@ -1915,11 +2095,14 @@ def cmd_query(args) -> int:
                     "owner": own,
                     "due": due,
                     "escalation": esc,
+                    "accepted_by": ab,
+                    "accepted_expires": ae,
                 }
-                for f, pr, day, own, due, od, esc in majors_sorted
+                for f, pr, day, own, due, od, esc, ab, ae in majors_sorted
             ],
             "grandfathered": [
-                {"ref": label, "stamped": day} for label, day in grandfathered_sorted
+                {"ref": label, "stamped": day, "overdue": od}
+                for label, day, od in grandfathered_sorted
             ],
             "legacy": legacy_sorted,
             "unreadable": [{"file": f, "opener": opener} for f, opener in unreadable_sorted],
@@ -1932,8 +2115,15 @@ def cmd_query(args) -> int:
         # default on a growing tree, so a gate that included it would
         # never be green).
         gate_dims = []
-        if getattr(args, "check", False):
+        check_mode = getattr(args, "check", False) or what == "summary"
+        if check_mode:
             gate_dims += ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable"]
+            # Deadline gate (D00 T01 §21 item 3): past the migration
+            # deadline, leftover grandfathered batches join `--check`.
+            # Explicit `--fail-on grandfathered` gates progress on any
+            # date; the default set stays green while time remains.
+            if any(e["overdue"] for e in report["grandfathered"]):
+                gate_dims += ["grandfathered"]
         if getattr(args, "fail_on", None):
             # Union, not elif: an explicit --fail-on beside --check adds
             # dimensions (a CI gate written `--check --fail-on stale` must
@@ -1958,9 +2148,79 @@ def cmd_query(args) -> int:
         if unknown:
             print(f"plan-health: unknown dimension(s): {', '.join(unknown)}", file=sys.stderr)
             return 2
-        failing = [d for d in gate_dims if dim_lists[d]]
+        failing = [d for d in gate_dims if dim_failing(d, dim_lists[d])]
         if getattr(args, "json", False):
             print(json.dumps(report, indent=2))
+            return 1 if failing else 0
+        if what == "summary":
+            # Operator digest (D00 T01 §21 item 4): incomplete runs are
+            # owed states without a live acceptance (bare partials are
+            # complete, covered escalations terminated); blocked
+            # clearances are uncovered criticals; overdue owners group
+            # every overdue escalation; next names the first uncovered
+            # entry of the first failing dimension in gate order.
+            incomplete = [
+                d
+                for d in degraded_sorted
+                if ("outage" in d["state"] or "retry-owed" in d["state"])
+                and not d["accepted_by"]
+            ]
+            blocked = [c for c in criticals_sorted if not c[6]]
+            od_by_owner: dict[str, list[str]] = {}
+            for d in degraded_sorted:
+                if d["overdue"]:
+                    od_by_owner.setdefault(d["owner"] or "?", []).append(d["due"])
+            for _f, _pr, own, due, od, _esc, _ab, _ae in criticals_sorted:
+                if od:
+                    od_by_owner.setdefault(own or "?", []).append(due)
+            for _f, _pr, _day, own, due, od, _esc, _ab, _ae in majors_sorted:
+                if od:
+                    od_by_owner.setdefault(own or "?", []).append(due)
+            print(f"incomplete runs     {len(incomplete)}")
+            for d in incomplete:
+                print(
+                    f"    {d['ref']}  {d['state']}  owner {d['owner'] or '?'}  due {d['due'] or '?'}"
+                    + ("  OVERDUE" if d["overdue"] else "")
+                )
+            print(f"blocked clearances  {len(blocked)}")
+            for f, pr, own, due, od, _esc, _ab, _ae in blocked:
+                print(
+                    f"    {pr}  in {f}  owner {own or '?'}  due {due or '?'}"
+                    + ("  OVERDUE" if od else "")
+                )
+            print(f"overdue owners      {len(od_by_owner)}")
+            for own in sorted(od_by_owner):
+                dues = sorted(x for x in od_by_owner[own] if x)
+                oldest = f" (oldest due {dues[0]})" if dues else ""
+                print(f"    {own}: {len(od_by_owner[own])} overdue{oldest}")
+            nxt = "nothing actionable"
+            if failing:
+                dim = failing[0]
+                pool = dim_lists[dim]
+                if dim == "degraded":
+                    pool = [
+                        e
+                        for e in pool
+                        if ("outage" in e["state"] or "retry-owed" in e["state"])
+                        and not e.get("accepted_by")
+                    ]
+                elif dim in ("criticals", "majors"):
+                    pool = [e for e in pool if not e.get("accepted_by")]
+                first = pool[0] if pool else None
+                if first is None:
+                    nxt = f"clear {dim} (empty)"
+                elif dim == "degraded":
+                    nxt = f"{first['ref']} {first['state']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
+                elif dim in ("criticals", "majors"):
+                    nxt = f"{first['id']} in {first['file']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
+                elif dim == "uncovered":
+                    nxt = f"{first['dependent']} waits on {first['waits_on']}"
+                elif dim == "unreadable":
+                    nxt = f"{first['file']} (fence opened at line {first['opener']})"
+                else:
+                    nxt = first.get("ref", dim)
+            print(f"next: {nxt}")
+            print(f"gate: {'FAIL (' + ', '.join(failing) + ')' if failing else 'ok'}")
             return 1 if failing else 0
         print(f"reviewed sections   {len(marked)} marked, {len(unmarked_sorted)} unmarked post-cutoff")
         for label, day in unmarked_sorted:
@@ -1973,7 +2233,13 @@ def cmd_query(args) -> int:
             tags = f"owner {d['owner'] or '?'}  due {d['due'] or '?'}"
             if d["overdue"]:
                 tags += "  OVERDUE  escalate operator"
-            if not d["owner"] or not d["due"]:
+            if d["accepted_by"]:
+                tags += f"  accepted by {d['accepted_by']} expires {d['accepted_expires']}"
+            # UNACCOUNTABLE pairs with the owed predicate at collection:
+            # a bare partial carries no fields because none are owed.
+            if (not d["owner"] or not d["due"]) and (
+                "outage" in d["state"] or "retry-owed" in d["state"]
+            ):
                 tags += "  UNACCOUNTABLE"
             print(f"    {d['ref']}  {d['state']}  {tags}")
         print(f"stale scope         {len(stale_sorted)} reviews whose scope changed since")
@@ -1993,10 +2259,12 @@ def cmd_query(args) -> int:
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
-        for f, pr, own, due, od, _esc in criticals_sorted:
+        for f, pr, own, due, od, _esc, ab, ae in criticals_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += "  OVERDUE  escalate operator"
+            if ab:
+                acct += f"  accepted by {ab} expires {ae}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  {acct}")
@@ -2004,16 +2272,26 @@ def cmd_query(args) -> int:
             f"open majors         {len(majors_sorted)} "
             f"({sum(1 for m in majors_sorted if m[5])} overdue)"
         )
-        for f, pr, day, own, due, od, _esc in majors_sorted:
+        for f, pr, day, own, due, od, _esc, ab, ae in majors_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += "  OVERDUE  escalate operator"
+            if ab:
+                acct += f"  accepted by {ab} expires {ae}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  since {day}  {acct}")
-        print(f"grandfathered stamps {len(grandfathered_sorted)} (pre-cutoff, excused, unmarked)")
-        for label, day in grandfathered_sorted:
-            print(f"    {label}  stamped {day}")
+        print(
+            f"grandfathered stamps {len(grandfathered_sorted)} (pre-cutoff, excused, unmarked; migrate by {MIGRATION_DEADLINE})"
+        )
+        batch_left: dict[str, int] = {}
+        for label, _day, _od in grandfathered_sorted:
+            bf = label.rsplit(" §", 1)[0]
+            batch_left[bf] = batch_left.get(bf, 0) + 1
+        for bf in sorted(batch_left):
+            print(f"    batch {bf}  {batch_left[bf]} left")
+        for label, day, od in grandfathered_sorted:
+            print(f"    {label}  stamped {day}" + ("  OVERDUE" if od else ""))
         print(f"legacy records      {len(legacy_sorted)} (grandfathered, Plan review without Manifest or Ledger block)")
         for f in legacy_sorted:
             print(f"    {f}")
@@ -5554,6 +5832,17 @@ track: Z1
 |  33   |   §33   | Synonym duplicate run | - |  [x]   |
 |  34   |   §34   | Off-shape -r0 run | - |  [x]   |
 |  35   |   §35   | Prose outage predecessor | - |  [x]   |
+|  36   |   §36   | Owed partial retry carried | - |  [x]   |
+|  37   |   §37   | Owed partial retry missing | - |  [x]   |
+|  38   |   §38   | Unowed partial retry carried | - |  [x]   |
+|  39   |   §39   | Unknown partial rung | - |  [x]   |
+|  40   |   §40   | Complete partial with fields | - |  [x]   |
+|  42   |   §42   | Live run acceptance covers | - |  [x]   |
+|  43   |   §43   | Expired acceptance lapses | - |  [x]   |
+|  44   |   §44   | Malformed acceptances | - |  [x]   |
+|  45   |   §45   | Finding acceptances cover | - |  [x]   |
+|  46   |   §46   | Outage acceptance covers | - |  [x]   |
+|  47   |   §47   | Grandfathered unmarked stamp | - |  [x]   |
 
 ---
 
@@ -5746,7 +6035,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §17 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial.md
-> **Plan review:** GPT high, partial: opus rung, filed §2, owner bob due 2099-06-06 (run 20260920-D90-T07-S17-gpt)
+> **Plan review:** GPT high, partial: opus rung, filed §2 (run 20260920-D90-T07-S17-gpt)
 
 ## 18. Rerun lineage clean
 
@@ -5959,6 +6248,126 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage3.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S35-gpt) after a runner outage: codex 429
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S35-gpt-r2, follows-outage)
+
+## 36. Owed partial retry carried
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §36 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial2.md
+> **Plan review:** GPT high, partial: gpt rung, filed §2, retry-owed owner ann due 2099-01-01 (run 20260920-D90-T07-S36-gpt)
+
+## 37. Owed partial retry missing
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §37 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial3.md
+> **Plan review:** GPT high, partial: gpt rung, filed §2 (run 20260920-D90-T07-S37-gpt)
+
+## 38. Unowed partial retry carried
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §38 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial4.md
+> **Plan review:** GPT high, partial: opus rung, filed §2, retry-owed owner ann due 2099-01-01 (run 20260920-D90-T07-S38-gpt)
+
+## 39. Unknown partial rung
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §39 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial5.md
+> **Plan review:** GPT high, partial: rung 9, filed §2 (run 20260920-D90-T07-S39-gpt)
+
+## 40. Complete partial with fields
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §40 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial6.md
+> **Plan review:** GPT high, partial: opus rung, filed §2, owner bob due 2099-01-01 (run 20260920-D90-T07-S40-gpt)
+
+## 42. Live run acceptance covers
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §42 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 (run 20260920-D90-T07-S42-gpt)
+
+## 43. Expired acceptance lapses
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §43 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept2.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 (run 20260920-D90-T07-S43-gpt)
+
+## 44. Malformed acceptances
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §44 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept3.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S44-gpt)
+
+## 45. Finding acceptances cover
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §45 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept4.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S45-gpt)
+
+## 46. Outage acceptance covers
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §46 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept5.md
+> **Plan review:** outage: both rungs (owner ann, due 2020-01-01)
+
+## 47. Grandfathered unmarked stamp
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-18 | §47 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -6182,6 +6591,102 @@ track: Z1
             "Ledger:\n"
             "- [D90-T07-S4-PR2] [major] Re-cited outage finding -> filed §2\n"
             "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §21 probe: one partial record per composition shape (§§36-40).
+        # Each manifest rides its section's run, so only the probed
+        # grammar shape can fire on each.
+        (rev_dir / "90-health-partial2.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §36]; dependents [none]; bytes 100; run 20260920-D90-T07-S36-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited partial finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-partial3.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §37]; dependents [none]; bytes 100; run 20260920-D90-T07-S37-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited partial finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-partial4.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §38]; dependents [none]; bytes 100; run 20260920-D90-T07-S38-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited partial finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-partial5.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §39]; dependents [none]; bytes 100; run 20260920-D90-T07-S39-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited partial finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-partial6.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §40]; dependents [none]; bytes 100; run 20260920-D90-T07-S40-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited partial finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §21 probe: one acceptance record per covering shape (§§42-46).
+        # Each manifest rides its section's run (or no run for the
+        # run-less outage), so only the probed acceptance shape can
+        # fire on each.
+        (rev_dir / "90-health-accept.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §42]; dependents [none]; bytes 100; run 20260920-D90-T07-S42-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
+            "End of ledger\n"
+            + "Risk accepted: 20260920-D90-T07-S42-gpt; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale rerun pointless, survivor findings stand\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-accept2.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §43]; dependents [none]; bytes 100; run 20260920-D90-T07-S43-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
+            "End of ledger\n"
+            + "Risk accepted: 20260920-D90-T07-S43-gpt; approver bob; date 2020-01-05; expires 2020-06-01; review 2020-02-01; rationale lapsed waiver\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-accept3.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §44]; dependents [none]; bytes 100; run 20260920-D90-T07-S44-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
+            "End of ledger\n"
+            + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; date 2026-09-01; review 2026-10-01; rationale missing expires\n"
+            + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; rationale inverted dates\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-accept4.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §45]; dependents [none]; bytes 100; run 20260920-D90-T07-S45-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
+"- [D90-T07-S4-PR50] [major] Accepted overdue major -> accepted owner ann due 2020-01-01\n"
+"- [D90-T07-S4-PR51] [critical] Accepted overdue critical -> accepted owner ann due 2020-01-01\n"
+            "End of ledger\n"
+            + "Risk accepted: D90-T07-S4-PR50; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale major stands, ship anyway\n"
+            + "Risk accepted: D90-T07-S4-PR51; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale critical stands, ship anyway\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-accept5.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §46]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n"
+"- [D90-T07-S4-PR52] [minor] Accepted outage note -> accepted\n"
+            "End of ledger\n"
+            + "Risk accepted: outage both rungs; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale outage stands, no rerun planned\n",
             encoding="utf-8",
         )
         # Provenance migration (D00 T01 §20 item 2): every post-cutoff
@@ -6691,6 +7196,31 @@ track: Z1
             True,
         )
         check(
+            "risk targets classify by shape",
+            (
+                risk_target_kind("D90-T07-S4-PR1")
+                == risk_target_kind("PR1")
+                == "finding"
+                and risk_target_kind("20260920-D90-T07-S4-gpt-r2") == "run"
+                and risk_target_kind("outage both rungs") == "outage"
+                and risk_target_kind("tomorrow") is None
+            ),
+            True,
+        )
+        check(
+            "gate fails owed uncovered entries, passes the rest",
+            (
+                dim_failing("degraded", [{"state": "retry-owed", "accepted_by": ""}])
+                and not dim_failing("degraded", [{"state": "retry-owed", "accepted_by": "bob"}])
+                and not dim_failing("degraded", [{"state": "partial", "accepted_by": ""}])
+                and dim_failing("criticals", [{"accepted_by": ""}])
+                and not dim_failing("majors", [{"accepted_by": "bob"}])
+                and dim_failing("stale", [{"file": "x"}])
+                and not dim_failing("stale", [])
+            ),
+            True,
+        )
+        check(
             "prose outage predecessor fires unchained",
             any(
                 "TODO-07-marker.md" in ln and "§35 " in ln and "names no superseded run" in ln
@@ -6702,6 +7232,114 @@ track: Z1
             "§35 fires exactly twice (unchained plus dangling)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§35 " in ln and "FATAL" in ln),
             2,
+        )
+        check(
+            "owed partial retry stays silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§36 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "missing partial retry fires",
+            any(
+                "TODO-07-marker.md" in ln and "§37 " in ln and "owes a retry" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§37 fires exactly once (missing retry only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§37 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "unowed partial retry fires",
+            any(
+                "TODO-07-marker.md" in ln and "§38 " in ln and "owes no retry" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§38 fires exactly once (unowed retry only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§38 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "unknown partial rung fires",
+            any(
+                "TODO-07-marker.md" in ln and "§39 " in ln and "no known rung" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§39 fires exactly once (rung only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§39 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "complete partial with fields fires",
+            any(
+                "TODO-07-marker.md" in ln and "§40 " in ln and "nothing owed" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§40 fires exactly once (fields only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§40 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "risk-acceptance-malformed is a FATAL class",
+            SEVERITY_MAP.get("risk-acceptance-malformed"),
+            "fatal",
+        )
+        check(
+            "live acceptance stays validator-silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§42 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "expired acceptance stays validator-silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§43 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "malformed acceptance fires",
+            any(
+                "TODO-07-marker.md" in ln and "§44 " in ln and "malformed Risk accepted line" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "inverted acceptance dates fire",
+            any(
+                "TODO-07-marker.md" in ln and "§44 " in ln and "expires before it is recorded" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§44 fires exactly twice (shape plus inverted dates)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§44 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "finding acceptances stay validator-silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§45 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "outage acceptance stays validator-silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§46 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "grandfathered unmarked stamp stays validator-silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§47 " in ln and "FATAL" in ln),
+            0,
         )
         check(
             "missing provenance fires",
@@ -6929,6 +7567,81 @@ track: Z1
             True,
         )
         check(
+            "plan-health lists the owed partial state",
+            any(
+                "TODO-07-marker.md §36" in ln and "retry-owed+partial" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "bare partial is never unaccountable",
+            not any(
+                "TODO-07-marker.md §17" in ln and "UNACCOUNTABLE" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "covered marker shows its acceptance",
+            (
+                any("TODO-07-marker.md §42" in ln and "accepted by bob expires 2099-01-01" in ln for ln in health_lines)
+                and not any(
+                    "TODO-07-marker.md §42" in ln and "OVERDUE" in ln for ln in health_lines
+                )
+            ),
+            True,
+        )
+        check(
+            "lapsed acceptance still escalates",
+            any(
+                "TODO-07-marker.md §43" in ln and "OVERDUE" in ln for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "covered rows show their acceptance",
+            (
+                any("D90-T07-S4-PR50" in ln and "accepted by bob" in ln for ln in health_lines)
+                and any("D90-T07-S4-PR51" in ln and "accepted by bob" in ln for ln in health_lines)
+                and not any(
+                    ("D90-T07-S4-PR50" in ln or "D90-T07-S4-PR51" in ln) and "OVERDUE" in ln
+                    for ln in health_lines
+                )
+            ),
+            True,
+        )
+        check(
+            "covered outage shows its acceptance",
+            (
+                any("TODO-07-marker.md §46" in ln and "accepted by bob expires 2099-01-01" in ln for ln in health_lines)
+                and not any(
+                    "TODO-07-marker.md §46" in ln and "OVERDUE" in ln for ln in health_lines
+                )
+            ),
+            True,
+        )
+        check(
+            "grandfathered stamp lists with its batch",
+            (
+                any("TODO-07-marker.md §47" in ln and "stamped 2026-09-18" in ln for ln in health_lines)
+                and any("batch " in ln and "TODO-07-marker.md" in ln and "left" in ln for ln in health_lines)
+                and not any(
+                    "TODO-07-marker.md §47" in ln and "OVERDUE" in ln for ln in health_lines
+                )
+            ),
+            True,
+        )
+        check(
+            "migration deadline trips only past 2026-12-31",
+            (
+                migration_overdue_today("2026-12-31") is False
+                and migration_overdue_today("2027-01-01") is True
+                and migration_overdue_today("2026-01-01") is False
+            ),
+            True,
+        )
+        check(
             "plan-health reports the deferred date as the due date",
             any(
                 "PR18" in ln and "due 2099-04-04" in ln and "UNACCOUNTABLE" not in ln
@@ -6967,7 +7680,7 @@ track: Z1
         check(
             "plan-health --json carries the schema version",
             jdata.get("schema"),
-            "plan-health/2",
+            "plan-health/3",
         )
         check(
             "plan-health --json parses with all dimensions",
@@ -7008,6 +7721,15 @@ track: Z1
             ["docs/reviews/90-health-old.md", "docs/reviews/90-health-unbal.md"],
         )
         check(
+            "plan-health --json covered entries carry their acceptance",
+            (
+                [e for e in jdata["degraded"] if e["ref"].endswith("§42")][0]["accepted_by"],
+                [e for e in jdata["majors"] if e["id"] == "D90-T07-S4-PR50"][0]["accepted_expires"],
+                [e for e in jdata["criticals"] if e["id"] == "D90-T07-S4-PR51"][0]["accepted_by"],
+            ),
+            ("bob", "2099-01-01", "bob"),
+        )
+        check(
             "plan-health --json stale entries carry the run",
             all("run" in e for e in jdata["stale"]) and any(e["run"] for e in jdata["stale"]),
             True,
@@ -7019,10 +7741,15 @@ track: Z1
             True,
         )
         check(
-            "plan-health --json findings carry owner, due, overdue, escalation",
+            "plan-health --json findings carry owner, due, overdue, escalation, acceptance",
             all(
-                "owner" in e and "due" in e and "overdue" in e and "escalation" in e
-                for e in jdata["criticals"] + jdata["majors"]
+                "owner" in e
+                and "due" in e
+                and "overdue" in e
+                and "escalation" in e
+                and "accepted_by" in e
+                and "accepted_expires" in e
+                for e in jdata["criticals"] + jdata["majors"] + jdata["degraded"]
             ),
             True,
         )
@@ -7036,12 +7763,16 @@ track: Z1
                     and isinstance(e["due"], str)
                     and isinstance(e["overdue"], bool)
                     and isinstance(e["escalation"], str)
+                    and isinstance(e["accepted_by"], str)
+                    and isinstance(e["accepted_expires"], str)
                     for e in jdata["criticals"]
                 )
                 and all(
                     isinstance(e["since"], str)
                     and isinstance(e["overdue"], bool)
                     and isinstance(e["escalation"], str)
+                    and isinstance(e["accepted_by"], str)
+                    and isinstance(e["accepted_expires"], str)
                     for e in jdata["majors"]
                 )
                 and all(
@@ -7051,6 +7782,8 @@ track: Z1
                     and isinstance(e["due"], str)
                     and isinstance(e["overdue"], bool)
                     and isinstance(e["escalation"], str)
+                    and isinstance(e["accepted_by"], str)
+                    and isinstance(e["accepted_expires"], str)
                     for e in jdata["degraded"]
                 )
                 and all(
@@ -7070,7 +7803,16 @@ track: Z1
                 jdata["criticals"]
                 == sorted(
                     jdata["criticals"],
-                    key=lambda d: (d["file"], d["id"], d["owner"], d["due"], d["overdue"], d["escalation"]),
+                    key=lambda d: (
+                        d["file"],
+                        d["id"],
+                        d["owner"],
+                        d["due"],
+                        d["overdue"],
+                        d["escalation"],
+                        d["accepted_by"],
+                        d["accepted_expires"],
+                    ),
                 )
                 and jdata["majors"]
                 == sorted(
@@ -7083,6 +7825,8 @@ track: Z1
                         d["due"],
                         d["overdue"],
                         d["escalation"],
+                        d["accepted_by"],
+                        d["accepted_expires"],
                     ),
                 )
                 and jdata["degraded"]
@@ -7103,6 +7847,45 @@ track: Z1
                 argparse.Namespace(what="plan-health", check=False, fail_on="criticals")
             )
         check("plan-health --fail-on criticals fails", gate_dim, 1)
+        with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+            gate_gf = cmd_query(
+                argparse.Namespace(what="plan-health", check=False, fail_on="grandfathered")
+            )
+        check("plan-health --fail-on grandfathered gates progress", gate_gf, 1)
+        sbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(sbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            gate_summary = cmd_query(argparse.Namespace(what="summary"))
+        sout = sbuf.getvalue()
+        check("query summary exits 1 on the dirty fixture tree", gate_summary, 1)
+        check(
+            "query summary names runs, clearances, owners, next, and gate",
+            (
+                "incomplete runs" in sout
+                and "blocked clearances" in sout
+                and "overdue owners" in sout
+                and "next:" in sout
+                and "gate: FAIL" in sout
+            ),
+            True,
+        )
+        check(
+            "query summary counts actionables above zero",
+            (
+                int(sout.split("incomplete runs")[1].split()[0]) > 0
+                and int(sout.split("blocked clearances")[1].split()[0]) > 0
+                and int(sout.split("overdue owners")[1].split()[0]) > 0
+            ),
+            True,
+        )
+        check(
+            "query summary excludes covered and complete reviews",
+            (
+                "TODO-07-marker.md §42" not in sout
+                and "D90-T07-S4-PR51" not in sout
+                and "TODO-07-marker.md §17" not in sout
+            ),
+            True,
+        )
         with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
             gate_unknown = cmd_query(
                 argparse.Namespace(what="plan-health", check=False, fail_on="bogus")
@@ -7126,9 +7909,24 @@ track: Z1
         try:
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 gate_clean = cmd_query(argparse.Namespace(what="plan-health", check=True))
+            sclean = _mio.StringIO()
+            with _mctx.redirect_stdout(sclean), _mctx.redirect_stderr(_mio.StringIO()):
+                gate_summary_clean = cmd_query(argparse.Namespace(what="summary"))
         finally:
             TODO_DIR = saved_tree
         check("plan-health --check passes on a clean tree", gate_clean, 0)
+        check("query summary exits 0 on a clean tree", gate_summary_clean, 0)
+        check(
+            "query summary on a clean tree names nothing actionable",
+            (
+                "incomplete runs     0" in sclean.getvalue()
+                and "blocked clearances  0" in sclean.getvalue()
+                and "overdue owners      0" in sclean.getvalue()
+                and "next: nothing actionable" in sclean.getvalue()
+                and sclean.getvalue().rstrip().endswith("gate: ok")
+            ),
+            True,
+        )
         # Stale-only dirt: §2 lands after §1's review, so the manifest is
         # stale, but --check stays green (stale is chronic, not
         # actionable) while --fail-on stale still gates it explicitly.
@@ -7750,6 +8548,16 @@ track: Z1
         (rev_dir / "90-health-malformed.md").unlink()
         (rev_dir / "90-health-old.md").unlink()
         (rev_dir / "90-health-partial.md").unlink()
+        (rev_dir / "90-health-partial2.md").unlink()
+        (rev_dir / "90-health-partial3.md").unlink()
+        (rev_dir / "90-health-partial4.md").unlink()
+        (rev_dir / "90-health-partial5.md").unlink()
+        (rev_dir / "90-health-partial6.md").unlink()
+        (rev_dir / "90-health-accept.md").unlink()
+        (rev_dir / "90-health-accept2.md").unlink()
+        (rev_dir / "90-health-accept3.md").unlink()
+        (rev_dir / "90-health-accept4.md").unlink()
+        (rev_dir / "90-health-accept5.md").unlink()
         (rev_dir / "90-health-rerun.md").unlink()
         (rev_dir / "90-health-orphan.md").unlink()
         (rev_dir / "90-health-history.md").unlink()
@@ -8361,7 +9169,7 @@ def main() -> int:
     q = sub.add_parser("query", help="ask the graph a question")
     q.add_argument(
         "what",
-        choices=["ready", "blocked", "stats", "deferred", "frozen", "findings", "surfaces", "adjacency", "plan-health"],
+        choices=["ready", "blocked", "stats", "deferred", "frozen", "findings", "surfaces", "adjacency", "plan-health", "summary"],
     )
     q.add_argument("--all", action="store_true", help="findings: include ones already done")
     q.add_argument("--file", help="adjacency: exact repository-relative TODO path")

@@ -435,7 +435,6 @@ def validate(graph, _args) -> int:
     # every covered section), kept as defense if that invariant changes.
     PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
     PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
-    FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
     # Level 2+ and STARTING with the words: a `# Review:` title may itself
     # mention the Opus panel (D00-T01-s9.md does), and matching it would
     # slice the verdicts away and false-fire on a clean file. Levels run
@@ -480,7 +479,7 @@ def validate(graph, _args) -> int:
             stamp_day = s.stamped_on if s.stamped_on is not None else "undated"
             where = f"{t.path}:{s.line}: §{num} stamped {stamp_day}"
             body = getattr(s, "review_body", None) or ""
-            m = FINDINGS_RE.search(body)
+            m = graph.FINDINGS_RE.search(body)
             if not m:
                 flag(
                     "stamp-no-opus-panel",
@@ -709,6 +708,42 @@ def validate(graph, _args) -> int:
                     "stamp-no-plan-review",
                     f"{t.path}:{s.line}: §{num} outage marker carries `partial:` (an outage produced no findings)",
                 )
+            # D00 T01 §21 item 1: partial-owed-rerun coherence. `partial:`
+            # names the FAILED rung (`gpt rung`, the primary, or `opus
+            # rung`, the fallback); the survivor is the other family. A
+            # fallback survivor is a same-family run and owes a
+            # second-family rerun, so it carries `retry-owed`; a primary
+            # survivor is a complete second-family review and carries
+            # neither `retry-owed` nor accountability fields (there is
+            # nothing to own). Unknown rungs fail: positional names
+            # cannot say which family survived.
+            if has_partial and not has_outage:
+                prm = re.search(
+                    r"\bpartial\s*:\s*([a-z][a-z0-9]*(?:\s+[a-z][a-z0-9]*)?)",
+                    marker.lower(),
+                )
+                rung = prm.group(1) if prm else ""
+                if rung not in ("gpt rung", "opus rung"):
+                    flag(
+                        "stamp-no-plan-review",
+                        f"{t.path}:{s.line}: §{num} partial names no known rung (gpt rung or opus rung)",
+                    )
+                elif rung == "opus rung":
+                    if has_retry:
+                        flag(
+                            "stamp-no-plan-review",
+                            f"{t.path}:{s.line}: §{num} complete partial run owes no retry (drop retry-owed)",
+                        )
+                    elif graph.OWNER_RE.search(marker) or graph.DUE_RE.search(marker):
+                        flag(
+                            "stamp-no-plan-review",
+                            f"{t.path}:{s.line}: §{num} complete partial run carries accountability fields with nothing owed",
+                        )
+                elif not has_retry:
+                    flag(
+                        "stamp-no-plan-review",
+                        f"{t.path}:{s.line}: §{num} partial run with a fallback survivor owes a retry (retry-owed (owner, due))",
+                    )
             if has_outage:
                 continue
             for xm in graph.XREF_RE.finditer(marker):
@@ -718,7 +753,7 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} marker names unresolvable filing {xm.group(0)!r}",
                     )
-            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm:
                 continue
             try:
@@ -860,7 +895,7 @@ def validate(graph, _args) -> int:
                 continue
             if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                 continue
-            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm or fm.group(1) in seen_18:
                 continue
             try:
@@ -958,7 +993,7 @@ def validate(graph, _args) -> int:
                 continue
             if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                 continue
-            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm or fm.group(1) in seen_19:
                 continue
             try:
@@ -1013,7 +1048,7 @@ def validate(graph, _args) -> int:
                 continue
             if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                 continue
-            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm or fm.group(1) in seen_20:
                 continue
             try:
@@ -1134,7 +1169,7 @@ def validate(graph, _args) -> int:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
                 continue
-            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm or fm.group(1) in seen_22:
                 continue
             try:
@@ -1199,7 +1234,7 @@ def validate(graph, _args) -> int:
                 continue
             if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                 continue
-            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm or fm.group(1) in seen_23:
                 continue
             try:
@@ -1221,6 +1256,51 @@ def validate(graph, _args) -> int:
                     flag(
                         "provenance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Provenance line: {ln.strip()[:80]}",
+                    )
+
+    # 24. risk acceptances terminate escalations in a checkable shape
+    # (D00 T01 §21 item 2): every live `Risk accepted:` line carries
+    # target, approver, record date, expiry, review date, and rationale;
+    # the target names a finding ID, a run ID, or `outage <rung>`; and
+    # expiry never predates the record. Date-scoped and fence-stripped
+    # like rule 23; first reporter wins per file. Dangling targets
+    # (well-formed but covering nothing) stay silent here: the query
+    # only consults acceptances for live escalations, so a typo'd
+    # target fails loud as a persisting escalation, not here.
+    seen_24 = set()
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
+                continue
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm or fm.group(1) in seen_24:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            seen_24.add(fm.group(1))
+            ftext, _u = graph.strip_fenced_code(ftext)
+            for ln in ftext.splitlines():
+                if not ln.startswith("Risk accepted:"):
+                    continue
+                am = graph.RISK_ACCEPTED_RE.match(ln)
+                if am is None:
+                    flag(
+                        "risk-acceptance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Risk accepted line: {ln.strip()[:80]}",
+                    )
+                elif graph.risk_target_kind(am.group(1)) is None:
+                    flag(
+                        "risk-acceptance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance names no coverable target: {am.group(1)}",
+                    )
+                elif am.group(4) < am.group(3):
+                    flag(
+                        "risk-acceptance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(4)} < {am.group(3)}",
                     )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,

@@ -52,12 +52,13 @@ Answer from source first (captures, protocol docs, code). When an unanswered que
 ## Validation
 
 ```bash
-python3 scripts/todo-graph.py self-test      # 653 cases, must stay green
+python3 scripts/todo-graph.py self-test      # 689 cases, must stay green
 python3 scripts/todo-graph.py validate       # FATAL blocks; new WARN* blocks until fixed or accepted
 python3 scripts/todo-graph.py query ready    # dependency-safe work right now
 python3 scripts/todo-graph.py query blocked  # sections waiting on something
 python3 scripts/todo-graph.py query stats    # tree health
-python3 scripts/todo-graph.py query plan-health  # review-loop governance: --json emits schema plan-health/2 (total sort keys, exits 0); --check/--fail-on gate automation
+python3 scripts/todo-graph.py query plan-health  # review-loop governance: --json emits schema plan-health/3 (total sort keys, exits 0); --check/--fail-on gate automation
+python3 scripts/todo-graph.py query summary      # operator digest: incomplete runs, blocked clearances, overdue owners, next action, gate verdict (text-only; exits 1 when the gate fails)
 python3 scripts/todo-graph.py plan --sync    # re-derive the plan projection after TODO edits
 python3 scripts/todo-graph.py plan --check   # fail if the projection went stale
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # ref -> file, section, deps, status
