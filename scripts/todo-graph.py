@@ -489,14 +489,37 @@ def parse_todo(path: Path) -> Todo:
                     for target in stamp_targets:
                         target.stamped_on = day
             elif kind == "Duration" and current is not None:
-                parsed = DURATION_BODY_RE.fullmatch(body.strip())
-                if parsed:
-                    for target in stamp_targets or ([] if stamp_orphaned else [current]):
-                        target.duration_minutes = int(parsed.group("minutes"))
-                ended = DURATION_END_RE.fullmatch(body.strip())
-                if ended:
-                    for target in stamp_targets or ([] if stamp_orphaned else [current]):
-                        target.duration_end = ended.group("end")
+                for target in stamp_targets or ([] if stamp_orphaned else [current]):
+                    # Last marker governs: each Duration line resets
+                    # both fields, then applies its own shape (D00 T01
+                    # §22 review R3). A range computes its minutes, so
+                    # minute and range forms project identically; an
+                    # unshaped, calendar-invalid, or inverted range
+                    # leaves both None (fail-soft: clearance falls back
+                    # to day stamps, and no strptime ever escapes the
+                    # parser into the query).
+                    target.duration_minutes = None
+                    target.duration_end = None
+                    m = DURATION_BODY_RE.fullmatch(body.strip())
+                    if m is not None:
+                        target.duration_minutes = int(m.group("minutes"))
+                        continue
+                    e = DURATION_END_RE.fullmatch(body.strip())
+                    if e is None:
+                        continue
+                    try:
+                        start = datetime.strptime(
+                            body.strip().split(" to ")[0], "%Y-%m-%dT%H:%M:%SZ"
+                        ).replace(tzinfo=timezone.utc)
+                        end = datetime.strptime(
+                            e.group("end"), "%Y-%m-%dT%H:%M:%SZ"
+                        ).replace(tzinfo=timezone.utc)
+                    except ValueError:
+                        continue
+                    if end <= start:
+                        continue
+                    target.duration_end = e.group("end")
+                    target.duration_minutes = int((end - start).total_seconds() // 60)
             elif kind == "Review" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.review_body = body
@@ -3865,7 +3888,6 @@ track: Z1
 > **Review:** round 1, fingerprint `abc123def456` -- `adversarial` review-mt1-aaaa approve · `consistency` review-mt1-bbbb needs-attention · `design` aux-design-x skipped (limit) · `integration` opus-integration-y approve
 > **CRUD:** applicable | test.sales cloud-crud.sh 24/24
 > **Duration:** 7
-> **Duration:** 2026-01-01T10:00:00Z to 2026-01-01T10:07:00Z
 
 ## 2. Open thing, deps met
 
@@ -3882,6 +3904,8 @@ track: Z1
 ## 3. Open thing, dep unmet
 
 - [ ] Blocked on §2
+
+> **Duration:** 2026-01-01T10:00:00Z to 2026-01-01T10:07:00Z
 - [ ] Commit: `"selftest: blocked"`
 
 **Test checkpoint:** `true`
@@ -4247,12 +4271,85 @@ def cmd_self_test(_args) -> int:
         check("every body section has a row", all(s.has_row for s in ta.sections.values()), True)
         check("every row has a body", all(s.has_body for s in ta.sections.values()), True)
         check("§1 duration parsed", ta.sections[1].duration_minutes, 7)
+        check("§1 duration end absent", ta.sections[1].duration_end, None)
+        check("§2 duration fully absent", (ta.sections[2].duration_end, ta.sections[2].duration_minutes), (None, None))
         check(
-            "§1 duration end parsed",
-            ta.sections[1].duration_end,
+            "§3 duration end parsed",
+            ta.sections[3].duration_end,
             "2026-01-01T10:07:00Z",
         )
-        check("§2 duration end absent", ta.sections[2].duration_end, None)
+        check("§3 duration minutes computed", ta.sections[3].duration_minutes, 7)
+        check(
+            "range and minutes forms project identically",
+            (
+                _duration_by_ref([ta])["D90 T01 §1"],
+                _duration_by_ref([ta])["D90 T01 §3"],
+            ),
+            (7, 7),
+        )
+        dur = root / "todo" / "90-selftest" / "TODO-06-duration.md"
+        dur.write_text(
+            """---
+schema_version: 1
+id: self-test-duration
+domain: 90-selftest
+status: active
+title: "TODO-06 -- duration"
+track: Z1
+---
+
+# TODO-06 -- duration
+
+## Implementation Order
+
+| Order | Section | Deliverable | Depends On | Status |
+| :---: | :-----: | ----------- | ---------- | :----: |
+|   1   |   §1    | Minutes then range | - |  [x]   |
+|   2   |   §2    | Range then minutes | - |  [x]   |
+|   3   |   §3    | Bad range | - |  [x]   |
+
+## 1. Minutes then range
+
+- [x] Commit: `"selftest: duration"`
+
+> **Verified:** 2026-01-01 | §1 | fixture
+> **Duration:** 7
+> **Duration:** 2026-01-01T10:00:00Z to 2026-01-01T10:07:00Z
+
+## 2. Range then minutes
+
+- [x] Commit: `"selftest: duration"`
+
+> **Verified:** 2026-01-01 | §2 | fixture
+> **Duration:** 2026-01-01T10:00:00Z to 2026-01-01T10:07:00Z
+> **Duration:** 9
+
+## 3. Bad range
+
+- [x] Commit: `"selftest: duration"`
+
+> **Verified:** 2026-01-01 | §3 | fixture
+> **Duration:** 2026-09-31T10:00:00Z to 2026-09-31T10:07:00Z
+""",
+            encoding="utf-8",
+        )
+        dd = parse_todo(dur)
+        check(
+            "stacked Duration resolves last-wins",
+            (
+                dd.sections[1].duration_end,
+                dd.sections[1].duration_minutes,
+                dd.sections[2].duration_end,
+                dd.sections[2].duration_minutes,
+            ),
+            ("2026-01-01T10:07:00Z", 7, None, 9),
+        )
+        check(
+            "calendar-invalid Duration fails soft",
+            (dd.sections[3].duration_end, dd.sections[3].duration_minutes),
+            (None, None),
+        )
+        dur.unlink()
         check("§1 is in verified_sections", 1 in ta.verified_sections, True)
         check("alpha carries one deferral", len(ta.deferred), 1)
         check("the deferral names its owner", ta.deferred[0].ref, "D90 T02 §1")
