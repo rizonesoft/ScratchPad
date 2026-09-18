@@ -896,6 +896,10 @@ SEVERITY_MAP: dict[str, str] = {
     # committed record, or a row that vanished: later evidence amends via
     # a new row, never by rewriting the old one (D00 T01 §19).
     "ledger-history-violation": "fatal",
+    # a post-cutoff findings file without a well-formed `Provenance:`
+    # line, or a provenance line outside the field shape or without a
+    # shaped run ID: unattributed live quotes (D00 T01 §20).
+    "provenance-malformed": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
@@ -950,6 +954,14 @@ SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
 FIX_COMMIT_RE = re.compile(r"\bfix\s+([0-9a-fA-F]{7,40})\b")
 OWNER_RE = re.compile(r"\bowner\s+([A-Za-z0-9_.-]+)")
 DUE_RE = re.compile(r"\bdue\s+(\d{4}-\d{2}-\d{2})")
+FOLLOWS_OUTAGE_RE = re.compile(r"\bfollows-outage\b")
+# A provenance line binds one live quote to its run (D00 T01 §19 item 12,
+# §20 item 2): candidate, command, exit, tool, digest, path, and run, in
+# that order, semicolon-separated. The run is mandatory: run-less
+# provenance fails the shape.
+PROVENANCE_RE = re.compile(
+    r"^Provenance:\s*candidate\s+(\S+);\s*command\s+(.+?);\s*exit\s+(\d+);\s*tool\s+(.+?);\s*digest\s+([0-9a-fA-F]+);\s*path\s+(\S+?);\s*run\s+(\S+?)\s*$"
+)
 
 
 def ledger_block(sec: str) -> tuple[str | None, str | None]:
@@ -5179,6 +5191,17 @@ track: Z1
             "**integration: approve**\n",
             encoding="utf-8",
         )
+        # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
+        # findings carry provenance, so the panel fixtures carry it too.
+        for _ppf in sorted(rev_dir.glob("90-panel-*.md")):
+            _ppt = _ppf.read_text(encoding="utf-8")
+            _pfirst, _pnl, _prest = _ppt.partition("\n")
+            _pline = (
+                "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+                "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; "
+                f"path docs/reviews/{_ppf.name}; run 20260920-D90-T06-S5-gpt\n"
+            )
+            _ppf.write_text(_pfirst + _pnl + _pline + _prest, encoding="utf-8")
         pbuf = _mio.StringIO()
         with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -5272,7 +5295,7 @@ track: Z1
         check(
             "unbalanced fence names the fence, not the panel",
             any(
-                "TODO-06-panel.md" in ln and "§13 " in ln and "unbalanced fence opened at line 3" in ln
+                "TODO-06-panel.md" in ln and "§13 " in ln and "unbalanced fence opened at line 4" in ln
                 for ln in panel_out
             ),
             True,
@@ -5340,7 +5363,7 @@ track: Z1
         check(
             "quoted close cannot close an unquoted fence",
             any(
-                "TODO-06-panel.md" in ln and "§23 " in ln and "unbalanced fence opened at line 8" in ln
+                "TODO-06-panel.md" in ln and "§23 " in ln and "unbalanced fence opened at line 9" in ln
                 for ln in panel_out
             ),
             True,
@@ -5366,7 +5389,7 @@ track: Z1
         check(
             "no forward lookahead window",
             any(
-                "TODO-06-panel.md" in ln and "§27 " in ln and "unbalanced fence opened at line 12" in ln
+                "TODO-06-panel.md" in ln and "§27 " in ln and "unbalanced fence opened at line 13" in ln
                 for ln in panel_out
             ),
             True,
@@ -5374,7 +5397,7 @@ track: Z1
         check(
             "blank ends a quoted fence",
             any(
-                "TODO-06-panel.md" in ln and "§28 " in ln and "unbalanced fence opened at line 8" in ln
+                "TODO-06-panel.md" in ln and "§28 " in ln and "unbalanced fence opened at line 9" in ln
                 for ln in panel_out
             ),
             True,
@@ -5500,6 +5523,11 @@ track: Z1
 |  23   |   §23   | Reused run across markers | - |  [x]   |
 |  24   |   §24   | Ledger history probe | - |  [x]   |
 |  25   |   §25   | Touch-negative target | - |  [x]   |
+|  26   |   §26   | Outage rerun chained | - |  [x]   |
+|  27   |   §27   | Outage rerun unchained | - |  [x]   |
+|  28   |   §28   | Dangling follows-outage | - |  [x]   |
+|  29   |   §29   | Missing provenance | - |  [x]   |
+|  30   |   §30   | Malformed provenance | - |  [x]   |
 
 ---
 
@@ -5788,6 +5816,64 @@ track: Z1
 > **Verified:** __D5__ | §25 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+
+## 26. Outage rerun chained
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §26 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2, follows-outage)
+
+## 27. Outage rerun unchained
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §27 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2)
+
+## 28. Dangling follows-outage
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §28 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
+> **Plan review:** GPT high, filed §99 (run 20260920-D90-T07-S28-gpt-r1)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2, follows-outage)
+
+## 29. Missing provenance
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §29 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-noprov.md
+> **Plan review:** GPT high, no findings
+
+## 30. Malformed provenance
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §30 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-badprov.md
+> **Plan review:** GPT high, no findings
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -5957,6 +6043,38 @@ track: Z1
             "End of ledger\n",
             encoding="utf-8",
         )
+        # §20 probe: an outage-then-rerun record. The manifest rides the
+        # rerun's run; §§26-28 share the file with one shared run, so only
+        # the probed lineage shape can fire on each.
+        (rev_dir / "90-health-outage.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §26]; dependents [none]; bytes 100; run 20260920-D90-T07-S26-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited outage finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # Provenance migration (D00 T01 §20 item 2): every post-cutoff
+        # fixture findings file carries a well-formed line right after its
+        # title, so rule 23 stays silent and only the dedicated negative
+        # probes can fire. Title-adjacent placement keeps the line before
+        # every fence (even unbalanced ones) and outside every panel and
+        # Plan review section, so no other scan sees it. Grandfathered
+        # old.md is deliberately left bare: it proves the date scope.
+        for _pf in sorted(rev_dir.glob("90-*.md")):
+            if _pf.name == "90-health-old.md":
+                continue
+            _pt = _pf.read_text(encoding="utf-8")
+            _pl = _pt.splitlines()
+            if len(_pl) > 1 and "Provenance:" in _pl[1]:
+                continue
+            _first, _nl, _rest = _pt.partition("\n")
+            _line = (
+                "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+                "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; "
+                f"path docs/reviews/{_pf.name}; run 20260920-D90-T07-S9-gpt\n"
+            )
+            _pf.write_text(_first + _nl + _line + _rest, encoding="utf-8")
         # Canned git bytes (D00 T01 §19 items 3, 8): the clearance proof
         # reads fix commits and the history rule reads HEAD, so the test
         # patches the readers instead of a repo. `aaa1111` carries the §2
@@ -5991,6 +6109,26 @@ track: Z1
             ("aaa1111", marker_todo.as_posix()): True,
             ("ccc3333", marker_todo.as_posix()): False,
         }
+        # Rule-23 negatives, written after the migration loop so they stay
+        # bare: one file without any line, one with a run-less line plus an
+        # off-shape-run line. Neither carries a Plan review section, so
+        # only rule 23 can fire on them.
+        (rev_dir / "90-health-noprov.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-badprov.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run someday-maybe\n",
+            encoding="utf-8",
+        )
         _real_git_file_at = git_file_at
         _real_git_touches = git_commit_touches
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
@@ -6305,6 +6443,84 @@ track: Z1
             "§16 fires exactly once (park violation only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§16 " in ln and "FATAL" in ln),
             1,
+        )
+        # §20 probes: genesis, follows-outage, provenance.
+        check(
+            "provenance-malformed is a FATAL class",
+            SEVERITY_MAP.get("provenance-malformed"),
+            "fatal",
+        )
+        check(
+            "genesis markers stay lineage-silent",
+            not any(
+                "TODO-07-marker.md" in ln
+                and "§4 " in ln
+                and ("run ID" in ln or "supersedes" in ln or "manifest run" in ln or "reuses run" in ln)
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "chained outage rerun stays silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§26 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "unchained outage rerun fires",
+            any(
+                "TODO-07-marker.md" in ln and "§27 " in ln and "names no superseded run" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§27 fires exactly once (lineage only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§27 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "dangling follows-outage fires",
+            any(
+                "TODO-07-marker.md" in ln and "§28 " in ln and "dangling follows-outage" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§28 fires exactly twice (chain plus dangling)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§28 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "missing provenance fires",
+            any(
+                "TODO-07-marker.md" in ln and "§29 " in ln and "carries no Provenance line" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§29 fires exactly once (provenance only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§29 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "malformed provenance fires",
+            any(
+                "TODO-07-marker.md" in ln and "§30 " in ln and "malformed Provenance line" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§30 fires exactly twice (run-less plus off-shape run)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§30 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "rule 23 skips grandfathered findings",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§10 " in ln and "FATAL" in ln),
+            0,
         )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
         # Presence assertions, never counts: neighbor fixtures share the
@@ -7089,6 +7305,93 @@ track: Z1
         check("review_prompt fence with a malformed pair exits 2", _fpair.returncode, 2)
         _fa.unlink()
         _fb.unlink()
+        # Canonical run IDs (D00 T01 §20 item 1): base from the TODO path
+        # plus section plus family plus date, -rN walking past claims.
+        check(
+            "run-id mints the bare base on first run",
+            rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "20260920"),
+            "20260920-D90-T07-S4-gpt",
+        )
+        check(
+            "run-id walks past a claimed base to -r2",
+            rp.next_run_id(
+                "todo/90-x/TODO-07-y.md",
+                4,
+                "gpt",
+                "20260920",
+                "marker (run 20260920-D90-T07-S4-gpt)",
+            ),
+            "20260920-D90-T07-S4-gpt-r2",
+        )
+        check(
+            "run-id walks past -r2 to -r3",
+            rp.next_run_id(
+                "todo/90-x/TODO-07-y.md",
+                4,
+                "gpt",
+                "20260920",
+                "a (run 20260920-D90-T07-S4-gpt) b (run 20260920-D90-T07-S4-gpt-r2)",
+            ),
+            "20260920-D90-T07-S4-gpt-r3",
+        )
+        check(
+            "run-id ignores other sections' runs",
+            rp.next_run_id(
+                "todo/90-x/TODO-07-y.md",
+                4,
+                "gpt",
+                "20260920",
+                "marker (run 20260920-D90-T07-S5-gpt-r9)",
+            ),
+            "20260920-D90-T07-S4-gpt",
+        )
+
+        def _raises(fn):
+            try:
+                fn()
+            except ValueError:
+                return True
+            return False
+
+        check(
+            "run-id rejects off-shape inputs",
+            (
+                _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "GPT", "20260920"))
+                and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "2026-09-20"))
+                and _raises(lambda: rp.next_run_id("bad-path", 4, "gpt", "20260920"))
+            ),
+            True,
+        )
+        _rid = root / "runid-scan.txt"
+        _rid.write_text("x (run 20260920-D90-T07-S4-gpt)\n", encoding="utf-8")
+        _runid = _sp.run(
+            [
+                sys.executable,
+                _rp_path,
+                "run-id",
+                "todo/90-x/TODO-07-y.md",
+                "4",
+                "gpt",
+                "20260920",
+                str(_rid),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(
+            "review_prompt run-id emits the next run",
+            (_runid.returncode, _runid.stdout.strip()),
+            (0, "20260920-D90-T07-S4-gpt-r2"),
+        )
+        _runid_bad = _sp.run(
+            [sys.executable, _rp_path, "run-id", "todo/90-x/TODO-07-y.md", "four", "gpt", "20260920"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check("review_prompt run-id with a bad section exits 2", _runid_bad.returncode, 2)
+        _rid.unlink()
         # Delimiter-tag contract (D00 T01 §19 item 11): 64-bit entropy
         # floor, collision-checked fencing with bounded retries.
         check("tag entropy floor is 64 bits", rp.TAG_ENTROPY_BITS, 64)
@@ -7183,6 +7486,9 @@ track: Z1
         (rev_dir / "90-health-rerun.md").unlink()
         (rev_dir / "90-health-orphan.md").unlink()
         (rev_dir / "90-health-history.md").unlink()
+        (rev_dir / "90-health-outage.md").unlink()
+        (rev_dir / "90-health-noprov.md").unlink()
+        (rev_dir / "90-health-badprov.md").unlink()
         marker_todo.unlink()
         panel_todo.unlink()
         for extra in (

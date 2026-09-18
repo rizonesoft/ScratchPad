@@ -152,6 +152,48 @@ def check_panel_output(text: str) -> tuple[bool, str]:
     return True, "four lenses, one verdict each"
 
 
+def next_run_id(todo_path: str, section: int, family: str, date: str, *texts: str) -> str:
+    """The canonical run ID for a review run (D00 T01 §20 item 1).
+
+    The base is `<YYYYMMDD>-D<dom>-T<num>-S<section>-<family>`, derived
+    from the TODO path (`todo/<dom>-<name>/TODO-<num>-*.md`); the suffix
+    walks past every run already claimed in the given texts (marker and
+    manifest lines): no claim, no suffix, else `-r<max+1>`. One
+    generator, so two writers cannot mint competing identities by hand.
+    Raises ValueError on an off-shape input. Numbering: the bare base
+    is run 1 and `-rN` is run N for N >= 2, so a claimed base (or `-r1`,
+    its accepted synonym) yields `-r2` next.
+    """
+    if not re.fullmatch(r"[a-z0-9]+", family):
+        raise ValueError(f"family {family!r} is outside [a-z0-9]+")
+    if not re.fullmatch(r"\d{8}", date):
+        raise ValueError(f"date {date!r} is outside YYYYMMDD")
+    parts = todo_path.replace("\\", "/").split("/")
+    try:
+        dom = parts[-2].split("-")[0]
+        num = parts[-1].split("-")[1]
+    except IndexError:
+        raise ValueError(f"TODO path {todo_path!r} carries no domain/number") from None
+    if not re.fullmatch(r"\d+", dom) or not re.fullmatch(r"\d+", num):
+        raise ValueError(f"TODO path {todo_path!r} carries no domain/number")
+    base = f"{date}-D{dom}-T{num}-S{section}-{family}"
+    taken = set()
+    for text in texts:
+        for rm in re.finditer(r"\brun\s+(\S+?)(?=[,;)]|\s|$)", text):
+            taken.add(rm.group(1))
+    if base not in taken and not any(t.startswith(base + "-r") for t in taken):
+        return base
+    mx = 1
+    for t in taken:
+        if t == base:
+            mx = max(mx, 1)
+        elif t.startswith(base + "-r"):
+            tail = t[len(base) + 2:]
+            if tail.isdigit():
+                mx = max(mx, int(tail))
+    return f"{base}-r{mx + 1}"
+
+
 def check_plan_output(text: str) -> tuple[bool, str]:
     """Whole-output validation for a plan-review round: every non-blank line
     is one `- ` finding (or the round is an explicit no-findings
@@ -201,10 +243,33 @@ if __name__ == "__main__":
         print(f"TAG {tag}")
         print(prompt, end="")
         sys.exit(0)
+    if len(sys.argv) >= 6 and sys.argv[1] == "run-id":
+        # run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>...
+        # The date rides explicit (no hidden clock): the template fills it
+        # from `date -u +%Y%m%d`.
+        try:
+            section = int(sys.argv[3])
+        except ValueError:
+            print(f"run-id: section {sys.argv[3]!r} is not an integer", file=sys.stderr)
+            sys.exit(2)
+        texts = []
+        for path in sys.argv[6:]:
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    texts.append(fh.read())
+            except OSError as exc:
+                print(f"run-id: cannot read {path}: {exc}", file=sys.stderr)
+                sys.exit(2)
+        try:
+            print(next_run_id(sys.argv[2], section, sys.argv[4], sys.argv[5], *texts))
+        except ValueError as exc:
+            print(f"run-id: {exc}", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)
     checkers = {"check-panel": check_panel_output, "check-plan": check_plan_output}
     if len(sys.argv) != 2 or sys.argv[1] not in checkers:
         print(
-            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | check-panel|check-plan < output.txt",
+            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>... | check-panel|check-plan < output.txt",
             file=sys.stderr,
         )
         sys.exit(2)

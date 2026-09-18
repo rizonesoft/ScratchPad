@@ -745,15 +745,28 @@ def validate(graph, _args) -> int:
                             seen_runs.add(run)
                     sm = graph.SUPERSEDES_RE.search(chain[-1])
                     prior = set(runs[:-1]) - {None}
-                    if sm is None:
+                    prior_outage = any("outage:" in body.lower() for body in chain[:-1])
+                    follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
+                    if sm is None and not (prior_outage and follows):
+                        # A rerun chains via supersedes, unless it follows
+                        # an outage: outage markers carry no run to name,
+                        # so the rerun carries `follows-outage` instead
+                        # (D00 T01 §20 item 4). A singleton marker is
+                        # genesis: run, no supersedes, silent (D00 T01 §20
+                        # item 3).
                         flag(
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} rerun marker names no superseded run (supersedes <prior-run>)",
                         )
-                    elif sm.group(1) not in prior:
+                    elif sm is not None and sm.group(1) not in prior:
                         flag(
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} marker supersedes unknown run {sm.group(1)}",
+                        )
+                    if follows and not prior_outage:
+                        flag(
+                            "plan-review-no-lineage",
+                            f"{t.path}:{s.line}: §{num} marker follows no outage (dangling follows-outage)",
                         )
                 if last_run is not None and graph.RUN_ID_SHAPE_RE.match(last_run):
                     manifest_runs = set()
@@ -1138,6 +1151,46 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {rid} moved "
                         f"{was_ids[rid]} -> {now_ids[rid]} against the committed record "
                         f"(terminal rows amend via a new row)",
+                    )
+
+    # 23. provenance binds live quotes to runs (D00 T01 §20 item 2):
+    # every post-cutoff findings file carries at least one well-formed
+    # `Provenance:` line, and every such line carries a shaped run ID
+    # (run-less provenance fails the shape). Fields ride semicolon-
+    # separated and carry no bare semicolons. Date-scoped like rules
+    # 16-18 (pre-cutoff records predate the mandate); fenced
+    # `Provenance:` examples strip before the scan, so only live lines
+    # count. One file, one presence report (first reporter wins); every
+    # malformed line reports.
+    seen_23 = set()
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
+                continue
+            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm or fm.group(1) in seen_23:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            seen_23.add(fm.group(1))
+            ftext, _u = graph.strip_fenced_code(ftext)
+            prov = [ln for ln in ftext.splitlines() if ln.startswith("Provenance:")]
+            if not prov:
+                flag(
+                    "provenance-malformed",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} carries no Provenance line",
+                )
+                continue
+            for ln in prov:
+                pm = graph.PROVENANCE_RE.match(ln)
+                if pm is None or not graph.RUN_ID_SHAPE_RE.match(pm.group(7)):
+                    flag(
+                        "provenance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Provenance line: {ln.strip()[:80]}",
                     )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,
