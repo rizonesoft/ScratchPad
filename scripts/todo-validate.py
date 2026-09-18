@@ -584,7 +584,6 @@ def validate(graph, _args) -> int:
     # reviewed while the required round may never have run. The marker
     # names the filings or `no findings`; the ledger lives in the
     # findings file, not here, so presence is the whole check.
-    seen_17b = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -617,16 +616,17 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} marker names unresolvable filing {xm.group(0)!r}",
                     )
             fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
-            if not fm or fm.group(1) in seen_17b:
+            if not fm:
                 continue
             try:
                 ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
             except OSError:
                 continue
-            # One file, one report: sections sharing a findings file would
-            # otherwise multi-fire the same defect. First reporter wins in
-            # sorted order, so the report is deterministic.
-            seen_17b.add(fm.group(1))
+            # Per-marker, deliberately not deduped: the omission is each
+            # marker's own (a shared file's second section can omit a
+            # target the first one named), so every marker is checked
+            # independently. Reports on identical markers sharing one file
+            # are distinct per-marker defects, not duplicates.
             ftext, _u = graph.strip_fenced_code(ftext)
             marker_keys = set()
             for xm in graph.XREF_RE.finditer(marker):
@@ -679,7 +679,12 @@ def validate(graph, _args) -> int:
                 ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
             except OSError:
                 continue
-            # One file, one report (same dedup as rule 17b above).
+            # One file, one report: the shape defect is the file's, not the
+            # marker's, so sections sharing a findings file would
+            # otherwise multi-fire it. First reporter wins in sorted
+            # order, so the report is deterministic. (Rule 17b above is
+            # per-marker and stays un-deduped: each marker's omission is
+            # its own defect.)
             seen_18.add(fm.group(1))
             ftext, _u = graph.strip_fenced_code(ftext)
             for h in graph.PLAN_REVIEW_HEADING_RE.finditer(ftext):

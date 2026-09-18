@@ -868,8 +868,14 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
 # Lines that open a PR shape but fail LEDGER_ROW_RE are malformed rows;
 # any other `- [` line is prose (citation link, checkbox, bracket label).
-# Paired with the row pattern: the opener fragment stays identical here.
-LEDGER_LIKE_RE = re.compile(r"^\s*-\s*\[(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR", re.IGNORECASE)
+# The second alternative catches a mangled namespace (`D00-T1x-S15-PR4`):
+# an opener containing an uppercase PR with an ID tail is a ledger
+# attempt even when the namespace half is mistyped. Case-sensitive PR
+# keeps prose openers (`agentclientprotocol.com`, `note`) silent.
+LEDGER_LIKE_RE = re.compile(
+    r"^\s*-\s*\[(?:(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR|[^\]\n]*?(?-i:PR)[0-9§\]])",
+    re.IGNORECASE,
+)
 LEDGER_ROW_RE = re.compile(
     r"^\s*-\s*\[((?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+)\]\s*\[(critical|major|minor)\]\s+.+?->\s*(accepted|filed|duplicate|rejected|deferred)\b",
     re.IGNORECASE | re.MULTILINE,
@@ -5043,7 +5049,7 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-malformed.md
 > **Plan review:** GPT high, filed §2
 
-## 9. Shared findings reported once
+## 9. Complete marker over shared findings
 
 - [x] Did the thing
 - [x] Commit: `"selftest: marker"`
@@ -5052,7 +5058,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §9 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-bad.md
-> **Plan review:** GPT high, filed §2
+> **Plan review:** GPT high, filed §2, §5
 """,
             encoding="utf-8",
         )
@@ -5101,10 +5107,13 @@ track: Z1
             "- [PRX] oops no shape\n"
             # Prose decoys: a checkbox, a citation link, and a bracket
             # label must NOT trip the malformed-row gate (round-1
-            # adversarial). The §8 count check below proves it.
+            # adversarial), while a mangled namespace MUST (round-2
+            # adversarial: the ID half came out wrong, which is exactly
+            # what the gate exists to catch). The §8 count check proves both.
             "- [ ] follow-up checkbox\n"
             "- [agentclientprotocol.com](https://example.com) citation\n"
-            "- [note] bracket label\n",
+            "- [note] bracket label\n"
+            "- [D00-T1x-S15-PR4] [major] Mangled namespace -> filed §2\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -5169,7 +5178,7 @@ track: Z1
             True,
         )
         check(
-            "shared filed row fires under the first reporter",
+            "filed target outside the marker fires on the sharing section",
             any(
                 "TODO-07-marker.md" in ln and "§6 " in ln and "not named in marker" in ln
                 for ln in marker_out
@@ -5182,7 +5191,7 @@ track: Z1
             3,
         )
         check(
-            "shared findings reported once (second reporter silent)",
+            "complete second marker stays silent (rule 18 dedups the shared Manifest)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§9 " in ln and "FATAL" in ln),
             0,
         )
@@ -5200,9 +5209,9 @@ track: Z1
             True,
         )
         check(
-            "§8 fires exactly once (rules 16, 17a, 17b all silent on it)",
+            "§8 fires exactly twice (PRX plus mis-namespaced; rules 16, 17a, 17b all silent on it)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§8 " in ln and "FATAL" in ln),
-            1,
+            2,
         )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
         # Presence assertions, never counts: neighbor fixtures share the
