@@ -75,6 +75,7 @@ track: W0
 |  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
+|  30   |   §30   | Clearance fixture residuals | §22 |  [ ]   |
 
 ---
 
@@ -603,7 +604,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 > **Started:** 2026-09-18T16:36:24Z
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes clearance (PR9, PR10, PR11n) as the third of the four-way split. Clearance must bind the finding to proof the defect is fixed, on a deterministic clock, under an immutable candidate identity. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s22 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes clearance (PR9, PR10, PR11n) as the third of the four-way split. Clearance must bind the finding to proof the defect is fixed, on a deterministic clock, under an immutable candidate identity. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s22 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)) -> XREF: D00 T01 §30 (review round-5 leftover filed here).
 
 - [x] Clearance binds acceptance-condition evidence: the target's review names the test or proof that exercises the finding's acceptance condition (PR9 D00-T01-S19-PR9). Done when: the skill plus query enforce the binding with fixtures. Done: `proof <finding-id> <path>[::<test>]` in the target section, resolved at the fix tip tree (path must exist there, a named test must read word-bounded in its bytes); the query fails closed on missing or unresolvable proof; the skill mandates the pointer and states the boundary (bytes prove attribution plus the pointer, the target's review attests the test exercises the condition). PR60/61/62 lock missing, unresolvable, and nameless; PR1 keeps clearing with three proof lines. **Corrected 2026-09-18 (review R2):** token shapes documented in README (Duration range, clearance tokens).
 - [x] Same-day chronology goes deterministic: UTC timestamps or commit-order semantics replace day granularity for clearance ordering (PR10 D00-T01-S19-PR10). Done when: same-day fixes evaluate deterministically with fixtures. Done: ordering reads Duration ends when both reviews carry them (the target's review must complete strictly after the finding's review, so same-day fixes order by instant); without both ends the day-stamp rule applies and same-day fails closed. `git_commit_ts` reads the fix committer time (unix epoch, offset-free); recency needs it after the review completion with the same day fallback. Commit-order rejected with reason (no stored review commit to order against; ancestry adopted for ranges in item 3 instead). PR63/64 lock pre-completion and pre-day stays; PR68 clears same-day by instant, PR69 locks the dateless fallback. **Corrected 2026-09-18 (review R1):** the shipped day-only rule kept day granularity (same-day never cleared); instants replace it per the item's letter. **Corrected 2026-09-18 (review R1):** `%cs` renders in the commit's own offset, not UTC; unix epoch carries no offset. **Corrected 2026-09-18 (review R2):** ordering plus recency extracted as unit-tested helpers (ties, inversions, unprovable clocks, dateless fallback all locked); same-day-stay renamed pre-completion to stop contradicting the same-day-clear. **Corrected 2026-09-18 (review R3):** Duration ends validate at parse (calendar-invalid or inverted ranges fail soft to None, so no strptime escapes into the query), stacked Duration lines resolve last-wins per the spec, and ranges compute their minutes so both forms project identically. **Corrected 2026-09-18 (review R4):** inverted and range-then-unshaped Duration inputs locked by fixture (both fail soft to None); progress docstring corrected for computed minutes.
@@ -700,7 +701,17 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - [ ] Accepted risk stays visible: a persistent gatable register with residual severity plus a health dashboard over reviews, expiries, partials, and migration progress (PR14 plus PR24 D00-T01-S21-PR14 D00-T01-S21-PR24, two findings one item). Done when: the register gates and the dashboard renders from structured data.
 - [ ] Commit: `"workspace: unattended checks and risk visibility per eighth live round"`
 
-**Test checkpoint:** dates fire on their own and accepted risk never goes dark. Cheaper substitute that fails: remembering to look.
+**Test checkpoint:** dates fire on their own and accepted risk never goes dark.
+
+## 30. Clearance Fixture Residuals
+
+Why this section exists: the §22 panel's round 5 (the cap) reported one adversarial leftover, verified by mutation: the proof-to-row ID comparison and the missing-fix-token rejection have no negative fixtures, so dropping either guard keeps the suite green. A clearance feature whose guards are unlocked is a claim, not a control. -> XREF: D00 T01 §22 (filed from its review round 5); -> SOURCE: panel-D00-T01-s22-2026-09-18-R5 (Opus round 5, adversarial 1; ledger in the §22 findings file).
+
+- [ ] Proof mismatch stays listed: a target carrying a resolving proof line for another finding ID plus a filed row with no proof of its own (suggested shape: a PR70 row filed to §48 beside a dangling resolving line; the 55-section cap bars new marker sections, so reuse §48 or a clean-tree form). Done when: dropping the ID comparison clears the row and fails the suite.
+- [ ] Fix-less targets stay listed: a target passing every other leg without a `fix` token (same cap note: clean-tree form or a shared section). Done when: letting fix-less targets clear fails the suite.
+- [ ] Commit: `"workspace: lock clearance negatives per sixth live round"`
+
+**Test checkpoint:** both guards are mutation-locked: dropping either fails the suite. Cheaper substitute that fails: a listed row that lists for another reason. Cheaper substitute that fails: remembering to look.
 
 ## Verification
 
