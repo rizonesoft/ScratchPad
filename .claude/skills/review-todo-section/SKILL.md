@@ -90,10 +90,10 @@ git show <candidate> > /tmp/review-diff.patch
   echo 'When a finding is a convention, wording, or repeated-shape defect, sweep the whole file (and its skill siblings when skills are in the diff) for the same defect before reporting: one finding per family, with every site named.';
   echo '--- SECTION CONTRACT ---'; <section text: Why, items with Done-whens, checkpoint>;
   echo '--- CANDIDATE DIFF ---'; cat /tmp/review-diff.patch; } > /tmp/review-prompt.md
-claude "$(cat /tmp/review-prompt.md)" -p --model opus --effort medium --allowedTools Read
+timeout 600 claude "$(cat /tmp/review-prompt.md)" -p --model opus --effort medium --allowedTools Read
 ```
 
-(Prompt first as the positional argument, `--allowedTools` last: the flag is variadic and swallows anything after it. `Read` keeps the panel read-only; the diff and contract ride inline. Panel effort is pinned to `medium`, operator-set 2026-09-18.)
+(Prompt first as the positional argument, `--allowedTools` last: the flag is variadic and swallows anything after it. `Read` keeps the panel read-only; the diff and contract ride inline. Panel effort is pinned to `medium`, operator-set 2026-09-18. `timeout` expiry (exit 124) counts as panel failure and falls through to the fallback rung.)
 
 ### Panel depth tiers
 
@@ -126,17 +126,19 @@ Re-verification replaces the stamp in place. Never accumulate duplicates, and ne
 
 ### Plan review
 
-After the stamp, one advisory round over the plan around the section: the section text plus its Depends and XREF neighbors, asking for gaps (a Notepad behavior no section owns), inconsistencies, faults, improvements, and premium wins. The round never blocks: it runs post-stamp, and its feedback lands as tracked work through `add-todo` (micro/small items, new sections, new domains), synthesized by the implementing session, never applied blind. Record the round and its filings in the findings file under a `Plan review` heading, which is not a panel record (only `Opus panel` and `GPT panel` headings carry lens verdicts).
+After the panel closes (before the stamp commit), one advisory round over the plan around the section: the section text plus its Depends and XREF neighbors plus direct reverse dependents (sections whose Depends On names the section; find them by grepping the ref across `todo/`), asking for gaps (a Notepad behavior no section owns), inconsistencies, faults, improvements, and premium wins. The round never blocks the stamp: its feedback lands as tracked work through `add-todo` (micro/small items, new sections, new domains), synthesized by the implementing session, never applied blind. The stamp carries a `Plan review:` line naming the family plus the filings or `no findings`; the validator requires it. Record the round and its filings in the findings file under a `Plan review` heading, which is not a panel record (only `Opus panel` and `GPT panel` headings carry lens verdicts), with the input manifest (sections plus byte count) and the finding ledger below.
 
 The reviewer is one `gpt-5.6-sol` round at high reasoning effort through the codex runner in read-only sandbox, with the section plus neighbor sections inline:
 
 ```bash
-codex exec -m "gpt-5.6-sol" -c model_reasoning_effort="high" -s read-only "$(cat /tmp/plan-review-prompt.md)"
+timeout 900 codex exec -m "gpt-5.6-sol" -c model_reasoning_effort="high" -s read-only "$(cat /tmp/plan-review-prompt.md)"
 ```
 
-(The model name is lowercase `gpt-5.6-sol`: the uppercase variant fails model resolution, probed 2026-09-18. `-s read-only` keeps the reviewer from touching the tree; the sections ride inline.)
+(The model name is lowercase `gpt-5.6-sol`: the uppercase variant fails model resolution, probed 2026-09-18. `-s read-only` keeps the reviewer from touching the tree; the sections ride inline. `timeout` expiry (exit 124) counts as runner failure and falls through to the next rung.)
 
-Runner failure fails silent onto an Opus high-effort round: any nonzero exit, auth failure, or model-resolution failure runs the headless panel command once with `--effort high` over the same prompt. If that also fails, record the outage in the findings file and continue: the plan review is advisory, and an outage never stalls the run.
+Runner failure fails silent onto an Opus high-effort round: any nonzero exit, auth failure, model-resolution failure, or timeout runs the headless panel command once with `--effort high` over the same prompt. A fallback-run review is recorded as same-family, dropping the second-family claim. If that also fails, record the outage in the findings file and continue: the plan review is advisory, and an outage never stalls the run.
+
+Every filed finding cites its evidence: the finding's source lines plus a SOURCE key, per the `add-todo` evidence rules. Findings land in the ledger as `- [PRn] [critical|major|minor] <finding> -> <filed|accepted|duplicate|rejected|deferred> <target-or-reason>`. A clean round still writes its record: `no findings` in the marker plus one ledger line (`- [PR0] [minor] clean round -> accepted`). Advisory never blocks except when it must: a finding that invalidates safety, data integrity, or the stamp reopens the section through audit stance instead of riding the stamp.
 
 ### 8. Audit stance
 

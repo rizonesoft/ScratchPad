@@ -141,6 +141,7 @@ One paragraph of context, then the checklist.
 > **Verified:** 2026-09-14 | §3 | dotnet test TabModelTest 12 passed · zero warnings
 > **Deferred:** session restore across restarts -> XREF: D01 T01 §6 -- needs the settings store first
 > **Review:** round 1, fingerprint `a3f91c2e5b04` -- `adversarial` approve · `consistency` approve · `integration` needs-attention (1). Raw findings: docs/reviews/01-notepad-core/D01-T01-s3.md
+> **Plan review:** GPT high, no findings (or: filed D00 T01 §16, D02 T01 §9)
 > **CRUD:** applicable | TabModelTest + UI smoke: open, edit, save, close, readback byte-identical
 > **Implementer:** assistant name (model-id)
 ```
@@ -148,6 +149,7 @@ One paragraph of context, then the checklist.
 - `Verified:` -- date, sections covered, and the *evidence*: real command output, not "tests pass".
 - `Deferred:` -- one line per deferral, each naming a concrete owner via XREF. A deferral without an owner is an abandonment.
 - `Review:` -- the independent review's cost and outcome: rounds, each lens's verdict with its finding count, then a link to the raw findings under `docs/reviews/`. A `Review:` line names its round and its candidate fingerprint, so a stale record cannot satisfy a freshness check for a different candidate.
+- `Plan review:` -- the second-family round's completion marker: which family ran it and the filings it produced, or `no findings`. Required on stamps dated after 2026-09-18; earlier stamps predate the rule.
 - `CRUD:` -- behavioral evidence for the section: the write path exercised and read back, not just unit-tested. Either `applicable | <what ran and what it proved>` or `not applicable (<reason>)`. A page with a `**Job:**` cannot claim not applicable.
 - `Started:` -- optional UTC instant written when implementation starts. Do not overwrite on resume.
 - `Duration:` -- optional integer minutes from `Started:` to stamp (implement, review, and stamp).
@@ -322,6 +324,7 @@ python3 scripts/todo-graph.py validate   # structural + graph integrity checks
 python3 scripts/todo-graph.py query ready        # sections with all deps met, split into runnable-now versus runnable-elsewhere by the runner's context
 python3 scripts/todo-graph.py query blocked      # sections waiting on something
 python3 scripts/todo-graph.py query stats        # tree health
+python3 scripts/todo-graph.py query plan-health  # review-loop governance: markers, fallback, outages, criticals
 python3 scripts/todo-graph.py render             # mermaid dependency graph
 python3 scripts/todo-graph.py plan --sync        # re-derive the checkboxes AND re-align every table
 python3 scripts/todo-graph.py plan --check       # fail if the boxes are stale (CI runs this)
@@ -380,6 +383,7 @@ is a complete instruction: nobody has to translate domain `00` and TODO `01` int
 | `stamp-no-opus-panel` | FATAL | A stamp dated after 2026-09-17 whose findings lack an `Opus panel` section with all four lens verdicts. It reads as reviewed evidence while verifying nothing; stamps on or before 2026-09-17 predate the rule and are grandfathered. The `Review:` line must carry `Raw findings: <path>`; the panel section is a level-2+ heading starting with `Opus panel` (last one wins in multi-round files); each verdict sits on its own `` `lens` verdict `` line opening (after up to 3 spaces) with a Markdown marker (`*`, backtick, `>`, `-`; mid-line mentions never count); fenced code blocks are stripped before the scan, quoted headings are not structure, quoted fences count as fences (closes match the opener's quote depth; an ended quote ends its fence, and a blank line ends the quote), a backtick in a backtick-fence info string is a paragraph, and an unbalanced fence fails naming its opener line. A `GPT panel` section (the fallback when the Opus panel is unreachable) satisfies the rule when it carries all four lens verdicts in the same shape plus a line with the words `Opus outage`; the last panel section of either family governs. |
 | `requires-unknown` | FATAL | A `**Requires:**` value outside the closed list in `todo-graph.py` (`REQUIRES_ALLOWED`), or a mark with no values at all. The list is closed so a misspelt capability cannot silently unmark a section. |
 | `requires-no-reason` | FATAL | A `**Requires:**` mark without its ` -- ` reason. The citation is what makes the mark auditable: every mark names the measurement that convicted it. |
+| `stamp-no-plan-review` | FATAL | A stamp dated after 2026-09-18 that carries no `Plan review:` completion marker. The second-family round runs after panel-close and its marker rides the stamp commit, naming the filings or `no findings`; stamps on or before 2026-09-18 predate the rule and are grandfathered. |
 
 Treat a warning as a decision to make rather than noise to clear. The tree currently sits at zero FATAL and zero non-baselined warnings, and it is worth keeping there.
 

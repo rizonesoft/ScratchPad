@@ -56,7 +56,7 @@ BODY_RE = re.compile(r"^##\s+(?P<num>\d+)\.\s+(?P<title>.+?)\s*$")
 XREF_RE = re.compile(r"(?:D(?P<dom>\d{2})\s+)?(?:T(?P<todo>\d{2})\s+)?§(?P<sec>\d+)")
 BARE_TODO_RE = re.compile(r"(?<![\w§])(?:D\d{2}\s+)?T\d{2}(?!\s*§)(?![\w-])")
 STAMP_RE = re.compile(
-    r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved):\*\*\s*(?P<body>.+?)\s*$"
+    r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved|Plan review):\*\*\s*(?P<body>.+?)\s*$"
 )
 # `> **Implementer:** Fable 5.1 (claude-fable-5-1)` or `not recorded (<why>)`.
 # D00 T08 §1: the runner writes it from its own transcript, never by hand.
@@ -310,6 +310,7 @@ class Section:
     duration_minutes: int | None = None
     stamped_on: str | None = None
     review_body: str = ""
+    plan_review_body: str = ""
     crud_body: str = ""
     verification_body: str = ""
     implementer_body: str = ""
@@ -488,6 +489,9 @@ def parse_todo(path: Path) -> Todo:
             elif kind == "Review" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.review_body = body
+            elif kind == "Plan review" and current is not None:
+                for target in stamp_targets or ([] if stamp_orphaned else [current]):
+                    target.plan_review_body = body
             elif kind == "CRUD" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.crud_body = body
@@ -765,7 +769,16 @@ SEVERITY_MAP: dict[str, str] = {
     # a `**Requires:**` mark without its reason: the citation is what makes
     # the mark auditable instead of vibes (D00 T01 §13).
     "requires-no-reason": "fatal",
+    # a stamp dated after the plan-review rule landed that carries no
+    # `Plan review:` completion marker: the second-family round is required
+    # procedure, so an unmarked stamp reads as fully reviewed while the
+    # round may never have run (D00 T01 §15).
+    "stamp-no-plan-review": "fatal",
 }
+# Stamps on or before this date predate the plan-review marker rule and are
+# grandfathered (D00 T01 §15). Module-level, not in the validator, because
+# `query plan-health` needs the same boundary: one constant, no copies.
+PLAN_REVIEW_CUTOFF = "2026-09-18"
 
 
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
@@ -1173,6 +1186,89 @@ def cmd_query(args) -> int:
         for t, num, s, lack in missing:
             print(f"    {t.path} §{num}  missing {', '.join(lack)}")
         print(f"\n{len(present)} present, {len(missing)} missing")
+        return 0
+
+    if what == "plan-health":
+        # D00 T01 §15: governance visibility for the review loop. All five
+        # dimensions are mechanical (marker presence, heading scans, ledger
+        # rows, graph edges); nothing here judges prose quality.
+        by_id = {t.id: t for t in todos if t.id}
+        by_key = {(t.domain, t.number): t for t in todos}
+        marked = {}
+        unmarked = []
+        for t in todos:
+            for num in sorted(t.verified_sections):
+                s = t.sections.get(num)
+                if s is None:
+                    continue
+                if (s.plan_review_body or "").strip():
+                    marked[(t.id, num)] = s.stamped_on or "undated"
+                elif s.stamped_on is None or s.stamped_on > PLAN_REVIEW_CUTOFF:
+                    unmarked.append((f"{t.path} §{num}", s.stamped_on or "undated"))
+        labels = {(t.id, num): f"{t.path} §{num}" for t in todos for num in t.sections}
+        rev = {}
+        for t in todos:
+            for num, s in t.sections.items():
+                for raw in s.depends_on:
+                    r = resolve_ref(raw, t, by_key)
+                    if r and r[0] in by_id:
+                        rev.setdefault((r[0], r[1]), set()).add((t.id, num))
+        uncovered = []
+        for key in sorted(marked):
+            for dep in sorted(rev.get(key, ())):
+                if dep not in marked:
+                    uncovered.append((labels.get(dep, f"{dep[0]} §{dep[1]}"), labels.get(key, f"{key[0]} §{key[1]}")))
+        findings_path_re = re.compile(r"Raw findings:\s*(\S+\.md)")
+        gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
+        outage_re = re.compile(r"opus outage", re.IGNORECASE)
+        plan_review_heading_re = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
+        ledger_re = re.compile(
+            r"^\s*-\s*\[PR(\d+)\]\s*\[(critical|major|minor)\]\s+.*?->\s*(accepted|filed|duplicate|rejected|deferred)\b",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
+        fallback, outages, criticals = [], [], []
+        seen = set()
+        for t in todos:
+            for num in sorted(t.verified_sections):
+                s = t.sections.get(num)
+                if s is None:
+                    continue
+                m = findings_path_re.search(s.review_body or "")
+                if not m or m.group(1) in seen:
+                    continue
+                seen.add(m.group(1))
+                try:
+                    text = (TODO_DIR.parent / m.group(1)).read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                if gpt_heading_re.search(text):
+                    fallback.append(m.group(1))
+                if outage_re.search(text):
+                    outages.append(m.group(1))
+                for h in plan_review_heading_re.finditer(text):
+                    sec = text[h.end():]
+                    nxt = head_re.search(sec)
+                    if nxt:
+                        sec = sec[:nxt.start()]
+                    for lr in ledger_re.finditer(sec):
+                        if lr.group(2).lower() == "critical" and lr.group(3).lower() != "filed":
+                            criticals.append((m.group(1), f"PR{lr.group(1)}"))
+        print(f"reviewed sections   {len(marked)} marked, {len(unmarked)} unmarked post-cutoff")
+        for label, day in sorted(unmarked):
+            print(f"    {label}  stamped {day}")
+        print(f"uncovered dependents  {len(uncovered)}")
+        for dep, on in uncovered:
+            print(f"    {dep}  waits on marked {on}")
+        print(f"fallback usage      {len(fallback)} findings with a GPT panel")
+        for f in sorted(fallback):
+            print(f"    {f}")
+        print(f"outages             {len(outages)} findings with an Opus outage note")
+        for f in sorted(outages):
+            print(f"    {f}")
+        print(f"unresolved critical {len(criticals)}")
+        for f, pr in sorted(criticals):
+            print(f"    {pr}  in {f}")
         return 0
 
     rows = []
@@ -3733,6 +3829,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §1 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-nopanel.md
+> **Plan review:** GPT high, no findings
 
 ## 2. Findings file missing
 
@@ -3743,6 +3840,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §2 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-absent.md
+> **Plan review:** GPT high, no findings
 
 ## 3. Review names no file
 
@@ -3753,6 +3851,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §3 | fixture
 > **Review:** round 1, session lenses only
+> **Plan review:** GPT high, no findings
 
 ## 4. Panel missing a lens
 
@@ -3763,6 +3862,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-partial.md
+> **Plan review:** GPT high, no findings
 
 ## 5. Clean panel
 
@@ -3773,6 +3873,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §5 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
 
 ## 6. Cutoff stamp, no panel
 
@@ -3783,6 +3884,7 @@ track: Z1
 
 > **Verified:** 2026-09-17 | §6 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-absent.md
+> **Plan review:** GPT high, no findings
 
 ## 7. Latest round noncompliant
 
@@ -3793,6 +3895,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §7 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-multi-stale.md
+> **Plan review:** GPT high, no findings
 
 ## 8. Latest round clean
 
@@ -3803,6 +3906,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §8 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-multi-clean.md
+> **Plan review:** GPT high, no findings
 
 ## 9. Fenced panel quote
 
@@ -3813,6 +3917,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §9 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fenced.md
+> **Plan review:** GPT high, no findings
 
 ## 10. Level-5 tail after panel
 
@@ -3823,6 +3928,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §10 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-l5tail.md
+> **Plan review:** GPT high, no findings
 
 ## 11. Level-5 panel heading
 
@@ -3833,6 +3939,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §11 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-l5head.md
+> **Plan review:** GPT high, no findings
 
 ## 12. Unheaded prose after panel
 
@@ -3843,6 +3950,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §12 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-bareprose.md
+> **Plan review:** GPT high, no findings
 
 ## 13. Unbalanced fence
 
@@ -3853,6 +3961,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §13 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-unbalanced.md
+> **Plan review:** GPT high, no findings
 
 ## 14. Fence-only panel
 
@@ -3863,6 +3972,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §14 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fenceonly.md
+> **Plan review:** GPT high, no findings
 
 ## 15. Fenced heading plus bare prose
 
@@ -3873,6 +3983,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §15 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fencedhead-bare.md
+> **Plan review:** GPT high, no findings
 
 ## 16. Fenced heading plus marker verdicts
 
@@ -3883,6 +3994,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §16 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-fencedhead-marked.md
+> **Plan review:** GPT high, no findings
 
 ## 17. Nested four-backtick fence
 
@@ -3893,6 +4005,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §17 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-nestedfence.md
+> **Plan review:** GPT high, no findings
 
 ## 18. Info-string fence never closes
 
@@ -3903,6 +4016,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §18 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-infostring.md
+> **Plan review:** GPT high, no findings
 
 ## 19. Indented fence markers are content
 
@@ -3913,6 +4027,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §19 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-indentedfence.md
+> **Plan review:** GPT high, no findings
 
 ## 20. Underscore and tilde markers rejected
 
@@ -3923,6 +4038,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §20 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-oddmarkers.md
+> **Plan review:** GPT high, no findings
 
 ## 21. Blockquoted fence is still a fence
 
@@ -3933,6 +4049,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §21 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quotefence.md
+> **Plan review:** GPT high, no findings
 
 ## 22. Backtick info string is a paragraph
 
@@ -3943,6 +4060,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §22 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tickinfo.md
+> **Plan review:** GPT high, no findings
 
 ## 23. Quoted close cannot close unquoted fence
 
@@ -3953,6 +4071,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §23 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-xquote-close.md
+> **Plan review:** GPT high, no findings
 
 ## 24. Ended quote ends its fence
 
@@ -3963,6 +4082,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §24 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quoteend.md
+> **Plan review:** GPT high, no findings
 
 ## 25. Later quoted block swallows nothing
 
@@ -3973,6 +4093,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §25 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-laterquote.md
+> **Plan review:** GPT high, no findings
 
 ## 26. Quoted fence never hides a later panel
 
@@ -3983,6 +4104,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §26 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-quotehide.md
+> **Plan review:** GPT high, no findings
 
 ## 27. No forward lookahead window
 
@@ -3993,6 +4115,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §27 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-window1.md
+> **Plan review:** GPT high, no findings
 
 ## 28. Blank ends a quoted fence
 
@@ -4003,6 +4126,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §28 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-blankquote.md
+> **Plan review:** GPT high, no findings
 
 ## 29. GPT fallback clean
 
@@ -4013,6 +4137,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §29 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptclean.md
+> **Plan review:** GPT high, no findings
 
 ## 30. GPT panel missing the outage note
 
@@ -4023,6 +4148,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §30 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptnonote.md
+> **Plan review:** GPT high, no findings
 
 ## 31. GPT panel missing a lens
 
@@ -4033,6 +4159,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §31 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptpartial.md
+> **Plan review:** GPT high, no findings
 
 ## 32. Last GPT panel governs over a broken earlier Opus panel
 
@@ -4043,6 +4170,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §32 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptopus.md
+> **Plan review:** GPT high, no findings
 
 ## 33. Fenced GPT quote alone satisfies nothing
 
@@ -4053,6 +4181,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §33 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptfenced.md
+> **Plan review:** GPT high, no findings
 
 ## 34. Last Opus panel governs over a clean earlier GPT panel
 
@@ -4063,6 +4192,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §34 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-opuslast.md
+> **Plan review:** GPT high, no findings
 
 ## 35. Trailing heading ends the GPT panel section
 
@@ -4073,6 +4203,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §35 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gpttail.md
+> **Plan review:** GPT high, no findings
 
 ## 36. Defective GPT last fires over a clean earlier Opus panel
 
@@ -4083,6 +4214,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §36 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptlastbad.md
+> **Plan review:** GPT high, no findings
 """,
             encoding="utf-8",
         )
@@ -4590,6 +4722,158 @@ track: Z1
             ),
             True,
         )
+        # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
+        # landed must carry the `Plan review:` completion marker. Own
+        # fixture TODO (the panel file's 36 sections stay untouched); all
+        # three stamps point Review at the clean panel fixture so rule 16
+        # stays silent and only the marker rule can fire. Runs before the
+        # panel unlink below, while the clean fixture still exists.
+        marker_todo = root / "todo" / "90-selftest" / "TODO-07-marker.md"
+        marker_todo.write_text(
+            """---
+schema_version: 1
+id: self-test-marker
+domain: 90-selftest
+status: active
+title: "TODO-07 -- Self-test marker"
+track: Z1
+---
+
+# TODO-07 -- Self-test marker
+
+> **Goal:** Fixture. Never shipped, never read by a human.
+
+## Implementation Order
+
+| Order | Section | Deliverable | Depends On | Status |
+| :---: | :-----: | ----------- | ---------- | :----: |
+|   1   |   §1    | Missing marker fires | §2 |  [x]   |
+|   2   |   §2    | Present marker silent | - |  [x]   |
+|   3   |   §3    | Cutoff stamp silent | - |  [x]   |
+|   4   |   §4    | Marked health probe | - |  [x]   |
+
+---
+
+## 1. Missing marker fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §1 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+
+## 2. Present marker silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §2 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 3. Cutoff stamp silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-18 | §3 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+
+## 4. Marked health probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §4 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
+> **Plan review:** GPT high, filed D90 T99 §1
+""",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: CLI auth failure (exit 3).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Plan review\n\n"
+            "- [PR1] [critical] Widget gap -> filed D90 T99 §1\n"
+            "- [PR2] [major] Wording -> filed D90 T99 §2\n"
+            "- [PR3] [critical] Hanging critical -> accepted needs owner\n",
+            encoding="utf-8",
+        )
+        mbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            cmd_validate(None)
+        marker_out = mbuf.getvalue().splitlines()
+        check(
+            "stamp-no-plan-review is a FATAL class",
+            SEVERITY_MAP.get("stamp-no-plan-review"),
+            "fatal",
+        )
+        check(
+            "post-cutoff stamp without the marker fires",
+            any(
+                "TODO-07-marker.md" in ln and "§1 " in ln and "carries no `Plan review:` completion marker" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "post-cutoff stamp with the marker stays silent",
+            any("TODO-07-marker.md" in ln and "§2 " in ln and "FATAL" in ln for ln in marker_out),
+            False,
+        )
+        check(
+            "cutoff-dated stamp without the marker stays silent",
+            any("TODO-07-marker.md" in ln and "§3 " in ln and "FATAL" in ln for ln in marker_out),
+            False,
+        )
+        # Query plan-health over the fixture tree (D00 T01 §15 item 10).
+        # Presence assertions, never counts: neighbor fixtures share the
+        # root, so only the marker file's own lines are stable.
+        hbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(hbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            cmd_query(argparse.Namespace(what="plan-health"))
+        health_out = hbuf.getvalue()
+        health_lines = health_out.splitlines()
+        check(
+            "plan-health lists the unmarked post-cutoff stamp",
+            any("TODO-07-marker.md §1" in ln and "2026-09-20" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health lists the uncovered dependent",
+            any(
+                "TODO-07-marker.md §1" in ln and "waits on marked" in ln and "TODO-07-marker.md §2" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "plan-health counts the GPT fallback file",
+            "90-health.md" in health_out,
+            True,
+        )
+        check(
+            "plan-health flags the unresolved critical",
+            any("PR3" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health clears the filed critical",
+            "PR1" in health_out,
+            False,
+        )
+        (rev_dir / "90-health.md").unlink()
+        marker_todo.unlink()
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -5190,7 +5474,7 @@ def main() -> int:
     q = sub.add_parser("query", help="ask the graph a question")
     q.add_argument(
         "what",
-        choices=["ready", "blocked", "stats", "deferred", "frozen", "findings", "surfaces", "adjacency"],
+        choices=["ready", "blocked", "stats", "deferred", "frozen", "findings", "surfaces", "adjacency", "plan-health"],
     )
     q.add_argument("--all", action="store_true", help="findings: include ones already done")
     q.add_argument("--file", help="adjacency: exact repository-relative TODO path")

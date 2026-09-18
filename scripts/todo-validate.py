@@ -636,6 +636,32 @@ def validate(graph, _args) -> int:
                     + ", ".join(missing),
                 )
 
+    # 17. a stamp dated after the plan-review rule landed must carry the
+    # review's completion marker (D00 T01 §15). The skill runs the review
+    # after panel-close and the marker rides the stamp commit, so a stamp
+    # without it either skipped the second-family round or lost the
+    # record. Grandfathering is date-bound like rule 16: stamps on or
+    # before 2026-09-18 predate enforcement (§14's own stamp stays
+    # silent), and an undated stamp fails closed (evaluated, not
+    # skipped). FATAL, not WARN: an unmarked stamp reads as fully
+    # reviewed while the required round may never have run. The marker
+    # names the filings or `no findings`; the ledger lives in the
+    # findings file, not here, so presence is the whole check.
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
+                continue
+            marker = getattr(s, "plan_review_body", None) or ""
+            if not marker.strip():
+                stamp_day = s.stamped_on if s.stamped_on is not None else "undated"
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} stamped {stamp_day} carries no "
+                    f"`Plan review:` completion marker (name the filings or `no findings`)",
+                )
+
     # The warning BASELINE. A count that only grows is a count nobody reads,
     # and 17 of these have stood for over a week: 15 name STAMPED sections
     # whose warning text says in as many words "do not reopen the stamp to add
