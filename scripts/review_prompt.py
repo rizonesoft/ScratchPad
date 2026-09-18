@@ -34,7 +34,7 @@ PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
 # from reaching `int()` unbounded, which raises past 4300 digits
 # instead of failing closed).
 _COUNT_MAX_DIGITS = 4
-_COUNT_INNER = r"(?:0|[1-9][0-9]{0,3})"
+_COUNT_INNER = r"(?:0|[1-9][0-9]{0," + str(_COUNT_MAX_DIGITS - 1) + r"})"
 # Reviewer-output bounds (D00 T01 §23): a hostile or malformed
 # reviewer can exhaust parser resources before semantic comparison,
 # so both checkers refuse oversized output first. The caps are

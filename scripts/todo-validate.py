@@ -1287,7 +1287,9 @@ def validate(graph, _args) -> int:
                     _pfile = (graph.TODO_DIR.parent / _pp).resolve()
                     _proot = graph.TODO_DIR.parent.resolve()
                     _pok = not Path(_pp).is_absolute() and _pfile.is_relative_to(_proot) and _pfile.is_file()
-                except OSError:
+                except (OSError, RuntimeError):
+                    # RuntimeError is a symlink loop: resolve raises it,
+                    # not OSError, and a hostile path must fail, not crash.
                     _pok = False
                 if not _pok:
                     flag(
@@ -1388,7 +1390,7 @@ def validate(graph, _args) -> int:
                     continue
                 _links = graph.ledger_supersedes(hblock)
                 _ids = {lr.group(1).lower() for lr in graph.LEDGER_ROW_RE.finditer(hblock)}
-                _valid, _cyclic = graph.ledger_supersession(hblock)
+                _, _cyclic = graph.ledger_supersession(hblock)
                 for lr in graph.LEDGER_ROW_RE.finditer(hblock):
                     _rid = lr.group(1).lower()
                     if _rid not in _links:
