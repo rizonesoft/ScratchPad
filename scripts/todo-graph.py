@@ -5528,6 +5528,7 @@ track: Z1
 |  28   |   §28   | Dangling follows-outage | - |  [x]   |
 |  29   |   §29   | Missing provenance | - |  [x]   |
 |  30   |   §30   | Malformed provenance | - |  [x]   |
+|  31   |   §31   | Singleton dangling follows-outage | - |  [x]   |
 
 ---
 
@@ -5874,6 +5875,17 @@ track: Z1
 > **Verified:** 2026-09-20 | §30 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-badprov.md
 > **Plan review:** GPT high, no findings
+
+## 31. Singleton dangling follows-outage
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §31 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2, follows-outage)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -6490,6 +6502,19 @@ track: Z1
             "§28 fires exactly twice (chain plus dangling)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§28 " in ln and "FATAL" in ln),
             2,
+        )
+        check(
+            "singleton follows-outage fires",
+            any(
+                "TODO-07-marker.md" in ln and "§31 " in ln and "dangling follows-outage" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§31 fires exactly once (dangling only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§31 " in ln and "FATAL" in ln),
+            1,
         )
         check(
             "missing provenance fires",
@@ -7359,6 +7384,10 @@ track: Z1
                 _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "GPT", "20260920"))
                 and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "2026-09-20"))
                 and _raises(lambda: rp.next_run_id("bad-path", 4, "gpt", "20260920"))
+                and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 0, "gpt", "20260920"))
+                and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", -1, "gpt", "20260920"))
+                and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", True, "gpt", "20260920"))
+                and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", "4", "gpt", "20260920"))
             ),
             True,
         )

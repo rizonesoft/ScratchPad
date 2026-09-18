@@ -176,6 +176,8 @@ def next_run_id(todo_path: str, section: int, family: str, date: str, *texts: st
         raise ValueError(f"TODO path {todo_path!r} carries no domain/number") from None
     if not re.fullmatch(r"\d+", dom) or not re.fullmatch(r"\d+", num):
         raise ValueError(f"TODO path {todo_path!r} carries no domain/number")
+    if not isinstance(section, int) or isinstance(section, bool) or section < 1:
+        raise ValueError(f"section {section!r} is outside positive-int")
     base = f"{date}-D{dom}-T{num}-S{section}-{family}"
     taken = set()
     for text in texts:

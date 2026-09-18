@@ -733,6 +733,8 @@ def validate(graph, _args) -> int:
                         "plan-review-no-lineage",
                         f"{t.path}:{s.line}: §{num} marker run {last_run!r} is outside the run-ID shape",
                     )
+                prior_outage = any("outage:" in body.lower() for body in chain[:-1])
+                follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
                 if len(chain) > 1:
                     seen_runs = set()
                     for run in runs:
@@ -745,8 +747,6 @@ def validate(graph, _args) -> int:
                             seen_runs.add(run)
                     sm = graph.SUPERSEDES_RE.search(chain[-1])
                     prior = set(runs[:-1]) - {None}
-                    prior_outage = any("outage:" in body.lower() for body in chain[:-1])
-                    follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
                     if sm is None and not (prior_outage and follows):
                         # A rerun chains via supersedes, unless it follows
                         # an outage: outage markers carry no run to name,
@@ -763,11 +763,13 @@ def validate(graph, _args) -> int:
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} marker supersedes unknown run {sm.group(1)}",
                         )
-                    if follows and not prior_outage:
-                        flag(
-                            "plan-review-no-lineage",
-                            f"{t.path}:{s.line}: §{num} marker follows no outage (dangling follows-outage)",
-                        )
+                if follows and not prior_outage:
+                    # Dangling on any chain length: a singleton carrying
+                    # `follows-outage` follows nothing at all (review R1).
+                    flag(
+                        "plan-review-no-lineage",
+                        f"{t.path}:{s.line}: §{num} marker follows no outage (dangling follows-outage)",
+                    )
                 if last_run is not None and graph.RUN_ID_SHAPE_RE.match(last_run):
                     manifest_runs = set()
                     for h in heads:
@@ -1157,7 +1159,9 @@ def validate(graph, _args) -> int:
     # every post-cutoff findings file carries at least one well-formed
     # `Provenance:` line, and every such line carries a shaped run ID
     # (run-less provenance fails the shape). Fields ride semicolon-
-    # separated and carry no bare semicolons. Date-scoped like rules
+    # separated and carry no bare semicolons (authoring rule; shape-
+    # tightening filed in §23, so the checker pins presence plus run).
+    # Date-scoped like rules
     # 16-18 (pre-cutoff records predate the mandate); fenced
     # `Provenance:` examples strip before the scan, so only live lines
     # count. One file, one presence report (first reporter wins); every
