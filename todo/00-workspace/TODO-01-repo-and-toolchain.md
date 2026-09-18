@@ -57,7 +57,7 @@ track: W0
 |  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
 |  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
 |  15   |   §15   | First plan-review residuals | §14 |  [x]   |
-|  16   |   §16   | Second plan-review residuals | §15 |  [ ]   |
+|  16   |   §16   | Second plan-review residuals | §15 |  [x]   |
 |  17   |   §17   | Third plan-review residuals | §16 |  [ ]   |
 
 ---
@@ -428,6 +428,12 @@ Why this section exists: the second live plan review (§15 plus §14 plus no rev
 **Test checkpoint:** §14's timing pointer present; marker vocab covers outage plus retry states; query follows filed criticals, flags stale scope, and emits JSON; ledger IDs namespaced with lifecycle plus severity plus back-links; §14 backfilled; validator gates shapes plus filings; prompts carry the trust boundary. Cheaper substitute that fails: a third review round whose findings stay prose.
 
 - -> XREF: D00 T01 §17 -- round-5 panel leftover (ledger-trigger residual) plus third-live-plan-review filings (24 of 25, PR6 rejected) filed there
+
+> **Verified:** 2026-09-18 | §16 | self-test 484/484 (review-loop cases incl. §8 count 3 over 3 firing rows plus 9 silent decoys); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates d9eca6f c20f8dc d6eaaf7 97768b2 c2b866e; plan review 25 findings, 24 filed at §17, PR6 rejected
+> **Review:** round 5 (FINAL), candidates d9eca6f c20f8dc d6eaaf7 97768b2 c2b866e -- `adversarial` needs-attention · `consistency` needs-attention · `integration` approve · `record` approve. Leftovers filed at D00 T01 §17. Raw findings: docs/reviews/00-workspace/D00-T01-s16.md
+> **Plan review:** GPT high, filed §17
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited scripts, skill, README, TODO (read back via self-test 484/484, live validate 0 fatal, plan --check current); filing wrote §17 plus its plan row (read back via plan --check current)
+> **Duration:** 2026-09-18T10:52:44Z to 2026-09-18T11:29:00Z
 
 ## 17. Third Plan-Review Residuals
 
