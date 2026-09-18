@@ -868,14 +868,17 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
 # Lines that open a PR shape but fail LEDGER_ROW_RE are malformed rows;
 # any other `- [` line is prose (citation link, checkbox, bracket label).
-# The second alternative catches a mangled namespace (`D00-T1x-S15-PR4`,
-# any case like the row pattern): a single whitespace-free opener token
-# containing PR with a digit/§ tail is a ledger attempt even when the
-# namespace half is mistyped. The single-token shape keeps prose openers
-# (`see PR12 upstream`, `Fixed in PR12`, `agentclientprotocol.com`,
-# `note`, `expr`) silent: a space, or PR without an ID tail, is prose.
+# Ledger-looking needs BOTH a PR-ish opener and ledger structure after
+# it: the opener starts with PR/a namespace-PR or is a single
+# whitespace-free token containing PR with a digit/§ tail (a mangled
+# namespace, any case like the row pattern), and the rest of the line
+# carries an adjacent second bracket or a `->`. The structure half is
+# what keeps prose openers (`proposal`, `prior art`, `prose`, `Prompt`,
+# `see PR12 upstream`, `agentclientprotocol.com`, `note`, `expr`)
+# silent: a PR-ish label with no ledger tail is prose, as is a PR
+# citation link (`[PR1](url)` has neither bracket nor arrow).
 LEDGER_LIKE_RE = re.compile(
-    r"^\s*-\s*\[(?:(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR|[^\]\n\s]*PR[0-9§][^\]\n\s]*\])",
+    r"^\s*-\s*\[(?:(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[^\]\n\s]*\]|[^\]\n\s]*PR[0-9§][^\]\n\s]*\])(?:\s*\[|[^\n]*?->)",
     re.IGNORECASE,
 )
 LEDGER_ROW_RE = re.compile(
@@ -5106,7 +5109,7 @@ track: Z1
             "**integration: approve**\n**record: approve**\n\n"
             "## Plan review\n\n"
             "Manifest: sections [D90 T07 §8]; dependents [none]; bytes 700\n\n"
-            "- [PRX] oops no shape\n"
+            "- [PRX] [major] oops no arrow\n"
             # Prose decoys: a checkbox, a citation link, and a bracket
             # label must NOT trip the malformed-row gate (round-1
             # adversarial), while a mangled namespace MUST (round-2
@@ -5115,8 +5118,13 @@ track: Z1
             # adversarial: the row pattern is case-insensitive, so the
             # trigger is too). Three more decoys stay silent: prose
             # mentioning a PR number (bracket label and citation link)
-            # and a single token whose PR has no ID tail. The §8 count
-            # check proves all of it: three firing rows, six silent decoys.
+            # and a single token whose PR has no ID tail (round-4
+            # adversarial: the opener alone is not enough, so the gate
+            # also requires ledger structure -- an adjacent second
+            # bracket or a `->` -- which is why the PRX probe now
+            # carries a severity bracket and three PR-starting prose
+            # labels stay silent). The §8 count check proves all of it:
+            # three firing rows, nine silent decoys.
             "- [ ] follow-up checkbox\n"
             "- [agentclientprotocol.com](https://example.com) citation\n"
             "- [note] bracket label\n"
@@ -5124,7 +5132,10 @@ track: Z1
             "- [d00-t1x-s15-pr4] [major] Mangled lowercase -> filed §2\n"
             "- [see PR12 upstream] prose about a pull request\n"
             "- [Fixed in PR12](https://example.com/pull/12)\n"
-            "- [expr] single-token prose\n",
+            "- [expr] single-token prose\n"
+            "- [proposal] tighten the ledger\n"
+            "- [prior art](https://example.com) citation\n"
+            "- [prose] label\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
