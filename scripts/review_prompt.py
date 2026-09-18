@@ -172,15 +172,39 @@ def check_plan_output(text: str) -> tuple[bool, str]:
 if __name__ == "__main__":
     import sys
 
-    # `tag` serves the prompt templates: one randomness source, no copies
+    # `tag` serves ad-hoc uses: one randomness source, no copies
     # (`$RANDOM` is a bash-ism that degrades to a bare timestamp under sh).
+    # The prompt templates use `fence`, which checks the tag against the
+    # payload before the prompt ships (a bare tag plus shell echo would
+    # never check).
     if len(sys.argv) == 3 and sys.argv[1] == "tag":
         print(unique_tag(sys.argv[2]))
+        sys.exit(0)
+    if len(sys.argv) >= 4 and sys.argv[1] == "fence":
+        chunks = []
+        for pair in sys.argv[3:]:
+            title, sep, path = pair.partition("=")
+            if not sep or not title or not path:
+                print(f"fence: want <title>=<path>, got {pair!r}", file=sys.stderr)
+                sys.exit(2)
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    chunks.append((title, fh.read()))
+            except OSError as exc:
+                print(f"fence: cannot read {path}: {exc}", file=sys.stderr)
+                sys.exit(2)
+        try:
+            tag, prompt = fence_chunks_checked(sys.argv[2], chunks)
+        except RuntimeError as exc:
+            print(f"fence: {exc}", file=sys.stderr)
+            sys.exit(1)
+        print(f"TAG {tag}")
+        print(prompt, end="")
         sys.exit(0)
     checkers = {"check-panel": check_panel_output, "check-plan": check_plan_output}
     if len(sys.argv) != 2 or sys.argv[1] not in checkers:
         print(
-            f"usage: {sys.argv[0]} tag <prefix> | check-panel|check-plan < output.txt",
+            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | check-panel|check-plan < output.txt",
             file=sys.stderr,
         )
         sys.exit(2)

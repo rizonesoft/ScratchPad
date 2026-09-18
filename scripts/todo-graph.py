@@ -870,9 +870,10 @@ SEVERITY_MAP: dict[str, str] = {
     # round may never have run (D00 T01 §15).
     "stamp-no-plan-review": "fatal",
     # a post-cutoff plan-review record the query cannot parse (a Plan
-    # review section without its Manifest line, or a ledger-looking line
-    # outside the row shape): unparseable records silently drop out of
-    # governance (D00 T01 §16).
+    # review section without its Manifest line or its Ledger block, a
+    # non-row line inside the block, or a content-illegal row):
+    # unparseable records silently drop out of governance (D00 T01 §16,
+    # block shape §19).
     "plan-review-malformed": "fatal",
     # a filed ledger row whose target file carries no back-link: the filing
     # is untraceable from the target side, so remediation cannot be
@@ -1802,9 +1803,14 @@ def cmd_query(args) -> int:
         # never be green).
         gate_dims = []
         if getattr(args, "check", False):
-            gate_dims = ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable"]
-        elif getattr(args, "fail_on", None):
-            gate_dims = [d.strip() for d in args.fail_on.split(",") if d.strip()]
+            gate_dims += ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable"]
+        if getattr(args, "fail_on", None):
+            # Union, not elif: an explicit --fail-on beside --check adds
+            # dimensions (a CI gate written `--check --fail-on stale` must
+            # gate stale, not silently drop it). Order-stable dedup keeps
+            # the verdict line clean.
+            gate_dims += [d.strip() for d in args.fail_on.split(",") if d.strip()]
+        gate_dims = list(dict.fromkeys(gate_dims))
         dim_lists = {
             "unmarked": report["reviewed"]["unmarked"],
             "uncovered": report["uncovered"],
@@ -6525,10 +6531,14 @@ track: Z1
                 gate_stale_explicit = cmd_query(
                     argparse.Namespace(what="plan-health", check=False, fail_on="stale")
                 )
+                gate_stale_union = cmd_query(
+                    argparse.Namespace(what="plan-health", check=True, fail_on="stale")
+                )
         finally:
             TODO_DIR = saved_tree
         check("plan-health --check ignores stale-only dirt", gate_stale_default, 0)
         check("plan-health --fail-on stale gates it explicitly", gate_stale_explicit, 1)
+        check("plan-health --check --fail-on stale unions both", gate_stale_union, 1)
         globals()["git_file_at"] = _real_git_file_at
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
@@ -6834,6 +6844,44 @@ track: Z1
         check("review_prompt without args exits 2", _usage.returncode, 2)
         _bogus = _sp.run([sys.executable, _rp_path, "bogus"], capture_output=True, text=True, timeout=30)
         check("review_prompt with a bogus subcommand exits 2", _bogus.returncode, 2)
+        _fa = root / "fence-a.txt"
+        _fb = root / "fence-b.txt"
+        _fa.write_text("--- SECTION FOO ---\nbody a\n", encoding="utf-8")
+        _fb.write_text("body b\n", encoding="utf-8")
+        _fence = _sp.run(
+            [sys.executable, _rp_path, "fence", "SEC", f"A={_fa}", f"B={_fb}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        _flines = _fence.stdout.splitlines()
+        _ftag = _flines[0].split(" ", 1)[1] if _flines and _flines[0].startswith("TAG ") else ""
+        check(
+            "review_prompt fence emits its tag once plus delimiters",
+            (
+                _fence.returncode,
+                _flines[0].startswith("TAG SEC-"),
+                _fence.stdout.count(_ftag),
+                _ftag not in _fa.read_text(encoding="utf-8") + _fb.read_text(encoding="utf-8"),
+            ),
+            (0, True, 4, True),
+        )
+        _fmiss = _sp.run(
+            [sys.executable, _rp_path, "fence", "SEC", f"A={root}/nope.txt"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check("review_prompt fence with a missing file exits 2", _fmiss.returncode, 2)
+        _fpair = _sp.run(
+            [sys.executable, _rp_path, "fence", "SEC", "not-a-pair"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check("review_prompt fence with a malformed pair exits 2", _fpair.returncode, 2)
+        _fa.unlink()
+        _fb.unlink()
         # Delimiter-tag contract (D00 T01 §19 item 11): 64-bit entropy
         # floor, collision-checked fencing with bounded retries.
         check("tag entropy floor is 64 bits", rp.TAG_ENTROPY_BITS, 64)
