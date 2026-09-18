@@ -210,14 +210,17 @@ def detect_context(platform: str | None = None, environ=None) -> set[str]:
 
     `platform`/`environ` default to the live interpreter and process
     environment; tests pass fakes. display-session holds on Windows with
-    SESSIONNAME set (console or remote interactive session) and nowhere
-    else -- in particular never under WSL, whose window-station-less
-    session reads black frames (D00 T02 §7), per the run-5 §15 verdict.
+    SESSIONNAME naming an interactive session (console or remote) and
+    nowhere else -- in particular never under WSL, whose
+    window-station-less session reads black frames (D00 T02 §7), per the
+    run-5 §15 verdict, and never as session 0, which names itself
+    "Services" and has no window station (headless services, CI runners).
     """
     plat = sys.platform if platform is None else platform
     env = os.environ if environ is None else environ
     ctx: set[str] = set()
-    if plat == "win32" and (env.get("SESSIONNAME") or "").strip():
+    session = (env.get("SESSIONNAME") or "").strip()
+    if plat == "win32" and session and session.lower() != "services":
         ctx.add("display-session")
     return ctx
 FIDELITY_EXEMPT_RE = re.compile(
@@ -1320,6 +1323,36 @@ def needs_for_ref(raw: str, todos: list[Todo]) -> list[str]:
     return list(section.needs)
 
 
+def requires_missing_for_ref(raw: str, todos: list[Todo]) -> list[str]:
+    """Closed-list `requires` values unmet by the local context; [] for no marker, an unknown ref, or everything met (D00 T01 §13).
+
+    Same reference forms as `resolve`. The operator snapshot holds a row
+    with unmet requirements out of `first_ready`, the way `query ready`
+    holds it out of runnable-now.
+    """
+    by_prefix = {(t.domain.split("-")[0], t.number): t for t in todos}
+    m = re.search(r"D(?P<dom>\d{2})\s+T(?P<todo>\d{2})\s+§(?P<sec>\d+)", raw.strip())
+    if m:
+        target = by_prefix.get((m.group("dom"), m.group("todo")))
+        sec = int(m.group("sec"))
+    else:
+        m2 = re.search(r"§(?P<sec>\d+)", raw)
+        if not m2:
+            return []
+        sec = int(m2.group("sec"))
+        frag = raw[: m2.start()].strip().strip("`|").strip()
+        hits = [t for t in todos if frag and frag in t.path]
+        target = hits[0] if len(hits) == 1 else None
+    if target is None or sec not in target.sections:
+        return []
+    section = target.sections[sec]
+    if section.requires_unknown:
+        # Never read as runnable: `validate` refuses the value.
+        return [f"unknown:{v}" for v in section.requires_unknown]
+    have = detect_context()
+    return [v for v in section.requires if v not in have]
+
+
 def cmd_needs(args: argparse.Namespace) -> int:
     """The `**Needs:**` keys of many refs in one graph load. JSON {ref: [keys]}."""
     refs = [r.strip() for r in args.refs if str(r).strip()]
@@ -1432,12 +1465,12 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         print(f"needs      {keys} ({s.needs_raw}); plan-gate.py host-probe decides whether it can start")
     if s.requires_has_line:
         if s.requires_unknown:
-            print(f"requires     {s.requires_raw}; INVALID -- unknown value(s): {', '.join(s.requires_unknown)} (see validate)")
+            print(f"requires   {s.requires_raw}; INVALID -- unknown value(s): {', '.join(s.requires_unknown)} (see validate)")
         else:
             have = detect_context()
             missing = [v for v in s.requires if v not in have]
             verdict = "runnable here" if not missing else f"missing here: {', '.join(missing)}"
-            print(f"requires     {s.requires_raw}; {verdict}")
+            print(f"requires   {s.requires_raw}; {verdict}")
     if unmet:
         print(f"UNMET      {', '.join(unmet)}")
     print()
@@ -1945,7 +1978,7 @@ def _campaign_snapshot(todos: list[Todo]) -> dict:
     first_blocked: dict | None = None
     for phase_n, heading, refs in _open_plan_phases(PLAN.read_text(encoding="utf-8")):
         codes = {ref: resolve_exit_code(ref, todos) for ref in refs}
-        ready = [ref for ref in refs if codes[ref] == 0]
+        ready = [ref for ref in refs if codes[ref] == 0 and not requires_missing_for_ref(ref, todos)]
         broken = [ref for ref in refs if codes[ref] not in (0, 3, 4)]
         if ready or broken:
             payload["phase"] = heading
@@ -2735,6 +2768,8 @@ def cmd_self_test(_args) -> int:
                   any("§2" in ln and "with no reason" in ln for ln in rfatal), True)
             check("a Requires mark with no values is FATAL (requires-unknown)",
                   any("§3" in ln and "no values" in ln for ln in rfatal), True)
+            check("a mark with no values and no reason draws both FATALs",
+                  sum(1 for ln in rfatal if "§3" in ln), 2)
             check("a valid mark draws no Requires FATAL",
                   any("§4" in ln for ln in rfatal), False)
             check("a shipped section without a mark draws no Requires FATAL",
@@ -2752,6 +2787,9 @@ def cmd_self_test(_args) -> int:
                   set())
             check("display-session fails off Windows",
                   detect_context(platform="linux", environ={}),
+                  set())
+            check("display-session fails in session 0 (Services)",
+                  detect_context(platform="win32", environ={"SESSIONNAME": "Services"}),
                   set())
 
             def ready_lines(**kw):
