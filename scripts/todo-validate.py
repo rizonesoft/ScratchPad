@@ -414,6 +414,13 @@ def validate(graph, _args) -> int:
     # (findings file exists, has an `Opus panel` section, all four lenses
     # carry a verdict word), which defeats forgetfulness; it cannot prove
     # Opus ran rather than a hand-typed verdict, and does not try.
+    # D00 T01 §14 extends the record, not the bar: when the Opus panel is
+    # unreachable the skill runs the same four lenses through the GPT
+    # fallback rung, recorded under a `GPT panel` heading with an Opus
+    # outage note, and that record satisfies this rule. When both headings
+    # exist the Opus section governs (the fallback never displaces a real
+    # panel); the honesty limit is unchanged (a mislabeled heading defeats
+    # forgetfulness, not forgery).
     # Grandfathering is date-bound like rule 8b/13 (cutoff declared
     # beside the others above): stamps on or before the rule's landing
     # date predate enforcement (§6 stamped 2026-09-17 without a panel and
@@ -434,6 +441,15 @@ def validate(graph, _args) -> int:
     # panel section, so a `##### Leftover notes` tail after the panel can
     # neither supply lens verdicts nor displace the record.
     PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
+    # Same level and word-boundary rules as the Opus heading: the fallback
+    # record differs in family, not in shape. Runs on the same stripped
+    # text, so fenced `GPT panel` quotes are invisible for free.
+    GPT_PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
+    # The outage note is words, not a shape: the skill mandates the
+    # `Opus outage: <what>` line, and the rule checks the words survived
+    # transcription. Substring, not line-anchored: the note explains, it
+    # does not authorize, so marker strictness would reject honest prose.
+    GPT_OUTAGE_RE = re.compile(r"opus outage", re.IGNORECASE)
     # Verdicts are line-anchored, never substring: the mandated shape puts
     # each verdict on its own marker-led line, so unheaded prose after an
     # incomplete panel (or a mid-line mention anywhere) must not supply a
@@ -561,11 +577,37 @@ def validate(graph, _args) -> int:
                 continue
             text = "\n".join(kept)
             heads = list(PANEL_HEADING_RE.finditer(text))
-            if not heads:
+            gpt_heads = list(GPT_PANEL_HEADING_RE.finditer(text))
+            if not heads and not gpt_heads:
                 flag(
                     "stamp-no-opus-panel",
                     f"{where} findings {m.group(1)} carry no `Opus panel` section",
                 )
+                continue
+            if not heads:
+                # GPT fallback path: same verdict bar as the Opus panel,
+                # plus the Opus outage note that earns the fallback. The
+                # LAST GPT section is the record, mirroring last-wins.
+                gpt = text[gpt_heads[-1].end():]
+                nxt = re.search(r"^#{1,6}\s+", gpt, re.MULTILINE)
+                if nxt:
+                    gpt = gpt[:nxt.start()]
+                missing = [
+                    lens
+                    for lens in PANEL_LENSES
+                    if not PANEL_VERDICT_RES[lens].search(gpt)
+                ]
+                if missing:
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} GPT panel lacks verdicts for: "
+                        + ", ".join(missing),
+                    )
+                if not GPT_OUTAGE_RE.search(gpt):
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} GPT panel lacks the Opus outage note",
+                    )
                 continue
             # The LAST panel section is the record: fix-loop rounds append,
             # so reading the first would validate a superseded round and

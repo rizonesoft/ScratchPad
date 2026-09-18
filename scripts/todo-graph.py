@@ -3713,6 +3713,11 @@ track: Z1
 |  26   |   §26   | Quoted fence never hides a later panel | - |  [x]   |
 |  27   |   §27   | No forward lookahead window | - |  [x]   |
 |  28   |   §28   | Blank ends a quoted fence | - |  [x]   |
+|  29   |   §29   | GPT fallback clean | - |  [x]   |
+|  30   |   §30   | GPT panel missing the outage note | - |  [x]   |
+|  31   |   §31   | GPT panel missing a lens | - |  [x]   |
+|  32   |   §32   | Opus governs over a clean GPT panel | - |  [x]   |
+|  33   |   §33   | Fenced GPT quote alone satisfies nothing | - |  [x]   |
 
 ---
 
@@ -3995,6 +4000,56 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §28 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-blankquote.md
+
+## 29. GPT fallback clean
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §29 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptclean.md
+
+## 30. GPT panel missing the outage note
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §30 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptnonote.md
+
+## 31. GPT panel missing a lens
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §31 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptpartial.md
+
+## 32. Opus governs over a clean GPT panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §32 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptopus.md
+
+## 33. Fenced GPT quote alone satisfies nothing
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §33 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptfenced.md
 """,
             encoding="utf-8",
         )
@@ -4171,6 +4226,43 @@ track: Z1
             "> ```\n> quoted code\n\n> ```\n"
             "> **adversarial: approve**\n> **consistency: approve**\n"
             "> **integration: approve**\n> **record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptclean.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: CLI auth failure (exit 3).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptnonote.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptpartial.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: model error (overloaded).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptopus.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n\n"
+            "## GPT panel (fallback)\n\n"
+            "Opus outage: CLI missing on PATH.\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptfenced.md").write_text(
+            "# Review: fixture\n\n```\n## GPT panel (round 1)\n\n"
+            "Opus outage: quoted example.\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n```\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -4373,6 +4465,43 @@ track: Z1
             ),
             True,
         )
+        check(
+            "clean GPT fallback panel stays silent",
+            any("TODO-06-panel.md" in ln and "§29 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "GPT panel without the outage note fires",
+            any(
+                "TODO-06-panel.md" in ln and "§30 " in ln and "GPT panel lacks the Opus outage note" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "GPT panel missing one lens names it",
+            any(
+                "TODO-06-panel.md" in ln and "§31 " in ln and "GPT panel lacks verdicts for: record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "Opus panel governs over a clean later GPT panel",
+            any(
+                "TODO-06-panel.md" in ln and "§32 " in ln and "panel lacks verdicts for: record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "fenced GPT quote alone cannot satisfy the rule",
+            any(
+                "TODO-06-panel.md" in ln and "§33 " in ln and "carry no `Opus panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -4400,6 +4529,11 @@ track: Z1
             "90-panel-quotehide.md",
             "90-panel-window1.md",
             "90-panel-blankquote.md",
+            "90-panel-gptclean.md",
+            "90-panel-gptnonote.md",
+            "90-panel-gptpartial.md",
+            "90-panel-gptopus.md",
+            "90-panel-gptfenced.md",
         ):
             (rev_dir / extra).unlink()
         check(
