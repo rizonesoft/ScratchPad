@@ -81,6 +81,7 @@ track: W0
 |  33   |   §33   | Provenance residuals | §23 |  [ ]   |
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [ ]   |
 |  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [ ]   |
+|  36   |   §36   | README mixed-panel touch-up | §35 |  [ ]   |
 
 ---
 
@@ -807,6 +808,15 @@ Why this section exists: the panel regime §§9-14 built puts every round on Opu
 - [ ] Commit: `"workspace: rebalance review panel to mixed Sol/Opus"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with the mixed cases; the Sol-medium probe quoted passing; the skill carries the sequence, caps, command, matrix, and gate; live `validate` stays 0 fatal; live drives reverted clean. Cheaper substitute that fails: prose rules no review follows, or a record shape the query miscounts.
+
+## 36. README Mixed-Panel Touch-Up
+
+Why this section exists: the §35 Opus sign-off (round 3) reported one consistency advisory, verified genuine: the root README's Deferred bullet for external review panel scripts still names the retired `headless Opus panel` title the mixed panel replaced. One line must move, with a re-sweep proving it is the last live site. -> XREF: D00 T01 §35 (filed from its review round 3); -> SOURCE: panel-D00-T01-s35-2026-09-18-R3 (Opus round 3, consistency advisory 1; record in the §35 findings file).
+
+- [ ] The Deferred bullet names the mixed panel: root `README.md` line 79 reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the line names the mixed panel and a tree-wide grep for the retired title finds no live site outside reviews, phase-runs, and script history comments.
+- [ ] Commit: `"workspace: name mixed panel in README Deferred"`
+
+**Test checkpoint:** the bullet names the mixed panel; the re-sweep is quoted clean; live `validate` stays 0 fatal. Cheaper substitute that fails: trusting memory of the title count.
 
 ## Verification
 
