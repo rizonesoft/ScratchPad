@@ -584,6 +584,37 @@ def validate(graph, _args) -> int:
     # reviewed while the required round may never have run. The marker
     # names the filings or `no findings`; the ledger lives in the
     # findings file, not here, so presence is the whole check.
+    # All `Plan review:` lines of one section, in order (D00 T01 §19 item
+    # 4): the parser keeps the last (last-governs), but lineage is a
+    # property of the chain, so the validator re-slices the span. A
+    # range stamp's fields reach sections whose spans hold no marker
+    # lines; those read the parsed body as their single line.
+    todo_lines: dict[str, list[str]] = {}
+
+    def section_markers(todo, num: int) -> list[str] | None:
+        if todo.path not in todo_lines:
+            try:
+                todo_lines[todo.path] = (graph.TODO_DIR.parent / todo.path).read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            except OSError:
+                return None
+        lines = todo_lines[todo.path]
+        spans = sorted((s2.line or 0, n2) for n2, s2 in todo.sections.items())
+        start = max(todo.sections[num].line or 0, 1)
+        following = [ln for ln, _n in spans if ln > start]
+        end = following[0] if following else len(lines) + 1
+        out = []
+        for ln in lines[start - 1 : end - 1]:
+            sm = graph.STAMP_RE.match(ln)
+            if sm and sm.group("kind") == "Plan review":
+                out.append(sm.group("body"))
+        if not out:
+            parsed = (todo.sections[num].plan_review_body or "").strip()
+            if parsed:
+                out.append(parsed)
+        return out
+
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -618,12 +649,17 @@ def validate(graph, _args) -> int:
             # `outage:`. Coherent pairs stay silent: filings or `no
             # findings` beside `retry-owed` (the fallback ran and owes a
             # second-family rerun), and prose refs like `attempted §N`
-            # beside `outage:` (an attempt is not a filing claim).
+            # beside `outage:` (an attempt is not a filing claim). D00 T01
+            # §19 item 5 adds `partial: <rung>`: one rung failed while the
+            # other produced findings, so filings beside `partial:` stay
+            # silent (the survivor's findings stand) while `outage:`
+            # beside `partial:` is FATAL (an outage produced nothing).
             low = marker.lower()
             has_outage = "outage:" in low
             has_nofind = "no findings" in low
             has_filed = re.search(r"\bfiled\b", low) is not None
             has_retry = "retry-owed" in low
+            has_partial = re.search(r"\bpartial\s*:", low) is not None
             if has_nofind and has_filed:
                 flag(
                     "stamp-no-plan-review",
@@ -643,6 +679,11 @@ def validate(graph, _args) -> int:
                 flag(
                     "stamp-no-plan-review",
                     f"{t.path}:{s.line}: §{num} outage marker carries `retry-owed` (no fallback ran)",
+                )
+            if has_outage and has_partial:
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} outage marker carries `partial:` (an outage produced no findings)",
                 )
             if has_outage:
                 continue
@@ -666,6 +707,69 @@ def validate(graph, _args) -> int:
             # independently. Reports on identical markers sharing one file
             # are distinct per-marker defects, not duplicates.
             ftext, _u = graph.strip_fenced_code(ftext)
+            # D00 T01 §19 item 4: marker lineage. A marker whose findings
+            # carry a Plan review record binds to it by run ID: the last
+            # line carries `run <id>`, rerun lines chain via `supersedes
+            # <prior-run>`, runs never repeat within the section, and the
+            # last run is one the manifest carries. Markers over
+            # record-less findings (panel-shape probes) carry nothing to
+            # bind to and stay exempt; outage markers skipped above.
+            heads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(ftext))
+            chain = section_markers(t, num) or []
+            if heads and chain:
+                runs: list[str | None] = []
+                for body in chain:
+                    rm = graph.RUN_ID_RE.search(body)
+                    runs.append(rm.group(1) if rm else None)
+                last_run = runs[-1] if runs else None
+                if last_run is None:
+                    flag(
+                        "plan-review-no-lineage",
+                        f"{t.path}:{s.line}: §{num} marker carries no run ID "
+                        f"(name the review run: run YYYYMMDD-DNN-TNN-SN-<family>[-rN])",
+                    )
+                elif not graph.RUN_ID_SHAPE_RE.match(last_run):
+                    flag(
+                        "plan-review-no-lineage",
+                        f"{t.path}:{s.line}: §{num} marker run {last_run!r} is outside the run-ID shape",
+                    )
+                if len(chain) > 1:
+                    seen_runs = set()
+                    for run in runs:
+                        if run is not None:
+                            if run in seen_runs:
+                                flag(
+                                    "plan-review-no-lineage",
+                                    f"{t.path}:{s.line}: §{num} marker reuses run {run} (a rerun is a new run)",
+                                )
+                            seen_runs.add(run)
+                    sm = graph.SUPERSEDES_RE.search(chain[-1])
+                    prior = set(runs[:-1]) - {None}
+                    if sm is None:
+                        flag(
+                            "plan-review-no-lineage",
+                            f"{t.path}:{s.line}: §{num} rerun marker names no superseded run (supersedes <prior-run>)",
+                        )
+                    elif sm.group(1) not in prior:
+                        flag(
+                            "plan-review-no-lineage",
+                            f"{t.path}:{s.line}: §{num} marker supersedes unknown run {sm.group(1)}",
+                        )
+                if last_run is not None and graph.RUN_ID_SHAPE_RE.match(last_run):
+                    manifest_runs = set()
+                    for h in heads:
+                        hsec = ftext[h.end():]
+                        hnxt = re.search(r"^#{1,6}\s+", hsec, re.MULTILINE)
+                        if hnxt:
+                            hsec = hsec[: hnxt.start()]
+                        hmm = graph.MANIFEST_RE.search(hsec)
+                        if hmm and hmm.group(4):
+                            manifest_runs.add(hmm.group(4))
+                    if manifest_runs and last_run not in manifest_runs:
+                        flag(
+                            "plan-review-no-lineage",
+                            f"{t.path}:{s.line}: §{num} marker run {last_run} matches no manifest run",
+                        )
             marker_keys = set()
             for xm in graph.XREF_RE.finditer(marker):
                 r = graph.resolve_ref(xm.group(0), t, by_key)
@@ -676,10 +780,13 @@ def validate(graph, _args) -> int:
                 nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
                 if nxt:
                     sec = sec[: nxt.start()]
-                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                block, _bproblem = graph.ledger_block(sec)
+                if block is None:
+                    continue
+                for lr in graph.LEDGER_ROW_RE.finditer(block):
                     if lr.group(3).lower() != "filed":
                         continue
-                    rest = sec[lr.end() :].split("\n", 1)[0]
+                    rest = block[lr.end() :].split("\n", 1)[0]
                     for xm in graph.XREF_RE.finditer(rest):
                         r = graph.resolve_ref(xm.group(0), t, by_key)
                         key = (
@@ -698,11 +805,13 @@ def validate(graph, _args) -> int:
     # 18. plan-review records of post-cutoff stamps must be machine-shaped
     # (D00 T01 §16): the query parses manifests and ledgers, so a record
     # it cannot parse is a record that silently drops out of governance.
-    # Every `Plan review` section needs its `Manifest:` line, and every
-    # ledger-looking line must match the row shape. Date-scoped like
-    # rules 16-17 (the §14/§15 records predate the shapes). FATAL: the
-    # fix is mechanical (shape the record) and the defect breaks the
-    # query's contract.
+    # Every `Plan review` section needs its `Manifest:` line and its
+    # `Ledger:`/`End of ledger` block (D00 T01 §19 item 10: rows are only
+    # rows inside the block, so the LIKE heuristic retired with the prose
+    # era); every non-blank line inside the block must match the row
+    # shape. Date-scoped like rules 16-17 (the §14/§15 records predate
+    # the shapes). FATAL: the fix is mechanical (shape the record) and
+    # the defect breaks the query's contract.
     seen_18 = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
@@ -735,8 +844,15 @@ def validate(graph, _args) -> int:
                         "plan-review-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} Plan review section without a Manifest line",
                     )
-                for ln in sec.splitlines():
-                    if graph.LEDGER_LIKE_RE.match(ln) and not graph.LEDGER_ROW_RE.match(ln):
+                block, problem = graph.ledger_block(sec)
+                if block is None:
+                    flag(
+                        "plan-review-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} Plan review section {problem}",
+                    )
+                    continue
+                for ln in block.splitlines():
+                    if ln.strip() and not graph.LEDGER_ROW_RE.match(ln):
                         flag(
                             "plan-review-malformed",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed ledger row: {ln.strip()[:80]}",
@@ -746,14 +862,14 @@ def validate(graph, _args) -> int:
                 # and trigger (an unaccountable deferral satisfies the shape
                 # while promising nothing); a `duplicate` row must name its
                 # canonical finding; a `filed` row must name a target (a
-                # filing that points nowhere is filed nowhere). Stated
-                # boundary: transition ORDER across edits (rejected quietly
-                # re-filed) needs row history the file does not keep, so git
-                # history stays the backstop there (§9 precedent); what one
-                # tree state can prove, this proves.
-                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                # filing that points nowhere is filed nowhere). D00 T01 §19
+                # item 7 adds the open rows: an `accepted` critical or major
+                # must carry its owner and due date (open high-severity
+                # findings are accountable or they sit invisible).
+                for lr in graph.LEDGER_ROW_RE.finditer(block):
+                    sev = lr.group(2).lower()
                     disp = lr.group(3).lower()
-                    rest = sec[lr.end():].split("\n", 1)[0]
+                    rest = block[lr.end():].split("\n", 1)[0]
                     if disp == "deferred":
                         if not (
                             "owner" in rest.lower()
@@ -775,6 +891,12 @@ def validate(graph, _args) -> int:
                             flag(
                                 "plan-review-malformed",
                                 f"{t.path}:{s.line}: §{num} findings {fm.group(1)} filed row names no target: {lr.group(1)}",
+                            )
+                    elif disp == "accepted" and sev in ("critical", "major"):
+                        if not (graph.OWNER_RE.search(rest) and graph.DUE_RE.search(rest)):
+                            flag(
+                                "plan-review-malformed",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} accepted {sev} row without owner and due: {lr.group(1)}",
                             )
 
     # 19. filed rows trace back from the target (D00 T01 §17 item 9): every
@@ -809,10 +931,13 @@ def validate(graph, _args) -> int:
                 nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
                 if nxt:
                     sec = sec[: nxt.start()]
-                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                block, _bproblem = graph.ledger_block(sec)
+                if block is None:
+                    continue
+                for lr in graph.LEDGER_ROW_RE.finditer(block):
                     if lr.group(3).lower() != "filed":
                         continue
-                    rest = sec[lr.end():].split("\n", 1)[0]
+                    rest = block[lr.end():].split("\n", 1)[0]
                     for xm in graph.XREF_RE.finditer(rest):
                         r = graph.resolve_ref(xm.group(0), t, by_key)
                         if not r or r[0] not in by_id or r[1] not in by_id[r[0]].sections:
@@ -863,7 +988,10 @@ def validate(graph, _args) -> int:
                 nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
                 if nxt:
                     sec = sec[: nxt.start()]
-                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                block, _bproblem = graph.ledger_block(sec)
+                if block is None:
+                    continue
+                for lr in graph.LEDGER_ROW_RE.finditer(block):
                     key = lr.group(1).lower()
                     if key in ids and key not in flagged:
                         flagged.add(key)
@@ -873,13 +1001,16 @@ def validate(graph, _args) -> int:
                         )
                     ids.setdefault(key, lr.group(1))
 
-    # 21. a reopen voids proof downstream (D00 T01 §17 item 12): the body
-    # must read `<YYYY-MM-DD> | <finding ref> | <reason>` with a resolvable
-    # §ref (the audit locus whose finding voids this stamp); the row must
-    # be [ ] (a checked reopened row claims shipped work on voided proof);
-    # and no verified section may still depend on a reopened one
-    # (dependents park until it re-stamps). No date scope: the mechanism
-    # is new, so nothing predates it.
+    # 21. a reopen voids proof downstream (D00 T01 §17 item 12, §19 item
+    # 9): the body must read `<YYYY-MM-DD> | <finding ref> | <reason>`
+    # with a resolvable §ref (the audit locus whose finding voids this
+    # stamp); the row must be [ ] (a checked reopened row claims shipped
+    # work on voided proof); and no verified section may keep a reopened
+    # section anywhere in its Depends closure (the cascade is recursive:
+    # a verified dependent of a verified dependent builds on voided proof
+    # exactly like a direct one, so dependents park until the root
+    # re-stamps, bottom-up). No date scope: the mechanism is new, so
+    # nothing predates it.
     reopened = {
         (t.id, num)
         for t in todos
@@ -909,18 +1040,104 @@ def validate(graph, _args) -> int:
                     "stamp-reopened",
                     f"{t.path}:{s.line}: §{num} reopened but still [x]: uncheck the row (the stamp is void)",
                 )
+    rev_deps: dict[tuple[str, int], set[tuple[str, int]]] = {}
     for t in todos:
-        for num, s in sorted(t.sections.items()):
-            if num not in t.verified_sections:
-                continue
+        for num, s in t.sections.items():
             for raw in s.depends_on:
                 r = graph.resolve_ref(raw, t, by_key)
-                if r and r in reopened:
+                if r and r[0] in by_id and r[1] in by_id[r[0]].sections:
+                    rev_deps.setdefault(r, set()).add((t.id, num))
+    for root in sorted(reopened):
+        # The cascade walks the whole reverse closure, not just direct
+        # dependents: every verified section downstream of the root parks.
+        reached: set[tuple[str, int]] = set()
+        queue = sorted(rev_deps.get(root, ()))
+        while queue:
+            key = queue.pop(0)
+            if key in reached:
+                continue
+            reached.add(key)
+            queue.extend(sorted(rev_deps.get(key, ())))
+        for t in todos:
+            for num, s in sorted(t.sections.items()):
+                if (t.id, num) in reached and num in t.verified_sections:
                     # Quoted like rule 17b's message (a): a bare §ref here
                     # would trip per-section silence checks keyed on "§N ".
                     flag(
                         "stamp-reopened",
-                        f"{t.path}:{s.line}: §{num} still stamped while {r[0]} '§{r[1]}' is reopened: park until it re-stamps",
+                        f"{t.path}:{s.line}: §{num} still stamped while {root[0]} '§{root[1]}' is reopened: park until it re-stamps",
+                    )
+
+    # 22. ledger rows keep their history (D00 T01 §19 item 3): every
+    # ledger row's disposition is diffed against the committed record, and
+    # forbidden transitions fail. Triage stays open (`accepted` may move
+    # anywhere; a correction is not a rewrite), `deferred` may only file,
+    # and `filed`, `rejected`, and `duplicate` are terminal: later
+    # evidence against a terminal row lands as a NEW row naming the
+    # superseded ID (amendment by supersession, never by editing the old
+    # row), so a row that vanishes between HEAD and the tree fails too. A
+    # new ID (rerun continuation numbers past the previous max) is always
+    # silent. No date scope: old ledgers deserve the same protection, and
+    # the pre-block committed records parse by row shape so the §19 block
+    # migration itself diffs silent. Uncommitted findings (no HEAD bytes)
+    # skip: without history nothing is provable.
+    HISTORY_OK = {
+        "accepted": {"accepted", "filed", "deferred", "rejected", "duplicate"},
+        "deferred": {"deferred", "filed"},
+        "filed": {"filed"},
+        "rejected": {"rejected"},
+        "duplicate": {"duplicate"},
+    }
+    seen_22 = set()
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm or fm.group(1) in seen_22:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            committed = graph.git_file_at("HEAD", fm.group(1))
+            if committed is None:
+                continue
+            seen_22.add(fm.group(1))
+
+            def _ledger_ids(text: str) -> dict[str, str]:
+                ids: dict[str, str] = {}
+                stripped, _u = graph.strip_fenced_code(text)
+                for h in graph.PLAN_REVIEW_HEADING_RE.finditer(stripped):
+                    hsec = stripped[h.end():]
+                    hnxt = re.search(r"^#{1,6}\s+", hsec, re.MULTILINE)
+                    if hnxt:
+                        hsec = hsec[: hnxt.start()]
+                    # Rows inside the block when one exists, else by row
+                    # shape: a pre-block committed record still diffs row
+                    # for row across the migration, and a tree that merely
+                    # lost its block markers reports once (rule 18), not
+                    # once per row here.
+                    hblock, _hp = graph.ledger_block(hsec)
+                    for lr in graph.LEDGER_ROW_RE.finditer(hblock if hblock is not None else hsec):
+                        ids[lr.group(1).lower()] = lr.group(3).lower()
+                return ids
+
+            now_ids = _ledger_ids(ftext)
+            was_ids = _ledger_ids(committed)
+            for gone in sorted(set(was_ids) - set(now_ids)):
+                flag(
+                    "ledger-history-violation",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {gone} vanished "
+                    f"against the committed record (amend via a new row, never by deleting)",
+                )
+            for rid in sorted(set(now_ids) & set(was_ids)):
+                if now_ids[rid] not in HISTORY_OK.get(was_ids[rid], set()):
+                    flag(
+                        "ledger-history-violation",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {rid} moved "
+                        f"{was_ids[rid]} -> {now_ids[rid]} against the committed record "
+                        f"(terminal rows amend via a new row)",
                     )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,

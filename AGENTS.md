@@ -42,6 +42,7 @@ The lifecycle is: capture, author, validate the plan and source claims, record `
 - **Parity is proven:** captures for Notepad surfaces, ACP schema and docs for protocol behavior. No artifact, no claim.
 - **Consent gates agents:** deny-by-default, exactly-once answers, diff review, undoable apply.
 - **No em dashes** in authored prose. One line per paragraph and list item in Markdown.
+- **Section atomicity is the candidate range:** one section ships as one logical change, and review fix-loop commits append to that range (never amend); each fix is re-reviewed and the stamp names the whole range. "One section = one commit" never means "one hash".
 - **Source of truth:** Notepad behavior via captures, ACP via [agentclientprotocol.com](https://agentclientprotocol.com/get-started/agents), plan state via `todo/`. [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) is prior art, never a design authority. Disagreements are recorded decisions, not silent reinterpretations.
 
 ## Unknowns and questions
@@ -51,12 +52,12 @@ Answer from source first (captures, protocol docs, code). When an unanswered que
 ## Validation
 
 ```bash
-python3 scripts/todo-graph.py self-test      # 539 cases, must stay green
+python3 scripts/todo-graph.py self-test      # 608 cases, must stay green
 python3 scripts/todo-graph.py validate       # FATAL blocks; new WARN* blocks until fixed or accepted
 python3 scripts/todo-graph.py query ready    # dependency-safe work right now
 python3 scripts/todo-graph.py query blocked  # sections waiting on something
 python3 scripts/todo-graph.py query stats    # tree health
-python3 scripts/todo-graph.py query plan-health  # review-loop governance: --json emits schema plan-health/1 (sorted lists, exits 0)
+python3 scripts/todo-graph.py query plan-health  # review-loop governance: --json emits schema plan-health/2 (total sort keys, exits 0); --check/--fail-on gate automation
 python3 scripts/todo-graph.py plan --sync    # re-derive the plan projection after TODO edits
 python3 scripts/todo-graph.py plan --check   # fail if the projection went stale
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # ref -> file, section, deps, status

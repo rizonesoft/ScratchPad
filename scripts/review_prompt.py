@@ -26,10 +26,24 @@ PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
 # consisting of exactly a bare header (count or not) for an
 # already-seen lens still reads as a repeat (quoting with any
 # surrounding prose is safe).
+# Count grammar (D00 T01 §19 item 20): ASCII digits only (`\d` would
+# admit Unicode digits), no sign, no whitespace, no leading zeros (the
+# canonical form is bare `0` or a nonzero digit first), zero allowed,
+# arbitrary length (the cross-check bounds it semantically: a count no
+# finding block can hold fails there, not here).
+_COUNT_INNER = r"(?:0|[1-9][0-9]*)"
 _PANEL_LINE_RE = re.compile(
     r"^\s*\*{2}\s*(adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
-    r"(approve|needs-attention|advisory)(?:\s*\(\d+\)\*{0,2}|\*{0,2}\s*\(\d+\)|\*{0,2})\s*$"
+    r"(approve|needs-attention|advisory)(?:\s*\((?P<c1>" + _COUNT_INNER + r")\)\*{0,2}|\*{0,2}\s*\((?P<c2>"
+    + _COUNT_INNER + r")\)|\*{0,2})\s*$"
 )
+# A declared count is cross-checked against the findings it claims
+# (D00 T01 §19 item 19): a finding is one numbered item (`1. ...`), one
+# per line, so the count must equal the numbered-item tally under its
+# verdict. Unnumbered detail lines are prose, never findings: they ride
+# along without moving the tally. No declared count, no check: details
+# in any shape pass, as before.
+_FINDING_ITEM_RE = re.compile(r"^\s*\d+\.\s")
 
 
 def unique_tag(prefix: str) -> str:
@@ -51,6 +65,29 @@ def fence_chunks(tag: str, chunks: list[tuple[str, str]]) -> str:
     return "\n".join(parts) + "\n"
 
 
+# Delimiter-tag contract (D00 T01 §19 item 11): 64 bits of entropy
+# (`secrets.token_hex(8)`), collision-checked against every payload
+# chunk, with bounded retries. A tag that appears in the payload would
+# let TODO text forge structure, so generation retries until the tag is
+# absent (a collision at 64 bits is a broken RNG, not luck, which is
+# why exhaustion raises instead of degrading to a weak tag).
+TAG_ENTROPY_BITS = 64
+TAG_MAX_ATTEMPTS = 100
+
+
+def fence_chunks_checked(prefix: str, chunks: list[tuple[str, str]]) -> tuple[str, str]:
+    """Fence chunks under a fresh tag proven absent from the payload.
+
+    Returns (tag, prompt). Raises RuntimeError if every attempt collides.
+    """
+    bodies = [body for _, body in chunks]
+    for _ in range(TAG_MAX_ATTEMPTS):
+        tag = unique_tag(prefix)
+        if all(tag not in body for body in bodies):
+            return tag, fence_chunks(tag, chunks)
+    raise RuntimeError(f"tag collided with the payload {TAG_MAX_ATTEMPTS} times; refusing a weak tag")
+
+
 def canonical_prompt_bytes(text: str) -> bytes:
     """Prompt bytes as the manifest counts them: LF newlines, UTF-8."""
     return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
@@ -60,26 +97,54 @@ def check_panel_output(text: str) -> tuple[bool, str]:
     """Whole-output validation for a panel round: every lens verdicts
     exactly once, and every other non-blank line is a detail line under the
     most recent non-approve verdict (an approve takes no details, and
-    nothing precedes the first verdict). Returns (ok, reason); the first
-    bad line is the reason, so trailing garbage after four good verdicts
-    still fails instead of masking."""
+    nothing precedes the first verdict). A declared finding count must
+    equal the numbered-item tally under its verdict. Returns (ok,
+    reason); the first bad line is the reason, so trailing garbage after
+    four good verdicts still fails instead of masking."""
     seen: dict[str, int] = {}
     detail_open = False
+    declared: int | None = None
+    tally = 0
+    open_lens = ""
+    open_line = 0
+
+    def close_block() -> tuple[bool, str] | None:
+        if declared is not None and tally != declared:
+            return False, (
+                f"line {open_line} declares {declared} findings "
+                f"but {tally} numbered items follow under {open_lens}"
+            )
+        return None
+
     for lineno, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         m = _PANEL_LINE_RE.match(line)
         if m:
+            bad = close_block()
+            if bad:
+                return bad
             lens = m.group(1)
             if lens in seen:
                 return False, f"line {lineno} repeats the {lens} verdict (first at line {seen[lens]})"
             seen[lens] = lineno
             detail_open = m.group(2) != "approve"
+            raw = m.group("c1") or m.group("c2")
+            # An approve takes no details, so its tally is fixed at
+            # zero: `approve (0)` passes, `approve (2)` fails.
+            declared = int(raw) if raw is not None else None
+            tally = 0
+            open_lens, open_line = lens, lineno
             continue
         if not seen:
             return False, f"line {lineno} precedes the first verdict: {line.strip()[:80]}"
         if not detail_open:
             return False, f"line {lineno} is not a verdict or finding detail: {line.strip()[:80]}"
+        if _FINDING_ITEM_RE.match(line):
+            tally += 1
+    bad = close_block()
+    if bad:
+        return bad
     missing = [lens for lens in PANEL_LENSES if lens not in seen]
     if missing:
         return False, f"missing verdicts: {', '.join(missing)}"
