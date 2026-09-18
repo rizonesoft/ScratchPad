@@ -995,6 +995,25 @@ def git_file_at(ref: str, repo_path: str) -> str | None:
         return None
 
 
+def git_commit_touches(sha: str, repo_path: str) -> bool | None:
+    """Whether a commit touched a path, or None when unprovable. The
+    clearance proof names non-merge commits (merges list no files, so
+    they fail closed); the self-test patches this name, never a repo."""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "show", "--pretty=format:", "--name-only", sha, "--", repo_path],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return repo_path in out.stdout.decode("utf-8", "replace").splitlines()
+
+
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
 MOVED_PATH_RE = re.compile(r"(?P<path>(?:[\w.-]+/)+[\w.-]+\.md)")
 
@@ -1729,13 +1748,22 @@ def cmd_query(args) -> int:
                             # proves no remediation; day granularity fails
                             # closed), with the finding ID in the target's
                             # file (word-bounded so PR1 never matches
-                            # inside PR10), and with a `fix <sha>` the
-                            # commit's own tree confirms (the reviewed
-                            # candidate contains the fix, not just a
-                            # back-link beside day ordering; D00 T01 §19
-                            # item 8). Unresolvable, unverified,
-                            # pre-dated, unlinked, unnamed, or unproven
-                            # targets fail closed (D00 T01 §17 item 8).
+                            # inside PR10), and with a `fix <sha>` naming a
+                            # non-merge commit that touched the target file
+                            # and whose tree contains the ID (fix-commit
+                            # attribution bound to the target's post-finding
+                            # stamp; D00 T01 §19 item 8). Stated boundary
+                            # (review R5): bytes prove attribution, not
+                            # remediation: a fix commit that only adds the
+                            # back-link still clears, because the semantic
+                            # proof that the work fixed the finding is the
+                            # target's own review and stamp, which is what
+                            # the post-finding stamp leg binds. A sha whose
+                            # tree lacks the ID, that never touched the
+                            # file, or that git cannot prove fails closed,
+                            # as do unresolvable, unverified, pre-dated,
+                            # unlinked, and unnamed targets (D00 T01 §17
+                            # item 8).
                             refs = [xm.group(0) for xm in XREF_RE.finditer(rest)]
                             provable = bool(refs)
                             reviewer_day = s.stamped_on or "\uffff"  # undated reviewer fails closed
@@ -1779,6 +1807,9 @@ def cmd_query(args) -> int:
                                 if fixed is None or not re.search(
                                     r"\b" + re.escape(lr.group(1)) + r"\b", fixed
                                 ):
+                                    provable = False
+                                    break
+                                if not git_commit_touches(fm.group(1), tpath):
                                     provable = False
                                     break
                             if not provable:
@@ -5468,6 +5499,7 @@ track: Z1
 |  22   |   §22   | Marker without run | - |  [x]   |
 |  23   |   §23   | Reused run across markers | - |  [x]   |
 |  24   |   §24   | Ledger history probe | - |  [x]   |
+|  25   |   §25   | Touch-negative target | - |  [x]   |
 
 ---
 
@@ -5515,7 +5547,7 @@ track: Z1
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25 (run 20260920-D90-T07-S4-gpt)
 
 ## 5. Unbalanced findings probe
 
@@ -5743,6 +5775,19 @@ track: Z1
 > **Verified:** 2026-09-20 | §24 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-history.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S24-gpt)
+
+## 25. Touch-negative target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixture-touch D90-T07-S4-PR24 fix ccc3333
+
+> **Verified:** __D5__ | §25 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -5785,6 +5830,10 @@ track: Z1
             # deferred through its review date).
             "- [D90-T07-S4-PR22] [major] Blown due date -> accepted owner ann due 2020-01-01\n"
             "- [PR23] [critical] Blown critical -> deferred owner ann date 2020-02-02 trigger fix-lands\n"
+            # R5 probe: a filed critical whose fix commit carries the ID in
+            # its tree but never touched the target file (an unrelated
+            # commit that happens to contain the citation).
+            "- [D90-T07-S4-PR24] [critical] Untouched fix -> filed §25\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -5910,11 +5959,13 @@ track: Z1
         )
         # Canned git bytes (D00 T01 §19 items 3, 8): the clearance proof
         # reads fix commits and the history rule reads HEAD, so the test
-        # patches the one reader instead of a repo. `aaa1111` carries the
-        # §2 filing, `bbb2222` carries nothing (the §21 negative), and the
-        # history file's committed bytes hold a terminal re-triage plus a
-        # row the tree deleted. Unknown keys read None (hermetic: the real
-        # git never runs in here). Restored after the gate probes below.
+        # patches the readers instead of a repo. `aaa1111` carries the §2
+        # filing and touched the file (PR1 clears), `bbb2222` carries
+        # nothing (the §21 negative), `ccc3333` carries the §25 filing
+        # without touching the file (the §25 negative), and the history
+        # file's committed bytes hold a terminal re-triage plus a row the
+        # tree deleted. Unknown keys read None (hermetic: the real git
+        # never runs in here). Restored after the gate probes below.
         history_tree = (rev_dir / "90-health-history.md").read_text(encoding="utf-8")
         history_was = (
             history_tree.replace(
@@ -5933,10 +5984,17 @@ track: Z1
         canned_git = {
             ("aaa1111", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
             ("bbb2222", marker_todo.as_posix()): "nothing fixed here\n",
+            ("ccc3333", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
             ("HEAD", "docs/reviews/90-health-history.md"): history_was,
         }
+        canned_touches = {
+            ("aaa1111", marker_todo.as_posix()): True,
+            ("ccc3333", marker_todo.as_posix()): False,
+        }
         _real_git_file_at = git_file_at
+        _real_git_touches = git_commit_touches
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
+        globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -6184,6 +6242,11 @@ track: Z1
             0,
         )
         check(
+            "touch-negative target stays silent in validate",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§25 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
             "marker without a run fires",
             any(
                 "TODO-07-marker.md" in ln and "§22 " in ln and "carries no run ID" in ln
@@ -6393,6 +6456,11 @@ track: Z1
         check(
             "plan-health keeps the fix-unproven finding listed",
             any("D90-T07-S4-PR17" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health keeps the untouched-fix finding listed",
+            any("D90-T07-S4-PR24" in ln for ln in health_lines),
             True,
         )
         check(
@@ -6678,6 +6746,7 @@ track: Z1
         check("plan-health --fail-on stale gates it explicitly", gate_stale_explicit, 1)
         check("plan-health --check --fail-on stale unions both", gate_stale_union, 1)
         globals()["git_file_at"] = _real_git_file_at
+        globals()["git_commit_touches"] = _real_git_touches
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.
