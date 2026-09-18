@@ -71,6 +71,10 @@ track: W0
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [ ]   |
 |  24   |   §24   | Lineage residuals and run inspection | §20 |  [ ]   |
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [ ]   |
+|  26   |   §26   | Grandfathered migration execution | §21 |  [ ]   |
+|  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
+|  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
+|  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
 
 ---
 
@@ -578,7 +582,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 > **Started:** 2026-09-18T14:54:33Z
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes accountability and surfacing (PR6n, PR8, PR18, PR23) as the second of the four-way split. The seventh plan review then added a grandfathered-provenance inventory (PR9) to the open section. Accountability must terminate in named owners and auditable records, and the operator needs a fast recovery path, not just machine-readable dimensions. -> XREF: D00 T01 §19 (filed from its plan review); -> XREF: D00 T01 §20 (PR9 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s21 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)); plan-review-D00-T01-s20-2026-09-18 (PR9 inventory; ledger in the §20 findings file). -> XREF: D00 T01 §25 (review round-5 leftover filed here).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes accountability and surfacing (PR6n, PR8, PR18, PR23) as the second of the four-way split. The seventh plan review then added a grandfathered-provenance inventory (PR9) to the open section. Accountability must terminate in named owners and auditable records, and the operator needs a fast recovery path, not just machine-readable dimensions. -> XREF: D00 T01 §19 (filed from its plan review); -> XREF: D00 T01 §20 (PR9 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s21 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)); plan-review-D00-T01-s20-2026-09-18 (PR9 inventory; ledger in the §20 findings file). -> XREF: D00 T01 §25 (review round-5 leftover filed here); -> XREF: D00 T01 §26 (eighth plan-review migration filings); -> XREF: D00 T01 §27 (eighth plan-review acceptance filings); -> XREF: D00 T01 §28 (eighth plan-review record and doc filings); -> XREF: D00 T01 §29 (eighth plan-review unattended and visibility filings).
 
 - [x] Partial-owed-rerun coherence: define whether a partial run owes a retry and how `partial:` composes with `retry-owed` (PR6n D00-T01-S19-PR6). Done when: the skill states the rule and the validator plus query follow with fixtures. Done: skill plus README state the rule (`partial:` names the failed rung, `gpt rung` or `opus rung`; a fallback survivor owes `retry-owed`, a primary survivor carries no retry and no accountability fields); the validator fires on missing, unowed, stray-fielded, and unknown-rung partials; the query lists owed partials as `retry-owed+partial` and never flags bare partials unaccountable; §§36-40 prove each shape with §17 as the silent positive.
 - [x] Risk-acceptance record shape: approver identity, rationale, scope, expiry, and review date, surfaced where the escalation lands (PR8 D00-T01-S19-PR8). Done when: the shape ships with validator plus query surfacing. Done: `Risk accepted:` carries target (finding ID, run ID, or `outage <rung>`), approver, record date, expiry, review date, and rationale tail; rule 24 fires on malformed, uncoverable, and inverted acceptances; the query clears OVERDUE, escalation, and gate vote while live and shows `accepted by` with expiry, review date, and rationale on degraded, criticals, and majors in text and JSON (schema plan-health/3); §§42-46 prove run, finding, and outage coverage, lapse, and malformation. **Corrected 2026-09-18 (review R1):** finding-ID cover folds case like the duplicate-ID rule (the target pattern admits lowercase); acceptances in grandfathered-only files cover nothing, mirroring rule 24's date scope. **Corrected 2026-09-18 (review R2):** the review date and rationale were parsed for shape but dropped from every surface; both now ride the text tag and the JSON record (still /3, pre-stamp). **Corrected 2026-09-18 (review R3):** coverage needs recorded on or before today (a post-dated waiver validates but covers nothing); the provenance gate is now stated in the skill and README. **Corrected 2026-09-18 (review R4):** rule 24 fires when the review date falls outside record..expiry (bounds inclusive, in-file dates only); the degraded sort key covers all ten scalar fields.
@@ -629,12 +633,66 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 
 ## 25. Rule-24 Comment Touch-Up
 
-Why this section exists: the §21 panel's round 5 (the cap) reported one consistency leftover: two in-code descriptions of `risk-acceptance-malformed` enumerate three legs while rule 24 has four (the review-window leg landed in §21 review R4). Comments must describe the rule they head, and the cap sends leftovers here instead of a sixth round. -> XREF: D00 T01 §21 (filed from its review round 5); -> SOURCE: panel-D00-T01-s21-2026-09-18-R5 (Opus round 5, consistency 1; ledger in the §21 findings file).
+Why this section exists: the §21 panel's round 5 (the cap) reported one consistency leftover: two in-code descriptions of `risk-acceptance-malformed` enumerate three legs while rule 24 has four (the review-window leg landed in §21 review R4). Comments must describe the rule they head, and the cap sends leftovers here instead of a sixth round. -> XREF: D00 T01 §21 (filed from its review round 5); -> SOURCE: panel-D00-T01-s21-2026-09-18-R5 (Opus round 5, consistency 1; ledger in the §21 findings file); plan-review-D00-T01-s21-2026-09-18 D00-T01-S21-PR25 (assertion joiner; ledger in the §21 findings file).
 
 - [ ] Both rule-24 descriptions name all four legs: the `SEVERITY_MAP` entry in `scripts/todo-graph.py` and the rule 24 header comment in `scripts/todo-validate.py` enumerate shape, uncoverable target, inverted dates, and the review-window bound. Done when: both comments name the fourth leg and no behavior changes.
+- [ ] Exact assertions lock both descriptions: the self-test greps each site for the fourth leg (not just aggregate counts), so a future leg cannot land described in one place (PR25 D00-T01-S21-PR25). Done when: one probe per site names the review-window clause.
 - [ ] Commit: `"workspace: rule-24 comments name the review-window leg"`
 
 **Test checkpoint:** self-test still passes with no count change, live validate stays 0 fatal. Cheaper substitute that fails: trusting memory of the leg count.
+
+## 26. Grandfathered Migration Execution
+
+Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; 22 file across §§26-29 plus a §25 item, 3 are rejected with reasons in the §21 findings file (PR7 wrong premise, PR16 complete by design, PR21 machine contract exists). This section takes migration execution (PR1, PR2, PR3, PR4, PR5): the baseline must reconcile, the unit must be canonical, the batches must run as tracked work, the batch acceptance must have effect, and the unnamed Current state must be addressable. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s26 D00-T01-S21-PR1 D00-T01-S21-PR2 D00-T01-S21-PR3 D00-T01-S21-PR4 D00-T01-S21-PR5 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file).
+
+- [ ] Baseline reconciles and the unit is canonical: the 53 unmarked stamps and the 57 run-less files are explained as two real populations (verified live), one is named the migration unit, and multi-stamp files have a completion rule (PR1 plus PR4 D00-T01-S21-PR1 D00-T01-S21-PR4, two findings one item). Done when: Current state carries the reconciliation plus the unit with its per-file rule.
+- [ ] Batch acceptance has effect: either the acceptance grammar gains a batch or stamp target that the validator and query enforce, or the prose acceptance is blessed as the migration-scale record with its audit path stated (PR3 D00-T01-S21-PR3). Done when: the chosen record is machine-checkable or explicitly prose with a stated audit path.
+- [ ] Batch A migrates: TODO-01-repo-and-toolchain, 13 stamps, with owner, per-stamp verification, and a dated completion note (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
+- [ ] Batch B migrates: TODO-02-test-backbone, 7 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
+- [ ] Batch C migrates: TODO-01-winui-app-spine, 27 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
+- [ ] Batch D migrates: TODO-02-menus-settings-status, 6 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
+- [ ] Current state is addressable: the migration and provenance blockquotes gain a real heading or move into the owning sections, so references resolve (PR5 D00-T01-S21-PR5). Done when: every Current-state reference names a heading that exists.
+- [ ] Commit: `"workspace: execute grandfathered migration per eighth live round"`
+
+**Test checkpoint:** the baseline reads one way, the batches drain to zero, and every reference resolves. Cheaper substitute that fails: machinery nobody runs.
+
+## 27. Acceptance Integrity
+
+Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes acceptance integrity (PR6, PR8, PR9, PR10, PR11, PR12): waivers must bind their target instance, follow their target in time, track the evidence they cover, resist silent edits, name an action owner, and schedule an enforceable review. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s27 D00-T01-S21-PR6 D00-T01-S21-PR8 D00-T01-S21-PR9 D00-T01-S21-PR10 D00-T01-S21-PR11 D00-T01-S21-PR12 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file).
+
+- [ ] Outage targets bind the run: `outage <rung>` becomes a compound run-and-rung identity (or an equivalent instance key), so a later outage of the same rung is never covered by an earlier waiver (PR6 D00-T01-S21-PR6). Done when: the validator plus query enforce instance binding with fixtures.
+- [ ] Acceptances follow their target: coverage requires the target finding, run, or outage to exist at or before the record date, so a prewritten waiver covers nothing (PR8 D00-T01-S21-PR8). Done when: the query enforces target-before-record with fixtures.
+- [ ] Acceptances bind the evidence: the record carries the candidate hash or risk digest it was written against, and a reopen or material change invalidates it (PR9 D00-T01-S21-PR9). Done when: stale evidence voids coverage with fixtures.
+- [ ] Acceptances amend append-only: approver, rationale, dates, and scope change only by superseding record, validated against history like ledger rows (PR10 D00-T01-S21-PR10). Done when: silent edits fail with fixtures.
+- [ ] Acceptances name an action owner: review, renewal, and remediation have an accountable recipient beside the approver, and expiry escalates to them (PR11 D00-T01-S21-PR11). Done when: the shape plus query enforce the owner with fixtures.
+- [ ] Review dates schedule action: review-due and review-overdue states surface with a recorded outcome, so the field is a commitment, not a note (PR12 D00-T01-S21-PR12). Done when: the query surfaces the states with fixtures.
+- [ ] Commit: `"workspace: harden acceptance integrity per eighth live round"`
+
+**Test checkpoint:** every waiver binds one instance, follows its target, tracks its evidence, amends aloud, names an owner, and schedules its review. Cheaper substitute that fails: a waiver that waives itself.
+
+## 28. Partial Records and Governance Docs
+
+Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes partial records plus governance documentation (PR13, PR15, PR17, PR18, PR19, PR20, PR23): the record must carry enough failure detail, and the rules must say what they mean where they are stated. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s28 D00-T01-S21-PR13 D00-T01-S21-PR15 D00-T01-S21-PR17 D00-T01-S21-PR18 D00-T01-S21-PR19 D00-T01-S21-PR20 D00-T01-S21-PR23 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file).
+
+- [ ] Minimum review quorum is recorded: the skill states what a complete review requires and why primary-survivor loss of the fallback is acceptable, or the rule changes (PR15 D00-T01-S21-PR15). Done when: the quorum rationale reads in the skill or the rule carries a retry.
+- [ ] Partial records carry failure detail: failure class, evidence, attempt count, and retry linkage ride the marker or a linked immutable outage artifact (PR17 D00-T01-S21-PR17). Done when: recurring failures are diagnosable from the record with fixtures.
+- [ ] The legacy owner exception is explicit: where the rule norms universal owners, the grandfathered bare-row exception reads with its deadline (PR18 D00-T01-S21-PR18). Done when: the normative sentence carries the exception.
+- [ ] Deferred dates stop borrowing review language: the triple's `date` is disambiguated from the acceptance `review` by rename or by a stated non-confusion (PR19 D00-T01-S21-PR19). Done when: prose plus shapes use one meaning per name.
+- [ ] Next-action precedence is specified: the gate-order rule behind `next:` reads where the digest is defined, with its rationale (PR20 D00-T01-S21-PR20). Done when: the precedence plus rationale read beside the digest.
+- [ ] Identity and authorization are recorded: the single-operator default for owners and approvers reads with its cost of changing, or a registry plus approval thresholds land (PR13 plus PR23 D00-T01-S21-PR13 D00-T01-S21-PR23, two findings one item). Done when: the trust model reads in one place.
+- [ ] Commit: `"workspace: partial records and governance docs per eighth live round"`
+
+**Test checkpoint:** the record explains its failures and every rule says what it means. Cheaper substitute that fails: tribal knowledge.
+
+## 29. Unattended Checks and Risk Visibility
+
+Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes unattended enforcement plus risk visibility (PR14, PR22, PR24): dates must fire without an operator at the keyboard, and accepted risk must stay visible with its residual weight. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s29 D00-T01-S21-PR14 D00-T01-S21-PR22 D00-T01-S21-PR24 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file).
+
+- [ ] Scheduled enforcement runs the gates: CI runs plan-health on a schedule and notifies owners before dates pass, so unattended obligations cannot expire silently (PR22 D00-T01-S21-PR22). Done when: the schedule plus notification path fire on a fixture date.
+- [ ] Accepted risk stays visible: a persistent gatable register with residual severity plus a health dashboard over reviews, expiries, partials, and migration progress (PR14 plus PR24 D00-T01-S21-PR14 D00-T01-S21-PR24, two findings one item). Done when: the register gates and the dashboard renders from structured data.
+- [ ] Commit: `"workspace: unattended checks and risk visibility per eighth live round"`
+
+**Test checkpoint:** dates fire on their own and accepted risk never goes dark. Cheaper substitute that fails: remembering to look.
 
 ## Verification
 
