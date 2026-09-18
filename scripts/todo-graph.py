@@ -3184,8 +3184,9 @@ def build_progress(todos: list[Todo]) -> dict:
     """The payload the progress dashboard renders. Same graph as plan --sync.
 
     Counts and checkbox state come from Implementation Order rows, not from
-    campaign.json and not from a second list in PHP. Duration is present only
-    when a stamp recorded integer minutes.
+    campaign.json and not from a second list in PHP. Duration is present
+    when a stamp recorded integer minutes or a valid instant range
+    (ranges compute their minutes at parse).
     """
     state = _plan_state(todos)
     duration = _duration_by_ref(todos)
@@ -4307,6 +4308,8 @@ track: Z1
 |   1   |   §1    | Minutes then range | - |  [x]   |
 |   2   |   §2    | Range then minutes | - |  [x]   |
 |   3   |   §3    | Bad range | - |  [x]   |
+|   4   |   §4    | Inverted range | - |  [x]   |
+|   5   |   §5    | Range then unshaped | - |  [x]   |
 
 ## 1. Minutes then range
 
@@ -4330,6 +4333,21 @@ track: Z1
 
 > **Verified:** 2026-01-01 | §3 | fixture
 > **Duration:** 2026-09-31T10:00:00Z to 2026-09-31T10:07:00Z
+
+## 4. Inverted range
+
+- [x] Commit: `"selftest: duration"`
+
+> **Verified:** 2026-01-01 | §4 | fixture
+> **Duration:** 2026-01-01T10:07:00Z to 2026-01-01T10:00:00Z
+
+## 5. Range then unshaped
+
+- [x] Commit: `"selftest: duration"`
+
+> **Verified:** 2026-01-01 | §5 | fixture
+> **Duration:** 2026-01-01T10:00:00Z to 2026-01-01T10:07:00Z
+> **Duration:** unclear
 """,
             encoding="utf-8",
         )
@@ -4347,6 +4365,16 @@ track: Z1
         check(
             "calendar-invalid Duration fails soft",
             (dd.sections[3].duration_end, dd.sections[3].duration_minutes),
+            (None, None),
+        )
+        check(
+            "inverted Duration fails soft",
+            (dd.sections[4].duration_end, dd.sections[4].duration_minutes),
+            (None, None),
+        )
+        check(
+            "unshaped Duration clears a prior range",
+            (dd.sections[5].duration_end, dd.sections[5].duration_minutes),
             (None, None),
         )
         dur.unlink()
