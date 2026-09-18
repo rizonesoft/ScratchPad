@@ -51,7 +51,7 @@ track: W0
 |  11   |   §11   | Quote-end lookahead removal | §10 |  [x]   |
 |  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [x]   |
 |  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
-|  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [ ]   |
+|  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
 
 ---
 
@@ -361,6 +361,12 @@ Why this section exists: the Opus panel gates what a section built, but no lens 
 - [x] Commit: `"workspace: add second-family plan reviews"`
 
 **Test checkpoint:** Skill carries the plan-review timing, scope, reviewer, and fallback chain plus the panel's mirror rung with its honest-record shape; the GPT-high, Opus-high, and GPT-medium probes are quoted passing; a forced runner failure is observed to reach the Opus rung; self-test is green at the new quoted count with the GPT-panel accept and reject cases; live-tree `validate` stays silent. **Corrected 2026-09-18 (validation):** filed covering only the plan-review chain; the panel chain, validator cases, and count are item-4 work the checkpoint must also gate. Cheaper substitute that fails: a second-family round with no fallback, which blocks the run on every runner outage.
+
+> **Verified:** 2026-09-18 | §14 | skill carries the plan-review step (post-stamp advisory, section-plus-neighbors scope, `add-todo` route), the GPT-high reviewer pin with the lowercase probe note, both fallback chains, and the panel mirror rung with the `Plan review` record heading; probes quoted (GPT-high, Opus-high, GPT-medium `runner-ok`; bogus-model 400 reaching the Opus rung); validator takes the GPT fallback record (4 verdicts plus outage note, last of either family governs); self-test 454/454 (+8 §§29-36, §32 flipped with reason, §36 mutation-proven); live validate 0 fatal; live drives A-D reverted clean
+> **Review:** rounds 1-3, candidates 5eaef41 2bf7f1f bb801bf -- `adversarial` approve (R1 needs-attention on Opus-governs fixed with last-wins plus §§34-35; R2 advisory on §36 coverage fixed) · `consistency` approve · `integration` approve (R1 advisory on the plan-review heading fixed) · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s14.md
+> **CRUD:** applicable | self-test wrote panel fixtures under a temp root (unlinked after, read back via per-line case assertions); live drives wrote temp Review re-points plus a scratch findings file (reverted clean, scratch deleted, read back via validate output); runner probes wrote nothing (verbatim-echo, read-only); skill and doc edits read back via grep
+> **Duration:** 14
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## Verification
 
