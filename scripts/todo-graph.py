@@ -5953,6 +5953,30 @@ track: Z1
             False,
         )
         check(
+            "panel verdict with count inside the closer passes",
+            rp.check_panel_output(
+                "**adversarial: needs-attention (2)**\n1. `f.py:1` x\n2. `g.py:2` y\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            True,
+        )
+        check(
+            "panel verdict with count outside the closer passes",
+            rp.check_panel_output(
+                "**adversarial: needs-attention** (2)\n1. `f.py:1` x\n2. `g.py:2` y\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            True,
+        )
+        check(
+            "panel output with a repeated lens fails",
+            rp.check_panel_output(
+                "**adversarial: needs-attention**\n1. `f.py:1` x\n**adversarial: approve**\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            False,
+        )
+        check(
             "dash-opened verdict line fails as off-shape",
             rp.check_panel_output(
                 "- `adversarial` needs-attention: x\n**consistency: approve**\n"
