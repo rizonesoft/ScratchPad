@@ -1396,12 +1396,15 @@ def git_resolves(sha: str) -> bool | None:
     carries the three states (0 resolves, 1 names nothing, anything
     else unprovable): `cat-file -e` conflates an absent short with a
     fatal at 128, which would report every bogus candidate as
-    unprovable instead of missing (review R1, probed 2026-09-18)."""
+    unprovable instead of missing (review R1, probed 2026-09-18). The
+    `^{object}` peel forces the existence check a bare full-length hex
+    skips (rev-parse prints an absent 40-hex back at exit 0; peeled it
+    exits 1 like an absent short, review R2, probed 2026-09-18)."""
     try:
         import subprocess
 
         out = subprocess.run(
-            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", sha],
+            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{sha}^{{object}}"],
             capture_output=True,
             timeout=30,
         )
