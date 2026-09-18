@@ -505,7 +505,7 @@ def validate(graph, _args) -> int:
             # satisfy the rule nor, under last-wins, displace the real
             # panel. The stripper lives in the graph module (shared with
             # `query plan-health` since D00 T01 §15); the move is verbatim
-            # and the 36 panel cases prove it.
+            # and the 39 panel cases prove it.
             text, unbalanced = graph.strip_fenced_code(text)
             if unbalanced is not None:
                 flag(

@@ -761,7 +761,7 @@ def strip_fenced_code(text: str) -> tuple[str, int | None]:
 
     Moved out of rule 16 verbatim (D00 T01 §15): the plan-health query
     scans the same findings files, and two fence implementations would
-    drift back into the bugs §§10-11 fixed. The 36 panel cases prove the
+    drift back into the bugs §§10-11 fixed. The 39 panel cases prove the
     move changed nothing.
     """
     kept = []
@@ -2075,6 +2075,11 @@ def cmd_query(args) -> int:
                 if dep not in marked and dep in uncoverable:
                     uncovered.append((labels.get(dep, f"{dep[0]} §{dep[1]}"), labels.get(key, f"{key[0]} §{key[1]}")))
         gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
+        # D00 T01 §35: planned GPT-early rounds under an Opus sign-off are
+        # not fallback, so the leg mirrors rule 16's last-wins instead of
+        # matching any GPT heading. The Opus regex matches rule 16's
+        # PANEL_HEADING_RE verbatim (level 2+, word boundary).
+        opus_heading_re = re.compile(r"^#{2,6}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
         outage_re = re.compile(r"opus outage", re.IGNORECASE)
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
         fallback, outages, criticals, unreadable, stale = [], [], [], [], []
@@ -2110,7 +2115,12 @@ def cmd_query(args) -> int:
                 text, unbalanced_opener = strip_fenced_code(text)
                 if unbalanced_opener is not None:
                     unreadable.append((m.group(1), unbalanced_opener))
-                if gpt_heading_re.search(text):
+                gpt_heads = list(gpt_heading_re.finditer(text))
+                opus_heads = list(opus_heading_re.finditer(text))
+                last_is_gpt = bool(gpt_heads) and (
+                    not opus_heads or gpt_heads[-1].start() > opus_heads[-1].start()
+                )
+                if last_is_gpt:
                     fallback.append(m.group(1))
                 if outage_re.search(text):
                     outages.append(m.group(1))
@@ -2690,7 +2700,7 @@ def cmd_query(args) -> int:
             if gone:
                 bits.append(f"removed: {', '.join(gone)}")
             print(f"    {f}  {'; '.join(bits)}")
-        print(f"fallback usage      {len(fallback_sorted)} findings with a GPT panel")
+        print(f"fallback usage      {len(fallback_sorted)} findings with a GPT-last panel")
         for f in fallback_sorted:
             print(f"    {f}")
         print(f"outages             {len(outages_sorted)} findings with an Opus outage note")
@@ -5396,6 +5406,9 @@ track: Z1
 |  34   |   §34   | Last Opus panel governs over a clean earlier GPT panel | - |  [x]   |
 |  35   |   §35   | Trailing heading ends the GPT panel section | - |  [x]   |
 |  36   |   §36   | Defective GPT last fires over a clean earlier Opus panel | - |  [x]   |
+|  37   |   §37   | Mixed Full record stays silent | - |  [x]   |
+|  38   |   §38   | Mixed Light record stays silent | - |  [x]   |
+|  39   |   §39   | Defective GPT-early under a clean Opus last stays silent | - |  [x]   |
 
 ---
 
@@ -5794,6 +5807,39 @@ track: Z1
 > **Verified:** 2026-09-20 | §36 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptlastbad.md
 > **Plan review:** GPT high, no findings
+
+## 37. Mixed Full record stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §37 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedfull.md
+> **Plan review:** GPT high, no findings
+
+## 38. Mixed Light record stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §38 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedlight.md
+> **Plan review:** GPT high, no findings
+
+## 39. Defective GPT-early under a clean Opus last stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §39 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedearlybad.md
+> **Plan review:** GPT high, no findings
 """,
             encoding="utf-8",
         )
@@ -6035,6 +6081,35 @@ track: Z1
             "Opus outage: CLI auth failure (exit 3).\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-mixedfull.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## GPT panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Opus panel (round 3)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-mixedlight.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-mixedearlybad.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n\n"
+            "## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -6318,9 +6393,24 @@ track: Z1
             ),
             True,
         )
+        check(
+            "mixed Full record stays silent",
+            any("TODO-06-panel.md" in ln and "§37 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "mixed Light record stays silent",
+            any("TODO-06-panel.md" in ln and "§38 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "defective GPT-early under a clean Opus last stays silent",
+            any("TODO-06-panel.md" in ln and "§39 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
         # landed must carry the `Plan review:` completion marker. Own
-        # fixture TODO (the panel file's 36 sections stay untouched); all
+        # fixture TODO (the panel file's 39 sections stay untouched); all
         # three stamps point Review at the clean panel fixture so rule 16
         # stays silent and only the marker rule can fire. Runs before the
         # panel unlink below, while the clean fixture still exists.
@@ -8823,6 +8913,36 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "plan-health --json skips mixed Full GPT-early rounds in fallback",
+            "docs/reviews/90-panel-mixedfull.md" in jdata.get("fallback", []),
+            False,
+        )
+        check(
+            "plan-health --json skips mixed Light GPT-early rounds in fallback",
+            "docs/reviews/90-panel-mixedlight.md" in jdata.get("fallback", []),
+            False,
+        )
+        check(
+            "plan-health --json skips defective GPT-early rounds in fallback",
+            "docs/reviews/90-panel-mixedearlybad.md" in jdata.get("fallback", []),
+            False,
+        )
+        check(
+            "plan-health --json skips the Opus-last file over a GPT early round",
+            "docs/reviews/90-panel-opuslast.md" in jdata.get("fallback", []),
+            False,
+        )
+        check(
+            "plan-health --json keeps the GPT-last file over an Opus early round",
+            "docs/reviews/90-panel-gptlastbad.md" in jdata.get("fallback", []),
+            True,
+        )
+        check(
+            "plan-health --json keeps the lone GPT fallback file",
+            "docs/reviews/90-health.md" in jdata.get("fallback", []),
+            True,
+        )
+        check(
             "plan-health --json retires retry_owed for degraded",
             "retry_owed" in jdata,
             False,
@@ -9895,6 +10015,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "90-panel-opuslast.md",
             "90-panel-gpttail.md",
             "90-panel-gptlastbad.md",
+            "90-panel-mixedfull.md",
+            "90-panel-mixedlight.md",
+            "90-panel-mixedearlybad.md",
         ):
             (rev_dir / extra).unlink()
         check(
