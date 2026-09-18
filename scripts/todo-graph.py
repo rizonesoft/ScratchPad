@@ -1252,7 +1252,11 @@ def cmd_query(args) -> int:
                     if nxt:
                         sec = sec[:nxt.start()]
                     for lr in ledger_re.finditer(sec):
-                        if lr.group(2).lower() == "critical" and lr.group(3).lower() != "filed":
+                        # Still open, not merely unfiled: rejected and
+                        # duplicate rows are terminal, so counting them
+                        # would cry wolf on every run until readers ignore
+                        # the dimension entirely.
+                        if lr.group(2).lower() == "critical" and lr.group(3).lower() in ("accepted", "deferred"):
                             criticals.append((m.group(1), f"PR{lr.group(1)}"))
         print(f"reviewed sections   {len(marked)} marked, {len(unmarked)} unmarked post-cutoff")
         for label, day in sorted(unmarked):
@@ -4806,7 +4810,8 @@ track: Z1
             "## Plan review\n\n"
             "- [PR1] [critical] Widget gap -> filed D90 T99 §1\n"
             "- [PR2] [major] Wording -> filed D90 T99 §2\n"
-            "- [PR3] [critical] Hanging critical -> accepted needs owner\n",
+            "- [PR3] [critical] Hanging critical -> accepted needs owner\n"
+            "- [PR4] [critical] Rejected scare -> rejected not a real gap\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -4870,6 +4875,11 @@ track: Z1
         check(
             "plan-health clears the filed critical",
             "PR1" in health_out,
+            False,
+        )
+        check(
+            "plan-health clears the rejected critical",
+            "PR4" in health_out,
             False,
         )
         (rev_dir / "90-health.md").unlink()
