@@ -606,7 +606,45 @@ def validate(graph, _args) -> int:
             # claims filing completeness). `outage:` markers skip both:
             # there was no review to file from. Rule 16 owns missing or
             # unreadable findings, so the cross-check quietly skips those.
-            if "outage:" in marker.lower():
+            # D00 T01 §17 item 2: the marker grammar, checked before the
+            # outage skip (grammar binds every marker). The last marker
+            # line governs: the parser overwrites, so this body already IS
+            # the last one, and a superseded line's claims are void. States
+            # are mutually exclusive where they contradict: `no findings`
+            # beside a `filed` claim, and any filing claim beside
+            # `outage:`, are FATAL; outage purity also forbids `no
+            # findings` (nothing ran, so nothing was found) and
+            # `retry-owed` (no fallback ran, so no rerun is owed) beside
+            # `outage:`. Coherent pairs stay silent: filings or `no
+            # findings` beside `retry-owed` (the fallback ran and owes a
+            # second-family rerun), and prose refs like `attempted §N`
+            # beside `outage:` (an attempt is not a filing claim).
+            low = marker.lower()
+            has_outage = "outage:" in low
+            has_nofind = "no findings" in low
+            has_filed = re.search(r"\bfiled\b", low) is not None
+            has_retry = "retry-owed" in low
+            if has_nofind and has_filed:
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} marker claims both `no findings` and filings",
+                )
+            if has_outage and has_filed:
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} outage marker carries filing claims",
+                )
+            if has_outage and has_nofind:
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} outage marker claims `no findings` (nothing ran)",
+                )
+            if has_outage and has_retry:
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} outage marker carries `retry-owed` (no fallback ran)",
+                )
+            if has_outage:
                 continue
             for xm in graph.XREF_RE.finditer(marker):
                 r = graph.resolve_ref(xm.group(0), t, by_key)
@@ -703,6 +741,187 @@ def validate(graph, _args) -> int:
                             "plan-review-malformed",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed ledger row: {ln.strip()[:80]}",
                         )
+                # D00 T01 §17 item 10: row-legality for the content-bearing
+                # dispositions. A `deferred` row must carry its owner, date,
+                # and trigger (an unaccountable deferral satisfies the shape
+                # while promising nothing); a `duplicate` row must name its
+                # canonical finding; a `filed` row must name a target (a
+                # filing that points nowhere is filed nowhere). Stated
+                # boundary: transition ORDER across edits (rejected quietly
+                # re-filed) needs row history the file does not keep, so git
+                # history stays the backstop there (§9 precedent); what one
+                # tree state can prove, this proves.
+                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                    disp = lr.group(3).lower()
+                    rest = sec[lr.end():].split("\n", 1)[0]
+                    if disp == "deferred":
+                        if not (
+                            "owner" in rest.lower()
+                            and re.search(r"\d{4}-\d{2}-\d{2}", rest)
+                            and "trigger" in rest.lower()
+                        ):
+                            flag(
+                                "plan-review-malformed",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} deferred row without owner, date, and trigger: {lr.group(1)}",
+                            )
+                    elif disp == "duplicate":
+                        if not re.search(r"\bPR\d+\b|[A-Z0-9]+-T\d+-S\d+-PR\d+", rest):
+                            flag(
+                                "plan-review-malformed",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} duplicate row names no canonical finding: {lr.group(1)}",
+                            )
+                    elif disp == "filed":
+                        if not list(graph.XREF_RE.finditer(rest)):
+                            flag(
+                                "plan-review-malformed",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} filed row names no target: {lr.group(1)}",
+                            )
+
+    # 19. filed rows trace back from the target (D00 T01 §17 item 9): every
+    # filed row's ID must appear in its target's file, word-bounded so PR1
+    # never matches inside PR10. A filing untraceable from the target side
+    # cannot attribute remediation to the finding. Date-scoped like rules
+    # 16-18 (reviews stamped on or before 2026-09-18 predate the back-link
+    # requirement). Unresolvable targets are skipped: rule 17 already
+    # convicts the marker that names them. File-scoped with first-reporter
+    # dedup like rules 18 and 20 (unlike 17b, whose claim each marker owns):
+    # the missing back-link is a property of the row and target, identical
+    # for every section over a shared file.
+    target_texts: dict[str, str] = {}
+    seen_19 = set()
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
+                continue
+            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm or fm.group(1) in seen_19:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            seen_19.add(fm.group(1))
+            ftext, _u = graph.strip_fenced_code(ftext)
+            for h in graph.PLAN_REVIEW_HEADING_RE.finditer(ftext):
+                sec = ftext[h.end():]
+                nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
+                if nxt:
+                    sec = sec[: nxt.start()]
+                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                    if lr.group(3).lower() != "filed":
+                        continue
+                    rest = sec[lr.end():].split("\n", 1)[0]
+                    for xm in graph.XREF_RE.finditer(rest):
+                        r = graph.resolve_ref(xm.group(0), t, by_key)
+                        if not r or r[0] not in by_id or r[1] not in by_id[r[0]].sections:
+                            continue
+                        tpath = by_id[r[0]].path
+                        if tpath not in target_texts:
+                            try:
+                                target_texts[tpath] = (graph.TODO_DIR.parent / tpath).read_text(
+                                    encoding="utf-8"
+                                )
+                            except OSError:
+                                target_texts[tpath] = ""
+                        if not re.search(r"\b" + re.escape(lr.group(1)) + r"\b", target_texts[tpath]):
+                            tlabel = f"{by_id[r[0]].path} §{r[1]}"
+                            flag(
+                                "filed-target-no-backlink",
+                                f"{t.path}:{s.line}: §{num} filed row {lr.group(1)} has no back-link in {tlabel}",
+                            )
+
+    # 20. finding IDs unique per ledger (D00 T01 §17 item 19): the same ID
+    # twice in one file is FATAL even with identical targets, because the
+    # second row reads as a second finding and remediation attaches to the
+    # wrong one. Multi-target findings ride one row naming every target
+    # (clearance already requires all of them), so split rows are never
+    # the honest shape. IDs compare case-insensitively (PR1 and pr1
+    # collide). File-scoped with first-reporter dedup like rule 18 (the
+    # defect is the file's). Date-scoped like rules 16-18.
+    seen_20 = set()
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
+                continue
+            fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm or fm.group(1) in seen_20:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            seen_20.add(fm.group(1))
+            ftext, _u = graph.strip_fenced_code(ftext)
+            ids: dict[str, str] = {}
+            flagged: set[str] = set()
+            for h in graph.PLAN_REVIEW_HEADING_RE.finditer(ftext):
+                sec = ftext[h.end():]
+                nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
+                if nxt:
+                    sec = sec[: nxt.start()]
+                for lr in graph.LEDGER_ROW_RE.finditer(sec):
+                    key = lr.group(1).lower()
+                    if key in ids and key not in flagged:
+                        flagged.add(key)
+                        flag(
+                            "plan-review-duplicate-id",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} duplicate finding ID {lr.group(1)}",
+                        )
+                    ids.setdefault(key, lr.group(1))
+
+    # 21. a reopen voids proof downstream (D00 T01 §17 item 12): the body
+    # must read `<YYYY-MM-DD> | <finding ref> | <reason>` with a resolvable
+    # §ref (the audit locus whose finding voids this stamp); the row must
+    # be [ ] (a checked reopened row claims shipped work on voided proof);
+    # and no verified section may still depend on a reopened one
+    # (dependents park until it re-stamps). No date scope: the mechanism
+    # is new, so nothing predates it.
+    reopened = {
+        (t.id, num)
+        for t in todos
+        for num, s in t.sections.items()
+        if (getattr(s, "reopened_body", None) or "").strip()
+    }
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            body = (getattr(s, "reopened_body", None) or "").strip()
+            if not body:
+                continue
+            m = graph.REOPENED_BODY_RE.match(body)
+            ref_ok = False
+            if m:
+                for xm in graph.XREF_RE.finditer(m.group("rest")):
+                    r = graph.resolve_ref(xm.group(0), t, by_key)
+                    if r and r[0] in by_id and r[1] in by_id[r[0]].sections:
+                        ref_ok = True
+                        break
+            if not m or not ref_ok:
+                flag(
+                    "stamp-reopened",
+                    f"{t.path}:{s.line}: §{num} Reopened line outside `<date> | <finding ref> | <reason>` with a resolvable ref",
+                )
+            if s.status == "x":
+                flag(
+                    "stamp-reopened",
+                    f"{t.path}:{s.line}: §{num} reopened but still [x]: uncheck the row (the stamp is void)",
+                )
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            for raw in s.depends_on:
+                r = graph.resolve_ref(raw, t, by_key)
+                if r and r in reopened:
+                    # Quoted like rule 17b's message (a): a bare §ref here
+                    # would trip per-section silence checks keyed on "§N ".
+                    flag(
+                        "stamp-reopened",
+                        f"{t.path}:{s.line}: §{num} still stamped while {r[0]} '§{r[1]}' is reopened: park until it re-stamps",
+                    )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,
     # and 17 of these have stood for over a week: 15 name STAMPED sections
