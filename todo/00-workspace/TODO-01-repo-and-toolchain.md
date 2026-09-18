@@ -82,6 +82,9 @@ track: W0
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [ ]   |
 |  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [ ]   |
 |  36   |   §36   | README mixed-panel touch-up | §35 |  [ ]   |
+|  37   |   §37   | Panel rule residuals | §35 |  [ ]   |
+|  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
+|  39   |   §39   | Panel telemetry | §35 |  [ ]   |
 
 ---
 
@@ -793,7 +796,7 @@ Why this section exists: the tenth live plan review (§23 plus §19 plus §20 pl
 
 > **Started:** 2026-09-18T21:03:38Z
 
-Why this section exists: the panel regime §§9-14 built puts every round on Opus at medium effort with a 5-round cap, and the record shows it (operator direction 2026-09-18): 16 paneled sections, median 5 Opus rounds, with blocking findings landing in rounds 1-2 and later rounds converging to advisories and confirmations. Cost rebalances against intelligence by moving the high-volume early rounds to Sol, keeping Opus governing with the sign-off, capping softly at 3 and hard at 5 with blocking-only rounds past sign-off, and adding a selective Opus-high architecture gate for the decisions that are expensive to reverse. -> XREF: D00 T01 §9 (the panel regime this reshapes); -> XREF: D00 T01 §14 (the GPT fallback rung this promotes to planned early rounds).
+Why this section exists: the panel regime §§9-14 built puts every round on Opus at medium effort with a 5-round cap, and the record shows it (operator direction 2026-09-18): 19 paneled reviews tree-wide (16 in 00-workspace), median 5 Opus rounds, with blocking findings landing in rounds 1-2 and later rounds converging to advisories and confirmations. **Corrected 2026-09-18 (plan review PR13):** filed counting 00-workspace only; tree-wide is 19 files and 79 rounds, median 5 either way, measured in the §35 findings file. Cost rebalances against intelligence by moving the high-volume early rounds to Sol, keeping Opus governing with the sign-off, capping softly at 3 and hard at 5 with blocking-only rounds past sign-off, and adding a selective Opus-high architecture gate for the decisions that are expensive to reverse. -> XREF: D00 T01 §9 (the panel regime this reshapes); -> XREF: D00 T01 §14 (the GPT fallback rung this promotes to planned early rounds).
 
 - [x] `review-todo-section` carries the mixed sequence: Full panels run rounds 1-2 on `gpt-5.6-sol` medium via the codex runner and round 3 up on Opus medium with round 3 as the Opus sign-off; Light panels run round 1 on Sol and round 2 as the Opus sign-off; round numbers run continuously across families and last-panel-governs is unchanged. Done when: the skill names the per-tier sequence, the sign-off round, and the unchanged heading shapes. Done: per-tier sequence, sign-off rounds, continuous numbering, and unchanged heading shapes land in `### The mixed panel` plus the tier bullets.
 - [x] `review-todo-section` carries soft cap 3 and hard cap 5: rounds 4-5 run only for blocking findings (safety, data integrity, stamp-invalidating); advisories past sign-off file through `add-todo` instead of re-rounding; round 5 needs-attention keeps the file-and-stamp rule; a Light sign-off reporting needs-attention escalates to Full continuing at round 3. Done when: the skill names the caps, the blocking-only rule, and the Light escalation. Done: soft-3/hard-5 caps, blocking-only past sign-off, file-without-reround rule, and Light escalation land in the tier bullets plus the record paragraph.
@@ -813,10 +816,46 @@ Why this section exists: the panel regime §§9-14 built puts every round on Opu
 
 Why this section exists: the §35 Opus sign-off (round 3) reported one consistency advisory, verified genuine: the root README's Deferred bullet for external review panel scripts still names the retired `headless Opus panel` title the mixed panel replaced. One line must move, with a re-sweep proving it is the last live site. -> XREF: D00 T01 §35 (filed from its review round 3); -> SOURCE: panel-D00-T01-s35-2026-09-18-R3 (Opus round 3, consistency advisory 1; record in the §35 findings file).
 
-- [ ] The Deferred bullet names the mixed panel: root `README.md` line 79 reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the line names the mixed panel and a tree-wide grep for the retired title finds no live site outside reviews, phase-runs, and script history comments.
+- [ ] The Deferred bullet names the mixed panel: the root `README.md` Deferred bullet starting `- External review panel scripts` reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the bullet names the mixed panel and a tree-wide grep for the retired title finds no live site outside `docs/reviews/`, `docs/phase-runs/`, the `stamp-no-opus-panel` rule-class name, historical section titles (§9 et al), and validator comments citing the rule. **Corrected 2026-09-18 (§35 plan review PR15):** line anchor replaced with the bullet's content anchor; exclusions enumerated explicitly.
 - [ ] Commit: `"workspace: name mixed panel in README Deferred"`
 
 **Test checkpoint:** the bullet names the mixed panel; the re-sweep is quoted clean; live `validate` stays 0 fatal. Cheaper substitute that fails: trusting memory of the title count.
+
+## 37. Panel Rule Residuals
+
+Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 plus dependent §36, `gpt-5.6-sol` high) returned 16 findings; 12 accepted, 4 rejected with reasons in the §35 findings file. This section takes panel-loop hardening (PR1, PR2, PR3, PR9, PR12): the Sol sequence must be enforceable, round 5 must not stamp over blocking findings, finding dispositions must be explicit, the all-Opus shape must be stated, and the fallback definition must be written where operators read it. -> XREF: D00 T01 §35 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s35-2026-09-18-s37 D00-T01-S35-PR1 D00-T01-S35-PR2 D00-T01-S35-PR3 D00-T01-S35-PR9 D00-T01-S35-PR12 (`gpt-5.6-sol` high over §35 plus §9 plus §14 plus dependent §36, 16 findings, 12 accepted across §§36-39 plus findings record, 4 rejected with reasons in the §35 findings file).
+
+- [ ] The Sol sequence is enforceable: post-cutoff Opus-only records carry a `Sol outage` line naming what failed, and the validator fires without it, so skipped Sol rounds cannot pass as planned-mixed records (PR1 D00-T01-S35-PR1). Done when: the skill names the note shape and the validator plus fixtures lock the accept and reject shapes.
+- [ ] Round 5 never stamps over blocking findings: safety, data-integrity, or stamp-invalidating leftovers at the hard cap stop the run and escalate to the operator instead of filing-and-stamping; filing stays for below-bar leftovers (PR2 D00-T01-S35-PR2). Done when: the skill carries the bar and the stop rule.
+- [ ] Finding dispositions are explicit: panel findings get per-round IDs and every fix-loop round dispositions each open ID (fixed, live, or filed), with the sign-off recording the disposition table (PR3 D00-T01-S35-PR3). Done when: the skill carries the ID and table shapes.
+- [ ] The all-Opus shape is stated: tier round counts and sign-off positions are unchanged when Sol is down, with Opus filling every slot (PR9 D00-T01-S35-PR9). Done when: the sentence reads in the outage matrix.
+- [ ] The fallback definition reads in the query help: `plan-health` help names GPT-last membership as the compat guarantee holding the `plan-health/3` shape stable (PR12 D00-T01-S35-PR12). Done when: the help carries the definition with an exact-assertion probe.
+- [ ] Commit: `"workspace: harden panel rules per eleventh live round"`
+
+**Test checkpoint:** skipped Sol rounds fire, blocking round-5 leftovers stop the run, every panel finding carries a disposition, the all-Opus shape reads plainly, and the help guarantees the fallback definition. Cheaper substitute that fails: prose controls nobody checks.
+
+## 38. Architecture Gate Residuals
+
+Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 plus dependent §36, `gpt-5.6-sol` high) returned 16 findings; 12 accepted, 4 rejected with reasons in the §35 findings file. This section takes gate-spec completion (PR4, PR5, PR7, PR8): the trigger verdict must be recorded, the gate outage needs its rung, round numbering and governance must be stated, and the post-panel order must read explicitly. -> XREF: D00 T01 §35 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s35-2026-09-18-s38 D00-T01-S35-PR4 D00-T01-S35-PR5 D00-T01-S35-PR7 D00-T01-S35-PR8 (`gpt-5.6-sol` high over §35 plus §9 plus §14 plus dependent §36, 16 findings, 12 accepted across §§36-39 plus findings record, 4 rejected with reasons in the §35 findings file).
+
+- [ ] The trigger verdict is recorded: every review writes one findings line naming triggered-plus-surface or not-triggered-plus-reason, and the gate section carries a decision checklist over the six surfaces (PR4 D00-T01-S35-PR4). Done when: the skill mandates the line and the checklist reads in the gate section.
+- [ ] The gate outage has its rung: an unreachable Opus-high gate runs one Sol-high attempt over the same prompt, and a second failure stops with no stamp plus an outage record (PR5 D00-T01-S35-PR5). Done when: the skill names the rung, the record, and the stop rule.
+- [ ] Gate rounds are numbered outside the panel cap: architecture rounds take their own budget and `Arch-N` numbers, record under `Architecture review`, and an arch `needs-attention` blocks the stamp over panel approves (PR7 D00-T01-S35-PR7). Done when: the skill carries numbering, budget, and governance.
+- [ ] The post-panel order reads explicitly: panel, then architecture gate, then gates re-run, then plan review, then stamp, with each stage's blocking power stated (PR8 D00-T01-S35-PR8; the finding's §14 half rejected as a scope artifact since §15's correction governs). Done when: the order plus blocking powers read in the skill.
+- [ ] Commit: `"workspace: complete architecture gate per eleventh live round"`
+
+**Test checkpoint:** the gate records its trigger, survives its outage, numbers outside the cap, and runs in a stated order. Cheaper substitute that fails: an undefined gate nobody runs the same way twice.
+
+## 39. Panel Telemetry
+
+Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 plus dependent §36, `gpt-5.6-sol` high) returned 16 findings; 12 accepted, 4 rejected with reasons in the §35 findings file. This section takes the premium telemetry win (PR16): per-round model, effort, duration, outcome, and token evidence, so future cap tuning runs on measurements instead of the 19-file/79-round baseline this review hand-counted. -> XREF: D00 T01 §35 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s35-2026-09-18-s39 D00-T01-S35-PR16 (`gpt-5.6-sol` high over §35 plus §9 plus §14 plus dependent §36, 16 findings, 12 accepted across §§36-39 plus findings record, 4 rejected with reasons in the §35 findings file).
+
+- [ ] Rounds record their telemetry: each panel round writes model, effort, duration, outcome, and tokens in a fixed findings shape beside the verdicts (PR16 D00-T01-S35-PR16). Done when: the skill carries the shape and one live review uses it.
+- [ ] Captures cover both runners: the codex tokens line and the claude usage readout feed the shape without manual transcription (PR16 D00-T01-S35-PR16). Done when: both capture paths are quoted working.
+- [ ] A query surfaces the totals: per-section and tree-wide round counts, token sums, and family splits read from one command (PR16 D00-T01-S35-PR16). Done when: the query runs and its output is quoted.
+- [ ] Commit: `"workspace: add panel telemetry per eleventh live round"`
+
+**Test checkpoint:** rounds self-report, both runners feed the record, and one query totals the tree. Cheaper substitute that fails: anecdote-driven caps.
 
 ## Verification
 
