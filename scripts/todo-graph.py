@@ -1010,6 +1010,36 @@ def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str, str]]
     return acceptance_lines(stripped)
 
 
+def review_ordered(
+    tend: str | None, rend: str | None, tgt_day: str | None, reviewer_day: str
+) -> bool:
+    """Whether the target review postdates the finding review (D00 T01 §22 item 2).
+
+    Duration ends order when both reviews carry them (same-day fixes
+    order by completion instant; ties fail closed); without both ends
+    the day-stamp rule applies and same-day fails closed. Zulu shapes
+    compare lexicographically; the parser stores only shaped ends.
+    """
+    if tend is not None and rend is not None:
+        return tend > rend
+    return (tgt_day or "") > reviewer_day
+
+
+def fix_postdates_review(fix_ts: int | None, rts: int | None, reviewer_day: str) -> bool:
+    """Whether the fix postdates the review completion (D00 T01 §22 item 2).
+
+    Unprovable timestamps fail closed. With a reviewer instant the fix
+    must land strictly after it; without one the fix UTC day must
+    strictly postdate the review day.
+    """
+    if fix_ts is None:
+        return False
+    if rts is not None:
+        return fix_ts > rts
+    fday = datetime.fromtimestamp(fix_ts, tz=timezone.utc).date().isoformat()
+    return fday > reviewer_day
+
+
 def acceptance_live(recorded: str, expires: str, today: str) -> bool:
     """Whether an acceptance covers today (D00 T01 §21 review R3).
 
@@ -2164,18 +2194,12 @@ def cmd_query(args) -> int:
                                 if r[1] not in by_id[r[0]].verified_sections:
                                     provable = False
                                     break
-                                tend = tgt.duration_end
-                                if tend is not None and rend is not None:
-                                    # Instant ordering (D00 T01 §22 item
-                                    # 2): both reviews carry Duration
-                                    # ends, so same-day fixes order by
-                                    # completion instant (Zulu shapes
-                                    # compare lexicographically); ties
-                                    # fail closed.
-                                    if tend <= rend:
-                                        provable = False
-                                        break
-                                elif (tgt.stamped_on or "") <= reviewer_day:
+                                if not review_ordered(
+                                    tgt.duration_end,
+                                    rend,
+                                    tgt.stamped_on,
+                                    reviewer_day,
+                                ):
                                     provable = False
                                     break
                                 tpath = by_id[r[0]].path
@@ -2223,20 +2247,9 @@ def cmd_query(args) -> int:
                                     provable = False
                                     break
                                 fix_ts = git_commit_ts(tip)
-                                if fix_ts is None:
+                                if not fix_postdates_review(fix_ts, rts, reviewer_day):
                                     provable = False
                                     break
-                                if rts is not None:
-                                    if fix_ts <= rts:
-                                        provable = False
-                                        break
-                                else:
-                                    fday = datetime.fromtimestamp(
-                                        fix_ts, tz=timezone.utc
-                                    ).date().isoformat()
-                                    if fday <= reviewer_day:
-                                        provable = False
-                                        break
                                 proof_ok = False
                                 for pm in PROOF_RE.finditer(tgt_text):
                                     if pm.group(1).lower() != lr.group(1).lower():
@@ -6127,7 +6140,7 @@ track: Z1
 |  46   |   §46   | Outage acceptance covers | - |  [x]   |
 |  47   |   §47   | Grandfathered unmarked stamp | - |  [x]   |
 |  48   |   §48   | Proof-negative targets | - |  [x]   |
-|  49   |   §49   | Same-day fix target | - |  [x]   |
+|  49   |   §49   | Pre-completion fix target | - |  [x]   |
 |  50   |   §50   | Pre-day fix target | - |  [x]   |
 |  51   |   §51   | Range fix target | - |  [x]   |
 |  52   |   §52   | Untouched range target | - |  [x]   |
@@ -6682,7 +6695,7 @@ proof D90-T07-S4-PR62 tests/fix-proof.py::test_missing_name
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 
-## 49. Same-day fix target
+## 49. Pre-completion fix target
 
 - [x] Did the thing
 - [x] Commit: `"selftest: marker"`
@@ -6838,7 +6851,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR60] [critical] Missing proof stays -> filed §48\n"
             "- [D90-T07-S4-PR61] [critical] Unresolvable proof stays -> filed §48\n"
             "- [D90-T07-S4-PR62] [critical] Nameless proof stays -> filed §48\n"
-            "- [D90-T07-S4-PR63] [critical] Same-day fix stays -> filed §49\n"
+            "- [D90-T07-S4-PR63] [critical] Pre-completion fix stays -> filed §49\n"
             "- [D90-T07-S4-PR64] [critical] Pre-day fix stays -> filed §50\n"
             "- [D90-T07-S4-PR65] [critical] Range fix clears -> filed §51\n"
             "- [D90-T07-S4-PR66] [critical] Untouched range stays -> filed §52\n"
@@ -7742,6 +7755,53 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "clearance ordering fails closed on ties, inversions, and dateless days",
+            (
+                review_ordered(
+                    "2026-09-18T15:00:00Z",
+                    "2026-09-18T12:00:00Z",
+                    "2026-09-18",
+                    "2026-09-18",
+                )
+                and not review_ordered(
+                    "2026-09-18T12:00:00Z",
+                    "2026-09-18T12:00:00Z",
+                    "2026-09-18",
+                    "2026-09-18",
+                )
+                and not review_ordered(
+                    "2026-09-18T11:00:00Z",
+                    "2026-09-18T12:00:00Z",
+                    "2026-09-18",
+                    "2026-09-18",
+                )
+                and review_ordered(None, None, "2026-09-19", "2026-09-18")
+                and not review_ordered(None, None, "2026-09-18", "2026-09-18")
+                and not review_ordered(
+                    "2026-09-18T15:00:00Z", None, "2026-09-18", "2026-09-18"
+                )
+                and fix_postdates_review(1001, 1000, "2026-09-18")
+                and not fix_postdates_review(1000, 1000, "2026-09-18")
+                and not fix_postdates_review(999, 1000, "2026-09-18")
+                and not fix_postdates_review(None, 1000, "2026-09-18")
+                and fix_postdates_review(
+                    int(
+                        datetime(2026, 9, 19, tzinfo=timezone.utc).timestamp()
+                    ),
+                    None,
+                    "2026-09-18",
+                )
+                and not fix_postdates_review(
+                    int(
+                        datetime(2026, 9, 18, tzinfo=timezone.utc).timestamp()
+                    ),
+                    None,
+                    "2026-09-18",
+                )
+            ),
+            True,
+        )
+        check(
             "prose outage predecessor fires unchained",
             any(
                 "TODO-07-marker.md" in ln and "§35 " in ln and "names no superseded run" in ln
@@ -7949,7 +8009,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "clearance fails a same-day or pre-day fix",
+            "clearance fails fixes predating review completion",
             (
                 any("D90-T07-S4-PR63" in ln for ln in health_lines)
                 and any("D90-T07-S4-PR64" in ln for ln in health_lines)

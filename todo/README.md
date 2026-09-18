@@ -162,7 +162,8 @@ Alternative markers, one per stamp (the last marker line governs, so these never
 - `Reopened:` -- `<YYYY-MM-DD> | <finding ref> | <reason>`, naming the audit locus whose finding voids the stamp. A reopened section reads as unverified everywhere downstream: its row must be `[ ]` and its stamped dependents park until it re-stamps.
 - `CRUD:` -- behavioral evidence for the section: the write path exercised and read back, not just unit-tested. Either `applicable | <what ran and what it proved>` or `not applicable (<reason>)`. A page with a `**Job:**` cannot claim not applicable.
 - `Started:` -- optional UTC instant written when implementation starts. Do not overwrite on resume.
-- `Duration:` -- optional integer minutes from `Started:` to stamp (implement, review, and stamp).
+- `Duration:` -- optional minutes or instant range from `Started:` to stamp (implement, review, and stamp): either integer minutes (`7`, `45m`) or `<start> to <end>` Zulu instants (`2026-09-18T14:54:33Z to 2026-09-18T16:35:19Z`). The range end orders clearance: when both reviews carry ends the target must complete strictly after the finding's review, else day stamps rule and same-day fails closed.
+- Clearance tokens -- a section clearing a filed critical names `fix <sha>` (or `fix <base>..<tip>` for a multi-commit loop, base excluded) and `proof <finding-id> <path>[::<test>]` in its own text; the query proves the fix against git and the proof against the fix tree, and a clearance missing either stays listed.
 - `Implementer:` -- optional `Name (model-id)` recording who built the section.
 - `Resolved:` -- a deferral that has been closed. Replaces the `Deferred:` marker **in place**, keeping the original text and XREF and adding the date and what closed it. Closure is a state change, not a deletion: what was owed, and who paid it, both stay on the record.
 
