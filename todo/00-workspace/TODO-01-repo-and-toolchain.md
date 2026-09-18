@@ -58,7 +58,7 @@ track: W0
 |  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
 |  15   |   §15   | First plan-review residuals | §14 |  [x]   |
 |  16   |   §16   | Second plan-review residuals | §15 |  [x]   |
-|  17   |   §17   | Third plan-review residuals | §16 |  [ ]   |
+|  17   |   §17   | Third plan-review residuals | §16 |  [x]   |
 |  18   |   §18   | Checker count residual | §17 |  [ ]   |
 |  19   |   §19   | Fourth plan-review residuals | §17 |  [ ]   |
 
@@ -468,6 +468,13 @@ Why this section exists: the third live plan review (§16 plus §15, `gpt-5.6-so
 **Test checkpoint:** ledger IDs carry run identity and collide nowhere; marker grammar enforced (precedence, exclusion, purity) with accountable degraded states; filed criticals clear only on post-finding verified remediation of every target; lifecycle plus deferrals plus back-links enforced; plan-health covers stale removals, overdue majors, and grandfathered stamps; reopen voids proof downstream; prompts uninjectable and outputs fully validated (one known exception: double-count headers pass, tracked in §18); JSON versioned and ordered; proofs artifacted; legacy records migrated or condemned; trigger residual closed. Cheaper substitute that fails: a fourth review round whose findings stay prose.
 
 - -> XREF: D00 T01 §18 -- round-4 advisory leftover (checker count residual) filed there
+- -> XREF: D00 T01 §19 -- fourth-live-plan-review filings (20 of 25: 17 filed there as 16 items, PR22 plus PR23 in §18, PR20 self-filed in §17; 5 rejected) filed there
+
+> **Verified:** 2026-09-18 | §17 | self-test 535/535 (review-loop cases incl. §4 count 4, §6 count 4, §8 count 7, §§10-15 probes, 16 prompt-helper cases); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates ffef531 44b90ff d7101a3 9db9176 9196bb6; R4 advisory filed at §18 per stop-and-re-think; post-R5 record touch-up (2 prose lines, disclosed); plan review 25 findings, 20 filed (§19, §18, §17), 5 rejected
+> **Review:** round 5 (FINAL), candidates ffef531 44b90ff d7101a3 9db9176 9196bb6 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` needs-attention. Leftovers filed at D00 T01 §18; R5 record gaps closed by post-round touch-up (no sixth round). Raw findings: docs/reviews/00-workspace/D00-T01-s17.md
+> **Plan review:** GPT high, filed §19, §18, §17
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited scripts (including new review_prompt.py), skill, README, TODO, findings (read back via self-test 535/535, live validate 0 fatal, plan --check current, live plan-health quote); filings wrote §18 plus §19 plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-18T11:29:56Z to 2026-09-18T12:22:53Z
 
 ## 18. Checker Count Residual
 
