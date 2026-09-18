@@ -1194,7 +1194,11 @@ def cmd_query(args) -> int:
         now = []
         elsewhere = []
         for r in ranked:
-            missing = [v for v in r[2].requires if v not in ctx]
+            s = r[2]
+            # Unknown values never clear: `validate` refuses the mark, and no
+            # declared context can name them (`--context` choices are closed).
+            missing = [v for v in s.requires if v not in ctx]
+            missing += [f"unknown:{v}" for v in s.requires_unknown]
             (elsewhere if missing else now).append((r, missing))
         for (t, num, s, _), _missing in now:
             flag = " 🔒" if t.frozen else ""
@@ -1203,7 +1207,7 @@ def cmd_query(args) -> int:
             print(f"\nrunnable elsewhere (context: {ctx_note}):")
             for (t, num, s, _), missing in elsewhere:
                 flag = " 🔒" if t.frozen else ""
-                reqs = ", ".join(s.requires)
+                reqs = ", ".join(s.requires + [f"unknown:{v}" for v in s.requires_unknown])
                 print(f"{t.domain}/{Path(t.path).name} §{num}{flag}  {s.deliverable}  requires {reqs} (missing: {', '.join(missing)})")
         print(f"\n{len(now)} runnable now, {len(elsewhere)} runnable elsewhere")
     else:  # blocked
@@ -2804,6 +2808,9 @@ def cmd_self_test(_args) -> int:
             code, lines = ready_lines(context=[])
             check("an empty context parks the marked row with its requirement named",
                   (code, any("requires display-session (missing: display-session)" in ln and "§4" in ln for ln in lines)), (0, True))
+            code, lines = ready_lines(context=["display-session"])
+            check("an unknown value parks even in a display context",
+                  (code, any("unknown:printerz" in ln and "§1" in ln for ln in lines)), (0, True))
             code, lines = ready_lines()
             check("query ready without a context flag still exits 0",
                   code, 0)

@@ -59,7 +59,7 @@ Run-guard heartbeat for the ScratchPad Phase <N> run (workspace <workspace>). De
 
 ## 2. After a phase closeout or park
 
-`process-phase` ends in exactly one of three ways: the phase table is all `[x]` and closeout is written; every leftover `[ ]` row is blocked and it parked; or the operator paused it.
+`process-phase` ends in exactly one of three ways: the phase table is all `[x]` and closeout is written; every leftover `[ ]` row is blocked or runnable-elsewhere in this context and it parked; or the operator paused it.
 
 A parked phase is **not** complete, and it is **not** a stall. Do not call it either.
 

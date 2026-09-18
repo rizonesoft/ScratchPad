@@ -1,13 +1,13 @@
 ---
 name: process-phase
-description: Attended runner that takes one phase of todo/implementation-plan.md to 100% -- repair the phase, gap-check it, then ship section after section via process-todo-section plus review-todo-section, parking only when every leftover row is blocked. Use when the user says process, run, or finish a phase.
+description: Attended runner that takes one phase of todo/implementation-plan.md to 100% -- repair the phase, gap-check it, then ship section after section via process-todo-section plus review-todo-section, parking only when every leftover row is blocked or runnable-elsewhere in this context. Use when the user says process, run, or finish a phase.
 ---
 
 # Process Phase
 
 One phase, start to 100%, or parked when the rest of it is blocked. You do not stop in between.
 
-**Exactly three endings.** Zero open rows and a written closeout. Every leftover row blocked, so the phase is **parked** and `process-plan` moves to the next ready phase. Or the operator's own pause. There is no fourth, and a parked phase is neither complete nor a stall.
+**Exactly three endings.** Zero open rows and a written closeout. Every leftover row blocked or runnable-elsewhere here, so the phase is **parked** and `process-plan` moves to the next ready phase. Or the operator's own pause. There is no fourth, and a parked phase is neither complete nor a stall.
 
 The whole plan is `process-plan`, not this skill. This skill is one named phase. When the session entered through `process-plan` with no phase argument, return to it after closeout or park so it can start the next ready phase; a session pinned to one phase ends here.
 
