@@ -1302,6 +1302,15 @@ def validate(graph, _args) -> int:
                         "risk-acceptance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(4)} < {am.group(3)}",
                     )
+                elif am.group(5) < am.group(3) or am.group(5) > am.group(4):
+                    # Review-window order (D00 T01 §21 review R4): the
+                    # review date sits inside record..expiry, bounds
+                    # inclusive like the expiry leg. In-file dates
+                    # only, so the rule stays wall-clock-free.
+                    flag(
+                        "risk-acceptance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(5)} not in {am.group(3)}..{am.group(4)}",
+                    )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,
     # and 17 of these have stood for over a week: 15 name STAMPED sections

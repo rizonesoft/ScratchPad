@@ -2113,7 +2113,19 @@ def cmd_query(args) -> int:
         # scalar field, so no two entries tie and text and JSON share
         # one order each.
         degraded_sorted = sorted(
-            degraded, key=lambda d: (d["ref"], d["state"], d["owner"], d["due"])
+            degraded,
+            key=lambda d: (
+                d["ref"],
+                d["state"],
+                d["owner"],
+                d["due"],
+                d["overdue"],
+                d["escalation"],
+                d["accepted_by"],
+                d["accepted_expires"],
+                d["accepted_review"],
+                d["accepted_rationale"],
+            ),
         )
         majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10]))
         criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9]))
@@ -6755,6 +6767,7 @@ track: Z1
             "End of ledger\n"
             + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; date 2026-09-01; review 2026-10-01; rationale missing expires\n"
             + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; rationale inverted dates\n"
+            + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; rationale review before record\n"
             + "Risk accepted: D90-T07-S4-PR53; approver bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; rationale typo'd year\n",
             encoding="utf-8",
         )
@@ -7424,9 +7437,17 @@ track: Z1
             True,
         )
         check(
-            "§44 fires exactly twice (shape plus inverted dates)",
+            "review date outside record-expiry fires",
+            any(
+                "TODO-07-marker.md" in ln and "§44 " in ln and "review outside its record-expiry window" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§44 fires exactly three times (shape, inverted dates, review window)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§44 " in ln and "FATAL" in ln),
-            2,
+            3,
         )
         check(
             "finding acceptances stay validator-silent",
@@ -7972,7 +7993,19 @@ track: Z1
                 )
                 and jdata["degraded"]
                 == sorted(
-                    jdata["degraded"], key=lambda d: (d["ref"], d["state"], d["owner"], d["due"])
+                    jdata["degraded"],
+                    key=lambda d: (
+                        d["ref"],
+                        d["state"],
+                        d["owner"],
+                        d["due"],
+                        d["overdue"],
+                        d["escalation"],
+                        d["accepted_by"],
+                        d["accepted_expires"],
+                        d["accepted_review"],
+                        d["accepted_rationale"],
+                    ),
                 )
                 and jdata["stale"] == sorted(jdata["stale"], key=lambda d: (d["file"], d["run"]))
             ),
