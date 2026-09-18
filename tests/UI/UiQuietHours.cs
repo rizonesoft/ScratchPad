@@ -20,6 +20,9 @@ internal static class UiQuietHours
         || (TryParseWindow(Window, out TimeSpan start, out TimeSpan end)
             && IsInWindow(now.TimeOfDay, start, end));
 
+    internal static string? SkipOutsideWindow(DateTime now) =>
+        IsAllowed(now) ? null : $"Outside the foreground window ({Window} local); fenced tests run inside it or with {ForceVariable}=1.";
+
     internal static bool IsInWindow(TimeSpan time, TimeSpan start, TimeSpan end) =>
         start <= end ? time >= start && time < end : time >= start || time < end;
 

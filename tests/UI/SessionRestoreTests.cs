@@ -418,8 +418,8 @@ public sealed class SessionRestoreTests
                 Assert.True(identified);
                 Assert.NotNull(one);
                 Assert.NotNull(two);
-                UiForeground.PlaceOffscreen(one);
-                UiForeground.PlaceOffscreen(two);
+                UiForeground.PlaceForBackground(one);
+                UiForeground.PlaceForBackground(two);
                 Assert.Equal(2, TabItems(one).Count);
                 Assert.Contains("win one unsaved", BoxText(one), StringComparison.Ordinal);
                 Assert.Single(TabItems(two));

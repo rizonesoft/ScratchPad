@@ -94,12 +94,19 @@ public partial class App : Application
     // stock behavior: activate exactly as before.
     private static void ShowWindow(Window window)
     {
-        window.Activate();
-        if (Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1"
-            && window is MainWindow main)
+        if (window is MainWindow main
+            && Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1"
+            && main.ShowNoActivateForBackground())
         {
+            // Shown without ever activating: no launch flash, and the
+            // no-activate style keeps mid-test Invoke and dialog shows
+            // from stealing the foreground back. Minimize hides the pixels.
+            main.NoActivateForBackground();
             main.MinimizeForBackground();
+            return;
         }
+
+        window.Activate();
     }
 
     // Session snapshot on window close (D01 T01 §6), called from

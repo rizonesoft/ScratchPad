@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -60,6 +61,65 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             presenter.Minimize();
         }
+    }
+
+    // Background-test support (D00 T02 §8): WS_EX_NOACTIVATE so the window
+    // can never take the foreground mid-test (menu Invoke and dialog shows
+    // activate otherwise, and restore-once-at-start cannot hold for a whole
+    // test). UIA patterns dispatch on no-activate windows (spiked for
+    // no-activate shows; this makes the state persistent). Paired with
+    // ShowNoActivateForBackground: WinUI Activate forces the foreground
+    // past the style, so background launches never call it.
+    internal void NoActivateForBackground()
+    {
+        nint hwnd = WindowNative.GetWindowHandle(this);
+        if (hwnd == nint.Zero)
+        {
+            return;
+        }
+
+        const int exStyle = -20;
+        const nint noActivate = 0x08000000;
+        _ = NativeMethods.SetWindowLong(hwnd, exStyle, NativeMethods.GetWindowLong(hwnd, exStyle) | noActivate);
+        const uint noMoveSizeZOrderActivateFrameChanged = 0x0037;
+        _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, 0, 0, 0, 0, noMoveSizeZOrderActivateFrameChanged);
+    }
+
+    // Shows without ever activating (background launches only): the
+    // handle must exist (false before first show), so the caller falls
+    // back to Activate when this reports it cannot.
+    internal bool ShowNoActivateForBackground()
+    {
+        nint hwnd = WindowNative.GetWindowHandle(this);
+        if (hwnd == nint.Zero)
+        {
+            return false;
+        }
+
+        const int showNoActivate = 4;
+        _ = NativeMethods.ShowWindow(hwnd, showNoActivate);
+        return true;
+    }
+
+    static class NativeMethods
+    {
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint GetWindowLong(nint hWnd, int nIndex);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool ShowWindow(nint hWnd, int cmdShow);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint SetWindowLong(nint hWnd, int nIndex, nint dwNewLong);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetWindowPos(nint hWnd, nint after, int x, int y, int cx, int cy, uint flags);
     }
 
     public MainWindow(bool firstWindow, SessionWindow? restore = null)

@@ -101,9 +101,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var first = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -133,9 +135,11 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var first = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -396,9 +400,11 @@ public sealed class LaunchTests
         SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow });
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var first = LaunchAppWithArgs(string.Empty);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -412,6 +418,11 @@ public sealed class LaunchTests
                     TimeSpan.FromMilliseconds(250),
                     lastValueOnTimeout: true).Result ?? [];
                 Assert.Equal(2, windows.Count);
+                foreach (Window w in windows)
+                {
+                    UiForeground.Background(w, fgBefore);
+                }
+
                 SettleForProviders();
                 var fileWindow = windows.Select(w => (Window: w, Tabs: TabItems(w).Count)).OrderByDescending(pair => pair.Tabs).First().Window;
                 Assert.Equal(1, WaitForTabCount(fileWindow, 1));
@@ -539,7 +550,7 @@ public sealed class LaunchTests
     // with no windows when one exists (plus a next-to-source PDF when the
     // default is Print to PDF), exit 2 naming the missing printer when
     // none exists. Either way no window may appear.
-    [Fact]
+    [PrinterFact]
     public void PrintFlagPrintsThenCloses()
     {
         string dir = NewTempDir();

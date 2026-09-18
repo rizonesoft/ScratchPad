@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Reflection;
 using Xunit;
 
@@ -18,7 +19,7 @@ public sealed class QuietHoursTests
     public void DefaultWindowAdmitsOnly0200To0650(string time, bool expected)
     {
         Assert.True(UiQuietHours.TryParseWindow(UiQuietHours.DefaultWindow, out TimeSpan start, out TimeSpan end));
-        Assert.Equal(expected, UiQuietHours.IsInWindow(TimeSpan.Parse(time), start, end));
+        Assert.Equal(expected, UiQuietHours.IsInWindow(TimeSpan.Parse(time, CultureInfo.InvariantCulture), start, end));
     }
 
     [Theory]
@@ -29,8 +30,9 @@ public sealed class QuietHoursTests
     [InlineData("22:00-06:00", "21:59", false)]
     public void OvernightWindowWrapsPastMidnight(string window, string time, bool expected)
     {
+        ArgumentNullException.ThrowIfNull(window);
         Assert.True(UiQuietHours.TryParseWindow(window, out TimeSpan start, out TimeSpan end));
-        Assert.Equal(expected, UiQuietHours.IsInWindow(TimeSpan.Parse(time), start, end));
+        Assert.Equal(expected, UiQuietHours.IsInWindow(TimeSpan.Parse(time, CultureInfo.InvariantCulture), start, end));
     }
 
     [Theory]
@@ -40,6 +42,7 @@ public sealed class QuietHoursTests
     [InlineData("02:00-06:50-extra")]
     public void UnparseableWindowFailsToParse(string window)
     {
+        ArgumentNullException.ThrowIfNull(window);
         Assert.False(UiQuietHours.TryParseWindow(window, out _, out _));
     }
 
@@ -66,7 +69,7 @@ public sealed class QuietHoursTests
         {
             foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
             {
-                if (!method.GetCustomAttributes().OfType<InteractiveFactAttribute>().Any())
+                if (!method.GetCustomAttributes().Any(a => a is InteractiveFactAttribute or HookFactAttribute))
                 {
                     continue;
                 }

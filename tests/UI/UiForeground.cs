@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Drawing;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 using FlaUI.Core.AutomationElements;
 
 namespace UI;
@@ -7,37 +9,58 @@ namespace UI;
 // Foreground capture/restore for uninterrupted runs (D00 T02 §8). The
 // app self-activates at launch (WinUI overrides no-activate starts,
 // spiked), so the default suite runs with SCRATCHPAD_BACKGROUND=1 (every
-// window starts minimized, no flash, no steal) and Background moves each
-// window off-screen and re-shows it no-activate before driving: UIA,
-// menu Invoke, and ValuePattern all dispatch there (spiked), the
-// operator's pixels and focus stay untouched, and PrintWindow still
-// captures for goldens. Restore alone is the backstop for windows that
-// must stay on-screen (golden captures).
+// window starts minimized, no-activate, no flash, no steal) and
+// Background moves each window to the secondary monitor (off-screen on
+// single-monitor boxes) and re-shows it no-activate before driving:
+// UIA, menu Invoke, and ValuePattern all dispatch there (spiked), the
+// operator's primary screen and focus stay untouched, and PrintWindow
+// still captures for goldens.
 internal static class UiForeground
 {
     internal static nint Capture() => Native.GetForegroundWindow();
 
     internal static void Background(Window? window, nint before)
     {
-        PlaceOffscreen(window);
+        PlaceForBackground(window);
         Restore(before);
     }
 
-    // Moves a window off-screen and shows it no-activate: UIA, menu
-    // Invoke, and ValuePattern all dispatch there (spiked), with no
-    // pixels and no foreground steal. Second windows (minimized at
-    // birth under SCRATCHPAD_BACKGROUND) need this before driving.
-    internal static void PlaceOffscreen(Window? window)
+    // Moves a window to the suite display and shows it no-activate: the
+    // secondary monitor when one exists (visible, so layout and UIA
+    // containers behave exactly like foreground runs, but never
+    // activated, so the operator's focus stays untouched), off-screen
+    // otherwise. UIA, menu Invoke, and ValuePattern all dispatch there
+    // (spiked). Second windows (minimized at birth under
+    // SCRATCHPAD_BACKGROUND) need this before driving: minimized windows
+    // do not reliably realize containers for late-added tabs.
+    internal static void PlaceForBackground(Window? window)
     {
         if (window is null)
         {
             return;
         }
 
+        (int x, int y) = SuiteDisplayOrigin();
         nint hwnd = window.Properties.NativeWindowHandle.Value;
-        Native.SetWindowPos(hwnd, nint.Zero, 10000, 10000, 900, 650, 0x0010);
+        Native.SetWindowPos(hwnd, nint.Zero, x, y, 900, 650, 0x0010);
         Show(window);
     }
+
+    internal sealed record SuiteDisplay(bool Primary, Rectangle Bounds, Rectangle WorkingArea);
+
+    internal static (int X, int Y) PickSuiteOrigin(IEnumerable<SuiteDisplay> displays)
+    {
+        SuiteDisplay? second = displays.Where(d => !d.Primary).OrderByDescending(d => d.Bounds.Width * d.Bounds.Height).FirstOrDefault();
+        if (second is null)
+        {
+            return (10000, 10000);
+        }
+
+        return (second.WorkingArea.X, second.WorkingArea.Y);
+    }
+
+    internal static (int X, int Y) SuiteDisplayOrigin() =>
+        PickSuiteOrigin(Screen.AllScreens.Select(s => new SuiteDisplay(s.Primary, s.Bounds, s.WorkingArea)));
 
     // Shows without activating (minimized-start windows need this before
     // driving: menu Invoke does not dispatch while minimized).

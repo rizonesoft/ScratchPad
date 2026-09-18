@@ -90,9 +90,11 @@ public sealed class JumpListTaskTests
         SeedFresh();
         try
         {
+            nint fgBefore = UiForeground.Capture();
             using var first = LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {

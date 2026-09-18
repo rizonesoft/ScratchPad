@@ -10,9 +10,6 @@ sealed class InteractiveFactAttribute : FactAttribute
 {
     public InteractiveFactAttribute()
     {
-        if (!UiQuietHours.IsAllowed(DateTime.Now))
-        {
-            Skip = $"Outside the foreground window ({UiQuietHours.Window} local); fenced tests run inside it or with {UiQuietHours.ForceVariable}=1.";
-        }
+        Skip = UiQuietHours.SkipOutsideWindow(DateTime.Now);
     }
 }

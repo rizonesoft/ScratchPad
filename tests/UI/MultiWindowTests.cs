@@ -66,7 +66,7 @@ public sealed class MultiWindowTests
             Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
                 ? windows[1]
                 : windows[0];
-            UiForeground.PlaceOffscreen(second);
+            UiForeground.PlaceForBackground(second);
             UiInput.InvokeMenuItem(second, "MenuFile", "MenuFileNewTab");
             Assert.Equal(2, WaitForTabCount(second, 2));
             Assert.Single(TabItems(first));
