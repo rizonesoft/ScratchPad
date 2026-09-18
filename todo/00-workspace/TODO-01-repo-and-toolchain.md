@@ -59,7 +59,7 @@ track: W0
 |  15   |   §15   | First plan-review residuals | §14 |  [x]   |
 |  16   |   §16   | Second plan-review residuals | §15 |  [x]   |
 |  17   |   §17   | Third plan-review residuals | §16 |  [x]   |
-|  18   |   §18   | Checker count residual | §17 |  [ ]   |
+|  18   |   §18   | Checker count residual | §17 |  [x]   |
 |  19   |   §19   | Fourth plan-review residuals | §17 |  [ ]   |
 
 ---
@@ -487,6 +487,14 @@ Why this section exists: the round-4 Opus panel on §17 (advisory) found the two
 - [x] Commit: `"workspace: single-count checker verdicts"`
 
 **Test checkpoint:** a verdict header carries zero or one finding count in either position, never two; the prompt, the code, the fixtures, and the residual note agree. Cheaper substitute that fails: a fourth blind patch to the regex.
+
+- -> XREF: D00 T01 §19 -- fifth-live-plan-review filings (7 of 9 as 6 items; 2 rejected) filed there
+
+> **Verified:** 2026-09-18 | §18 | self-test 539/539 (count-matrix cases incl. double/malformed/outer-quote); live validate 0 fatal 0 warnings; 3 Opus panel rounds over candidates 9c5254b de7faf8 7cb101b, final round four approves; plan review 9 findings, 7 filed at §19, 2 rejected
+> **Review:** round 3 (FINAL), candidates 9c5254b de7faf8 7cb101b -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s18.md
+> **Plan review:** GPT high, filed §19
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, fixtures, count, ticks, and one dated §17 annotation (read back via self-test 539/539, live validate 0 fatal, plan --check current); filing extended §19 plus its plan row (read back via plan --check current)
+> **Duration:** 2026-09-18T12:24:00Z to 2026-09-18T12:31:45Z
 
 ## 19. Fourth Plan-Review Residuals
 
