@@ -1223,7 +1223,8 @@ def validate(graph, _args) -> int:
     # fails the shape). Fields ride semicolon-separated and carry no
     # bare semicolons (authoring rule). Beyond the shape, the
     # candidate must resolve in git (an unattested quote attests
-    # nothing), the path must name a file under the repo root (an
+    # nothing; unresolvable git skips the leg, rule-22 precedent),
+    # the path must name a file under the repo root (an
     # absolute or missing path points nowhere checkable), and the run
     # must equal a marker run of the reporting section (a well-formed
     # wrong run misattributes evidence). The digest stays attested:
@@ -1271,16 +1272,15 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Provenance line: {ln.strip()[:80]}",
                     )
                     continue
-                _res = graph.git_resolves(pm.group(1))
-                if _res is False:
+                # Unprovable skips (review R1, rule-22 precedent): on a
+                # gitless export or a broken git there is no history to
+                # resolve against, so the leg degrades instead of FATALing
+                # every line (AGENTS: the tooling runs anywhere with
+                # Python 3). A working git that names nothing still fails.
+                if graph.git_resolves(pm.group(1)) is False:
                     flag(
                         "provenance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {pm.group(1)} resolves to nothing",
-                    )
-                elif _res is None:
-                    flag(
-                        "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {pm.group(1)} unprovable (git cannot resolve it)",
                     )
                 _pp = pm.group(6)
                 try:

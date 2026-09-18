@@ -1392,12 +1392,16 @@ def git_resolves(sha: str) -> bool | None:
     recorded candidate that resolves to nothing attests nothing.
     Shorts stay legal: git refuses ambiguous ones, so resolution
     failure fails closed like any unprovable leg; the self-test
-    patches this name, never a repo."""
+    patches this name, never a repo. `rev-parse --verify --quiet`
+    carries the three states (0 resolves, 1 names nothing, anything
+    else unprovable): `cat-file -e` conflates an absent short with a
+    fatal at 128, which would report every bogus candidate as
+    unprovable instead of missing (review R1, probed 2026-09-18)."""
     try:
         import subprocess
 
         out = subprocess.run(
-            ["git", "-C", str(REPO), "cat-file", "-e", sha],
+            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", sha],
             capture_output=True,
             timeout=30,
         )
@@ -7605,10 +7609,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         # Rule-23 negatives, written after the migration loop so they stay
         # bare: one file without any line, one with a run-less line, an
         # off-shape-run line, and (§23) one single-leg probe per new leg:
-        # an unresolving candidate, an unprovable candidate, a missing
-        # path, an absolute path, and a shaped-but-foreign run. Neither
-        # carries a Plan review section, so only rule 23 can fire on
-        # them; every §23 line passes the legs it does not probe.
+        # an unresolving candidate, an unprovable candidate (silent:
+        # unresolvable git skips, review R1), a missing path, an
+        # absolute path, and a shaped-but-foreign run. Neither carries a
+        # Plan review section, so only rule 23 can fire on them; every
+        # §23 line passes the legs it does not probe.
         (rev_dir / "90-health-noprov.md").write_text(
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
@@ -8322,12 +8327,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "unprovable provenance candidate fires",
-            any(
-                "TODO-07-marker.md" in ln and "§30 " in ln and "candidate f00df00d unprovable" in ln
-                for ln in marker_out
-            ),
-            True,
+            "unprovable provenance candidate skips",
+            any("f00df00d" in ln for ln in marker_out),
+            False,
         )
         check(
             "missing provenance path fires",
@@ -8354,9 +8356,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "§30 fires exactly seven times (run-less, off-shape run, unresolving and unprovable candidates, missing and absolute paths, foreign run)",
+            "§30 fires exactly six times (run-less, off-shape run, unresolving candidate, missing and absolute paths, foreign run; the unprovable candidate skips)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§30 " in ln and "FATAL" in ln),
-            7,
+            6,
         )
         check(
             "superseding an unknown row fires",
@@ -9465,14 +9467,18 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             False,
         )
         check(
-            "panel verdict with an over-long count fails at the grammar",
+            "panel verdict with an over-long count names the bound",
             rp.check_panel_output(
                 _panel("**adversarial: needs-attention (99999999999999999999)**", "1. x\n")
             ),
-            (
-                False,
-                "line 1 precedes the first verdict: **adversarial: needs-attention (99999999999999999999)**",
+            (False, "line 1 count exceeds 4 digits"),
+        )
+        check(
+            "panel verdict with an over-long count in second position names the bound",
+            rp.check_panel_output(
+                _panel("**adversarial: needs-attention** (12345)", "1. x\n")
             ),
+            (False, "line 1 count exceeds 4 digits"),
         )
         check(
             "panel verdict with a four-digit count still reaches the tally",
@@ -9534,6 +9540,18 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             timeout=30,
         )
         check("review_prompt check-panel FAIL exits 1", (_fail.returncode, _fail.stdout.startswith("FAIL")), (1, True))
+        _huge = _sp.run(
+            [sys.executable, _rp_path, "check-panel"],
+            input="x" * (2**20 + 1),
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(
+            "review_prompt check-panel refuses past-cap stdin at the read",
+            (_huge.returncode, _huge.stdout),
+            (1, "FAIL output exceeds 1048576 bytes\n"),
+        )
         _plan = _sp.run(
             [sys.executable, _rp_path, "check-plan"],
             input="- finding one\n",

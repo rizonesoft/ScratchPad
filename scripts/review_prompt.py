@@ -48,6 +48,15 @@ _PANEL_LINE_RE = re.compile(
     r"(approve|needs-attention|advisory)(?:\s*\((?P<c1>" + _COUNT_INNER + r")\)\*{0,2}|\*{0,2}\s*\((?P<c2>"
     + _COUNT_INNER + r")\)|\*{0,2})\s*$"
 )
+# The same verdict shape with an over-long count (D00 T01 §23 review
+# R1): a 5-digit count is not a verdict (the grammar caps at 4), but
+# failing it as a stray line would name neither the count nor the cap,
+# so the checker recognizes the shape and says which bound broke.
+_LONG_DIGITS = r"[0-9]{%d,}" % (_COUNT_MAX_DIGITS + 1)
+_PANEL_LONG_COUNT_RE = re.compile(
+    r"^\s*\*{2}\s*(?:adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
+    r"(?:approve|needs-attention|advisory)(?:\s*\(" + _LONG_DIGITS + r"\)\*{0,2}|\*{0,2}\s*\(" + _LONG_DIGITS + r"\))\s*$"
+)
 # A declared count is cross-checked against the findings it claims
 # (D00 T01 §19 item 19): a finding is one numbered item (`1. ...`), one
 # per line, so the count must equal the numbered-item tally under its
@@ -108,9 +117,15 @@ def canonical_prompt_bytes(text: str) -> bytes:
 def _output_within_bounds(text: str) -> tuple[bool, str] | None:
     """The size gate both checkers run before semantic comparison, or
     None when the output fits. Bytes count UTF-8; lines count newline
-    splits; both bounds are inclusive."""
-    if len(text.encode("utf-8")) > OUTPUT_MAX_BYTES:
-        return False, f"output exceeds {OUTPUT_MAX_BYTES} bytes"
+    splits; both bounds are inclusive. The byte measure encodes in
+    chunks with early exit, never a second full copy of the input, so
+    a hostile string costs the gate bounded extra memory; the line
+    split only runs once bytes fit, so it is bounded too."""
+    total = 0
+    for i in range(0, len(text), 8192):
+        total += len(text[i:i + 8192].encode("utf-8"))
+        if total > OUTPUT_MAX_BYTES:
+            return False, f"output exceeds {OUTPUT_MAX_BYTES} bytes"
     if len(text.splitlines()) > OUTPUT_MAX_LINES:
         return False, f"output exceeds {OUTPUT_MAX_LINES} lines"
     return None
@@ -162,6 +177,8 @@ def check_panel_output(text: str) -> tuple[bool, str]:
             tally = 0
             open_lens, open_line = lens, lineno
             continue
+        if _PANEL_LONG_COUNT_RE.match(line):
+            return False, f"line {lineno} count exceeds {_COUNT_MAX_DIGITS} digits"
         if not seen:
             return False, f"line {lineno} precedes the first verdict: {line.strip()[:80]}"
         if not detail_open:
@@ -312,6 +329,15 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
         sys.exit(2)
-    ok, reason = checkers[sys.argv[1]](sys.stdin.read())
+    # Bounded at the read (D00 T01 §23 review R1): slurping stdin
+    # unbounded would let hostile output exhaust memory before the
+    # size gate runs. One byte past the cap proves the excess without
+    # decoding it; anything smaller decodes lossily (never a crash)
+    # and the checker re-measures the text.
+    raw = sys.stdin.buffer.read(OUTPUT_MAX_BYTES + 1)
+    if len(raw) > OUTPUT_MAX_BYTES:
+        print(f"FAIL output exceeds {OUTPUT_MAX_BYTES} bytes")
+        sys.exit(1)
+    ok, reason = checkers[sys.argv[1]](raw.decode("utf-8", "replace"))
     print(("PASS " if ok else "FAIL ") + reason)
     sys.exit(0 if ok else 1)
