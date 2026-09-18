@@ -1000,18 +1000,21 @@ def acceptances_in(ftext: str) -> list[tuple[str, str, str, str]]:
     return acceptance_lines(stripped)
 
 
-def dim_failing(name: str, entries: list) -> bool:
+def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
     """Whether a plan-health dimension fails the gate (D00 T01 §21 items 2, 4).
 
-    Criticals and majors fail on any UNCOVERED entry: a live risk
-    acceptance terminates the escalation including the gate, while every
-    uncovered entry fails exactly as before (no gate weakening). Degraded
-    fails only on owed states (outage or retry-owed) without a live
-    acceptance: a bare partial is a complete review whose spare failed,
-    so it lists but never fails (a gate that fails with nothing owed
-    names no next action). All other dimensions fail on non-emptiness,
-    unchanged.
+    Strict (explicit `--fail-on`) fails on non-emptiness, exactly as the
+    flag documents: zero tolerance, even for covered or complete items.
+    Lenient (`--check`, `query summary`) fails only on actionables: a
+    live risk acceptance terminates the escalation including the gate,
+    and a bare partial is a complete review whose spare failed, so it
+    lists but never fails (a gate that fails with nothing owed names no
+    next action). Criticals and majors fail on any uncovered entry;
+    degraded fails only on owed states (outage or retry-owed) without a
+    live acceptance; all other dimensions fail on non-emptiness.
     """
+    if strict:
+        return bool(entries)
     if name == "degraded":
         return any(
             ("outage" in e.get("state", "") or "retry-owed" in e.get("state", ""))
@@ -2148,7 +2151,15 @@ def cmd_query(args) -> int:
         if unknown:
             print(f"plan-health: unknown dimension(s): {', '.join(unknown)}", file=sys.stderr)
             return 2
-        failing = [d for d in gate_dims if dim_failing(d, dim_lists[d])]
+        # Explicit dims gate strict (non-emptiness); check-set dims gate
+        # lenient (actionables only). Union dims go strict: an explicit
+        # flag beside --check means zero tolerance for that dimension.
+        explicit = (
+            {d.strip() for d in args.fail_on.split(",") if d.strip()}
+            if getattr(args, "fail_on", None)
+            else set()
+        )
+        failing = [d for d in gate_dims if dim_failing(d, dim_lists[d], strict=(d in explicit))]
         if getattr(args, "json", False):
             print(json.dumps(report, indent=2))
             return 1 if failing else 0
@@ -2206,10 +2217,10 @@ def cmd_query(args) -> int:
                     ]
                 elif dim in ("criticals", "majors"):
                     pool = [e for e in pool if not e.get("accepted_by")]
-                first = pool[0] if pool else None
-                if first is None:
-                    nxt = f"clear {dim} (empty)"
-                elif dim == "degraded":
+                # Strict dims fail on presence, so an empty actionable
+                # pool falls back to the first entry as named.
+                first = pool[0] if pool else dim_lists[dim][0]
+                if dim == "degraded":
                     nxt = f"{first['ref']} {first['state']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
                 elif dim in ("criticals", "majors"):
                     nxt = f"{first['id']} in {first['file']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
@@ -7217,6 +7228,8 @@ track: Z1
                 and not dim_failing("majors", [{"accepted_by": "bob"}])
                 and dim_failing("stale", [{"file": "x"}])
                 and not dim_failing("stale", [])
+                and dim_failing("degraded", [{"state": "partial", "accepted_by": ""}], strict=True)
+                and dim_failing("criticals", [{"accepted_by": "bob"}], strict=True)
             ),
             True,
         )
@@ -7971,6 +7984,45 @@ track: Z1
         check("plan-health --check ignores stale-only dirt", gate_stale_default, 0)
         check("plan-health --fail-on stale gates it explicitly", gate_stale_explicit, 1)
         check("plan-health --check --fail-on stale unions both", gate_stale_union, 1)
+        # Strict-vs-lenient divergence: a bare partial is complete, so
+        # --check passes it while explicit --fail-on degraded still gates
+        # presence, and the summary agrees with --check.
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: one bare partial and nothing else.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Partial work | -- |  [x]   |\n"
+            "|   2   |   §2    | New work | -- |  [ ]   |\n\n---\n\n## 1. Partial work\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-20 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-clean.md\n"
+            "> **Plan review:** GPT high, partial: opus rung, filed §2 (run 20260920-D90-T01-S1-gpt)\n\n"
+            "## 2. New work\n\n- [ ] Did the thing\n- [ ] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                gate_partial_check = cmd_query(argparse.Namespace(what="plan-health", check=True))
+                gate_partial_strict = cmd_query(
+                    argparse.Namespace(what="plan-health", check=False, fail_on="degraded")
+                )
+            spart = _mio.StringIO()
+            with _mctx.redirect_stdout(spart), _mctx.redirect_stderr(_mio.StringIO()):
+                gate_partial_summary = cmd_query(argparse.Namespace(what="summary"))
+        finally:
+            TODO_DIR = saved_tree
+        check("plan-health --check passes a bare partial", gate_partial_check, 0)
+        check("plan-health --fail-on degraded gates its presence", gate_partial_strict, 1)
+        check(
+            "query summary agrees with --check on a bare partial",
+            (gate_partial_summary, "nothing actionable" in spart.getvalue()),
+            (0, True),
+        )
         globals()["git_file_at"] = _real_git_file_at
         globals()["git_commit_touches"] = _real_git_touches
         # Prompt construction and output validation (D00 T01 §17 items 5,
