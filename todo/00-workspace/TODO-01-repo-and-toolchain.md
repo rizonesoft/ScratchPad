@@ -86,6 +86,7 @@ track: W0
 |  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [ ]   |
+|  41   |   §41   | Bin output residuals | §40 |  [ ]   |
 
 ---
 
@@ -876,9 +877,24 @@ Why this section exists: per-project `bin/Debug/<tfm>/` paths bury the exe five 
 - [x] CI paths move to `Bin/`: the `build.yml` smoke-launch exe plus artifact upload and the `soak.yml` golden-failure glob name their `Bin/<Project>/...` locations. Done when: CI is green on the branch with artifacts collected from `Bin/`. Done: build run 35399013132 success both jobs (build-linux, build-windows) on 373a7d3; smoke launched from `Bin/ScratchPad/...` and the artifact uploaded from `Bin/`; plan-gates run 35399013081 success.
 - [x] Doc run paths move to `Bin/`: `docs/bootstrap.md`, `docs/build.md`, and `docs/testing.md` name the new locations. Done when: each names its `Bin/` path and a grep for the old `src/*/bin/Debug` and `tools/*/bin/Debug` shapes is clean outside stamped history. Done: all three docs plus both workflows moved; old-shape grep clean across CI, docs, build files, and tracked TODO (stamped history stands). **Corrected 2026-09-18 (review R3):** the path-shaped grep missed `docs/build.md:15` prose asserting the old layout; prose sweep (`per-project`) rerun clean after fixing that sentence (sole live site; §2 stamped text and §40 before-state mentions stand).
 - [x] Stale pre-change per-project `bin/` trees are removed (regenerable, gitignored); `obj/` stays as the intermediates home. Done when: no `bin/` directory remains under `src/`, `tests/`, or `tools/`. Done: 11 stale `bin/` trees removed; post-build find confirms none recreated; `obj/` untouched.
-- [ ] Commit: `"workspace: centralize build output in Bin"`
+- [x] Commit: `"workspace: centralize build output in Bin"` Ship `373a7d3`; `d9e8d17` (CI-proof tick), `916dfdc` (round-3 lenses).
 
-**Test checkpoint:** Neutral `dotnet build` green with outputs under `Bin/` and none under per-project `bin/`; `git status` clean; CI Windows build plus smoke green on the branch; old-path grep clean. Cheaper substitute that fails: props edited while CI still points at `src/*/bin`.
+**Test checkpoint:** Neutral `dotnet build` green with outputs under `Bin/` and none under per-project `bin/`; `git status` clean; self-test, validate, and plan --check green; CI Windows build plus smoke green on the branch; old-path grep clean. Cheaper substitute that fails: props edited while CI still points at `src/*/bin`.
+
+## 41. Bin Output Residuals
+
+Why this section exists: the twelfth live plan review (§40 plus §1 plus §2, `gpt-5.6-sol` high) returned 14 findings; 11 accepted (9 here, 2 fixed in the §40 stamp run), 3 rejected with reasons in the §40 findings file. This section takes the hardening tail: reversal pointers on the stamped layout sections, collision and conformance guards, soak proof, artifact and clean discipline, and a stable launcher. -> XREF: D00 T01 §40 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s40-2026-09-18-s41 D00-T01-S40-PR1 D00-T01-S40-PR2 D00-T01-S40-PR3 D00-T01-S40-PR4 D00-T01-S40-PR7 D00-T01-S40-PR8 D00-T01-S40-PR10 D00-T01-S40-PR11 D00-T01-S40-PR12 (`gpt-5.6-sol` high over §40 plus §1 plus §2, 14 findings, 11 accepted with 9 here and 2 fixed in the §40 stamp run, 3 rejected with reasons in the §40 findings file).
+
+- [ ] §§1-2 gain dated reversal pointers: one prose line each naming §40 as governing (no tick or evidence change to the stamped checklists) (PR1 D00-T01-S40-PR1, PR2 D00-T01-S40-PR2). Done when: both pointers read with the §40 ref and the §40 Depends edge to §1 is unchanged.
+- [ ] Project-name uniqueness is guarded: a CI check asserts unique csproj stems so `Bin/<Project>/` can never collide silently (PR3 D00-T01-S40-PR3). Done when: the guard is green and a duplicate-stem fixture proves it fires.
+- [ ] The soak glob is proven live: an induced golden-failure soak run shows discovery plus upload from `Bin/UI/...` (PR4 D00-T01-S40-PR4). Done when: the run is quoted with the png artifact collected and the trigger reverted.
+- [ ] Layout conformance is probed: every tracked project's evaluated output path asserts under `Bin/<Project>/<Configuration>/<TFM>[/<RID>]`, and no `bin/` exists under `src/`, `tests/`, or `tools/` (PR7 D00-T01-S40-PR7, PR8 D00-T01-S40-PR8). Done when: the probe runs green in CI or as a checked script.
+- [ ] The smoke artifact is manifest-checked: CI asserts the exe, dlls, symbols, provenance version, and no foreign project outputs in the uploaded artifact (PR10 D00-T01-S40-PR10). Done when: the manifest check is green on the branch.
+- [ ] Launch is one command: a stable launcher or pointer resolves to the current exe without flattening collision-safe outputs (PR11 D00-T01-S40-PR11). Done when: it works from a clean clone on Windows and Linux where applicable.
+- [ ] Cleaning is documented and scripted: `rm -rf Bin` plus a tools script clear stale project dirs, with a note that CI runners are always clean (PR12 D00-T01-S40-PR12). Done when: the doc plus script exist and a stale-dir fixture proves the script clears it.
+- [ ] Commit: `"workspace: harden Bin output per twelfth live round"`
+
+**Test checkpoint:** Pointers read; uniqueness, conformance, and manifest guards green; soak proven; launcher works; clean documented. Cheaper substitute that fails: layout held by convention.
 
 ## Verification
 
