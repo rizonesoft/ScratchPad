@@ -937,7 +937,9 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # `run`, degraded entries carry `escalation`, majors carry `owner`,
 # `due`, and `escalation` (overdue is an old review OR a blown row due
 # date), and criticals carry `owner`, `due`, `overdue`, and
-# `escalation`.
+# `escalation`. New keys since /2: degraded, criticals, and majors
+# carry `accepted_by` and `accepted_expires`, and grandfathered
+# entries carry `overdue`.
 PLAN_HEALTH_SCHEMA = "plan-health/3"
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
@@ -1636,16 +1638,40 @@ def cmd_query(args) -> int:
         degraded = []
         grandfathered = []
         today = datetime.now(timezone.utc).date().isoformat()
+        # Acceptance provenance (D00 T01 §21 review R1): rule 24
+        # validates only files attached to a post-cutoff (or
+        # undated) stamp, first reporter wins per file, so the query
+        # consults exactly that set. An acceptance in a
+        # grandfathered-only file covers nothing: an unvalidated
+        # waiver must fail loud as a persisting escalation, never
+        # silence a gate.
+        validated_files: set[str] = set()
+        for _vt in todos:
+            for _vnum in sorted(_vt.verified_sections):
+                _vs = _vt.sections.get(_vnum)
+                if _vs is None:
+                    continue
+                if (
+                    _vs.stamped_on is not None
+                    and _vs.stamped_on <= PLAN_REVIEW_CUTOFF
+                ):
+                    continue
+                _vm = FINDINGS_RE.search(_vs.review_body or "")
+                if _vm:
+                    validated_files.add(_vm.group(1))
         acc_cache: dict[str, list] = {}
 
         def file_acceptances(path: str) -> list:
             if path not in acc_cache:
-                try:
-                    acc_cache[path] = acceptances_in(
-                        (TODO_DIR.parent / path).read_text(encoding="utf-8")
-                    )
-                except OSError:
+                if path not in validated_files:
                     acc_cache[path] = []
+                else:
+                    try:
+                        acc_cache[path] = acceptances_in(
+                            (TODO_DIR.parent / path).read_text(encoding="utf-8")
+                        )
+                    except OSError:
+                        acc_cache[path] = []
             return acc_cache[path]
 
         for t in todos:
@@ -1881,12 +1907,22 @@ def cmd_query(args) -> int:
                             due = ""
                         # A live acceptance for this row terminates its
                         # escalation (D00 T01 §21 item 2); file-scoped, so
-                        # bare PRn targets are unambiguous here.
+                        # bare PRn targets are unambiguous here. The
+                        # match folds case like the duplicate-ID rule
+                        # (review R1: the target pattern admits
+                        # lowercase, so an exact compare would validate
+                        # a waiver that never covers); padded variants
+                        # stay distinct IDs per that same rule, and a
+                        # padded target dangles loud as a persisting
+                        # escalation.
                         ab, ae = "", ""
                         for tgt, appr, exp, kind in file_acceptances(m.group(1)):
                             if exp < today:
                                 continue
-                            if kind == "finding" and tgt == lr.group(1):
+                            if (
+                                kind == "finding"
+                                and tgt.lower() == lr.group(1).lower()
+                            ):
                                 ab, ae = appr, exp
                                 break
                         if sev == "major" and disp in ("accepted", "deferred"):
@@ -6508,7 +6544,8 @@ track: Z1
             "Prose record, no manifest here.\n"
             "Ledger:\n"
             "- [PR30] [major] Lingering old worry -> accepted\n"
-            "End of ledger\n",
+            "End of ledger\n"
+            "Risk accepted: PR30; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale old waiver, never validated\n",
             encoding="utf-8",
         )
         # §19 lineage and history probes: a partial-outage record, a rerun
@@ -6695,7 +6732,7 @@ track: Z1
 "- [D90-T07-S4-PR50] [major] Accepted overdue major -> accepted owner ann due 2020-01-01\n"
 "- [D90-T07-S4-PR51] [critical] Accepted overdue critical -> accepted owner ann due 2020-01-01\n"
             "End of ledger\n"
-            + "Risk accepted: D90-T07-S4-PR50; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale major stands, ship anyway\n"
+            + "Risk accepted: d90-t07-s4-pr50; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale major stands, ship anyway\n"
             + "Risk accepted: D90-T07-S4-PR51; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale critical stands, ship anyway\n",
             encoding="utf-8",
         )
@@ -7529,6 +7566,11 @@ track: Z1
             "plan-health flags the overdue accepted major",
             any("PR30" in ln and "OVERDUE" in ln for ln in health_lines),
             True,
+        )
+        check(
+            "plan-health ignores acceptances in grandfathered files",
+            any("PR30" in ln and "accepted by" in ln for ln in health_lines),
+            False,
         )
         check(
             "plan-health keeps the split-target finding listed",

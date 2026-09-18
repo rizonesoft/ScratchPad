@@ -588,7 +588,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 **Test checkpoint:** every accountability path ends in a named owner or a shaped acceptance record, and one summary tells the operator what to do next. Cheaper substitute that fails: more dimensions nobody reads.
 
-> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, query, fixtures, skill, README, AGENTS, ticks, and Current state (read back via self-test 692/692, live validate 0 fatal, plan --check current); filing none (no new work filed)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, query, fixtures, skill, README, AGENTS, ticks, and Current state (read back via self-test 695/695, live validate 0 fatal, plan --check current); filing none (no new work filed)
 
 ## 22. Clearance Binding
 
