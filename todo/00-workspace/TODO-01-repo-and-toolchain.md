@@ -70,6 +70,7 @@ track: W0
 |  22   |   §22   | Clearance binding | §19 |  [ ]   |
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [ ]   |
 |  24   |   §24   | Lineage residuals and run inspection | §20 |  [ ]   |
+|  25   |   §25   | Rule-24 comment touch-up | §21 |  [ ]   |
 
 ---
 
@@ -577,7 +578,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 > **Started:** 2026-09-18T14:54:33Z
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes accountability and surfacing (PR6n, PR8, PR18, PR23) as the second of the four-way split. The seventh plan review then added a grandfathered-provenance inventory (PR9) to the open section. Accountability must terminate in named owners and auditable records, and the operator needs a fast recovery path, not just machine-readable dimensions. -> XREF: D00 T01 §19 (filed from its plan review); -> XREF: D00 T01 §20 (PR9 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s21 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)); plan-review-D00-T01-s20-2026-09-18 (PR9 inventory; ledger in the §20 findings file).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes accountability and surfacing (PR6n, PR8, PR18, PR23) as the second of the four-way split. The seventh plan review then added a grandfathered-provenance inventory (PR9) to the open section. Accountability must terminate in named owners and auditable records, and the operator needs a fast recovery path, not just machine-readable dimensions. -> XREF: D00 T01 §19 (filed from its plan review); -> XREF: D00 T01 §20 (PR9 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s21 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)); plan-review-D00-T01-s20-2026-09-18 (PR9 inventory; ledger in the §20 findings file). -> XREF: D00 T01 §25 (review round-5 leftover filed here).
 
 - [x] Partial-owed-rerun coherence: define whether a partial run owes a retry and how `partial:` composes with `retry-owed` (PR6n D00-T01-S19-PR6). Done when: the skill states the rule and the validator plus query follow with fixtures. Done: skill plus README state the rule (`partial:` names the failed rung, `gpt rung` or `opus rung`; a fallback survivor owes `retry-owed`, a primary survivor carries no retry and no accountability fields); the validator fires on missing, unowed, stray-fielded, and unknown-rung partials; the query lists owed partials as `retry-owed+partial` and never flags bare partials unaccountable; §§36-40 prove each shape with §17 as the silent positive.
 - [x] Risk-acceptance record shape: approver identity, rationale, scope, expiry, and review date, surfaced where the escalation lands (PR8 D00-T01-S19-PR8). Done when: the shape ships with validator plus query surfacing. Done: `Risk accepted:` carries target (finding ID, run ID, or `outage <rung>`), approver, record date, expiry, review date, and rationale tail; rule 24 fires on malformed, uncoverable, and inverted acceptances; the query clears OVERDUE, escalation, and gate vote while live and shows `accepted by` with expiry, review date, and rationale on degraded, criticals, and majors in text and JSON (schema plan-health/3); §§42-46 prove run, finding, and outage coverage, lapse, and malformation. **Corrected 2026-09-18 (review R1):** finding-ID cover folds case like the duplicate-ID rule (the target pattern admits lowercase); acceptances in grandfathered-only files cover nothing, mirroring rule 24's date scope. **Corrected 2026-09-18 (review R2):** the review date and rationale were parsed for shape but dropped from every surface; both now ride the text tag and the JSON record (still /3, pre-stamp). **Corrected 2026-09-18 (review R3):** coverage needs recorded on or before today (a post-dated waiver validates but covers nothing); the provenance gate is now stated in the skill and README. **Corrected 2026-09-18 (review R4):** rule 24 fires when the review date falls outside record..expiry (bounds inclusive, in-file dates only); the degraded sort key covers all ten scalar fields.
@@ -625,6 +626,15 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 - [ ] Commit: `"workspace: lineage residuals per seventh live round"`
 
 **Test checkpoint:** singletons carry no ancestry, new manifests carry runs, chains fork nowhere, and one query explains any run. Cheaper substitute that fails: prose restating the gaps.
+
+## 25. Rule-24 Comment Touch-Up
+
+Why this section exists: the §21 panel's round 5 (the cap) reported one consistency leftover: two in-code descriptions of `risk-acceptance-malformed` enumerate three legs while rule 24 has four (the review-window leg landed in §21 review R4). Comments must describe the rule they head, and the cap sends leftovers here instead of a sixth round. -> XREF: D00 T01 §21 (filed from its review round 5); -> SOURCE: panel-D00-T01-s21-2026-09-18-R5 (Opus round 5, consistency 1; ledger in the §21 findings file).
+
+- [ ] Both rule-24 descriptions name all four legs: the `SEVERITY_MAP` entry in `scripts/todo-graph.py` and the rule 24 header comment in `scripts/todo-validate.py` enumerate shape, uncoverable target, inverted dates, and the review-window bound. Done when: both comments name the fourth leg and no behavior changes.
+- [ ] Commit: `"workspace: rule-24 comments name the review-window leg"`
+
+**Test checkpoint:** self-test still passes with no count change, live validate stays 0 fatal. Cheaper substitute that fails: trusting memory of the leg count.
 
 ## Verification
 
