@@ -901,9 +901,11 @@ SEVERITY_MAP: dict[str, str] = {
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
 PLAN_REVIEW_CUTOFF = "2026-09-18"
-# An accepted major older than this many days past its review's stamp is
-# overdue (D00 T01 §17 item 11). Recorded default: a week is long enough
-# to file or defer, short enough to notice; changing it is one constant.
+# An open major older than this many days past its review's stamp is
+# overdue by age (D00 T01 §17 item 11; §19 collects accepted plus
+# deferred, and a blown row due date also counts). Recorded default: a
+# week is long enough to file or defer, short enough to notice; changing
+# it is one constant.
 PLAN_REVIEW_OVERDUE_DAYS = 7
 # Machine contract for `query plan-health --json` (D00 T01 §17 item 16,
 # §19 items 13-14): `schema` is `plan-health/<n>`, bumped on any
@@ -914,8 +916,10 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # and every field is one type always: strings for refs, IDs, owners,
 # dates, and runs ("" when absent, never null), bools for flags, ints
 # for counts and line numbers. New keys since /1: stale entries carry
-# `run`, degraded entries carry `escalation`, majors and criticals carry
-# `owner` and `due`.
+# `run`, degraded entries carry `escalation`, majors carry `owner`,
+# `due`, and `escalation` (overdue is an old review OR a blown row due
+# date), and criticals carry `owner`, `due`, `overdue`, and
+# `escalation`.
 PLAN_HEALTH_SCHEMA = "plan-health/2"
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
@@ -1673,26 +1677,50 @@ def cmd_query(args) -> int:
                             # triaging down a level hides them from the
                             # dimension that exists to watch them). Known
                             # wrong plan behavior must not sit invisible.
-                            # Overdue is past the constant below. Missing
+                            # Overdue is an old review OR a blown row due
+                            # date (§19 review R4: the accountability date
+                            # must fire, not just sit printed); missing
                             # owner or due surfaces (D00 T01 §19 item 7);
                             # the validator requires both on new rows, the
                             # query reports the gap everywhere.
                             since = s.stamped_on or ""
+                            row_overdue = bool(not since or since < old_line) or bool(
+                                due and due < today
+                            )
                             majors.append(
                                 (
                                     m.group(1),
                                     lr.group(1),
                                     since or "undated",
-                                    bool(not since or since < old_line),
                                     owner,
                                     due,
+                                    row_overdue,
+                                    (
+                                        "operator: remediate the finding or record risk acceptance"
+                                        if row_overdue
+                                        else ""
+                                    ),
                                 )
                             )
                             continue
                         if sev != "critical":
                             continue
                         if disp in ("accepted", "deferred"):
-                            criticals.append((m.group(1), lr.group(1), owner, due))
+                            crow_overdue = bool(due and due < today)
+                            criticals.append(
+                                (
+                                    m.group(1),
+                                    lr.group(1),
+                                    owner,
+                                    due,
+                                    crow_overdue,
+                                    (
+                                        "operator: remediate the finding or record risk acceptance"
+                                        if crow_overdue
+                                        else ""
+                                    ),
+                                )
+                            )
                         elif disp == "filed":
                             # A filed row clears only when every named
                             # target carries a post-finding verified
@@ -1754,7 +1782,21 @@ def cmd_query(args) -> int:
                                     provable = False
                                     break
                             if not provable:
-                                criticals.append((m.group(1), lr.group(1), owner, due))
+                                crow_overdue = bool(due and due < today)
+                                criticals.append(
+                                    (
+                                        m.group(1),
+                                        lr.group(1),
+                                        owner,
+                                        due,
+                                        crow_overdue,
+                                        (
+                                            "operator: remediate the finding or record risk acceptance"
+                                            if crow_overdue
+                                            else ""
+                                        ),
+                                    )
+                                )
         for path in sorted(unshaped):
             # Legacy records (D00 T01 §17 item 18, §19 item 10): a Plan
             # review section without a Manifest or without a Ledger
@@ -1770,8 +1812,8 @@ def cmd_query(args) -> int:
         degraded_sorted = sorted(
             degraded, key=lambda d: (d["ref"], d["state"], d["owner"], d["due"])
         )
-        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[4], m[5]))
-        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3]))
+        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6]))
+        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5]))
         stale_sorted = sorted(stale, key=lambda e: (e[0], e[1]))
         uncovered_sorted = sorted(uncovered)
         unmarked_sorted = sorted(unmarked)
@@ -1797,12 +1839,20 @@ def cmd_query(args) -> int:
             "fallback": fallback_sorted,
             "outages": outages_sorted,
             "criticals": [
-                {"id": pr, "file": f, "owner": own, "due": due}
-                for f, pr, own, due in criticals_sorted
+                {"id": pr, "file": f, "owner": own, "due": due, "overdue": od, "escalation": esc}
+                for f, pr, own, due, od, esc in criticals_sorted
             ],
             "majors": [
-                {"id": pr, "file": f, "since": day, "overdue": od, "owner": own, "due": due}
-                for f, pr, day, od, own, due in majors_sorted
+                {
+                    "id": pr,
+                    "file": f,
+                    "since": day,
+                    "overdue": od,
+                    "owner": own,
+                    "due": due,
+                    "escalation": esc,
+                }
+                for f, pr, day, own, due, od, esc in majors_sorted
             ],
             "grandfathered": [
                 {"ref": label, "stamped": day} for label, day in grandfathered_sorted
@@ -1879,20 +1929,24 @@ def cmd_query(args) -> int:
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
-        for f, pr, own, due in criticals_sorted:
+        for f, pr, own, due, od, _esc in criticals_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
+            if od:
+                acct += "  OVERDUE  escalate operator"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  {acct}")
         print(
             f"open majors         {len(majors_sorted)} "
-            f"({sum(1 for m in majors_sorted if m[3])} overdue)"
+            f"({sum(1 for m in majors_sorted if m[5])} overdue)"
         )
-        for f, pr, day, od, own, due in majors_sorted:
+        for f, pr, day, own, due, od, _esc in majors_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
+            if od:
+                acct += "  OVERDUE  escalate operator"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
-            print(f"    {pr}  in {f}  since {day}{'  OVERDUE' if od else ''}  {acct}")
+            print(f"    {pr}  in {f}  since {day}  {acct}")
         print(f"grandfathered stamps {len(grandfathered_sorted)} (pre-cutoff, excused, unmarked)")
         for label, day in grandfathered_sorted:
             print(f"    {label}  stamped {day}")
@@ -5726,6 +5780,11 @@ track: Z1
             # R3 probe: a deferred major is an open major too (it used to
             # drop out of the majors dimension entirely).
             "- [PR19] [major] Waiting major -> deferred owner ann date 2099-05-05 trigger fix-lands\n"
+            # R4 probes: a blown row due date fires overdue plus escalation
+            # even under a current review stamp (major accepted, critical
+            # deferred through its review date).
+            "- [D90-T07-S4-PR22] [major] Blown due date -> accepted owner ann due 2020-01-01\n"
+            "- [PR23] [critical] Blown critical -> deferred owner ann date 2020-02-02 trigger fix-lands\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -6389,6 +6448,22 @@ track: Z1
             ),
             True,
         )
+        check(
+            "plan-health escalates the past-due major",
+            any(
+                "D90-T07-S4-PR22" in ln and "OVERDUE" in ln and "escalate operator" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "plan-health escalates the past-due critical",
+            any(
+                "PR23" in ln and "OVERDUE" in ln and "escalate operator" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
         jbuf = _mio.StringIO()
         with _mctx.redirect_stdout(jbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_query(argparse.Namespace(what="plan-health", json=True))
@@ -6448,16 +6523,29 @@ track: Z1
             True,
         )
         check(
-            "plan-health --json findings carry owner and due",
-            all("owner" in e and "due" in e for e in jdata["criticals"] + jdata["majors"]),
+            "plan-health --json findings carry owner, due, overdue, escalation",
+            all(
+                "owner" in e and "due" in e and "overdue" in e and "escalation" in e
+                for e in jdata["criticals"] + jdata["majors"]
+            ),
             True,
         )
         check(
             "plan-health --json fields are singly typed",
             (
-                all(isinstance(e["id"], str) and isinstance(e["file"], str) for e in jdata["criticals"])
+                all(
+                    isinstance(e["id"], str)
+                    and isinstance(e["file"], str)
+                    and isinstance(e["owner"], str)
+                    and isinstance(e["due"], str)
+                    and isinstance(e["overdue"], bool)
+                    and isinstance(e["escalation"], str)
+                    for e in jdata["criticals"]
+                )
                 and all(
-                    isinstance(e["since"], str) and isinstance(e["overdue"], bool)
+                    isinstance(e["since"], str)
+                    and isinstance(e["overdue"], bool)
+                    and isinstance(e["escalation"], str)
                     for e in jdata["majors"]
                 )
                 and all(
@@ -6484,11 +6572,22 @@ track: Z1
             "plan-health --json sort keys are total",
             (
                 jdata["criticals"]
-                == sorted(jdata["criticals"], key=lambda d: (d["file"], d["id"], d["owner"], d["due"]))
+                == sorted(
+                    jdata["criticals"],
+                    key=lambda d: (d["file"], d["id"], d["owner"], d["due"], d["overdue"], d["escalation"]),
+                )
                 and jdata["majors"]
                 == sorted(
                     jdata["majors"],
-                    key=lambda d: (d["file"], d["id"], d["since"], d["owner"], d["due"]),
+                    key=lambda d: (
+                        d["file"],
+                        d["id"],
+                        d["since"],
+                        d["owner"],
+                        d["due"],
+                        d["overdue"],
+                        d["escalation"],
+                    ),
                 )
                 and jdata["degraded"]
                 == sorted(
