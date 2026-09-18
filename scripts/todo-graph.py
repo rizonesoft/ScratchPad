@@ -1653,7 +1653,20 @@ def cmd_query(args) -> int:
                         rest = block[lr.end():].split("\n", 1)[0]
                         om = OWNER_RE.search(rest)
                         dm = DUE_RE.search(rest)
-                        owner, due = (om.group(1) if om else ""), (dm.group(1) if dm else "")
+                        owner = om.group(1) if om else ""
+                        # A deferred row's review date IS its due date under
+                        # the deferred vocabulary (owner/date/trigger), so
+                        # the query reports it as `due` rather than flagging
+                        # a validator-legal row UNACCOUNTABLE (D00 T01 §19
+                        # review R2: accepted rows must spell `due`, deferred
+                        # rows satisfy it through `date`).
+                        if dm:
+                            due = dm.group(1)
+                        elif disp == "deferred":
+                            dd = re.search(r"\d{4}-\d{2}-\d{2}", rest)
+                            due = dd.group(0) if dd else ""
+                        else:
+                            due = ""
                         if sev == "major" and disp == "accepted":
                             # Accepted majors age visibly (D00 T01 §17 item
                             # 11): known wrong plan behavior must not sit
@@ -5703,6 +5716,10 @@ track: Z1
             # prove (§21 stamps post-finding with the back-link and the fix
             # token, but the commit's bytes lack the ID).
             "- [D90-T07-S4-PR17] [critical] Fixed elsewhere -> filed §21\n"
+            # R2 probe: a deferred critical in the deferred vocabulary (no
+            # `due` spelled): validator-legal, and the query reports its
+            # review date as the due date instead of UNACCOUNTABLE.
+            "- [PR18] [critical] Waiting on trigger -> deferred owner ann date 2099-04-04 trigger fix-lands\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -6346,6 +6363,14 @@ track: Z1
             "plan-health lists the partial degraded state",
             any(
                 "TODO-07-marker.md §17" in ln and "partial" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "plan-health reports the deferred date as the due date",
+            any(
+                "PR18" in ln and "due 2099-04-04" in ln and "UNACCOUNTABLE" not in ln
                 for ln in health_lines
             ),
             True,
