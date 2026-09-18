@@ -908,6 +908,7 @@ SEVERITY_MAP: dict[str, str] = {
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
+PLAN_REVIEW_CUTOFF = "2026-09-18"
 # The grandfathered migration deadline (D00 T01 §21 item 3): past this
 # date, unmigrated batches read OVERDUE and fail `--check`.
 MIGRATION_DEADLINE = "2026-12-31"
@@ -916,7 +917,8 @@ MIGRATION_DEADLINE = "2026-12-31"
 def migration_overdue_today(today: str) -> bool:
     """Whether the grandfathered migration is past its deadline."""
     return today > MIGRATION_DEADLINE
-PLAN_REVIEW_CUTOFF = "2026-09-18"
+
+
 # An open major older than this many days past its review's stamp is
 # overdue by age (D00 T01 §17 item 11; §19 collects accepted plus
 # deferred, and a blown row due date also counts). Recorded default: a
@@ -1024,6 +1026,8 @@ def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
     if name in ("criticals", "majors"):
         return any(not e.get("accepted_by") for e in entries)
     return bool(entries)
+
+
 # The ledger is a structured block (D00 T01 §19 item 10), not prose the
 # query squints at: rows live between `Ledger:` and `End of ledger`,
 # every non-blank line inside is a row or malformed, and `- [` lines
@@ -2228,6 +2232,10 @@ def cmd_query(args) -> int:
                     nxt = f"{first['dependent']} waits on {first['waits_on']}"
                 elif dim == "unreadable":
                     nxt = f"{first['file']} (fence opened at line {first['opener']})"
+                elif dim == "stale":
+                    nxt = f"{first['file']} ({len(first['unreviewed'])} unreviewed, {len(first['removed'])} removed)"
+                elif isinstance(first, str):
+                    nxt = f"{first} ({dim})"
                 else:
                     nxt = first.get("ref", dim)
             print(f"next: {nxt}")
@@ -7979,11 +7987,21 @@ track: Z1
                 gate_stale_union = cmd_query(
                     argparse.Namespace(what="plan-health", check=True, fail_on="stale")
                 )
+                sstale = _mio.StringIO()
+                with _mctx.redirect_stdout(sstale), _mctx.redirect_stderr(_mio.StringIO()):
+                    gate_summary_stale = cmd_query(
+                        argparse.Namespace(what="summary", check=False, fail_on="stale")
+                    )
         finally:
             TODO_DIR = saved_tree
         check("plan-health --check ignores stale-only dirt", gate_stale_default, 0)
         check("plan-health --fail-on stale gates it explicitly", gate_stale_explicit, 1)
         check("plan-health --check --fail-on stale unions both", gate_stale_union, 1)
+        check(
+            "query summary names stale scope with counts",
+            (gate_summary_stale, "unreviewed," in sstale.getvalue()),
+            (1, True),
+        )
         # Strict-vs-lenient divergence: a bare partial is complete, so
         # --check passes it while explicit --fail-on degraded still gates
         # presence, and the summary agrees with --check.
@@ -8022,6 +8040,45 @@ track: Z1
             "query summary agrees with --check on a bare partial",
             (gate_partial_summary, "nothing actionable" in spart.getvalue()),
             (0, True),
+        )
+        # Legacy-only clean form: a pre-cutoff stamp with a shaped
+        # marker whose findings carry a Plan review but no Manifest
+        # or Ledger block. The check set passes, so --fail-on legacy
+        # fails it alone and the summary names the record.
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: one legacy record and nothing else.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Old work | -- |  [x]   |\n\n---\n\n## 1. Old work\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-18 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-clean.md\n"
+            "> **Plan review:** GPT high, no findings (run 20260920-D90-T01-S1-gpt)\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-clean.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n## Plan review\n\n"
+            "Earlier review prose with no structured blocks.\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            slegacy = _mio.StringIO()
+            with _mctx.redirect_stdout(slegacy), _mctx.redirect_stderr(_mio.StringIO()):
+                gate_summary_legacy = cmd_query(
+                    argparse.Namespace(what="summary", check=False, fail_on="legacy")
+                )
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "query summary names string-dimension entries without crashing",
+            (gate_summary_legacy, "90-clean.md (legacy)" in slegacy.getvalue()),
+            (1, True),
         )
         globals()["git_file_at"] = _real_git_file_at
         globals()["git_commit_touches"] = _real_git_touches
