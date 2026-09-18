@@ -223,6 +223,8 @@ def detect_context(platform: str | None = None, environ=None) -> set[str]:
     if plat == "win32" and session and session.lower() != "services":
         ctx.add("display-session")
     return ctx
+
+
 FIDELITY_EXEMPT_RE = re.compile(
     r"no page of its own|not a page|the transport is not a page",
     re.I,

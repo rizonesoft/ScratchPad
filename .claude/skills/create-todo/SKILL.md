@@ -23,7 +23,7 @@ Copy `.claude/skills/create-todo/todo-template.md` to `todo/<domain>/TODO-NN-<sh
 - **Inputs:** specs, captures, existing files with what each section consumes, and `-> XREF:` lines to related work.
 - **Outcome:** observable end states, plus the one `**Adjacency:**` line and its rationale paragraph.
 - **Implementation Order:** one row per section with real `Depends On` edges (`--` only when truly standalone).
-- **Sections:** context, micro-step checklist with `Commit:`, `Test checkpoint:`, Fidelity/Job/Treatment/Chrome on UI sections, `Needs:` on Windows-host sections.
+- **Sections:** context, micro-step checklist with `Commit:`, `Test checkpoint:`, Fidelity/Job/Treatment/Chrome on UI sections, `Needs:` on Windows-host sections, `Requires:` on environment-gated sections.
 - **Verification:** the file-level checks `process-todo-file` will run.
 
 Size sections by what holds together (max 30 items; a file caps at 55 sections). Every section must be implementable with zero conversation context: no "as discussed".
