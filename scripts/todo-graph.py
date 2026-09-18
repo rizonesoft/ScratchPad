@@ -975,11 +975,11 @@ def risk_target_kind(target: str) -> str | None:
     return None
 
 
-def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str]]:
+def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str, str]]:
     """Parse live `Risk accepted:` lines from fence-stripped findings text.
 
-    Returns (target, approver, expires, review, rationale, kind) per
-    well-formed line, in file order. Malformed or uncoverable lines are skipped, never fatal:
+    Returns (target, approver, expires, recorded, review, rationale,
+    kind) per well-formed line, in file order. Malformed or uncoverable lines are skipped, never fatal:
     they are the validator's to flag (rule 24); the query only consults
     acceptances for live escalations, so a bad line fails loud as a
     persisting escalation, never as a query crash.
@@ -994,14 +994,27 @@ def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, 
         kind = risk_target_kind(am.group(1))
         if kind is None:
             continue
-        out.append((am.group(1), am.group(2), am.group(4), am.group(5), am.group(6), kind))
+        out.append((am.group(1), am.group(2), am.group(4), am.group(3), am.group(5), am.group(6), kind))
     return out
 
 
-def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str]]:
+def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str, str]]:
     """Parse `Risk accepted:` lines from raw findings text (fences strip first)."""
     stripped, _u = strip_fenced_code(ftext)
     return acceptance_lines(stripped)
+
+
+def acceptance_live(recorded: str, expires: str, today: str) -> bool:
+    """Whether an acceptance covers today (D00 T01 §21 review R3).
+
+    Coverage needs recorded <= today <= expires: a post-dated record
+    (a typo'd year, a waiver from the future) validates clean under
+    rule 24, which is shape plus inversion only and stays
+    wall-clock-free, but covers nothing, so the escalation persists
+    loud like any other dangling target. ISO dates compare
+    lexicographically; the regex guarantees both fields are shaped.
+    """
+    return recorded <= today <= expires
 
 
 def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
@@ -1740,10 +1753,10 @@ def cmd_query(args) -> int:
                             omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
                             orung = omt.group(1).strip() if omt else None
                             if fm:
-                                for tgt, appr, exp, rvw, rat, kind in file_acceptances(
+                                for tgt, appr, exp, rec, rvw, rat, kind in file_acceptances(
                                     fm.group(1)
                                 ):
-                                    if exp < today:
+                                    if not acceptance_live(rec, exp, today):
                                         continue
                                     if (
                                         kind == "run"
@@ -1920,8 +1933,10 @@ def cmd_query(args) -> int:
                         # padded target dangles loud as a persisting
                         # escalation.
                         ab, ae, ar, at = "", "", "", ""
-                        for tgt, appr, exp, rvw, rat, kind in file_acceptances(m.group(1)):
-                            if exp < today:
+                        for tgt, appr, exp, rec, rvw, rat, kind in file_acceptances(
+                            m.group(1)
+                        ):
+                            if not acceptance_live(rec, exp, today):
                                 continue
                             if (
                                 kind == "finding"
@@ -2304,9 +2319,9 @@ def cmd_query(args) -> int:
                 tags += "  OVERDUE  escalate operator"
             if d["accepted_by"]:
                 tags += (
-                f"  accepted by {d['accepted_by']} expires {d['accepted_expires']}"
-                f" review {d['accepted_review']} rationale {d['accepted_rationale']}"
-            )
+                    f"  accepted by {d['accepted_by']} expires {d['accepted_expires']}"
+                    f" review {d['accepted_review']} rationale {d['accepted_rationale']}"
+                )
             # UNACCOUNTABLE pairs with the owed predicate at collection:
             # a bare partial carries no fields because none are owed.
             if (not d["owner"] or not d["due"]) and (
@@ -6736,9 +6751,11 @@ track: Z1
             + "Manifest: sections [D90 T07 §44]; dependents [none]; bytes 100; run 20260920-D90-T07-S44-gpt\n\n"
             "Ledger:\n"
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
+"- [D90-T07-S4-PR53] [major] Post-dated waiver target -> accepted owner ann due 2099-01-01\n"
             "End of ledger\n"
             + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; date 2026-09-01; review 2026-10-01; rationale missing expires\n"
-            + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; rationale inverted dates\n",
+            + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; rationale inverted dates\n"
+            + "Risk accepted: D90-T07-S4-PR53; approver bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; rationale typo'd year\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept4.md").write_text(
@@ -7296,6 +7313,16 @@ track: Z1
             True,
         )
         check(
+            "acceptance covers only between record and expiry",
+            (
+                acceptance_live("2026-09-01", "2099-01-01", "2026-09-18")
+                and acceptance_live("2026-09-18", "2026-09-18", "2026-09-18")
+                and not acceptance_live("2020-01-05", "2020-06-01", "2026-09-18")
+                and not acceptance_live("2099-01-01", "2099-12-31", "2026-09-18")
+            ),
+            True,
+        )
+        check(
             "prose outage predecessor fires unchained",
             any(
                 "TODO-07-marker.md" in ln and "§35 " in ln and "names no superseded run" in ln
@@ -7678,6 +7705,17 @@ track: Z1
                 "D90-T07-S4-PR51" in ln
                 and "review 2026-10-01 rationale critical stands, ship anyway" in ln
                 for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "post-dated acceptance covers nothing",
+            (
+                any("D90-T07-S4-PR53" in ln for ln in health_lines)
+                and not any(
+                    "D90-T07-S4-PR53" in ln and "accepted by" in ln
+                    for ln in health_lines
+                )
             ),
             True,
         )
