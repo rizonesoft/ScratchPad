@@ -964,6 +964,8 @@ def normalize_run_id(run: str) -> str:
     if run.endswith("-r1") and _RUN_BASE_RE.match(run[:-3]):
         return run[:-3]
     return run
+
+
 RUN_ID_RE = re.compile(r"\brun\s+(\S+?)(?=[,;)]|\s|$)")
 SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
 # A clearance names the commit that carries the fix (D00 T01 §19 item 8):
