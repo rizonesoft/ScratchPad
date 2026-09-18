@@ -23,6 +23,7 @@ track: R1
 ## Outcome
 
 - A signed MSIX installs, runs, and uninstalls cleanly on a stock Windows 11 machine.
+- A signed Inno Setup exe installs, runs, and uninstalls cleanly for users outside the Store path.
 - Updates arrive through a committed channel with rollback on failure.
 - No release ships without the checklist proving green suites, clean audit, and current docs.
 
@@ -41,6 +42,7 @@ track: R1
 |   5   |   §5    | First signed release | §4 |  [ ]   |
 |   6   |   §6    | Store and WinGet distribution | §1 |  [ ]   |
 |   7   |   §7    | Share target registration | §1, D01 T01 §24 |  [ ]   |
+|   8   |   §8    | Inno Setup installer and distribution | §1 |  [ ]   |
 
 ---
 
@@ -138,6 +140,19 @@ Why this section exists: the share contract needs package identity, which only e
 - [ ] Commit: `"release: register the share target"`
 
 **Test checkpoint:** declaration, sheet presence, and routed receive are all driven in the room. Cheaper substitute that fails: a target that eats shares silently.
+
+## 8. Inno Setup Installer and Distribution
+
+Why this section exists: MSIX plus Store plus WinGet (§§1-6) covers the managed path, but some machines refuse it (Store policy, no WinGet, offline media). A signed Inno Setup exe gives those users a direct-download install with the same identity, built from the same CI tag. Toolchain pin: Inno Setup 6.7.3, operator-provisioned 2026-09-18; CI installs this exact version, never latest. Additive by operator direction 2026-09-18: MSIX stays the primary artifact and §§1-7 stand unchanged; if Inno ever replaces MSIX instead, §§1/5/6 plus the D00 T01 §2 and D01 T01 §11 identity references need rework. WinGet stays §6's: this section distributes through the release page only. -> XREF: D07 T01 §1 (the pinned identity this installer reuses: exe, AppId, ProgId, URL scheme, associations).
+
+- [ ] An Inno Setup script (`installer/ScratchPad.iss`) builds `ScratchPadSetup.exe` from the CI build output with the app id and version stamped from the §1 identity record. Done when: the script plus the version-stamping step exist and a local Windows build produces the exe.
+- [ ] The setup installs and uninstalls cleanly reusing the §1 identity: exe name, AppId, ProgId, URL scheme, and the D01 association verbs register on install and remove on uninstall. Done when: install plus uninstall are driven on a clean VM with association checks green.
+- [ ] The setup exe is signed under the §1 certificate story with SHA-256 checksums published beside the artifact. Done when: the signature verifies on a stock machine and the checksum file ships with the release.
+- [ ] CI builds the setup exe on the release tag and attaches it to the release page draft. Done when: the artifact downloads from the run and the draft carries it with checksums.
+- [ ] First launch after setup install opens to the expected state with settings working and no errors. Done when: the launch test passes on the clean VM.
+- [ ] Commit: `"release: ship the Inno Setup installer"`
+
+**Test checkpoint:** Signed setup exe artifact in CI with §1 identity; clean-VM install, launch, and uninstall green; checksums published on the release draft. Cheaper substitute that fails: an unsigned exe on a release page.
 
 ## Verification
 

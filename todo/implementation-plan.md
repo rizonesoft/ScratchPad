@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **63 of 200 sections complete (32%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **63 of 201 sections complete (31%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -305,12 +305,13 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 4 -- Release: packaging, install, update
 
-|  ✔  | Section      | Deliverable                   | Items |
-| :-: | ------------ | ----------------------------- | :---: |
-| [ ] | `D07 T01 §1` | MSIX package build            |   4   |
-| [ ] | `D07 T01 §2` | Clean-machine install test    |   4   |
-| [ ] | `D07 T01 §3` | Update channel with rollback  |   4   |
-| [ ] | `D07 T01 §4` | Release checklist             |   4   |
-| [ ] | `D07 T01 §5` | First signed release          |   4   |
-| [ ] | `D07 T01 §6` | Store and WinGet distribution |   4   |
-| [ ] | `D07 T01 §7` | Share target registration     |   4   |
+|  ✔  | Section      | Deliverable                           | Items |
+| :-: | ------------ | ------------------------------------- | :---: |
+| [ ] | `D07 T01 §1` | MSIX package build                    |   4   |
+| [ ] | `D07 T01 §2` | Clean-machine install test            |   4   |
+| [ ] | `D07 T01 §3` | Update channel with rollback          |   4   |
+| [ ] | `D07 T01 §4` | Release checklist                     |   4   |
+| [ ] | `D07 T01 §5` | First signed release                  |   4   |
+| [ ] | `D07 T01 §6` | Store and WinGet distribution         |   4   |
+| [ ] | `D07 T01 §7` | Share target registration             |   4   |
+| [ ] | `D07 T01 §8` | Inno Setup installer and distribution |   6   |
