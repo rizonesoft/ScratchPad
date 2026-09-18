@@ -22,6 +22,8 @@ track: W0
 
 > **Filed 2026-09-18:** §15 (first plan-review residuals). Open: §§8, 15.
 
+> **Filed 2026-09-18:** §16 (second plan-review residuals). Open: §§8, 15-16.
+
 ## Inputs
 
 - [Windows App SDK and WinUI 3 docs for .NET](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/) -- WinUI 3 with .NET: SDK and workload requirements
@@ -55,6 +57,7 @@ track: W0
 |  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
 |  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
 |  15   |   §15   | First plan-review residuals | §14 |  [ ]   |
+|  16   |   §16   | Second plan-review residuals | §15 |  [ ]   |
 
 ---
 
@@ -384,12 +387,35 @@ Why this section exists: the first live plan review (§14 plus §9, `gpt-5.6-sol
 - [x] A clean round still writes its record: zero findings lands as an explicit no-findings note, never as silence. Done when: the skill says so with the no-findings shape quoted (live proof rides the first clean review, which this section cannot schedule). Done: sentence plus quoted shape land (marker `no findings` plus the PR0 ledger line).
 - [x] Filed findings cite their evidence: every plan-review filing carries the finding's source lines plus a SOURCE key before `add-todo` accepts it. Done when: the skill points at the add-todo evidence rules. Done: sentence lands in the plan-review section.
 - [x] Advisory never blocks except when it must: a finding that invalidates safety, data integrity, or the stamp reopens the section through review-todo-section audit stance. Done when: the skill names the exception and the route. Done: sentence lands closing the plan-review section.
-- [ ] The record carries the input manifest: which sections rode inline, at what byte count. Done when: the skill mandates the manifest line and §15's own plan review carries the first one.
-- [ ] Findings get IDs and dispositions: accepted, filed, duplicate, rejected, deferred, each with its reason. Done when: the ledger shape is specified as grep-able rows (`- [PRn] [critical|major|minor] <finding> -> <disposition> <target-or-reason>`) and §15's own plan review uses it. **Corrected 2026-09-18 (validation):** filed without a shape, which leaves item 10 nothing mechanical to parse; severity rides inline so the query can find criticals.
+- [x] The record carries the input manifest: which sections rode inline, at what byte count. Done when: the skill mandates the manifest line and §15's own plan review carries the first one. Done: §15's plan-review record carries the manifest (§15 + §14 + no reverse dependents, 13,939 bytes).
+- [x] Findings get IDs and dispositions: accepted, filed, duplicate, rejected, deferred, each with its reason. Done when: the ledger shape is specified as grep-able rows (`- [PRn] [critical|major|minor] <finding> -> <disposition> <target-or-reason>`) and §15's own plan review uses it. **Corrected 2026-09-18 (validation):** filed without a shape, which leaves item 10 nothing mechanical to parse; severity rides inline so the query can find criticals. Done: §15's plan-review record carries the 21-row ledger in the specified shape (IDs review-local pending the §16 namespace fix).
 - [x] A plan-health query reports reviewed sections, uncovered dependents, fallback usage, outages, and unresolved critical findings. Done when: `query plan-health` runs and its output is quoted. **Corrected 2026-09-18 (validation):** dimensions are mechanical: marker presence (reviewed/unreviewed), `## GPT panel` headings (fallback usage), `Opus outage` lines (outages), unmarked reverse dependents of marked sections (uncovered), ledger rows with critical severity dispositioned `accepted` or `deferred` (unresolved criticals; rejected and duplicate rows are terminal, so counting them would cry wolf). Done: the query lands with five dimensions plus an unreadable-files diagnostic, and 10 self-test presence checks (review self-fix: unresolved means accepted|deferred with a rejected-critical absence check; review R1: uncovered restricted to stamped dependents, all findings scans run on fence-stripped text via the shared stripper extracted verbatim from rule 16, fenced-ledger absence check; review R2: uncovered excludes grandfathered stamps, unbalanced files reported with the swallowed row uncounted; review R3: §5 re-dated to the grandfathered side with a validate-silence lock so the query is the sole signal, cutoff predicate shared as `_owed`); live output all zeros (0 marked, 0 unmarked post-cutoff, 0 uncovered, 0 fallback, 0 outages, 0 criticals, 0 unreadable); Tooling lines in `todo/README.md`, AGENTS.md, and the tree-wide `todo/TODO-00-INDEX.md` name it (the root README's starter block stays minimal by design).
 - [x] Commit: `"workspace: harden plan reviews per first live round"`
 
 **Test checkpoint:** Validator fires on a stamp without the marker; skill carries the scope, timeout, record, exception, manifest, and ledger rules; the plan-health query is quoted; §15's own plan review exercises the new rules. **Corrected 2026-09-18 (validation):** filed pointing at an unscheduled "next" review; §15's own post-panel review is the verifier. Cheaper substitute that fails: prose rules no review follows.
+
+## 16. Second Plan-Review Residuals
+
+Why this section exists: the second live plan review (§15 plus §14 plus no reverse dependents, `gpt-5.6-sol` high) returned 21 findings; 15 survive synthesis (PR10 and PR11 merge into one lifecycle item; 5 rejected with reasons in the §15 findings file) and none has an owner. They harden the ledger lifecycle (IDs, transitions, severity, back-links, backfill), the marker's honesty (outage and retry states, verified filings), the query's tracking (filed-critical follow-through, stale scope, JSON), and the prompt contract (malformed-output refusal, trust boundary). -> XREF: D00 T01 §15 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s15-2026-09-18 (`gpt-5.6-sol` high over §15 plus §14, 21 findings, 15 filed here, 5 rejected with reasons in the §15 findings file).
+
+- [ ] §14's item-1 timing gains a dated pointer to the after-panel-close rule. Done when: the pointer names §15 and the skill as governing, with no tick or evidence changes to the stamped checklist.
+- [ ] The marker vocabulary gains the double-outage state (`outage: <rung>`), so an unavailable review is never reported as clean. Done when: the skill and README name the state with an example (no validator change: presence already passes).
+- [ ] A same-family fallback run leaves a pending-retry state: the marker records `retry-owed` and plan-health lists reviews awaiting a second-family rerun. Done when: the marker vocab, the skill, and the query dimension land with a fixture.
+- [ ] plan-health follows filed criticals until their targets verify: a `filed` row clears only when its named target carries a `Verified:` stamp. Done when: the query plus fixtures lock both the still-listed and the cleared shapes.
+- [ ] Manifests go parseable and plan-health flags stale scope: the review-time Depends/XREF set is compared against the current graph. Done when: the manifest shape is specified and the staleness dimension lands with a fixture.
+- [ ] Zero-exit malformed reviewer output counts as runner failure: output must match the asked finding-shape or state no-findings explicitly, else the next rung runs. Done when: the skill carries the shape rule.
+- [ ] Ledger IDs gain the review namespace (`D00-T01-S15-PR01` shape); the query regex follows. Done when: the skill plus the query plus a fixture use namespaced IDs.
+- [ ] Ledger lifecycle: allowed transitions (triage to accepted, rejected, or duplicate; accepted to filed or deferred; deferred to filed on trigger) plus deferred-row owner, date, and trigger requirements. Done when: the skill carries the transition table.
+- [ ] Severity criteria: critical invalidates safety, data integrity, or the stamp (mirroring the audit exception); major is wrong plan behavior; minor is polish or wording. Done when: the skill carries the criteria.
+- [ ] Filed findings link both ways: the target section carries the finding ID in its SOURCE key. Done when: the skill requires the back-link with an example quoted.
+- [ ] §14's 15 findings backfill into the namespaced ledger (after the ID shape lands in this same section). Done when: the §14 findings record carries all 15 rows and plan-health parses them.
+- [ ] Manifest plus ledger shapes gain validator and self-test gates (malformed shapes FATAL with fixtures and a mutation probe). Done when: the rule plus README row plus cases are green (after the shape items land in this same section).
+- [ ] Rule 17 verifies named filings resolve and match ledger `filed` rows (`outage:` markers skip the check). Done when: the validator plus fixtures lock both directions.
+- [ ] `query plan-health --json` emits the machine-readable report. Done when: the flag runs and its output is quoted.
+- [ ] Reviewer prompts wrap TODO input in delimiters with a treat-as-data instruction (panel plus plan-review prompts, family-swept). Done when: both skill prompt templates carry the boundary sentences.
+- [ ] Commit: `"workspace: harden plan reviews per second live round"`
+
+**Test checkpoint:** §14's timing pointer present; marker vocab covers outage plus retry states; query follows filed criticals, flags stale scope, and emits JSON; ledger IDs namespaced with lifecycle plus severity plus back-links; §14 backfilled; validator gates shapes plus filings; prompts carry the trust boundary. Cheaper substitute that fails: a third review round whose findings stay prose.
 
 ## Verification
 
