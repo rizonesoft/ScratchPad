@@ -3720,6 +3720,7 @@ track: Z1
 |  33   |   §33   | Fenced GPT quote alone satisfies nothing | - |  [x]   |
 |  34   |   §34   | Last Opus panel governs over a clean earlier GPT panel | - |  [x]   |
 |  35   |   §35   | Trailing heading ends the GPT panel section | - |  [x]   |
+|  36   |   §36   | Defective GPT last fires over a clean earlier Opus panel | - |  [x]   |
 
 ---
 
@@ -4072,6 +4073,16 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §35 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gpttail.md
+
+## 36. Defective GPT last fires over a clean earlier Opus panel
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §36 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptlastbad.md
 """,
             encoding="utf-8",
         )
@@ -4303,6 +4314,16 @@ track: Z1
             "**adversarial: approve**\n**consistency: approve**\n"
             "\n##### Leftover notes\n\n"
             "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptlastbad.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## GPT panel (round 2)\n\n"
+            "Opus outage: CLI auth failure (exit 3).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n",
             encoding="utf-8",
         )
         pbuf = _mio.StringIO()
@@ -4561,6 +4582,14 @@ track: Z1
             ),
             True,
         )
+        check(
+            "defective GPT last fires over a clean earlier Opus panel",
+            any(
+                "TODO-06-panel.md" in ln and "§36 " in ln and "GPT panel lacks verdicts for: record" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         panel_todo.unlink()
         for extra in (
             "90-panel-nopanel.md",
@@ -4595,6 +4624,7 @@ track: Z1
             "90-panel-gptfenced.md",
             "90-panel-opuslast.md",
             "90-panel-gpttail.md",
+            "90-panel-gptlastbad.md",
         ):
             (rev_dir / extra).unlink()
         check(
