@@ -1292,14 +1292,22 @@ def cmd_query(args) -> int:
                     r = resolve_ref(raw, t, by_key)
                     if r and r[0] in by_id:
                         rev.setdefault((r[0], r[1]), set()).add((t.id, num))
-        stamped = {(t.id, num) for t in todos for num in t.verified_sections if num in t.sections}
+        uncoverable = {
+            (t.id, num)
+            for t in todos
+            for num in t.verified_sections
+            if num in t.sections
+            and (t.sections[num].stamped_on is None or t.sections[num].stamped_on > PLAN_REVIEW_CUTOFF)
+        }
         uncovered = []
         for key in sorted(marked):
             for dep in sorted(rev.get(key, ())):
-                # Stamped dependents only: an unstamped section cannot have
-                # had a plan review at all, so counting the unbuilt plan as
-                # gaps cries wolf on every run (round-1 adversarial).
-                if dep not in marked and dep in stamped:
+                # Stamped, review-owed dependents only: an unstamped section
+                # cannot have had a plan review at all (round-1
+                # adversarial), and a grandfathered stamp is excused by rule
+                # 17 (round-2 consistency). Either in this list would be a
+                # gap no work can clear.
+                if dep not in marked and dep in uncoverable:
                     uncovered.append((labels.get(dep, f"{dep[0]} §{dep[1]}"), labels.get(key, f"{key[0]} §{key[1]}")))
         findings_path_re = re.compile(r"Raw findings:\s*(\S+\.md)")
         gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
@@ -1310,7 +1318,7 @@ def cmd_query(args) -> int:
             re.IGNORECASE | re.MULTILINE,
         )
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
-        fallback, outages, criticals = [], [], []
+        fallback, outages, criticals, unreadable = [], [], [], []
         seen = set()
         for t in todos:
             for num in sorted(t.verified_sections):
@@ -1327,7 +1335,14 @@ def cmd_query(args) -> int:
                     continue
                 # Same stripper as rule 16: a fenced worked example must
                 # neither count as fallback usage nor as a live critical.
-                text, _unbalanced = strip_fenced_code(text)
+                # An unbalanced fence truncates the scan at the opener, so
+                # the file is reported, never silently half-read
+                # (round-2 adversarial): rule 16 FATALs this only for
+                # post-cutoff stamps, and grandfathered files have no other
+                # diagnostic.
+                text, unbalanced_opener = strip_fenced_code(text)
+                if unbalanced_opener is not None:
+                    unreadable.append((m.group(1), unbalanced_opener))
                 if gpt_heading_re.search(text):
                     fallback.append(m.group(1))
                 if outage_re.search(text):
@@ -1359,6 +1374,9 @@ def cmd_query(args) -> int:
         print(f"unresolved critical {len(criticals)}")
         for f, pr in sorted(criticals):
             print(f"    {pr}  in {f}")
+        print(f"unreadable findings {len(unreadable)} (unbalanced fence; scans truncated)")
+        for f, opener in sorted(unreadable):
+            print(f"    {f}  fence opened at line {opener}")
         return 0
 
     rows = []
@@ -4839,8 +4857,9 @@ track: Z1
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Missing marker fires | §2 |  [x]   |
 |   2   |   §2    | Present marker silent | - |  [x]   |
-|   3   |   §3    | Cutoff stamp silent | - |  [x]   |
+|   3   |   §3    | Cutoff stamp silent | §2 |  [x]   |
 |   4   |   §4    | Marked health probe | - |  [x]   |
+|   5   |   §5    | Unbalanced findings probe | - |  [x]   |
 
 ---
 
@@ -4885,6 +4904,17 @@ track: Z1
 > **Verified:** 2026-09-20 | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
 > **Plan review:** GPT high, filed D90 T99 §1
+
+## 5. Unbalanced findings probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §5 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-unbal.md
+> **Plan review:** GPT high, no findings
 """,
             encoding="utf-8",
         )
@@ -4899,6 +4929,15 @@ track: Z1
             "- [PR3] [critical] Hanging critical -> accepted needs owner\n"
             "- [PR4] [critical] Rejected scare -> rejected not a real gap\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-unbal.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: CLI auth failure (exit 3).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Plan review\n\n"
+            "```\nUnterminated quote swallows the rest:\n- [PR7] [critical] Swallowed row -> accepted demo\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -4974,7 +5013,26 @@ track: Z1
             "PR9" in health_out,
             False,
         )
+        check(
+            "plan-health clears the grandfathered dependent",
+            any(
+                "TODO-07-marker.md §3" in ln and "waits on marked" in ln
+                for ln in health_lines
+            ),
+            False,
+        )
+        check(
+            "plan-health reports the unreadable file",
+            "90-health-unbal.md" in health_out,
+            True,
+        )
+        check(
+            "plan-health never counts the swallowed row",
+            "PR7" in health_out,
+            False,
+        )
         (rev_dir / "90-health.md").unlink()
+        (rev_dir / "90-health-unbal.md").unlink()
         marker_todo.unlink()
         panel_todo.unlink()
         for extra in (
