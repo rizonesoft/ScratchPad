@@ -1216,12 +1216,20 @@ def validate(graph, _args) -> int:
                         f"(terminal rows amend via a new row)",
                     )
 
-    # 23. provenance binds live quotes to runs (D00 T01 §20 item 2):
-    # every post-cutoff findings file carries at least one well-formed
-    # `Provenance:` line, and every such line carries a shaped run ID
-    # (run-less provenance fails the shape). Fields ride semicolon-
-    # separated and carry no bare semicolons (authoring rule; shape-
-    # tightening filed in §23, so the checker pins presence plus run).
+    # 23. provenance binds live quotes to runs (D00 T01 §20 item 2,
+    # checkable shape plus run equality D00 T01 §23): every post-cutoff
+    # findings file carries at least one well-formed `Provenance:` line,
+    # and every such line carries a shaped run ID (run-less provenance
+    # fails the shape). Fields ride semicolon-separated and carry no
+    # bare semicolons (authoring rule). Beyond the shape, the
+    # candidate must resolve in git (an unattested quote attests
+    # nothing), the path must name a file under the repo root (an
+    # absolute or missing path points nowhere checkable), and the run
+    # must equal a marker run of the reporting section (a well-formed
+    # wrong run misattributes evidence). The digest stays attested:
+    # presence plus shape, never re-verified (the file keeps no bytes
+    # to verify against). Equality skips when the section carries no
+    # shaped marker run (the marker-shape rule owns that defect).
     # Date-scoped like rules
     # 16-18 (pre-cutoff records predate the mandate); fenced
     # `Provenance:` examples strip before the scan, so only live lines
@@ -1242,6 +1250,11 @@ def validate(graph, _args) -> int:
             except OSError:
                 continue
             seen_23.add(fm.group(1))
+            mruns = set()
+            for body in section_markers(t, num) or []:
+                rm = graph.RUN_ID_RE.search(body)
+                if rm is not None and graph.RUN_ID_SHAPE_RE.match(rm.group(1)):
+                    mruns.add(graph.normalize_run_id(rm.group(1)))
             ftext, _u = graph.strip_fenced_code(ftext)
             prov = [ln for ln in ftext.splitlines() if ln.startswith("Provenance:")]
             if not prov:
@@ -1256,6 +1269,35 @@ def validate(graph, _args) -> int:
                     flag(
                         "provenance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Provenance line: {ln.strip()[:80]}",
+                    )
+                    continue
+                _res = graph.git_resolves(pm.group(1))
+                if _res is False:
+                    flag(
+                        "provenance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {pm.group(1)} resolves to nothing",
+                    )
+                elif _res is None:
+                    flag(
+                        "provenance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {pm.group(1)} unprovable (git cannot resolve it)",
+                    )
+                _pp = pm.group(6)
+                try:
+                    _pfile = (graph.TODO_DIR.parent / _pp).resolve()
+                    _proot = graph.TODO_DIR.parent.resolve()
+                    _pok = not Path(_pp).is_absolute() and _pfile.is_relative_to(_proot) and _pfile.is_file()
+                except OSError:
+                    _pok = False
+                if not _pok:
+                    flag(
+                        "provenance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} names no file under the repo root",
+                    )
+                if mruns and graph.normalize_run_id(pm.group(7)) not in mruns:
+                    flag(
+                        "provenance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance run {pm.group(7)} equals no marker run of §{num} (misattributed evidence)",
                     )
 
     # 24. risk acceptances terminate escalations in a checkable shape
@@ -1311,6 +1353,62 @@ def validate(graph, _args) -> int:
                         "risk-acceptance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(5)} not in {am.group(3)}..{am.group(4)}",
                     )
+
+    # 25. ledger amendments link or fail (D00 T01 §23): a row carrying
+    # `supersedes <finding-id>` after its disposition names a row of its
+    # own block in its own review namespace, and supersedes edges never
+    # close a cycle. The link token must be exactly ID-shaped, so prose
+    # carrying the word (a title like `Singleton supersedes stays
+    # silent`) is never a link. No date scope (rule-22 precedent: old
+    # ledgers deserve the same protection, and the grammar gate keeps
+    # prose silent); fence-stripped and first-reporter-wins like rules
+    # 23-24. plan-health reads the un-superseded head of each chain as
+    # current and skips the rest.
+    seen_25 = set()
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm or fm.group(1) in seen_25:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            seen_25.add(fm.group(1))
+            ftext, _u = graph.strip_fenced_code(ftext)
+            for h in graph.PLAN_REVIEW_HEADING_RE.finditer(ftext):
+                hsec = ftext[h.end():]
+                hnxt = re.search(r"^#{1,6}\s+", hsec, re.MULTILINE)
+                if hnxt:
+                    hsec = hsec[: hnxt.start()]
+                hblock, _hp = graph.ledger_block(hsec)
+                if hblock is None:
+                    continue
+                _links = graph.ledger_supersedes(hblock)
+                _ids = {lr.group(1).lower() for lr in graph.LEDGER_ROW_RE.finditer(hblock)}
+                _valid, _cyclic = graph.ledger_supersession(hblock)
+                for lr in graph.LEDGER_ROW_RE.finditer(hblock):
+                    _rid = lr.group(1).lower()
+                    if _rid not in _links:
+                        continue
+                    _tgt = _links[_rid]
+                    if graph.finding_namespace(_tgt) != graph.finding_namespace(_rid):
+                        flag(
+                            "ledger-supersession-broken",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} supersedes foreign row {_tgt} (same review namespace only)",
+                        )
+                    elif _tgt.lower() not in _ids:
+                        flag(
+                            "ledger-supersession-broken",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} supersedes unknown row {_tgt}",
+                        )
+                    elif _rid in _cyclic:
+                        flag(
+                            "ledger-supersession-broken",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} sits in a supersedes cycle",
+                        )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,
     # and 17 of these have stood for over a week: 15 name STAMPED sections

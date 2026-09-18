@@ -926,9 +926,16 @@ SEVERITY_MAP: dict[str, str] = {
     # a new row, never by rewriting the old one (D00 T01 §19).
     "ledger-history-violation": "fatal",
     # a post-cutoff findings file without a well-formed `Provenance:`
-    # line, or a provenance line outside the field shape or without a
-    # shaped run ID: unattributed live quotes (D00 T01 §20).
+    # line, or a provenance line outside the field shape, without a
+    # shaped run ID, with an unresolving candidate, a missing path, or
+    # a run no marker of its section carries: unattributed or
+    # misattributed live quotes (D00 T01 §20, checkable shape plus run
+    # equality D00 T01 §23).
     "provenance-malformed": "fatal",
+    # a ledger row whose `supersedes` link names no row of its block,
+    # crosses review namespaces, or closes a cycle: orphaned or
+    # contradictory amendment history (D00 T01 §23).
+    "ledger-supersession-broken": "fatal",
     # a `Risk accepted:` line outside the record shape, with an
     # uncoverable target, or expiring before it is recorded: an
     # unauditable waiver (D00 T01 §21).
@@ -1190,6 +1197,75 @@ def ledger_block(sec: str) -> tuple[str | None, str | None]:
     return sec[opens[0].end():closes[0].start()], None
 
 
+# A finding ID on its own (D00 T01 §23): the row grammar's group 1 as a
+# full token, so a `supersedes <target>` link names a row, never prose.
+FINDING_ID_RE = re.compile(r"(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+\Z", re.IGNORECASE)
+
+
+def finding_namespace(fid: str) -> str:
+    """The review namespace of a finding ID: the `D..-T..-S..-` prefix,
+    or "" for a bare `PRn`. Amendments stay inside one namespace, so a
+    bare row amends bare rows and a namespaced row amends its review."""
+    m = re.match(r"(.*?)(PR[0-9]+)\Z", fid, re.IGNORECASE)
+    return m.group(1).lower() if m else ""
+
+
+def ledger_supersedes(block: str) -> dict[str, str]:
+    """Row ID (lowercased) -> superseded target for one ledger block.
+
+    The link is `supersedes <finding-id>` after the disposition (D00
+    T01 §23): the token must be exactly ID-shaped, so prose before the
+    arrow (a title like `Singleton supersedes stays silent`) and
+    non-ID tokens after it are never links. First link wins per row.
+    """
+    links: dict[str, str] = {}
+    for lr in LEDGER_ROW_RE.finditer(block):
+        rest = block[lr.end():].split("\n", 1)[0]
+        sm = SUPERSEDES_RE.search(rest)
+        if sm is None or not FINDING_ID_RE.fullmatch(sm.group(1)):
+            continue
+        links.setdefault(lr.group(1).lower(), sm.group(1))
+    return links
+
+
+def ledger_supersession(block: str) -> tuple[dict[str, str], set[str]]:
+    """(valid links, cyclic rows) for one ledger block (D00 T01 §23).
+
+    A link is valid when its target names another row of the same
+    block in the same review namespace and neither end sits in a
+    supersedes cycle. Cycles invalidate the members' links (the
+    validator owns the failure); the query resolves the rest, so a
+    broken link never hides a row and never loops the scan.
+    """
+    ids = {lr.group(1).lower() for lr in LEDGER_ROW_RE.finditer(block)}
+    valid: dict[str, str] = {}
+    for rid, tgt in ledger_supersedes(block).items():
+        if finding_namespace(tgt) != finding_namespace(rid):
+            continue
+        if tgt.lower() not in ids:
+            continue
+        valid[rid] = tgt.lower()
+    cyclic: set[str] = set()
+    for start in valid:
+        path: list[str] = []
+        cur: str | None = start
+        while cur is not None and cur in valid and cur not in path:
+            path.append(cur)
+            cur = valid[cur]
+        if cur is not None and cur in path:
+            cyclic.update(path[path.index(cur):])
+    for rid in cyclic:
+        valid.pop(rid, None)
+    return valid, cyclic
+
+
+def superseded_ids(block: str) -> set[str]:
+    """Rows of one ledger block another valid row supersedes (D00 T01
+    §23): plan-health reads the un-superseded head of each chain as
+    current and skips the rest."""
+    return set(ledger_supersession(block)[0].values())
+
+
 def git_file_at(ref: str, repo_path: str) -> str | None:
     """File bytes at a git ref, or None when unprovable (no git, no ref,
     no file). One reader for the history rule and the clearance proof;
@@ -1308,6 +1384,30 @@ def git_range_touches(base: str, tip: str, repo_path: str) -> bool | None:
     if out.returncode != 0:
         return None
     return repo_path in out.stdout.decode("utf-8", "replace").splitlines()
+
+
+def git_resolves(sha: str) -> bool | None:
+    """Whether a sha names an object in the repo, or None when
+    unprovable. The provenance-candidate leg (D00 T01 §23): a
+    recorded candidate that resolves to nothing attests nothing.
+    Shorts stay legal: git refuses ambiguous ones, so resolution
+    failure fails closed like any unprovable leg; the self-test
+    patches this name, never a repo."""
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "cat-file", "-e", sha],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode == 0:
+        return True
+    if out.returncode == 1:
+        return False
+    return None
 
 
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
@@ -2050,7 +2150,13 @@ def cmd_query(args) -> int:
                     if block is None:
                         unshaped.add(m.group(1))
                         continue
+                    # A superseded row reads as amended, not current (D00
+                    # T01 §23): the chain head governs both dimensions, so
+                    # superseded rows skip before severity sorts them.
+                    skipped = superseded_ids(block)
                     for lr in LEDGER_ROW_RE.finditer(block):
+                        if lr.group(1).lower() in skipped:
+                            continue
                         sev = lr.group(2).lower()
                         disp = lr.group(3).lower()
                         rest = block[lr.end():].split("\n", 1)[0]
@@ -2194,7 +2300,11 @@ def cmd_query(args) -> int:
                             # proof names nothing resolving fails closed,
                             # as do unresolvable, unverified, pre-dated,
                             # unlinked, and unnamed targets (D00 T01 §17
-                            # item 8).
+                            # item 8). And the review's recorded candidate
+                            # must be an ancestor of the fix (causal
+                            # history, not wall clocks alone; D00 T01
+                            # §23): records predating the provenance
+                            # mandate carry no candidate and skip the leg.
                             refs = [xm.group(0) for xm in XREF_RE.finditer(rest)]
                             provable = bool(refs)
                             reviewer_day = s.stamped_on or "\uffff"  # undated reviewer fails closed
@@ -2288,6 +2398,16 @@ def cmd_query(args) -> int:
                                     proof_ok = True
                                     break
                                 if not proof_ok:
+                                    provable = False
+                                    break
+                                cands = []
+                                for pln in text.splitlines():
+                                    pcm = PROVENANCE_RE.match(pln)
+                                    if pcm is not None:
+                                        cands.append(pcm.group(1))
+                                if cands and not any(
+                                    git_is_ancestor(c, tip) for c in cands
+                                ):
                                     provable = False
                                     break
                             if not provable:
@@ -5921,9 +6041,15 @@ track: Z1
                 f"path docs/reviews/{_ppf.name}; run 20260920-D90-T06-S5-gpt\n"
             )
             _ppf.write_text(_pfirst + _pnl + _pline + _prest, encoding="utf-8")
+        # Rule 23 reads candidates through git (D00 T01 §23), so the
+        # panel run patches the reader like the marker run does: the
+        # fixture candidate resolves, anything else is unprovable.
+        _real_resolves_panel = git_resolves
+        globals()["git_resolves"] = lambda sha: True if sha == "aaa1111" else None
         pbuf = _mio.StringIO()
         with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
+        globals()["git_resolves"] = _real_resolves_panel
         panel_out = pbuf.getvalue().splitlines()
         check(
             "stamp-no-opus-panel is a FATAL class",
@@ -6272,6 +6398,8 @@ track: Z1
 |  53   |   §53   | Forked range target | - |  [x]   |
 |  54   |   §54   | Same-day instant target | - |  [x]   |
 |  55   |   §55   | Dateless same-day target | - |  [x]   |
+|  56   |   §56   | Causal-ancestry-negative target | - |  [x]   |
+|  57   |   §57   | Supersession probe | - |  [x]   |
 
 ---
 
@@ -6324,7 +6452,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -6623,7 +6751,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §30 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-badprov.md
-> **Plan review:** GPT high, no findings
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S30-gpt)
 
 ## 31. Singleton dangling follows-outage
 
@@ -6925,6 +7053,32 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
 > **Verified:** __D4__ | §55 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+
+## 56. Causal-ancestry-negative target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureancestry D90-T07-S4-PR70 fix b000001
+
+proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §56 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 57. Supersession probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §57 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-supersede.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S57-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -6983,6 +7137,11 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR67] [critical] Forked range stays -> filed §53\n"
             "- [D90-T07-S4-PR68] [critical] Same-day instant clears -> filed §54\n"
             "- [D90-T07-S4-PR69] [critical] Dateless same-day stays -> filed §55\n"
+            # §23 probe: a filed critical whose fix descends from nowhere
+            # near the review's recorded candidate (§56 stamps post-finding
+            # with the back-link, the fix token, and proof; every other
+            # leg passes, so only the ancestry leg can hold it).
+            "- [D90-T07-S4-PR70] [critical] Unrelated fix stays -> filed §56\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -7262,13 +7421,56 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             + "Risk accepted: outage both rungs; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale outage stands, no rerun planned\n",
             encoding="utf-8",
         )
-        # Provenance migration (D00 T01 §20 item 2): every post-cutoff
-        # fixture findings file carries a well-formed line right after its
-        # title, so rule 23 stays silent and only the dedicated negative
-        # probes can fire. Title-adjacent placement keeps the line before
-        # every fence (even unbalanced ones) and outside every panel and
-        # Plan review section, so no other scan sees it. Grandfathered
-        # old.md is deliberately left bare: it proves the date scope.
+        # §23 probe: one amendment chain per supersession shape. PR2
+        # validly amends PR1 (the query reads PR2 as current and skips
+        # PR1); PR3 names a row that does not exist; PR4 amends another
+        # review's row; PR5 and PR6 amend each other; PR7 amends itself.
+        # The manifest rides §57's run, so only the probed link shapes
+        # can fire on each.
+        (rev_dir / "90-health-supersede.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §57]; dependents [none]; bytes 100; run 20260920-D90-T07-S57-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S57-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
+            "- [D90-T07-S57-PR2] [major] Amended worry -> accepted owner ann due 2099-02-02 supersedes D90-T07-S57-PR1\n"
+            "- [D90-T07-S57-PR3] [major] Dangling amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S57-PR99\n"
+            "- [D90-T07-S57-PR4] [major] Foreign amendment -> accepted owner ann due 2099-04-04 supersedes D90-T07-S4-PR2\n"
+            "- [D90-T07-S57-PR5] [major] Cyclic amendment -> accepted owner ann due 2099-05-05 supersedes D90-T07-S57-PR6\n"
+            "- [D90-T07-S57-PR6] [major] Cyclic target -> accepted owner ann due 2099-06-06 supersedes D90-T07-S57-PR5\n"
+            "- [D90-T07-S57-PR7] [minor] Self amendment -> accepted owner ann due 2099-07-07 supersedes D90-T07-S57-PR7\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # Provenance migration (D00 T01 §20 item 2, per-file runs D00 T01
+        # §23): every post-cutoff fixture findings file carries a
+        # well-formed line right after its title, so rule 23 stays silent
+        # and only the dedicated negative probes can fire. The run equals
+        # the first reporting section's last marker run (first reporter
+        # wins, like the rule), derived from the marker TODO rather than
+        # hardcoded, so the equality leg holds by construction; files no
+        # reporter runs (record-less probes, off-shape markers) keep the
+        # shaped placeholder and skip the leg. Title-adjacent placement
+        # keeps the line before every fence (even unbalanced ones) and
+        # outside every panel and Plan review section, so no other scan
+        # sees it. Grandfathered old.md is deliberately left bare: it
+        # proves the date scope.
+        _file_runs: dict[str, str] = {}
+        for _sec in re.finditer(
+            r"^## (\d+)\.\s.*?(?=^## \d+\.|\Z)", marker_todo.read_text(encoding="utf-8"), re.M | re.S
+        ):
+            _fm = re.search(r"Raw findings:\s*(\S+)", _sec.group(0))
+            if _fm is None:
+                continue
+            _fname = _fm.group(1).rsplit("/", 1)[-1]
+            if _fname in _file_runs:
+                continue
+            _mruns = []
+            for _mln in _sec.group(0).splitlines():
+                if "Plan review:" in _mln:
+                    _mruns += re.findall(r"\brun\s+(\S+?)(?=[,;)]|\s|$)", _mln)
+            _shaped = [r for r in _mruns if RUN_ID_SHAPE_RE.match(r)]
+            if _shaped:
+                _file_runs[_fname] = _shaped[-1]
         for _pf in sorted(rev_dir.glob("90-*.md")):
             if _pf.name == "90-health-old.md":
                 continue
@@ -7277,10 +7479,11 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             if len(_pl) > 1 and "Provenance:" in _pl[1]:
                 continue
             _first, _nl, _rest = _pt.partition("\n")
+            _prun = _file_runs.get(_pf.name, "20260920-D90-T07-S9-gpt")
             _line = (
                 "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
                 "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; "
-                f"path docs/reviews/{_pf.name}; run 20260920-D90-T07-S9-gpt\n"
+                f"path docs/reviews/{_pf.name}; run {_prun}\n"
             )
             _pf.write_text(_first + _nl + _line + _rest, encoding="utf-8")
         # Canned git bytes (D00 T01 §19 items 3, 8): the clearance proof
@@ -7344,6 +7547,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             "eee0006",
             "fff0002",
             "fff0003",
+            "b000001",
         ):
             canned_git[(_sha, marker_todo.as_posix())] = _mtxt
             canned_touches[(_sha, marker_todo.as_posix())] = True
@@ -7357,6 +7561,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             "eee0006",
             "fff0002",
             "fff0003",
+            "b000001",
         ):
             canned_git[(_sha, "tests/fix-proof.py")] = _proof_ok
         canned_ts = {
@@ -7369,6 +7574,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             "eee0006": _tss(d5, "12:00:00"),
             "fff0002": _tss(d4, "14:00:00"),
             "fff0003": _tss(d5, "12:00:00"),
+            "b000001": _tss(d5, "12:00:00"),
         }
         # Base-exclusion canary: the eee0003 base touched the file, but
         # the range leg never consults it, so PR66 stays listed. If a
@@ -7379,16 +7585,30 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             ("eee0001", "eee0002"): True,
             ("eee0003", "eee0004"): True,
             ("eee0005", "eee0006"): False,
+            # §23 ancestry leg: the review's recorded candidate is aaa1111
+            # (the migration's uniform candidate), which the clearing fixes
+            # descend from; the §56 fix does not, so PR70 stays listed.
+            ("aaa1111", "aaa1111"): True,
+            ("aaa1111", "eee0002"): True,
+            ("aaa1111", "fff0002"): True,
+            ("aaa1111", "b000001"): False,
         }
+        # §23 provenance candidates: the migration's uniform candidate
+        # resolves, the badprov typo resolves to nothing, and anything
+        # uncanned is unprovable (missing key, like every canned map).
+        canned_resolves = {"aaa1111": True, "deadbee": False}
         canned_range_touches = {
             ("eee0001", "eee0002", marker_todo.as_posix()): True,
             ("eee0003", "eee0004", marker_todo.as_posix()): False,
             ("eee0005", "eee0006", marker_todo.as_posix()): True,
         }
         # Rule-23 negatives, written after the migration loop so they stay
-        # bare: one file without any line, one with a run-less line plus an
-        # off-shape-run line. Neither carries a Plan review section, so
-        # only rule 23 can fire on them.
+        # bare: one file without any line, one with a run-less line, an
+        # off-shape-run line, and (§23) one single-leg probe per new leg:
+        # an unresolving candidate, an unprovable candidate, a missing
+        # path, an absolute path, and a shaped-but-foreign run. Neither
+        # carries a Plan review section, so only rule 23 can fire on
+        # them; every §23 line passes the legs it does not probe.
         (rev_dir / "90-health-noprov.md").write_text(
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
@@ -7402,7 +7622,17 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md\n"
             "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
-            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run someday-maybe\n",
+            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run someday-maybe\n"
+            "Provenance: candidate deadbee; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S30-gpt\n"
+            "Provenance: candidate f00df00d; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S30-gpt\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-health-gone.md; run 20260920-D90-T07-S30-gpt\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path /tmp/absent-provenance-target.md; run 20260920-D90-T07-S30-gpt\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S9-gpt\n",
             encoding="utf-8",
         )
         _real_git_file_at = git_file_at
@@ -7410,11 +7640,13 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
         _real_git_ts = git_commit_ts
         _real_git_ancestor = git_is_ancestor
         _real_git_range = git_range_touches
+        _real_git_resolves = git_resolves
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
         globals()["git_is_ancestor"] = lambda a, b: canned_ancestors.get((a, b))
         globals()["git_range_touches"] = lambda a, b, p: canned_range_touches.get((a, b, p))
+        globals()["git_resolves"] = lambda sha: canned_resolves.get(sha)
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -7618,6 +7850,11 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
         check(
             "ledger-history-violation is a FATAL class",
             SEVERITY_MAP.get("ledger-history-violation"),
+            "fatal",
+        )
+        check(
+            "ledger-supersession-broken is a FATAL class",
+            SEVERITY_MAP.get("ledger-supersession-broken"),
             "fatal",
         )
         check(
@@ -8077,9 +8314,92 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "§30 fires exactly twice (run-less plus off-shape run)",
+            "unresolving provenance candidate fires",
+            any(
+                "TODO-07-marker.md" in ln and "§30 " in ln and "candidate deadbee resolves to nothing" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "unprovable provenance candidate fires",
+            any(
+                "TODO-07-marker.md" in ln and "§30 " in ln and "candidate f00df00d unprovable" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "missing provenance path fires",
+            any(
+                "TODO-07-marker.md" in ln and "§30 " in ln and "path docs/reviews/90-health-gone.md names no file" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "absolute provenance path fires",
+            any(
+                "TODO-07-marker.md" in ln and "§30 " in ln and "path /tmp/absent-provenance-target.md names no file" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "foreign provenance run fires",
+            any(
+                "TODO-07-marker.md" in ln and "§30 " in ln and "equals no marker run of §30" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§30 fires exactly seven times (run-less, off-shape run, unresolving and unprovable candidates, missing and absolute paths, foreign run)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§30 " in ln and "FATAL" in ln),
-            2,
+            7,
+        )
+        check(
+            "superseding an unknown row fires",
+            any(
+                "TODO-07-marker.md" in ln and "§57 " in ln and "d90-t07-s57-pr3 supersedes unknown row" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "superseding a foreign row fires",
+            any(
+                "TODO-07-marker.md" in ln and "§57 " in ln and "d90-t07-s57-pr4 supersedes foreign row" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "a supersedes cycle fires on both rows",
+            (
+                any(
+                    "TODO-07-marker.md" in ln and "§57 " in ln and "d90-t07-s57-pr5 sits in a supersedes cycle" in ln
+                    for ln in marker_out
+                )
+                and any(
+                    "TODO-07-marker.md" in ln and "§57 " in ln and "d90-t07-s57-pr6 sits in a supersedes cycle" in ln
+                    for ln in marker_out
+                )
+            ),
+            True,
+        )
+        check(
+            "a self-superseding row fires",
+            any(
+                "TODO-07-marker.md" in ln and "§57 " in ln and "d90-t07-s57-pr7 sits in a supersedes cycle" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§57 fires exactly five times (unknown, foreign, cycle x2, self-cycle; the valid chain silent)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§57 " in ln and "FATAL" in ln),
+            5,
         )
         check(
             "rule 23 skips grandfathered findings",
@@ -8165,8 +8485,24 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "clearance fails a fix outside the review candidate's ancestry",
+            any("D90-T07-S4-PR70" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health reads the superseding row as current",
+            any("D90-T07-S57-PR2" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health skips the superseded row",
+            any("D90-T07-S57-PR1" in ln for ln in health_lines),
+            False,
+        )
+        check(
             "plan-health clears the rejected critical",
-            "PR4" in health_out,
+            # File-scoped: the S57 fixture legitimately lists its own PR4.
+            any("90-health.md" in ln and re.search(r"\bPR4\b", ln) for ln in health_lines),
             False,
         )
         check(
@@ -8189,7 +8525,8 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
         )
         check(
             "plan-health never counts the swallowed row",
-            "PR7" in health_out,
+            # File-scoped: the S4 fixture legitimately lists PR70.
+            any("90-health-unbal.md" in ln and re.search(r"\bPR7\b", ln) for ln in health_lines),
             False,
         )
         check(
@@ -8869,6 +9206,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
         globals()["git_commit_ts"] = _real_git_ts
         globals()["git_is_ancestor"] = _real_git_ancestor
         globals()["git_range_touches"] = _real_git_range
+        globals()["git_resolves"] = _real_git_resolves
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.
@@ -9127,14 +9465,49 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
             False,
         )
         check(
-            "panel verdict with an overflow-sized count fails by tally, not grammar",
+            "panel verdict with an over-long count fails at the grammar",
             rp.check_panel_output(
                 _panel("**adversarial: needs-attention (99999999999999999999)**", "1. x\n")
             ),
             (
                 False,
-                "line 1 declares 99999999999999999999 findings but 1 numbered items follow under adversarial",
+                "line 1 precedes the first verdict: **adversarial: needs-attention (99999999999999999999)**",
             ),
+        )
+        check(
+            "panel verdict with a four-digit count still reaches the tally",
+            rp.check_panel_output(_panel("**adversarial: needs-attention (9999)**", "1. x\n")),
+            (
+                False,
+                "line 1 declares 9999 findings but 1 numbered items follow under adversarial",
+            ),
+        )
+        # Output bounds (D00 T01 §23): oversized reviewer output fails
+        # before semantic comparison, and both bounds are inclusive.
+        check(
+            "panel output past the byte cap fails before verdicts parse",
+            rp.check_panel_output(_panel("**adversarial: approve**", "x" * 2**20))[0],
+            False,
+        )
+        check(
+            "panel output past the byte cap names the bound",
+            rp.check_panel_output(_panel("**adversarial: approve**", "x" * 2**20))[1],
+            "output exceeds 1048576 bytes",
+        )
+        check(
+            "plan output at exactly the byte cap still checks",
+            rp.check_plan_output("- " + "y" * (2**20 - 3) + "\n"),
+            (True, "1 findings, one per line"),
+        )
+        check(
+            "plan output past the line cap fails before findings parse",
+            rp.check_plan_output("- x\n" * 100_001),
+            (False, "output exceeds 100000 lines"),
+        )
+        check(
+            "plan output at exactly the line cap still checks",
+            rp.check_plan_output("- x\n" * 100_000),
+            (True, "100000 findings, one per line"),
         )
         # CLI dispatch (D00 T01 §19 item 21): the tag/check-panel/check-plan
         # path, subprocess-proven, not just the check functions.
@@ -9464,6 +9837,7 @@ proof D90-T07-S4-PR69 tests/fix-proof.py::test_clearance
         (rev_dir / "90-health-r0.md").unlink()
         (rev_dir / "90-health-noprov.md").unlink()
         (rev_dir / "90-health-badprov.md").unlink()
+        (rev_dir / "90-health-supersede.md").unlink()
         marker_todo.unlink()
         panel_todo.unlink()
         for extra in (

@@ -26,12 +26,23 @@ PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
 # consisting of exactly a bare header (count or not) for an
 # already-seen lens still reads as a repeat (quoting with any
 # surrounding prose is safe).
-# Count grammar (D00 T01 §19 item 20): ASCII digits only (`\d` would
-# admit Unicode digits), no sign, no whitespace, no leading zeros (the
-# canonical form is bare `0` or a nonzero digit first), zero allowed,
-# arbitrary length (the cross-check bounds it semantically: a count no
-# finding block can hold fails there, not here).
-_COUNT_INNER = r"(?:0|[1-9][0-9]*)"
+# Count grammar (D00 T01 §19 item 20, bounded D00 T01 §23): ASCII
+# digits only (`\d` would admit Unicode digits), no sign, no
+# whitespace, no leading zeros (the canonical form is bare `0` or a
+# nonzero digit first), zero allowed, at most four digits (no review
+# round holds ten thousand findings; the cap keeps a hostile count
+# from reaching `int()` unbounded, which raises past 4300 digits
+# instead of failing closed).
+_COUNT_MAX_DIGITS = 4
+_COUNT_INNER = r"(?:0|[1-9][0-9]{0,3})"
+# Reviewer-output bounds (D00 T01 §23): a hostile or malformed
+# reviewer can exhaust parser resources before semantic comparison,
+# so both checkers refuse oversized output first. The caps are
+# generous multiples of any plausible review (a panel round is four
+# verdicts plus details; a plan round is one line per finding), so a
+# legitimate reviewer never nears them.
+OUTPUT_MAX_BYTES = 2**20
+OUTPUT_MAX_LINES = 100_000
 _PANEL_LINE_RE = re.compile(
     r"^\s*\*{2}\s*(adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
     r"(approve|needs-attention|advisory)(?:\s*\((?P<c1>" + _COUNT_INNER + r")\)\*{0,2}|\*{0,2}\s*\((?P<c2>"
@@ -94,6 +105,17 @@ def canonical_prompt_bytes(text: str) -> bytes:
     return text.replace("\r\n", "\n").replace("\r", "\n").encode("utf-8")
 
 
+def _output_within_bounds(text: str) -> tuple[bool, str] | None:
+    """The size gate both checkers run before semantic comparison, or
+    None when the output fits. Bytes count UTF-8; lines count newline
+    splits; both bounds are inclusive."""
+    if len(text.encode("utf-8")) > OUTPUT_MAX_BYTES:
+        return False, f"output exceeds {OUTPUT_MAX_BYTES} bytes"
+    if len(text.splitlines()) > OUTPUT_MAX_LINES:
+        return False, f"output exceeds {OUTPUT_MAX_LINES} lines"
+    return None
+
+
 def check_panel_output(text: str) -> tuple[bool, str]:
     """Whole-output validation for a panel round: every lens verdicts
     exactly once, and every other non-blank line is a detail line under the
@@ -102,6 +124,9 @@ def check_panel_output(text: str) -> tuple[bool, str]:
     equal the numbered-item tally under its verdict. Returns (ok,
     reason); the first bad line is the reason, so trailing garbage after
     four good verdicts still fails instead of masking."""
+    bounded = _output_within_bounds(text)
+    if bounded is not None:
+        return bounded
     seen: dict[str, int] = {}
     detail_open = False
     declared: int | None = None
@@ -201,6 +226,9 @@ def check_plan_output(text: str) -> tuple[bool, str]:
     """Whole-output validation for a plan-review round: every non-blank line
     is one `- ` finding (or the round is an explicit no-findings
     statement). Returns (ok, reason)."""
+    bounded = _output_within_bounds(text)
+    if bounded is not None:
+        return bounded
     lines = [ln for ln in text.splitlines() if ln.strip()]
     if not lines:
         return False, "empty output"
