@@ -16,17 +16,19 @@ PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
 # Runner-output verdicts only (the prompt mandates bare `**<lens>:
 # <verdict>**` headers, with nothing else on the line except an optional
 # finding count): the line opens with `**`, names one lens and one
-# verdict, and ends. The count rides in either Markdown position
-# (`**v (2)**` or `**v** (2)`; models emit both, so both are legal) and
-# nowhere else. End-anchoring is what keeps a detail line quoting a
-# header (`**record: approve** claim is stale`) a detail; dash-,
-# backtick-, or bare-lens-opened lines are details, never verdicts.
-# Stated residual: a detail line consisting of exactly a bare header for
-# an already-seen lens still reads as a repeat (quoting with any
+# verdict, and ends. The count is one alternation taking exactly one
+# count in either Markdown position (`**v (2)**` or `**v** (2)`; models
+# emit both, so both are legal), never both: two optional groups once
+# accepted `**v (2)** (3)`. End-anchoring is what keeps a detail line
+# quoting a header (`**record: approve** claim is stale`, with or
+# without a count) a detail; dash-, backtick-, or bare-lens-opened
+# lines are details, never verdicts. Stated residual: a detail line
+# consisting of exactly a bare header (count or not) for an
+# already-seen lens still reads as a repeat (quoting with any
 # surrounding prose is safe).
 _PANEL_LINE_RE = re.compile(
     r"^\s*\*{2}\s*(adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
-    r"(approve|needs-attention|advisory)\s*(?:\(\d+\))?\*{0,2}\s*(?:\(\d+\))?\s*$"
+    r"(approve|needs-attention|advisory)(?:\s*\(\d+\)\*{0,2}|\*{0,2}\s*\(\d+\)|\*{0,2})\s*$"
 )
 
 

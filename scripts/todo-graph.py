@@ -5969,6 +5969,30 @@ track: Z1
             True,
         )
         check(
+            "panel verdict with counts in both positions fails",
+            rp.check_panel_output(
+                "**adversarial: needs-attention (2)** (3)\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n"
+            )[0],
+            False,
+        )
+        check(
+            "panel verdict with a malformed count fails",
+            rp.check_panel_output(
+                "**adversarial: needs-attention (x)**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n"
+            )[0],
+            False,
+        )
+        check(
+            "header quote with count and trailing prose stays a detail",
+            rp.check_panel_output(
+                "**adversarial: needs-attention**\n**record: approve (2)** noted above\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            True,
+        )
+        check(
             "panel output with a repeated lens fails",
             rp.check_panel_output(
                 "**adversarial: needs-attention**\n1. `f.py:1` x\n**adversarial: approve**\n"
