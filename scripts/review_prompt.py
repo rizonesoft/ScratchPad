@@ -13,8 +13,13 @@ import secrets
 
 PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
 PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
+# Runner-output verdicts only (the prompt mandates `**<lens>: <verdict>**`
+# headers): the lens opens the line, so a detail line quoting another lens
+# (`- `consistency: approve` is wrong`) never reads as a verdict. Bold
+# without a colon (`**adversarial** approve`) is accepted; dash- or
+# quote-opened lines are details, never verdicts.
 _PANEL_LINE_RE = re.compile(
-    r"^\s*(?:[*`>\-]|\*{1,2})?\s*`?(adversarial|consistency|integration|record)`?\s*:?\s*"
+    r"^\s*\*{0,2}\s*`?(adversarial|consistency|integration|record)`?\*{0,2}\s*:?\s*"
     r"(approve|needs-attention|advisory)\b"
 )
 
@@ -93,9 +98,17 @@ def check_plan_output(text: str) -> tuple[bool, str]:
 if __name__ == "__main__":
     import sys
 
+    # `tag` serves the prompt templates: one randomness source, no copies
+    # (`$RANDOM` is a bash-ism that degrades to a bare timestamp under sh).
+    if len(sys.argv) == 3 and sys.argv[1] == "tag":
+        print(unique_tag(sys.argv[2]))
+        sys.exit(0)
     checkers = {"check-panel": check_panel_output, "check-plan": check_plan_output}
     if len(sys.argv) != 2 or sys.argv[1] not in checkers:
-        print(f"usage: {sys.argv[0]} check-panel|check-plan < output.txt", file=sys.stderr)
+        print(
+            f"usage: {sys.argv[0]} tag <prefix> | check-panel|check-plan < output.txt",
+            file=sys.stderr,
+        )
         sys.exit(2)
     ok, reason = checkers[sys.argv[1]](sys.stdin.read())
     print(("PASS " if ok else "FAIL ") + reason)

@@ -1493,7 +1493,7 @@ def cmd_query(args) -> int:
         majors, legacy = [], []
         seen = set()
         owners: dict[str, list] = {}
-        unshaped: dict[str, bool] = {}
+        unshaped: set[str] = set()
         target_texts: dict[str, str] = {}
         old_line = (datetime.now(timezone.utc).date() - timedelta(days=PLAN_REVIEW_OVERDUE_DAYS)).isoformat()
         for t in todos:
@@ -1561,7 +1561,7 @@ def cmd_query(args) -> int:
                                 )
                             )
                     else:
-                        unshaped[m.group(1)] = True
+                        unshaped.add(m.group(1))
                     for lr in LEDGER_ROW_RE.finditer(sec):
                         sev = lr.group(2).lower()
                         disp = lr.group(3).lower()
@@ -1626,13 +1626,11 @@ def cmd_query(args) -> int:
                                     break
                             if not provable:
                                 criticals.append((m.group(1), lr.group(1)))
-        for path, flag in sorted(unshaped.items()):
+        for path in sorted(unshaped):
             # Legacy records (D00 T01 §17 item 18): a Plan review section
             # without a Manifest in a file whose every reviewing stamp
             # predates enforcement. Post-cutoff shapeliness is rule 18's
             # FATAL; only the grandfathered set lists here.
-            if not flag:
-                continue
             own = owners.get(path, [])
             if own and all(not _owed(ot.sections[onum]) for ot, onum in own if onum in ot.sections):
                 legacy.append(path)
@@ -5921,6 +5919,30 @@ track: Z1
                 "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
             )[0],
             True,
+        )
+        check(
+            "panel output with bold-no-colon verdicts passes",
+            rp.check_panel_output(
+                "**adversarial** approve\n**consistency** approve\n"
+                "**integration** approve\n**record** approve\n"
+            )[0],
+            True,
+        )
+        check(
+            "panel detail quoting another lens stays a detail",
+            rp.check_panel_output(
+                "**adversarial: needs-attention**\n- `consistency: approve` is wrong in doc\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            True,
+        )
+        check(
+            "dash-opened verdict line fails as off-shape",
+            rp.check_panel_output(
+                "- `adversarial` needs-attention: x\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n"
+            )[0],
+            False,
         )
         check(
             "panel output with trailing garbage fails",

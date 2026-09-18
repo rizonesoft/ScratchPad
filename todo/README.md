@@ -141,7 +141,9 @@ One paragraph of context, then the checklist.
 > **Verified:** 2026-09-14 | §3 | dotnet test TabModelTest 12 passed · zero warnings
 > **Deferred:** session restore across restarts -> XREF: D01 T01 §6 -- needs the settings store first
 > **Review:** round 1, fingerprint `a3f91c2e5b04` -- `adversarial` approve · `consistency` approve · `integration` needs-attention (1). Raw findings: docs/reviews/01-notepad-core/D01-T01-s3.md
-> **Plan review:** GPT high, no findings (or: filed D00 T01 §16; degraded states carry owner and due: outage: both rungs (owner ann, due 2026-09-25))
+> **Plan review:** GPT high, no findings
+> **Plan review:** GPT high, filed D00 T01 §16
+> **Plan review:** GPT outage then Opus auth failure, outage: both rungs (owner ann, due 2026-09-25)
 > **CRUD:** applicable | TabModelTest + UI smoke: open, edit, save, close, readback byte-identical
 > **Implementer:** assistant name (model-id)
 ```
