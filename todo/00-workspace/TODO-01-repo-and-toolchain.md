@@ -466,6 +466,8 @@ Why this section exists: the third live plan review (§16 plus §15, `gpt-5.6-so
 
 **Test checkpoint:** ledger IDs carry run identity and collide nowhere; marker grammar enforced (precedence, exclusion, purity) with accountable degraded states; filed criticals clear only on post-finding verified remediation of every target; lifecycle plus deferrals plus back-links enforced; plan-health covers stale removals, overdue majors, and grandfathered stamps; reopen voids proof downstream; prompts uninjectable and outputs fully validated; JSON versioned and ordered; proofs artifacted; legacy records migrated or condemned; trigger residual closed. Cheaper substitute that fails: a fourth review round whose findings stay prose.
 
+- -> XREF: D00 T01 §18 -- round-4 advisory leftover (checker count residual) filed there
+
 ## 18. Checker Count Residual
 
 Why this section exists: the round-4 Opus panel on §17 (advisory) found the two optional count groups accept a count in both positions at once (`**v (2)** (3)` passes) while the prompt and comment read as exclusive, and the residual note omits the header-quote-with-count case. The checker unit was patched in R1, R2, and R3, so the stop-and-re-think clause routed the decision here instead of a fourth consecutive patch. -> XREF: D00 T01 §17 (filed from its round-4 panel); -> SOURCE: Opus-panel-D00-T01-s17-round-4 (candidate `9db9176`, round-4 adversarial advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s17.md`).
