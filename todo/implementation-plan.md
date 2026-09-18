@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **53 of 175 sections complete (30%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **53 of 176 sections complete (30%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -99,6 +99,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits   |   3   |
 | [x] | `D00 T01 §13` | Environment-gated ready queries            |   5   |
 | [x] | `D00 T01 §14` | Plan reviews with a second-family reviewer |   6   |
+| [ ] | `D00 T01 §15` | First plan-review residuals                |  11   |
 | [x] | `D00 T02 §1`  | Unit test project and framework            |   5   |
 | [x] | `D00 T02 §2`  | UI automation driver spike                 |   5   |
 | [x] | `D00 T02 §3`  | Golden capture store and refresh           |   5   |

@@ -20,6 +20,8 @@ track: W0
 
 > **Filed 2026-09-18:** §14 (plan reviews with a second-family reviewer). Open: §§8, 14.
 
+> **Filed 2026-09-18:** §15 (first plan-review residuals). Open: §§8, 15.
+
 ## Inputs
 
 - [Windows App SDK and WinUI 3 docs for .NET](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/) -- WinUI 3 with .NET: SDK and workload requirements
@@ -52,6 +54,7 @@ track: W0
 |  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [x]   |
 |  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
 |  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
+|  15   |   §15   | First plan-review residuals | §14 |  [ ]   |
 
 ---
 
@@ -367,6 +370,24 @@ Why this section exists: the Opus panel gates what a section built, but no lens 
 > **CRUD:** applicable | self-test wrote panel fixtures under a temp root (unlinked after, read back via per-line case assertions); live drives wrote temp Review re-points plus a scratch findings file (reverted clean, scratch deleted, read back via validate output); runner probes wrote nothing (verbatim-echo, read-only); skill and doc edits read back via grep
 > **Duration:** 14
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 15. First Plan-Review Residuals
+
+Why this section exists: the first live plan review (§14 plus §9, `gpt-5.6-sol` high) returned 15 findings; 10 survive synthesis and none has an owner, since every review-loop section is stamped. They cluster into auditability (completion marker, input manifest, finding ledger, health report), honesty (degraded-path label, evidence citation), scope (reverse dependents), and failure handling (hung runners, safety exception). -> XREF: D00 T01 §14 (filed from its first live plan review); -> SOURCE: plan-review-D00-T01-s14-2026-09-18 (`gpt-5.6-sol` high over §14 plus §9, 15 findings, 10 filed here, 5 rejected with reasons in the §14 findings file).
+
+- [ ] Stamps carry the plan review's completion: a `Plan review:` line naming the filings or `no findings`, enforced by the validator for stamps after the rule lands. Done when: the skill mandates the line, the validator fires without it, and self-test locks both shapes.
+- [ ] A fallback-run plan review is recorded as same-family: when the Opus rung (not GPT) runs the review, the record says so and drops the second-family claim. Done when: the skill carries the sentence.
+- [ ] Review scope adds direct reverse dependents: sections whose Depends On names the section ride inline with prerequisites and neighbors. Done when: the skill names the scope and the lookup method (query or grep) is quoted working.
+- [ ] Hung runners fail into the fallback: each runner command carries a timeout, and expiry counts as runner failure. Done when: the skill names both timeouts and a forced hang is observed to reach the next rung.
+- [ ] A clean round still writes its record: zero findings lands as an explicit no-findings note, never as silence. Done when: the skill says so and the next clean review carries the note.
+- [ ] Filed findings cite their evidence: every plan-review filing carries the finding's source lines plus a SOURCE key before `add-todo` accepts it. Done when: the skill points at the add-todo evidence rules.
+- [ ] Advisory never blocks except when it must: a finding that invalidates safety, data integrity, or the stamp reopens the section through review-todo-section audit stance. Done when: the skill names the exception and the route.
+- [ ] The record carries the input manifest: which sections rode inline, at what byte count. Done when: the skill mandates the manifest line and the next review carries one.
+- [ ] Findings get IDs and dispositions: accepted, filed, duplicate, rejected, deferred, each with its reason. Done when: the ledger shape is specified and the next review uses it.
+- [ ] A plan-health query reports reviewed sections, uncovered dependents, fallback usage, outages, and unresolved critical findings. Done when: `query plan-health` runs and its output is quoted.
+- [ ] Commit: `"workspace: harden plan reviews per first live round"`
+
+**Test checkpoint:** Validator fires on a stamp without the marker; skill carries the scope, timeout, record, exception, manifest, and ledger rules; the plan-health query is quoted; the next plan review exercises the new rules. Cheaper substitute that fails: prose rules no review follows.
 
 ## Verification
 
