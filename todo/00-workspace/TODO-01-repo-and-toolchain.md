@@ -63,7 +63,7 @@ track: W0
 |  17   |   §17   | Third plan-review residuals | §16 |  [x]   |
 |  18   |   §18   | Checker count residual | §17 |  [x]   |
 |  19   |   §19   | Fourth plan-review residuals | §17 |  [x]   |
-|  20   |   §20   | Run-identity reconciliation | §19 |  [ ]   |
+|  20   |   §20   | Run-identity reconciliation | §19 |  [x]   |
 |  21   |   §21   | Accountability records and surfacing | §19 |  [ ]   |
 |  22   |   §22   | Clearance binding | §19 |  [ ]   |
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [ ]   |
@@ -565,7 +565,11 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 - -> XREF: D00 T01 §23 -- seventh-live-plan-review filing (provenance-run equality: PR7) filed there
 - -> XREF: D00 T01 §24 -- seventh-live-plan-review filings (lineage residuals and run inspection: PR2, PR5, PR15, PR18) filed there
 
+> **Verified:** 2026-09-18 | §20 | self-test 653/653 (34 new: generator, lineage, synonym, provenance, fixtures, CLI); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 6ab8eae f02b812 41a7141 d109a92 d6142aa 81dcc2d, final round all approve; plan review 18 findings, 6 filed at §§21/23/24, 10 rejected, 2 duplicate
+> **Review:** round 5 (FINAL), candidates 6ab8eae f02b812 41a7141 d109a92 d6142aa 81dcc2d -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1 six findings (immediate outage, synonym, invocation, counts), R2 dictionary row, R3 outage predicate plus genesis scan plus day scope, R4 paren close. Raw findings: docs/reviews/00-workspace/D00-T01-s20.md
+> **Plan review:** GPT high, filed D00 T01 §21, D00 T01 §23, D00 T01 §24 (run 20260918-D00-T01-S20-gpt)
 > **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, fixtures, skill, README, ticks, and one dated §17 annotation (read back via self-test 653/653, live validate 0 fatal, plan --check current); filing opened §24 plus §21/§23 items plus the plan row (read back via plan --check current)
+> **Duration:** 2026-09-18T13:59:59Z to 2026-09-18T14:51:54Z
 
 ## 21. Accountability Records and Surfacing
 
