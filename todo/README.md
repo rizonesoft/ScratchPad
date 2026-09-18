@@ -324,7 +324,7 @@ python3 scripts/todo-graph.py validate   # structural + graph integrity checks
 python3 scripts/todo-graph.py query ready        # sections with all deps met, split into runnable-now versus runnable-elsewhere by the runner's context
 python3 scripts/todo-graph.py query blocked      # sections waiting on something
 python3 scripts/todo-graph.py query stats        # tree health
-python3 scripts/todo-graph.py query plan-health  # review-loop governance: markers, fallback, outages, criticals
+python3 scripts/todo-graph.py query plan-health  # review-loop governance
 python3 scripts/todo-graph.py render             # mermaid dependency graph
 python3 scripts/todo-graph.py plan --sync        # re-derive the checkboxes AND re-align every table
 python3 scripts/todo-graph.py plan --check       # fail if the boxes are stale (CI runs this)

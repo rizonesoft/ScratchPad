@@ -1273,6 +1273,12 @@ def cmd_query(args) -> int:
         # rows, graph edges); nothing here judges prose quality.
         by_id = {t.id: t for t in todos if t.id}
         by_key = {(t.domain, t.number): t for t in todos}
+
+        def _owed(s) -> bool:
+            # One predicate for both dimensions (round-3 consistency): a
+            # stamp owes a plan review unless the marker rule excuses it.
+            return s.stamped_on is None or s.stamped_on > PLAN_REVIEW_CUTOFF
+
         marked = {}
         unmarked = []
         for t in todos:
@@ -1282,7 +1288,7 @@ def cmd_query(args) -> int:
                     continue
                 if (s.plan_review_body or "").strip():
                     marked[(t.id, num)] = s.stamped_on or "undated"
-                elif s.stamped_on is None or s.stamped_on > PLAN_REVIEW_CUTOFF:
+                elif _owed(s):
                     unmarked.append((f"{t.path} §{num}", s.stamped_on or "undated"))
         labels = {(t.id, num): f"{t.path} §{num}" for t in todos for num in t.sections}
         rev = {}
@@ -1296,8 +1302,7 @@ def cmd_query(args) -> int:
             (t.id, num)
             for t in todos
             for num in t.verified_sections
-            if num in t.sections
-            and (t.sections[num].stamped_on is None or t.sections[num].stamped_on > PLAN_REVIEW_CUTOFF)
+            if num in t.sections and _owed(t.sections[num])
         }
         uncovered = []
         for key in sorted(marked):
@@ -4912,7 +4917,7 @@ track: Z1
 
 **Test checkpoint:** `true`
 
-> **Verified:** 2026-09-20 | §5 | fixture
+> **Verified:** 2026-09-17 | §5 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-unbal.md
 > **Plan review:** GPT high, no findings
 """,
@@ -4965,6 +4970,11 @@ track: Z1
         check(
             "cutoff-dated stamp without the marker stays silent",
             any("TODO-07-marker.md" in ln and "§3 " in ln and "FATAL" in ln for ln in marker_out),
+            False,
+        )
+        check(
+            "grandfathered unbalanced stamp stays silent in validate",
+            any("TODO-07-marker.md" in ln and "§5 " in ln and "FATAL" in ln for ln in marker_out),
             False,
         )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
