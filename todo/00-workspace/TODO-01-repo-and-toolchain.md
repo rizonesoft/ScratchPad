@@ -56,7 +56,7 @@ track: W0
 |  12   |   §12   | Repo-managed git hooks gating TODO edits | -- |  [x]   |
 |  13   |   §13   | Environment-gated ready queries | §7 |  [x]   |
 |  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
-|  15   |   §15   | First plan-review residuals | §14 |  [ ]   |
+|  15   |   §15   | First plan-review residuals | §14 |  [x]   |
 |  16   |   §16   | Second plan-review residuals | §15 |  [ ]   |
 
 ---
@@ -393,6 +393,13 @@ Why this section exists: the first live plan review (§14 plus §9, `gpt-5.6-sol
 - [x] Commit: `"workspace: harden plan reviews per first live round"`
 
 **Test checkpoint:** Validator fires on a stamp without the marker; skill carries the scope, timeout, record, exception, manifest, and ledger rules; the plan-health query is quoted; §15's own plan review exercises the new rules. **Corrected 2026-09-18 (validation):** filed pointing at an unscheduled "next" review; §15's own post-panel review is the verifier. Cheaper substitute that fails: prose rules no review follows.
+
+> **Verified:** 2026-09-18 | §15 | rule 17 enforces the plan-review marker (post-2026-09-18 stamps; undated fail closed) with the parser capturing the stamp kind; skill carries after-panel-close timing, reverse-dependents scope, 600/900 timeouts with 124-falls-through, same-family label, evidence citation, clean-record shape, safety exception, manifest plus ledger rules; plan-health query reports five dimensions plus unreadable-files; self-test 469/469 (+15: TODO-07 marker fire/silence/cutoff/validate-silence plus class, 10 query presence checks, 36 panel fixtures marked); live validate 0 fatal; §15's own plan review ran the procedure (21 findings, manifest plus ledger live)
+> **Review:** rounds 1-5 (FINAL), candidates a643242 6d0957c 7179c90 b323364 4e8ee55 0c174cd -- `adversarial` approve (R1 uncovered-cry-wolf plus unfenced-ledger fixed; R2 truncation fixed with unreadable diagnostic; R3 §5 lock) · `consistency` approve (R1 enumeration plus renumber; R2 grandfathered uncovered; R3 shared predicate plus generic label) · `integration` approve (R1 step-order contradiction fixed by renumber) · `record` approve (R1 cutoff cost plus INDEX parity; R2 stale quote fixed inline; R3 INDEX naming; R4 trail completed). Raw findings: docs/reviews/00-workspace/D00-T01-s15.md
+> **Plan review:** GPT high, filed D00 T01 §16 (21 findings, 15 filed, 5 rejected, 1 merged; no criticals)
+> **CRUD:** applicable | self-test wrote marker plus query fixtures under a temp root (unlinked after, read back via per-line case assertions); live drives wrote a temp stamp (reverted clean, read back via validate output); probes wrote nothing (grep plus timeout exits, read back via output); skill and doc edits read back via grep
+> **Duration:** 29
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 16. Second Plan-Review Residuals
 
