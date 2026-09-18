@@ -946,9 +946,11 @@ MANIFEST_RE = re.compile(
 # A run ID binds one review run across its marker, manifest, rows, and
 # artifacts (D00 T01 §19 item 1): `YYYYMMDD-DNN-TNN-SN-<family>[-rN]`.
 # The date prefix is the run's timestamp; `-rN` disambiguates reruns.
-# Numbering (D00 T01 §20 item 1): the bare base is run 1, `-rN` is run N
-# for N >= 2, `-r1` is run 1's accepted synonym (never minted), and
-# `-r0` is outside the shape (no leading zeros anywhere in the suffix).
+# Numbering (D00 T01 §20 item 1): within one date base the bare base
+# is run 1, `-rN` is run N for N >= 2, `-r1` is run 1's accepted synonym
+# (never minted), and `-r0` is outside the shape (no leading zeros
+# anywhere in the suffix). Numbering restarts per day; the date keeps
+# runs distinct.
 RUN_ID_SHAPE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+(-r[1-9][0-9]*)?$")
 _RUN_BASE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+$")
 
@@ -5551,6 +5553,7 @@ track: Z1
 |  32   |   §32   | Non-immediate follows-outage | - |  [x]   |
 |  33   |   §33   | Synonym duplicate run | - |  [x]   |
 |  34   |   §34   | Off-shape -r0 run | - |  [x]   |
+|  35   |   §35   | Prose outage predecessor | - |  [x]   |
 
 ---
 
@@ -5944,6 +5947,18 @@ track: Z1
 > **Verified:** 2026-09-20 | §34 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-r0.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S34-gpt-r0)
+
+## 35. Prose outage predecessor
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §35 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage3.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S35-gpt) after a runner outage: codex 429
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S35-gpt-r2, follows-outage)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -6154,6 +6169,18 @@ track: Z1
             + "Manifest: sections [D90 T07 §34]; dependents [none]; bytes 100; run 20260920-D90-T07-S34-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S4-PR2] [major] Re-cited r0 finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §20 probe (review R3): an `outage:` token riding prose beside
+        # real filings is a normal marker, not an outage marker. The
+        # manifest rides the tail run, so only the prose-outage chain
+        # can fire.
+        (rev_dir / "90-health-outage3.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §35]; dependents [none]; bytes 100; run 20260920-D90-T07-S35-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited outage finding -> filed §2\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -6662,6 +6689,19 @@ track: Z1
                 and normalize_run_id("20260920-D90-T07-S4-r1") == "20260920-D90-T07-S4-r1"
             ),
             True,
+        )
+        check(
+            "prose outage predecessor fires unchained",
+            any(
+                "TODO-07-marker.md" in ln and "§35 " in ln and "names no superseded run" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§35 fires exactly twice (unchained plus dangling)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§35 " in ln and "FATAL" in ln),
+            2,
         )
         check(
             "missing provenance fires",
@@ -7517,6 +7557,17 @@ track: Z1
             ),
             "20260920-D90-T07-S4-gpt",
         )
+        check(
+            "run-id restarts numbering per day",
+            rp.next_run_id(
+                "todo/90-x/TODO-07-y.md",
+                4,
+                "gpt",
+                "20260921",
+                "marker (run 20260920-D90-T07-S4-gpt-r4)",
+            ),
+            "20260921-D90-T07-S4-gpt",
+        )
 
         def _raises(fn):
             try:
@@ -7567,6 +7618,46 @@ track: Z1
             timeout=30,
         )
         check("review_prompt run-id with a bad section exits 2", _runid_bad.returncode, 2)
+        _runid_missing = _sp.run(
+            [
+                sys.executable,
+                _rp_path,
+                "run-id",
+                "todo/90-x/TODO-07-y.md",
+                "4",
+                "gpt",
+                "20260920",
+                str(root / "runid-absent.txt"),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(
+            "review_prompt run-id warns and mints on a missing scan file",
+            (
+                _runid_missing.returncode,
+                _runid_missing.stdout.strip(),
+                "warning" in _runid_missing.stderr,
+            ),
+            (0, "20260920-D90-T07-S4-gpt", True),
+        )
+        _runid_dir = _sp.run(
+            [
+                sys.executable,
+                _rp_path,
+                "run-id",
+                "todo/90-x/TODO-07-y.md",
+                "4",
+                "gpt",
+                "20260920",
+                str(root),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check("review_prompt run-id with an unreadable scan file exits 2", _runid_dir.returncode, 2)
         _rid.unlink()
         # Delimiter-tag contract (D00 T01 §19 item 11): 64-bit entropy
         # floor, collision-checked fencing with bounded retries.
@@ -7664,6 +7755,7 @@ track: Z1
         (rev_dir / "90-health-history.md").unlink()
         (rev_dir / "90-health-outage.md").unlink()
         (rev_dir / "90-health-outage2.md").unlink()
+        (rev_dir / "90-health-outage3.md").unlink()
         (rev_dir / "90-health-synonym.md").unlink()
         (rev_dir / "90-health-r0.md").unlink()
         (rev_dir / "90-health-noprov.md").unlink()

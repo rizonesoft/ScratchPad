@@ -160,9 +160,10 @@ def next_run_id(todo_path: str, section: int, family: str, date: str, *texts: st
     walks past every run already claimed in the given texts (marker and
     manifest lines): no claim, no suffix, else `-r<max+1>`. One
     generator, so two writers cannot mint competing identities by hand.
-    Raises ValueError on an off-shape input. Numbering: the bare base
-    is run 1 and `-rN` is run N for N >= 2, so a claimed base (or `-r1`,
-    its accepted synonym) yields `-r2` next.
+    Raises ValueError on an off-shape input. Numbering: within one date
+    base the bare base is run 1 and `-rN` is run N for N >= 2, so a
+    claimed base (or `-r1`, its accepted synonym) yields `-r2` next; a
+    later day mints a bare base again.
     """
     if not re.fullmatch(r"[a-z0-9]+", family):
         raise ValueError(f"family {family!r} is outside [a-z0-9]+")
@@ -261,6 +262,12 @@ if __name__ == "__main__":
             try:
                 with open(path, encoding="utf-8") as fh:
                     texts.append(fh.read())
+            except FileNotFoundError:
+                # A genesis run mints before its findings file exists, so
+                # a missing scan file warns and reads as no claims (review
+                # R3). Collisions still fail loud downstream at the
+                # duplicate-run check; other read errors stay fatal.
+                print(f"run-id: warning: {path} does not exist, reading as no claims", file=sys.stderr)
             except OSError as exc:
                 print(f"run-id: cannot read {path}: {exc}", file=sys.stderr)
                 sys.exit(2)

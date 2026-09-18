@@ -615,6 +615,30 @@ def validate(graph, _args) -> int:
                 out.append(parsed)
         return out
 
+    def marker_states(body: str) -> dict[str, bool]:
+        # The five grammar predicates over one marker body (D00 T01 §17
+        # item 2). One function serves the last-line grammar below and
+        # the §20 outage-predecessor test, so both sites read `outage
+        # marker` the same way (review R3: a bare `outage:` substring
+        # also matches prose about an outage beside real filings).
+        low = body.lower()
+        return {
+            "outage": "outage:" in low,
+            "nofind": "no findings" in low,
+            "filed": re.search(r"\bfiled\b", low) is not None,
+            "retry": "retry-owed" in low,
+            "partial": re.search(r"\bpartial\s*:", low) is not None,
+        }
+
+    def is_outage_marker(body: str) -> bool:
+        # A predecessor counts as the outage a rerun follows only when it
+        # parses as an outage marker: `outage:` with none of the success
+        # states beside it (D00 T01 §20 item 4). Prose that merely
+        # mentions an outage beside filings is a normal marker, and a
+        # rerun after it chains via `supersedes`.
+        st = marker_states(body)
+        return st["outage"] and not (st["filed"] or st["nofind"] or st["retry"] or st["partial"])
+
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -654,12 +678,12 @@ def validate(graph, _args) -> int:
             # other produced findings, so filings beside `partial:` stay
             # silent (the survivor's findings stand) while `outage:`
             # beside `partial:` is FATAL (an outage produced nothing).
-            low = marker.lower()
-            has_outage = "outage:" in low
-            has_nofind = "no findings" in low
-            has_filed = re.search(r"\bfiled\b", low) is not None
-            has_retry = "retry-owed" in low
-            has_partial = re.search(r"\bpartial\s*:", low) is not None
+            st = marker_states(marker)
+            has_outage = st["outage"]
+            has_nofind = st["nofind"]
+            has_filed = st["filed"]
+            has_retry = st["retry"]
+            has_partial = st["partial"]
             if has_nofind and has_filed:
                 flag(
                     "stamp-no-plan-review",
@@ -733,7 +757,7 @@ def validate(graph, _args) -> int:
                         "plan-review-no-lineage",
                         f"{t.path}:{s.line}: §{num} marker run {last_run!r} is outside the run-ID shape",
                     )
-                prior_outage = len(chain) > 1 and "outage:" in chain[-2].lower()
+                prior_outage = len(chain) > 1 and is_outage_marker(chain[-2])
                 follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
                 if len(chain) > 1:
                     seen_runs = set()
