@@ -85,7 +85,7 @@ track: W0
 |  37   |   §37   | Panel rule residuals | §35 |  [ ]   |
 |  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
-|  40   |   §40   | Centralized build output in Bin | §1, §2 |  [ ]   |
+|  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [ ]   |
 
 ---
@@ -880,6 +880,13 @@ Why this section exists: per-project `bin/Debug/<tfm>/` paths bury the exe five 
 - [x] Commit: `"workspace: centralize build output in Bin"` Ship `373a7d3`; `d9e8d17` (CI-proof tick), `916dfdc` (round-3 lenses).
 
 **Test checkpoint:** Neutral `dotnet build` green with outputs under `Bin/` and none under per-project `bin/`; `git status` clean; self-test, validate, and plan --check green; CI Windows build plus smoke green on the branch; old-path grep clean. Cheaper substitute that fails: props edited while CI still points at `src/*/bin`.
+
+> **Verified:** 2026-09-18 | §40 | neutral build 0 warnings 0 errors under Bin/ plus Release plus Unit 343/0; CI build run 35399013132 success both jobs on 373a7d3; mixed panel Sol R1+R2 plus Opus R3+R4 over candidates 373a7d3 d9e8d17 916dfdc; plan review 14 findings, 11 accepted (9 at §41, 2 fixed in-run), 3 rejected
+> **Review:** rounds 1-4 (FINAL: Sol R1+R2, Opus R3 sign-off, Opus R4 confirmation), candidates 373a7d3 d9e8d17 916dfdc -- `adversarial` approve · `consistency` approve (R3 build.md prose fixed) · `integration` approve · `record` approve (R3 Done-note correction). Raw findings: docs/reviews/00-workspace/D00-T01-s40.md
+> **Plan review:** GPT high, filed D00 T01 §41 (run 20260918-D00-T01-S40-gpt)
+> **CRUD:** applicable | build wrote Bin/ outputs plus TestResults (gitignored, read back via ls, find, and test summary); stale bin/ removal read back via post-build find; runner probes wrote nothing (read-only); config edits read back via grep and diff
+> **Duration:** 2026-09-18T21:48:16Z to 2026-09-18T22:09:16Z
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 41. Bin Output Residuals
 
