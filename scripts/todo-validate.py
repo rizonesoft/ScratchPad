@@ -733,32 +733,34 @@ def validate(graph, _args) -> int:
                         "plan-review-no-lineage",
                         f"{t.path}:{s.line}: §{num} marker run {last_run!r} is outside the run-ID shape",
                     )
-                prior_outage = any("outage:" in body.lower() for body in chain[:-1])
+                prior_outage = len(chain) > 1 and "outage:" in chain[-2].lower()
                 follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
                 if len(chain) > 1:
                     seen_runs = set()
                     for run in runs:
                         if run is not None:
-                            if run in seen_runs:
+                            nrun = graph.normalize_run_id(run)
+                            if nrun in seen_runs:
                                 flag(
                                     "plan-review-no-lineage",
                                     f"{t.path}:{s.line}: §{num} marker reuses run {run} (a rerun is a new run)",
                                 )
-                            seen_runs.add(run)
+                            seen_runs.add(nrun)
                     sm = graph.SUPERSEDES_RE.search(chain[-1])
-                    prior = set(runs[:-1]) - {None}
+                    prior = {graph.normalize_run_id(r) for r in runs[:-1] if r is not None}
                     if sm is None and not (prior_outage and follows):
-                        # A rerun chains via supersedes, unless it follows
-                        # an outage: outage markers carry no run to name,
-                        # so the rerun carries `follows-outage` instead
-                        # (D00 T01 §20 item 4). A singleton marker is
-                        # genesis: run, no supersedes, silent (D00 T01 §20
-                        # item 3).
+                        # A rerun chains via supersedes, unless the marker
+                        # right before it is an outage: outage markers
+                        # carry no run to name, so the rerun carries
+                        # `follows-outage` instead (D00 T01 §20 item 4; the
+                        # predecessor is immediate, never anywhere-upchain).
+                        # A singleton marker is genesis: run, no
+                        # supersedes, silent (D00 T01 §20 item 3).
                         flag(
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} rerun marker names no superseded run (supersedes <prior-run>)",
                         )
-                    elif sm is not None and sm.group(1) not in prior:
+                    elif sm is not None and graph.normalize_run_id(sm.group(1)) not in prior:
                         flag(
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} marker supersedes unknown run {sm.group(1)}",
@@ -779,8 +781,8 @@ def validate(graph, _args) -> int:
                             hsec = hsec[: hnxt.start()]
                         hmm = graph.MANIFEST_RE.search(hsec)
                         if hmm and hmm.group(4):
-                            manifest_runs.add(hmm.group(4))
-                    if manifest_runs and last_run not in manifest_runs:
+                            manifest_runs.add(graph.normalize_run_id(hmm.group(4)))
+                    if manifest_runs and graph.normalize_run_id(last_run) not in manifest_runs:
                         flag(
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} marker run {last_run} matches no manifest run",

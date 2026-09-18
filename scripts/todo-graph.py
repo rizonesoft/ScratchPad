@@ -946,7 +946,24 @@ MANIFEST_RE = re.compile(
 # A run ID binds one review run across its marker, manifest, rows, and
 # artifacts (D00 T01 §19 item 1): `YYYYMMDD-DNN-TNN-SN-<family>[-rN]`.
 # The date prefix is the run's timestamp; `-rN` disambiguates reruns.
-RUN_ID_SHAPE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+(-r\d+)?$")
+# Numbering (D00 T01 §20 item 1): the bare base is run 1, `-rN` is run N
+# for N >= 2, `-r1` is run 1's accepted synonym (never minted), and
+# `-r0` is outside the shape (no leading zeros anywhere in the suffix).
+RUN_ID_SHAPE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+(-r[1-9][0-9]*)?$")
+_RUN_BASE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+$")
+
+
+def normalize_run_id(run: str) -> str:
+    """Read a run ID through the `-r1` synonym (D00 T01 §20 item 1).
+
+    Every lineage comparison (duplicate runs, supersedes targets,
+    marker-manifest match) normalizes first, so `-r1` and the bare base
+    compare as the run they both name. The strip applies only when the
+    remainder is a bare base, so a family literally named `r1` survives.
+    """
+    if run.endswith("-r1") and _RUN_BASE_RE.match(run[:-3]):
+        return run[:-3]
+    return run
 RUN_ID_RE = re.compile(r"\brun\s+(\S+?)(?=[,;)]|\s|$)")
 SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
 # A clearance names the commit that carries the fix (D00 T01 §19 item 8):
@@ -5529,6 +5546,9 @@ track: Z1
 |  29   |   §29   | Missing provenance | - |  [x]   |
 |  30   |   §30   | Malformed provenance | - |  [x]   |
 |  31   |   §31   | Singleton dangling follows-outage | - |  [x]   |
+|  32   |   §32   | Non-immediate follows-outage | - |  [x]   |
+|  33   |   §33   | Synonym duplicate run | - |  [x]   |
+|  34   |   §34   | Off-shape -r0 run | - |  [x]   |
 
 ---
 
@@ -5886,6 +5906,42 @@ track: Z1
 > **Verified:** 2026-09-20 | §31 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2, follows-outage)
+
+## 32. Non-immediate follows-outage
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §32 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage2.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S32-gpt, follows-outage)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S32-gpt-r2, follows-outage)
+
+## 33. Synonym duplicate run
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §33 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-synonym.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S33-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S33-gpt-r1, supersedes 20260920-D90-T07-S33-gpt)
+
+## 34. Off-shape -r0 run
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §34 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-r0.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S34-gpt-r0)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -6056,13 +6112,46 @@ track: Z1
             encoding="utf-8",
         )
         # §20 probe: an outage-then-rerun record. The manifest rides the
-        # rerun's run; §§26-28 share the file with one shared run, so only
-        # the probed lineage shape can fire on each.
+        # rerun's run; §§26-28 plus §31 share the file with one shared run,
+        # so only the probed lineage shape can fire on each.
         (rev_dir / "90-health-outage.md").write_text(
             opus_panel
             + "Manifest: sections [D90 T07 §26]; dependents [none]; bytes 100; run 20260920-D90-T07-S26-gpt-r2\n\n"
             "Ledger:\n"
             "- [D90-T07-S4-PR2] [major] Re-cited outage finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §20 probe (review R1): a three-deep outage chain whose tail
+        # follows-outage names a run, not the outage. The manifest rides
+        # the tail run, so only the non-immediate chain can fire.
+        (rev_dir / "90-health-outage2.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §32]; dependents [none]; bytes 100; run 20260920-D90-T07-S32-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited outage finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §20 probe (review R1): the `-r1` synonym reads as the base. The
+        # manifest rides the bare base, so a `-r1` last marker matches it
+        # and only the synonym duplicate can fire.
+        (rev_dir / "90-health-synonym.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §33]; dependents [none]; bytes 100; run 20260920-D90-T07-S33-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited synonym finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §20 probe (review R1): `-r0` is outside the run-ID shape. The
+        # manifest content is irrelevant (off-shape runs skip the match),
+        # so only the shape can fire.
+        (rev_dir / "90-health-r0.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §34]; dependents [none]; bytes 100; run 20260920-D90-T07-S34-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited r0 finding -> filed §2\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -6515,6 +6604,62 @@ track: Z1
             "§31 fires exactly once (dangling only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§31 " in ln and "FATAL" in ln),
             1,
+        )
+        check(
+            "non-immediate follows-outage fires unchained",
+            any(
+                "TODO-07-marker.md" in ln and "§32 " in ln and "names no superseded run" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§32 fires exactly twice (unchained plus dangling)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§32 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "synonym run reuses the base",
+            any(
+                "TODO-07-marker.md" in ln and "§33 " in ln and "reuses run 20260920-D90-T07-S33-gpt-r1" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§33 fires exactly once (duplicate only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§33 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "-r0 run is outside the shape",
+            any(
+                "TODO-07-marker.md" in ln and "§34 " in ln and "outside the run-ID shape" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§34 fires exactly once (shape only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§34 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "run-id shape rejects -r0 and -r01, accepts -r1",
+            (
+                RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-r0") is None
+                and RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-r01") is None
+                and RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-r1") is not None
+            ),
+            True,
+        )
+        check(
+            "normalize reads -r1 as the base, keeps family r1",
+            (
+                normalize_run_id("20260920-D90-T07-S4-gpt-r1") == "20260920-D90-T07-S4-gpt"
+                and normalize_run_id("20260920-D90-T07-S4-r1") == "20260920-D90-T07-S4-r1"
+            ),
+            True,
         )
         check(
             "missing provenance fires",
@@ -7516,6 +7661,9 @@ track: Z1
         (rev_dir / "90-health-orphan.md").unlink()
         (rev_dir / "90-health-history.md").unlink()
         (rev_dir / "90-health-outage.md").unlink()
+        (rev_dir / "90-health-outage2.md").unlink()
+        (rev_dir / "90-health-synonym.md").unlink()
+        (rev_dir / "90-health-r0.md").unlink()
         (rev_dir / "90-health-noprov.md").unlink()
         (rev_dir / "90-health-badprov.md").unlink()
         marker_todo.unlink()

@@ -247,8 +247,10 @@ if __name__ == "__main__":
         sys.exit(0)
     if len(sys.argv) >= 6 and sys.argv[1] == "run-id":
         # run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>...
-        # The date rides explicit (no hidden clock): the template fills it
-        # from `date -u +%Y%m%d`.
+        # The date rides explicit (no hidden clock): the caller fills it
+        # from `date -u +%Y%m%d` (the skill's plan-review paragraph shows
+        # the invocation; scan files are the findings files holding
+        # claimed runs).
         try:
             section = int(sys.argv[3])
         except ValueError:
