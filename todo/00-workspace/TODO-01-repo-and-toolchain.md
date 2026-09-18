@@ -85,6 +85,7 @@ track: W0
 |  37   |   §37   | Panel rule residuals | §35 |  [ ]   |
 |  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
+|  40   |   §40   | Centralized build output in Bin | §1, §2 |  [ ]   |
 
 ---
 
@@ -863,6 +864,19 @@ Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 
 - [ ] Commit: `"workspace: add panel telemetry per eleventh live round"`
 
 **Test checkpoint:** rounds self-report, both runners feed the record, and one query totals the tree. Cheaper substitute that fails: anecdote-driven caps.
+
+## 40. Centralized Build Output in Bin
+
+Why this section exists: per-project `bin/Debug/<tfm>/` paths bury the exe five levels deep and scatter one output tree per project (operator direction 2026-09-18). All build outputs move to root `Bin/` via `BaseOutputPath`, with per-project subfolders as the collision default (cost of flattening: cross-project assembly clashes). This reverses §2's per-project-outputs item explicitly; the stamped checklist stands untouched and this section records the reversal. Intermediates stay per-project `obj/` (gitignored, harmless); `dist/` (publish) and `TestResults/` are untouched. Consumers that name the old paths move in this section: `build.yml` (smoke exe plus artifact upload), `soak.yml` (golden-failure glob), and the `bootstrap.md`, `build.md`, `testing.md` run paths. -> XREF: D00 T01 §2 (the per-project-outputs item this reverses).
+
+- [ ] `Directory.Build.props` sets `BaseOutputPath` to `$(MSBuildThisFileDirectory)Bin/$(MSBuildProjectName)/`, so every project (src, tests, tools) emits under root `Bin/` with Configuration/TargetFramework/RID appended as before. Done when: the neutral build emits under `Bin/<Project>/Debug/<tfm>/` and no output lands under any per-project `bin/`.
+- [ ] `.gitignore` covers root `Bin/` (the lowercase `bin/` entry never matched capital `Bin/` on Linux). Done when: a full local build plus test run leaves `git status` clean apart from intended files.
+- [ ] CI paths move to `Bin/`: the `build.yml` smoke-launch exe plus artifact upload and the `soak.yml` golden-failure glob name their `Bin/<Project>/...` locations. Done when: CI is green on the branch with artifacts collected from `Bin/`.
+- [ ] Doc run paths move to `Bin/`: `docs/bootstrap.md`, `docs/build.md`, and `docs/testing.md` name the new locations. Done when: each names its `Bin/` path and a grep for the old `src/*/bin/Debug` and `tools/*/bin/Debug` shapes is clean outside stamped history.
+- [ ] Stale pre-change per-project `bin/` trees are removed (regenerable, gitignored); `obj/` stays as the intermediates home. Done when: no `bin/` directory remains under `src/`, `tests/`, or `tools/`.
+- [ ] Commit: `"workspace: centralize build output in Bin"`
+
+**Test checkpoint:** Neutral `dotnet build` green with outputs under `Bin/` and none under per-project `bin/`; `git status` clean; CI Windows build plus smoke green on the branch; old-path grep clean. Cheaper substitute that fails: props edited while CI still points at `src/*/bin`.
 
 ## Verification
 
