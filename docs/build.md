@@ -12,7 +12,7 @@ Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -Ex
 
 ## Build commands
 
-Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/ScratchPad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under per-project `bin/` and `obj/`, publish output under `dist/`, all gitignored.
+Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/ScratchPad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under root `Bin/` per project (`Bin/<Project>/`), intermediates under per-project `obj/`, publish output under `dist/`, all gitignored.
 
 ## Test
 
