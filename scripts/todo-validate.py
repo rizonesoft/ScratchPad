@@ -584,6 +584,7 @@ def validate(graph, _args) -> int:
     # reviewed while the required round may never have run. The marker
     # names the filings or `no findings`; the ledger lives in the
     # findings file, not here, so presence is the whole check.
+    seen_17b = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -616,12 +617,16 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} marker names unresolvable filing {xm.group(0)!r}",
                     )
             fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
-            if not fm:
+            if not fm or fm.group(1) in seen_17b:
                 continue
             try:
                 ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
             except OSError:
                 continue
+            # One file, one report: sections sharing a findings file would
+            # otherwise multi-fire the same defect. First reporter wins in
+            # sorted order, so the report is deterministic.
+            seen_17b.add(fm.group(1))
             ftext, _u = graph.strip_fenced_code(ftext)
             marker_keys = set()
             for xm in graph.XREF_RE.finditer(marker):
@@ -645,9 +650,11 @@ def validate(graph, _args) -> int:
                             else None
                         )
                         if key is None or key not in marker_keys:
+                            # Quoted like message (a): a bare §ref here would
+                            # trip per-section silence checks keyed on "§N ".
                             flag(
                                 "stamp-no-plan-review",
-                                f"{t.path}:{s.line}: §{num} filed target {xm.group(0)} not verified in marker",
+                                f"{t.path}:{s.line}: §{num} filed target {xm.group(0)!r} not named in marker",
                             )
 
     # 18. plan-review records of post-cutoff stamps must be machine-shaped
@@ -658,6 +665,7 @@ def validate(graph, _args) -> int:
     # rules 16-17 (the §14/§15 records predate the shapes). FATAL: the
     # fix is mechanical (shape the record) and the defect breaks the
     # query's contract.
+    seen_18 = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -665,12 +673,14 @@ def validate(graph, _args) -> int:
             if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                 continue
             fm = FINDINGS_RE.search(getattr(s, "review_body", None) or "")
-            if not fm:
+            if not fm or fm.group(1) in seen_18:
                 continue
             try:
                 ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
             except OSError:
                 continue
+            # One file, one report (same dedup as rule 17b above).
+            seen_18.add(fm.group(1))
             ftext, _u = graph.strip_fenced_code(ftext)
             for h in graph.PLAN_REVIEW_HEADING_RE.finditer(ftext):
                 sec = ftext[h.end() :]
@@ -683,7 +693,7 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} Plan review section without a Manifest line",
                     )
                 for ln in sec.splitlines():
-                    if re.match(r"^\s*-\s*\[", ln) and not graph.LEDGER_ROW_RE.match(ln):
+                    if graph.LEDGER_LIKE_RE.match(ln) and not graph.LEDGER_ROW_RE.match(ln):
                         flag(
                             "plan-review-malformed",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed ledger row: {ln.strip()[:80]}",

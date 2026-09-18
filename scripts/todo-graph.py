@@ -866,6 +866,10 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 # The plan-review record shapes (D00 T01 §§15-16). Module-level because the
 # query and rules 17-18 all three parse them: one pattern, no copies.
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
+# Lines that open a PR shape but fail LEDGER_ROW_RE are malformed rows;
+# any other `- [` line is prose (citation link, checkbox, bracket label).
+# Paired with the row pattern: the opener fragment stays identical here.
+LEDGER_LIKE_RE = re.compile(r"^\s*-\s*\[(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR", re.IGNORECASE)
 LEDGER_ROW_RE = re.compile(
     r"^\s*-\s*\[((?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+)\]\s*\[(critical|major|minor)\]\s+.+?->\s*(accepted|filed|duplicate|rejected|deferred)\b",
     re.IGNORECASE | re.MULTILINE,
@@ -4945,10 +4949,11 @@ track: Z1
 |   2   |   §2    | Present marker silent | - |  [x]   |
 |   3   |   §3    | Cutoff stamp silent | §2 |  [x]   |
 |   4   |   §4    | Marked health probe | §2 |  [x]   |
+|   5   |   §5    | Unbalanced findings probe | - |  [x]   |
 |   6   |   §6    | Unresolvable marker filing | - |  [x]   |
 |   7   |   §7    | Outage marker skips filing checks | - |  [x]   |
 |   8   |   §8    | Malformed ledger row | - |  [x]   |
-|   5   |   §5    | Unbalanced findings probe | - |  [x]   |
+|   9   |   §9    | Shared findings reported once | - |  [x]   |
 
 ---
 
@@ -5037,6 +5042,17 @@ track: Z1
 > **Verified:** 2026-09-20 | §8 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-malformed.md
 > **Plan review:** GPT high, filed §2
+
+## 9. Shared findings reported once
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §9 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-bad.md
+> **Plan review:** GPT high, filed §2
 """,
             encoding="utf-8",
         )
@@ -5071,7 +5087,8 @@ track: Z1
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
             "## Plan review\n\n"
-            "Prose record, no manifest and no ledger rows.\n",
+            "Prose record, no manifest here.\n"
+            "- [PR1] [major] Shared row -> filed §5\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-malformed.md").write_text(
@@ -5081,7 +5098,13 @@ track: Z1
             "**integration: approve**\n**record: approve**\n\n"
             "## Plan review\n\n"
             "Manifest: sections [D90 T07 §8]; dependents [none]; bytes 700\n\n"
-            "- [PRX] oops no shape\n",
+            "- [PRX] oops no shape\n"
+            # Prose decoys: a checkbox, a citation link, and a bracket
+            # label must NOT trip the malformed-row gate (round-1
+            # adversarial). The §8 count check below proves it.
+            "- [ ] follow-up checkbox\n"
+            "- [agentclientprotocol.com](https://example.com) citation\n"
+            "- [note] bracket label\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -5119,7 +5142,7 @@ track: Z1
         check(
             "filed target outside the marker fires",
             any(
-                "TODO-07-marker.md" in ln and "§4 " in ln and "not verified in marker" in ln
+                "TODO-07-marker.md" in ln and "§4 " in ln and "not named in marker" in ln
                 for ln in marker_out
             ),
             True,
@@ -5146,9 +5169,22 @@ track: Z1
             True,
         )
         check(
-            "§6 fires exactly twice (rule 16 plus 17b silent on it)",
+            "shared filed row fires under the first reporter",
+            any(
+                "TODO-07-marker.md" in ln and "§6 " in ln and "not named in marker" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§6 fires exactly three times (rule 16 silent on it)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§6 " in ln and "FATAL" in ln),
-            2,
+            3,
+        )
+        check(
+            "shared findings reported once (second reporter silent)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§9 " in ln and "FATAL" in ln),
+            0,
         )
         check(
             "outage marker skips the filing checks",
