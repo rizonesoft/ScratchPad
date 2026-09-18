@@ -938,8 +938,8 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # `due`, and `escalation` (overdue is an old review OR a blown row due
 # date), and criticals carry `owner`, `due`, `overdue`, and
 # `escalation`. New keys since /2: degraded, criticals, and majors
-# carry `accepted_by` and `accepted_expires`, and grandfathered
-# entries carry `overdue`.
+# carry `accepted_by`, `accepted_expires`, `accepted_review`, and
+# `accepted_rationale`, and grandfathered entries carry `overdue`.
 PLAN_HEALTH_SCHEMA = "plan-health/3"
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
@@ -975,11 +975,11 @@ def risk_target_kind(target: str) -> str | None:
     return None
 
 
-def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str]]:
+def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str]]:
     """Parse live `Risk accepted:` lines from fence-stripped findings text.
 
-    Returns (target, approver, expires, kind) per well-formed line, in
-    file order. Malformed or uncoverable lines are skipped, never fatal:
+    Returns (target, approver, expires, review, rationale, kind) per
+    well-formed line, in file order. Malformed or uncoverable lines are skipped, never fatal:
     they are the validator's to flag (rule 24); the query only consults
     acceptances for live escalations, so a bad line fails loud as a
     persisting escalation, never as a query crash.
@@ -994,11 +994,11 @@ def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str]]:
         kind = risk_target_kind(am.group(1))
         if kind is None:
             continue
-        out.append((am.group(1), am.group(2), am.group(4), kind))
+        out.append((am.group(1), am.group(2), am.group(4), am.group(5), am.group(6), kind))
     return out
 
 
-def acceptances_in(ftext: str) -> list[tuple[str, str, str, str]]:
+def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str]]:
     """Parse `Risk accepted:` lines from raw findings text (fences strip first)."""
     stripped, _u = strip_fenced_code(ftext)
     return acceptance_lines(stripped)
@@ -1732,7 +1732,7 @@ def cmd_query(args) -> int:
                         # targets match the marker's rung, and finding
                         # targets never cover markers. Bare partials carry
                         # no escalation, so nothing consults for them.
-                        ab, ae = "", ""
+                        ab, ae, ar, at = "", "", "", ""
                         if "outage" in state or "retry-owed" in state:
                             fm = FINDINGS_RE.search(s.review_body or "")
                             rm = RUN_ID_RE.search(body)
@@ -1740,7 +1740,9 @@ def cmd_query(args) -> int:
                             omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
                             orung = omt.group(1).strip() if omt else None
                             if fm:
-                                for tgt, appr, exp, kind in file_acceptances(fm.group(1)):
+                                for tgt, appr, exp, rvw, rat, kind in file_acceptances(
+                                    fm.group(1)
+                                ):
                                     if exp < today:
                                         continue
                                     if (
@@ -1752,7 +1754,7 @@ def cmd_query(args) -> int:
                                         and orung is not None
                                         and tgt[7:].strip().lower() == orung
                                     ):
-                                        ab, ae = appr, exp
+                                        ab, ae, ar, at = appr, exp, rvw, rat
                                         break
                             if ab:
                                 overdue = False
@@ -1770,6 +1772,8 @@ def cmd_query(args) -> int:
                                 ),
                                 "accepted_by": ab,
                                 "accepted_expires": ae,
+                                "accepted_review": ar,
+                                "accepted_rationale": at,
                             }
                         )
                 else:
@@ -1915,15 +1919,15 @@ def cmd_query(args) -> int:
                         # stay distinct IDs per that same rule, and a
                         # padded target dangles loud as a persisting
                         # escalation.
-                        ab, ae = "", ""
-                        for tgt, appr, exp, kind in file_acceptances(m.group(1)):
+                        ab, ae, ar, at = "", "", "", ""
+                        for tgt, appr, exp, rvw, rat, kind in file_acceptances(m.group(1)):
                             if exp < today:
                                 continue
                             if (
                                 kind == "finding"
                                 and tgt.lower() == lr.group(1).lower()
                             ):
-                                ab, ae = appr, exp
+                                ab, ae, ar, at = appr, exp, rvw, rat
                                 break
                         if sev == "major" and disp in ("accepted", "deferred"):
                             # Open majors age visibly (D00 T01 §17 item 11,
@@ -1958,6 +1962,8 @@ def cmd_query(args) -> int:
                                     ),
                                     ab,
                                     ae,
+                                    ar,
+                                    at,
                                 )
                             )
                             continue
@@ -1981,6 +1987,8 @@ def cmd_query(args) -> int:
                                     ),
                                     ab,
                                     ae,
+                                    ar,
+                                    at,
                                 )
                             )
                         elif disp == "filed":
@@ -2073,6 +2081,8 @@ def cmd_query(args) -> int:
                                         ),
                                         ab,
                                         ae,
+                                        ar,
+                                        at,
                                     )
                                 )
         for path in sorted(unshaped):
@@ -2090,8 +2100,8 @@ def cmd_query(args) -> int:
         degraded_sorted = sorted(
             degraded, key=lambda d: (d["ref"], d["state"], d["owner"], d["due"])
         )
-        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8]))
-        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]))
+        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10]))
+        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9]))
         stale_sorted = sorted(stale, key=lambda e: (e[0], e[1]))
         uncovered_sorted = sorted(uncovered)
         unmarked_sorted = sorted(unmarked)
@@ -2126,8 +2136,10 @@ def cmd_query(args) -> int:
                     "escalation": esc,
                     "accepted_by": ab,
                     "accepted_expires": ae,
+                    "accepted_review": ar,
+                    "accepted_rationale": at,
                 }
-                for f, pr, own, due, od, esc, ab, ae in criticals_sorted
+                for f, pr, own, due, od, esc, ab, ae, ar, at in criticals_sorted
             ],
             "majors": [
                 {
@@ -2140,8 +2152,10 @@ def cmd_query(args) -> int:
                     "escalation": esc,
                     "accepted_by": ab,
                     "accepted_expires": ae,
+                    "accepted_review": ar,
+                    "accepted_rationale": at,
                 }
-                for f, pr, day, own, due, od, esc, ab, ae in majors_sorted
+                for f, pr, day, own, due, od, esc, ab, ae, ar, at in majors_sorted
             ],
             "grandfathered": [
                 {"ref": label, "stamped": day, "overdue": od}
@@ -2221,10 +2235,10 @@ def cmd_query(args) -> int:
             for d in degraded_sorted:
                 if d["overdue"]:
                     od_by_owner.setdefault(d["owner"] or "?", []).append(d["due"])
-            for _f, _pr, own, due, od, _esc, _ab, _ae in criticals_sorted:
+            for _f, _pr, own, due, od, _esc, _ab, _ae, _ar, _at in criticals_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
-            for _f, _pr, _day, own, due, od, _esc, _ab, _ae in majors_sorted:
+            for _f, _pr, _day, own, due, od, _esc, _ab, _ae, _ar, _at in majors_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
             print(f"incomplete runs     {len(incomplete)}")
@@ -2234,7 +2248,7 @@ def cmd_query(args) -> int:
                     + ("  OVERDUE" if d["overdue"] else "")
                 )
             print(f"blocked clearances  {len(blocked)}")
-            for f, pr, own, due, od, _esc, _ab, _ae in blocked:
+            for f, pr, own, due, od, _esc, _ab, _ae, _ar, _at in blocked:
                 print(
                     f"    {pr}  in {f}  owner {own or '?'}  due {due or '?'}"
                     + ("  OVERDUE" if od else "")
@@ -2289,7 +2303,10 @@ def cmd_query(args) -> int:
             if d["overdue"]:
                 tags += "  OVERDUE  escalate operator"
             if d["accepted_by"]:
-                tags += f"  accepted by {d['accepted_by']} expires {d['accepted_expires']}"
+                tags += (
+                f"  accepted by {d['accepted_by']} expires {d['accepted_expires']}"
+                f" review {d['accepted_review']} rationale {d['accepted_rationale']}"
+            )
             # UNACCOUNTABLE pairs with the owed predicate at collection:
             # a bare partial carries no fields because none are owed.
             if (not d["owner"] or not d["due"]) and (
@@ -2314,12 +2331,12 @@ def cmd_query(args) -> int:
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
-        for f, pr, own, due, od, _esc, ab, ae in criticals_sorted:
+        for f, pr, own, due, od, _esc, ab, ae, ar, at in criticals_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += "  OVERDUE  escalate operator"
             if ab:
-                acct += f"  accepted by {ab} expires {ae}"
+                acct += f"  accepted by {ab} expires {ae} review {ar} rationale {at}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  {acct}")
@@ -2327,12 +2344,12 @@ def cmd_query(args) -> int:
             f"open majors         {len(majors_sorted)} "
             f"({sum(1 for m in majors_sorted if m[5])} overdue)"
         )
-        for f, pr, day, own, due, od, _esc, ab, ae in majors_sorted:
+        for f, pr, day, own, due, od, _esc, ab, ae, ar, at in majors_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += "  OVERDUE  escalate operator"
             if ab:
-                acct += f"  accepted by {ab} expires {ae}"
+                acct += f"  accepted by {ab} expires {ae} review {ar} rationale {at}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  since {day}  {acct}")
@@ -7656,6 +7673,15 @@ track: Z1
             True,
         )
         check(
+            "covered rows surface review date and rationale",
+            any(
+                "D90-T07-S4-PR51" in ln
+                and "review 2026-10-01 rationale critical stands, ship anyway" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
             "lapsed acceptance still escalates",
             any(
                 "TODO-07-marker.md §43" in ln and "OVERDUE" in ln for ln in health_lines
@@ -7789,8 +7815,10 @@ track: Z1
                 [e for e in jdata["degraded"] if e["ref"].endswith("§42")][0]["accepted_by"],
                 [e for e in jdata["majors"] if e["id"] == "D90-T07-S4-PR50"][0]["accepted_expires"],
                 [e for e in jdata["criticals"] if e["id"] == "D90-T07-S4-PR51"][0]["accepted_by"],
+                [e for e in jdata["criticals"] if e["id"] == "D90-T07-S4-PR51"][0]["accepted_review"],
+                [e for e in jdata["majors"] if e["id"] == "D90-T07-S4-PR50"][0]["accepted_rationale"],
             ),
-            ("bob", "2099-01-01", "bob"),
+            ("bob", "2099-01-01", "bob", "2026-10-01", "major stands, ship anyway"),
         )
         check(
             "plan-health --json stale entries carry the run",
@@ -7804,7 +7832,7 @@ track: Z1
             True,
         )
         check(
-            "plan-health --json findings carry owner, due, overdue, escalation, acceptance",
+            "plan-health --json findings carry owner, due, overdue, escalation, full acceptance",
             all(
                 "owner" in e
                 and "due" in e
@@ -7812,6 +7840,8 @@ track: Z1
                 and "escalation" in e
                 and "accepted_by" in e
                 and "accepted_expires" in e
+                and "accepted_review" in e
+                and "accepted_rationale" in e
                 for e in jdata["criticals"] + jdata["majors"] + jdata["degraded"]
             ),
             True,
@@ -7828,6 +7858,8 @@ track: Z1
                     and isinstance(e["escalation"], str)
                     and isinstance(e["accepted_by"], str)
                     and isinstance(e["accepted_expires"], str)
+                    and isinstance(e["accepted_review"], str)
+                    and isinstance(e["accepted_rationale"], str)
                     for e in jdata["criticals"]
                 )
                 and all(
@@ -7836,6 +7868,8 @@ track: Z1
                     and isinstance(e["escalation"], str)
                     and isinstance(e["accepted_by"], str)
                     and isinstance(e["accepted_expires"], str)
+                    and isinstance(e["accepted_review"], str)
+                    and isinstance(e["accepted_rationale"], str)
                     for e in jdata["majors"]
                 )
                 and all(
@@ -7847,6 +7881,8 @@ track: Z1
                     and isinstance(e["escalation"], str)
                     and isinstance(e["accepted_by"], str)
                     and isinstance(e["accepted_expires"], str)
+                    and isinstance(e["accepted_review"], str)
+                    and isinstance(e["accepted_rationale"], str)
                     for e in jdata["degraded"]
                 )
                 and all(
@@ -7875,6 +7911,8 @@ track: Z1
                         d["escalation"],
                         d["accepted_by"],
                         d["accepted_expires"],
+                        d["accepted_review"],
+                        d["accepted_rationale"],
                     ),
                 )
                 and jdata["majors"]
@@ -7890,6 +7928,8 @@ track: Z1
                         d["escalation"],
                         d["accepted_by"],
                         d["accepted_expires"],
+                        d["accepted_review"],
+                        d["accepted_rationale"],
                     ),
                 )
                 and jdata["degraded"]
@@ -9326,7 +9366,7 @@ def main() -> int:
     q.add_argument("--file", help="adjacency: exact repository-relative TODO path")
     q.add_argument("--at", help="adjacency: inspect an isolated historical commit")
     q.add_argument("--json", action="store_true", help="adjacency, plan-health: machine-readable report")
-    q.add_argument("--check", action="store_true", help="plan-health: exit 1 when any actionable dimension is non-empty")
+    q.add_argument("--check", action="store_true", help="plan-health: exit 1 on actionable entries (covered escalations and bare partials pass; --fail-on gates presence)")
     q.add_argument("--fail-on", metavar="DIMS", help="plan-health: comma-separated dimensions whose non-emptiness exits 1")
     q.add_argument("--require-owned", action="store_true", help="adjacency: refuse incomplete file ownership at closeout")
     q.add_argument("--require-conformance", action="store_true", help="adjacency: require non-vacuous tree-wide kind coverage")
