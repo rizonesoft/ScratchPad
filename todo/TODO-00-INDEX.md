@@ -27,6 +27,7 @@ Domains are numbered in **allocation order**. `DNN TNN §N` cross-references enc
 | 06 | [Quality](./06-quality/INDEX.md) | 3 | Automated test strategy, UI automation, ACP conformance harness. Testing is automatic and complete. |
 | 07 | [Release](./07-release/INDEX.md) | 4 | MSIX packaging, install/update, release checklist. |
 | 08 | [Voice](./08-voice/INDEX.md) | 8 | Embedded speech engines, voice surface. |
+| 99 | [Manual](./99-manual/INDEX.md) | 99 | Operator-only steps: GitHub clicks, taste passes, demos. Reserved high number; no agent runner takes these rows. |
 
 The Phase column is the original coarse domain grouping, not an executable schedule. Current dependency-safe sequencing and live counts come only from [`implementation-plan.md`](./implementation-plan.md) plus `python3 scripts/todo-graph.py query stats`. Do not infer readiness from a domain number or repeat fixed totals here.
 
@@ -53,7 +54,9 @@ A coverage claim rests on the source it was derived from. This table was derived
 
 ## Active TODOs
 
+- [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- toolchain, CI, TODO-system governance, review machinery. Returned to Active 2026-09-18: status is active with open sections.
 - [00 Workspace] [TODO-02 Test Backbone](./00-workspace/TODO-02-test-backbone.md) -- golden comparison deterministic on CI (§6); harness otherwise shipped.
+- [00 Workspace] [TODO-03 README and GitHub Repo Face](./00-workspace/TODO-03-readme-and-github.md) -- screenshots, README rewrite, badges, contributing, templates, setup-path CI.
 - [01 Notepad Core] [TODO-01 WinUI App Spine](./01-notepad-core/TODO-01-winui-app-spine.md) -- window, tab model, file IO with encoding detection, open/save round-trips.
 - [01 Notepad Core] [TODO-02 Menus, Settings and Status](./01-notepad-core/TODO-02-menus-settings-status.md) -- full menu bar, settings page, status bar, print slice.
 - [02 Editor] [TODO-01 Editing Surface](./02-editor/TODO-01-editing-surface.md) -- text engine, caret and selection, undo/redo, zoom, wrap, line endings.
@@ -74,10 +77,11 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [07 Release] [TODO-01 Packaging and Update](./07-release/TODO-01-packaging-and-update.md) -- MSIX packaging, clean-machine install test, update channel, release checklist.
 - [08 Voice] [TODO-01 Voice Engines](./08-voice/TODO-01-voice-engines.md) -- Kokoro TTS, Whisper STT, MP3 transcode, OpenRouter provider interface.
 - [08 Voice] [TODO-02 Voice Surface](./08-voice/TODO-02-voice-surface.md) -- read-aloud, dictate, transcribe, provider settings.
+- [99 Manual] [TODO-01 Operator Setup (Manual)](./99-manual/TODO-01-operator-setup.md) -- About, branch protection, cold-reader pass, demo clip. Operator-only; Phase 99.
 
 ## Completed TODOs
 
-- [00 Workspace] [TODO-01 Repo and Toolchain](./00-workspace/TODO-01-repo-and-toolchain.md) -- completed 2026-09-14.
+- (none: TODO-01 returned to Active 2026-09-18, it still ships sections)
 
 ## Queries
 

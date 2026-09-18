@@ -9,6 +9,7 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 | TODO | Title | Status |
 | ---- | ----- | :----: |
 | [TODO-02](./TODO-02-test-backbone.md) | Test Backbone | active |
+| [TODO-03](./TODO-03-readme-and-github.md) | README and GitHub Repo Face | draft |
 
 ## Completed
 

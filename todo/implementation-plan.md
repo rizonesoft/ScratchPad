@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **64 of 203 sections complete (32%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **64 of 210 sections complete (30%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -135,6 +135,9 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §7`  | CI evidence capture pipeline                 |   4   |
 | [ ] | `D00 T02 §8`  | Focus-free UI suite conversion               |   6   |
 | [ ] | `D00 T02 §9`  | Nightly full-suite regression run            |   5   |
+| [ ] | `D00 T03 §1`  | App screenshots for README                   |   5   |
+| [ ] | `D00 T03 §2`  | README rewrite plus repo-face files          |   8   |
+| [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record    |   5   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 
@@ -317,3 +320,14 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D07 T01 §6` | Store and WinGet distribution         |   4   |
 | [ ] | `D07 T01 §7` | Share target registration             |   4   |
 | [ ] | `D07 T01 §8` | Inno Setup installer and distribution |   6   |
+
+### Phase 99 -- Manual: operator-only steps
+
+No agent runner takes rows from this phase: every section carries a `**Manual:**` line and assumes zero GitHub knowledge. The operator works the steps from `todo/99-manual/`, commits ticked items plus proof screenshots through the GitHub web UI, and an agent session verifies the public proof afterward; review stamps the evidence range like any other. The steps live in the TODO file, never here: this table holds one row per section and nothing else.
+
+|  ✔  | Section      | Deliverable                   | Items |
+| :-: | ------------ | ----------------------------- | :---: |
+| [ ] | `D99 T01 §1` | About, topics, social preview |   6   |
+| [ ] | `D99 T01 §2` | Branch protection             |   5   |
+| [ ] | `D99 T01 §3` | Cold-reader pass              |   5   |
+| [ ] | `D99 T01 §4` | Demo clip                     |   5   |
