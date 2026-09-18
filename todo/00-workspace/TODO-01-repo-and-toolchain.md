@@ -80,7 +80,7 @@ track: W0
 |  32   |   §32   | Clearance governance and diagnostics | §22 |  [ ]   |
 |  33   |   §33   | Provenance residuals | §23 |  [ ]   |
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [ ]   |
-|  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [ ]   |
+|  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [x]   |
 |  36   |   §36   | README mixed-panel touch-up | §35 |  [ ]   |
 |  37   |   §37   | Panel rule residuals | §35 |  [ ]   |
 |  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
@@ -812,11 +812,18 @@ Why this section exists: the panel regime §§9-14 built puts every round on Opu
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with the mixed cases; the Sol-medium probe quoted passing; the skill carries the sequence, caps, command, matrix, and gate; live `validate` stays 0 fatal; live drives reverted clean. Cheaper substitute that fails: prose rules no review follows, or a record shape the query miscounts.
 
+> **Verified:** 2026-09-18 | §35 | self-test 746/746 (+9: mixed-record silences §§37-39, fallback-membership JSON checks); live validate 0 fatal; mixed panel Sol R1+R2 plus Opus R3 sign-off over candidates 324eefc 4caf5e3 2eb0343; plan review 16 findings, 12 accepted at §§36-39 plus findings record, 4 rejected
+> **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 324eefc 4caf5e3 2eb0343 -- `adversarial` approve (R1 advisory-filing gap fixed) · `consistency` advisory (R1 skip-logic plus Light-escalation fixed; R2 failover scope fixed; R3 README staleness filed at D00 T01 §36) · `integration` approve · `record` approve (R1 probe-quote fixed). Raw findings: docs/reviews/00-workspace/D00-T01-s35.md
+> **Plan review:** GPT high, filed D00 T01 §36, D00 T01 §37, D00 T01 §38, D00 T01 §39 (run 20260918-D00-T01-S35-gpt)
+> **CRUD:** applicable | self-test wrote panel fixtures under a temp root (unlinked after, read back via per-line case assertions); live drives wrote a temp §23 re-point plus a scratch findings file (backup-restored, scratch deleted, read back via validate output); runner probes wrote nothing (verbatim-echo plus live rounds, read-only); skill and doc edits read back via grep and diff
+> **Duration:** 2026-09-18T21:03:38Z to 2026-09-18T21:38:22Z
+> **Implementer:** Muse Code (Meta Muse Spark)
+
 ## 36. README Mixed-Panel Touch-Up
 
 Why this section exists: the §35 Opus sign-off (round 3) reported one consistency advisory, verified genuine: the root README's Deferred bullet for external review panel scripts still names the retired `headless Opus panel` title the mixed panel replaced. One line must move, with a re-sweep proving it is the last live site. -> XREF: D00 T01 §35 (filed from its review round 3); -> SOURCE: panel-D00-T01-s35-2026-09-18-R3 (Opus round 3, consistency advisory 1; record in the §35 findings file).
 
-- [ ] The Deferred bullet names the mixed panel: the root `README.md` Deferred bullet starting `- External review panel scripts` reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the bullet names the mixed panel and a tree-wide grep for the retired title finds no live site outside `docs/reviews/`, `docs/phase-runs/`, the `stamp-no-opus-panel` rule-class name, historical section titles (§9 et al), and validator comments citing the rule. **Corrected 2026-09-18 (§35 plan review PR15):** line anchor replaced with the bullet's content anchor; exclusions enumerated explicitly.
+- [ ] The Deferred bullet names the mixed panel: the root `README.md` Deferred bullet starting `- External review panel scripts` reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the bullet names the mixed panel and a tree-wide grep for the retired title finds no live site outside `docs/reviews/`, `docs/phase-runs/`, the `stamp-no-opus-panel` rule-class name, historical section titles (§9 et al), and validator comments citing the rule. **Corrected 2026-09-18 (PR15 D00-T01-S35-PR15):** line anchor replaced with the bullet's content anchor; exclusions enumerated explicitly.
 - [ ] Commit: `"workspace: name mixed panel in README Deferred"`
 
 **Test checkpoint:** the bullet names the mixed panel; the re-sweep is quoted clean; live `validate` stays 0 fatal. Cheaper substitute that fails: trusting memory of the title count.
