@@ -21,6 +21,7 @@ depends_on: []
 - [`.github/workflows/`](../../.github/workflows/) -- the check names §2 requires.
 - `https://github.com/rizonesoft/ScratchPad` -- every click path below starts here, logged in as the owner.
 - -> XREF: D00 T03 §2 -- the agent-side companion that produces the README, screenshots, and CI job this file consumes.
+- -> XREF: D00 T01 §42 -- the `Requires: operator` mark gating this file's rows; §§1-4 carry the mark once §42 ships.
 
 ## Outcome
 

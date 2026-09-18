@@ -87,6 +87,7 @@ track: W0
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [ ]   |
+|  42   |   §42   | Requires operator vocabulary | §13 |  [ ]   |
 
 ---
 
@@ -905,6 +906,18 @@ Why this section exists: the twelfth live plan review (§40 plus §1 plus §2, `
 - [ ] Commit: `"workspace: harden Bin output per twelfth live round"`
 
 **Test checkpoint:** Pointers read; uniqueness, conformance, and manifest guards green; soak proven; launcher works; clean documented. Cheaper substitute that fails: layout held by convention.
+
+## 42. Requires Operator Vocabulary
+
+Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded by prose alone: no runner capability marks them, so `query ready` lists operator-only rows as runnable-now and an unattended runner could take one. The `Requires:` closed vocabulary (§13) gains an `operator` value that holds in no agent context, and the four manual sections (D99 T01 §1, D99 T01 §2, D99 T01 §3, D99 T01 §4) take the mark. -> XREF: D99 T01 §1 (the rows this value gates); -> SOURCE: gap-audit-phase0-run4-2026-09-18 (Phase 99 prose-only guard; no runner capability marks operator rows).
+
+- [ ] `operator` joins `REQUIRES_ALLOWED` with a detector that holds in no agent context (a declared `--context operator` excepted: the operator declares their own keyboard, no agent self-reports one), reason required like every mark. Done when: fixtures lock the accept (marked rows split elsewhere by default, runnable under declared `operator`), the rejects (unknown value, missing reason), and the detector never self-reporting True.
+- [ ] D99 T01 §1, D99 T01 §2, D99 T01 §3, and D99 T01 §4 carry `**Requires:** operator -- <reason citing this section>`. Done when: all four rows read runnable-elsewhere in the default context.
+- [ ] `todo/README.md` vocabulary table gains the `operator` row with its meaning and detector. Done when: the table names it beside `display-session`.
+- [ ] AGENTS.md self-test count syncs to the landed total (sibling §§9-11 convention). Done when: the count reads the new total.
+- [ ] Commit: `"workspace: gate manual rows behind Requires operator"`
+
+**Test checkpoint:** `query ready` hides D99 rows by default and shows them under `--context operator`; self-test green with the new cases; `validate` silent. Cheaper substitute that fails: prose claiming runners skip Phase 99.
 
 ## Verification
 
