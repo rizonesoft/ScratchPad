@@ -5,7 +5,7 @@ description: Attended runner that takes one phase of todo/implementation-plan.md
 
 # Process Phase
 
-One phase, start to 100%, or parked when the rest of it is blocked. You do not stop in between.
+One phase, start to 100%, or parked when the rest of it is blocked or runnable-elsewhere here. You do not stop in between.
 
 **Exactly three endings.** Zero open rows and a written closeout. Every leftover row blocked or runnable-elsewhere here, so the phase is **parked** and `process-plan` moves to the next ready phase. Or the operator's own pause. There is no fourth, and a parked phase is neither complete nor a stall.
 
@@ -43,7 +43,7 @@ The phase table is a plan, and plans drift. Fix it before building on it. In ord
 1. `python3 scripts/todo-graph.py validate`: fix every FATAL now.
 2. `python3 scripts/todo-graph.py plan --check`: if stale, `plan --sync`.
 3. For EVERY open row in the phase: `python3 scripts/todo-graph.py resolve '<ref>'`. Record the exit code.
-   - Exit 4 with unmet deps **outside this phase** is a **leftover, not a stall**. Leave the row here, ship every exit-0 row, and park when only leftovers remain. Do not drag a later phase's dependency into this one, and do not loop back hoping the answer changes.
+   - Exit 4 with unmet deps **outside this phase** is a **leftover, not a stall**. Leave the row here, ship every exit-0 runnable-now row, and park when only leftovers remain. Do not drag a later phase's dependency into this one, and do not loop back hoping the answer changes.
    - Exit 1/2: the row cites a section that does not exist: repair the reference against the TODO file. A broken ref is repairable work, so it blocks a park.
    - A row whose `resolve` verdict is runnable-elsewhere **in this context** is a leftover, not a shippable row, whatever the exit code: it stays visible, never ships here, and parks with the rest when only leftovers remain. Re-run `resolve` rather than trusting a previous verdict.
 4. Read each open section's TODO file top to bottom, looking for **phase-level** staleness only (per-section validation happens again inside `process-todo-section`): sections whose work already shipped elsewhere, sections made moot by a decision since, callouts whose blocker no longer exists. Correct with dated `**Corrected YYYY-MM-DD:**` notes.
@@ -64,7 +64,7 @@ Read the phase as a user would use it, end to end, and ask what is missing: surf
 
 In table order, for each open row: `process-todo-section`, then `review-todo-section`. Record each outcome in the findings file's Sections log. After each stamp, sync the plan. Commit per section; push per the two-push discipline (ship push, then stamp push).
 
-Skip rows whose `resolve` is not exit 0, and re-check them after each stamp: the graph moves as rows flip. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
+Skip rows whose `resolve` is not exit 0 or whose verdict is runnable-elsewhere here, and re-check them after each stamp: the graph moves as rows flip. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
 
 ## Step 4 -- closeout
 
