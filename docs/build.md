@@ -24,7 +24,7 @@ Warnings fail the build everywhere: `Directory.Build.props` sets `TreatWarningsA
 
 ## Run the stub (Windows)
 
-Build the solution, then run `src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe` directly. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
+Build the solution, then run `Bin\ScratchPad\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe` directly. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
 
 ## Provenance
 

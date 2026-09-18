@@ -80,7 +80,7 @@ jobs:
       # loud); otherwise stop it after the soak and pass.
       - name: Launch smoke
         run: |
-          $exe = "$PWD\src\ScratchPad\bin\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
+          $exe = "$PWD\Bin\ScratchPad\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
           $p = Start-Process $exe -PassThru
           $p.WaitForExit(30000)
           if ($p.HasExited -and $p.ExitCode -ne 0) { throw "ScratchPad exited during launch smoke with code $($p.ExitCode)" }
@@ -90,4 +90,4 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: scratchpad-windows-x64
-          path: src/ScratchPad/bin/Debug/net10.0-windows10.0.19041.0/win-x64/
+          path: Bin/ScratchPad/Debug/net10.0-windows10.0.19041.0/win-x64/

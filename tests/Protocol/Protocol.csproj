@@ -27,11 +27,11 @@
     </None>
   </ItemGroup>
 
-  <!-- The fixture runs framework-dependent, so both its dll and its runtimeconfig travel with the tests. -->
+  <!-- The fixture runs framework-dependent, so both its dll and its runtimeconfig travel with the tests. Layout follows Directory.Build.props (Bin per project); keep this in step with BaseOutputPath. -->
   <Target Name="CopyLoopbackFixture" AfterTargets="Build">
     <ItemGroup>
-      <LoopbackOut Include="$(MSBuildProjectDirectory)\..\Fixtures\AcpLoopback\bin\$(Configuration)\$(TargetFramework)\AcpLoopback.dll" />
-      <LoopbackOut Include="$(MSBuildProjectDirectory)\..\Fixtures\AcpLoopback\bin\$(Configuration)\$(TargetFramework)\AcpLoopback.runtimeconfig.json" />
+      <LoopbackOut Include="$(MSBuildProjectDirectory)\..\..\Bin\AcpLoopback\$(Configuration)\$(TargetFramework)\AcpLoopback.dll" />
+      <LoopbackOut Include="$(MSBuildProjectDirectory)\..\..\Bin\AcpLoopback\$(Configuration)\$(TargetFramework)\AcpLoopback.runtimeconfig.json" />
     </ItemGroup>
     <Copy SourceFiles="@(LoopbackOut)" DestinationFolder="$(OutDir)" />
   </Target>
