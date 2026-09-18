@@ -853,11 +853,27 @@ SEVERITY_MAP: dict[str, str] = {
     # procedure, so an unmarked stamp reads as fully reviewed while the
     # round may never have run (D00 T01 §15).
     "stamp-no-plan-review": "fatal",
+    # a post-cutoff plan-review record the query cannot parse (a Plan
+    # review section without its Manifest line, or a ledger-looking line
+    # outside the row shape): unparseable records silently drop out of
+    # governance (D00 T01 §16).
+    "plan-review-malformed": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
 PLAN_REVIEW_CUTOFF = "2026-09-18"
+# The plan-review record shapes (D00 T01 §§15-16). Module-level because the
+# query and rules 17-18 all three parse them: one pattern, no copies.
+PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
+LEDGER_ROW_RE = re.compile(
+    r"^\s*-\s*\[((?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+)\]\s*\[(critical|major|minor)\]\s+.+?->\s*(accepted|filed|duplicate|rejected|deferred)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+MANIFEST_RE = re.compile(
+    r"^Manifest:\s*sections\s*\[(.*?)\];\s*dependents\s*\[(.*?)\];\s*bytes\s*(\d+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
@@ -1268,9 +1284,11 @@ def cmd_query(args) -> int:
         return 0
 
     if what == "plan-health":
-        # D00 T01 §15: governance visibility for the review loop. All five
+        # D00 T01 §15: governance visibility for the review loop. All
         # dimensions are mechanical (marker presence, heading scans, ledger
-        # rows, graph edges); nothing here judges prose quality.
+        # rows, graph edges); nothing here judges prose quality. D00 T01
+        # §16 adds retry-owed, filed follow-through, stale scope, and
+        # --json; text and JSON share one report dict.
         by_id = {t.id: t for t in todos if t.id}
         by_key = {(t.domain, t.number): t for t in todos}
 
@@ -1281,13 +1299,17 @@ def cmd_query(args) -> int:
 
         marked = {}
         unmarked = []
+        retry = []
         for t in todos:
             for num in sorted(t.verified_sections):
                 s = t.sections.get(num)
                 if s is None:
                     continue
-                if (s.plan_review_body or "").strip():
+                body = (s.plan_review_body or "").strip()
+                if body:
                     marked[(t.id, num)] = s.stamped_on or "undated"
+                    if "retry-owed" in body:
+                        retry.append(f"{t.path} §{num}")
                 elif _owed(s):
                     unmarked.append((f"{t.path} §{num}", s.stamped_on or "undated"))
         labels = {(t.id, num): f"{t.path} §{num}" for t in todos for num in t.sections}
@@ -1317,13 +1339,8 @@ def cmd_query(args) -> int:
         findings_path_re = re.compile(r"Raw findings:\s*(\S+\.md)")
         gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
         outage_re = re.compile(r"opus outage", re.IGNORECASE)
-        plan_review_heading_re = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
-        ledger_re = re.compile(
-            r"^\s*-\s*\[PR(\d+)\]\s*\[(critical|major|minor)\]\s+.*?->\s*(accepted|filed|duplicate|rejected|deferred)\b",
-            re.IGNORECASE | re.MULTILINE,
-        )
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
-        fallback, outages, criticals, unreadable = [], [], [], []
+        fallback, outages, criticals, unreadable, stale = [], [], [], [], []
         seen = set()
         for t in todos:
             for num in sorted(t.verified_sections):
@@ -1352,24 +1369,88 @@ def cmd_query(args) -> int:
                     fallback.append(m.group(1))
                 if outage_re.search(text):
                     outages.append(m.group(1))
-                for h in plan_review_heading_re.finditer(text):
+                for h in PLAN_REVIEW_HEADING_RE.finditer(text):
                     sec = text[h.end():]
                     nxt = head_re.search(sec)
                     if nxt:
                         sec = sec[:nxt.start()]
-                    for lr in ledger_re.finditer(sec):
-                        # Still open, not merely unfiled: rejected and
-                        # duplicate rows are terminal, so counting them
-                        # would cry wolf on every run until readers ignore
-                        # the dimension entirely.
-                        if lr.group(2).lower() == "critical" and lr.group(3).lower() in ("accepted", "deferred"):
-                            criticals.append((m.group(1), f"PR{lr.group(1)}"))
+                    mm = MANIFEST_RE.search(sec)
+                    if mm:
+                        scope = set()
+                        for grp in (mm.group(1), mm.group(2)):
+                            for xm in XREF_RE.finditer(grp):
+                                r = resolve_ref(xm.group(0), t, by_key)
+                                if r and r[0] in by_id:
+                                    scope.add(r)
+                        current = {(t.id, num)}
+                        for raw in (s.depends_on or []):
+                            r = resolve_ref(raw, t, by_key)
+                            if r and r[0] in by_id:
+                                current.add(r)
+                        current |= rev.get((t.id, num), set())
+                        new = current - scope
+                        # Only growth flags: a review that covered removed
+                        # scope was generous, not wrong.
+                        if new:
+                            stale.append(
+                                (
+                                    m.group(1),
+                                    sorted(labels.get(k, f"{k[0]} §{k[1]}") for k in new),
+                                )
+                            )
+                    for lr in LEDGER_ROW_RE.finditer(sec):
+                        if lr.group(2).lower() != "critical":
+                            continue
+                        disp = lr.group(3).lower()
+                        if disp in ("accepted", "deferred"):
+                            criticals.append((m.group(1), lr.group(1)))
+                        elif disp == "filed":
+                            # A filed row clears only when every named
+                            # target verifies; unresolvable, unverified, or
+                            # unnamed targets fail closed (a filed safety
+                            # defect is not a resolved safety defect).
+                            rest = sec[lr.end():].split("\n", 1)[0]
+                            refs = [xm.group(0) for xm in XREF_RE.finditer(rest)]
+                            provable = bool(refs)
+                            for ref in refs:
+                                r = resolve_ref(ref, t, by_key)
+                                if (
+                                    not r
+                                    or r[0] not in by_id
+                                    or r[1] not in by_id[r[0]].verified_sections
+                                ):
+                                    provable = False
+                                    break
+                            if not provable:
+                                criticals.append((m.group(1), lr.group(1)))
+        report = {
+            "reviewed": {
+                "marked": len(marked),
+                "unmarked": [{"ref": label, "stamped": day} for label, day in sorted(unmarked)],
+            },
+            "uncovered": [{"dependent": dep, "waits_on": on} for dep, on in uncovered],
+            "retry_owed": sorted(retry),
+            "stale": [{"file": f, "unreviewed": new} for f, new in sorted(stale)],
+            "fallback": sorted(fallback),
+            "outages": sorted(outages),
+            "criticals": [{"id": pr, "file": f} for f, pr in sorted(criticals)],
+            "unreadable": [{"file": f, "opener": opener} for f, opener in sorted(unreadable)],
+        }
+        if getattr(args, "json", False):
+            print(json.dumps(report, indent=2))
+            return 0
         print(f"reviewed sections   {len(marked)} marked, {len(unmarked)} unmarked post-cutoff")
         for label, day in sorted(unmarked):
             print(f"    {label}  stamped {day}")
         print(f"uncovered dependents  {len(uncovered)}")
         for dep, on in uncovered:
             print(f"    {dep}  waits on marked {on}")
+        print(f"pending retry       {len(retry)} markers still carrying retry-owed")
+        for label in sorted(retry):
+            print(f"    {label}  retry-owed")
+        print(f"stale scope         {len(stale)} reviews whose scope grew since")
+        for f, new in sorted(stale):
+            print(f"    {f}  unreviewed: {', '.join(new)}")
         print(f"fallback usage      {len(fallback)} findings with a GPT panel")
         for f in sorted(fallback):
             print(f"    {f}")
@@ -4863,7 +4944,10 @@ track: Z1
 |   1   |   §1    | Missing marker fires | §2 |  [x]   |
 |   2   |   §2    | Present marker silent | - |  [x]   |
 |   3   |   §3    | Cutoff stamp silent | §2 |  [x]   |
-|   4   |   §4    | Marked health probe | - |  [x]   |
+|   4   |   §4    | Marked health probe | §2 |  [x]   |
+|   6   |   §6    | Unresolvable marker filing | - |  [x]   |
+|   7   |   §7    | Outage marker skips filing checks | - |  [x]   |
+|   8   |   §8    | Malformed ledger row | - |  [x]   |
 |   5   |   §5    | Unbalanced findings probe | - |  [x]   |
 
 ---
@@ -4908,7 +4992,7 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed D90 T99 §1
+> **Plan review:** GPT high, filed §2
 
 ## 5. Unbalanced findings probe
 
@@ -4920,6 +5004,39 @@ track: Z1
 > **Verified:** 2026-09-17 | §5 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-unbal.md
 > **Plan review:** GPT high, no findings
+
+## 6. Unresolvable marker filing
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §6 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-bad.md
+> **Plan review:** Opus fallback (GPT unreachable), filed §99, retry-owed
+
+## 7. Outage marker skips filing checks
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §7 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs; attempted §99
+
+## 8. Malformed ledger row
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §8 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-malformed.md
+> **Plan review:** GPT high, filed §2
 """,
             encoding="utf-8",
         )
@@ -4929,10 +5046,13 @@ track: Z1
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
             "## Plan review\n\n"
-            "- [PR1] [critical] Widget gap -> filed D90 T99 §1\n"
-            "- [PR2] [major] Wording -> filed D90 T99 §2\n"
+            "Manifest: sections [D90 T07 §4]; dependents [none]; bytes 900\n\n"
+            "- [PR1] [critical] Widget gap -> filed §2\n"
+            "- [PR2] [major] Wording -> filed §2\n"
             "- [PR3] [critical] Hanging critical -> accepted needs owner\n"
             "- [PR4] [critical] Rejected scare -> rejected not a real gap\n"
+            "- [PR5] [critical] Unfiled target -> filed §99\n"
+            "- [D90-T07-S4-PR10] [critical] Namespaced row -> accepted demo\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
         )
@@ -4943,6 +5063,25 @@ track: Z1
             "**integration: approve**\n**record: approve**\n\n"
             "## Plan review\n\n"
             "```\nUnterminated quote swallows the rest:\n- [PR7] [critical] Swallowed row -> accepted demo\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-bad.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: CLI auth failure (exit 3).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Plan review\n\n"
+            "Prose record, no manifest and no ledger rows.\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-malformed.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "Opus outage: CLI auth failure (exit 3).\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Plan review\n\n"
+            "Manifest: sections [D90 T07 §8]; dependents [none]; bytes 700\n\n"
+            "- [PRX] oops no shape\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -4977,6 +5116,58 @@ track: Z1
             any("TODO-07-marker.md" in ln and "§5 " in ln and "FATAL" in ln for ln in marker_out),
             False,
         )
+        check(
+            "filed target outside the marker fires",
+            any(
+                "TODO-07-marker.md" in ln and "§4 " in ln and "not verified in marker" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§4 fires exactly once (rule 16, 17a, 18 all silent on it)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§4 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "marker naming an unresolvable filing fires",
+            any(
+                "TODO-07-marker.md" in ln and "§6 " in ln and "names unresolvable filing" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "Plan review section without a Manifest line fires",
+            any(
+                "TODO-07-marker.md" in ln and "§6 " in ln and "without a Manifest line" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§6 fires exactly twice (rule 16 plus 17b silent on it)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§6 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "outage marker skips the filing checks",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§7 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "malformed ledger row fires",
+            any(
+                "TODO-07-marker.md" in ln and "§8 " in ln and "malformed ledger row" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§8 fires exactly once (rules 16, 17a, 17b all silent on it)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§8 " in ln and "FATAL" in ln),
+            1,
+        )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
         # Presence assertions, never counts: neighbor fixtures share the
         # root, so only the marker file's own lines are stable.
@@ -5010,7 +5201,9 @@ track: Z1
         )
         check(
             "plan-health clears the filed critical",
-            "PR1" in health_out,
+            # Word-boundary: the namespaced PR10 row contains PR1 as a
+            # substring, so a plain `in` would false-fire.
+            any(re.search(r"\bPR1\b", ln) for ln in health_lines),
             False,
         )
         check(
@@ -5041,8 +5234,40 @@ track: Z1
             "PR7" in health_out,
             False,
         )
+        check(
+            "plan-health keeps the unresolvable filed target listed",
+            any("PR5" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health parses the namespaced ledger row",
+            any("D90-T07-S4-PR10" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health lists the retry-owed marker",
+            any("TODO-07-marker.md §6" in ln and "retry-owed" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health flags the grown scope",
+            any("90-health.md" in ln and "unreviewed:" in ln for ln in health_lines),
+            True,
+        )
+        jbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(jbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            cmd_query(argparse.Namespace(what="plan-health", json=True))
+        jdata = json.loads(jbuf.getvalue())
+        check(
+            "plan-health --json parses with all dimensions",
+            set(jdata)
+            >= {"reviewed", "uncovered", "retry_owed", "stale", "fallback", "outages", "criticals", "unreadable"},
+            True,
+        )
         (rev_dir / "90-health.md").unlink()
         (rev_dir / "90-health-unbal.md").unlink()
+        (rev_dir / "90-health-bad.md").unlink()
+        (rev_dir / "90-health-malformed.md").unlink()
         marker_todo.unlink()
         panel_todo.unlink()
         for extra in (
@@ -5649,7 +5874,7 @@ def main() -> int:
     q.add_argument("--all", action="store_true", help="findings: include ones already done")
     q.add_argument("--file", help="adjacency: exact repository-relative TODO path")
     q.add_argument("--at", help="adjacency: inspect an isolated historical commit")
-    q.add_argument("--json", action="store_true", help="adjacency: machine-readable report")
+    q.add_argument("--json", action="store_true", help="adjacency, plan-health: machine-readable report")
     q.add_argument("--require-owned", action="store_true", help="adjacency: refuse incomplete file ownership at closeout")
     q.add_argument("--require-conformance", action="store_true", help="adjacency: require non-vacuous tree-wide kind coverage")
     q.add_argument(
@@ -5698,8 +5923,10 @@ def main() -> int:
     )
     pr.set_defaults(fn=cmd_progress)
     args = p.parse_args()
-    if args.cmd == "query" and args.what != "adjacency" and any(getattr(args, key, None) for key in ("file", "at", "json", "require_owned", "require_conformance")):
-        p.error("--file/--at/--json/--require-owned/--require-conformance apply only to query adjacency")
+    if args.cmd == "query" and args.what != "adjacency" and any(getattr(args, key, None) for key in ("file", "at", "require_owned", "require_conformance")):
+        p.error("--file/--at/--require-owned/--require-conformance apply only to query adjacency")
+    if args.cmd == "query" and args.what not in ("adjacency", "plan-health") and getattr(args, "json", None):
+        p.error("--json applies only to query adjacency and query plan-health")
     return args.fn(args)
 
 
