@@ -80,6 +80,7 @@ track: W0
 |  32   |   §32   | Clearance governance and diagnostics | §22 |  [ ]   |
 |  33   |   §33   | Provenance residuals | §23 |  [ ]   |
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [ ]   |
+|  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [ ]   |
 
 ---
 
@@ -786,6 +787,24 @@ Why this section exists: the tenth live plan review (§23 plus §19 plus §20 pl
 - [ ] Commit: `"workspace: harden amendments and runner per tenth live round"`
 
 **Test checkpoint:** amendments keep identity and accountability, hostile bytes fail stably inside bounded runners, and one command runs a review end to end. Cheaper substitute that fails: manual glue plus a trivial probe.
+
+## 35. Mixed Sol/Opus Panel with Soft and Hard Caps
+
+Why this section exists: the panel regime §§9-14 built puts every round on Opus at medium effort with a 5-round cap, and the record shows it (operator direction 2026-09-18): 16 paneled sections, median 5 Opus rounds, with blocking findings landing in rounds 1-2 and later rounds converging to advisories and confirmations. Cost rebalances against intelligence by moving the high-volume early rounds to Sol, keeping Opus governing with the sign-off, capping softly at 3 and hard at 5 with blocking-only rounds past sign-off, and adding a selective Opus-high architecture gate for the decisions that are expensive to reverse. -> XREF: D00 T01 §9 (the panel regime this reshapes); -> XREF: D00 T01 §14 (the GPT fallback rung this promotes to planned early rounds).
+
+- [ ] `review-todo-section` carries the mixed sequence: Full panels run rounds 1-2 on `gpt-5.6-sol` medium via the codex runner and round 3 up on Opus medium with round 3 as the Opus sign-off; Light panels run round 1 on Sol and round 2 as the Opus sign-off; round numbers run continuously across families and last-panel-governs is unchanged. Done when: the skill names the per-tier sequence, the sign-off round, and the unchanged heading shapes.
+- [ ] `review-todo-section` carries soft cap 3 and hard cap 5: rounds 4-5 run only for blocking findings (safety, data integrity, stamp-invalidating); advisories past sign-off file through `add-todo` instead of re-rounding; round 5 needs-attention keeps the file-and-stamp rule; a Light sign-off reporting needs-attention escalates to Full continuing at round 3. Done when: the skill names the caps, the blocking-only rule, and the Light escalation.
+- [ ] `review-todo-section` pins the Sol-medium panel command (codex stdin form, read-only) with its probe notes. Done when: the exact command block lands, echo-probed, and the probe output is quoted.
+- [ ] `review-todo-section` carries the outage matrix: Sol unreachable runs all rounds on Opus; Opus unreachable at sign-off runs the GPT sign-off with the outage note; both unreachable stops with no stamp. Done when: the skill names all three legs.
+- [ ] `review-todo-section` carries the selective Opus-high architecture gate: it triggers on editor state, storage, extensibility, AI integration, protocol, or consent/undo surfaces; one blocking Opus-high round runs after panel-close and before the stamp with one re-run on needs-attention; leftovers file through `add-todo`; the record rides an `Architecture review` heading named in the `Review:` line. Done when: the skill names the trigger, timing, budget, and record (first live proof rides the first triggered review, which no open section schedules).
+- [ ] Self-test locks the mixed record shapes: GPT-early rounds without the outage note plus an Opus last stay silent (Full and Light shapes), a defective GPT-early section under a clean Opus last stays silent (non-last sections never validate, current semantic), and the rule-16 header comment's case count syncs to the new total (this section stales it, so the touch-up rides here explicitly). Done when: the new cases pass, fixtures unlink after, and the comment names the new count.
+- [ ] `query plan-health` counts fallback usage as GPT-last records only: planned GPT-early rounds under an Opus sign-off are not fallback, so the leg mirrors rule 16's last-wins instead of matching any GPT heading; the text label and the JSON `fallback` list follow with schema unchanged (`plan-health/3`); §15's item-10 dimension note gains a dated pointer to the new counting (prose pointer, no tick or evidence change to the stamped checklist). Done when: the leg plus a mixed-shape absence fixture land with presence checks, and the pointer names §35.
+- [ ] The `stamp-no-opus-panel` row in `todo/README.md` names the mixed sequence: planned GPT-early rounds need no outage note, a GPT last still does. Done when: the row carries the sentence with class and severity cells untouched, and the map/table test passes.
+- [ ] The `AGENTS.md` self-test count syncs to the new green total. Done when: the file matches the quoted run (correcting the 715/737 drift from §§15-23).
+- [ ] Live drives prove the record shapes on the live tree: a scratch mixed record stays silent and a GPT-only record without the note fires. Done when: both are observed and the tree is reverted clean.
+- [ ] Commit: `"workspace: rebalance review panel to mixed Sol/Opus"`
+
+**Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with the mixed cases; the Sol-medium probe quoted passing; the skill carries the sequence, caps, command, matrix, and gate; live `validate` stays 0 fatal; live drives reverted clean. Cheaper substitute that fails: prose rules no review follows, or a record shape the query miscounts.
 
 ## Verification
 

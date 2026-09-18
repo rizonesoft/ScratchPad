@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **62 of 195 sections complete (32%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **62 of 196 sections complete (32%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -84,50 +84,51 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 0 -- Workspace spine: toolchain, CI, and the test backbone
 
-|  ✔  | Section       | Deliverable                                | Items |
-| :-: | ------------- | ------------------------------------------ | :---: |
-| [x] | `D00 T01 §1`  | Repo layout and toolchain pin              |   5   |
-| [x] | `D00 T01 §2`  | Solution scaffold with one-command build   |   5   |
-| [x] | `D00 T01 §3`  | CI on Linux and Windows runners            |   5   |
-| [x] | `D00 T01 §4`  | Warning and analysis gates                 |   5   |
-| [x] | `D00 T01 §5`  | Test wiring and first smoke test           |   5   |
-| [x] | `D00 T01 §6`  | Developer bootstrap doc                    |   4   |
-| [x] | `D00 T01 §7`  | TODO graph checks in CI                    |   5   |
-| [x] | `D00 T01 §9`  | Opus panel enforcement in the validator    |   5   |
-| [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups       |   4   |
-| [x] | `D00 T01 §11` | Quote-end lookahead removal                |   4   |
-| [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits   |   3   |
-| [x] | `D00 T01 §13` | Environment-gated ready queries            |   5   |
-| [x] | `D00 T01 §14` | Plan reviews with a second-family reviewer |   6   |
-| [x] | `D00 T01 §15` | First plan-review residuals                |  11   |
-| [x] | `D00 T01 §16` | Second plan-review residuals               |  16   |
-| [x] | `D00 T01 §17` | Third plan-review residuals                |  21   |
-| [x] | `D00 T01 §18` | Checker count residual                     |   3   |
-| [x] | `D00 T01 §19` | Fourth plan-review residuals               |  23   |
-| [x] | `D00 T01 §20` | Run-identity reconciliation                |   6   |
-| [x] | `D00 T01 §21` | Accountability records and surfacing       |   6   |
-| [x] | `D00 T01 §22` | Clearance binding                          |   4   |
-| [x] | `D00 T01 §23` | Ledger, provenance, and output hardening   |   7   |
-| [ ] | `D00 T01 §24` | Lineage residuals and run inspection       |   6   |
-| [ ] | `D00 T01 §25` | Rule-24 comment touch-up                   |   3   |
-| [ ] | `D00 T01 §26` | Grandfathered migration execution          |   8   |
-| [ ] | `D00 T01 §27` | Acceptance integrity                       |   7   |
-| [ ] | `D00 T01 §28` | Partial records and governance docs        |   7   |
-| [ ] | `D00 T01 §29` | Unattended checks and risk visibility      |   3   |
-| [ ] | `D00 T01 §30` | Clearance fixture residuals                |   4   |
-| [ ] | `D00 T01 §31` | Clearance causality and precision          |   7   |
-| [ ] | `D00 T01 §32` | Clearance governance and diagnostics       |   6   |
-| [ ] | `D00 T01 §33` | Provenance residuals                       |   8   |
-| [ ] | `D00 T01 §34` | Amendment and runner residuals             |   6   |
-| [x] | `D00 T02 §1`  | Unit test project and framework            |   5   |
-| [x] | `D00 T02 §2`  | UI automation driver spike                 |   5   |
-| [x] | `D00 T02 §3`  | Golden capture store and refresh           |   5   |
-| [x] | `D00 T02 §4`  | ACP loopback fixture                       |   5   |
-| [x] | `D00 T02 §5`  | Soak and quarantine procedure              |   5   |
-| [x] | `D00 T02 §6`  | Golden comparison deterministic on CI      |   7   |
-| [x] | `D00 T02 §7`  | CI evidence capture pipeline               |   4   |
-| [ ] | `D00 T02 §8`  | Focus-free UI suite conversion             |   6   |
-| [ ] | `D00 T02 §9`  | Nightly full-suite regression run          |   5   |
+|  ✔  | Section       | Deliverable                                  | Items |
+| :-: | ------------- | -------------------------------------------- | :---: |
+| [x] | `D00 T01 §1`  | Repo layout and toolchain pin                |   5   |
+| [x] | `D00 T01 §2`  | Solution scaffold with one-command build     |   5   |
+| [x] | `D00 T01 §3`  | CI on Linux and Windows runners              |   5   |
+| [x] | `D00 T01 §4`  | Warning and analysis gates                   |   5   |
+| [x] | `D00 T01 §5`  | Test wiring and first smoke test             |   5   |
+| [x] | `D00 T01 §6`  | Developer bootstrap doc                      |   4   |
+| [x] | `D00 T01 §7`  | TODO graph checks in CI                      |   5   |
+| [x] | `D00 T01 §9`  | Opus panel enforcement in the validator      |   5   |
+| [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups         |   4   |
+| [x] | `D00 T01 §11` | Quote-end lookahead removal                  |   4   |
+| [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits     |   3   |
+| [x] | `D00 T01 §13` | Environment-gated ready queries              |   5   |
+| [x] | `D00 T01 §14` | Plan reviews with a second-family reviewer   |   6   |
+| [x] | `D00 T01 §15` | First plan-review residuals                  |  11   |
+| [x] | `D00 T01 §16` | Second plan-review residuals                 |  16   |
+| [x] | `D00 T01 §17` | Third plan-review residuals                  |  21   |
+| [x] | `D00 T01 §18` | Checker count residual                       |   3   |
+| [x] | `D00 T01 §19` | Fourth plan-review residuals                 |  23   |
+| [x] | `D00 T01 §20` | Run-identity reconciliation                  |   6   |
+| [x] | `D00 T01 §21` | Accountability records and surfacing         |   6   |
+| [x] | `D00 T01 §22` | Clearance binding                            |   4   |
+| [x] | `D00 T01 §23` | Ledger, provenance, and output hardening     |   7   |
+| [ ] | `D00 T01 §24` | Lineage residuals and run inspection         |   6   |
+| [ ] | `D00 T01 §25` | Rule-24 comment touch-up                     |   3   |
+| [ ] | `D00 T01 §26` | Grandfathered migration execution            |   8   |
+| [ ] | `D00 T01 §27` | Acceptance integrity                         |   7   |
+| [ ] | `D00 T01 §28` | Partial records and governance docs          |   7   |
+| [ ] | `D00 T01 §29` | Unattended checks and risk visibility        |   3   |
+| [ ] | `D00 T01 §30` | Clearance fixture residuals                  |   4   |
+| [ ] | `D00 T01 §31` | Clearance causality and precision            |   7   |
+| [ ] | `D00 T01 §32` | Clearance governance and diagnostics         |   6   |
+| [ ] | `D00 T01 §33` | Provenance residuals                         |   8   |
+| [ ] | `D00 T01 §34` | Amendment and runner residuals               |   6   |
+| [ ] | `D00 T01 §35` | Mixed Sol/Opus panel with soft and hard caps |  11   |
+| [x] | `D00 T02 §1`  | Unit test project and framework              |   5   |
+| [x] | `D00 T02 §2`  | UI automation driver spike                   |   5   |
+| [x] | `D00 T02 §3`  | Golden capture store and refresh             |   5   |
+| [x] | `D00 T02 §4`  | ACP loopback fixture                         |   5   |
+| [x] | `D00 T02 §5`  | Soak and quarantine procedure                |   5   |
+| [x] | `D00 T02 §6`  | Golden comparison deterministic on CI        |   7   |
+| [x] | `D00 T02 §7`  | CI evidence capture pipeline                 |   4   |
+| [ ] | `D00 T02 §8`  | Focus-free UI suite conversion               |   6   |
+| [ ] | `D00 T02 §9`  | Nightly full-suite regression run            |   5   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 
