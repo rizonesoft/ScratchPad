@@ -103,7 +103,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §16` | Second plan-review residuals               |  16   |
 | [x] | `D00 T01 §17` | Third plan-review residuals                |  21   |
 | [ ] | `D00 T01 §18` | Checker count residual                     |   3   |
-| [ ] | `D00 T01 §19` | Fourth plan-review residuals               |  17   |
+| [ ] | `D00 T01 §19` | Fourth plan-review residuals               |  23   |
 | [x] | `D00 T02 §1`  | Unit test project and framework            |   5   |
 | [x] | `D00 T02 §2`  | UI automation driver spike                 |   5   |
 | [x] | `D00 T02 §3`  | Golden capture store and refresh           |   5   |
