@@ -42,8 +42,9 @@ _PANEL_LINE_RE = re.compile(
 # per line, so the count must equal the numbered-item tally under its
 # verdict. Unnumbered detail lines are prose, never findings: they ride
 # along without moving the tally. No declared count, no check: details
-# in any shape pass, as before.
-_FINDING_ITEM_RE = re.compile(r"^\s*\d+\.\s")
+# in any shape pass, as before. ASCII digits like the count grammar: a
+# Unicode-digit item is prose, not a finding.
+_FINDING_ITEM_RE = re.compile(r"^\s*[0-9]+\.\s")
 
 
 def unique_tag(prefix: str) -> str:

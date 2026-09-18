@@ -6773,6 +6773,11 @@ track: Z1
             False,
         )
         check(
+            "Unicode-digit detail line does not tally as a finding",
+            rp.check_panel_output(_panel("**adversarial: needs-attention (1)**", "٢. x\n"))[0],
+            False,
+        )
+        check(
             "panel verdict with a signed count fails",
             rp.check_panel_output(_panel("**adversarial: needs-attention (-1)**", ""))[0],
             False,
