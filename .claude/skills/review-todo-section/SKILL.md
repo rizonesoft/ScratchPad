@@ -87,12 +87,22 @@ git show <candidate> > /tmp/review-diff.patch
 { echo 'You are an independent code reviewer. Review the candidate diff below against the section contract below it.';
   echo 'Return one verdict per lens (approve / needs-attention / advisory): adversarial, consistency, integration, record.';
   echo 'Every non-approve verdict names files with line numbers and the exact defect. No other text.';
+  echo 'When a finding is a convention, wording, or repeated-shape defect, sweep the whole file (and its skill siblings when skills are in the diff) for the same defect before reporting: one finding per family, with every site named.';
   echo '--- SECTION CONTRACT ---'; <section text: Why, items with Done-whens, checkpoint>;
   echo '--- CANDIDATE DIFF ---'; cat /tmp/review-diff.patch; } > /tmp/review-prompt.md
-claude "$(cat /tmp/review-prompt.md)" -p --model opus --allowedTools Read
+claude "$(cat /tmp/review-prompt.md)" -p --model opus --effort medium --allowedTools Read
 ```
 
-(Prompt first as the positional argument, `--allowedTools` last: the flag is variadic and swallows anything after it. `Read` keeps the panel read-only; the diff and contract ride inline.)
+(Prompt first as the positional argument, `--allowedTools` last: the flag is variadic and swallows anything after it. `Read` keeps the panel read-only; the diff and contract ride inline. Panel effort is pinned to `medium`, operator-set 2026-09-18.)
+
+### Panel depth tiers
+
+Cost follows blast radius. Record the tier and its reason in the findings file.
+
+- **Full panel** (all lenses, up to 5 rounds): the section's Adjacency names two or more consumers, or the diff touches shared contract surface (scripts, skills, settings store, undo path, protocol, test harness).
+- **Light panel** (all lenses, up to 2 rounds): leaf sections with one consumer. A `needs-attention` surviving round 2 escalates to full rather than filing follow-ups.
+
+Same-family circuit breaker: when a round reports only variants of an already-fixed root cause, sweep the family across the candidate, quote the sweep (command plus clean output), and run the next round as confirmation. One round per variant is the failure this rule exists to prevent.
 
 Record the panel's per-lens verdicts verbatim in the findings file under a level-2 (or deeper) heading starting with the words `Opus panel` (a `Round N` suffix is fine; anything else, like `Round 2 Opus panel`, does not match), transcribed so each lens verdict sits on its own line as `` `lens` verdict `` (lens name immediately followed by `approve`, `needs-attention`, or `advisory`): the validator matches that shape per line, reading the LAST panel section as the record of verdict. Fenced code blocks are stripped before the scan, so quoting the panel shape inside a fence neither satisfies the rule nor displaces the real panel. Each verdict line must open (after up to 3 spaces) with a Markdown marker (`*`, backtick, `>`, `-`): mid-line mentions never count, so unheaded prose after an incomplete panel cannot supply its verdicts. Quoted headings are not structure: a fenced heading neither terminates nor displaces the panel. Quoted fences count as fences: a close must match the opener's quote depth, and a quote that ends ends its fence (a blank line ends the quote, so keep quoted fences blank-free). A backtick in a backtick-fence info string makes the line a paragraph. An unbalanced fence fails naming its opener line. The stamp's `Review:` line must name the findings file as `Raw findings: <repo-relative path>`: without it the validator cannot find the verdicts. A `needs-attention` verdict opens a fix-loop round: fix in the candidate, commit the fix, and re-run the panel against the NEW candidate diff with the prior verdicts appended (so fixed findings stay fixed and only live ones re-report). The loop is bounded, never infinite: at most 5 panel rounds per review, and a unit patched in 3 consecutive rounds is stopped and re-thought instead of patched again. If round 5 still reports `needs-attention`, file each leftover through `add-todo` (a new section, or an item on an existing section when small), record the filed refs in the findings file, and stamp with the `Review:` line naming the filed follow-ups: tracked work, not dropped work. If the panel is unreachable (no CLI, auth failure), stop and say so: a session-only lens pass is not a substitute, and filing the outage does not earn the stamp.
 
