@@ -62,7 +62,7 @@ track: W0
 |  16   |   §16   | Second plan-review residuals | §15 |  [x]   |
 |  17   |   §17   | Third plan-review residuals | §16 |  [x]   |
 |  18   |   §18   | Checker count residual | §17 |  [x]   |
-|  19   |   §19   | Fourth plan-review residuals | §17 |  [ ]   |
+|  19   |   §19   | Fourth plan-review residuals | §17 |  [x]   |
 |  20   |   §20   | Run-identity reconciliation | §19 |  [ ]   |
 |  21   |   §21   | Accountability records and surfacing | §19 |  [ ]   |
 |  22   |   §22   | Clearance binding | §19 |  [ ]   |
@@ -539,9 +539,15 @@ Why this section exists: the fourth live plan review (§17 plus §16 plus depend
 - -> XREF: D00 T01 §22 -- sixth-live-plan-review filings (clearance: PR9, PR10, PR11n) filed there
 - -> XREF: D00 T01 §23 -- sixth-live-plan-review filings (ledger, provenance, output: PR12, PR15n, PR19n) plus the plan-runner CLI drift filed there
 
+> **Verified:** 2026-09-18 | §19 | self-test 619/619 (80 new: lineage, history, blocks, counts, grammar, dispatch, fencing, dependents, gate, escalation, touch leg); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 879f007 be14f5b 638a608 2a1ae8d eb27912 182be67 5272b6e 585bc33 b0c499e 36d0e77 ef4312d, final round adversarial plus consistency needs-attention closed by post-round touch-up with no carry-forward; plan review 23 findings, 16 filed at §§20-23, 7 rejected
+> **Review:** round 5 (FINAL), candidates 879f007 be14f5b 638a608 2a1ae8d eb27912 182be67 5272b6e 585bc33 b0c499e 36d0e77 ef4312d -- `adversarial` needs-attention · `consistency` needs-attention · `integration` approve · `record` approve; R5 findings closed by post-round touch-up b0c499e (touch leg plus attribution restatement, lineage boundary). Raw findings: docs/reviews/00-workspace/D00-T01-s19.md
+> **Plan review:** GPT high, filed D00 T01 §20, D00 T01 §21, D00 T01 §22, D00 T01 §23 (run 20260918-D00-T01-S19-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited scripts, skill, fixtures, counts, ticks, dated annotations, and live ledger blocks (read back via self-test 619/619, live validate 0 fatal, plan --check current); filing opened §§20-23 plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-18T12:32:20Z to 2026-09-18T13:57:32Z
+
 ## 20. Run-Identity Reconciliation
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; 16 survive synthesis and split across four sections per PR21 D00-T01-S19-PR21 (this section takes identity and lineage: PR1, PR3a, PR4, PR5n, PR21, PR22; 8 dispositions rejected with reasons in the §19 findings file). One run ID must mean one run everywhere: the §17 renumbering rule and the §19 run-ID shape currently compete, the first marker in a lineage is undefined, reruns after outages chain to nothing, the §17 checkpoint still reads run identity the old way, and the provenance record omits the run. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s20 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 8 dispositions rejected with reasons in the §19 findings file).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; 16 survive synthesis and split across four sections per PR21 D00-T01-S19-PR21 (this section takes identity and lineage: PR1, PR3a, PR4, PR5n, PR21, PR22; 8 dispositions rejected with reasons in the §19 findings file). One run ID must mean one run everywhere: the §17 renumbering rule and the §19 run-ID shape currently compete, the first marker in a lineage is undefined, reruns after outages chain to nothing, the §17 checkpoint still reads run identity the old way, and the provenance record omits the run. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s20 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)).
 
 - [ ] Reconcile §17's renumbering rule with the run-ID shape: one canonical identity with an explicit supersession note plus one canonical generator (PR1 D00-T01-S19-PR1). Done when: the skill names the single rule and the generator ships with fixtures.
 - [ ] Provenance requires the run ID: the artifact contract binds every live quote to its run (PR3a D00-T01-S19-PR3). Done when: the skill mandates it and the shape rule rejects run-less provenance on new records.
@@ -554,7 +560,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 ## 21. Accountability Records and Surfacing
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes accountability and surfacing (PR6n, PR8, PR18, PR23) as the second of the four-way split. Accountability must terminate in named owners and auditable records, and the operator needs a fast recovery path, not just machine-readable dimensions. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s21 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 8 dispositions rejected with reasons in the §19 findings file).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes accountability and surfacing (PR6n, PR8, PR18, PR23) as the second of the four-way split. Accountability must terminate in named owners and auditable records, and the operator needs a fast recovery path, not just machine-readable dimensions. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s21 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)).
 
 - [ ] Partial-owed-rerun coherence: define whether a partial run owes a retry and how `partial:` composes with `retry-owed` (PR6n D00-T01-S19-PR6). Done when: the skill states the rule and the validator plus query follow with fixtures.
 - [ ] Risk-acceptance record shape: approver identity, rationale, scope, expiry, and review date, surfaced where the escalation lands (PR8 D00-T01-S19-PR8). Done when: the shape ships with validator plus query surfacing.
@@ -566,7 +572,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 ## 22. Clearance Binding
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes clearance (PR9, PR10, PR11n) as the third of the four-way split. Clearance must bind the finding to proof the defect is fixed, on a deterministic clock, under an immutable candidate identity. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s22 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 8 dispositions rejected with reasons in the §19 findings file).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes clearance (PR9, PR10, PR11n) as the third of the four-way split. Clearance must bind the finding to proof the defect is fixed, on a deterministic clock, under an immutable candidate identity. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s22 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)).
 
 - [ ] Clearance binds acceptance-condition evidence: the target's review names the test or proof that exercises the finding's acceptance condition (PR9 D00-T01-S19-PR9). Done when: the skill plus query enforce the binding with fixtures.
 - [ ] Same-day chronology goes deterministic: UTC timestamps or commit-order semantics replace day granularity for clearance ordering (PR10 D00-T01-S19-PR10). Done when: same-day fixes evaluate deterministically with fixtures.
@@ -577,7 +583,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 ## 23. Ledger, Provenance, and Output Hardening
 
-Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes ledger, provenance, and output (PR12, PR15n, PR19n) as the last of the four-way split, plus the plan-runner CLI drift found running this review (`codex exec --reasoning` rejected by the installed CLI; `-c model_reasoning_effort='"high"'` used instead). Amendments must stay linked, provenance must be checkable, outputs must be bounded, and the runner template must match the installed CLI. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s23 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 8 dispositions rejected with reasons in the §19 findings file).
+Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-sol` high) returned 23 findings; this section takes ledger, provenance, and output (PR12, PR15n, PR19n) as the last of the four-way split, plus the plan-runner CLI drift found running this review (`codex exec --reasoning` rejected by the installed CLI; `-c model_reasoning_effort='"high"'` used instead). Amendments must stay linked, provenance must be checkable, outputs must be bounded, and the runner template must match the installed CLI. -> XREF: D00 T01 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s19-2026-09-18-s23 (`gpt-5.6-sol` high over §19 plus §17, 23 findings, 16 filed across §§20-23, 7 rejected with reasons in the §19 findings file (PR3 and PR5 file in part, rejected halves noted on their rows)).
 
 - [ ] Supersedes-link validation: a superseding row's target exists, matches the finding, stays acyclic, and reads as current in plan-health (PR12 D00-T01-S19-PR12). Done when: the validator enforces all four with fixtures.
 - [ ] Provenance shape rule: fields present, candidate resolves in git, path exists; the digest stays attested (PR15n D00-T01-S19-PR15). Done when: the validator enforces the checkable shape with fixtures.
