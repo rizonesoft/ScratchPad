@@ -85,4 +85,5 @@ A coverage claim rests on the source it was derived from. This table was derived
 python3 scripts/todo-graph.py query ready     # what can be worked right now
 python3 scripts/todo-graph.py query blocked   # what is waiting, and on what
 python3 scripts/todo-graph.py query stats     # tree health
+python3 scripts/todo-graph.py query plan-health  # review-loop governance
 ```

@@ -471,24 +471,6 @@ def validate(graph, _args) -> int:
         for lens in PANEL_LENSES
     }
 
-    def _fence_shape(line):
-        # (quote depth, marker char, marker run, info string) for a fence
-        # marker line; (quote depth, "", 0, "") otherwise. Blockquote
-        # prefixes never hide a fence, but depth is tracked so a quoted
-        # close cannot close an unquoted fence and vice versa. Markers
-        # indented 4+ past the quote prefix are indented code, not fences.
-        m = re.match(r"(?:[ \t]{0,3}>[ \t]?)+", line)
-        qd = m.group(0).count(">") if m else 0
-        rest = line[m.end():] if m else line
-        stripped = rest.strip()
-        indent = rest[: len(rest) - len(rest.lstrip())]
-        if len(indent.replace("\t", "    ")) >= 4:
-            return qd, "", 0, ""
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            ch = stripped[0]
-            run = len(stripped) - len(stripped.lstrip(ch))
-            return qd, ch, run, stripped[run:]
-        return qd, "", 0, ""
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -522,62 +504,17 @@ def validate(graph, _args) -> int:
             # quote the mandated panel shape inside fences (the skill shows
             # it), and a quoted `## Opus panel (round N)` must neither
             # satisfy the rule nor, under last-wins, displace the real
-            # panel. Backtick and tilde fences both toggle; indented code
-            # cannot fake a heading (the regex anchors at column 0).
-            kept = []
-            fence = None  # (char, run, opener lineno, quote depth) in one
-            raw_lines = text.splitlines()
-            for fence_lineno, ln in enumerate(raw_lines, start=1):
-                qd, fence_ch, fence_run, info = _fence_shape(ln)
-                if fence is not None and qd < fence[3]:
-                    # Below the open fence's quote depth, the quote ended,
-                    # closing the fence with it: CommonMark laziness never
-                    # applies to fenced-code content, so there is no
-                    # lookahead for a later same-depth close (its
-                    # whole-remainder scan let later quoted blocks swallow
-                    # the lines between, hiding whole panels). A blank line
-                    # is not a blockquote continuation line (CommonMark
-                    # 0.31.2 section 5.1, example 228), so it ends a quoted
-                    # fence too; an unquoted fence needs no such bar because
-                    # its depth already matches (0 < 0 is false), keeping
-                    # blank lines legal content there. Reprocess the line
-                    # below: it may open a new fence at its own depth.
-                    fence = None
-                if fence_run:
-                    if fence is None:
-                        # CommonMark: a backtick in a backtick-fence info
-                        # string makes the line a paragraph, never a fence.
-                        # (Tilde info strings may hold anything.)
-                        if fence_ch == "`" and "`" in info:
-                            kept.append(ln)
-                        else:
-                            fence = (fence_ch, fence_run, fence_lineno, qd)
-                    elif (
-                        qd == fence[3]
-                        and fence_ch == fence[0]
-                        and fence_run >= fence[1]
-                        and info == ""
-                    ):
-                        # CommonMark close: same quote depth and char, run
-                        # at least the opener's, and no info string. A
-                        # ```text line, a shorter or other-char run, or a
-                        # close at another quote depth is content, never a
-                        # close; without these bars, quoted verdicts leak
-                        # out and satisfy the rule. Same-length nesting
-                        # cannot exist, so genuinely crossed fences fall out
-                        # as unbalanced below instead of mis-toggling.
-                        fence = None
-                    continue
-                if fence is None:
-                    kept.append(ln)
-            if fence is not None:
+            # panel. The stripper lives in the graph module (shared with
+            # `query plan-health` since D00 T01 §15); the move is verbatim
+            # and the 36 panel cases prove it.
+            text, unbalanced = graph.strip_fenced_code(text)
+            if unbalanced is not None:
                 flag(
                     "stamp-no-opus-panel",
                     f"{where} findings {m.group(1)} has an unbalanced fence "
-                    f"opened at line {fence[2]}",
+                    f"opened at line {unbalanced}",
                 )
                 continue
-            text = "\n".join(kept)
             heads = list(PANEL_HEADING_RE.finditer(text))
             gpt_heads = list(GPT_PANEL_HEADING_RE.finditer(text))
             if not heads and not gpt_heads:

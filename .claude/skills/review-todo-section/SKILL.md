@@ -118,13 +118,7 @@ Every control, menu item, dialog, and state on the Fidelity counterpart is worki
 
 Every `**Freeze check:**` in the section ran and passed, with the result quoted. No frozen behavior moved without a recorded operator approval. If one did, there is no stamp: there is a question for the operator.
 
-### 7. Write the stamp and flip the row
-
-Append the stamp block at the end of the section: `Verified:` (date, coverage, quoted evidence), `Review:` (rounds, candidate fingerprint or hashes, per-lens verdicts, findings-file link), `CRUD:` (behavioral evidence or an honest not-applicable), plus `Duration:` and carried `Deferred:` lines. Then flip the Implementation Order row to `[x]`.
-
-Re-verification replaces the stamp in place. Never accumulate duplicates, and never edit a stamp to fit new code: the fix goes forward in a new commit and the stamp is rewritten by review.
-
-### Plan review
+### 7. Plan review
 
 After the panel closes (before the stamp commit), one advisory round over the plan around the section: the section text plus its Depends and XREF neighbors plus direct reverse dependents (sections whose Depends On names the section; find them by grepping the ref across `todo/`), asking for gaps (a Notepad behavior no section owns), inconsistencies, faults, improvements, and premium wins. The round never blocks the stamp: its feedback lands as tracked work through `add-todo` (micro/small items, new sections, new domains), synthesized by the implementing session, never applied blind. The stamp carries a `Plan review:` line naming the family plus the filings or `no findings`; the validator requires it. Record the round and its filings in the findings file under a `Plan review` heading, which is not a panel record (only `Opus panel` and `GPT panel` headings carry lens verdicts), with the input manifest (sections plus byte count) and the finding ledger below.
 
@@ -140,7 +134,13 @@ Runner failure fails silent onto an Opus high-effort round: any nonzero exit, au
 
 Every filed finding cites its evidence: the finding's source lines plus a SOURCE key, per the `add-todo` evidence rules. Findings land in the ledger as `- [PRn] [critical|major|minor] <finding> -> <filed|accepted|duplicate|rejected|deferred> <target-or-reason>`. A clean round still writes its record: `no findings` in the marker plus one ledger line (`- [PR0] [minor] clean round -> accepted`). Advisory never blocks except when it must: a finding that invalidates safety, data integrity, or the stamp reopens the section through audit stance instead of riding the stamp.
 
-### 8. Audit stance
+### 8. Write the stamp and flip the row
+
+Append the stamp block at the end of the section: `Verified:` (date, coverage, quoted evidence), `Review:` (rounds, candidate fingerprint or hashes, per-lens verdicts, findings-file link), `Plan review:` (family plus filings or `no findings`), `CRUD:` (behavioral evidence or an honest not-applicable), plus `Duration:` and carried `Deferred:` lines. Then flip the Implementation Order row to `[x]`.
+
+Re-verification replaces the stamp in place. Never accumulate duplicates, and never edit a stamp to fit new code: the fix goes forward in a new commit and the stamp is rewritten by review.
+
+### 9. Audit stance
 
 On an already-`[x]` section: run steps 1-6 against the section's own candidate. Confirm the stamp's evidence still holds (re-run the checkpoint), or find the regression. The only permitted row change is `[x]` to `[ ]`, with the reason written into the section as a blocking note. A re-confirmed row keeps its stamp; say so in one line.
 

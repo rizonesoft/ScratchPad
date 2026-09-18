@@ -690,6 +690,85 @@ def resolve_ref(ref: str, origin: Todo, by_key: dict[tuple[str, str], Todo]) -> 
 # that runs twice a day never files the same production exception twice.
 SOURCE_RE = re.compile(r"->\s*SOURCE:\s*(?P<key>[A-Za-z0-9][A-Za-z0-9._:@+-]*)")
 
+
+def _fence_shape(line: str) -> tuple[int, str, int, str]:
+    # (quote depth, marker char, marker run, info string) for a fence
+    # marker line; (quote depth, "", 0, "") otherwise. Blockquote
+    # prefixes never hide a fence, but depth is tracked so a quoted
+    # close cannot close an unquoted fence and vice versa. Markers
+    # indented 4+ past the quote prefix are indented code, not fences.
+    m = re.match(r"(?:[ \t]{0,3}>[ \t]?)+", line)
+    qd = m.group(0).count(">") if m else 0
+    rest = line[m.end():] if m else line
+    stripped = rest.strip()
+    indent = rest[: len(rest) - len(rest.lstrip())]
+    if len(indent.replace("\t", "    ")) >= 4:
+        return qd, "", 0, ""
+    if stripped.startswith("```") or stripped.startswith("~~~"):
+        ch = stripped[0]
+        run = len(stripped) - len(stripped.lstrip(ch))
+        return qd, ch, run, stripped[run:]
+    return qd, "", 0, ""
+
+
+def strip_fenced_code(text: str) -> tuple[str, int | None]:
+    """Return (text with fenced code blocks removed, unbalanced opener lineno or None).
+
+    Moved out of rule 16 verbatim (D00 T01 §15): the plan-health query
+    scans the same findings files, and two fence implementations would
+    drift back into the bugs §§10-11 fixed. The 36 panel cases prove the
+    move changed nothing.
+    """
+    kept = []
+    fence = None  # (char, run, opener lineno, quote depth) in one
+    raw_lines = text.splitlines()
+    for fence_lineno, ln in enumerate(raw_lines, start=1):
+        qd, fence_ch, fence_run, info = _fence_shape(ln)
+        if fence is not None and qd < fence[3]:
+            # Below the open fence's quote depth, the quote ended,
+            # closing the fence with it: CommonMark laziness never
+            # applies to fenced-code content, so there is no
+            # lookahead for a later same-depth close (its
+            # whole-remainder scan let later quoted blocks swallow
+            # the lines between, hiding whole panels). A blank line
+            # is not a blockquote continuation line (CommonMark
+            # 0.31.2 section 5.1, example 228), so it ends a quoted
+            # fence too; an unquoted fence needs no such bar because
+            # its depth already matches (0 < 0 is false), keeping
+            # blank lines legal content there. Reprocess the line
+            # below: it may open a new fence at its own depth.
+            fence = None
+        if fence_run:
+            if fence is None:
+                # CommonMark: a backtick in a backtick-fence info
+                # string makes the line a paragraph, never a fence.
+                # (Tilde info strings may hold anything.)
+                if fence_ch == "`" and "`" in info:
+                    kept.append(ln)
+                else:
+                    fence = (fence_ch, fence_run, fence_lineno, qd)
+            elif (
+                qd == fence[3]
+                and fence_ch == fence[0]
+                and fence_run >= fence[1]
+                and info == ""
+            ):
+                # CommonMark close: same quote depth and char, run
+                # at least the opener's, and no info string. A
+                # ```text line, a shorter or other-char run, or a
+                # close at another quote depth is content, never a
+                # close; without these bars, quoted verdicts leak
+                # out and satisfy the rule. Same-length nesting
+                # cannot exist, so genuinely crossed fences fall out
+                # as unbalanced below instead of mis-toggling.
+                fence = None
+            continue
+        if fence is None:
+            kept.append(ln)
+    if fence is not None:
+        return "\n".join(kept), fence[2]
+    return "\n".join(kept), None
+
 # A TODO file caps at 55 sections; past that the work goes in a NEW file
 # (operator 2026-09-01). Files only ever grow, because a section number is a
 # permanent address -- `DNN TNN §N` cross-references encode it, so renumbering
@@ -1213,10 +1292,14 @@ def cmd_query(args) -> int:
                     r = resolve_ref(raw, t, by_key)
                     if r and r[0] in by_id:
                         rev.setdefault((r[0], r[1]), set()).add((t.id, num))
+        stamped = {(t.id, num) for t in todos for num in t.verified_sections if num in t.sections}
         uncovered = []
         for key in sorted(marked):
             for dep in sorted(rev.get(key, ())):
-                if dep not in marked:
+                # Stamped dependents only: an unstamped section cannot have
+                # had a plan review at all, so counting the unbuilt plan as
+                # gaps cries wolf on every run (round-1 adversarial).
+                if dep not in marked and dep in stamped:
                     uncovered.append((labels.get(dep, f"{dep[0]} §{dep[1]}"), labels.get(key, f"{key[0]} §{key[1]}")))
         findings_path_re = re.compile(r"Raw findings:\s*(\S+\.md)")
         gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
@@ -1242,6 +1325,9 @@ def cmd_query(args) -> int:
                     text = (TODO_DIR.parent / m.group(1)).read_text(encoding="utf-8")
                 except OSError:
                     continue
+                # Same stripper as rule 16: a fenced worked example must
+                # neither count as fallback usage nor as a live critical.
+                text, _unbalanced = strip_fenced_code(text)
                 if gpt_heading_re.search(text):
                     fallback.append(m.group(1))
                 if outage_re.search(text):
@@ -4811,7 +4897,8 @@ track: Z1
             "- [PR1] [critical] Widget gap -> filed D90 T99 §1\n"
             "- [PR2] [major] Wording -> filed D90 T99 §2\n"
             "- [PR3] [critical] Hanging critical -> accepted needs owner\n"
-            "- [PR4] [critical] Rejected scare -> rejected not a real gap\n",
+            "- [PR4] [critical] Rejected scare -> rejected not a real gap\n"
+            "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
         )
         mbuf = _mio.StringIO()
@@ -4880,6 +4967,11 @@ track: Z1
         check(
             "plan-health clears the rejected critical",
             "PR4" in health_out,
+            False,
+        )
+        check(
+            "plan-health ignores the fenced ledger example",
+            "PR9" in health_out,
             False,
         )
         (rev_dir / "90-health.md").unlink()
