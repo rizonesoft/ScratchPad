@@ -58,6 +58,7 @@ track: W0
 |  14   |   §14   | Plan reviews with a second-family reviewer | §9 |  [x]   |
 |  15   |   §15   | First plan-review residuals | §14 |  [x]   |
 |  16   |   §16   | Second plan-review residuals | §15 |  [ ]   |
+|  17   |   §17   | Third plan-review residuals | §16 |  [ ]   |
 
 ---
 
@@ -425,6 +426,36 @@ Why this section exists: the second live plan review (§15 plus §14 plus no rev
 - [x] Commit: `"workspace: harden plan reviews per second live round"`
 
 **Test checkpoint:** §14's timing pointer present; marker vocab covers outage plus retry states; query follows filed criticals, flags stale scope, and emits JSON; ledger IDs namespaced with lifecycle plus severity plus back-links; §14 backfilled; validator gates shapes plus filings; prompts carry the trust boundary. Cheaper substitute that fails: a third review round whose findings stay prose.
+
+- -> XREF: D00 T01 §17 -- round-5 panel leftover (ledger-trigger residual) plus third-live-plan-review filings (24 of 25, PR6 rejected) filed there
+
+## 17. Third Plan-Review Residuals
+
+Why this section exists: the third live plan review (§16 plus §15, `gpt-5.6-sol` high) returned 25 findings; 24 survive synthesis into 19 items (PR2 plus PR3 plus PR20 share the marker-grammar item; PR10 plus PR11 plus PR25 share clearance semantics; PR13 plus PR14 share lifecycle enforcement; PR6 rejected with reason in the §16 findings file), joined by the §16 round-5 panel leftover (the ledger-trigger unit, patched in 4 consecutive rounds, routed here by the stop-and-re-think clause instead of a fifth patch). They cluster into identity (run IDs, uniqueness, terminology), marker honesty (grammar, outage and retry accountability), follow-through (clearance semantics, back-link enforcement, overdue majors, reopen), scope (stale removals, consumers, grandfathered visibility), record precision (byte canonicalization, JSON contract, stable proofs, legacy migration), runner integrity (delimiters, whole-output validation), and the trigger residual. -> XREF: D00 T01 §16 (filed from its plan review and round-5 panel); -> SOURCE: plan-review-D00-T01-s16-2026-09-18 (`gpt-5.6-sol` high over §16 plus §15, 25 findings, 24 filed here as 19 items, PR6 rejected with reason in the §16 findings file); Opus-panel-D00-T01-s16-round-5 (candidate `c2b866e`, round-5 adversarial pair plus consistency overclaim; transcribed in `docs/reviews/00-workspace/D00-T01-s16.md`).
+
+- [ ] Ledger IDs gain review-run identity, so a rerun cannot regenerate the reviewed run's IDs and make supersession ambiguous (PR1). Done when: the skill pins the run-identity shape (or an explicit rerun-renumber rule) and the query plus parser follow.
+- [ ] Marker grammar: supersession precedence (the last marker line governs), mutual exclusion of states, and outage purity (no filing claims beside `outage:`) (PR2, PR3, PR20). Done when: the skill states the grammar and the validator enforces all three with fixtures.
+- [ ] Outage and retry states gain an owner, a deadline, and an escalation path (PR4). Done when: the marker vocab plus plan-health surface the accountability fields.
+- [ ] Stale scope covers removals and replacements, not just growth (PR5). Done when: the query flags shrunk or replaced scope with a fixture.
+- [ ] Manifest byte count canonicalized to UTF-8 and LF (PR7). Done when: the skill states the canonicalization and a fixture locks it.
+- [ ] Review scope covers XREF-only and transitive consumers (PR8). Done when: the skill scope rule names them and the manifest carries them.
+- [ ] Uncovered reporting names grandfathered stamps instead of implying full coverage (PR9). Done when: plan-health lists the grandfathered set distinctly.
+- [ ] Clearance semantics: a filed critical clears only against post-finding verification whose candidate carries the back-link and fix, and a multi-target finding clears only when every target verifies (PR10, PR11, PR25). Done when: the query implements all three with fixtures.
+- [ ] SOURCE back-links validator-enforced on filed targets (PR12). Done when: the rule fires on a filed target without its back-link, with fixtures.
+- [ ] Lifecycle enforcement: allowed transitions plus deferred owner, date, and trigger validated (PR13, PR14). Done when: the validator or query rejects illegal transitions and unaccountable deferrals, with fixtures.
+- [ ] Plan-health follows overdue majors (PR15). Done when: the dimension lands with a fixture.
+- [ ] Reopen semantics: a critical reopening unchecks the row, voids the stamp, and parks dependents (PR16). Done when: the skill states the cascade and the validator enforces it.
+- [ ] Count terminology: accepted findings versus implementation items distinguished everywhere (PR17). Done when: the skill plus README use the terms and the §15 and §16 counts read consistently.
+- [ ] Prompt delimiters unforgeable from TODO text (PR18). Done when: the prompt templates use generated or escaped delimiters and a fixture proves injection fails.
+- [ ] Malformed-output rule validates the whole output (PR19). Done when: the skill requires full-shape validation and the runner check implements it.
+- [ ] `plan-health --json` contract: schema version, deterministic ordering, exit semantics (PR21). Done when: all three are documented plus a fixture locking keys and order.
+- [ ] Live proofs stored as stable review artifacts (PR22). Done when: the skill routes live quotes into the findings file and the record carries them.
+- [ ] Legacy malformed records migrated or condemned (PR23). Done when: the §15 record is shaped or explicitly condemned and health reports say which.
+- [ ] ID collision and uniqueness check across ledger rows, marker filings, and target SOURCE keys (PR24). Done when: the validator rejects duplicates with fixtures.
+- [ ] Ledger-trigger residual: pr-token-plus-structure false positives and namespaced-without-structure false negatives closed, docs exact (round-5 panel). Done when: a full namespace opener reads ledger-looking without the structure half, pr-starting prose stays silent with structure present, the README matches the code, and fixtures lock both directions.
+- [ ] Commit: `"workspace: harden plan reviews per third live round"`
+
+**Test checkpoint:** ledger IDs carry run identity and collide nowhere; marker grammar enforced (precedence, exclusion, purity) with accountable degraded states; filed criticals clear only on post-finding verified remediation of every target; lifecycle plus deferrals plus back-links enforced; plan-health covers stale removals, overdue majors, and grandfathered stamps; reopen voids proof downstream; prompts uninjectable and outputs fully validated; JSON versioned and ordered; proofs artifacted; legacy records migrated or condemned; trigger residual closed. Cheaper substitute that fails: a fourth review round whose findings stay prose.
 
 ## Verification
 
