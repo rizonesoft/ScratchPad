@@ -5993,6 +5993,14 @@ track: Z1
             True,
         )
         check(
+            "outer-closer quote with count and trailing prose stays a detail",
+            rp.check_panel_output(
+                "**adversarial: needs-attention**\n**record: approve** (2) noted above\n"
+                "**consistency: approve**\n**integration: approve**\n**record: approve**\n"
+            )[0],
+            True,
+        )
+        check(
             "panel output with a repeated lens fails",
             rp.check_panel_output(
                 "**adversarial: needs-attention**\n1. `f.py:1` x\n**adversarial: approve**\n"
