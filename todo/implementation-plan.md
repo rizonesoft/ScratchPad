@@ -125,7 +125,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T01 §38` | Architecture gate residuals                  |   5   |
 | [ ] | `D00 T01 §39` | Panel telemetry                              |   4   |
 | [x] | `D00 T01 §40` | Centralized build output in Bin              |   6   |
-| [ ] | `D00 T01 §41` | Bin output residuals                         |   8   |
+| [ ] | `D00 T01 §41` | Bin output residuals                         |   9   |
 | [x] | `D00 T02 §1`  | Unit test project and framework              |   5   |
 | [x] | `D00 T02 §2`  | UI automation driver spike                   |   5   |
 | [x] | `D00 T02 §3`  | Golden capture store and refresh             |   5   |
