@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
 import shutil
 import tempfile
@@ -190,6 +191,35 @@ NEEDS_BLOCK_RE = re.compile(r"^\*\*Needs:\*\*\s*(?P<value>.+?)\s*$")
 NEEDS_ALLOWED: dict[str, str] = {
     "Windows host (build/test)": "windows-host",
 }
+
+# Environment capabilities a section can require (`**Requires:**` line, D00
+# T01 §13). CLOSED like NEEDS_ALLOWED: `validate` refuses any other value,
+# and refuses a mark without its reason, so a typo cannot silently unmark a
+# section and every mark cites the measurement that convicted it. One value
+# today (the sole evidenced mark); a second value is one more entry here,
+# one detector branch below, and its self-test cases.
+REQUIRES_ALLOWED: tuple[str, ...] = (
+    "display-session",
+)
+REQUIRES_BLOCK_RE = re.compile(r"^\*\*Requires:\*\*\s*(?P<body>.+?)\s*$")
+REQUIRES_REASON_SEP = " -- "
+
+
+def detect_context(platform: str | None = None, environ=None) -> set[str]:
+    """The runner capabilities `query ready` evaluates `**Requires:**` against.
+
+    `platform`/`environ` default to the live interpreter and process
+    environment; tests pass fakes. display-session holds on Windows with
+    SESSIONNAME set (console or remote interactive session) and nowhere
+    else -- in particular never under WSL, whose window-station-less
+    session reads black frames (D00 T02 §7), per the run-5 §15 verdict.
+    """
+    plat = sys.platform if platform is None else platform
+    env = os.environ if environ is None else environ
+    ctx: set[str] = set()
+    if plat == "win32" and (env.get("SESSIONNAME") or "").strip():
+        ctx.add("display-session")
+    return ctx
 FIDELITY_EXEMPT_RE = re.compile(
     r"no page of its own|not a page|the transport is not a page",
     re.I,
@@ -266,6 +296,11 @@ class Section:
     has_chrome: bool = False
     needs_raw: str = ""          # the `**Needs:**` value as written
     needs: list[str] = field(default_factory=list)  # closed-list keys, e.g. windows-host
+    requires_has_line: bool = False  # a `**Requires:**` line is present
+    requires_raw: str = ""           # the line body as written (values + reason)
+    requires: list[str] = field(default_factory=list)  # closed-list values
+    requires_unknown: list[str] = field(default_factory=list)  # values outside REQUIRES_ALLOWED
+    requires_reason: str = ""        # the cited measurement (required)
     line: int = 0
     duration_minutes: int | None = None
     stamped_on: str | None = None
@@ -546,6 +581,16 @@ def parse_todo(path: Path) -> Todo:
                 current.needs_raw = needs.group("value").strip()
                 key = NEEDS_ALLOWED.get(current.needs_raw)
                 current.needs = [key] if key else []
+            req = REQUIRES_BLOCK_RE.match(st)
+            if req:
+                current.requires_has_line = True
+                body = req.group("body").strip()
+                current.requires_raw = body
+                values_part, sep, reason = body.partition(REQUIRES_REASON_SEP)
+                current.requires_reason = reason.strip() if sep else ""
+                values = [v.strip() for v in values_part.split(",") if v.strip()]
+                current.requires = [v for v in values if v in REQUIRES_ALLOWED]
+                current.requires_unknown = [v for v in values if v not in REQUIRES_ALLOWED]
 
         if "-> XREF:" in line:
             todo.xrefs.append(line.split("-> XREF:", 1)[1].strip())
@@ -709,6 +754,12 @@ SEVERITY_MAP: dict[str, str] = {
     # panel verdicts reads as reviewed evidence while verifying nothing --
     # the same lie as a malformed stamp, so the same severity (D00 T01 §9).
     "stamp-no-opus-panel": "fatal",
+    # a `**Requires:**` value outside REQUIRES_ALLOWED: the list is closed
+    # so a misspelt capability cannot silently unmark a section (D00 T01 §13).
+    "requires-unknown": "fatal",
+    # a `**Requires:**` mark without its reason: the citation is what makes
+    # the mark auditable instead of vibes (D00 T01 §13).
+    "requires-no-reason": "fatal",
 }
 
 
@@ -1132,11 +1183,26 @@ def cmd_query(args) -> int:
             rows.append((t, num, s, missing))
 
     if what == "ready":
+        explicit = getattr(args, "context", None)
+        ctx = set(explicit) if explicit is not None else detect_context()
+        ctx_note = ", ".join(sorted(ctx)) if ctx else "none"
         ready = [r for r in rows if not r[3]]
-        for t, num, s, _ in sorted(ready, key=lambda r: (r[0].domain, r[0].number, r[2].order or 0)):
+        ranked = sorted(ready, key=lambda r: (r[0].domain, r[0].number, r[2].order or 0))
+        now = []
+        elsewhere = []
+        for r in ranked:
+            missing = [v for v in r[2].requires if v not in ctx]
+            (elsewhere if missing else now).append((r, missing))
+        for (t, num, s, _), _missing in now:
             flag = " 🔒" if t.frozen else ""
             print(f"{t.domain}/{Path(t.path).name} §{num}{flag}  {s.deliverable}")
-        print(f"\n{len(ready)} section(s) ready")
+        if elsewhere:
+            print(f"\nrunnable elsewhere (context: {ctx_note}):")
+            for (t, num, s, _), missing in elsewhere:
+                flag = " 🔒" if t.frozen else ""
+                reqs = ", ".join(s.requires)
+                print(f"{t.domain}/{Path(t.path).name} §{num}{flag}  {s.deliverable}  requires {reqs} (missing: {', '.join(missing)})")
+        print(f"\n{len(now)} runnable now, {len(elsewhere)} runnable elsewhere")
     else:  # blocked
         blocked = [r for r in rows if r[3]]
         for t, num, s, missing in sorted(blocked, key=lambda r: (r[0].domain, r[0].number, r[1])):
@@ -1364,6 +1430,14 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     if s.needs_raw:
         keys = ', '.join(s.needs) if s.needs else 'UNKNOWN -- not in the closed list'
         print(f"needs      {keys} ({s.needs_raw}); plan-gate.py host-probe decides whether it can start")
+    if s.requires_has_line:
+        if s.requires_unknown:
+            print(f"requires     {s.requires_raw}; INVALID -- unknown value(s): {', '.join(s.requires_unknown)} (see validate)")
+        else:
+            have = detect_context()
+            missing = [v for v in s.requires if v not in have]
+            verdict = "runnable here" if not missing else f"missing here: {', '.join(missing)}"
+            print(f"requires     {s.requires_raw}; {verdict}")
     if unmet:
         print(f"UNMET      {', '.join(unmet)}")
     print()
@@ -2392,6 +2466,91 @@ frozen: true
 **Freeze check:** fixture
 """
 
+SELF_TEST_TODO_C = """---
+schema_version: 1
+id: self-test-gamma
+domain: 90-selftest
+status: active
+title: "TODO-03 -- Self-test gamma"
+track: Z1
+---
+
+# TODO-03 -- Self-test gamma
+
+> **Goal:** Fixture. Requires-mark shapes for the environment gate.
+
+## Implementation Order
+
+| Order | Section | Deliverable | Depends On | Status |
+| :---: | :-----: | ----------- | ---------- | :----: |
+|   1   |   §1    | Unknown value | -- |  [ ]   |
+|   2   |   §2    | Missing reason | -- |  [ ]   |
+|   3   |   §3    | Empty values | -- |  [ ]   |
+|   4   |   §4    | Valid mark | -- |  [ ]   |
+|   5   |   §5    | Shipped unmarked | -- |  [x]   |
+|   6   |   §6    | Two lines, last wins | -- |  [ ]   |
+
+---
+
+## 1. Unknown value
+
+**Requires:** printerz -- because testing
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 2. Missing reason
+
+**Requires:** display-session
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 3. Empty values
+
+**Requires:** ,
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 4. Valid mark
+
+**Requires:** display-session -- fixture reason, with comma (and parens)
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 5. Shipped unmarked
+
+- [x] Did the thing
+- [x] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-01-01 | §5 | fixture shipped unmarked
+> **Review:** round 1, fingerprint `abc123def456` -- `adversarial` approve
+> **CRUD:** applicable | fixture
+
+## 6. Two lines, last wins
+
+**Requires:** printerz -- first line loses
+
+**Requires:** display-session -- second wins
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+"""
+
 SELF_TEST_PLAN = """# Implementation plan
 
 ### Phase 0 -- Fixture phase
@@ -2535,6 +2694,85 @@ def cmd_self_test(_args) -> int:
             needs_for_ref("| [ ] | `D90 T01 §2` | Open thing | 2 |", todos),
             ["windows-host"],
         )
+
+        # --- the Requires marker (D00 T01 §13) ------------------------------
+        import io as _bio
+        import contextlib as _bctx
+        check("a section with no Requires line parses empty",
+              (ta.sections[3].requires_has_line, ta.sections[3].requires,
+               ta.sections[3].requires_unknown, ta.sections[3].requires_reason),
+              (False, [], [], ""))
+        gamma = root / "todo" / "90-selftest" / "TODO-03-self-test-gamma.md"
+        gamma.write_text(SELF_TEST_TODO_C, encoding="utf-8")
+        try:
+            todos2 = load_todos()
+            g = next(t for t in todos2 if t.number == "03")
+            check("a valid mark parses values plus reason",
+                  (g.sections[4].requires, g.sections[4].requires_reason),
+                  (["display-session"], "fixture reason, with comma (and parens)"))
+            check("a second Requires line wins fully",
+                  (g.sections[6].requires, g.sections[6].requires_unknown,
+                   g.sections[6].requires_reason),
+                  (["display-session"], [], "second wins"))
+            check("an unknown value parses into requires_unknown",
+                  (g.sections[1].requires, g.sections[1].requires_unknown),
+                  ([], ["printerz"]))
+            check("a mark without its separator parses reason-empty",
+                  (g.sections[2].requires, g.sections[2].requires_reason),
+                  (["display-session"], ""))
+            check("a mark with no values parses empty",
+                  (g.sections[3].requires, g.sections[3].requires_unknown,
+                   g.sections[3].requires_reason),
+                  ([], [], ""))
+            vbuf = _bio.StringIO()
+            with _bctx.redirect_stdout(vbuf), _bctx.redirect_stderr(_bio.StringIO()):
+                cmd_validate(None)
+            rfatal = [ln for ln in vbuf.getvalue().splitlines()
+                      if ln.startswith("FATAL") and "Requires" in ln]
+            check("an unknown Requires value is FATAL (requires-unknown)",
+                  any("§1" in ln and "not in the closed list" in ln for ln in rfatal), True)
+            check("a Requires mark without its reason is FATAL (requires-no-reason)",
+                  any("§2" in ln and "with no reason" in ln for ln in rfatal), True)
+            check("a Requires mark with no values is FATAL (requires-unknown)",
+                  any("§3" in ln and "no values" in ln for ln in rfatal), True)
+            check("a valid mark draws no Requires FATAL",
+                  any("§4" in ln for ln in rfatal), False)
+            check("a shipped section without a mark draws no Requires FATAL",
+                  any("§5" in ln for ln in rfatal), False)
+            check("a valid last line draws no Requires FATAL",
+                  any("§6" in ln for ln in rfatal), False)
+            check("display-session holds on Windows with SESSIONNAME",
+                  detect_context(platform="win32", environ={"SESSIONNAME": "Console"}),
+                  {"display-session"})
+            check("display-session fails on Windows without a session",
+                  detect_context(platform="win32", environ={"SESSIONNAME": "  "}),
+                  set())
+            check("display-session fails when SESSIONNAME is missing",
+                  detect_context(platform="win32", environ={}),
+                  set())
+            check("display-session fails off Windows",
+                  detect_context(platform="linux", environ={}),
+                  set())
+
+            def ready_lines(**kw):
+                buf = _bio.StringIO()
+                with _bctx.redirect_stdout(buf):
+                    code = cmd_query(argparse.Namespace(what="ready", all=False, **kw))
+                return code, buf.getvalue().splitlines()
+
+            code, lines = ready_lines(context=["display-session"])
+            check("an explicit display context lists the marked row runnable",
+                  (code, any("§4" in ln and "requires" not in ln for ln in lines)), (0, True))
+            code, lines = ready_lines(context=[])
+            check("an empty context parks the marked row with its requirement named",
+                  (code, any("requires display-session (missing: display-session)" in ln and "§4" in ln for ln in lines)), (0, True))
+            code, lines = ready_lines()
+            check("query ready without a context flag still exits 0",
+                  code, 0)
+            check("the split summary names both counts",
+                  any("runnable now" in ln and "runnable elsewhere" in ln for ln in lines), True)
+        finally:
+            gamma.unlink()
         check("§2 has a Commit item", ta.sections[2].has_commit_item, True)
         check("beta §1 has a Freeze check", tb.sections[1].has_freeze_check, True)
         check("every body section has a row", all(s.has_row for s in ta.sections.values()), True)
@@ -4683,6 +4921,14 @@ def main() -> int:
     q.add_argument("--json", action="store_true", help="adjacency: machine-readable report")
     q.add_argument("--require-owned", action="store_true", help="adjacency: refuse incomplete file ownership at closeout")
     q.add_argument("--require-conformance", action="store_true", help="adjacency: require non-vacuous tree-wide kind coverage")
+    q.add_argument(
+        "--context",
+        nargs="*",
+        default=None,
+        choices=sorted(REQUIRES_ALLOWED),
+        metavar="CAP",
+        help="ready: evaluate requirements against exactly these capabilities instead of the detected local context (planning)",
+    )
     q.set_defaults(fn=cmd_query)
     sub.add_parser("render", help="mermaid dependency graph on stdout").set_defaults(fn=cmd_render)
     rs = sub.add_parser("resolve", help="turn any section reference into its file and number")

@@ -47,6 +47,8 @@ Record these lines **in the run's findings file**, not as the turn's last words:
 
 If no phase has a ready row, every remaining `[ ]` row is blocked. Report them and stop. That is a genuine halt, and it is the only one this skill has.
 
+Ready means runnable-now in the current context: `query ready` splits runnable-now from runnable-elsewhere, and this skill offers only runnable-now rows. Elsewhere rows stay visible in the recorded lines, never offered, never started; re-run the query rather than trusting a previous list.
+
 ### Run guard
 
 A run without a guard dies silently when the session stalls, so starting the first phase also starts the run guard, always. List the harness scheduled jobs: if no Run-guard heartbeat for this workspace exists, create one on `*/10 * * * *` (recurring, fires during active runs) with the canonical prompt below, and record its job id in the run's findings file. If a guard for this workspace already exists, adopt it: record its id and do not create a second. If the harness offers no scheduled jobs, record that the run is unguarded instead of pretending otherwise.

@@ -237,6 +237,16 @@ A section that cannot run without a live host the plan cannot otherwise see carr
 
 The value comes from a closed list (`todo-graph.py` `NEEDS_ALLOWED`; `validate` refuses any other). `resolve` prints it as `needs`, so a future runner can skip the row while no Windows host is reachable and take the next host-free row instead.
 
+A section that cannot run without an environment capability the plan cannot otherwise see carries one more line, anywhere in its body:
+
+`**Requires:** display-session -- convicted by <measurement pointer>`
+
+Values are comma-separated closed vocabulary (`todo-graph.py` `REQUIRES_ALLOWED`); the reason after ` -- ` is required and cites the measurement that convicted the section. `validate` refuses an unknown value (`requires-unknown`) and a mark without its reason (`requires-no-reason`), both FATAL. `query ready` splits dependency-ready rows into runnable-now (requirements met by the runner's context) versus runnable-elsewhere (requirements named per row); `resolve` prints the line with the local verdict. The runner's local context is detected (`display-session` holds on Windows with `SESSIONNAME` set, nowhere else); `query ready --context` evaluates a declared set instead, for planning. Shipped sections are grandfathered: no retroactive marking, and a mark added later needs its reason like any other. `Needs:` (host) keeps its own closed list and its pre-start host check; the two lines compose, never merge.
+
+| Value | Means | Detected how (local context) |
+| ----- | ----- | ---------------------------- |
+| `display-session` | A Windows interactive session able to render WinUI: eyeball probes, palette sampling, real pixels instead of black frames | `sys.platform == "win32"` with `SESSIONNAME` non-empty; every other context evaluates False |
+
 A section whose open work is worked OUTSIDE this tree carries a `Moved:` marker under its heading:
 
 ```
@@ -309,7 +319,7 @@ Size still follows **Section sizing** above. Micro-steps are smaller items, not 
 ```bash
 python3 scripts/todo-graph.py build      # parse todo/ -> build/todo-cache.json
 python3 scripts/todo-graph.py validate   # structural + graph integrity checks
-python3 scripts/todo-graph.py query ready        # sections with all deps met
+python3 scripts/todo-graph.py query ready        # sections with all deps met, split into runnable-now versus runnable-elsewhere by the runner's context
 python3 scripts/todo-graph.py query blocked      # sections waiting on something
 python3 scripts/todo-graph.py query stats        # tree health
 python3 scripts/todo-graph.py render             # mermaid dependency graph
@@ -368,6 +378,8 @@ is a complete instruction: nobody has to translate domain `00` and TODO `01` int
 | `moved-target-missing` | FATAL | A `> **Moved:**` marker that names no file, or a file that does not exist. The marker takes the section out of `query ready`, the plan and the progress totals on the strength of that pointer, so a dead pointer would hide work. |
 | `pending-control-contract` | FATAL | Reserved: the coming-soon inspector is not ported yet, so this class cannot fire until it lands. |
 | `stamp-no-opus-panel` | FATAL | A stamp dated after 2026-09-17 whose findings lack an `Opus panel` section with all four lens verdicts. It reads as reviewed evidence while verifying nothing; stamps on or before 2026-09-17 predate the rule and are grandfathered. The `Review:` line must carry `Raw findings: <path>`; the panel section is a level-2+ heading starting with `Opus panel` (last one wins in multi-round files); each verdict sits on its own `` `lens` verdict `` line opening (after up to 3 spaces) with a Markdown marker (`*`, backtick, `>`, `-`; mid-line mentions never count); fenced code blocks are stripped before the scan, quoted headings are not structure, quoted fences count as fences (closes match the opener's quote depth; an ended quote ends its fence, and a blank line ends the quote), a backtick in a backtick-fence info string is a paragraph, and an unbalanced fence fails naming its opener line. |
+| `requires-unknown` | FATAL | A `**Requires:**` value outside the closed list in `todo-graph.py` (`REQUIRES_ALLOWED`). The list is closed so a misspelt capability cannot silently unmark a section. |
+| `requires-no-reason` | FATAL | A `**Requires:**` mark without its ` -- ` reason. The citation is what makes the mark auditable: every mark names the measurement that convicted it. |
 
 Treat a warning as a decision to make rather than noise to clear. The tree currently sits at zero FATAL and zero non-baselined warnings, and it is worth keeping there.
 

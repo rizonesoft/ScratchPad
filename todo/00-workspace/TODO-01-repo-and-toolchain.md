@@ -320,17 +320,19 @@ Why this section exists: no git hooks are installed in this clone (only `.git/ho
 
 ## 13. Environment-Gated Ready Queries
 
+> **Started:** 2026-09-17T23:59:32Z
+
 Why this section exists: `query ready` answers dependency readiness only, so an environment-blocked section (display session, spooler visibility, credentials, API keys) shows ready in every context and burns a park cycle each run. D01 T02 §15 is the standing instance: dependency-ready, unrunnable without a display session.
 
 - -> XREF: D00 T01 §7 -- the graph checks this feature extends; the new query split and marker rule ride the same gates.
 - -> XREF: D01 T02 §15 -- the first gated consumer; its display-session requirement is the feature's proving instance.
 
-- [ ] The marker is decided (a new line plus closed vocabulary, or a `Needs:` extension with reasons; `Needs:` is taken by the host closed list, so a bare reuse collides) and recorded in `todo/README.md` with the full value list. Done when: the format doc carries the line spec and every value's meaning.
-- [ ] `query ready` splits output into runnable-now versus runnable-elsewhere from the marker plus the runner's context (local context by default, explicit context flag for planning), with the split explained per row. Done when: `query ready` in this context parks §15 with its requirement named, and in a display context lists it runnable.
-- [ ] The validator gates the marker (unknown values FATAL, shipped sections grandfathered or marked with reasons) with self-test cases proving the rule plus the split. Done when: self-test grows by the new cases, all green, and the live tree validates silent.
-- [ ] The known environmentally-gated open sections are marked, §15 first with its display-session requirement, each requirement named from evidence. Done when: every mark cites the measurement that convicted it.
-- [ ] `process-plan` and `process-phase` offer only runnable-now rows in the current context (runnable-elsewhere rows stay visible, never offered). Done when: both skill docs carry the rule.
-- [ ] Commit: `"workspace: gate ready queries on environment"`
+- [x] The marker is decided (a new line plus closed vocabulary, or a `Needs:` extension with reasons; `Needs:` is taken by the host closed list, so a bare reuse collides) and recorded in `todo/README.md` with the full value list. Done when: the format doc carries the line spec and every value's meaning. Done: new `**Requires:**` line (values plus required reason) with vocabulary table ({display-session} with meaning and detector), query semantics, and grandfathering in `todo/README.md`; Tooling line updated.
+- [x] `query ready` splits output into runnable-now versus runnable-elsewhere from the marker plus the runner's context (local context by default, explicit context flag for planning), with the split explained per row. Done when: `query ready` in this context parks §15 with its requirement named, and in a display context lists it runnable. Done: split live (12 now, 1 elsewhere locally with §15's requirement named; `--context display-session` lists 13 runnable including §15); `resolve` prints the local verdict.
+- [x] The validator gates the marker (unknown values FATAL, shipped sections grandfathered or marked with reasons) with self-test cases proving the rule plus the split. Done when: self-test grows by the new cases, all green, and the live tree validates silent. Done: requires-unknown plus requires-no-reason FATALs live (two rules, five messages); self-test 442/422 green (+20: 1 legacy-empty, 5 parser, 6 validator, 4 detector, 4 split); live tree silent.
+- [x] The known environmentally-gated open sections are marked, §15 first with its display-session requirement, each requirement named from evidence. Done: §15 marked display-session citing the run-5 deferral measurement; survey of all 13 ready rows plus run-file deferrals found no other evidenced marks (sole mark).
+- [x] `process-plan` and `process-phase` offer only runnable-now rows in the current context (runnable-elsewhere rows stay visible, never offered). Done when: both skill docs carry the rule. Done: process-plan defines ready as runnable-now (offer runnable-now only, elsewhere visible never started, re-run not trust); process-phase treats a runnable-elsewhere `resolve` verdict as a leftover whatever the exit code (verified: §15 resolves exit 0 with "missing here: display-session").
+- [x] Commit: `"workspace: gate ready queries on environment"`
 
 **Test checkpoint:** Marker spec in the format doc; split proven in both contexts; self-test green with the new cases; live tree silent; known sections marked with cited evidence; skills offer runnable-now only. Cheaper substitute that fails: a comment convention no query reads.
 

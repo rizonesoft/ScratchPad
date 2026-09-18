@@ -449,6 +449,8 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 
 **Needs:** Windows host (build/test)
 
+**Requires:** display-session -- run-5 deferral: same-machine stock-vs-app palette probes need a display-bearing Windows 11 session (docs/phase-runs/2026-09-17-phase-1.md:28; local pixels impossible per D00 T02 §7 black-frame evidence, CI runners ship classic notepad not 11.x).
+
 - -> XREF: D01 T02 §10 -- accent themes compose with this finetune; this section preserves the accent coloring §10 themes.
 - -> XREF: D00 T01 §13 -- the environment gate's first proving instance; this section's display-session requirement is what the marker names.
 

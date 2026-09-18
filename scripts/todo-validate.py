@@ -109,6 +109,23 @@ def validate(graph, _args) -> int:
                     f"{t.path}:{s.line}: §{num} has **Needs:** {s.needs_raw!r}, "
                     f"which is not in the closed list ({allowed})",
                 )
+            # 8d. a `**Requires:**` value must come from the closed list, and
+            # the mark must cite its reason (D00 T01 §13). Shipped sections
+            # carry no marks and need none: grandfathered, not retrofitted.
+            if s.requires_has_line and (s.requires_unknown or not s.requires):
+                allowed = ", ".join(f"`{k}`" for k in graph.REQUIRES_ALLOWED)
+                bad = ", ".join(f"`{v}`" for v in s.requires_unknown) or "no values"
+                flag(
+                    "requires-unknown",
+                    f"{t.path}:{s.line}: §{num} has **Requires:** {bad}, "
+                    f"not in the closed list ({allowed})",
+                )
+            if s.requires_has_line and not s.requires_reason:
+                flag(
+                    "requires-no-reason",
+                    f"{t.path}:{s.line}: §{num} has **Requires:** with no reason; "
+                    "cite the measurement that convicted the section after ` -- `",
+                )
             # 8b. a `--filter` checkpoint that ALSO claims a second suite stays
             #     green is claiming something the command it names cannot show.
             #

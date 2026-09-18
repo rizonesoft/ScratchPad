@@ -45,6 +45,7 @@ The phase table is a plan, and plans drift. Fix it before building on it. In ord
 3. For EVERY open row in the phase: `python3 scripts/todo-graph.py resolve '<ref>'`. Record the exit code.
    - Exit 4 with unmet deps **outside this phase** is a **leftover, not a stall**. Leave the row here, ship every exit-0 row, and park when only leftovers remain. Do not drag a later phase's dependency into this one, and do not loop back hoping the answer changes.
    - Exit 1/2: the row cites a section that does not exist: repair the reference against the TODO file. A broken ref is repairable work, so it blocks a park.
+   - A row whose `resolve` verdict is runnable-elsewhere **in this context** is a leftover, not a shippable row, whatever the exit code: it stays visible, never ships here, and parks with the rest when only leftovers remain. Re-run `resolve` rather than trusting a previous verdict.
 4. Read each open section's TODO file top to bottom, looking for **phase-level** staleness only (per-section validation happens again inside `process-todo-section`): sections whose work already shipped elsewhere, sections made moot by a decision since, callouts whose blocker no longer exists. Correct with dated `**Corrected YYYY-MM-DD:**` notes.
 
 ### Step 1b -- shipped rows are verified, not trusted
