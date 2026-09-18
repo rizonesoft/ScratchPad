@@ -794,7 +794,50 @@ def validate(graph, _args) -> int:
                     )
                 prior_outage = len(chain) > 1 and is_outage_marker(chain[-2])
                 follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
+                if len(chain) == 1 and graph.SUPERSEDES_RE.search(chain[0]) is not None:
+                    # A singleton marker is genesis: run, no supersedes
+                    # (D00 T01 §20 item 3). One carrying a supersedes edge
+                    # names ancestry it cannot have: deleted or fabricated
+                    # lineage masquerading as a first run (D00 T01 §24).
+                    flag(
+                        "plan-review-no-lineage",
+                        f"{t.path}:{s.line}: §{num} genesis marker carries supersedes (a first run has no ancestry to name)",
+                    )
+                claimed: dict[str, int] = {}
+                for _ci, _cbody in enumerate(chain):
+                    _csm = graph.SUPERSEDES_RE.search(_cbody)
+                    if _csm is None:
+                        continue
+                    _ctgt = graph.normalize_run_id(_csm.group(1))
+                    if _ctgt in claimed:
+                        # Two successors, one predecessor (D00 T01 §24):
+                        # the second claim breaks the directed chain. The
+                        # flag names the later marker by run (or position
+                        # when the marker carries no run).
+                        _claimer = runs[_ci] if runs[_ci] is not None else f"marker {_ci + 1}"
+                        flag(
+                            "plan-review-no-lineage",
+                            f"{t.path}:{s.line}: §{num} run {_claimer} re-supersedes {_csm.group(1)} (two successors claim one predecessor)",
+                        )
+                    else:
+                        claimed[_ctgt] = _ci
                 if len(chain) > 1:
+                    for _ei in range(len(chain) - 1):
+                        _esm = graph.SUPERSEDES_RE.search(chain[_ei])
+                        if _esm is None:
+                            continue
+                        _past = {graph.normalize_run_id(r) for r in runs[:_ei] if r is not None}
+                        if graph.normalize_run_id(_esm.group(1)) not in _past:
+                            # Edges point strictly backward (D00 T01 §24):
+                            # the last marker keeps its specific unknown-run
+                            # diagnostic above, and every earlier edge must
+                            # name a run already in the chain. A forward or
+                            # dangling edge is a cycle or a fabrication.
+                            _whom = runs[_ei] if runs[_ei] is not None else f"marker {_ei + 1}"
+                            flag(
+                                "plan-review-no-lineage",
+                                f"{t.path}:{s.line}: §{num} run {_whom} supersedes {_esm.group(1)} outside its past (edges point strictly backward)",
+                            )
                     seen_runs = set()
                     for run in runs:
                         if run is not None:

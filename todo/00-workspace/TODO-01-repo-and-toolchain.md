@@ -654,6 +654,8 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 
 ## 24. Lineage Residuals and Run Inspection
 
+> **Started:** 2026-09-18T18:38:32Z
+
 Why this section exists: the seventh live plan review (§20 plus §19 plus §17, `gpt-5.6-sol` high) returned 18 findings; 6 survive synthesis, 2 join the open §§21 and 23 (PR9, PR7), and 4 land here (PR2, PR5, PR15, PR18) with 10 rejected and 2 duplicate with reasons in the §20 findings file. The tenth plan review then added a ledger-row fork rule (PR12) to the open section. Lineage must close its gaps (singleton ancestry, manifest runs, forks) and the operator needs one run view, not manual joins. -> XREF: D00 T01 §20 (filed from its plan review); -> XREF: D00 T01 §23 (PR12 joiner from its plan review); -> SOURCE: plan-review-D00-T01-s20-2026-09-18 (`gpt-5.6-sol` high over §20 plus §19 plus §17, 18 findings, 4 filed here, 2 filed in §§21/23, 10 rejected and 2 duplicate with reasons in the §20 findings file); plan-review-D00-T01-s23-2026-09-18 (PR12 row forks; ledger in the §23 findings file).
 
 - [ ] Singleton supersedes fires: a genesis marker carrying `supersedes <run>` names ancestry it cannot have (PR2 D00-T01-S20-PR2). Done when: the validator fires on the contradictory singleton with a fixture.
