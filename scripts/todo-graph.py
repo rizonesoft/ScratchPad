@@ -1802,6 +1802,37 @@ def git_resolves(sha: str) -> bool | None:
     return None
 
 
+def git_tree_mode(ref: str, path: str) -> str | None:
+    """The tree-entry mode for path at ref (`100644`, `120000`,
+    ...), or None when missing or unprovable. The candidate-tree
+    path leg (D00 T01 §33 item 4, round-1 integration): bytes alone
+    cannot tell a symlink from a file (`git show` serves a link's
+    target string as if it were file content) and checkout state
+    cannot judge a recorded tree, so the leg binds the mode read
+    from the candidate itself. A missing path reads empty output
+    (exit 0); anything off-shape reads None, never raises.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "ls-tree", ref, "--", path],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    try:
+        first = out.stdout.decode("utf-8", "replace").split("\t", 1)[0].split()
+    except Exception:
+        return None
+    if len(first) != 3 or not re.fullmatch(r"[0-7]{6}", first[0]):
+        return None
+    return first[0]
+
+
 def git_full_sha(ref: str) -> str | None:
     """The full commit ID for a ref, or None when unresolvable or
     unprovable. The strict-ancestry leg (D00 T01 §31 item 6): short
@@ -7625,23 +7656,22 @@ track: Z1
         # Rule 23 reads candidates through git (D00 T01 §23), so the
         # panel run patches the reader like the marker run does: the
         # fixture candidate resolves, anything else is unprovable.
-        # The candidate-tree leg (D00 T01 §33 item 4) needs its bytes
-        # too: fixture panel paths read their written text, everything
-        # else delegates to real git (rule-22 history behavior stays
-        # exactly as the unpatched run sees it).
+        # The candidate-tree leg (D00 T01 §33 item 4, round-1
+        # integration) binds modes, not bytes: fixture panel paths
+        # read 100644, everything else delegates to real git.
         _real_resolves_panel = git_resolves
-        _real_file_at_panel = git_file_at
+        _real_treemode_panel = git_tree_mode
         globals()["git_resolves"] = lambda sha: True if sha == "aaa1111" else None
-        globals()["git_file_at"] = lambda ref, p: (
-            (rev_dir / Path(p).name).read_text(encoding="utf-8")
+        globals()["git_tree_mode"] = lambda ref, p: (
+            "100644"
             if ref == "aaa1111" and p.startswith("docs/reviews/90-panel-")
-            else _real_file_at_panel(ref, p)
+            else _real_treemode_panel(ref, p)
         )
         pbuf = _mio.StringIO()
         with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
         globals()["git_resolves"] = _real_resolves_panel
-        globals()["git_file_at"] = _real_file_at_panel
+        globals()["git_tree_mode"] = _real_treemode_panel
         panel_out = pbuf.getvalue().splitlines()
         check(
             "stamp-no-opus-panel is a FATAL class",
@@ -9752,6 +9782,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         )
         canned_full = {s: s + "0" * (40 - len(s)) for s in _all_shas}
         canned_merges = {s: False for s in _all_shas}
+        canned_tree_modes = {}
         canned_range_ts = {
             ("eee0001", "eee0002", marker_todo.as_posix()): _tss(d5, "12:00:00"),
         }
@@ -9890,13 +9921,13 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S9-gpt\n",
             encoding="utf-8",
         )
-        # D00 T01 §33 item 4: the candidate-tree leg reads every
-        # fixture provenance path at its candidate, so each written
-        # review file cans its bytes at aaa1111 (the gone-path and
-        # absolute-path negatives stay uncanned: absence is their
-        # probe).
+        # D00 T01 §33 item 4 (round-1 integration): the
+        # candidate-tree leg binds the entry mode read from the
+        # candidate, so each written review file cans 100644 at
+        # aaa1111 (the gone-path negative stays uncanned: absence
+        # is its probe).
         for _rev in sorted(rev_dir.glob("90-*.md")):
-            canned_git[("aaa1111", f"docs/reviews/{_rev.name}")] = _rev.read_text(encoding="utf-8")
+            canned_tree_modes[("aaa1111", f"docs/reviews/{_rev.name}")] = "100644"
         _real_git_file_at = git_file_at
         _real_git_touches = git_commit_touches
         _real_git_ts = git_commit_ts
@@ -9907,6 +9938,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         _real_git_merge = git_is_merge
         _real_git_rangets = git_range_touch_ts
         _real_git_fpchain = git_on_first_parent_chain
+        _real_git_treemode = git_tree_mode
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
@@ -9917,6 +9949,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         globals()["git_is_merge"] = lambda sha: canned_merges.get(sha)
         globals()["git_range_touch_ts"] = lambda a, b, p: canned_range_ts.get((a, b, p))
         globals()["git_on_first_parent_chain"] = lambda a, b: canned_fpchain.get((a, b))
+        globals()["git_tree_mode"] = lambda ref, p: canned_tree_modes.get((ref, p))
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -10709,7 +10742,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "missing provenance path fires",
             any(
-                "TODO-07-marker.md" in ln and "§30 " in ln and "path docs/reviews/90-health-gone.md names no file" in ln
+                "TODO-07-marker.md" in ln and "§30 " in ln and "90-health-gone.md names no regular file in the" in ln
                 for ln in marker_out
             ),
             True,
@@ -11096,11 +11129,10 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             + "\n".join(_d26_recs),
             encoding="utf-8",
         )
-        # D00 T01 §33 item 4: the candidate-tree leg cans the
-        # fixture's bytes at its candidate (present, so silent).
-        canned_git[("aaa1111", "docs/reviews/90-dur26.md")] = (
-            dur26 / "docs" / "reviews" / "90-dur26.md"
-        ).read_text(encoding="utf-8")
+        # D00 T01 §33 item 4 (round-1 integration): the
+        # candidate-tree leg cans the fixture's mode at its candidate
+        # (regular file, so silent).
+        canned_tree_modes[("aaa1111", "docs/reviews/90-dur26.md")] = "100644"
         saved_tree, TODO_DIR = TODO_DIR, dur26 / "todo"
         try:
             v26 = _mio.StringIO()
@@ -11175,6 +11207,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         # (candidate, path, linerun-or-None-for-marker-run, markers)
         # markers: "one" (single, run matches), "two" (r1 superseded by
         # r2), "none" (markerless: the run leg skips).
+        _TAG40 = "d" * 40
         _d33_cases = {
             1: (_FULL33, "docs/probe-target.txt", None, "one"),
             2: (_FULL33, "docs/probe-target.txt", "20260920-D90-T33-S2-gpt-r1", "two"),
@@ -11187,10 +11220,13 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             9: ("aaa1111", "docs/old-gone.txt", "20260919-D90-T33-S9-gpt", "one"),
             10: (_FULL33, "../../escape33.txt", None, "one"),
             11: (_FULL33, f"{dur33}/dur33abs.txt", None, "one"),
-            12: (_FULL33, "docs/evil33", None, "one"),
+            12: ("aaa1111", "docs/evil33", "20260919-D90-T33-S12-gpt", "one"),
             13: (_FULL33, "docs", None, "one"),
             14: (_FULL33, "docs/a\0b.txt", None, "one"),
-            15: (_FULL33, "docs/loopA33", None, "one"),
+            15: ("aaa1111", "docs/loopA33", "20260919-D90-T33-S15-gpt", "one"),
+            16: (_TAG40, "docs/probe-target.txt", None, "one"),
+            17: (_FULL33, "docs/treelink33", None, "one"),
+            18: (_FULL33, "docs/../probe-target.txt", None, "one"),
         }
         (dur33 / "docs" / "old-present.txt").write_text("old bytes\n", encoding="utf-8")
         (root / "escape33.txt").write_text("outside\n", encoding="utf-8")
@@ -11205,7 +11241,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             _symlink_ok = False
         _d33_rows = []
         _d33_secs = []
-        for _n in range(1, 16):
+        for _n in range(1, 19):
             _cand, _ppath, _lrun, _marks = _d33_cases[_n]
             _run = _lrun or f"20260920-D90-T33-S{_n}-gpt"
             _d33_rows.append(f"|   {_n}   |   §{_n}    | Probe {_n} | -- |  [x]   |")
@@ -11265,13 +11301,21 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "| [TODO-01](./TODO-01-probes.md) | Probes | active |\n",
             encoding="utf-8",
         )
-        # The tree leg cans its present pairs; the missing pair (§6),
-        # the directory (§13), and the uncontained paths (§§10-12, 14,
-        # 15) stay uncanned. The full candidate resolves; the b40
-        # candidate stays unprovable (no entry: neither True nor False).
+        # The tree leg cans its modes (round-1 integration): the
+        # present pairs read 100644, the tree symlink (§17) reads
+        # 120000, and the missing pair (§6) plus the directory
+        # (§13) stay uncanned. The full candidate resolves to
+        # itself; the tag-ID candidate resolves but peels
+        # elsewhere; the b40 candidate stays unprovable (no entry:
+        # neither True nor False).
         canned_resolves[_FULL33] = True
-        canned_git[(_FULL33, "docs/probe-target.txt")] = "target bytes\n"
-        canned_git[("aaa1111", "docs/probe-target.txt")] = "target bytes\n"
+        canned_resolves[_TAG40] = True
+        canned_full[_FULL33] = _FULL33
+        canned_full[_TAG40] = _FULL33
+        canned_tree_modes[(_FULL33, "docs/probe-target.txt")] = "100644"
+        canned_tree_modes[("aaa1111", "docs/probe-target.txt")] = "100644"
+        canned_tree_modes[(_TAG40, "docs/probe-target.txt")] = "100644"
+        canned_tree_modes[(_FULL33, "docs/treelink33")] = "120000"
         saved_tree, TODO_DIR = TODO_DIR, dur33 / "todo"
         try:
             v33 = _mio.StringIO()
@@ -11317,7 +11361,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         )
         check(
             "an artifact missing at the candidate fires",
-            sum(1 for ln in v33_out if "§6 " in ln and "names no file in the" in ln),
+            sum(1 for ln in v33_out if "§6 " in ln and "names no regular file in the" in ln),
             1,
         )
         check(
@@ -11339,8 +11383,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             1,
         )
         check(
-            "a traversal path fails containment exactly once",
-            sum(1 for ln in v33_out if "§10 " in ln and "escapes the repo root" in ln),
+            "a traversal path fails canonical exactly once",
+            sum(1 for ln in v33_out if "§10 " in ln and "is not canonical" in ln),
             1,
         )
         check(
@@ -11364,12 +11408,27 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             check("symlink loop untestable: links unsupported here", True, True)
         check(
             "a directory fails loudly at the tree leg",
-            sum(1 for ln in v33_out if "§13 " in ln and "names no file in the" in ln),
+            sum(1 for ln in v33_out if "§13 " in ln and "names no regular file in the" in ln),
             1,
         )
         check(
             "a NUL path fails loudly instead of crashing",
             sum(1 for ln in v33_out if "§14 " in ln and "escapes the repo root" in ln),
+            1,
+        )
+        check(
+            "a tag object ID recorded as a candidate fires",
+            sum(1 for ln in v33_out if "§16 " in ln and "is not a commit object" in ln),
+            1,
+        )
+        check(
+            "a candidate-tree symlink fails the mode leg",
+            sum(1 for ln in v33_out if "§17 " in ln and "names no regular file in the" in ln),
+            1,
+        )
+        check(
+            "an in-root dotdot path fails canonical on new records",
+            sum(1 for ln in v33_out if "§18 " in ln and "is not canonical" in ln),
             1,
         )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
@@ -13247,6 +13306,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         globals()["git_is_merge"] = _real_git_merge
         globals()["git_range_touch_ts"] = _real_git_rangets
         globals()["git_on_first_parent_chain"] = _real_git_fpchain
+        globals()["git_tree_mode"] = _real_git_treemode
         # Real-git helper fixtures (D00 T01 §30 item 3): the six git
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
@@ -13319,6 +13379,18 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                 _git("tag", "-a", "-m", "annotated", "vone", _gc1)
                 _blob = _git("rev-parse", f"{_gc2}:proof.txt")
                 _tree = _git("rev-parse", f"{_gc2}^{{tree}}")
+                # A committed symlink for the mode leg (round-1
+                # integration); guarded, since links need privileges
+                # on some platforms.
+                _have_link = True
+                try:
+                    (_grepo / "plink").symlink_to("proof.txt")
+                except OSError:
+                    _have_link = False
+                if _have_link:
+                    _git("add", "plink")
+                    _git("commit", "-qm", "link")
+                    _gc4 = _git("rev-parse", "HEAD")
                 _saved_repo = REPO
                 globals()["REPO"] = _grepo
                 try:
@@ -13366,6 +13438,13 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                     check("real git full-sha on a tree is unprovable", git_full_sha(_tree), None)
                     check("real git full-sha peels a tag to its commit", git_full_sha("vone"), _gc1)
                     check("real git full-sha spells a short commit", git_full_sha(_gc1[:7]), _gc1)
+                    check("real git tree mode reads a file", git_tree_mode(_gc2, "proof.txt"), "100644")
+                    check("real git tree mode misses a missing path", git_tree_mode(_gc2, "missing.txt"), None)
+                    check("real git tree mode on a bad ref is unprovable", git_tree_mode("deadbee", "proof.txt"), None)
+                    if _have_link:
+                        check("real git tree mode reads a symlink", git_tree_mode(_gc4, "plink"), "120000")
+                    else:
+                        check("real git tree mode symlink untestable: links unsupported", True, True)
                     check("real git spots a merge", git_is_merge(_gm1), True)
                     check("real git clears a non-merge", git_is_merge(_gc2), False)
                     check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee"), None)

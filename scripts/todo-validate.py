@@ -1294,12 +1294,15 @@ def validate(graph, _args) -> int:
     # rule). Beyond the shape, the candidate must resolve in git (an
     # unattested quote attests nothing; unprovable git degrades with
     # a WARN per skipped leg, never silently, D00 T01 §33 item 1),
-    # the path must stay inside the repo root as a string (absolute,
-    # traversal, symlink-escape, and garbage paths fail); existence
-    # reads the candidate tree for runs newer than 2026-09-19 (new
-    # records name the primary reviewed artifact) and the checkout
-    # before that (old self-paths postdate their candidates, so the
-    # tree leg cannot apply, D00 T01 §33 item 4), and the run
+    # and a recorded full ID must be the commit itself, not a tag
+    # object that peels to it (round-1 adversarial). Absolute and
+    # NUL paths fail as strings; on runs newer than 2026-09-19 the
+    # path must be canonical (no `..`) and name a regular file in
+    # the candidate tree, judged by tree-entry mode, never checkout
+    # state or served bytes (round-1 integration); before that the
+    # resolve-plus-checkout leg stands (old self-paths postdate
+    # their candidates, so the tree leg cannot apply, D00 T01 §33
+    # item 4), and the run
     # must equal the reporting section's last shaped marker run
     # (last-governs: a superseded run cited as live evidence
     # misattributes it, D00 T01 §33 item 6). The digest stays
@@ -1383,46 +1386,82 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
                         "is short in a post-2026-09-19 run (resolve at mint time; record the full 40-hex ID)",
                     )
-                # String containment first (D00 T01 §33 items 4-5):
-                # absolute, traversal, symlink-escape, loop, and
-                # garbage paths fail here, git or no git. ValueError
-                # is a NUL byte: resolve raises it, not OSError, and
-                # a hostile path must fail, not crash.
+                # A recorded full ID must BE a commit, not merely peel
+                # to one (round-1 adversarial): `rev-parse <tag>^{commit}`
+                # silently substitutes the commit for a tag object ID,
+                # so the legs would use bytes the record never names.
+                # Shorts keep peel-through (the ratchet above moves
+                # authors to full IDs); an unprovable peel stays
+                # silent (the candidate leg owns that defect).
+                if _res is True and re.fullmatch(r"[0-9a-fA-F]{40}", _cand) is not None:
+                    _peeled = graph.git_full_sha(_cand)
+                    if _peeled is not None and _peeled.lower() != _cand.lower():
+                        flag(
+                            "provenance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
+                            f"is not a commit object (peels to {_peeled}; record the commit)",
+                        )
                 _pp = pm.group(6)
-                try:
-                    _pfile = (graph.TODO_DIR.parent / _pp).resolve()
-                    _proot = graph.TODO_DIR.parent.resolve()
-                    _contained = not Path(_pp).is_absolute() and _pfile.is_relative_to(_proot)
-                except (OSError, RuntimeError, ValueError):
-                    _contained = False
-                if not _contained:
+                _new_scope = pm.group(7)[:8] > "20260919"
+                # Pure-string gates (both scopes, no filesystem
+                # touch): absolute paths and NUL bytes fail here, git
+                # or no git.
+                if "\0" in _pp or Path(_pp).is_absolute():
                     flag(
                         "provenance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
                         "escapes the repo root or is not a well-formed relative path",
                     )
-                elif pm.group(7)[:8] > "20260919":
-                    # Existence reads the candidate tree (D00 T01 §33
-                    # item 4): a live-checkout path proves nothing
-                    # about reviewed bytes, so new records name the
-                    # primary reviewed artifact and it must sit in the
-                    # recorded tree. Unresolving candidates skip
-                    # through the WARN above, never silently.
-                    if _res is True and graph.git_file_at(_cand, _pp) is None:
+                elif _new_scope:
+                    # New records bind the candidate tree itself
+                    # (round-1 integration): checkout state cannot
+                    # judge a recorded tree (a checkout file hides a
+                    # tree symlink and vice versa), so containment
+                    # reads the path as a canonical string and
+                    # existence reads the tree-entry mode, never the
+                    # bytes (`git show` serves a link's target string
+                    # as if it were file content). Unresolving
+                    # candidates skip through the WARN above, never
+                    # silently.
+                    if ".." in Path(_pp).parts:
+                        flag(
+                            "provenance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
+                            "is not canonical (.. segments rejected on new records)",
+                        )
+                    elif _res is True:
+                        _mode = graph.git_tree_mode(_cand, _pp)
+                        if _mode is None or not _mode.startswith("100"):
+                            flag(
+                                "provenance-malformed",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
+                                f"names no regular file in the {_cand} tree (new records pin the reviewed artifact)",
+                            )
+                else:
+                    # Pre-ratchet records keep resolve-plus-checkout:
+                    # their self-paths postdate their candidates, so
+                    # the tree leg cannot apply (D00 T01 §33 item 4).
+                    # ValueError is a NUL byte: resolve raises it,
+                    # not OSError, and a hostile path must fail, not
+                    # crash (D00 T01 §33 item 5).
+                    try:
+                        _pfile = (graph.TODO_DIR.parent / _pp).resolve()
+                        _proot = graph.TODO_DIR.parent.resolve()
+                        _contained = _pfile.is_relative_to(_proot)
+                    except (OSError, RuntimeError, ValueError):
+                        _contained = False
+                    if not _contained:
+                        flag(
+                            "provenance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
+                            "escapes the repo root or is not a well-formed relative path",
+                        )
+                    elif not _pfile.is_file():
                         flag(
                             "provenance-malformed",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
-                            f"names no file in the {_cand} tree (new records pin the reviewed artifact)",
+                            "names no file under the repo root",
                         )
-                elif not _pfile.is_file():
-                    # Pre-ratchet records keep checkout existence:
-                    # their self-paths postdate their candidates, so
-                    # the tree leg cannot apply (D00 T01 §33 item 4).
-                    flag(
-                        "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
-                        "names no file under the repo root",
-                    )
                 if last_run is not None and graph.normalize_run_id(pm.group(7)) != last_run:
                     flag(
                         "provenance-malformed",
