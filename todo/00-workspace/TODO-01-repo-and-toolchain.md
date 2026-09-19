@@ -1210,13 +1210,15 @@ Why this section exists: the §25 plan review found the rule-24 probes locking o
 
 ## 47. Section-Span Scan Helper
 
+> **Started:** 2026-09-19T18:22:00Z
+
 Why this section exists: the §26 Opus panel round 4 (advisory) found `section_retired` duplicating the lazy `todo_lines` load plus section-span computation verbatim from `section_markers`, so a future span fix applied to one copy leaves the other scanning the wrong range. One helper must own the scan window and both callers must use it. -> XREF: D00 T01 §26 (filed from its Opus panel round 4); -> SOURCE: Opus-panel-D00-T01-s26-round-4 (candidate `45e2e17`, round-4 consistency advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s26.md`).
 
-- [ ] One helper owns the window: the lazy file load plus span-bound computation ships as a single helper used by both `section_markers` and `section_retired`. Done when: both callers share the helper with fixtures.
-- [ ] No behavior moves: every existing retirement and marker probe passes unchanged, proving the extraction is behavior-preserving. Done when: the suite stays green with no probe edits.
-- [ ] Commit: `"workspace: share the section-span scan per §26 panel"`
+- [x] One helper owns the window: the lazy file load plus span-bound computation ships as a single helper used by both `section_markers` and `section_retired`. Done when: both callers share the helper with fixtures. Done: `section_window_lines` owns the load plus bounds; `span_marker_bodies` and `section_retired` call it directly (`section_markers` shares transitively through `span_marker_bodies` since §44), with 4 direct-helper fixtures (mid-span slice, last-span EOF, OSError None, preloaded cache hit); suite 1162 to 1166.
+- [x] No behavior moves: every existing retirement and marker probe passes unchanged, proving the extraction is behavior-preserving. Done when: the suite stays green with no probe edits. Done: 1162 pre-existing probes pass unedited (the diff removes only the two inlined copies; no `check(` line touched).
+- [x] Commit: `"workspace: share the section-span scan per §26 panel"`
 
-**Test checkpoint:** one helper computes the window for both callers; all existing probes pass unedited. Falsifiable by any caller-local span math or any probe edit.
+**Test checkpoint:** self-test passes at 1166/1166 (1162 plus the 4 item-1 helper probes), live validate 0 fatal 0 warnings. Cheaper substitute that fails: eyeballing the extraction. Falsifiable by any caller-local span math or any probe edit.
 
 ## 48. Migration Completion Assurance
 

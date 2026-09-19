@@ -1640,13 +1640,13 @@ def ledger_row_due(disp: str, rest: str) -> str:
     return ""
 
 
-def span_marker_bodies(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
-    """`Plan review:` stamp-line bodies inside one section's own span, file order.
+def section_window_lines(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
+    """One section's own file lines, or None when the file cannot be read.
 
-    None when the TODO file cannot be read. The range fallback lives in
-    section_markers, not here: a nonempty chain over an empty span is a
-    fallback chain, which lineage checks must not read as a singleton
-    (D00 T01 §44).
+    Owns the lazy `todo_lines` load plus the span-bound computation for
+    every section-window scan; `span_marker_bodies` and
+    `section_retired` share it so a future span fix lands once
+    (D00 T01 §47).
     """
     if todo.path not in todo_lines:
         try:
@@ -1658,8 +1658,22 @@ def span_marker_bodies(todo_lines: dict[str, list[str]], todo: Todo, num: int) -
     start = max(todo.sections[num].line or 0, 1)
     following = [ln for ln, _n in spans if ln > start]
     end = following[0] if following else len(lines) + 1
+    return lines[start - 1 : end - 1]
+
+
+def span_marker_bodies(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
+    """`Plan review:` stamp-line bodies inside one section's own span, file order.
+
+    None when the TODO file cannot be read. The range fallback lives in
+    section_markers, not here: a nonempty chain over an empty span is a
+    fallback chain, which lineage checks must not read as a singleton
+    (D00 T01 §44).
+    """
+    window = section_window_lines(todo_lines, todo, num)
+    if window is None:
+        return None
     out = []
-    for ln in lines[start - 1 : end - 1]:
+    for ln in window:
         sm = STAMP_RE.match(ln)
         if sm and sm.group("kind") == "Plan review":
             out.append(sm.group("body"))
@@ -1696,17 +1710,10 @@ def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> s
     retirement never counts. Malformed notes read as absent: the
     stamp stays listed and the gap stays visible.
     """
-    if todo.path not in todo_lines:
-        try:
-            todo_lines[todo.path] = (TODO_DIR.parent / todo.path).read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return None
-    lines = todo_lines[todo.path]
-    spans = sorted((s2.line or 0, n2) for n2, s2 in todo.sections.items())
-    start = max(todo.sections[num].line or 0, 1)
-    following = [ln for ln, _n in spans if ln > start]
-    end = following[0] if following else len(lines) + 1
-    for ln in lines[start - 1 : end - 1]:
+    window = section_window_lines(todo_lines, todo, num)
+    if window is None:
+        return None
+    for ln in window:
         rm = RETIRED_RE.match(ln)
         if rm is None:
             continue
@@ -13650,6 +13657,39 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 6,
             ),
             "2026-09-19",
+        )
+        _st = Todo(
+            path="90-span.md",
+            domain="90-selftest",
+            number="07",
+            sections={6: Section(num=6, line=1), 7: Section(num=7, line=4)},
+        )
+        _slines = ["## 6. Synthetic", "body-a", "body-b", "## 7. Next", "body-c"]
+        check(
+            "span helper slices to the next section",
+            section_window_lines({"90-span.md": _slines}, _st, 6),
+            ["## 6. Synthetic", "body-a", "body-b"],
+        )
+        check(
+            "span helper runs the last section to EOF",
+            section_window_lines({"90-span.md": _slines}, _st, 7),
+            ["## 7. Next", "body-c"],
+        )
+        _missing = Todo(
+            path="90-no-such-file.md",
+            domain="90-selftest",
+            number="07",
+            sections={6: Section(num=6, line=1)},
+        )
+        check(
+            "span helper reads None on OSError",
+            section_window_lines({}, _missing, 6),
+            None,
+        )
+        check(
+            "span helper serves preloaded lines without a read",
+            section_window_lines({"90-no-such-file.md": _slines}, _missing, 6),
+            ["## 6. Synthetic", "body-a", "body-b", "## 7. Next", "body-c"],
         )
         check(
             "plan-health lists the current accepted major",
