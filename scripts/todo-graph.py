@@ -7122,6 +7122,7 @@ track: Z1
 |  72   |   §72   | Zero attempt count fires | - |  [x]   |
 |  73   |   §73   | Malformed attempt count fires | - |  [x]   |
 |  74   |   §74   | Bare partial missing detail fires | - |  [x]   |
+|  75   |   §75   | Non-ASCII attempt count fires | - |  [x]   |
 
 ---
 
@@ -7988,6 +7989,17 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §74 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, partial: opus rung, filed §2 attempts 2
+
+## 75. Non-ASCII attempt count fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §75 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class auth attempts ² (run 20260920-D90-T07-S75-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -9295,6 +9307,19 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "§74 fires exactly once (class only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§74 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "non-ASCII attempt count fires",
+            any(
+                "TODO-07-marker.md" in ln and "§75 " in ln and "names no positive attempt count" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§75 fires exactly once (attempts only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§75 " in ln and "FATAL" in ln),
             1,
         )
         check(

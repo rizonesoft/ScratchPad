@@ -732,11 +732,13 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no failure class (class <class>)",
                     )
-                # The whole token must be the count (panel R1: a
+                # The whole token must be ASCII digits (panel R1: a
                 # `\d+` prefix match accepts `attempts 2x` and
-                # `attempts 1.5` as counts 2 and 1).
+                # `attempts 1.5` as counts 2 and 1; panel R2:
+                # `isdigit` accepts `²`, which `int()` rejects, so
+                # the gate crashed instead of flagging).
                 _am = re.search(r"\battempts\s+(\S+)", _line)
-                if _am is None or not _am.group(1).isdigit() or int(_am.group(1)) < 1:
+                if _am is None or re.fullmatch(r"[0-9]+", _am.group(1)) is None or int(_am.group(1)) < 1:
                     flag(
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
