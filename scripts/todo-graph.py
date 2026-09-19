@@ -942,6 +942,7 @@ SEVERITY_MAP: dict[str, str] = {
     # (D00 T01 §21; review-window leg §21 review R4, named here
     # D00 T01 §25).
     "risk-acceptance-malformed": "fatal",
+    "risk-acceptance-silent-edit": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
@@ -978,21 +979,33 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # `escalation`. New keys since /2: degraded, criticals, and majors
 # carry `accepted_by`, `accepted_expires`, `accepted_review`, and
 # `accepted_rationale`, and grandfathered entries carry `overdue`.
-PLAN_HEALTH_SCHEMA = "plan-health/3"
+# New keys since /3 (D00 T01 §27): degraded, criticals, and majors
+# carry `accepted_owner`, and the report carries a `reviews`
+# dimension (acceptances due or overdue for review: `file`,
+# `target`, `review`, `state`, `owner`, `escalation`).
+PLAN_HEALTH_SCHEMA = "plan-health/4"
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
 FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
-# A risk acceptance terminates one escalation (D00 T01 §21 item 2):
-# target (a finding ID, a run ID, or `outage <rung>`), approver,
-# record date, expiry, review date, and a free-text rationale tail.
-# Semicolon-separated like provenance; the rationale rides last so it
-# may itself contain semicolons.
+# A risk acceptance terminates one escalation (D00 T01 §21 item 2,
+# shape hardened D00 T01 §27): target (a finding ID, a run ID, or
+# `outage <rung> <date>`), approver, action owner, record date,
+# expiry, review date, evidence commit, an optional supersedes link,
+# and a free-text rationale tail. Semicolon-separated like
+# provenance; the rationale rides last so it may itself contain
+# semicolons.
 RISK_ACCEPTED_RE = re.compile(
-    r"^Risk accepted:\s*(.+?);\s*approver\s+([A-Za-z0-9_.-]+);\s*date\s+(\d{4}-\d{2}-\d{2});\s*"
-    r"expires\s+(\d{4}-\d{2}-\d{2});\s*review\s+(\d{4}-\d{2}-\d{2});\s*rationale\s+(.+?)\s*$"
+    r"^Risk accepted:\s*(.+?);\s*approver\s+([A-Za-z0-9_.-]+);\s*owner\s+([A-Za-z0-9_.-]+);\s*"
+    r"date\s+(\d{4}-\d{2}-\d{2});\s*expires\s+(\d{4}-\d{2}-\d{2});\s*review\s+(\d{4}-\d{2}-\d{2});\s*"
+    r"evidence\s+([0-9a-f]{7,40});\s*(?:supersedes\s+(\d{4}-\d{2}-\d{2});\s*)?rationale\s+(.+?)\s*$"
 )
 RISK_TARGET_RE = re.compile(r"(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+$", re.IGNORECASE)
+# An outage target binds its instance (D00 T01 §27 item 1): the rung
+# plus the outage marker's stamp date, date last so multi-word rungs
+# still parse. A true both-rung outage carries no run, so no compound
+# can name one; the rung-plus-date key is the instance.
+RISK_OUTAGE_RE = re.compile(r"^outage\s+(.+?)\s+(\d{4}-\d{2}-\d{2})$", re.IGNORECASE)
 
 
 def risk_target_kind(target: str) -> str | None:
@@ -1000,7 +1013,7 @@ def risk_target_kind(target: str) -> str | None:
 
     Returns `finding` for a ledger row ID (namespaced or bare `PRn`,
     file-scoped at cover time), `run` for a shaped run ID, `outage`
-    for `outage <rung>`, or None when the target names nothing
+    for `outage <rung> <date>`, or None when the target names nothing
     coverable. One classifier serves the validator's shape leg and
     the query's covering lookup.
     """
@@ -1008,17 +1021,35 @@ def risk_target_kind(target: str) -> str | None:
         return "finding"
     if RUN_ID_SHAPE_RE.match(target):
         return "run"
-    if target.lower().startswith("outage ") and len(target.strip()) > 7:
-        return "outage"
+    om = RISK_OUTAGE_RE.match(target.strip())
+    if om is not None:
+        try:
+            datetime.strptime(om.group(2), "%Y-%m-%d")
+        except ValueError:
+            return None
+        if om.group(1).strip():
+            return "outage"
     return None
 
 
-def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str, str]]:
+def outage_key(target: str) -> tuple[str, str] | None:
+    """The (rung, date) instance key of an outage target (D00 T01 §27
+    item 1), or None when the target is not a shaped outage (the
+    classifier already failed it; this never disagrees)."""
+    om = RISK_OUTAGE_RE.match(target.strip())
+    if om is None:
+        return None
+    return (om.group(1).strip().lower(), om.group(2))
+
+
+def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
     """Parse live `Risk accepted:` lines from fence-stripped findings text.
 
-    Returns (target, approver, expires, recorded, review, rationale,
-    kind) per well-formed line, in file order. Malformed or uncoverable lines are skipped, never fatal:
-    they are the validator's to flag (rule 24); the query only consults
+    Returns (target, approver, owner, expires, recorded, review,
+    evidence, supersedes, rationale, kind) per well-formed line, in
+    file order (supersedes is "" when the record stands alone).
+    Malformed or uncoverable lines are skipped, never fatal: they are
+    the validator's to flag (rule 24); the query only consults
     acceptances for live escalations, so a bad line fails loud as a
     persisting escalation, never as a query crash.
     """
@@ -1032,11 +1063,24 @@ def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, 
         kind = risk_target_kind(am.group(1))
         if kind is None:
             continue
-        out.append((am.group(1), am.group(2), am.group(4), am.group(3), am.group(5), am.group(6), kind))
+        out.append(
+            (
+                am.group(1),
+                am.group(2),
+                am.group(3),
+                am.group(5),
+                am.group(4),
+                am.group(6),
+                am.group(7),
+                am.group(8) or "",
+                am.group(9),
+                kind,
+            )
+        )
     return out
 
 
-def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str, str]]:
+def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
     """Parse `Risk accepted:` lines from raw findings text (fences strip first)."""
     stripped, _u = strip_fenced_code(ftext)
     return acceptance_lines(stripped)
@@ -1085,6 +1129,41 @@ def acceptance_live(recorded: str, expires: str, today: str) -> bool:
     return recorded <= today <= expires
 
 
+def run_day(run_id: str) -> str:
+    """The calendar day of a run ID's date prefix (D00 T01 §27 item
+    2), or "" when the prefix is not a real date (shaped IDs always
+    are; the guard keeps the query total)."""
+    try:
+        return datetime.strptime(run_id[:8], "%Y%m%d").date().isoformat()
+    except ValueError:
+        return ""
+
+
+def superseded_acceptances(
+    accs: list[tuple[str, str, str, str, str, str, str, str, str, str]],
+) -> set[tuple[str, str]]:
+    """Acceptance records a later line supersedes (D00 T01 §27 item
+    4): (target, record date) pairs named by a `supersedes <date>`
+    link on the same target. The chain head governs covering and the
+    review leg; superseded records are history, never current."""
+    return {(tgt.lower(), sup) for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k in accs if sup}
+
+
+def evidence_fresh(sha: str, repo_path: str, current_text: str) -> bool:
+    """Whether the owning record still reads as the acceptance's
+    evidence commit saw it (D00 T01 §27 item 3): the file bytes at
+    the recorded commit equal today's bytes. Any change voids
+    (fail-closed materiality: renewal rides a superseding record),
+    and an unresolvable commit voids too (unprovable fails closed,
+    the clearance precedent). The self-test patches `git_file_at`,
+    never a repo.
+    """
+    was = git_file_at(sha, repo_path)
+    if was is None:
+        return False
+    return was == current_text
+
+
 def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
     """Whether a plan-health dimension fails the gate (D00 T01 §21 items 2, 4).
 
@@ -1108,6 +1187,10 @@ def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
         )
     if name in ("criticals", "majors"):
         return any(not e.get("accepted_by") for e in entries)
+    if name == "reviews":
+        # Review-due is a warning, never a failure; review-overdue is
+        # an owed action (D00 T01 §27 item 6).
+        return any(e.get("state") == "review-overdue" for e in entries)
     return bool(entries)
 
 
@@ -2198,6 +2281,15 @@ def cmd_query(args) -> int:
                 if _vm:
                     validated_files.add(_vm.group(1))
         acc_cache: dict[str, list] = {}
+        todo_bytes: dict[str, str] = {}
+
+        def todo_text(path: str) -> str:
+            if path not in todo_bytes:
+                try:
+                    todo_bytes[path] = (TODO_DIR.parent / path).read_text(encoding="utf-8")
+                except OSError:
+                    todo_bytes[path] = ""
+            return todo_bytes[path]
 
         def file_acceptances(path: str) -> list:
             if path not in acc_cache:
@@ -2268,35 +2360,66 @@ def cmd_query(args) -> int:
                         due = dm.group(1) if dm else ""
                         overdue = bool(due and due < today)
                         # A live risk acceptance terminates the escalation
-                        # (D00 T01 §21 item 2): run targets match the
-                        # marker's run through the -r1 synonym, outage
-                        # targets match the marker's rung, and finding
+                        # (D00 T01 §21 item 2, hardened §27): run targets
+                        # match the marker's run through the -r1 synonym,
+                        # outage targets match the marker's rung plus
+                        # stamp date (item 1: instance key), and finding
                         # targets never cover markers. Bare partials carry
                         # no escalation, so nothing consults for them.
-                        ab, ae, ar, at = "", "", "", ""
+                        ab, ae, ar, at, ao = "", "", "", "", ""
+                        esc_owner = ""
                         if "outage" in state or "retry-owed" in state:
                             fm = FINDINGS_RE.search(s.review_body or "")
                             rm = RUN_ID_RE.search(body)
                             mrun = normalize_run_id(rm.group(1)) if rm else None
                             omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
                             orung = omt.group(1).strip() if omt else None
+                            stamp_day = s.stamped_on or ""
                             if fm:
-                                for tgt, appr, exp, rec, rvw, rat, kind in file_acceptances(
-                                    fm.group(1)
-                                ):
-                                    if not acceptance_live(rec, exp, today):
+                                accs = file_acceptances(fm.group(1))
+                                supd = superseded_acceptances(accs)
+                                for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind in accs:
+                                    if (tgt.lower(), rec) in supd:
                                         continue
-                                    if (
+                                    okey = outage_key(tgt) if kind == "outage" else None
+                                    match = (
                                         kind == "run"
                                         and mrun is not None
                                         and normalize_run_id(tgt) == mrun
                                     ) or (
                                         kind == "outage"
+                                        and okey is not None
                                         and orung is not None
-                                        and tgt[7:].strip().lower() == orung
-                                    ):
-                                        ab, ae, ar, at = appr, exp, rvw, rat
-                                        break
+                                        and okey == (orung, stamp_day)
+                                    )
+                                    if not match:
+                                        continue
+                                    # Item 2: the target predates the
+                                    # record (run date prefix, outage
+                                    # stamp day); a prewritten waiver
+                                    # covers nothing.
+                                    tday = run_day(tgt) if kind == "run" else stamp_day
+                                    if not tday or tday > rec:
+                                        continue
+                                    if not acceptance_live(rec, exp, today):
+                                        # Item 5: an expired match names
+                                        # the escalation owner instead of
+                                        # covering.
+                                        if not esc_owner:
+                                            esc_owner = own
+                                        continue
+                                    # Item 3: stale evidence voids (the
+                                    # TODO file owns run and outage
+                                    # records). A reopen needs no check
+                                    # here: it discards the section from
+                                    # verified_sections (§17 item 12), so
+                                    # no acceptance is ever consulted for
+                                    # it and every cover voids by
+                                    # construction.
+                                    if not evidence_fresh(evi, t.path, todo_text(t.path)):
+                                        continue
+                                    ab, ae, ar, at, ao = appr, exp, rvw, rat, own
+                                    break
                             if ab:
                                 overdue = False
                         degraded.append(
@@ -2307,11 +2430,16 @@ def cmd_query(args) -> int:
                                 "due": due,
                                 "overdue": overdue,
                                 "escalation": (
-                                    "operator: rerun the review or record risk acceptance"
+                                    (
+                                        f"{esc_owner}: renew the acceptance or rerun the review"
+                                        if esc_owner
+                                        else "operator: rerun the review or record risk acceptance"
+                                    )
                                     if overdue
                                     else ""
                                 ),
                                 "accepted_by": ab,
+                                "accepted_owner": ao,
                                 "accepted_expires": ae,
                                 "accepted_review": ar,
                                 "accepted_rationale": at,
@@ -2378,6 +2506,11 @@ def cmd_query(args) -> int:
                     text = (TODO_DIR.parent / m.group(1)).read_text(encoding="utf-8")
                 except OSError:
                     continue
+                # Raw bytes stay for the evidence leg (D00 T01 §27 item
+                # 3): the owning record compares byte-for-byte against
+                # the evidence commit, never stripped (a fence edit is
+                # a material change too).
+                raw_text = text
                 # Same stripper as rule 16: a fenced worked example must
                 # neither count as fallback usage nor as a live critical.
                 # An unbalanced fence truncates the scan at the opener, so
@@ -2476,18 +2609,38 @@ def cmd_query(args) -> int:
                         # stay distinct IDs per that same rule, and a
                         # padded target dangles loud as a persisting
                         # escalation.
-                        ab, ae, ar, at = "", "", "", ""
-                        for tgt, appr, exp, rec, rvw, rat, kind in file_acceptances(
-                            m.group(1)
-                        ):
-                            if not acceptance_live(rec, exp, today):
+                        ab, ae, ar, at, ao = "", "", "", "", ""
+                        esc_owner = ""
+                        _accs = file_acceptances(m.group(1))
+                        _supd = superseded_acceptances(_accs)
+                        for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind in _accs:
+                            if (tgt.lower(), rec) in _supd:
                                 continue
-                            if (
-                                kind == "finding"
-                                and tgt.lower() == lr.group(1).lower()
-                            ):
-                                ab, ae, ar, at = appr, exp, rvw, rat
-                                break
+                            if not (kind == "finding" and tgt.lower() == lr.group(1).lower()):
+                                continue
+                            # Item 2: the row exists (this loop holds
+                            # it) and the review predates the record
+                            # (marker run day, stamp day when
+                            # run-less); a prewritten waiver covers
+                            # nothing.
+                            _rm = RUN_ID_RE.search(s.plan_review_body or "")
+                            _tday = run_day(_rm.group(1)) if _rm else (s.stamped_on or "")
+                            if not _tday or _tday > rec:
+                                continue
+                            if not acceptance_live(rec, exp, today):
+                                # Item 5: an expired match names the
+                                # escalation owner instead of covering.
+                                if not esc_owner:
+                                    esc_owner = own
+                                continue
+                            # Item 3: stale evidence voids (the findings
+                            # file owns finding records). Reopen voids by
+                            # construction (§17 item 12 discard), never
+                            # reaching this loop; no check here.
+                            if not evidence_fresh(evi, m.group(1), raw_text):
+                                continue
+                            ab, ae, ar, at, ao = appr, exp, rvw, rat, own
+                            break
                         if sev == "major" and disp in ("accepted", "deferred"):
                             # Open majors age visibly (D00 T01 §17 item 11,
                             # §19 review R3: deferred majors count too, or
@@ -2515,11 +2668,16 @@ def cmd_query(args) -> int:
                                     due,
                                     row_overdue,
                                     (
-                                        "operator: remediate the finding or record risk acceptance"
+                                        (
+                                            f"{esc_owner}: renew the acceptance or remediate the finding"
+                                            if esc_owner
+                                            else "operator: remediate the finding or record risk acceptance"
+                                        )
                                         if row_overdue
                                         else ""
                                     ),
                                     ab,
+                                    ao,
                                     ae,
                                     ar,
                                     at,
@@ -2540,11 +2698,16 @@ def cmd_query(args) -> int:
                                     due,
                                     crow_overdue,
                                     (
-                                        "operator: remediate the finding or record risk acceptance"
+                                        (
+                                            f"{esc_owner}: renew the acceptance or remediate the finding"
+                                            if esc_owner
+                                            else "operator: remediate the finding or record risk acceptance"
+                                        )
                                         if crow_overdue
                                         else ""
                                     ),
                                     ab,
+                                    ao,
                                     ae,
                                     ar,
                                     at,
@@ -2712,11 +2875,16 @@ def cmd_query(args) -> int:
                                         due,
                                         crow_overdue,
                                         (
-                                            "operator: remediate the finding or record risk acceptance"
+                                            (
+                                                f"{esc_owner}: renew the acceptance or remediate the finding"
+                                                if esc_owner
+                                                else "operator: remediate the finding or record risk acceptance"
+                                            )
                                             if crow_overdue
                                             else ""
                                         ),
                                         ab,
+                                        ao,
                                         ae,
                                         ar,
                                         at,
@@ -2731,6 +2899,49 @@ def cmd_query(args) -> int:
             own = owners.get(path, [])
             if own and all(not _owed(ot.sections[onum]) for ot, onum in own if onum in ot.sections):
                 legacy.append(path)
+        # Acceptance review states (D00 T01 §27 item 6): live,
+        # un-superseded acceptances whose review date is near (due:
+        # within 7 days before) or past (overdue). History never
+        # lists (a superseded record's review rode its successor),
+        # and lapsed records never list either (expiry escalates on
+        # the covered dimension, item 5). Overdue clears only through
+        # a superseding record whose rationale is the review outcome.
+        reviews = []
+        due_line = (datetime.now(timezone.utc).date() + timedelta(days=7)).isoformat()
+        for path in sorted(seen):
+            _paccs = file_acceptances(path)
+            _psupd = superseded_acceptances(_paccs)
+            for tgt, _appr, own, exp, rec, rvw, _evi, _sup, _rat, _kind in _paccs:
+                if (tgt.lower(), rec) in _psupd:
+                    continue
+                if not acceptance_live(rec, exp, today):
+                    continue
+                if rvw < rec or rvw > exp:
+                    # A review date outside its own record-expiry
+                    # window is validator-malformed (rule 24) and
+                    # names no coherent obligation; the FATAL is the
+                    # signal, not this list.
+                    continue
+                if rvw < today:
+                    _rstate = "review-overdue"
+                elif rvw <= due_line:
+                    _rstate = "review-due"
+                else:
+                    continue
+                reviews.append(
+                    (
+                        path,
+                        tgt,
+                        rvw,
+                        _rstate,
+                        own,
+                        (
+                            f"{own}: record the review outcome in a superseding acceptance"
+                            if _rstate == "review-overdue"
+                            else ""
+                        ),
+                    )
+                )
         # Total sort keys (D00 T01 §19 item 13): the tuple of every
         # scalar field, so no two entries tie and text and JSON share
         # one order each.
@@ -2744,13 +2955,18 @@ def cmd_query(args) -> int:
                 d["overdue"],
                 d["escalation"],
                 d["accepted_by"],
+                d["accepted_owner"],
                 d["accepted_expires"],
                 d["accepted_review"],
                 d["accepted_rationale"],
             ),
         )
-        majors_sorted = sorted(majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10]))
-        criticals_sorted = sorted(criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9]))
+        majors_sorted = sorted(
+            majors, key=lambda m: (m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11])
+        )
+        criticals_sorted = sorted(
+            criticals, key=lambda c: (c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8], c[9], c[10])
+        )
         stale_sorted = sorted(stale, key=lambda e: (e[0], e[1]))
         uncovered_sorted = sorted(uncovered)
         unmarked_sorted = sorted(unmarked)
@@ -2759,6 +2975,7 @@ def cmd_query(args) -> int:
         outages_sorted = sorted(outages)
         legacy_sorted = sorted(legacy)
         unreadable_sorted = sorted(unreadable)
+        reviews_sorted = sorted(reviews)
         report = {
             "schema": PLAN_HEALTH_SCHEMA,
             "reviewed": {
@@ -2784,11 +3001,12 @@ def cmd_query(args) -> int:
                     "overdue": od,
                     "escalation": esc,
                     "accepted_by": ab,
+                    "accepted_owner": ao,
                     "accepted_expires": ae,
                     "accepted_review": ar,
                     "accepted_rationale": at,
                 }
-                for f, pr, own, due, od, esc, ab, ae, ar, at in criticals_sorted
+                for f, pr, own, due, od, esc, ab, ao, ae, ar, at in criticals_sorted
             ],
             "majors": [
                 {
@@ -2800,11 +3018,12 @@ def cmd_query(args) -> int:
                     "due": due,
                     "escalation": esc,
                     "accepted_by": ab,
+                    "accepted_owner": ao,
                     "accepted_expires": ae,
                     "accepted_review": ar,
                     "accepted_rationale": at,
                 }
-                for f, pr, day, own, due, od, esc, ab, ae, ar, at in majors_sorted
+                for f, pr, day, own, due, od, esc, ab, ao, ae, ar, at in majors_sorted
             ],
             "grandfathered": [
                 {"ref": label, "stamped": day, "overdue": od}
@@ -2812,6 +3031,10 @@ def cmd_query(args) -> int:
             ],
             "legacy": legacy_sorted,
             "unreadable": [{"file": f, "opener": opener} for f, opener in unreadable_sorted],
+            "reviews": [
+                {"file": f, "target": tgt, "review": rvw, "state": st, "owner": own, "escalation": esc}
+                for f, tgt, rvw, st, own, esc in reviews_sorted
+            ],
         }
         # Gate mode (D00 T01 §19 item 14): `--fail-on` names dimensions
         # whose non-emptiness fails the run; `--check` is the recommended
@@ -2823,7 +3046,7 @@ def cmd_query(args) -> int:
         gate_dims = []
         check_mode = getattr(args, "check", False) or what == "summary"
         if check_mode:
-            gate_dims += ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable"]
+            gate_dims += ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable", "reviews"]
             # Deadline gate (D00 T01 §21 item 3): past the migration
             # deadline, leftover grandfathered batches join `--check`.
             # Explicit `--fail-on grandfathered` gates progress on any
@@ -2849,6 +3072,7 @@ def cmd_query(args) -> int:
             "grandfathered": report["grandfathered"],
             "legacy": report["legacy"],
             "unreadable": report["unreadable"],
+            "reviews": report["reviews"],
         }
         unknown = [d for d in gate_dims if d not in dim_lists]
         if unknown:
@@ -2884,10 +3108,10 @@ def cmd_query(args) -> int:
             for d in degraded_sorted:
                 if d["overdue"]:
                     od_by_owner.setdefault(d["owner"] or "?", []).append(d["due"])
-            for _f, _pr, own, due, od, _esc, _ab, _ae, _ar, _at in criticals_sorted:
+            for _f, _pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at in criticals_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
-            for _f, _pr, _day, own, due, od, _esc, _ab, _ae, _ar, _at in majors_sorted:
+            for _f, _pr, _day, own, due, od, _esc, _ab, _ao, _ae, _ar, _at in majors_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
             print(f"incomplete runs     {len(incomplete)}")
@@ -2897,7 +3121,7 @@ def cmd_query(args) -> int:
                     + ("  OVERDUE" if d["overdue"] else "")
                 )
             print(f"blocked clearances  {len(blocked)}")
-            for f, pr, own, due, od, _esc, _ab, _ae, _ar, _at in blocked:
+            for f, pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at in blocked:
                 print(
                     f"    {pr}  in {f}  owner {own or '?'}  due {due or '?'}"
                     + ("  OVERDUE" if od else "")
@@ -2927,6 +3151,8 @@ def cmd_query(args) -> int:
                     nxt = f"{first['ref']} {first['state']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
                 elif dim in ("criticals", "majors"):
                     nxt = f"{first['id']} in {first['file']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
+                elif dim == "reviews":
+                    nxt = f"{first['target']} in {first['file']} ({first['state']}, owner {first['owner'] or '?'})"
                 elif dim == "uncovered":
                     nxt = f"{first['dependent']} waits on {first['waits_on']}"
                 elif dim == "unreadable":
@@ -2950,10 +3176,11 @@ def cmd_query(args) -> int:
         for d in degraded_sorted:
             tags = f"owner {d['owner'] or '?'}  due {d['due'] or '?'}"
             if d["overdue"]:
-                tags += "  OVERDUE  escalate operator"
+                tags += f"  OVERDUE  escalate {d['escalation'].split(':', 1)[0] if d['escalation'] else 'operator'}"
             if d["accepted_by"]:
                 tags += (
-                    f"  accepted by {d['accepted_by']} expires {d['accepted_expires']}"
+                    f"  accepted by {d['accepted_by']} owner {d['accepted_owner']}"
+                    f" expires {d['accepted_expires']}"
                     f" review {d['accepted_review']} rationale {d['accepted_rationale']}"
                 )
             # UNACCOUNTABLE pairs with the owed predicate at collection:
@@ -2980,12 +3207,12 @@ def cmd_query(args) -> int:
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
-        for f, pr, own, due, od, _esc, ab, ae, ar, at in criticals_sorted:
+        for f, pr, own, due, od, esc, ab, ao, ae, ar, at in criticals_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
-                acct += "  OVERDUE  escalate operator"
+                acct += f"  OVERDUE  escalate {esc.split(':', 1)[0] if esc else 'operator'}"
             if ab:
-                acct += f"  accepted by {ab} expires {ae} review {ar} rationale {at}"
+                acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  {acct}")
@@ -2993,12 +3220,12 @@ def cmd_query(args) -> int:
             f"open majors         {len(majors_sorted)} "
             f"({sum(1 for m in majors_sorted if m[5])} overdue)"
         )
-        for f, pr, day, own, due, od, _esc, ab, ae, ar, at in majors_sorted:
+        for f, pr, day, own, due, od, esc, ab, ao, ae, ar, at in majors_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
-                acct += "  OVERDUE  escalate operator"
+                acct += f"  OVERDUE  escalate {esc.split(':', 1)[0] if esc else 'operator'}"
             if ab:
-                acct += f"  accepted by {ab} expires {ae} review {ar} rationale {at}"
+                acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  since {day}  {acct}")
@@ -3019,6 +3246,9 @@ def cmd_query(args) -> int:
         print(f"unreadable findings {len(unreadable_sorted)} (unbalanced fence; scans truncated)")
         for f, opener in unreadable_sorted:
             print(f"    {f}  fence opened at line {opener}")
+        print(f"acceptance reviews  {len(reviews_sorted)} acceptances due or overdue for review")
+        for f, tgt, rvw, st, own, _esc in reviews_sorted:
+            print(f"    {tgt}  in {f}  review {rvw}  {st}  owner {own or '?'}")
         if gate_dims:
             print(f"gate: {'FAIL (' + ', '.join(failing) + ')' if failing else 'ok'}")
             return 1 if failing else 0
@@ -6696,6 +6926,7 @@ track: Z1
         d2 = (date.today() + timedelta(days=3)).isoformat()
         d5 = (date.today() + timedelta(days=4)).isoformat()
         d1 = (date.today() + timedelta(days=1)).isoformat()
+        d60 = (date.today() + timedelta(days=60)).isoformat()
         marker_todo.write_text(
             """---
 schema_version: 1
@@ -7258,7 +7489,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §42 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept.md
-> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 (run 20260920-D90-T07-S42-gpt)
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T07-S42-gpt)
 
 ## 43. Expired acceptance lapses
 
@@ -7291,7 +7522,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §45 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept4.md
-> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S45-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260919-D90-T07-S45-gpt)
 
 ## 46. Outage acceptance covers
 
@@ -7300,7 +7531,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 **Test checkpoint:** `true`
 
-> **Verified:** 2026-09-20 | §46 | fixture
+> **Verified:** 2026-09-19 | §46 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept5.md
 > **Plan review:** outage: both rungs (owner ann, due 2020-01-01)
 
@@ -7732,7 +7963,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "Ledger:\n"
             "- [PR30] [major] Lingering old worry -> accepted\n"
             "End of ledger\n"
-            "Risk accepted: PR30; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale old waiver, never validated\n",
+            "Risk accepted: PR30; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; evidence fff3030; rationale old waiver, never validated\n",
             encoding="utf-8",
         )
         # §19 lineage and history probes: a partial-outage record, a rerun
@@ -7886,11 +8117,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         # fire on each.
         (rev_dir / "90-health-accept.md").write_text(
             opus_panel
-            + "Manifest: sections [D90 T07 §42]; dependents [none]; bytes 100; run 20260920-D90-T07-S42-gpt\n\n"
+            + "Manifest: sections [D90 T07 §42]; dependents [none]; bytes 100; run 20260919-D90-T07-S42-gpt\n\n"
             "Ledger:\n"
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
             "End of ledger\n"
-            + "Risk accepted: 20260920-D90-T07-S42-gpt; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale rerun pointless, survivor findings stand\n",
+            + "Risk accepted: 20260919-D90-T07-S42-gpt; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence aaa4242; rationale rerun pointless, survivor findings stand\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept2.md").write_text(
@@ -7899,7 +8130,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "Ledger:\n"
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
             "End of ledger\n"
-            + "Risk accepted: 20260920-D90-T07-S43-gpt; approver bob; date 2020-01-05; expires 2020-06-01; review 2020-02-01; rationale lapsed waiver\n",
+            + "Risk accepted: 20260920-D90-T07-S43-gpt; approver bob; owner bob; date 2020-01-05; expires 2020-06-01; review 2020-02-01; evidence bbb4343; rationale lapsed waiver\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept3.md").write_text(
@@ -7909,22 +8140,22 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
 "- [D90-T07-S4-PR53] [major] Post-dated waiver target -> accepted owner ann due 2099-01-01\n"
             "End of ledger\n"
-            + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; date 2026-09-01; review 2026-10-01; rationale missing expires\n"
-            + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; rationale inverted dates\n"
-            + "Risk accepted: D90-T07-S4-PR1; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; rationale review before record\n"
-            + "Risk accepted: D90-T07-S4-PR53; approver bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; rationale typo'd year\n",
+            + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; owner bob; date 2026-09-01; review 2026-10-01; evidence ccc4444; rationale missing expires\n"
+            + "Risk accepted: D90-T07-S4-PR1; approver bob; owner bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; evidence ccc4445; rationale inverted dates\n"
+            + "Risk accepted: D90-T07-S4-PR1; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446; rationale review before record\n"
+            + "Risk accepted: D90-T07-S4-PR53; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447; rationale typo'd year\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept4.md").write_text(
             opus_panel
-            + "Manifest: sections [D90 T07 §45]; dependents [none]; bytes 100; run 20260920-D90-T07-S45-gpt\n\n"
+            + "Manifest: sections [D90 T07 §45]; dependents [none]; bytes 100; run 20260919-D90-T07-S45-gpt\n\n"
             "Ledger:\n"
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
 "- [D90-T07-S4-PR50] [major] Accepted overdue major -> accepted owner ann due 2020-01-01\n"
 "- [D90-T07-S4-PR51] [critical] Accepted overdue critical -> accepted owner ann due 2020-01-01\n"
             "End of ledger\n"
-            + "Risk accepted: d90-t07-s4-pr50; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale major stands, ship anyway\n"
-            + "Risk accepted: D90-T07-S4-PR51; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale critical stands, ship anyway\n",
+            + "Risk accepted: d90-t07-s4-pr50; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence ddd4545; rationale major stands, ship anyway\n"
+            + "Risk accepted: D90-T07-S4-PR51; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence ddd4545; rationale critical stands, ship anyway\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept5.md").write_text(
@@ -7933,7 +8164,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "Ledger:\n"
 "- [D90-T07-S4-PR52] [minor] Accepted outage note -> accepted\n"
             "End of ledger\n"
-            + "Risk accepted: outage both rungs; approver bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; rationale outage stands, no rerun planned\n",
+            + "Risk accepted: outage both rungs 2026-09-19; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence eee4646; rationale outage stands, no rerun planned\n",
             encoding="utf-8",
         )
         # §23 probe: one amendment chain per supersession shape. PR2
@@ -8100,6 +8331,17 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             ("bbb2222", marker_todo.as_posix()): "nothing fixed here\n",
             ("ccc3333", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
             ("HEAD", "docs/reviews/90-health-history.md"): history_was,
+            # §27 item 3: covering acceptances cite evidence commits
+            # whose bytes equal the live record (fresh); the TODO file
+            # owns run and outage records, the findings file owns
+            # finding records. TODO keys ride t.path (absolute here:
+            # the temp tree sits outside REPO, the parse_todo
+            # fallback); findings keys ride the review-relative path.
+            ("aaa4242", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
+            ("ddd4545", "docs/reviews/90-health-accept4.md"): (rev_dir / "90-health-accept4.md").read_text(
+                encoding="utf-8"
+            ),
+            ("eee4646", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
         }
         canned_touches = {
             ("aaa1111", marker_todo.as_posix()): True,
@@ -8672,7 +8914,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 == risk_target_kind("PR1")
                 == "finding"
                 and risk_target_kind("20260920-D90-T07-S4-gpt-r2") == "run"
-                and risk_target_kind("outage both rungs") == "outage"
+                and risk_target_kind("outage both rungs 2026-09-19") == "outage"
+                and risk_target_kind("outage both rungs") is None
+                and risk_target_kind("outage both rungs 2026-13-99") is None
+                and outage_key("outage both rungs 2026-09-19") == ("both rungs", "2026-09-19")
+                and outage_key("outage both rungs") is None
                 and risk_target_kind("tomorrow") is None
             ),
             True,
@@ -9590,7 +9836,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "covered marker shows its acceptance",
             (
-                any("TODO-07-marker.md §42" in ln and "accepted by bob expires 2099-01-01" in ln for ln in health_lines)
+                any("TODO-07-marker.md §42" in ln and "accepted by bob owner bob expires 2099-01-01" in ln for ln in health_lines)
                 and not any(
                     "TODO-07-marker.md §42" in ln and "OVERDUE" in ln for ln in health_lines
                 )
@@ -9601,7 +9847,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "covered rows surface review date and rationale",
             any(
                 "D90-T07-S4-PR51" in ln
-                and "review 2026-10-01 rationale critical stands, ship anyway" in ln
+                and f"review {d60} rationale critical stands, ship anyway" in ln
                 for ln in health_lines
             ),
             True,
@@ -9639,7 +9885,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "covered outage shows its acceptance",
             (
-                any("TODO-07-marker.md §46" in ln and "accepted by bob expires 2099-01-01" in ln for ln in health_lines)
+                any("TODO-07-marker.md §46" in ln and "accepted by bob owner bob expires 2099-01-01" in ln for ln in health_lines)
                 and not any(
                     "TODO-07-marker.md §46" in ln and "OVERDUE" in ln for ln in health_lines
                 )
@@ -9705,7 +9951,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "plan-health --json carries the schema version",
             jdata.get("schema"),
-            "plan-health/3",
+            "plan-health/4",
         )
         check(
             "plan-health --json parses with all dimensions",
@@ -9723,6 +9969,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 "grandfathered",
                 "legacy",
                 "unreadable",
+                "reviews",
             },
             True,
         )
@@ -9783,8 +10030,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 [e for e in jdata["criticals"] if e["id"] == "D90-T07-S4-PR51"][0]["accepted_by"],
                 [e for e in jdata["criticals"] if e["id"] == "D90-T07-S4-PR51"][0]["accepted_review"],
                 [e for e in jdata["majors"] if e["id"] == "D90-T07-S4-PR50"][0]["accepted_rationale"],
+                [e for e in jdata["degraded"] if e["ref"].endswith("§42")][0]["accepted_owner"],
             ),
-            ("bob", "2099-01-01", "bob", "2026-10-01", "major stands, ship anyway"),
+            ("bob", "2099-01-01", "bob", d60, "major stands, ship anyway", "bob"),
         )
         check(
             "plan-health --json stale entries carry the run",
@@ -9805,6 +10053,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 and "overdue" in e
                 and "escalation" in e
                 and "accepted_by" in e
+                and "accepted_owner" in e
                 and "accepted_expires" in e
                 and "accepted_review" in e
                 and "accepted_rationale" in e
@@ -9823,6 +10072,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                     and isinstance(e["overdue"], bool)
                     and isinstance(e["escalation"], str)
                     and isinstance(e["accepted_by"], str)
+                    and isinstance(e["accepted_owner"], str)
                     and isinstance(e["accepted_expires"], str)
                     and isinstance(e["accepted_review"], str)
                     and isinstance(e["accepted_rationale"], str)
@@ -9833,6 +10083,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                     and isinstance(e["overdue"], bool)
                     and isinstance(e["escalation"], str)
                     and isinstance(e["accepted_by"], str)
+                    and isinstance(e["accepted_owner"], str)
                     and isinstance(e["accepted_expires"], str)
                     and isinstance(e["accepted_review"], str)
                     and isinstance(e["accepted_rationale"], str)
@@ -9846,6 +10097,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                     and isinstance(e["overdue"], bool)
                     and isinstance(e["escalation"], str)
                     and isinstance(e["accepted_by"], str)
+                    and isinstance(e["accepted_owner"], str)
                     and isinstance(e["accepted_expires"], str)
                     and isinstance(e["accepted_review"], str)
                     and isinstance(e["accepted_rationale"], str)
@@ -9858,6 +10110,15 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                     for e in jdata["stale"]
                 )
                 and all(isinstance(e["opener"], int) for e in jdata["unreadable"])
+                and all(
+                    isinstance(e["file"], str)
+                    and isinstance(e["target"], str)
+                    and isinstance(e["review"], str)
+                    and isinstance(e["state"], str)
+                    and isinstance(e["owner"], str)
+                    and isinstance(e["escalation"], str)
+                    for e in jdata["reviews"]
+                )
                 and isinstance(jdata["reviewed"]["marked"], int)
             ),
             True,
@@ -9876,6 +10137,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                         d["overdue"],
                         d["escalation"],
                         d["accepted_by"],
+                        d["accepted_owner"],
                         d["accepted_expires"],
                         d["accepted_review"],
                         d["accepted_rationale"],
@@ -9893,6 +10155,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                         d["overdue"],
                         d["escalation"],
                         d["accepted_by"],
+                        d["accepted_owner"],
                         d["accepted_expires"],
                         d["accepted_review"],
                         d["accepted_rationale"],
@@ -9909,6 +10172,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                         d["overdue"],
                         d["escalation"],
                         d["accepted_by"],
+                        d["accepted_owner"],
                         d["accepted_expires"],
                         d["accepted_review"],
                         d["accepted_rationale"],
@@ -10139,6 +10403,286 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "query summary names string-dimension entries without crashing",
             (gate_summary_legacy, "90-clean.md (legacy)" in slegacy.getvalue()),
             (1, True),
+        )
+        # Acceptance hardening probes (D00 T01 §27, clean-tree forms:
+        # no new marker sections past the file's cap). One TODO, six
+        # sections, one findings file each; every date fixed-past for
+        # time-robustness except the item-6 review states, which ride
+        # dynamic offsets like the d1..d5 precedent.
+        _r30 = (date.today() - timedelta(days=30)).isoformat()
+        _r60 = (date.today() - timedelta(days=60)).isoformat()
+        _rvw_over = (date.today() - timedelta(days=1)).isoformat()
+        _rvw_due = (date.today() + timedelta(days=3)).isoformat()
+        _rvw_far = (date.today() + timedelta(days=300)).isoformat()
+        _exp_far = (date.today() + timedelta(days=365)).isoformat()
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: acceptance hardening probes.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Wrong instance | -- |  [x]   |\n"
+            "|   2   |   §2    | Prewritten waiver | -- |  [x]   |\n"
+            "|   3   |   §3    | Stale evidence | -- |  [x]   |\n"
+            "|   4   |   §4    | Reopened | -- |  [ ]   |\n"
+            "|   5   |   §5    | Expired owner | -- |  [x]   |\n"
+            "|   6   |   §6    | Review states | -- |  [x]   |\n\n---\n\n"
+            "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
+            "> **Plan review:** outage: gpt rung (owner ann, due 2020-01-01)\n\n"
+            "## 2. Prewritten waiver\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §2 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc2.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S2-gpt)\n\n"
+            "## 3. Stale evidence\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §3 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc3.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S3-gpt)\n\n"
+            "## 4. Reopened\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §4 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc4.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S4-gpt)\n"
+            "> **Reopened:** 2026-09-19 | D90-T01-S4-PR1 | fixture reopen\n\n"
+            "## 5. Expired owner\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §5 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc5.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260918-D90-T01-S5-gpt)\n\n"
+            "## 6. Review states\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §6 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc6.md\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S6-gpt)\n",
+            encoding="utf-8",
+        )
+        _acc_head = (
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n## Plan review\n\n"
+        )
+        (clean / "docs" / "reviews" / "90-acc1.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            "Risk accepted: outage gpt rung 2026-09-18; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale wrong instance, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc2.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §2]; dependents [none]; bytes 100; run 20260919-D90-T01-S2-gpt\n\n"
+            "Ledger:\n- [D90-T01-S2-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            "Risk accepted: 20260919-D90-T01-S2-gpt; approver bob; owner bob; date 2026-09-18; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale prewritten waiver, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc3.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §3]; dependents [none]; bytes 100; run 20260919-D90-T01-S3-gpt\n\n"
+            "Ledger:\n- [D90-T01-S3-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            "Risk accepted: 20260919-D90-T01-S3-gpt; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence deadbee; rationale stale evidence, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc4.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §4]; dependents [none]; bytes 100; run 20260919-D90-T01-S4-gpt\n\n"
+            "Ledger:\n- [D90-T01-S4-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            "Risk accepted: 20260919-D90-T01-S4-gpt; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence cafe444; rationale reopened section, never consulted\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc5.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §5]; dependents [none]; bytes 100; run 20260918-D90-T01-S5-gpt\n\n"
+            "Ledger:\n- [D90-T01-S5-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            "Risk accepted: 20260918-D90-T01-S5-gpt; approver bob; owner bob; date 2026-09-18; expires 2026-09-18; review 2026-09-18; evidence aaa1111; rationale lapsed match, owner escalates\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc6.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §6]; dependents [none]; bytes 100; run 20260919-D90-T01-S6-gpt\n\n"
+            "Ledger:\n- [D90-T01-S6-PR1] [minor] watched row -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_over}; evidence aaa1111; rationale overdue review\n"
+            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_due}; evidence aaa1111; rationale due review\n"
+            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r60}; expires {_exp_far}; review {_rvw_over}; evidence aaa1111; rationale superseded review\n"
+            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; supersedes {_r60}; rationale successor review\n",
+            encoding="utf-8",
+        )
+        _clean_todo = (clean / "todo" / "90-clean" / "TODO-01-clean.md").as_posix()
+        canned_git[("deadbee", _clean_todo)] = "stale bytes, never the live record\n"
+        canned_git[("cafe444", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+            encoding="utf-8"
+        )
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            _acc_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_acc_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=False, check=False, fail_on=None))
+            _acc_json_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_acc_json_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=True, check=False, fail_on=None))
+        finally:
+            TODO_DIR = saved_tree
+        _acc_lines = _acc_buf.getvalue().splitlines()
+        _acc_json = json.loads(_acc_json_buf.getvalue())
+        _deg1 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§1")]
+        _deg2 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§2")]
+        _deg3 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§3")]
+        _deg5 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§5")]
+        check(
+            "outage acceptance with the wrong instance date never covers",
+            (
+                len(_deg1) == 1
+                and _deg1[0]["accepted_by"] == ""
+                and _deg1[0]["overdue"]
+                and _deg1[0]["escalation"].startswith("operator:")
+            ),
+            True,
+        )
+        check(
+            "prewritten run acceptance never covers",
+            (len(_deg2) == 1 and _deg2[0]["accepted_by"] == "" and _deg2[0]["overdue"]),
+            True,
+        )
+        check(
+            "stale evidence voids the cover",
+            (len(_deg3) == 1 and _deg3[0]["accepted_by"] == "" and _deg3[0]["overdue"]),
+            True,
+        )
+        check(
+            "reopened section consults no acceptance",
+            (not any(e["ref"].endswith("§4") for e in _acc_json["degraded"])),
+            True,
+        )
+        check(
+            "expired match escalates to the acceptance owner",
+            (
+                len(_deg5) == 1
+                and _deg5[0]["accepted_by"] == ""
+                and _deg5[0]["escalation"] == "bob: renew the acceptance or rerun the review"
+                and any("§5" in ln and "escalate bob" in ln for ln in _acc_lines)
+            ),
+            True,
+        )
+        _revs = _acc_json["reviews"]
+        check(
+            "reviews list due and overdue acceptances, never the superseded",
+            (
+                sorted((e["target"], e["state"]) for e in _revs)
+                == [("D90-T01-S6-PR1", "review-due"), ("D90-T01-S6-PR1", "review-overdue")]
+                and [e for e in _revs if e["state"] == "review-overdue"][0]["escalation"]
+                == "bob: record the review outcome in a superseding acceptance"
+                and [e for e in _revs if e["state"] == "review-due"][0]["escalation"] == ""
+            ),
+            True,
+        )
+        check(
+            "reviews gate overdue only",
+            (
+                dim_failing("reviews", [{"state": "review-due"}]),
+                dim_failing("reviews", [{"state": "review-overdue"}]),
+                dim_failing("reviews", [{"state": "review-overdue"}], strict=True),
+                dim_failing("reviews", []),
+            ),
+            (False, True, True, False),
+        )
+        check(
+            "run_day reads the date prefix, shape failures read empty",
+            (run_day("20260919-D90-T07-S42-gpt"), run_day("bogus"), run_day("20261399-D90-T07-S1-gpt")),
+            ("2026-09-19", "", ""),
+        )
+        check(
+            "superseded acceptances resolve by target plus record date",
+            superseded_acceptances(
+                [
+                    ("TGT", "a", "o", "e", "2026-09-01", "v", "i", "", "r", "run"),
+                    ("tgt", "a", "o", "e", "2026-09-19", "v", "i", "2026-09-01", "r", "run"),
+                ]
+            ),
+            {("tgt", "2026-09-01")},
+        )
+        check(
+            "evidence with no resolvable commit voids",
+            evidence_fresh("0000000", "docs/reviews/90-acc1.md", "anything"),
+            False,
+        )
+        # Item 4 history legs (D00 T01 §27): silent edits, chained
+        # silence, and dangling links against canned HEAD bytes. The
+        # current file carries all three shapes; HEAD carries the
+        # pre-edit original plus the superseded record.
+        _acc7_head = (
+            _acc_head
+            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260919-D90-T01-S1-gpt\n\n"
+            "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+        )
+        _acc7_was = (
+            _acc7_head
+            + "Risk accepted: D90-T01-S1-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale original rationale\n"
+            + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale superseded record\n"
+        )
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: acceptance history probes.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | History | -- |  [x]   |\n\n---\n\n## 1. History\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc7.md\n"
+            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S1-gpt)\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc7.md").write_text(
+            _acc7_head
+            + "Risk accepted: D90-T01-S1-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale EDITED rationale\n"
+            + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-09-10; rationale successor record\n"
+            + "Risk accepted: D90-T01-S1-PR3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-01-01; rationale dangling link\n",
+            encoding="utf-8",
+        )
+        canned_git[("HEAD", "docs/reviews/90-acc7.md")] = _acc7_was
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            _acc7_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_acc7_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_validate(None)
+        finally:
+            TODO_DIR = saved_tree
+        _silent = [
+            ln
+            for ln in _acc7_buf.getvalue().splitlines()
+            if "acceptance " in ln
+            and ("without a superseding record" in ln or "names no record" in ln)
+        ]
+        check(
+            "silent acceptance edits and dangling links fire",
+            (
+                len(_silent) == 2
+                and any("d90-t01-s1-pr1 2026-09-19 edited" in ln for ln in _silent)
+                and any("d90-t01-s1-pr3 2026-01-01 names no record" in ln for ln in _silent)
+            ),
+            True,
+        )
+        check(
+            "chained supersession stays silent",
+            (not any("pr2" in ln.lower() for ln in _silent)),
+            True,
         )
         globals()["git_file_at"] = _real_git_file_at
         globals()["git_commit_touches"] = _real_git_touches

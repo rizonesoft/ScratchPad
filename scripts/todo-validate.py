@@ -1329,16 +1329,23 @@ def validate(graph, _args) -> int:
                     )
 
     # 24. risk acceptances terminate escalations in a checkable shape
-    # (D00 T01 §21 item 2): every live `Risk accepted:` line carries
-    # target, approver, record date, expiry, review date, and rationale;
-    # the target names a finding ID, a run ID, or `outage <rung>`;
-    # expiry never predates the record; and the review date sits
-    # inside record..expiry, bounds inclusive (§21 review R4, named
-    # here D00 T01 §25). Date-scoped and fence-stripped like rule 23;
-    # first reporter wins per file. Dangling targets
-    # (well-formed but covering nothing) stay silent here: the query
-    # only consults acceptances for live escalations, so a typo'd
-    # target fails loud as a persisting escalation, not here.
+    # (D00 T01 §21 item 2, hardened §27): every live `Risk accepted:`
+    # line carries target, approver, action owner, record date,
+    # expiry, review date, evidence commit, an optional supersedes
+    # link, and rationale; the target names a finding ID, a run ID,
+    # or `outage <rung> <date>`; expiry never predates the record;
+    # and the review date sits inside record..expiry, bounds
+    # inclusive (§21 review R4, named here D00 T01 §25). Date-scoped
+    # and fence-stripped like rule 23; first reporter wins per file.
+    # Dangling targets (well-formed but covering nothing) stay
+    # silent here: the query only consults acceptances for live
+    # escalations, so a typo'd target fails loud as a persisting
+    # escalation, not here. Amendments ride superseding records
+    # only (D00 T01 §27 item 4): a record whose fields changed
+    # without a chaining superseder, a vanished record, or a
+    # supersedes link naming no record fails against history like
+    # rule 22 (uncommitted findings skip: without history nothing is
+    # provable).
     seen_24 = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
@@ -1369,20 +1376,60 @@ def validate(graph, _args) -> int:
                         "risk-acceptance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance names no coverable target: {am.group(1)}",
                     )
-                elif am.group(4) < am.group(3):
+                elif am.group(5) < am.group(4):
                     flag(
                         "risk-acceptance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(4)} < {am.group(3)}",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(5)} < {am.group(4)}",
                     )
-                elif am.group(5) < am.group(3) or am.group(5) > am.group(4):
+                elif am.group(6) < am.group(4) or am.group(6) > am.group(5):
                     # Review-window order (D00 T01 §21 review R4): the
                     # review date sits inside record..expiry, bounds
                     # inclusive like the expiry leg. In-file dates
                     # only, so the rule stays wall-clock-free.
                     flag(
                         "risk-acceptance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(5)} not in {am.group(3)}..{am.group(4)}",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(6)} not in {am.group(4)}..{am.group(5)}",
                     )
+
+            def _acceptance_records(text: str) -> dict[tuple[str, str], str]:
+                recs: dict[tuple[str, str], str] = {}
+                stripped, _u = graph.strip_fenced_code(text)
+                for rln in stripped.splitlines():
+                    if not rln.startswith("Risk accepted:"):
+                        continue
+                    ram = graph.RISK_ACCEPTED_RE.match(rln)
+                    if ram is None or graph.risk_target_kind(ram.group(1)) is None:
+                        continue
+                    recs[(ram.group(1).lower(), ram.group(4))] = rln.strip()
+                return recs
+
+            committed = graph.git_file_at("HEAD", fm.group(1))
+            if committed is not None:
+                now_recs = _acceptance_records(ftext)
+                was_recs = _acceptance_records(committed)
+                chained = {
+                    (tgt.lower(), sup)
+                    for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k in graph.acceptance_lines(ftext)
+                    if sup
+                }
+                for key in sorted(set(was_recs) - set(now_recs)):
+                    if key not in chained:
+                        flag(
+                            "risk-acceptance-silent-edit",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} vanished without a superseding record",
+                        )
+                for key in sorted(set(was_recs) & set(now_recs)):
+                    if was_recs[key] != now_recs[key] and key not in chained:
+                        flag(
+                            "risk-acceptance-silent-edit",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} edited without a superseding record",
+                        )
+                for tgt, sup in sorted(chained):
+                    if (tgt, sup) not in was_recs and (tgt, sup) not in now_recs:
+                        flag(
+                            "risk-acceptance-silent-edit",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance supersedes {tgt} {sup} names no record",
+                        )
 
     # 25. ledger amendments link or fail (D00 T01 §23): a row carrying
     # `supersedes <finding-id>` after its disposition names a row of its
