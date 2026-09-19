@@ -929,10 +929,11 @@ def validate(graph, _args) -> int:
     # rows inside the block, so the LIKE heuristic retired with the prose
     # era); every non-blank line inside the block must match the row
     # shape. D00 T01 §24 item 2: post-cutoff manifests carry the run; the
-    # optional field stays for pre-cutoff records only. Date-scoped like
-    # rules 16-17 (the §14/§15 records predate the shapes). FATAL: the fix
-    # is mechanical (shape the record) and the defect breaks the query's
-    # contract.
+    # optional field stays for pre-cutoff records only, plus run-less
+    # chains (outage-only records name no run by design). Date-scoped
+    # like rules 16-17 (the §14/§15 records predate the shapes). FATAL:
+    # the fix is mechanical (shape the record) and the defect breaks
+    # the query's contract.
     seen_18 = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
@@ -970,11 +971,19 @@ def validate(graph, _args) -> int:
                     # A run-less post-cutoff manifest names a review run
                     # nothing can resolve (D00 T01 §24): the run field is
                     # optional for pre-cutoff records only, which skip
-                    # this whole rule by stamp date above.
-                    flag(
-                        "plan-review-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} post-cutoff Manifest without a run (name the review run: run YYYYMMDD-DNN-TNN-SN-<family>[-rN])",
-                    )
+                    # this whole rule by stamp date above. Chains that
+                    # carry no run stay exempt: an outage-only record
+                    # has no run to name (run IDs for unruns are false
+                    # attribution, PR6 precedent), and a run-less
+                    # non-outage marker already fires its own lineage
+                    # flag, so a second fire here would double-count one
+                    # defect.
+                    _chain = section_markers(t, num) or []
+                    if any(graph.RUN_ID_RE.search(_c or "") for _c in _chain):
+                        flag(
+                            "plan-review-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} post-cutoff Manifest without a run (name the review run: run YYYYMMDD-DNN-TNN-SN-<family>[-rN])",
+                        )
                 block, problem = graph.ledger_block(sec)
                 if block is None:
                     flag(
@@ -1469,19 +1478,23 @@ def validate(graph, _args) -> int:
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} sits in a supersedes cycle",
                         )
                 _claimants: dict[str, list[str]] = {}
+                _spell: dict[str, str] = {}
                 for _rid2, _tgt2 in _links.items():
-                    _claimants.setdefault(_tgt2.lower(), []).append(_rid2)
-                for _tgt2 in sorted(_claimants):
-                    if len(_claimants[_tgt2]) < 2:
+                    _key2 = _tgt2.lower()
+                    _claimants.setdefault(_key2, []).append(_rid2)
+                    _spell.setdefault(_key2, _tgt2)
+                for _key2 in sorted(_claimants):
+                    if len(_claimants[_key2]) < 2:
                         continue
                     # Two successors, one predecessor at the row level
                     # (D00 T01 §24): the second claim breaks the
                     # single-current-head read. Encounter order names the
-                    # later claimant; the target prints as carried.
-                    for _dup in _claimants[_tgt2][1:]:
+                    # later claimant; the target prints as carried, like
+                    # the unknown/foreign/cycle diagnostics above.
+                    for _dup in _claimants[_key2][1:]:
                         flag(
                             "ledger-supersession-broken",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_dup} re-supersedes {_tgt2} (one target, one successor)",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_dup} re-supersedes {_spell[_key2]} (one target, one successor)",
                         )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,

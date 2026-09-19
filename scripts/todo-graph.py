@@ -1797,6 +1797,153 @@ def cmd_query(args) -> int:
         print("is exactly why this list exists.")
         return 0
 
+    if what == "run":
+        # One ID resolves to candidate, scope, findings, marker
+        # lineage, outage state, and verified artifacts (D00 T01 §24
+        # item 4): the operator's one run view instead of manual
+        # joins across markers, manifests, and provenance lines.
+        # Comparisons read through the -r1 synonym, so the base and
+        # -r1 name the same run. A missing target exits 2 (no
+        # subject); an unmatched ID exits 1 (nothing to show).
+        target = (getattr(args, "target", None) or "").strip()
+        if not target:
+            print("usage: todo-graph.py query run <run-id>")
+            return 2
+        want = normalize_run_id(target)
+
+        def _one_line(text: str, width: int) -> str:
+            return re.sub(r"\s+", " ", text).strip()[:width]
+
+        def _is_outage(body: str) -> bool:
+            low = body.lower()
+            return "outage:" in low and not (
+                re.search(r"\bfiled\b", low)
+                or "no findings" in low
+                or "retry-owed" in low
+                or re.search(r"\bpartial\s*:", low)
+            )
+
+        # Marker chains: every Plan review line per section, in file
+        # order, so the lineage leg reads genesis-first.
+        chains: dict[tuple[str, int], list[str]] = {}
+        for t in todos:
+            try:
+                tlines = (TODO_DIR.parent / t.path).read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            spans = sorted((s2.line or 0, n2) for n2, s2 in t.sections.items())
+            for num, s in t.sections.items():
+                start = max(s.line or 0, 1)
+                following = [ln for ln, _n in spans if ln > start]
+                end = following[0] if following else len(tlines) + 1
+                bodies = []
+                for ln in tlines[start - 1 : end - 1]:
+                    sm = STAMP_RE.match(ln)
+                    if sm and sm.group("kind") == "Plan review":
+                        bodies.append(sm.group("body"))
+                if bodies:
+                    chains[(t.path, num)] = bodies
+
+        def _carries(bodies: list[str]) -> bool:
+            for b in bodies:
+                rm = RUN_ID_RE.search(b)
+                if rm and normalize_run_id(rm.group(1)) == want:
+                    return True
+            return False
+
+        carrying = {key: bodies for key, bodies in chains.items() if _carries(bodies)}
+        # Findings files: every referenced file, deduped, fence-
+        # stripped like the validator, so an orphan manifest run
+        # still resolves to its record.
+        seen_files: dict[str, str] = {}
+        for t in todos:
+            for _num, _s in t.sections.items():
+                _fm = FINDINGS_RE.search(getattr(_s, "review_body", None) or "")
+                if not _fm or _fm.group(1) in seen_files:
+                    continue
+                try:
+                    _raw = (TODO_DIR.parent / _fm.group(1)).read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                seen_files[_fm.group(1)], _u = strip_fenced_code(_raw)
+        manifests: list[tuple[str, str, str]] = []
+        rows: list[tuple[str, str]] = []
+        for _path, _text in sorted(seen_files.items()):
+            for h in PLAN_REVIEW_HEADING_RE.finditer(_text):
+                _sec = _text[h.end() :]
+                _nxt = re.search(r"^#{1,6}\s+", _sec, re.MULTILINE)
+                if _nxt:
+                    _sec = _sec[: _nxt.start()]
+                _mm = MANIFEST_RE.search(_sec)
+                if not _mm or not _mm.group(4):
+                    continue
+                if normalize_run_id(_mm.group(4)) != want:
+                    continue
+                manifests.append((_path, _mm.group(1), _mm.group(2)))
+                _block, _bp = ledger_block(_sec)
+                if _block is None:
+                    continue
+                for _lr in LEDGER_ROW_RE.finditer(_block):
+                    _rest = _block[_lr.end() :].split("\n", 1)[0]
+                    rows.append((_path, _one_line(_lr.group(0) + _rest, 160)))
+        candidates: list[tuple[str, str]] = []
+        for _path, _text in sorted(seen_files.items()):
+            if not any(_path == _mp for _mp, _ms, _md in manifests):
+                continue
+            for _cl in re.finditer(r"^Candidate:\s*(.+)$", _text, re.MULTILINE):
+                _shas = re.findall(r"[0-9a-fA-F]{7,40}", _cl.group(1))
+                if _shas:
+                    candidates.append((_path, " ".join(_shas)))
+        artifacts: list[tuple[str, str, str, str, str]] = []
+        for _path, _text in sorted(seen_files.items()):
+            for _ln in _text.splitlines():
+                _pm = PROVENANCE_RE.match(_ln)
+                if not _pm or normalize_run_id(_pm.group(7)) != want:
+                    continue
+                artifacts.append((_path, _pm.group(1), _pm.group(2), _pm.group(4), _pm.group(6)))
+        if not carrying and not manifests and not artifacts:
+            print(f"unknown run: {target}")
+            return 1
+        print(f"run {target}")
+        print("candidate -- review candidate under this run")
+        if not candidates:
+            print("    (none recorded)")
+        for _path, _shas in candidates:
+            print(f"    {_path} {_shas}")
+        print("scope -- manifest scope carrying this run")
+        if not manifests:
+            print("    (none)")
+        for _path, _scope, _deps in manifests:
+            print(f"    {_path} sections [{_scope}] dependents [{_deps}]")
+        print("findings -- ledger rows under this run")
+        if not rows:
+            print("    (none)")
+        for _path, _row in rows:
+            print(f"    {_path} {_row}")
+        print("marker lineage -- full chains carrying this run")
+        if not carrying:
+            print("    (none)")
+        for (_path, _num), _bodies in sorted(carrying.items()):
+            for _i, _b in enumerate(_bodies, 1):
+                print(f"    {_path} §{_num} [{_i}/{len(_bodies)}] {_one_line(_b, 160)}")
+        print("outage state")
+        _outages = [
+            (_path, _num, _b)
+            for (_path, _num), _bodies in sorted(carrying.items())
+            for _b in _bodies
+            if _is_outage(_b)
+        ]
+        if not _outages:
+            print("    clean (no outage markers)")
+        for _path, _num, _b in _outages:
+            print(f"    {_path} §{_num} {_one_line(_b, 160)}")
+        print("verified artifacts -- provenance bound to this run")
+        if not artifacts:
+            print("    (none)")
+        for _path, _cand, _cmd, _tool, _ppath in artifacts:
+            print(f"    {_path} candidate {_cand} {_one_line(_cmd, 80)} ({_one_line(_tool, 40)}) {_ppath}")
+        return 0
+
     if what == "frozen":
         for t in todos:
             if not t.frozen:
@@ -6497,6 +6644,11 @@ track: Z1
 |  55   |   §55   | Dateless same-day target | - |  [x]   |
 |  56   |   §56   | Causal-ancestry-negative target | - |  [x]   |
 |  57   |   §57   | Supersession probe | - |  [x]   |
+|  58   |   §58   | Singleton supersedes probe | - |  [x]   |
+|  59   |   §59   | Run-less manifest probe | - |  [x]   |
+|  60   |   §60   | Marker fork probe | - |  [x]   |
+|  61   |   §61   | Forward-edge probe | - |  [x]   |
+|  62   |   §62   | Ledger-row fork probe | - |  [x]   |
 
 ---
 
@@ -7176,6 +7328,65 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §57 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-supersede.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S57-gpt)
+
+## 58. Singleton supersedes probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §58 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-singleton.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S58-gpt, supersedes 20260919-D90-T07-S58-gpt)
+
+## 59. Run-less manifest probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §59 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-norun.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S59-gpt)
+
+## 60. Marker fork probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §60 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-mfork.md
+> **Plan review:** GPT high, filed §99 (run 20260920-D90-T07-S60-gpt)
+> **Plan review:** GPT high, filed §99 (run 20260920-D90-T07-S60-gpt-r2, supersedes 20260920-D90-T07-S60-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S60-gpt-r3, supersedes 20260920-D90-T07-S60-gpt)
+
+## 61. Forward-edge probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §61 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-fwdedge.md
+> **Plan review:** GPT high, filed §99 (run 20260920-D90-T07-S61-gpt)
+> **Plan review:** GPT high, filed §99 (run 20260920-D90-T07-S61-gpt-r2, supersedes 20260919-D90-T07-S61-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S61-gpt-r3, supersedes 20260920-D90-T07-S61-gpt)
+
+## 62. Ledger-row fork probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §62 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-rowfork.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S62-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -7319,10 +7530,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             encoding="utf-8",
         )
         # §19 lineage and history probes: a partial-outage record, a rerun
-        # record with its manifest on the latest run, a run-less manifest
-        # (match skipped), and a history record whose committed bytes the
-        # test patches in. Rows re-cite back-linked IDs so rule 19 stays
-        # silent and only the probed class can fire.
+        # record with its manifest on the latest run, an orphan record
+        # with its manifest on the latest run, and a history record
+        # whose committed bytes the test patches in. Rows re-cite
+        # back-linked IDs so rule 19 stays silent and only the probed
+        # class can fire.
         opus_panel = (
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
@@ -7347,7 +7559,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         )
         (rev_dir / "90-health-orphan.md").write_text(
             opus_panel
-            + "Manifest: sections [D90 T07 §19]; dependents [none]; bytes 100\n\n"
+            + "Manifest: sections [D90 T07 §19]; dependents [none]; bytes 100; run 20260920-D90-T07-S19-gpt-r2\n\n"
             "Ledger:\n"
             "- [D90-T07-S4-PR2] [major] Re-cited orphan finding -> filed §2\n"
             "End of ledger\n",
@@ -7536,6 +7748,54 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [D90-T07-S57-PR6] [major] Cyclic target -> accepted owner ann due 2099-06-06 supersedes D90-T07-S57-PR5\n"
             "- [D90-T07-S57-PR7] [minor] Self amendment -> accepted owner ann due 2099-07-07 supersedes D90-T07-S57-PR7\n"
             "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §24 probes: one findings file per lineage residual. Each
+        # manifest rides its section's last marker run (except the
+        # run-less probe, which is the fire), rows re-cite the inert
+        # §4 finding except the row-fork file, whose fresh rows carry
+        # the double claim, so only the probed shape can fire on each.
+        (rev_dir / "90-health-singleton.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §58]; dependents [none]; bytes 100; run 20260920-D90-T07-S58-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited singleton finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-norun.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §59]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited run-less finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-mfork.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §60]; dependents [none]; bytes 100; run 20260920-D90-T07-S60-gpt-r3\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited fork finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-fwdedge.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §61]; dependents [none]; bytes 100; run 20260920-D90-T07-S61-gpt-r3\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited edge finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-rowfork.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §62]; dependents [none]; bytes 100; run 20260920-D90-T07-S62-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S62-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
+            "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1\n"
+            "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1\n"
+            "End of ledger\n"
+            "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
             encoding="utf-8",
         )
         # Provenance migration (D00 T01 §20 item 2, per-file runs D00 T01
@@ -8496,6 +8756,157 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§57 " in ln and "FATAL" in ln),
             5,
         )
+        check(
+            "singleton supersedes fires",
+            any(
+                "TODO-07-marker.md" in ln and "§58 " in ln and "genesis marker carries supersedes" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§58 fires exactly once (singleton only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§58 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "run-less post-cutoff manifest fires",
+            any(
+                "TODO-07-marker.md" in ln and "§59 " in ln and "post-cutoff Manifest without a run" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§59 fires exactly once (run-less manifest only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§59 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "marker fork fires on the second claim",
+            any(
+                "TODO-07-marker.md" in ln and "§60 " in ln and "re-supersedes 20260920-D90-T07-S60-gpt" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§60 fires exactly once (fork only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§60 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "forward edge fires outside its past",
+            any(
+                "TODO-07-marker.md" in ln and "§61 " in ln and "outside its past" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§61 fires exactly once (forward edge only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§61 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "ledger-row fork fires on the second claim",
+            any(
+                "TODO-07-marker.md" in ln and "§62 " in ln and "d90-t07-s62-pr3 re-supersedes D90-T07-S62-PR1" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§62 fires exactly once (row fork only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§62 " in ln and "FATAL" in ln),
+            1,
+        )
+        # Query run over the fixture tree (D00 T01 §24 item 4): one ID
+        # resolves to candidate, scope, findings, lineage, outage
+        # state, and artifacts. Presence assertions: neighbor
+        # fixtures share runs across sections (§31 reuses §26's), so
+        # only the probed run's own legs are stable.
+        rbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(rbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            run_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S60-gpt-r3")
+            )
+        run_lines = rbuf.getvalue().splitlines()
+        check("query run exits 0 on a known run", run_code, 0)
+        check(
+            "query run shows the full marker lineage",
+            sum(1 for ln in run_lines if "§60" in ln and "20260920-D90-T07-S60-gpt" in ln),
+            3,
+        )
+        check(
+            "query run shows the manifest scope",
+            any("90-health-mfork.md" in ln and "D90 T07 §60" in ln for ln in run_lines),
+            True,
+        )
+        check(
+            "query run shows the ledger findings",
+            any("D90-T07-S4-PR2" in ln and "filed §2" in ln for ln in run_lines),
+            True,
+        )
+        check(
+            "query run reports a clean outage state",
+            any("clean (no outage markers)" in ln for ln in run_lines),
+            True,
+        )
+        check(
+            "query run shows the bound provenance",
+            any("90-health-mfork.md" in ln and "aaa1111" in ln for ln in run_lines),
+            True,
+        )
+        cbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(cbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            cand_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S62-gpt")
+            )
+        cand_lines = cbuf.getvalue().splitlines()
+        check("query run exits 0 on the candidate run", cand_code, 0)
+        check(
+            "query run resolves the review candidate",
+            any("90-health-rowfork.md" in ln and "aaa1111" in ln and "bbb2222" in ln for ln in cand_lines),
+            True,
+        )
+        obuf = _mio.StringIO()
+        with _mctx.redirect_stdout(obuf), _mctx.redirect_stderr(_mio.StringIO()):
+            outage_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S26-gpt-r2")
+            )
+        outage_lines = obuf.getvalue().splitlines()
+        check("query run exits 0 on the outage-chain run", outage_code, 0)
+        check(
+            "query run names the chain outage",
+            any("§26" in ln and "outage: both rungs" in ln for ln in outage_lines),
+            True,
+        )
+        sbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(sbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            syn_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S33-gpt-r1")
+            )
+        syn_lines = sbuf.getvalue().splitlines()
+        check("query run reads through the -r1 synonym", syn_code, 0)
+        check(
+            "query run matches the synonym base manifest",
+            any("90-health-synonym.md" in ln and "D90 T07 §33" in ln for ln in syn_lines),
+            True,
+        )
+        ubuf = _mio.StringIO()
+        with _mctx.redirect_stdout(ubuf), _mctx.redirect_stderr(_mio.StringIO()):
+            unknown_code = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S99-gpt"))
+        check("query run exits 1 on an unknown run", unknown_code, 1)
+        check(
+            "query run names the unknown run",
+            any("unknown run: 20260920-D90-T07-S99-gpt" in ln for ln in ubuf.getvalue().splitlines()),
+            True,
+        )
+        mbuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(mbuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            missing_code = cmd_query(argparse.Namespace(what="run"))
+        check("query run exits 2 with no target", missing_code, 2)
         check(
             "rule 23 skips grandfathered findings",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§10 " in ln and "FATAL" in ln),
@@ -10583,8 +10994,9 @@ def main() -> int:
     q = sub.add_parser("query", help="ask the graph a question")
     q.add_argument(
         "what",
-        choices=["ready", "blocked", "stats", "deferred", "frozen", "findings", "surfaces", "adjacency", "plan-health", "summary"],
+        choices=["ready", "blocked", "stats", "deferred", "frozen", "findings", "surfaces", "adjacency", "plan-health", "summary", "run"],
     )
+    q.add_argument("target", nargs="?", default=None, help="run: run ID to inspect")
     q.add_argument("--all", action="store_true", help="findings: include ones already done")
     q.add_argument("--file", help="adjacency: exact repository-relative TODO path")
     q.add_argument("--at", help="adjacency: inspect an isolated historical commit")
