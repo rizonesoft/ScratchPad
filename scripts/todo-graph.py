@@ -3144,6 +3144,9 @@ def cmd_query(args) -> int:
                     ]
                 elif dim in ("criticals", "majors"):
                     pool = [e for e in pool if not e.get("accepted_by")]
+                elif dim == "reviews":
+                    pool = [e for e in pool if e.get("state") == "review-overdue"]
+
                 # Strict dims fail on presence, so an empty actionable
                 # pool falls back to the first entry as named.
                 first = pool[0] if pool else dim_lists[dim][0]
@@ -10580,6 +10583,47 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 and [e for e in _revs if e["state"] == "review-due"][0]["escalation"] == ""
             ),
             True,
+        )
+        # Summary next-action precision (D00 T01 §27 review self-fix):
+        # a due entry sorting before the overdue one must not steal
+        # `next:`, which names the actionable entry only.
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: summary next-action precision.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Next names overdue | -- |  [x]   |\n\n---\n\n## 1. Next names overdue\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc8.md\n"
+            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S1-gpt)\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc8.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260919-D90-T01-S1-gpt\n\n"
+            "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S1-PR0; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_due}; evidence aaa1111; rationale due review sorts first\n"
+            f"Risk accepted: D90-T01-S9-PR9; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_over}; evidence aaa1111; rationale overdue review\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            _acc8_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_acc8_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                _acc8_gate = cmd_query(argparse.Namespace(what="summary"))
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "query summary names the overdue review, not the due one",
+            (
+                _acc8_gate,
+                "next: D90-T01-S9-PR9 in docs/reviews/90-acc8.md (review-overdue, owner bob)"
+                in _acc8_buf.getvalue(),
+            ),
+            (1, True),
         )
         check(
             "reviews gate overdue only",
