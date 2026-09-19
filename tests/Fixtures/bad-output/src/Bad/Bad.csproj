@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Project-level bypass of the central BaseOutputPath: the shape PR7 names. -->
+    <BaseOutputPath>$(MSBuildProjectDirectory)/custom-out/</BaseOutputPath>
+  </PropertyGroup>
+</Project>

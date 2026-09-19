@@ -2,6 +2,8 @@ build/
 out/
 bin/
 Bin/
+# §41 fixture: the fake Bin/ below is tracked test data, not build output.
+!tests/Fixtures/clean-bin/Bin/
 obj/
 dist/
 .tools/

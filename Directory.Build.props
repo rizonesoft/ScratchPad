@@ -6,5 +6,7 @@
     <AnalysisMode>All</AnalysisMode>
     <Version>0.0.0</Version>
     <BaseOutputPath>$(MSBuildThisFileDirectory)Bin/$(MSBuildProjectName)/</BaseOutputPath>
+    <!-- Single-TFM tree (§41): the framework leg carries no information. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 </Project>

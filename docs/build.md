@@ -14,6 +14,10 @@ Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -Ex
 
 Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/ScratchPad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under root `Bin/` per project (`Bin/<Project>/`), intermediates under per-project `obj/`, publish output under `dist/`, all gitignored.
 
+## Cleaning build outputs
+
+Full clean is `rm -rf Bin` (use `Remove-Item -Recurse Bin` on Windows): outputs regenerate on the next build. To clear only stale project dirs (leftovers of renamed or removed projects) without wiping everything, run `python3 tools/clean-bin.py` (`--dry-run` lists without removing). CI runners check out clean every run, so they never need either.
+
 ## Test
 
 Linux runs the neutral scope including smoke: `dotnet test src/Notepad.Neutral.slnf`. Windows runs the same tests through the full solution: `dotnet test src/ScratchPad.slnx`. Run only the smoke test with `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
@@ -24,7 +28,7 @@ Warnings fail the build everywhere: `Directory.Build.props` sets `TreatWarningsA
 
 ## Run the stub (Windows)
 
-Build the solution, then run `Bin\ScratchPad\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe` directly. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
+Build the solution, then run `python3 tools/launch.py`: it resolves `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe` (`--config Release` for a Release build, `--print-path` to resolve without launching) and launches it. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
 
 ## Provenance
 

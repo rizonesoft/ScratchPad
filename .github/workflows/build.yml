@@ -40,6 +40,30 @@ jobs:
           export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
           export DOTNET_MULTILEVEL_LOOKUP=0
           dotnet build src/Notepad.Neutral.slnf --nologo
+      # Bin layout guards (D00 T01 §41 items 2, 5, 8): green legs on the
+      # tree plus red legs on the fixtures, so both directions run maintained.
+      - name: Guard project-name uniqueness
+        run: |
+          python3 tools/check-bin-layout.py stems
+          if python3 tools/check-bin-layout.py stems --root tests/Fixtures/dup-stems; then echo "stems guard did not fire on the fixture"; exit 1; fi
+      - name: Prove clean-bin fixture
+        run: |
+          rm -rf /tmp/clean-proof && cp -r tests/Fixtures/clean-bin/Bin /tmp/clean-proof
+          python3 tools/clean-bin.py --bin-dir /tmp/clean-proof
+          test ! -e /tmp/clean-proof/DefunctProject || { echo "stale dir survived"; exit 1; }
+          test -e /tmp/clean-proof/AcpLoopback/Debug/keep.dll || { echo "live dir pruned"; exit 1; }
+      - name: Probe Bin layout conformance
+        run: |
+          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
+          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
+          export DOTNET_MULTILEVEL_LOOKUP=0
+          python3 tools/check-bin-layout.py conformance
+          if python3 tools/check-bin-layout.py conformance --root tests/Fixtures/bad-output; then echo "conformance probe did not fire on the bad-output fixture"; exit 1; fi
+          rm -rf /tmp/nobin-proof && mkdir -p /tmp/nobin-proof/src/x/bin
+          if python3 tools/check-bin-layout.py conformance --root /tmp/nobin-proof --skip-eval; then echo "conformance probe did not fire on the stray bin/"; exit 1; fi
+      - name: Assert launcher resolution
+        run: |
+          test "$(python3 tools/launch.py --print-path 2>/dev/null)" = "$PWD/Bin/ScratchPad/Debug/ScratchPad"
 
   build-windows:
     runs-on: windows-2025
@@ -80,14 +104,36 @@ jobs:
       # loud); otherwise stop it after the soak and pass.
       - name: Launch smoke
         run: |
-          $exe = "$PWD\Bin\ScratchPad\Debug\net10.0-windows10.0.19041.0\win-x64\ScratchPad.exe"
+          $exe = python3 tools/launch.py --print-path
+          if ($LASTEXITCODE -ne 0) { throw "launcher could not resolve the exe" }
           $p = Start-Process $exe -PassThru
           $p.WaitForExit(30000)
           if ($p.HasExited -and $p.ExitCode -ne 0) { throw "ScratchPad exited during launch smoke with code $($p.ExitCode)" }
           if (-not $p.HasExited) { Stop-Process $p -Force }
+      # Smoke artifact manifest (D00 T01 §41 item 6): the staged dir holds
+      # the exe, managed dlls, symbols, and a provenance version naming this
+      # commit, with no outputs of non-referenced projects. Legs pre-proven
+      # against the scratchpad-windows-x64 artifact of the last green build.
+      - name: Check smoke artifact manifest
+        run: |
+          $dir = "$PWD\Bin\ScratchPad\Debug\win-x64"
+          $exe = "$dir\ScratchPad.exe"
+          if (-not (Test-Path $exe)) { throw "missing $exe" }
+          $dlls = @(Get-ChildItem $dir -Filter *.dll)
+          if ($dlls.Count -lt 1) { throw "no dlls in $dir" }
+          $pdbs = @(Get-ChildItem $dir -Filter *.pdb)
+          if ($pdbs.Count -lt 1) { throw "no symbols in $dir" }
+          $ver = (Get-Item $exe).VersionInfo.ProductVersion
+          if ($ver -ne "0.0.0+$env:GITHUB_SHA") { throw "provenance version names no commit: $ver" }
+          $foreign = @('UI', 'Unit', 'Smoke', 'Protocol', 'AcpLoopback', 'CaptureBaseline', 'ForegroundLog', 'Notepad.Acp', 'Notepad.Agents')
+          foreach ($stem in $foreign) {
+            $hits = @(Get-ChildItem $dir -Filter "$stem.*" | Where-Object { $_.Extension -in '.dll', '.exe', '.pdb' })
+            if ($hits.Count -gt 0) { throw "foreign output $($hits[0].Name) in $dir" }
+          }
+          Write-Host "manifest: $($dlls.Count) dlls, $($pdbs.Count) pdbs, version $ver, no foreign outputs"
       # Kept for manual clean-system testing: download and run, no SDK needed.
       - name: Upload app
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: scratchpad-windows-x64
-          path: Bin/ScratchPad/Debug/net10.0-windows10.0.19041.0/win-x64/
+          path: Bin/ScratchPad/Debug/win-x64/
