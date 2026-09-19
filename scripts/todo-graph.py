@@ -939,7 +939,8 @@ SEVERITY_MAP: dict[str, str] = {
     # a `Risk accepted:` line outside the record shape, with an
     # uncoverable target, expiring before it is recorded, or reviewed
     # outside its record-expiry window: an unauditable waiver
-    # (D00 T01 §21, review-window leg D00 T01 §25).
+    # (D00 T01 §21; review-window leg §21 review R4, named here
+    # D00 T01 §25).
     "risk-acceptance-malformed": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
@@ -8727,16 +8728,22 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         )
         _gtext = (REPO / "scripts" / "todo-graph.py").read_text(encoding="utf-8").splitlines()
         _gidx = next(i for i, ln in enumerate(_gtext) if '"risk-acceptance-malformed"' in ln)
+        _glo = _gidx - 1
+        while _glo >= 0 and _gtext[_glo].strip().startswith("#"):
+            _glo -= 1
         check(
             "severity comment names the review-window leg",
-            "record-expiry window" in "\n".join(_gtext[max(0, _gidx - 4) : _gidx]),
+            "record-expiry window" in "\n".join(_gtext[_glo + 1 : _gidx]),
             True,
         )
         _vtext = (REPO / "scripts" / "todo-validate.py").read_text(encoding="utf-8").splitlines()
         _vidx = next(i for i, ln in enumerate(_vtext) if ln.strip().startswith("# 24. risk acceptances"))
+        _vhi = _vidx
+        while _vhi < len(_vtext) and _vtext[_vhi].strip().startswith("#"):
+            _vhi += 1
         check(
             "rule-24 header names the review-window leg",
-            "record..expiry" in "\n".join(_vtext[_vidx : _vidx + 10]),
+            "record..expiry" in "\n".join(_vtext[_vidx:_vhi]),
             True,
         )
         check(
