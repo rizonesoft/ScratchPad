@@ -978,6 +978,18 @@ SEVERITY_MAP: dict[str, str] = {
     # day, end off the stamp day): arbitrary well-shaped instants
     # would otherwise manufacture clearance ordering (D00 T01 §32).
     "duration-range-uncheckable": "fatal",
+    # a provenance candidate git can neither resolve nor refuse
+    # (broken git, gitless export): the leg degrades instead of
+    # FATALing every line, but the skip reports (WARN plus the
+    # baseline still blocks CI until explicitly accepted), so
+    # `validate 0 fatal` never hides unverifiable evidence
+    # (D00 T01 §33 item 1).
+    "provenance-candidate-unprovable": "warn",
+    # a provenance candidate recorded short in a run newer than the
+    # mandate: shorts fail closed on ambiguity, so this ratchets
+    # rather than blocks -- new records resolve at mint time and
+    # record the full 40-hex ID (D00 T01 §33 item 3).
+    "provenance-short-candidate": "warn",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
@@ -1757,7 +1769,7 @@ def git_range_touches(base: str, tip: str, repo_path: str) -> bool | None:
 
 
 def git_resolves(sha: str) -> bool | None:
-    """Whether a sha names an object in the repo, or None when
+    """Whether a sha names a commit in the repo, or None when
     unprovable. The provenance-candidate leg (D00 T01 §23): a
     recorded candidate that resolves to nothing attests nothing.
     Shorts stay legal: git refuses ambiguous ones, so resolution
@@ -1767,14 +1779,17 @@ def git_resolves(sha: str) -> bool | None:
     else unprovable): `cat-file -e` conflates an absent short with a
     fatal at 128, which would report every bogus candidate as
     unprovable instead of missing (review R1, probed 2026-09-18). The
-    `^{object}` peel forces the existence check a bare full-length hex
+    `^{commit}` peel forces the existence check a bare full-length hex
     skips (rev-parse prints an absent 40-hex back at exit 0; peeled it
-    exits 1 like an absent short, review R2, probed 2026-09-18)."""
+    exits 1 like an absent short, review R2, probed 2026-09-18) and
+    pins the type: blobs and trees fail, tags resolve onward to their
+    commit, so no leg ever sees a non-commit object (D00 T01 §33 item
+    2)."""
     try:
         import subprocess
 
         out = subprocess.run(
-            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{sha}^{{object}}"],
+            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}"],
             capture_output=True,
             timeout=30,
         )
@@ -1788,16 +1803,19 @@ def git_resolves(sha: str) -> bool | None:
 
 
 def git_full_sha(ref: str) -> str | None:
-    """The full object ID for a ref, or None when unresolvable or
+    """The full commit ID for a ref, or None when unresolvable or
     unprovable. The strict-ancestry leg (D00 T01 §31 item 6): short
     strings cannot prove distinctness, so both sides resolve before
-    the comparison. Off-shape output reads None, never raises.
+    the comparison. The `^{commit}` peel pins the type beside the
+    length: tag names resolve to their commit, anything not a commit
+    reads None (D00 T01 §33 item 2). Off-shape output reads None,
+    never raises.
     """
     try:
         import subprocess
 
         out = subprocess.run(
-            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{ref}^{{object}}"],
+            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
             capture_output=True,
             timeout=30,
         )
@@ -3352,6 +3370,15 @@ def cmd_query(args) -> int:
                                     ):
                                         strict_ok = True
                                         break
+                                # Records predating the provenance mandate carry
+                                # no candidate and skip this leg (D00 T01
+                                # §33 item 7): stamps on or before
+                                # 2026-09-18 (`PLAN_REVIEW_CUTOFF`), the
+                                # §21 inventory (57 run-less pre-cutoff
+                                # files, owner operator, deadline
+                                # 2026-12-31). Post-cutoff files always
+                                # carry a line (rule 23), so a skip here
+                                # is always a pre-mandate record.
                                 if cands and not strict_ok:
                                     provable = False
                                     fail_code = "ancestry:strict"
@@ -7598,12 +7625,23 @@ track: Z1
         # Rule 23 reads candidates through git (D00 T01 §23), so the
         # panel run patches the reader like the marker run does: the
         # fixture candidate resolves, anything else is unprovable.
+        # The candidate-tree leg (D00 T01 §33 item 4) needs its bytes
+        # too: fixture panel paths read their written text, everything
+        # else delegates to real git (rule-22 history behavior stays
+        # exactly as the unpatched run sees it).
         _real_resolves_panel = git_resolves
+        _real_file_at_panel = git_file_at
         globals()["git_resolves"] = lambda sha: True if sha == "aaa1111" else None
+        globals()["git_file_at"] = lambda ref, p: (
+            (rev_dir / Path(p).name).read_text(encoding="utf-8")
+            if ref == "aaa1111" and p.startswith("docs/reviews/90-panel-")
+            else _real_file_at_panel(ref, p)
+        )
         pbuf = _mio.StringIO()
         with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
         globals()["git_resolves"] = _real_resolves_panel
+        globals()["git_file_at"] = _real_file_at_panel
         panel_out = pbuf.getvalue().splitlines()
         check(
             "stamp-no-opus-panel is a FATAL class",
@@ -9852,6 +9890,13 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S9-gpt\n",
             encoding="utf-8",
         )
+        # D00 T01 §33 item 4: the candidate-tree leg reads every
+        # fixture provenance path at its candidate, so each written
+        # review file cans its bytes at aaa1111 (the gone-path and
+        # absolute-path negatives stay uncanned: absence is their
+        # probe).
+        for _rev in sorted(rev_dir.glob("90-*.md")):
+            canned_git[("aaa1111", f"docs/reviews/{_rev.name}")] = _rev.read_text(encoding="utf-8")
         _real_git_file_at = git_file_at
         _real_git_touches = git_commit_touches
         _real_git_ts = git_commit_ts
@@ -10657,9 +10702,9 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "unprovable provenance candidate skips",
-            any("f00df00d" in ln for ln in marker_out),
-            False,
+            "unprovable provenance candidate warns instead of skipping silently",
+            any("f00df00d" in ln and "WARN" in ln for ln in marker_out),
+            True,
         )
         check(
             "missing provenance path fires",
@@ -10672,7 +10717,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "absolute provenance path fires",
             any(
-                "TODO-07-marker.md" in ln and "§30 " in ln and "path /tmp/absent-provenance-target.md names no file" in ln
+                "TODO-07-marker.md" in ln and "§30 " in ln and "escapes the repo root" in ln
                 for ln in marker_out
             ),
             True,
@@ -10680,7 +10725,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "foreign provenance run fires",
             any(
-                "TODO-07-marker.md" in ln and "§30 " in ln and "equals no marker run of §30" in ln
+                "TODO-07-marker.md" in ln and "§30 " in ln and "equals no live marker run of §30" in ln
                 for ln in marker_out
             ),
             True,
@@ -11051,6 +11096,11 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             + "\n".join(_d26_recs),
             encoding="utf-8",
         )
+        # D00 T01 §33 item 4: the candidate-tree leg cans the
+        # fixture's bytes at its candidate (present, so silent).
+        canned_git[("aaa1111", "docs/reviews/90-dur26.md")] = (
+            dur26 / "docs" / "reviews" / "90-dur26.md"
+        ).read_text(encoding="utf-8")
         saved_tree, TODO_DIR = TODO_DIR, dur26 / "todo"
         try:
             v26 = _mio.StringIO()
@@ -11111,6 +11161,217 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                 sum(1 for ln in v26_out if f"§{_n} " in ln and "FATAL" in ln),
                 0,
             )
+        # --- rule-23 residuals: degraded WARNs, tree legs, last-run binding (D00 T01 §33)
+        # Isolated root, one findings file per probe section (first
+        # reporter wins per file, so per-section lines stay exact).
+        # Runs dated 2026-09-20 take the new legs; the §8/§9 pair pins
+        # the old scope at 2026-09-19.
+        dur33 = root / "dur33"
+        (dur33 / "todo" / "90-dur33").mkdir(parents=True)
+        (dur33 / "docs" / "reviews").mkdir(parents=True)
+        (dur33 / "docs").mkdir(parents=True, exist_ok=True)
+        _FULL33 = "c001c001" + "ab12" * 8
+        _B40 = "b" * 40
+        # (candidate, path, linerun-or-None-for-marker-run, markers)
+        # markers: "one" (single, run matches), "two" (r1 superseded by
+        # r2), "none" (markerless: the run leg skips).
+        _d33_cases = {
+            1: (_FULL33, "docs/probe-target.txt", None, "one"),
+            2: (_FULL33, "docs/probe-target.txt", "20260920-D90-T33-S2-gpt-r1", "two"),
+            3: (_FULL33, "docs/probe-target.txt", "20260920-D90-T33-S3-gpt", "none"),
+            4: (_FULL33, "docs/probe-target.txt", None, "one"),
+            5: ("aaa1111", "docs/probe-target.txt", None, "one"),
+            6: (_FULL33, "docs/probe-missing.txt", None, "one"),
+            7: (_B40, "docs/probe-target.txt", None, "one"),
+            8: ("aaa1111", "docs/old-present.txt", "20260919-D90-T33-S8-gpt", "one"),
+            9: ("aaa1111", "docs/old-gone.txt", "20260919-D90-T33-S9-gpt", "one"),
+            10: (_FULL33, "../../escape33.txt", None, "one"),
+            11: (_FULL33, f"{dur33}/dur33abs.txt", None, "one"),
+            12: (_FULL33, "docs/evil33", None, "one"),
+            13: (_FULL33, "docs", None, "one"),
+            14: (_FULL33, "docs/a\0b.txt", None, "one"),
+            15: (_FULL33, "docs/loopA33", None, "one"),
+        }
+        (dur33 / "docs" / "old-present.txt").write_text("old bytes\n", encoding="utf-8")
+        (root / "escape33.txt").write_text("outside\n", encoding="utf-8")
+        (dur33 / "dur33abs.txt").write_text("absolute\n", encoding="utf-8")
+        (root / "dur33escape.txt").write_text("escaped\n", encoding="utf-8")
+        _symlink_ok = True
+        try:
+            (dur33 / "docs" / "evil33").symlink_to("../../dur33escape.txt")
+            (dur33 / "docs" / "loopA33").symlink_to("loopB33")
+            (dur33 / "docs" / "loopB33").symlink_to("loopA33")
+        except OSError:
+            _symlink_ok = False
+        _d33_rows = []
+        _d33_secs = []
+        for _n in range(1, 16):
+            _cand, _ppath, _lrun, _marks = _d33_cases[_n]
+            _run = _lrun or f"20260920-D90-T33-S{_n}-gpt"
+            _d33_rows.append(f"|   {_n}   |   §{_n}    | Probe {_n} | -- |  [x]   |")
+            _sec = [f"## {_n}. Probe {_n}\n\n"]
+            _sec.append('- [x] Did the thing\n- [x] Commit: `"selftest: dur33"`\n\n')
+            _sec.append("**Test checkpoint:** `true`\n\n")
+            _sec.append(f"> **Verified:** 2026-09-20 | §{_n} | fixture\n")
+            _sec.append(
+                "> **Review:** round 1 -- Raw findings: "
+                f"docs/reviews/90-dur33-{_n}.md\n"
+            )
+            if _marks == "two":
+                _sec.append(
+                    "> **Plan review:** GPT high, no findings "
+                    f"(run 20260920-D90-T33-S{_n}-gpt-r1)\n"
+                )
+                _sec.append(
+                    "> **Plan review:** GPT high, no findings "
+                    f"(run 20260920-D90-T33-S{_n}-gpt-r2, "
+                    f"supersedes 20260920-D90-T33-S{_n}-gpt-r1)\n"
+                )
+            elif _marks == "one":
+                _sec.append(f"> **Plan review:** GPT high, no findings (run {_run})\n")
+            _d33_secs.append("".join(_sec))
+            _man_run = (
+                f"20260920-D90-T33-S{_n}-gpt-r2" if _marks == "two" else _run
+            )
+            _man = (
+                f"Manifest: sections [D90 T01 §{_n}]; dependents [none]; "
+                f"bytes 100; run {_man_run}\n\n" if _marks != "none" else
+                f"Manifest: sections [D90 T01 §{_n}]; dependents [none]; bytes 100\n\n"
+            )
+            (dur33 / "docs" / "reviews" / f"90-dur33-{_n}.md").write_text(
+                "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                f"Provenance: candidate {_cand}; command true; exit 0; tool fixture 1; "
+                f"digest 0123456789abcdef; path {_ppath}; run {_run}\n\n"
+                "## Plan review\n\n" + _man + "Ledger:\n"
+                f"- [D90-T33-S{_n}-PR0] [minor] clean round -> accepted\nEnd of ledger\n",
+                encoding="utf-8",
+            )
+        (dur33 / "todo" / "90-dur33" / "TODO-01-probes.md").write_text(
+            "---\nschema_version: 1\nid: dur33\ndomain: 90-dur33\nstatus: active\n"
+            'title: "TODO-01 -- Probes"\ntrack: Z1\n---\n\n# TODO-01 -- Probes\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            + "\n".join(_d33_rows)
+            + "\n\n"
+            + "\n".join(_d33_secs),
+            encoding="utf-8",
+        )
+        (dur33 / "todo" / "90-dur33" / "INDEX.md").write_text(
+            "# 90 Dur33\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-01](./TODO-01-probes.md) | Probes | active |\n",
+            encoding="utf-8",
+        )
+        # The tree leg cans its present pairs; the missing pair (§6),
+        # the directory (§13), and the uncontained paths (§§10-12, 14,
+        # 15) stay uncanned. The full candidate resolves; the b40
+        # candidate stays unprovable (no entry: neither True nor False).
+        canned_resolves[_FULL33] = True
+        canned_git[(_FULL33, "docs/probe-target.txt")] = "target bytes\n"
+        canned_git[("aaa1111", "docs/probe-target.txt")] = "target bytes\n"
+        saved_tree, TODO_DIR = TODO_DIR, dur33 / "todo"
+        try:
+            v33 = _mio.StringIO()
+            with _mctx.redirect_stdout(v33), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_validate(None)
+            v33_out = v33.getvalue().splitlines()
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "provenance-candidate-unprovable is a WARN class",
+            SEVERITY_MAP.get("provenance-candidate-unprovable"),
+            "warn",
+        )
+        check(
+            "provenance-short-candidate is a WARN class",
+            SEVERITY_MAP.get("provenance-short-candidate"),
+            "warn",
+        )
+        check(
+            "a bound run with a present artifact stays silent",
+            sum(1 for ln in v33_out if "§1 " in ln and ("FATAL" in ln or "WARN" in ln)),
+            0,
+        )
+        check(
+            "a superseded run cited as live evidence fires",
+            sum(1 for ln in v33_out if "§2 " in ln and "equals no live marker run" in ln),
+            1,
+        )
+        check(
+            "the run leg skips a markerless section",
+            sum(1 for ln in v33_out if "§3 " in ln and "equals no live marker run" in ln),
+            0,
+        )
+        check(
+            "a full candidate in a new run stays silent",
+            sum(1 for ln in v33_out if "§4 " in ln and ("FATAL" in ln or "WARN" in ln)),
+            0,
+        )
+        check(
+            "a short candidate in a new run warns",
+            sum(1 for ln in v33_out if "§5 " in ln and "is short in a post-2026-09-19 run" in ln),
+            1,
+        )
+        check(
+            "an artifact missing at the candidate fires",
+            sum(1 for ln in v33_out if "§6 " in ln and "names no file in the" in ln),
+            1,
+        )
+        check(
+            "an unprovable candidate degrades with a WARN and no FATAL",
+            (
+                sum(1 for ln in v33_out if "§7 " in ln and "degraded, not verified" in ln),
+                sum(1 for ln in v33_out if "§7 " in ln and "FATAL" in ln),
+            ),
+            (1, 0),
+        )
+        check(
+            "an old-scope short on a present file stays silent",
+            sum(1 for ln in v33_out if "§8 " in ln and ("FATAL" in ln or "WARN" in ln)),
+            0,
+        )
+        check(
+            "an old-scope missing file keeps checkout existence",
+            sum(1 for ln in v33_out if "§9 " in ln and "names no file under the repo root" in ln),
+            1,
+        )
+        check(
+            "a traversal path fails containment exactly once",
+            sum(1 for ln in v33_out if "§10 " in ln and "escapes the repo root" in ln),
+            1,
+        )
+        check(
+            "an absolute path fails containment exactly once",
+            sum(1 for ln in v33_out if "§11 " in ln and "escapes the repo root" in ln),
+            1,
+        )
+        if _symlink_ok:
+            check(
+                "an escaping symlink fails containment exactly once",
+                sum(1 for ln in v33_out if "§12 " in ln and "escapes the repo root" in ln),
+                1,
+            )
+            check(
+                "a symlink loop fails containment exactly once",
+                sum(1 for ln in v33_out if "§15 " in ln and "escapes the repo root" in ln),
+                1,
+            )
+        else:
+            check("symlink escape untestable: links unsupported here", True, True)
+            check("symlink loop untestable: links unsupported here", True, True)
+        check(
+            "a directory fails loudly at the tree leg",
+            sum(1 for ln in v33_out if "§13 " in ln and "names no file in the" in ln),
+            1,
+        )
+        check(
+            "a NUL path fails loudly instead of crashing",
+            sum(1 for ln in v33_out if "§14 " in ln and "escapes the repo root" in ln),
+            1,
+        )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
         # Presence assertions, never counts: neighbor fixtures share the
         # root, so only the marker file's own lines are stable.
@@ -13053,6 +13314,11 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                     _git("add", "proof.txt")
                     _git("commit", "-qm", "confs resolved")
                 _gr1 = _git("rev-parse", "HEAD")
+                # Item-2 pins (D00 T01 §33): a blob ID, a tree ID, and
+                # an annotated tag object beside plain commits.
+                _git("tag", "-a", "-m", "annotated", "vone", _gc1)
+                _blob = _git("rev-parse", f"{_gc2}:proof.txt")
+                _tree = _git("rev-parse", f"{_gc2}^{{tree}}")
                 _saved_repo = REPO
                 globals()["REPO"] = _grepo
                 try:
@@ -13090,8 +13356,16 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                     check("real git resolves a commit", git_resolves(_gc1), True)
                     check("real git refuses a bad short", git_resolves("deadbee"), False)
                     check("real git refuses an absent full hex", git_resolves("f" * 40), False)
+                    check("real git refuses a blob ID", git_resolves(_blob), False)
+                    check("real git refuses a tree ID", git_resolves(_tree), False)
+                    check("real git peels a tag name to its commit", git_resolves("vone"), True)
+                    check("real git resolves a short commit", git_resolves(_gc1[:7]), True)
                     check("real git spells a full sha", git_full_sha(_gc2), _gc2)
                     check("real git full-sha on a bad ref is unprovable", git_full_sha("deadbee"), None)
+                    check("real git full-sha on a blob is unprovable", git_full_sha(_blob), None)
+                    check("real git full-sha on a tree is unprovable", git_full_sha(_tree), None)
+                    check("real git full-sha peels a tag to its commit", git_full_sha("vone"), _gc1)
+                    check("real git full-sha spells a short commit", git_full_sha(_gc1[:7]), _gc1)
                     check("real git spots a merge", git_is_merge(_gm1), True)
                     check("real git clears a non-merge", git_is_merge(_gc2), False)
                     check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee"), None)

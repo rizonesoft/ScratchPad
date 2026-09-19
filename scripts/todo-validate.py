@@ -1286,22 +1286,30 @@ def validate(graph, _args) -> int:
                     )
 
     # 23. provenance binds live quotes to runs (D00 T01 §20 item 2,
-    # checkable shape plus run equality D00 T01 §23): every post-cutoff
-    # findings file carries at least one well-formed `Provenance:` line,
-    # and every such line carries a shaped run ID (run-less provenance
-    # fails the shape). Fields ride semicolon-separated and carry no
-    # bare semicolons (authoring rule). Beyond the shape, the
-    # candidate must resolve in git (an unattested quote attests
-    # nothing; unresolvable git skips the leg, rule-22 precedent),
-    # the path must name a file under the repo root (an
-    # absolute or missing path points nowhere checkable), and the run
-    # must equal a marker run of the reporting section (a well-formed
-    # wrong run misattributes evidence). The digest stays attested:
-    # presence plus shape, never re-verified (the file keeps no bytes
-    # to verify against). Equality skips when the section carries no
-    # shaped marker run (the marker-shape rule owns that defect).
-    # Date-scoped like rules
-    # 16-18 (pre-cutoff records predate the mandate); fenced
+    # checkable shape plus run equality D00 T01 §23, residuals D00 T01
+    # §33): every post-cutoff findings file carries at least one
+    # well-formed `Provenance:` line, and every such line carries a
+    # shaped run ID (run-less provenance fails the shape). Fields ride
+    # semicolon-separated and carry no bare semicolons (authoring
+    # rule). Beyond the shape, the candidate must resolve in git (an
+    # unattested quote attests nothing; unprovable git degrades with
+    # a WARN per skipped leg, never silently, D00 T01 §33 item 1),
+    # the path must stay inside the repo root as a string (absolute,
+    # traversal, symlink-escape, and garbage paths fail); existence
+    # reads the candidate tree for runs newer than 2026-09-19 (new
+    # records name the primary reviewed artifact) and the checkout
+    # before that (old self-paths postdate their candidates, so the
+    # tree leg cannot apply, D00 T01 §33 item 4), and the run
+    # must equal the reporting section's last shaped marker run
+    # (last-governs: a superseded run cited as live evidence
+    # misattributes it, D00 T01 §33 item 6). The digest stays
+    # attested: presence plus shape, never re-verified (the file
+    # keeps no bytes to verify against). Equality skips when the
+    # section carries no shaped marker run (the marker-shape rule
+    # owns that defect). Date-scoped like rules 16-18: stamps on or
+    # before 2026-09-18 (`PLAN_REVIEW_CUTOFF`) predate the mandate
+    # and skip; the skipped set is the §21 inventory (57 run-less
+    # pre-cutoff files, owner operator, deadline 2026-12-31). Fenced
     # `Provenance:` examples strip before the scan, so only live lines
     # count. One file, one presence report (first reporter wins); every
     # malformed line reports.
@@ -1320,11 +1328,15 @@ def validate(graph, _args) -> int:
             except OSError:
                 continue
             seen_23.add(fm.group(1))
-            mruns = set()
+            # Last-governs (D00 T01 §33 item 6): the line's run must
+            # equal the CURRENT marker run, not any run the section
+            # ever carried. Markers read in document order, so the
+            # last shaped run wins, like every marker chain.
+            last_run = None
             for body in section_markers(t, num) or []:
                 rm = graph.RUN_ID_RE.search(body)
                 if rm is not None and graph.RUN_ID_SHAPE_RE.match(rm.group(1)):
-                    mruns.add(graph.normalize_run_id(rm.group(1)))
+                    last_run = graph.normalize_run_id(rm.group(1))
             ftext, _u = graph.strip_fenced_code(ftext)
             prov = [ln for ln in ftext.splitlines() if ln.startswith("Provenance:")]
             if not prov:
@@ -1341,34 +1353,81 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Provenance line: {ln.strip()[:80]}",
                     )
                     continue
-                # Unprovable skips (review R1, rule-22 precedent): on a
-                # gitless export or a broken git there is no history to
-                # resolve against, so the leg degrades instead of FATALing
-                # every line (AGENTS: the tooling runs anywhere with
-                # Python 3). A working git that names nothing still fails.
-                if graph.git_resolves(pm.group(1)) is False:
+                # The candidate leg degrades visibly (D00 T01 §33 item
+                # 1): on a gitless export or a broken git there is no
+                # history to resolve against, so the skip reports as
+                # WARN (the baseline still blocks CI until the skip is
+                # explicitly accepted) instead of FATALing every line
+                # or vanishing. A working git that names nothing
+                # still fails.
+                _cand = pm.group(1)
+                _res = graph.git_resolves(_cand)
+                if _res is False:
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {pm.group(1)} resolves to nothing",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} resolves to nothing",
                     )
+                elif _res is None:
+                    flag(
+                        "provenance-candidate-unprovable",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
+                        "is unverifiable here (git unprovable; degraded, not verified)",
+                    )
+                # New records resolve at mint time (D00 T01 §33 item
+                # 3): the run-date prefix scopes the ratchet, so every
+                # record minted after 2026-09-19 carries the full ID
+                # while history keeps its shorts.
+                if pm.group(7)[:8] > "20260919" and re.fullmatch(r"[0-9a-f]{40}", _cand) is None:
+                    flag(
+                        "provenance-short-candidate",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
+                        "is short in a post-2026-09-19 run (resolve at mint time; record the full 40-hex ID)",
+                    )
+                # String containment first (D00 T01 §33 items 4-5):
+                # absolute, traversal, symlink-escape, loop, and
+                # garbage paths fail here, git or no git. ValueError
+                # is a NUL byte: resolve raises it, not OSError, and
+                # a hostile path must fail, not crash.
                 _pp = pm.group(6)
                 try:
                     _pfile = (graph.TODO_DIR.parent / _pp).resolve()
                     _proot = graph.TODO_DIR.parent.resolve()
-                    _pok = not Path(_pp).is_absolute() and _pfile.is_relative_to(_proot) and _pfile.is_file()
-                except (OSError, RuntimeError):
-                    # RuntimeError is a symlink loop: resolve raises it,
-                    # not OSError, and a hostile path must fail, not crash.
-                    _pok = False
-                if not _pok:
+                    _contained = not Path(_pp).is_absolute() and _pfile.is_relative_to(_proot)
+                except (OSError, RuntimeError, ValueError):
+                    _contained = False
+                if not _contained:
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} names no file under the repo root",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
+                        "escapes the repo root or is not a well-formed relative path",
                     )
-                if mruns and graph.normalize_run_id(pm.group(7)) not in mruns:
+                elif pm.group(7)[:8] > "20260919":
+                    # Existence reads the candidate tree (D00 T01 §33
+                    # item 4): a live-checkout path proves nothing
+                    # about reviewed bytes, so new records name the
+                    # primary reviewed artifact and it must sit in the
+                    # recorded tree. Unresolving candidates skip
+                    # through the WARN above, never silently.
+                    if _res is True and graph.git_file_at(_cand, _pp) is None:
+                        flag(
+                            "provenance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
+                            f"names no file in the {_cand} tree (new records pin the reviewed artifact)",
+                        )
+                elif not _pfile.is_file():
+                    # Pre-ratchet records keep checkout existence:
+                    # their self-paths postdate their candidates, so
+                    # the tree leg cannot apply (D00 T01 §33 item 4).
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance run {pm.group(7)} equals no marker run of §{num} (misattributed evidence)",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
+                        "names no file under the repo root",
+                    )
+                if last_run is not None and graph.normalize_run_id(pm.group(7)) != last_run:
+                    flag(
+                        "provenance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance run {pm.group(7)} "
+                        f"equals no live marker run of §{num} (last marker carries {last_run}; superseded runs cite old evidence)",
                     )
 
     # 24. risk acceptances terminate escalations in a checkable shape
