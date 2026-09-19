@@ -1031,9 +1031,9 @@ SEVERITY_MAP: dict[str, str] = {
 # alternation covering both description sites' wordings, so a leg
 # split across a comment line break still detects.
 RULE24_LEG_MARKERS = (
-    ("shape", r"shape"),
+    ("shape", r"\bshape\b"),
     ("target", r"\btargets?\b"),
-    ("dates", r"expir\w*\s+(before|never)|predates"),
+    ("dates", r"expir\w*\s+(before|never)|\bpredates\b"),
     (
         "review window",
         r"record[.\-]*expir|review-window|bounds\s+inclusive|review\s+date\s+sits\s+inside",
