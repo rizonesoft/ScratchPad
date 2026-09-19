@@ -2474,6 +2474,24 @@ def cmd_query(args) -> int:
                         state = f"{state}+retry-owed" if state else "retry-owed"
                     if re.search(r"\bpartial\s*:", body.lower()):
                         state = f"{state}+partial" if state else "partial"
+                    rm = RUN_ID_RE.search(body)
+                    mrun = normalize_run_id(rm.group(1)) if rm else None
+                    omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
+                    orung = omt.group(1).strip() if omt else None
+                    stamp_day = s.stamped_on or ""
+                    # Marker debt by target (D00 T01 §29 item 2,
+                    # panel R1): the risk register reads a
+                    # run/outage waiver's residual off the owed
+                    # states of the markers carrying its target.
+                    # Every marked marker joins (healthy ones
+                    # contribute nothing, so their waivers read
+                    # `none`); sets because one (rung, day) can
+                    # owe on several markers.
+                    _dstates = [s for s in ("outage", "retry-owed", "partial") if s in state.split("+")]
+                    if mrun is not None:
+                        run_debt.setdefault(mrun, set()).update(_dstates)
+                    if orung is not None:
+                        outage_debt.setdefault((orung, stamp_day), set()).update(_dstates)
                     if state:
                         om = OWNER_RE.search(body)
                         dm = DUE_RE.search(body)
@@ -2497,24 +2515,6 @@ def cmd_query(args) -> int:
                         # empty.
                         _cause = ""
                         _fix = ""
-                        rm = RUN_ID_RE.search(body)
-                        mrun = normalize_run_id(rm.group(1)) if rm else None
-                        omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
-                        orung = omt.group(1).strip() if omt else None
-                        stamp_day = s.stamped_on or ""
-                        # Marker debt by target (D00 T01 §29 item 2,
-                        # panel R1): the risk register reads a
-                        # run/outage waiver's residual off the owed
-                        # states of the markers carrying its target.
-                        # Every marked marker joins (healthy ones
-                        # contribute nothing, so their waivers read
-                        # `none`); sets because one (rung, day) can
-                        # owe on several markers.
-                        _dstates = [s for s in ("outage", "retry-owed", "partial") if s in state.split("+")]
-                        if mrun is not None:
-                            run_debt.setdefault(mrun, set()).update(_dstates)
-                        if orung is not None:
-                            outage_debt.setdefault((orung, stamp_day), set()).update(_dstates)
                         if "outage" in state or "retry-owed" in state:
                             fm = FINDINGS_RE.search(s.review_body or "")
                             if fm:
@@ -11142,7 +11142,8 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "|   6   |   §6    | Review states | -- |  [x]   |\n"
             "|   7   |   §7    | Postdated waiver | -- |  [x]   |\n"
             "|   8   |   §8    | Superseded predecessor defers to head | -- |  [x]   |\n"
-            "|   9   |   §9    | Unresolvable evidence | -- |  [x]   |\n\n---\n\n"
+            "|   9   |   §9    | Unresolvable evidence | -- |  [x]   |\n"
+            "|   10  |   §10   | Matched outage residual | -- |  [x]   |\n\n---\n\n"
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
@@ -11179,7 +11180,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "## 9. Unresolvable evidence\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §9 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc12.md\n"
-            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S9-gpt)\n",
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S9-gpt)\n\n"
+            "## 10. Matched outage residual\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §10 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc13.md\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1\n",
             encoding="utf-8",
         )
         _acc_head = (
@@ -11240,7 +11245,8 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date {_r0}; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; supersedes 2026-09-18; rationale successor review\n"
             f"Risk accepted: D90-T01-S6-PR4; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence dead666; rationale stale review, never lists\n"
             f"Risk accepted: D90-T01-S6-PR99; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale dangling review, never lists\n"
-            f"Risk accepted: D90-T01-S6-PR5; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale minor review, never lists\n",
+            f"Risk accepted: D90-T01-S6-PR5; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale minor review, never lists\n"
+            f"Risk accepted: 20260918-D90-T01-S6-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; rationale healthy marker waiver\n",
             encoding="utf-8",
         )
         _r30f = (date.today() + timedelta(days=30)).isoformat()
@@ -11264,6 +11270,13 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             + "Manifest: sections [D90 T01 §9]; dependents [none]; bytes 100; run 20260919-D90-T01-S9-gpt\n\n"
             "Ledger:\n- [D90-T01-S9-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
             f"Risk accepted: 20260919-D90-T01-S9-gpt; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale unresolvable evidence\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc13.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §10]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S10-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage cron rung 2026-09-19; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale matched outage, unresolvable evidence\n",
             encoding="utf-8",
         )
         _clean_todo = (clean / "todo" / "90-clean" / "TODO-01-clean.md").as_posix()
@@ -11342,6 +11355,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         )
         _deg8 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§8")]
         _deg9 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§9")]
+        _deg10 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§10")]
         check(
             "wrong instance diagnoses no-waiver",
             (
@@ -11409,6 +11423,15 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "matched outage diagnoses through its cause",
+            (
+                len(_deg10) == 1
+                and _deg10[0]["accepted_by"] == ""
+                and _deg10[0]["noncover_cause"] == "git-unresolvable"
+            ),
+            True,
+        )
+        check(
             "summary names each noncoverage cause with its fix",
             (
                 any("§1" in ln and "cause no-waiver" in ln and "rerun the review" in ln for ln in _acc_sum)
@@ -11418,6 +11441,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 and any("§7" in ln and "cause post-dated" in ln for ln in _acc_sum)
                 and any("§8" in ln and "cause post-dated" in ln for ln in _acc_sum)
                 and any("§9" in ln and "cause git-unresolvable" in ln and "fetch-depth 0" in ln for ln in _acc_sum)
+                and any("§10" in ln and "cause git-unresolvable" in ln for ln in _acc_sum)
             ),
             True,
         )
@@ -11500,7 +11524,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "register lists every un-superseded instrument once",
             (
                 _reg["schema"] == "risk-register/1"
-                and len(_rent) == 13
+                and len(_rent) == 15
                 and not any(e["rationale"] in ("superseded waiver", "superseded review") for e in _rent)
                 and not any("S4-PR1" in e["target"] for e in _rent)
             ),
@@ -11513,6 +11537,8 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 and any(e["target"] == "D90-T01-S6-PR99" and e["residual"] == "dangling" for e in _rent)
                 and any(e["target"].endswith("S2-gpt") and e["residual"] == "retry-owed" for e in _rent)
                 and any(e["target"] == "outage gpt rung 2026-09-18" and e["residual"] == "unmatched" for e in _rent)
+                and any(e["target"] == "outage cron rung 2026-09-19" and e["residual"] == "outage" for e in _rent)
+                and any(e["target"].endswith("S6-gpt") and e["residual"] == "none" for e in _rent)
                 and any(e["target"].endswith("S5-gpt") and e["state"] == "expired" for e in _rent)
                 and any(e["target"].endswith("S7-gpt") and e["state"] == "post-dated" for e in _rent)
             ),
@@ -11523,7 +11549,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             (
                 any(ln == "Reviews: 2 due or overdue (1 overdue)" for ln in _dash)
                 and any(ln == "Expiries: 0 within 30 days" for ln in _dash)
-                and any(ln == "Partials and outages: 7 owed" for ln in _dash)
+                and any(ln == "Partials and outages: 8 owed" for ln in _dash)
                 and any(ln.startswith("Migration: 0 leftovers") for ln in _dash)
                 and any(ln == "Open findings: 0 criticals, 1 majors (0 overdue)" for ln in _dash)
             ),
@@ -11533,7 +11559,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "notify emits flat owner payloads and exits 0",
             (
                 rc_not == 0
-                and any(ln.startswith("notify: 9 payloads within 7 days") for ln in _not)
+                and any(ln.startswith("notify: 10 payloads within 7 days") for ln in _not)
                 and any(ln.strip().startswith("ann | 2020-01-01 | degraded") for ln in _not)
                 and any("bob |" in ln and "review-overdue" in ln for ln in _not)
             ),
@@ -11541,7 +11567,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         )
         check(
             "frozen --today moves the notify window",
-            any(ln.startswith("notify: 7 payloads within 7 days (today 2020-01-02") for ln in _not_f),
+            any(ln.startswith("notify: 8 payloads within 7 days (today 2020-01-02") for ln in _not_f),
             True,
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
