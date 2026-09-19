@@ -1377,7 +1377,7 @@ def validate(graph, _args) -> int:
                 # 3): the run-date prefix scopes the ratchet, so every
                 # record minted after 2026-09-19 carries the full ID
                 # while history keeps its shorts.
-                if pm.group(7)[:8] > "20260919" and re.fullmatch(r"[0-9a-f]{40}", _cand) is None:
+                if pm.group(7)[:8] > "20260919" and re.fullmatch(r"[0-9a-fA-F]{40}", _cand) is None:
                     flag(
                         "provenance-short-candidate",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
