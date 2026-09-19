@@ -2852,6 +2852,8 @@ def cmd_query(args) -> int:
             print(f"sections without telemetry: {no_tel} (past records read as unknown, not zero)")
             if malformed_total:
                 print(f"malformed telemetry lines skipped: {malformed_total} in {', '.join(malformed_files)}")
+            if mismatch:
+                print(f"round/telemetry mismatches: {mismatch} (telemetry round field disagrees with its section)")
             return 0
 
         def _one_section(path: str, d: dict) -> tuple[list[str], dict]:
@@ -2965,6 +2967,7 @@ def cmd_query(args) -> int:
                     "sections_without_telemetry": no_tel,
                     "malformed_total": malformed_total,
                     "malformed_files": malformed_files,
+                    "mismatches": mismatch,
                 },
                 indent=2,
                 sort_keys=True,
@@ -16381,6 +16384,7 @@ Opus outage model failure at sign-off
         _tlines = _tbuf.getvalue().splitlines()
         check("query telemetry exits 0 on a tree with no findings", _tcode, 0)
         check("query telemetry reports the zero state", any("0 with telemetry lines" in ln for ln in _tlines), True)
+        check("query telemetry omits the mismatch line at zero", any("mismatches" in ln for ln in _tlines), False)
         _rev = root / "docs" / "reviews"
         _rev.mkdir(parents=True, exist_ok=True)
         (root / "todo" / "90-selftest").mkdir(parents=True, exist_ok=True)
