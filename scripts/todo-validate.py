@@ -803,7 +803,7 @@ def validate(graph, _args) -> int:
                         "plan-review-no-lineage",
                         f"{t.path}:{s.line}: §{num} genesis marker carries supersedes (a first run has no ancestry to name)",
                     )
-                claimed: dict[str, int] = {}
+                claimed: set[str] = set()
                 for _ci, _cbody in enumerate(chain):
                     _csm = graph.SUPERSEDES_RE.search(_cbody)
                     if _csm is None:
@@ -820,7 +820,7 @@ def validate(graph, _args) -> int:
                             f"{t.path}:{s.line}: §{num} run {_claimer} re-supersedes {_csm.group(1)} (two successors claim one predecessor)",
                         )
                     else:
-                        claimed[_ctgt] = _ci
+                        claimed.add(_ctgt)
                 if len(chain) > 1:
                     for _ei in range(len(chain) - 1):
                         _esm = graph.SUPERSEDES_RE.search(chain[_ei])
