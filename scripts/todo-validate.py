@@ -453,10 +453,18 @@ def validate(graph, _args) -> int:
     GPT_OUTAGE_RE = re.compile(r"opus outage", re.IGNORECASE)
     # The Sol note is shaped, not bare words: the skill mandates
     # `Sol outage: <what failed>`, so the colon plus failure text is
-    # required -- a bare "Sol outage" mention (or a "no Sol outage"
-    # denial) names no failure. Case-insensitive like the Opus note;
-    # runs on stripped text so fenced quotes never satisfy (D00 T01 §37).
-    SOL_OUTAGE_RE = re.compile(r"sol outage:[ \t]*\S", re.IGNORECASE)
+    # required. Denials fail two ways: a "No Sol outage:" prefix
+    # (lookbehind) and a nothing-valued note (none, n/a, nothing,
+    # never, not applicable). Free-form failures stay admissible --
+    # honest prose ("CLI missing", "timed out") must never false-fire
+    # -- so a creative falsehood ("no failure") still passes; the
+    # rule forces an accounting, not honesty, and reviewers read the
+    # note. Case-insensitive like the Opus note; runs on stripped
+    # text so fenced quotes never satisfy (D00 T01 §37, R1-F1).
+    SOL_OUTAGE_RE = re.compile(
+        r"(?<!\bno\s)sol outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
+        re.IGNORECASE,
+    )
     # Verdicts are line-anchored, never substring: the mandated shape puts
     # each verdict on its own marker-led line, so unheaded prose after an
     # incomplete panel (or a mid-line mention anywhere) must not supply a

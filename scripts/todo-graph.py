@@ -7842,7 +7842,7 @@ track: Z1
             "# Review: fixture\n\n## Opus panel\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
-            "Sol outage: model error (fixture note)\n",
+            "Sol outage: no CLI on this box (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-solnonote.md").write_text(
@@ -7861,7 +7861,8 @@ track: Z1
             "# Review: fixture\n\n## Opus panel\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
-            "Sol outage\n\nno Sol outage occurred here\n",
+            "Sol outage\n\nno Sol outage occurred here\n\n"
+            "No Sol outage: occurred\n\nSol outage: none\n",
             encoding="utf-8",
         )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -8218,7 +8219,7 @@ track: Z1
             False,
         )
         check(
-            "bare Sol outage without failure fires",
+            "bare or denied Sol outage fires",
             any(
                 "TODO-06-panel.md" in ln and "§43 " in ln and "lacks the Sol outage line" in ln
                 for ln in panel_out
