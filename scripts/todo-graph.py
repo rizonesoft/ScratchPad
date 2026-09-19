@@ -2389,6 +2389,13 @@ def telemetry_parse(text: str) -> dict:
     cur: dict | None = None
     cur_level = 0
     order = 0
+    explicit: set[int] = set()
+    for _ln in text.splitlines():
+        _hm = TELEMETRY_PANEL_RE.match(_ln)
+        if _hm:
+            _rm = TELEMETRY_ROUND_RE.search(_hm.group(3) or "")
+            if _rm:
+                explicit.add(int(_rm.group(1)))
     for ln in text.splitlines():
         for _r in RUN_ID_RE.findall(ln):
             _rid = normalize_run_id(_r.strip("`"))
@@ -2408,7 +2415,7 @@ def telemetry_parse(text: str) -> dict:
                 rn = int(rm.group(1))
             else:
                 rn = order
-                used = {r["n"] for r in rounds}
+                used = {r["n"] for r in rounds} | explicit
                 while rn in used:
                     rn += 1
             cur_level = len(hm.group(1))
@@ -2904,7 +2911,7 @@ def cmd_query(args) -> int:
                 for _v, _ar in _outs:
                     _r = ", ".join(_ar) if _ar else "no runs recorded"
                     print(f"    {_p}: {_v} (runs: {_r})")
-            print(f"sections without telemetry: {no_tel} (past records read as unknown, not zero)")
+            print(f"reviews without telemetry: {no_tel} (past records read as unknown, not zero)")
             if malformed_total:
                 print(f"malformed telemetry lines skipped: {malformed_total} in {', '.join(malformed_files)}")
             if mismatch:
@@ -3053,7 +3060,7 @@ def cmd_query(args) -> int:
                         {"path": p, "outages": [{"value": v, "runs": r} for v, r in o]}
                         for p, o in opus_files
                     ],
-                    "sections_without_telemetry": no_tel,
+                    "reviews_without_telemetry": no_tel,
                     "malformed_total": malformed_total,
                     "malformed_files": malformed_files,
                     "mismatches": mismatch,
@@ -16544,6 +16551,12 @@ Sol outage: CLI missing before round 2
             [r["n"] for r in _TEL_CN["rounds"]],
             [2, 3],
         )
+        _TEL_FW = telemetry_parse("## GPT panel\n\n## Opus panel (round 1)\n")
+        check(
+            "telemetry fallback numbers dodge later explicit numbers",
+            [r["n"] for r in _TEL_FW["rounds"]],
+            [2, 1],
+        )
         _tbuf = _tio.StringIO()
         with _tctx.redirect_stdout(_tbuf), _tctx.redirect_stderr(_tio.StringIO()):
             _tcode = cmd_query(argparse.Namespace(what="telemetry"))
@@ -16551,6 +16564,11 @@ Sol outage: CLI missing before round 2
         check("query telemetry exits 0 on a tree with no findings", _tcode, 0)
         check("query telemetry reports the zero state", any("0 with telemetry lines" in ln for ln in _tlines), True)
         check("query telemetry omits the mismatch line at zero", any("mismatches" in ln for ln in _tlines), False)
+        check(
+            "query telemetry reports reviews without telemetry",
+            any("reviews without telemetry: 0" in ln for ln in _tlines),
+            True,
+        )
         _rev = root / "docs" / "reviews"
         _rev.mkdir(parents=True, exist_ok=True)
         (root / "todo" / "90-selftest").mkdir(parents=True, exist_ok=True)
