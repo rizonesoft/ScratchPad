@@ -706,6 +706,35 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} partial run with a fallback survivor owes a retry (retry-owed (owner, due))",
                     )
+            # D00 T01 §28 item 2: degraded lines carry failure detail.
+            # Every outage or retry-owed line in the chain names its
+            # failure class (`class <class>`, open vocabulary: auth,
+            # timeout, model-error, malformed-output, infra, ...) and
+            # its attempt count (`attempts <n>`, a positive integer),
+            # so recurring failures are diagnosable from the record.
+            # Chain-wide, not last-line-only: a superseded outage line
+            # is the failure history a rerun follows, and detail is
+            # record, never claim (last-governs voids claims, not
+            # history). The outage leg reads through the shared
+            # outage-marker predicate, so prose merely mentioning an
+            # outage beside filings owes no fields; bare partials
+            # carry no fields by the survivor rule above.
+            _dchain = section_markers(t, num) or []
+            for _line in _dchain:
+                _lst = marker_states(_line)
+                if not (is_outage_marker(_line) or _lst["retry"]):
+                    continue
+                if not re.search(r"\bclass\s+\S+", _line):
+                    flag(
+                        "stamp-no-plan-review",
+                        f"{t.path}:{s.line}: §{num} degraded marker line names no failure class (class <class>)",
+                    )
+                _am = re.search(r"\battempts\s+(\d+)", _line)
+                if _am is None or int(_am.group(1)) < 1:
+                    flag(
+                        "stamp-no-plan-review",
+                        f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
+                    )
             if has_outage:
                 continue
             for xm in graph.XREF_RE.finditer(marker):
@@ -960,14 +989,17 @@ def validate(graph, _args) -> int:
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed ledger row: {ln.strip()[:80]}",
                         )
                 # D00 T01 §17 item 10: row-legality for the content-bearing
-                # dispositions. A `deferred` row must carry its owner, date,
+                # dispositions. A `deferred` row must carry its owner, due,
                 # and trigger (an unaccountable deferral satisfies the shape
-                # while promising nothing); a `duplicate` row must name its
-                # canonical finding; a `filed` row must name a target (a
-                # filing that points nowhere is filed nowhere). D00 T01 §19
-                # item 7 adds the open rows: an `accepted` critical or major
-                # must carry its owner and due date (open high-severity
-                # findings are accountable or they sit invisible).
+                # while promising nothing; D00 T01 §28 item 4 renames the
+                # triple's `date` to `due`, unifying with accepted rows and
+                # leaving `review` to risk acceptances alone); a `duplicate`
+                # row must name its canonical finding; a `filed` row must
+                # name a target (a filing that points nowhere is filed
+                # nowhere). D00 T01 §19 item 7 adds the open rows: an
+                # `accepted` critical or major must carry its owner and due
+                # date (open high-severity findings are accountable or they
+                # sit invisible).
                 for lr in graph.LEDGER_ROW_RE.finditer(block):
                     sev = lr.group(2).lower()
                     disp = lr.group(3).lower()
@@ -975,12 +1007,12 @@ def validate(graph, _args) -> int:
                     if disp == "deferred":
                         if not (
                             "owner" in rest.lower()
-                            and re.search(r"\d{4}-\d{2}-\d{2}", rest)
+                            and re.search(r"\bdue\s+\d{4}-\d{2}-\d{2}", rest)
                             and "trigger" in rest.lower()
                         ):
                             flag(
                                 "plan-review-malformed",
-                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} deferred row without owner, date, and trigger: {lr.group(1)}",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} deferred row without owner, due, and trigger: {lr.group(1)}",
                             )
                     elif disp == "duplicate":
                         if not re.search(r"\bPR\d+\b|[A-Z0-9]+-T\d+-S\d+-PR\d+", rest):

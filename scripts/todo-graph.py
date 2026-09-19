@@ -1312,6 +1312,23 @@ def is_outage_marker(body: str) -> bool:
     return st["outage"] and not (st["filed"] or st["nofind"] or st["retry"] or st["partial"])
 
 
+def ledger_row_due(disp: str, rest: str) -> str:
+    # A deferred row spells `due` under the deferred vocabulary
+    # (owner/due/trigger, renamed from `date` by D00 T01 §28 item 4 so
+    # `review` belongs to risk acceptances alone). Pre-cutoff
+    # `date`-spelled rows stay validator-silent by date scope and keep
+    # parsing through the fallback below, so grandfathered deferrals
+    # still report. A helper (not inline) so the self-test pins the
+    # grandfather spelling directly: no live fixture row may carry it.
+    dm = DUE_RE.search(rest)
+    if dm:
+        return dm.group(1)
+    if disp == "deferred":
+        dd = re.search(r"\d{4}-\d{2}-\d{2}", rest)
+        return dd.group(0) if dd else ""
+    return ""
+
+
 def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
     """Every `Plan review:` line body of one section, in file order.
 
@@ -2623,21 +2640,8 @@ def cmd_query(args) -> int:
                         disp = lr.group(3).lower()
                         rest = block[lr.end():].split("\n", 1)[0]
                         om = OWNER_RE.search(rest)
-                        dm = DUE_RE.search(rest)
                         owner = om.group(1) if om else ""
-                        # A deferred row's review date IS its due date under
-                        # the deferred vocabulary (owner/date/trigger), so
-                        # the query reports it as `due` rather than flagging
-                        # a validator-legal row UNACCOUNTABLE (D00 T01 §19
-                        # review R2: accepted rows must spell `due`, deferred
-                        # rows satisfy it through `date`).
-                        if dm:
-                            due = dm.group(1)
-                        elif disp == "deferred":
-                            dd = re.search(r"\d{4}-\d{2}-\d{2}", rest)
-                            due = dd.group(0) if dd else ""
-                        else:
-                            due = ""
+                        due = ledger_row_due(disp, rest)
                         # A live acceptance for this row terminates its
                         # escalation (D00 T01 §21 item 2); file-scoped, so
                         # bare PRn targets are unambiguous here. The
@@ -3183,6 +3187,17 @@ def cmd_query(args) -> int:
             # clearances are uncovered criticals; overdue owners group
             # every overdue escalation; next names the first uncovered
             # entry of the first failing dimension in gate order.
+            # Next-action precedence (D00 T01 §28 item 5): the gate
+            # order behind `next:` is unmarked, uncovered, degraded,
+            # criticals, majors, unreadable, reviews (grandfathered
+            # joins past the migration deadline), so the digest reads
+            # review-completeness before finding-severity before
+            # record-legibility before acceptance-renewal, and the
+            # entry within the dimension is the total-sort-key first.
+            # Rationale: one digest, one next action, deterministic
+            # across text and JSON; the order fixes foundations
+            # (missing reviews) before findings before renewals, and
+            # the sort key makes no urgency claim beyond stability.
             incomplete = [
                 d
                 for d in degraded_sorted
@@ -7102,6 +7117,9 @@ track: Z1
 |  67   |   §67   | Malformed retirement probe | - |  [x]   |
 |  68   |   §68   | Wrong-ref retirement probe | - |  [x]   |
 |  69   |   §69   | Bad-date retirement probe | - |  [x]   |
+|  70   |   §70   | Outage missing failure class | - |  [x]   |
+|  71   |   §71   | Retry missing attempt count | - |  [x]   |
+|  72   |   §72   | Zero attempt count fires | - |  [x]   |
 
 ---
 
@@ -7177,7 +7195,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §6 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-bad.md
-> **Plan review:** Opus fallback (GPT unreachable), filed §99, retry-owed, no findings, owner ann due 2099-01-01 (run 20260920-D90-T07-S6-opus)
+> **Plan review:** Opus fallback (GPT unreachable), filed §99, retry-owed, no findings, owner ann due 2099-01-01 class auth attempts 2 (run 20260920-D90-T07-S6-opus)
 
 ## 7. Outage marker skips filing checks
 
@@ -7188,7 +7206,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §7 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs; attempted §99
+> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs class timeout attempts 3; attempted §99
 
 ## 8. Malformed ledger row
 
@@ -7235,7 +7253,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §11 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** outage: rung 1; filed §4, no findings, retry-owed, owner bob due 2026-01-01
+> **Plan review:** outage: rung 1; filed §4, no findings, retry-owed, owner bob due 2026-01-01 class model-error attempts 1
 
 ## 12. Reopened row still checked
 
@@ -7406,7 +7424,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §26 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01)
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2, follows-outage)
 
 ## 27. Outage rerun unchained
@@ -7418,7 +7436,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §27 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01)
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2)
 
 ## 28. Dangling follows-outage
@@ -7475,7 +7493,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §32 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage2.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01)
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S32-gpt, follows-outage)
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S32-gpt-r2, follows-outage)
 
@@ -7523,7 +7541,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §36 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial2.md
-> **Plan review:** GPT high, partial: gpt rung, filed §2, retry-owed owner ann due 2099-01-01 (run 20260920-D90-T07-S36-gpt)
+> **Plan review:** GPT high, partial: gpt rung, filed §2, retry-owed owner ann due 2099-01-01 class timeout attempts 2 (run 20260920-D90-T07-S36-gpt)
 
 ## 37. Owed partial retry missing
 
@@ -7545,7 +7563,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §38 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial4.md
-> **Plan review:** GPT high, partial: opus rung, filed §2, retry-owed owner ann due 2099-01-01 (run 20260920-D90-T07-S38-gpt)
+> **Plan review:** GPT high, partial: opus rung, filed §2, retry-owed owner ann due 2099-01-01 class timeout attempts 2 (run 20260920-D90-T07-S38-gpt)
 
 ## 39. Unknown partial rung
 
@@ -7578,7 +7596,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §42 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept.md
-> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T07-S42-gpt)
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class rate-limit attempts 4 (run 20260919-D90-T07-S42-gpt)
 
 ## 43. Expired acceptance lapses
 
@@ -7589,7 +7607,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §43 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept2.md
-> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 (run 20260920-D90-T07-S43-gpt)
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class rate-limit attempts 4 (run 20260920-D90-T07-S43-gpt)
 
 ## 44. Malformed acceptances
 
@@ -7622,7 +7640,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-19 | §46 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept5.md
-> **Plan review:** outage: both rungs (owner ann, due 2020-01-01)
+> **Plan review:** outage: both rungs (owner ann, due 2020-01-01) class auth attempts 1
 
 ## 47. Grandfathered unmarked stamp
 
@@ -7913,6 +7931,39 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-18 | §69 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Retired:** 9999-99-99 | D90 T07 §69 | unreal date, stays listed
+
+## 70. Outage missing failure class
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §70 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) attempts 2
+
+## 71. Retry missing attempt count
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §71 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus fallback (GPT unreachable), no findings, retry-owed (owner ann, due 2099-01-01) class auth
+
+## 72. Zero attempt count fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §72 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT timeout then Opus timeout, outage: both rungs (owner ann, due 2099-01-01) class timeout attempts 0
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -7936,25 +7987,25 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [PR11] [critical] Split target -> filed §2, §99\n"
             "- [PR12] [major] Lingering worry -> accepted owner ann due 2099-03-03\n"
             "- [PR13] [major] Unlinked filing -> filed §2\n"
-            "- [PR14] [minor] Patient wait -> deferred owner ann date 2026-10-01 trigger review-lands\n"
+            "- [PR14] [minor] Patient wait -> deferred owner ann due 2026-10-01 trigger review-lands\n"
             "- [PR15] [minor] Vague wait -> deferred someday\n"
             "- [PR16] [minor] Same worry -> duplicate PR12\n"
             # §19 probe: a filed critical whose fix commit the tree cannot
             # prove (§21 stamps post-finding with the back-link and the fix
             # token, but the commit's bytes lack the ID).
             "- [D90-T07-S4-PR17] [critical] Fixed elsewhere -> filed §21\n"
-            # R2 probe: a deferred critical in the deferred vocabulary (no
-            # `due` spelled): validator-legal, and the query reports its
-            # review date as the due date instead of UNACCOUNTABLE.
-            "- [PR18] [critical] Waiting on trigger -> deferred owner ann date 2099-04-04 trigger fix-lands\n"
+            # R2 probe: a deferred critical in the deferred vocabulary
+            # (owner/due/trigger since D00 T01 §28 item 4): validator-legal,
+            # and the query reports its due date instead of UNACCOUNTABLE.
+            "- [PR18] [critical] Waiting on trigger -> deferred owner ann due 2099-04-04 trigger fix-lands\n"
             # R3 probe: a deferred major is an open major too (it used to
             # drop out of the majors dimension entirely).
-            "- [PR19] [major] Waiting major -> deferred owner ann date 2099-05-05 trigger fix-lands\n"
+            "- [PR19] [major] Waiting major -> deferred owner ann due 2099-05-05 trigger fix-lands\n"
             # R4 probes: a blown row due date fires overdue plus escalation
             # even under a current review stamp (major accepted, critical
-            # deferred through its review date).
+            # deferred through its due date).
             "- [D90-T07-S4-PR22] [major] Blown due date -> accepted owner ann due 2020-01-01\n"
-            "- [PR23] [critical] Blown critical -> deferred owner ann date 2020-02-02 trigger fix-lands\n"
+            "- [PR23] [critical] Blown critical -> deferred owner ann due 2020-02-02 trigger fix-lands\n"
             # R5 probe: a filed critical whose fix commit carries the ID in
             # its tree but never touched the target file (an unrelated
             # commit that happens to contain the citation).
@@ -9155,6 +9206,45 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             1,
         )
         check(
+            "outage without a failure class fires",
+            any(
+                "TODO-07-marker.md" in ln and "§70 " in ln and "names no failure class" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§70 fires exactly once (class only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§70 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "retry without an attempt count fires",
+            any(
+                "TODO-07-marker.md" in ln and "§71 " in ln and "names no positive attempt count" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§71 fires exactly once (attempts only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§71 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "zero attempt count fires",
+            any(
+                "TODO-07-marker.md" in ln and "§72 " in ln and "names no positive attempt count" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§72 fires exactly once (attempts only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§72 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
             "risk-acceptance-malformed is a FATAL class",
             SEVERITY_MAP.get("risk-acceptance-malformed"),
             "fatal",
@@ -10002,7 +10092,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "plan-health reports the deferred date as the due date",
+            "plan-health reports the deferred triple's due date as the due date",
             any(
                 "PR18" in ln and "due 2099-04-04" in ln and "UNACCOUNTABLE" not in ln
                 for ln in health_lines
@@ -10016,6 +10106,26 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 for ln in health_lines
             ),
             True,
+        )
+        check(
+            "deferred due spelling parses as the due date",
+            ledger_row_due("deferred", "owner ann due 2099-04-04 trigger fix-lands"),
+            "2099-04-04",
+        )
+        check(
+            "grandfathered date spelling still parses as the due date",
+            ledger_row_due("deferred", "owner ann date 2026-10-01 trigger review-lands"),
+            "2026-10-01",
+        )
+        check(
+            "dateless deferred row parses no due date",
+            ledger_row_due("deferred", "someday"),
+            "",
+        )
+        check(
+            "non-deferred row without due parses no due date",
+            ledger_row_due("accepted", "owner ann 2026-10-01"),
+            "",
         )
         check(
             "plan-health escalates the past-due major",
@@ -10522,24 +10632,24 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
-            "> **Plan review:** outage: gpt rung (owner ann, due 2020-01-01)\n\n"
+            "> **Plan review:** outage: gpt rung (owner ann, due 2020-01-01) class auth attempts 1\n\n"
             "## 2. Prewritten waiver\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §2 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc2.md\n"
-            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S2-gpt)\n\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S2-gpt)\n\n"
             "## 3. Stale evidence\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §3 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc3.md\n"
-            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S3-gpt)\n\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S3-gpt)\n\n"
             "## 4. Reopened\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §4 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc4.md\n"
-            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S4-gpt)\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S4-gpt)\n"
             "> **Reopened:** 2026-09-19 | D90-T01-S4-PR1 | fixture reopen\n\n"
             "## 5. Expired owner\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §5 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc5.md\n"
-            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260918-D90-T01-S5-gpt)\n\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260918-D90-T01-S5-gpt)\n\n"
             "## 6. Review states\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §6 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc6.md\n"
@@ -10547,7 +10657,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "## 7. Postdated waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §7 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc10.md\n"
-            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S7-gpt)\n",
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S7-gpt)\n",
             encoding="utf-8",
         )
         _acc_head = (
