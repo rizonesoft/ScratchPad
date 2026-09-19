@@ -1155,11 +1155,13 @@ Why this section exists: the §20 findings ledger carries 18 rows that parse as 
 
 ## 44. Range-Fallback Lineage Guards
 
+> **Started:** 2026-09-19T16:46:14Z
+
 Why this section exists: the §24 round-5 panel proved the genesis flag misfires on range-stamped non-first sections (the parsed fallback returns the last marker as a one-element chain, so a legitimate rerun reads as genesis), and the same truncation shape threatens the follows-outage dangling check beside it. Range members must read their full chains or the checks must know the chain is partial. -> XREF: D00 T01 §24 (panel leftover filed from its review); -> XREF: D00 T01 §20 (the follows check lives in its lineage rule); -> SOURCE: Opus-panel-D00-T01-s24-round-5 (candidate 68deeed, round-5 adversarial; transcribed in docs/reviews/00-workspace/D00-T01-s24.md).
 
-- [ ] Genesis flag skips fallback chains: a one-element chain read from the parsed fallback is never genesis-provable. Done when: the validator plus fixtures lock the silence on range reruns and the fire on true singletons.
-- [ ] Follows-outage dangling check verified against fallback chains, guarded if it misfires. Done when: fixtures prove the silence on range follows-chains or the item is struck with the reason.
-- [ ] Commit: `"workspace: guard lineage checks against range fallback"`
+- [x] Genesis flag skips fallback chains: a one-element chain read from the parsed fallback is never genesis-provable. Done when: the validator plus fixtures lock the silence on range reruns and the fire on true singletons. Done: `span_marker_bodies` exposes the span (section_markers refactored onto it, API unchanged); the genesis flag skips fallback chains; §§94-95 prove the silence and §58 still fires exactly once. Design is the Why's option b (checks know the chain is partial); option a (full chains for members) would resemanticize all 6 section_markers call sites.
+- [x] Follows-outage dangling check verified against fallback chains, guarded if it misfires. Done when: fixtures prove the silence on range follows-chains or the item is struck with the reason. Done: it misfired (fixture §97 fired pre-guard), so the same `_fallback` skip guards it; §§96-97 prove the silence.
+- [x] Commit: `"workspace: guard lineage checks against range fallback"`
 
 **Test checkpoint:** a two-marker range stamp (rerun over genesis) validates silent on both members; a true singleton with supersedes still fires. Falsifiable by any fire or silence that flips.
 

@@ -1511,11 +1511,13 @@ def ledger_row_due(disp: str, rest: str) -> str:
     return ""
 
 
-def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
-    """Every `Plan review:` line body of one section, in file order.
+def span_marker_bodies(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
+    """`Plan review:` stamp-line bodies inside one section's own span, file order.
 
-    A range stamp's fields reach sections whose spans hold no marker
-    lines; those read the parsed body as their single line.
+    None when the TODO file cannot be read. The range fallback lives in
+    section_markers, not here: a nonempty chain over an empty span is a
+    fallback chain, which lineage checks must not read as a singleton
+    (D00 T01 §44).
     """
     if todo.path not in todo_lines:
         try:
@@ -1532,6 +1534,18 @@ def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> l
         sm = STAMP_RE.match(ln)
         if sm and sm.group("kind") == "Plan review":
             out.append(sm.group("body"))
+    return out
+
+
+def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
+    """Every `Plan review:` line body of one section, in file order.
+
+    A range stamp's fields reach sections whose spans hold no marker
+    lines; those read the parsed body as their single line.
+    """
+    out = span_marker_bodies(todo_lines, todo, num)
+    if out is None:
+        return None
     if not out:
         parsed = (todo.sections[num].plan_review_body or "").strip()
         if parsed:
@@ -8930,6 +8944,10 @@ track: Z1
 |  91   |   §91   | Over-long section reference probe | - |  [x]   |
 |  92   |   §92   | Restated-mandatory rationale probe | - |  [x]   |
 |  93   |   §93   | Filed-target backlink host | - |  [x]   |
+|  94   |   §94   | Range rerun pair one | - |  [x]   |
+|  95   |   §95   | Range rerun pair two | - |  [x]   |
+|  96   |   §96   | Range follows pair one | - |  [x]   |
+|  97   |   §97   | Range follows pair two | - |  [x]   |
 
 ---
 
@@ -10064,6 +10082,44 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §93 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+
+## 94. Range rerun pair one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §94-§95 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-rangererun.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S94-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S94-gpt-r2, supersedes 20260920-D90-T07-S94-gpt)
+
+## 95. Range rerun pair two
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+## 96. Range follows pair one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §96-§97 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-rangefollows.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S96-gpt-r2, follows-outage)
+
+## 97. Range follows pair two
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -10587,6 +10643,22 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             + "Manifest: sections [D90 T07 §64, D90 T07 §65]; dependents [none]; bytes 100; run 20260920-D90-T07-S64-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S4-PR2] [major] Re-cited range finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-rangererun.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §94, D90 T07 §95]; dependents [none]; bytes 100; run 20260920-D90-T07-S94-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited range rerun finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-rangefollows.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §96, D90 T07 §97]; dependents [none]; bytes 100; run 20260920-D90-T07-S96-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited range follows finding -> filed §2\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -12179,6 +12251,24 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 1
                 for ln in marker_out
                 if "TODO-07-marker.md" in ln and ("§64 " in ln or "§65 " in ln) and "FATAL" in ln
+            ),
+            0,
+        )
+        check(
+            "§§94-95 fire exactly zero (range-rerun silence)",
+            sum(
+                1
+                for ln in marker_out
+                if "TODO-07-marker.md" in ln and ("§94 " in ln or "§95 " in ln) and "FATAL" in ln
+            ),
+            0,
+        )
+        check(
+            "§§96-97 fire exactly zero (range-follows silence)",
+            sum(
+                1
+                for ln in marker_out
+                if "TODO-07-marker.md" in ln and ("§96 " in ln or "§97 " in ln) and "FATAL" in ln
             ),
             0,
         )

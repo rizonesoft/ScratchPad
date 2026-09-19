@@ -827,6 +827,12 @@ def validate(graph, _args) -> int:
             # bind to and stay exempt; outage markers skipped above.
             heads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(ftext))
             chain = section_markers(t, num) or []
+            # D00 T01 §44: a nonempty chain over a marker-less span is
+            # the range fallback (the parsed last marker standing in
+            # for a range member), never a provable singleton: the
+            # genesis and follows checks below skip it.
+            _span = graph.span_marker_bodies(todo_lines, t, num) or []
+            _fallback = bool(chain) and not _span
             if heads and chain:
                 runs: list[str | None] = []
                 for body in chain:
@@ -846,11 +852,13 @@ def validate(graph, _args) -> int:
                     )
                 prior_outage = len(chain) > 1 and is_outage_marker(chain[-2])
                 follows = graph.FOLLOWS_OUTAGE_RE.search(chain[-1]) is not None
-                if len(chain) == 1 and graph.SUPERSEDES_RE.search(chain[0]) is not None:
+                if len(chain) == 1 and not _fallback and graph.SUPERSEDES_RE.search(chain[0]) is not None:
                     # A singleton marker is genesis: run, no supersedes
                     # (D00 T01 §20 item 3). One carrying a supersedes edge
                     # names ancestry it cannot have: deleted or fabricated
                     # lineage masquerading as a first run (D00 T01 §24).
+                    # Fallback chains skip: a range member is not provably
+                    # first (D00 T01 §44).
                     flag(
                         "plan-review-no-lineage",
                         f"{t.path}:{s.line}: §{num} genesis marker carries supersedes (a first run has no ancestry to name)",
@@ -919,9 +927,11 @@ def validate(graph, _args) -> int:
                             "plan-review-no-lineage",
                             f"{t.path}:{s.line}: §{num} marker supersedes unknown run {sm.group(1)}",
                         )
-                if follows and not prior_outage:
+                if follows and not prior_outage and not _fallback:
                     # Dangling on any chain length: a singleton carrying
                     # `follows-outage` follows nothing at all (review R1).
+                    # Fallback chains skip: the outage sits upchain in the
+                    # range head's span (D00 T01 §44).
                     flag(
                         "plan-review-no-lineage",
                         f"{t.path}:{s.line}: §{num} marker follows no outage (dangling follows-outage)",
