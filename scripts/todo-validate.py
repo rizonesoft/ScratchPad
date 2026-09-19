@@ -1655,7 +1655,7 @@ def validate(graph, _args) -> int:
                 flag(
                     "duration-range-uncheckable",
                     f"{t.path}:{s.line}: §{num} Duration parses to no span "
-                    f"(shape the range or drop the line; pre-cutoff silence ends at the cutoff)",
+                    "(shape the range or drop the line; the silent fallback covers pre-cutoff records only)",
                 )
                 continue
             if s.duration_start is None or s.duration_end is None:
