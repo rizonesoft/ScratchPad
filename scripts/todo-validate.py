@@ -928,9 +928,11 @@ def validate(graph, _args) -> int:
     # `Ledger:`/`End of ledger` block (D00 T01 §19 item 10: rows are only
     # rows inside the block, so the LIKE heuristic retired with the prose
     # era); every non-blank line inside the block must match the row
-    # shape. Date-scoped like rules 16-17 (the §14/§15 records predate
-    # the shapes). FATAL: the fix is mechanical (shape the record) and
-    # the defect breaks the query's contract.
+    # shape. D00 T01 §24 item 2: post-cutoff manifests carry the run; the
+    # optional field stays for pre-cutoff records only. Date-scoped like
+    # rules 16-17 (the §14/§15 records predate the shapes). FATAL: the fix
+    # is mechanical (shape the record) and the defect breaks the query's
+    # contract.
     seen_18 = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
@@ -958,10 +960,20 @@ def validate(graph, _args) -> int:
                 nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
                 if nxt:
                     sec = sec[: nxt.start()]
-                if not graph.MANIFEST_RE.search(sec):
+                mm = graph.MANIFEST_RE.search(sec)
+                if not mm:
                     flag(
                         "plan-review-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} Plan review section without a Manifest line",
+                    )
+                elif not mm.group(4):
+                    # A run-less post-cutoff manifest names a review run
+                    # nothing can resolve (D00 T01 §24): the run field is
+                    # optional for pre-cutoff records only, which skip
+                    # this whole rule by stamp date above.
+                    flag(
+                        "plan-review-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} post-cutoff Manifest without a run (name the review run: run YYYYMMDD-DNN-TNN-SN-<family>[-rN])",
                     )
                 block, problem = graph.ledger_block(sec)
                 if block is None:
@@ -1404,11 +1416,13 @@ def validate(graph, _args) -> int:
     # own block in its own review namespace, and supersedes edges never
     # close a cycle. The link token must be exactly ID-shaped, so prose
     # carrying the word (a title like `Singleton supersedes stays
-    # silent`) is never a link. No date scope (rule-22 precedent: old
-    # ledgers deserve the same protection, and the grammar gate keeps
-    # prose silent); fence-stripped and first-reporter-wins like rules
-    # 23-24. plan-health reads the un-superseded head of each chain as
-    # current and skips the rest.
+    # silent`) is never a link. D00 T01 §24 item 5: two rows superseding
+    # one target forks the single-current-head read; the second claim
+    # fires. No date scope (rule-22 precedent: old ledgers deserve the
+    # same protection, and the grammar gate keeps prose silent);
+    # fence-stripped and first-reporter-wins like rules 23-24.
+    # plan-health reads the un-superseded head of each chain as current
+    # and skips the rest.
     seen_25 = set()
     for t in todos:
         for num, s in sorted(t.sections.items()):
@@ -1453,6 +1467,21 @@ def validate(graph, _args) -> int:
                         flag(
                             "ledger-supersession-broken",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} sits in a supersedes cycle",
+                        )
+                _claimants: dict[str, list[str]] = {}
+                for _rid2, _tgt2 in _links.items():
+                    _claimants.setdefault(_tgt2.lower(), []).append(_rid2)
+                for _tgt2 in sorted(_claimants):
+                    if len(_claimants[_tgt2]) < 2:
+                        continue
+                    # Two successors, one predecessor at the row level
+                    # (D00 T01 §24): the second claim breaks the
+                    # single-current-head read. Encounter order names the
+                    # later claimant; the target prints as carried.
+                    for _dup in _claimants[_tgt2][1:]:
+                        flag(
+                            "ledger-supersession-broken",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_dup} re-supersedes {_tgt2} (one target, one successor)",
                         )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,
