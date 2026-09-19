@@ -1906,15 +1906,21 @@ def cmd_query(args) -> int:
         # File-level by design: Candidate lines name panel rounds and
         # carry no run, so per-record attribution is impossible; the
         # file's candidates are the review's candidates across its
-        # rounds. Every findings file in the tree holds one record,
-        # where file-level is exact.
+        # rounds. Single-record files attribute exactly; multi-record
+        # files decline rather than misattribute.
         for _path, _text in sorted(seen_files.items()):
             if not any(_path == _mp for _mp, _ms, _md in manifests):
                 continue
+            _records = len(list(PLAN_REVIEW_HEADING_RE.finditer(_text)))
+            _lines = []
             for _cl in re.finditer(r"^Candidate:\s*(.+)$", _text, re.MULTILINE):
                 _shas = re.findall(r"[0-9a-fA-F]{7,40}", _cl.group(1))
                 if _shas:
-                    candidates.append((_path, " ".join(_shas)))
+                    _lines.append(" ".join(_shas))
+            if _records > 1:
+                candidates.append((_path, f"({len(_lines)} candidates across {_records} records: unattributable to one run)"))
+            else:
+                candidates.extend((_path, _ln) for _ln in _lines)
         artifacts: list[tuple[str, str, str, str, str, str, str]] = []
         for _path, _text in sorted(seen_files.items()):
             for _ln in _text.splitlines():
@@ -6681,6 +6687,7 @@ track: Z1
 |  60   |   §60   | Marker fork probe | - |  [x]   |
 |  61   |   §61   | Forward-edge probe | - |  [x]   |
 |  62   |   §62   | Ledger-row fork probe | - |  [x]   |
+|  63   |   §63   | Multi-record probe | - |  [x]   |
 
 ---
 
@@ -7419,6 +7426,17 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §62 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-rowfork.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S62-gpt)
+
+## 63. Multi-record probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §63 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-multirec.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S63-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -7826,6 +7844,20 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [D90-T07-S62-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
             "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1\n"
             "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1\n"
+            "End of ledger\n"
+            "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-multirec.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §63]; dependents [none]; bytes 100; run 20260920-D90-T07-S63-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited multirecord finding -> filed §2\n"
+            "End of ledger\n"
+            "## Plan review (rerun)\n\n"
+            "Manifest: sections [D90 T07 §63]; dependents [none]; bytes 100; run 20260920-D90-T07-S63-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR11] [major] Re-cited multirecord rerun finding -> filed §2\n"
             "End of ledger\n"
             "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
             encoding="utf-8",
@@ -8964,6 +8996,25 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "query stats names the rejection",
             any("query stats takes no target" in ln for ln in tbuf.getvalue().splitlines()),
+            True,
+        )
+        check(
+            "§63 fires exactly zero (multi-record silence)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§63 " in ln and "FATAL" in ln),
+            0,
+        )
+        vbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(vbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            multi_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S63-gpt")
+            )
+        check("query run exits 0 on a multi-record run", multi_code, 0)
+        check(
+            "query run declines unattributable candidates",
+            any(
+                "90-health-multirec.md" in ln and "unattributable to one run" in ln
+                for ln in vbuf.getvalue().splitlines()
+            ),
             True,
         )
         check(
