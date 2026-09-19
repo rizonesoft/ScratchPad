@@ -39,6 +39,7 @@ track: W0
 |   1   |   §1    | Sol-note and disposition follow-ups | D00 T01 §37 |  [ ]   |
 |   2   |   §2    | Rule-24 probe follow-ups | D00 T01 §46 |  [ ]   |
 |   3   |   §3    | Migration-assurance follow-ups | D00 T01 §48 |  [ ]   |
+|   4   |   §4    | Review-evaluation follow-ups | D00 T01 §49 |  [ ]   |
 
 ---
 
@@ -101,6 +102,17 @@ Why this section exists: the §48 plan review (`gpt-5.6-sol` high over §48 plus
 - [ ] Commit: `"workspace: follow up migration assurance per §48 plan review"`
 
 **Test checkpoint:** membership exactness holds pair-for-pair, the tamper path reads owned, rule-27 failures name anchor plus prong, and the assurance report renders; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
+
+## 4. Review-Evaluation Follow-Ups
+
+Why this section exists: the §49 plan review (`gpt-5.6-sol` high over §49 plus §27) returned 8 findings; 3 file here, 1 is reworded in place, 4 are rejected with reasons in the §49 findings file. Per-citer evaluation holds but evidence ignores citer state, downstream consumers are unpinned, and dedupe drops citer provenance. -> XREF: D00 T01 §49 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s49-2026-09-19-t04 D00-T01-S49-PR1 D00-T01-S49-PR5 D00-T01-S49-PR6 (`gpt-5.6-sol` high over §49 plus §27, 8 findings, 3 filed here, 1 reworded in place, 4 rejected with reasons in the §49 findings file).
+
+- [ ] Evidence binds the covering citer state: a finding acceptance's freshness covers the citer marker (or citation topology) that made it hold, not just the findings-file blob, so a later marker change cannot activate an acceptance against evidence it never reviewed (PR1 D00-T01-S49-PR1). This item is a joiner from the §49 plan review. Done when: the binding ships with fixtures pinning a marker-change activation.
+- [ ] Review consumers render second-citer obligations: JSON, text, summary digest, gate, and escalation render each pin a second-citer-only obligation end to end, so the fixed internal list provably reaches operators (notify is out: expiry-driven, not reviews-driven) (PR5 D00-T01-S49-PR5). This item is a joiner from the §49 plan review. Done when: every actual consumer pins the obligation with fixtures.
+- [ ] Single obligations retain matching citers: the deduped reviews row carries every citer whose marker covered it, so operators see why an obligation is live without receiving duplicate gates (PR6 D00-T01-S49-PR6). This item is a joiner from the §49 plan review. Done when: the citer set renders on the row with fixtures.
+- [ ] Commit: `"workspace: follow up review evaluation per §49 plan review"`
+
+**Test checkpoint:** evidence binds citer state, every consumer renders second-citer obligations, and single rows carry their citer sets; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
 
 ## Verification
 
