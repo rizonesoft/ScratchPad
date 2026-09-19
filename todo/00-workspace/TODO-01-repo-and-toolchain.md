@@ -974,10 +974,12 @@ Why this section exists: the panel regime §§9-14 built puts every round on Opu
 
 ## 36. README Mixed-Panel Touch-Up
 
+> **Started:** 2026-09-19T11:42:53Z
+
 Why this section exists: the §35 Opus sign-off (round 3) reported one consistency advisory, verified genuine: the root README's Deferred bullet for external review panel scripts still names the retired `headless Opus panel` title the mixed panel replaced. One line must move, with a re-sweep proving it is the last live site. -> XREF: D00 T01 §35 (filed from its review round 3); -> SOURCE: panel-D00-T01-s35-2026-09-18-R3 (Opus round 3, consistency advisory 1; record in the §35 findings file).
 
-- [ ] The Deferred bullet names the mixed panel: the root `README.md` Deferred bullet starting `- External review panel scripts` reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the bullet names the mixed panel and a tree-wide grep for the retired title finds no live site outside `docs/reviews/`, `docs/phase-runs/`, the `stamp-no-opus-panel` rule-class name, historical section titles (§9 et al), and validator comments citing the rule. **Corrected 2026-09-18 (PR15 D00-T01-S35-PR15):** line anchor replaced with the bullet's content anchor; exclusions enumerated explicitly.
-- [ ] Commit: `"workspace: name mixed panel in README Deferred"`
+- [x] The Deferred bullet names the mixed panel: the root `README.md` Deferred bullet starting `- External review panel scripts` reads `lens verdicts come from the mixed headless panel per `review-todo-section``. Done when: the bullet names the mixed panel and a tree-wide grep for the retired title finds no live site outside `docs/reviews/`, `docs/phase-runs/`, the `stamp-no-opus-panel` rule-class name, historical section titles (§9 et al), and validator comments citing the rule. **Corrected 2026-09-18 (PR15 D00-T01-S35-PR15):** line anchor replaced with the bullet's content anchor; exclusions enumerated explicitly. **Corrected 2026-09-19 (validation):** the exact-title grep also matches §9's Why prose (historical, stamped, immutable) and this section's own Why (the defect description); both stand and join the exclusion enumeration, so the re-sweep verdict reads clean against the completed list.
+- [x] Commit: `"workspace: name mixed panel in README Deferred"`
 
 **Test checkpoint:** the bullet names the mixed panel; the re-sweep is quoted clean; live `validate` stays 0 fatal. Cheaper substitute that fails: trusting memory of the title count.
 
