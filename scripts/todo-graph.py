@@ -57,7 +57,7 @@ BODY_RE = re.compile(r"^##\s+(?P<num>\d+)\.\s+(?P<title>.+?)\s*$")
 XREF_RE = re.compile(r"(?:D(?P<dom>\d{2})\s+)?(?:T(?P<todo>\d{2})\s+)?§(?P<sec>\d+)")
 BARE_TODO_RE = re.compile(r"(?<![\w§])(?:D\d{2}\s+)?T\d{2}(?!\s*§)(?![\w-])")
 STAMP_RE = re.compile(
-    r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved|Plan review|Reopened):\*\*\s*(?P<body>.+?)\s*$"
+    r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved|Plan review|Reopened|Started):\*\*\s*(?P<body>.+?)\s*$"
 )
 # A reopened section names the finding that voided its proof (D00 T01 §17
 # item 12): `<YYYY-MM-DD> | <finding ref> | <reason>`. The validator
@@ -315,6 +315,10 @@ class Section:
     line: int = 0
     duration_minutes: int | None = None
     duration_end: str | None = None  # `Duration:` range end instant, Zulu shaped or None
+    duration_start: str | None = None  # `Duration:` range start instant, Zulu shaped or None
+    duration_seconds: int | None = None  # exact span; minute forms scale (D00 T01 §32)
+    duration_malformed: bool = False  # a Duration line parsed to nothing (rule 26 reads this)
+    started_at: str = ""  # `> **Started:**` body as written; the range-start anchor
     stamped_on: str | None = None
     review_body: str = ""
     plan_review_body: str = ""
@@ -492,21 +496,28 @@ def parse_todo(path: Path) -> Todo:
             elif kind == "Duration" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     # Last marker governs: each Duration line resets
-                    # both fields, then applies its own shape (D00 T01
+                    # every field, then applies its own shape (D00 T01
                     # §22 review R3). A range computes its minutes, so
                     # minute and range forms project identically; an
                     # unshaped, calendar-invalid, or inverted range
-                    # leaves both None (fail-soft: clearance falls back
-                    # to day stamps, and no strptime ever escapes the
-                    # parser into the query).
+                    # leaves the value fields None (fail-soft: clearance
+                    # falls back to day stamps, and no strptime ever
+                    # escapes the parser into the query) and raises the
+                    # malformed flag rule 26 reads (D00 T01 §32).
                     target.duration_minutes = None
                     target.duration_end = None
+                    target.duration_start = None
+                    target.duration_seconds = None
+                    target.duration_malformed = False
                     m = DURATION_BODY_RE.fullmatch(body.strip())
                     if m is not None:
-                        target.duration_minutes = int(m.group("minutes"))
+                        _mins = int(m.group("minutes"))
+                        target.duration_minutes = _mins
+                        target.duration_seconds = _mins * 60
                         continue
                     e = DURATION_END_RE.fullmatch(body.strip())
                     if e is None:
+                        target.duration_malformed = True
                         continue
                     try:
                         start = datetime.strptime(
@@ -516,11 +527,22 @@ def parse_todo(path: Path) -> Todo:
                             e.group("end"), "%Y-%m-%dT%H:%M:%SZ"
                         ).replace(tzinfo=timezone.utc)
                     except ValueError:
+                        target.duration_malformed = True
                         continue
                     if end <= start:
+                        target.duration_malformed = True
                         continue
+                    target.duration_start = body.strip().split(" to ")[0]
                     target.duration_end = e.group("end")
-                    target.duration_minutes = int((end - start).total_seconds() // 60)
+                    target.duration_seconds = int((end - start).total_seconds())
+                    target.duration_minutes = target.duration_seconds // 60
+            elif kind == "Started" and current is not None:
+                # The range-start anchor for rule 26 (D00 T01 §32).
+                # Current-section only, never stamp targets: Started
+                # is a heading field, not a stamp field, so it must
+                # not fan out across a range stamp's coverage. Last
+                # line governs, like Duration.
+                current.started_at = body.strip()
             elif kind == "Review" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.review_body = body
@@ -945,6 +967,12 @@ SEVERITY_MAP: dict[str, str] = {
     "risk-acceptance-malformed": "fatal",
     "risk-acceptance-silent-edit": "fatal",
     "risk-acceptance-chain-broken": "fatal",
+    # a Duration range on a post-cutoff stamp that names no checkable
+    # span (unshaped, calendar-invalid, or inverted), or whose ends
+    # float free of the record's own anchors (start off the Started
+    # day, end off the stamp day): arbitrary well-shaped instants
+    # would otherwise manufacture clearance ordering (D00 T01 §32).
+    "duration-range-uncheckable": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
@@ -985,7 +1013,10 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # carry `accepted_owner`, and the report carries a `reviews`
 # dimension (acceptances due or overdue for review: `file`,
 # `target`, `review`, `state`, `owner`, `escalation`).
-PLAN_HEALTH_SCHEMA = "plan-health/5"
+# New keys since /5 (D00 T01 §32): criticals carry `failure_code`
+# (the failed clearance leg as `leg:site`, "" when the row never
+# ran clearance: accepted and deferred rows surface unproven).
+PLAN_HEALTH_SCHEMA = "plan-health/6"
 RISK_REGISTER_SCHEMA = "risk-register/1"
 RISK_REGISTER_PATH = "docs/risk-register.md"
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
@@ -3050,6 +3081,9 @@ def cmd_query(args) -> int:
                                     at,
                                     _cause,
                                     _fix,
+                                    # Accepted/deferred rows never ran
+                                    # clearance: no leg failed (D00 T01 §32).
+                                    "",
                                 )
                             )
                         elif disp == "filed":
@@ -3123,6 +3157,12 @@ def cmd_query(args) -> int:
                             # mandate carry no candidate and skip the leg.
                             refs = [xm.group(0) for xm in XREF_RE.finditer(rest)]
                             provable = bool(refs)
+                            # The failed leg, as `leg:site` (D00 T01 §32):
+                            # every `provable = False` below names its
+                            # code, and the first failure wins (fail-fast
+                            # matches the boolean). A row naming no
+                            # target never reaches a leg.
+                            fail_code = "" if refs else "resolution:unnamed"
                             reviewer_day = s.stamped_on or "\uffff"  # undated reviewer fails closed
                             rend = s.duration_end
                             rts = (
@@ -3138,10 +3178,12 @@ def cmd_query(args) -> int:
                                 r = resolve_ref(ref, t, by_key)
                                 if not r or r[0] not in by_id or r[1] not in by_id[r[0]].sections:
                                     provable = False
+                                    fail_code = "resolution:unresolvable"
                                     break
                                 tgt = by_id[r[0]].sections[r[1]]
                                 if r[1] not in by_id[r[0]].verified_sections:
                                     provable = False
+                                    fail_code = "resolution:unlinked"
                                     break
                                 if not review_ordered(
                                     tgt.duration_end,
@@ -3150,6 +3192,7 @@ def cmd_query(args) -> int:
                                     reviewer_day,
                                 ):
                                     provable = False
+                                    fail_code = "chronology:ordering"
                                     break
                                 tpath = by_id[r[0]].path
                                 if tpath not in target_texts:
@@ -3173,14 +3216,17 @@ def cmd_query(args) -> int:
                                     tgt_text,
                                 ):
                                     provable = False
+                                    fail_code = "proof:back-link"
                                     break
                                 fm = FIX_COMMIT_RE.search(tgt_text)
                                 if fm is None:
                                     provable = False
+                                    fail_code = "resolution:missing-fix"
                                     break
                                 base, tip = fm.group(1), fm.group(2) or fm.group(1)
                                 if git_is_merge(tip) is not False:
                                     provable = False
+                                    fail_code = "resolution:merge-tip"
                                     break
                                 fixed = git_file_at(tip, tpath)
                                 fixed_span = (
@@ -3195,27 +3241,34 @@ def cmd_query(args) -> int:
                                 # subsumed by the proof loop below).
                                 if fixed is None or fixed_span is None:
                                     provable = False
+                                    fail_code = "resolution:unresolvable"
                                     break
                                 if fm.group(2) is not None:
                                     if not git_is_ancestor(base, tip):
                                         provable = False
+                                        fail_code = "touch:range"
                                         break
                                     if not git_on_first_parent_chain(base, tip):
                                         provable = False
+                                        fail_code = "touch:first-parent-chain"
                                         break
                                     if not git_range_touches(base, tip, tpath):
                                         provable = False
+                                        fail_code = "touch:range"
                                         break
                                     touch_ts = git_range_touch_ts(base, tip, tpath)
                                     if not fix_postdates_review(touch_ts, rts, reviewer_day):
                                         provable = False
+                                        fail_code = "chronology:range-touch-time"
                                         break
                                 elif not git_commit_touches(tip, tpath):
                                     provable = False
+                                    fail_code = "touch:single"
                                     break
                                 fix_ts = git_commit_ts(tip)
                                 if not fix_postdates_review(fix_ts, rts, reviewer_day):
                                     provable = False
+                                    fail_code = "chronology:recency"
                                     break
                                 tend = tgt.duration_end
                                 tts = (
@@ -3229,8 +3282,14 @@ def cmd_query(args) -> int:
                                 )
                                 if not fix_predates_attestation(fix_ts, tts, tgt.stamped_on):
                                     provable = False
+                                    fail_code = "chronology:attestation"
                                     break
                                 proof_ok = False
+                                # Furthest-progress reporting (D00 T01 §32): a
+                                # proof line that resolved and defined its
+                                # test but whose file the fix never touched
+                                # fails proof-touch, not the whole loop.
+                                proof_touch_failed = False
                                 fixed_span_text = "\n".join(
                                     fixed.splitlines()[
                                         fixed_span[0] - 1:fixed_span[1] - 1
@@ -3256,13 +3315,20 @@ def cmd_query(args) -> int:
                                         continue
                                     if fm.group(2) is not None:
                                         if not git_range_touches(base, tip, ppath):
+                                            proof_touch_failed = True
                                             continue
                                     elif not git_commit_touches(tip, ppath):
+                                        proof_touch_failed = True
                                         continue
                                     proof_ok = True
                                     break
                                 if not proof_ok:
                                     provable = False
+                                    fail_code = (
+                                        "proof:proof-touch"
+                                        if proof_touch_failed
+                                        else "proof:loop"
+                                    )
                                     break
                                 cands = []
                                 for pln in text.splitlines():
@@ -3283,6 +3349,7 @@ def cmd_query(args) -> int:
                                         break
                                 if cands and not strict_ok:
                                     provable = False
+                                    fail_code = "ancestry:strict"
                                     break
                             if not provable:
                                 crow_overdue = bool(due and due < today)
@@ -3311,6 +3378,7 @@ def cmd_query(args) -> int:
                                         at,
                                         _cause,
                                         _fix,
+                                        fail_code,
                                     )
                                 )
         for path in sorted(unshaped):
@@ -3489,6 +3557,7 @@ def cmd_query(args) -> int:
                 c[10],
                 c[11],
                 c[12],
+                c[13],
             ),
         )
         stale_sorted = sorted(stale, key=lambda e: (e[0], e[1]))
@@ -3550,8 +3619,9 @@ def cmd_query(args) -> int:
                     "accepted_rationale": at,
                     "noncover_cause": ncc,
                     "noncover_fix": ncf,
+                    "failure_code": fc,
                 }
-                for f, pr, own, due, od, esc, ab, ao, ae, ar, at, ncc, ncf in criticals_sorted
+                for f, pr, own, due, od, esc, ab, ao, ae, ar, at, ncc, ncf, fc in criticals_sorted
             ],
             "majors": [
                 {
@@ -3678,7 +3748,7 @@ def cmd_query(args) -> int:
             for d in degraded_sorted:
                 if d["overdue"]:
                     od_by_owner.setdefault(d["owner"] or "?", []).append(d["due"])
-            for _f, _pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf in criticals_sorted:
+            for _f, _pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf, _fc in criticals_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
             for _f, _pr, _day, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf in majors_sorted:
@@ -3698,11 +3768,12 @@ def cmd_query(args) -> int:
                     + (f"  cause {d['noncover_cause']}; fix: {d['noncover_fix']}" if d["noncover_cause"] else "")
                 )
             print(f"blocked clearances  {len(blocked)}")
-            for f, pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, ncc, ncf in blocked:
+            for f, pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, ncc, ncf, fc in blocked:
                 print(
                     f"    {pr}  in {f}  owner {own or '?'}  due {due or '?'}"
                     + ("  OVERDUE" if od else "")
                     + (f"  cause {ncc}; fix: {ncf}" if ncc else "")
+                    + (f"  failure {fc}" if fc else "")
                 )
             print(f"overdue owners      {len(od_by_owner)}")
             for own in sorted(od_by_owner):
@@ -3915,7 +3986,7 @@ def cmd_query(args) -> int:
                 if d["accepted_by"] or not d["due"] or d["due"] > _horizon:
                     continue
                 _pay.append((d["owner"] or "?", d["due"], f"degraded {d['ref']} {d['state']}"))
-            for f, pr, own, due, _od, _esc, ab, _ao, _ae, _ar, _at, _ncc, _ncf in criticals_sorted:
+            for f, pr, own, due, _od, _esc, ab, _ao, _ae, _ar, _at, _ncc, _ncf, _fc in criticals_sorted:
                 if ab or not due or due > _horizon:
                     continue
                 _pay.append((own or "?", due, f"critical {pr} in {f}"))
@@ -3975,7 +4046,7 @@ def cmd_query(args) -> int:
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
-        for f, pr, own, due, od, esc, ab, ao, ae, ar, at, _ncc, _ncf in criticals_sorted:
+        for f, pr, own, due, od, esc, ab, ao, ae, ar, at, _ncc, _ncf, fc in criticals_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += f"  OVERDUE  escalate {esc.split(':', 1)[0] if esc else 'operator'}"
@@ -3983,6 +4054,8 @@ def cmd_query(args) -> int:
                 acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}"
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
+            if fc:
+                acct += f"  failure {fc}"
             print(f"    {pr}  in {f}  {acct}")
         print(
             f"open majors         {len(majors_sorted)} "
@@ -4554,6 +4627,21 @@ def _duration_by_ref(todos: list[Todo]) -> dict[str, int | None]:
     return minutes
 
 
+def _duration_seconds_by_ref(todos: list[Todo]) -> dict[str, int | None]:
+    """Map 'D05 T02 §3' -> stamp Duration seconds, or None when absent.
+
+    The exact span beside the floored minutes (D00 T01 §32): ranges
+    compute, minute forms scale, and a sub-minute range reads 0
+    minutes with its real seconds instead of reading as no work.
+    """
+    seconds: dict[str, int | None] = {}
+    for t in todos:
+        dom = t.domain.split("-")[0]
+        for num, s in t.sections.items():
+            seconds[f"D{dom} T{t.number} §{num}"] = s.duration_seconds
+    return seconds
+
+
 def _stamped_on_by_ref(todos: list[Todo]) -> dict[str, str | None]:
     """Map 'D05 T02 §3' -> Verified: calendar day, or None when the stamp has no date."""
     days: dict[str, str | None] = {}
@@ -4597,10 +4685,11 @@ def build_progress(todos: list[Todo]) -> dict:
     Counts and checkbox state come from Implementation Order rows, not from
     campaign.json and not from a second list in PHP. Duration is present
     when a stamp recorded integer minutes or a valid instant range
-    (ranges compute their minutes at parse).
+    (ranges compute their minutes at parse; seconds ride beside, exact).
     """
     state = _plan_state(todos)
     duration = _duration_by_ref(todos)
+    duration_seconds = _duration_seconds_by_ref(todos)
     stamped = _stamped_on_by_ref(todos)
     in_flight = _in_progress_by_ref(todos)
     chips = _stamp_chips_by_ref(todos)
@@ -4632,6 +4721,7 @@ def build_progress(todos: list[Todo]) -> dict:
                         "done": done,
                         "in_progress": (not done) and bool(in_flight.get(ref)),
                         "duration_minutes": duration.get(ref),
+                        "duration_seconds": duration_seconds.get(ref),
                         "stamped_on": stamped.get(ref),
                         "verified": bool(chip.get("verified")),
                         "reviews": list(chip.get("reviews") or []),
@@ -5788,7 +5878,110 @@ track: Z1
             (dd.sections[5].duration_end, dd.sections[5].duration_minutes),
             (None, None),
         )
+        # --- Duration seconds, starts, malformed flags, Started (D00 T01 §32) --
+        check("minute form scales to seconds", ta.sections[1].duration_seconds, 420)
+        check("minute form carries no start", ta.sections[1].duration_start, None)
+        check("minute form is not malformed", ta.sections[1].duration_malformed, False)
+        check("range computes exact seconds", ta.sections[3].duration_seconds, 420)
+        check(
+            "range keeps its start",
+            ta.sections[3].duration_start,
+            "2026-01-01T10:00:00Z",
+        )
+        check(
+            "stacked Duration seconds follow last-wins",
+            (
+                dd.sections[1].duration_seconds,
+                dd.sections[2].duration_seconds,
+                dd.sections[2].duration_start,
+            ),
+            (420, 540, None),
+        )
+        check(
+            "bad, inverted, and unshaped ranges raise malformed",
+            (
+                dd.sections[3].duration_malformed,
+                dd.sections[4].duration_malformed,
+                dd.sections[5].duration_malformed,
+            ),
+            (True, True, True),
+        )
+        check(
+            "malformed ranges carry no seconds",
+            (
+                dd.sections[3].duration_seconds,
+                dd.sections[4].duration_seconds,
+                dd.sections[5].duration_seconds,
+            ),
+            (None, None, None),
+        )
         dur.unlink()
+        dur32 = root / "todo" / "90-selftest" / "TODO-08-dur32.md"
+        dur32.write_text(
+            """---
+schema_version: 1
+id: self-test-dur32
+domain: 90-selftest
+status: active
+title: "TODO-08 -- duration seconds and Started"
+track: Z1
+---
+
+# TODO-08 -- duration seconds and Started
+
+## Implementation Order
+
+| Order | Section | Deliverable | Depends On | Status |
+| :---: | :-----: | ----------- | ---------- | :----: |
+|   1   |   §1    | Sub-minute range | - |  [x]   |
+|   2   |   §2    | Open work | - |  [ ]   |
+
+## 1. Sub-minute range
+
+> **Started:** 2026-01-01T10:00:00Z
+
+- [x] Commit: `"selftest: dur32"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-01-01 | §1 | fixture
+> **Duration:** 2026-01-01T10:00:00Z to 2026-01-01T10:00:45Z
+
+## 2. Open work
+
+> **Started:** 2026-01-02T09:00:00Z
+
+- [ ] Commit: `"selftest: dur32"`
+
+**Test checkpoint:** `true`
+""",
+            encoding="utf-8",
+        )
+        d32 = parse_todo(dur32)
+        check(
+            "a sub-minute range floors minutes but keeps seconds",
+            (d32.sections[1].duration_minutes, d32.sections[1].duration_seconds),
+            (0, 45),
+        )
+        check(
+            "Started attaches to its own section",
+            (d32.sections[1].started_at, d32.sections[2].started_at),
+            ("2026-01-01T10:00:00Z", "2026-01-02T09:00:00Z"),
+        )
+        check(
+            "sections without Started anchor nothing",
+            ta.sections[1].started_at,
+            "",
+        )
+        check(
+            "seconds project beside minutes",
+            (
+                _duration_seconds_by_ref([d32])["D90 T08 §1"],
+                _duration_seconds_by_ref([d32])["D90 T08 §2"],
+            ),
+            (45, None),
+        )
+        dur32.unlink()
         check("§1 is in verified_sections", 1 in ta.verified_sections, True)
         check("alpha carries one deferral", len(ta.deferred), 1)
         check("the deferral names its owner", ta.deferred[0].ref, "D90 T02 §1")
@@ -9614,6 +9807,12 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         canned_touches[("aaa1111", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
         canned_touches[("fff0002", "tests/fix-proof.py")] = True
+        # D00 T01 §32: b000001 touches its proof file too, so PR70
+        # reaches the strict-ancestry leg its probe names. Before the
+        # failure codes, the row stayed listed one leg early (proof
+        # touch uncanned) and the presence probe could not tell --
+        # the hollow probe PR11 exists to retire.
+        canned_touches[("b000001", "tests/fix-proof.py")] = True
         # Rule-23 negatives, written after the migration loop so they stay
         # bare: one file without any line, one with a run-less line, an
         # off-shape-run line, and (§23) one single-leg probe per new leg:
@@ -10774,6 +10973,127 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§10 " in ln and "FATAL" in ln),
             0,
         )
+        # --- rule 26: Duration ranges are checkable anchored spans (D00 T01 §32)
+        # Isolated root, exact counts: every section is fully dressed
+        # (Commit, checkpoint, panel-backed Review, run-bound marker), so
+        # only rule 26 can fire and silence is rule-26 silence.
+        dur26 = root / "dur26"
+        (dur26 / "todo" / "90-dur26").mkdir(parents=True)
+        (dur26 / "docs" / "reviews").mkdir(parents=True)
+        _d26_rows = []
+        _d26_secs = []
+        # (stamp, started-or-None, duration-or-None)
+        _d26_cases = {
+            1: ("2026-09-20", "2026-09-20T08:00:00Z", "2026-09-20T08:00:00Z to 2026-09-20T08:45:00Z"),
+            2: ("2026-09-20", "2026-09-20T08:00:00Z", "unclear"),
+            3: ("2026-09-20", "2026-09-20T08:00:00Z", "2026-09-20T08:45:00Z to 2026-09-20T08:00:00Z"),
+            4: ("2026-09-20", "2026-09-20T00:10:00Z", "2026-09-19T23:00:00Z to 2026-09-20T00:30:00Z"),
+            5: ("2026-09-20", "2026-09-20T08:00:00Z", "2026-09-20T08:00:00Z to 2026-09-21T08:00:00Z"),
+            6: ("2026-09-20", "2026-09-20T08:00:00Z", "45"),
+            7: ("2026-09-20", "2026-09-20T08:00:00Z", None),
+            8: ("2026-09-18", "2026-09-18T08:00:00Z", "unclear"),
+            9: ("2026-09-20", None, "2026-09-20T08:00:00Z to 2026-09-20T08:45:00Z"),
+            10: ("2026-09-20", "2026-09-20T08:00:00Z", "2026-09-19T08:00:00Z to 2026-09-21T08:00:00Z"),
+        }
+        for _n in range(1, 11):
+            _stamp, _started, _dur = _d26_cases[_n]
+            _d26_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
+            _sec = [f"## {_n}. Span {_n}\n"]
+            if _started is not None:
+                _sec.append(f"> **Started:** {_started}\n")
+            _sec.append('\n- [x] Did the thing\n- [x] Commit: `"selftest: dur26"`\n\n')
+            _sec.append("**Test checkpoint:** `true`\n\n")
+            _sec.append(f"> **Verified:** {_stamp} | §{_n} | fixture\n")
+            _sec.append("> **Review:** round 1 -- Raw findings: docs/reviews/90-dur26.md\n")
+            _sec.append(
+                f"> **Plan review:** GPT high, no findings (run 20260920-D90-T32-S{_n}-gpt)\n"
+            )
+            if _dur is not None:
+                _sec.append(f"> **Duration:** {_dur}\n")
+            _d26_secs.append("".join(_sec))
+        (dur26 / "todo" / "90-dur26" / "TODO-01-durations.md").write_text(
+            "---\nschema_version: 1\nid: dur26\ndomain: 90-dur26\nstatus: active\n"
+            'title: "TODO-01 -- Durations"\ntrack: Z1\n---\n\n# TODO-01 -- Durations\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            + "\n".join(_d26_rows)
+            + "\n\n"
+            + "\n".join(_d26_secs),
+            encoding="utf-8",
+        )
+        (dur26 / "todo" / "90-dur26" / "INDEX.md").write_text(
+            "# 90 Dur26\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-01](./TODO-01-durations.md) | Durations | active |\n",
+            encoding="utf-8",
+        )
+        _d26_recs = []
+        for _n in range(1, 11):
+            _d26_recs.append(
+                f"## Plan review\n\nManifest: sections [D90 T01 §{_n}]; dependents [none]; "
+                f"bytes 100; run 20260920-D90-T32-S{_n}-gpt\n\nLedger:\n"
+                f"- [D90-T32-S{_n}-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            )
+        (dur26 / "docs" / "reviews" / "90-dur26.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-dur26.md; run 20260920-D90-T32-S1-gpt\n\n"
+            + "\n".join(_d26_recs),
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, dur26 / "todo"
+        try:
+            v26 = _mio.StringIO()
+            with _mctx.redirect_stdout(v26), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_validate(None)
+            v26_out = v26.getvalue().splitlines()
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "duration-range-uncheckable is a FATAL class",
+            SEVERITY_MAP.get("duration-range-uncheckable"),
+            "fatal",
+        )
+        check(
+            "an unshaped Duration on a post-cutoff stamp fires",
+            any("§2 " in ln and "parses to no span" in ln for ln in v26_out),
+            True,
+        )
+        check(
+            "an inverted range on a post-cutoff stamp fires",
+            any("§3 " in ln and "parses to no span" in ln for ln in v26_out),
+            True,
+        )
+        check(
+            "a range starting off the Started day fires",
+            any("§4 " in ln and "align the start" in ln for ln in v26_out),
+            True,
+        )
+        check(
+            "a range ending off the stamp day fires",
+            any("§5 " in ln and "align the end" in ln for ln in v26_out),
+            True,
+        )
+        check(
+            "a start-and-end miss fires exactly twice",
+            sum(1 for ln in v26_out if "§10 " in ln and "FATAL" in ln),
+            2,
+        )
+        for _n, _why in (
+            (1, "a tied range stays silent"),
+            (6, "a minute form stays silent"),
+            (7, "a missing Duration stays silent"),
+            (8, "a pre-cutoff malformed Duration keeps the silent fallback"),
+            (9, "a Started-less range with a tied end stays silent"),
+        ):
+            check(
+                _why,
+                sum(1 for ln in v26_out if f"§{_n} " in ln and "FATAL" in ln),
+                0,
+            )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
         # Presence assertions, never counts: neighbor fixtures share the
         # root, so only the marker file's own lines are stable.
@@ -11320,7 +11640,134 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "plan-health --json carries the schema version",
             jdata.get("schema"),
-            "plan-health/5",
+            "plan-health/6",
+        )
+        # --- clearance failure codes (D00 T01 §32 item 4) ---
+        # Every leg the S4 probes isolate already pins its row's
+        # presence above; here each row pins the code of the leg
+        # that kept it listed (first failure wins, fail-fast).
+        _codes: dict[str, set[str]] = {}
+        for _c in jdata.get("criticals", []):
+            _codes.setdefault(_c["id"], set()).add(_c["failure_code"])
+        check(
+            "every criticals record carries failure_code",
+            all("failure_code" in _c for _c in jdata.get("criticals", [])),
+            True,
+        )
+        _want_codes = {
+            "D90-T07-S4-PR60": {"proof:loop"},
+            "D90-T07-S4-PR61": {"proof:loop"},
+            "D90-T07-S4-PR62": {"proof:loop"},
+            "D90-T07-S4-PR63": {"chronology:recency"},
+            "D90-T07-S4-PR64": {"chronology:recency"},
+            "D90-T07-S4-PR66": {"touch:range"},
+            "D90-T07-S4-PR67": {"touch:range"},
+            "D90-T07-S4-PR69": {"chronology:ordering"},
+            "D90-T07-S4-PR70": {"ancestry:strict"},
+            "D90-T07-S4-PR71": {"proof:loop"},
+            "D90-T07-S4-PR72": {"resolution:missing-fix"},
+            "D90-T07-S4-PR73": {"ancestry:strict"},
+            "D90-T07-S4-PR74": {"chronology:attestation"},
+            "D90-T07-S4-PR75": {"proof:back-link"},
+            "D90-T07-S4-PR76": {"proof:loop"},
+            "D90-T07-S4-PR77": {"chronology:range-touch-time"},
+            "D90-T07-S4-PR78": {"proof:loop"},
+            "D90-T07-S4-PR79": {"proof:proof-touch"},
+            "D90-T07-S4-PR80": {"resolution:merge-tip"},
+            "D90-T07-S4-PR81": {"touch:first-parent-chain"},
+            "D90-T07-S4-PR24": {"touch:single"},
+            "D90-T07-S4-PR17": {"resolution:merge-tip"},
+            "PR5": {"resolution:unresolvable"},
+        }
+        check(
+            "clearance failures name their failed leg",
+            {k: _codes.get(k, set()) for k in _want_codes},
+            _want_codes,
+        )
+        check(
+            "an accepted critical carries no failure code",
+            _codes.get("D90-T07-S4-PR10", set()),
+            {""},
+        )
+        check(
+            "plan-health text names the failed leg",
+            any(
+                "D90-T07-S4-PR79" in ln and "failure proof:proof-touch" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
+            "plan-health text leaves uncleared-but-unrun rows codeless",
+            any(
+                "D90-T07-S4-PR10" in ln and "failure" not in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        # --- resolution legs with no shared-fixture row (D00 T01 §32) ---
+        # Isolated root, one reviewer: a filed row naming an unverified
+        # target and a filed row naming nothing. No git legs run, so no
+        # canning; no validate runs, so no panel dressing.
+        dur32q = root / "dur32q"
+        (dur32q / "todo" / "90-dur32").mkdir(parents=True)
+        (dur32q / "docs" / "reviews").mkdir(parents=True)
+        (dur32q / "todo" / "90-dur32" / "TODO-01-codes.md").write_text(
+            "---\nschema_version: 1\nid: dur32q\ndomain: 90-dur32\nstatus: active\n"
+            'title: "TODO-01 -- Codes"\ntrack: Z1\n---\n\n# TODO-01 -- Codes\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Reviewer | -- |  [x]   |\n"
+            "|   2   |   §2    | Unshipped target | -- |  [ ]   |\n\n"
+            "## 1. Reviewer\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: dur32q\"`\n\n"
+            "**Test checkpoint:** `true`\n\n"
+            "> **Verified:** 2026-09-20 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-dur32.md\n"
+            "> **Plan review:** GPT high, filed §2\n\n"
+            "## 2. Unshipped target\n\n- [ ] Did the thing\n- [ ] Commit: `\"selftest: dur32q\"`\n\n"
+            "**Test checkpoint:** `true`\n",
+            encoding="utf-8",
+        )
+        (dur32q / "docs" / "reviews" / "90-dur32.md").write_text(
+            "# Review: fixture\n\n## Plan review\n\n"
+            "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260920-D90-T32-S1-gpt\n\n"
+            "Ledger:\n"
+            "- [PR1] [critical] Unshipped target stays -> filed §2\n"
+            "- [PR2] [critical] Nameless row stays -> filed\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, dur32q / "todo"
+        try:
+            qbuf = _mio.StringIO()
+            with _mctx.redirect_stdout(qbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=True))
+            qdata = json.loads(qbuf.getvalue())
+            sbuf = _mio.StringIO()
+            with _mctx.redirect_stdout(sbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="summary"))
+            s32 = sbuf.getvalue()
+        finally:
+            TODO_DIR = saved_tree
+        _qcodes = {c["id"]: c["failure_code"] for c in qdata.get("criticals", [])}
+        check(
+            "a filed row naming an unverified target fails resolution:unlinked",
+            _qcodes.get("PR1"),
+            "resolution:unlinked",
+        )
+        check(
+            "a filed row naming no target fails resolution:unnamed",
+            _qcodes.get("PR2"),
+            "resolution:unnamed",
+        )
+        check(
+            "query summary names the failed leg on blocked clearances",
+            any(
+                "PR1" in ln and "failure resolution:unlinked" in ln
+                for ln in s32.splitlines()
+            ),
+            True,
         )
         check(
             "plan-health --json parses with all dimensions",

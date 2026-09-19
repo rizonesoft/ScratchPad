@@ -1633,6 +1633,46 @@ def validate(graph, _args) -> int:
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_dup} re-supersedes {_spell[_key2]} (one target, one successor)",
                         )
 
+    # 26. Duration ranges on post-cutoff stamps are checkable spans tied
+    # to the record's own anchors (D00 T01 §32): an unshaped,
+    # calendar-invalid, or inverted range parses to nothing, and a
+    # range whose start day misses the Started day or whose end day
+    # misses the stamp day is a span the record cannot vouch for --
+    # either would let arbitrary well-shaped instants manufacture
+    # clearance ordering. Minute forms carry no instants and skip;
+    # sections without a Duration line skip (the field is optional);
+    # an absent Started line anchors nothing (only the end binds);
+    # pre-cutoff stamps keep the silent fallback (rule-16 precedent).
+    # FATAL: the fix is mechanical (shape the span, align the ends)
+    # and an uncheckable span breaks the clearance contract.
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
+                continue
+            if s.duration_malformed:
+                flag(
+                    "duration-range-uncheckable",
+                    f"{t.path}:{s.line}: §{num} Duration parses to no span "
+                    f"(shape the range or drop the line; pre-cutoff silence ends at the cutoff)",
+                )
+                continue
+            if s.duration_start is None or s.duration_end is None:
+                continue
+            if s.started_at and s.duration_start[:10] != s.started_at[:10]:
+                flag(
+                    "duration-range-uncheckable",
+                    f"{t.path}:{s.line}: §{num} Duration starts {s.duration_start[:10]} "
+                    f"but Started: reads {s.started_at[:10]} (align the start with the Started day)",
+                )
+            if s.stamped_on is not None and s.duration_end[:10] != s.stamped_on:
+                flag(
+                    "duration-range-uncheckable",
+                    f"{t.path}:{s.line}: §{num} Duration ends {s.duration_end[:10]} "
+                    f"but the stamp reads {s.stamped_on} (align the end with the stamp day)",
+                )
+
     # The warning BASELINE. A count that only grows is a count nobody reads,
     # and 17 of these have stood for over a week: 15 name STAMPED sections
     # whose warning text says in as many words "do not reopen the stamp to add
