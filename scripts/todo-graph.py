@@ -1025,6 +1025,30 @@ SEVERITY_MAP: dict[str, str] = {
     # record the full 40-hex ID (D00 T01 §33 item 3).
     "provenance-short-candidate": "warn",
 }
+# Rule-24 leg markers for the description probes (D00 T01 §46): each
+# leg of the `risk-acceptance-malformed` rule matches a normalized
+# (comment-stripped, lowercased, whitespace-squeezed) phrase
+# alternation covering both description sites' wordings, so a leg
+# split across a comment line break still detects.
+RULE24_LEG_MARKERS = (
+    ("shape", r"shape"),
+    ("target", r"\btargets?\b"),
+    ("dates", r"expir\w*\s+(before|never)|predates"),
+    (
+        "review window",
+        r"record[.\-]*expir|review-window|bounds\s+inclusive|review\s+date\s+sits\s+inside",
+    ),
+)
+
+
+def rule24_comment_legs(block: str) -> frozenset:
+    """Leg names a rule-24 description block names (D00 T01 §46)."""
+    stripped = [
+        ln.strip()[1:].strip() if ln.strip().startswith("#") else ln.strip()
+        for ln in block.splitlines()
+    ]
+    normed = re.sub(r"\s+", " ", " ".join(stripped)).lower()
+    return frozenset(leg for leg, rx in RULE24_LEG_MARKERS if re.search(rx, normed))
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
@@ -12009,6 +12033,130 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "rule-24 header names the review-window leg",
             "record..expiry" in "\n".join(_vtext[_vidx:_vhi]),
+            True,
+        )
+        _gsite = "\n".join(_gtext[_glo + 1 : _gidx])
+        _vsite = "\n".join(_vtext[_vidx:_vhi])
+        _glegs = rule24_comment_legs(_gsite)
+        _vlegs = rule24_comment_legs(_vsite)
+        check(
+            "severity comment names the shape leg",
+            "shape" in _glegs,
+            True,
+        )
+        check(
+            "severity comment names the target leg",
+            "target" in _glegs,
+            True,
+        )
+        check(
+            "severity comment names the dates leg",
+            "dates" in _glegs,
+            True,
+        )
+        check(
+            "severity comment names the review window leg",
+            "review window" in _glegs,
+            True,
+        )
+        check(
+            "rule-24 header names the shape leg",
+            "shape" in _vlegs,
+            True,
+        )
+        check(
+            "rule-24 header names the target leg",
+            "target" in _vlegs,
+            True,
+        )
+        check(
+            "rule-24 header names the dates leg",
+            "dates" in _vlegs,
+            True,
+        )
+        check(
+            "rule-24 header names the review window leg",
+            "review window" in _vlegs,
+            True,
+        )
+        _fix_full_a = (
+            "# a `Risk accepted:` line outside the record shape, with an\n"
+            "# uncoverable target, expiring before it is recorded, or reviewed\n"
+            "# outside its record-expiry window: an unauditable waiver"
+        )
+        _fix_full_b = (
+            "# 24. risk acceptances terminate escalations in a checkable shape\n"
+            "# line carries target, approver; the target names a finding ID;\n"
+            "# expiry never predates the record; the review date sits inside\n"
+            "# record..expiry, bounds inclusive"
+        )
+        check(
+            "severity-style fixture names all four legs",
+            rule24_comment_legs(_fix_full_a),
+            frozenset({"shape", "target", "dates", "review window"}),
+        )
+        check(
+            "header-style fixture names all four legs",
+            rule24_comment_legs(_fix_full_b),
+            frozenset({"shape", "target", "dates", "review window"}),
+        )
+        _fix_no_shape = _fix_full_a.replace("record shape", "record form")
+        check(
+            "fixture missing the shape leg drops it",
+            rule24_comment_legs(_fix_no_shape),
+            frozenset({"target", "dates", "review window"}),
+        )
+        _fix_no_target = _fix_full_a.replace("uncoverable target", "uncoverable finding")
+        check(
+            "fixture missing the target leg drops it",
+            rule24_comment_legs(_fix_no_target),
+            frozenset({"shape", "dates", "review window"}),
+        )
+        _fix_no_dates = _fix_full_a.replace(
+            "expiring before it is recorded", "filed after it is recorded"
+        )
+        check(
+            "fixture missing the dates leg drops it",
+            rule24_comment_legs(_fix_no_dates),
+            frozenset({"shape", "target", "review window"}),
+        )
+        _fix_no_window = _fix_full_a.replace("record-expiry window", "stated span")
+        check(
+            "fixture missing the review window leg drops it",
+            rule24_comment_legs(_fix_no_window),
+            frozenset({"shape", "target", "dates"}),
+        )
+        _fix_split = (
+            "# or reviewed outside its record-expiry\n# window: an unauditable waiver"
+        )
+        check(
+            "split marker proves the fixture is genuinely split",
+            "record-expiry window" in _fix_split,
+            False,
+        )
+        check(
+            "leg split across lines still detects",
+            "review window" in rule24_comment_legs(_fix_split),
+            True,
+        )
+        check(
+            "both rule-24 sites name the same legs",
+            _glegs == _vlegs,
+            True,
+        )
+        check(
+            "one-site leg addition mismatches",
+            rule24_comment_legs(_fix_full_a) != rule24_comment_legs(_fix_no_window),
+            True,
+        )
+        check(
+            "one-site leg addition mismatches reversed",
+            rule24_comment_legs(_fix_no_shape) != rule24_comment_legs(_fix_full_b),
+            True,
+        )
+        check(
+            "matched fixture pair agrees",
+            rule24_comment_legs(_fix_full_a) == rule24_comment_legs(_fix_full_b),
             True,
         )
         check(
