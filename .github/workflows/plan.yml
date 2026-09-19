@@ -53,9 +53,13 @@ jobs:
       - name: Gate risk register freshness
         run: python3 scripts/todo-graph.py query risk-register --check
       - name: Record the operator digest
+        if: always()
         run: python3 scripts/todo-graph.py query summary
       - name: Notify owners of due dates
-        if: github.event_name == 'schedule'
+        # always(): notification must fire especially when the gates
+        # above fail (panel R1: fail-fast skips would let the
+        # obligations causing the failure expire silently).
+        if: ${{ always() && github.event_name == 'schedule' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

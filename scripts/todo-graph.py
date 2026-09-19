@@ -1181,9 +1181,10 @@ def acceptance_hold(
     every code stays excluded). Order is load-bearing: match, then
     target day, then target-before-record, then liveness, then
     evidence freshness. Supersession skips before this runs (the
-    caller holds the file's records and reports a superseded-only
-    match as `superseded` itself); the chain-shape rule guards the
-    links.
+    caller holds the file's records); skips stay silent because
+    succession is same-target, so the head always speaks and a
+    `superseded` cause is unreachable (panel R1). The chain-shape
+    rule guards the links.
     """
     if not match:
         return "no-match"
@@ -1207,7 +1208,6 @@ NONCOVER_FIX = {
     "expired": "renew the acceptance with a new expiry",
     "predated-target": "re-record the acceptance after its target date",
     "missing-target": "name a resolvable target: finding ID, run ID, or outage rung plus date",
-    "superseded": "renew on the chain head: the superseded record no longer governs",
     "post-dated": "correct the record date: a future-dated waiver covers nothing",
     "stale-evidence": "renew the acceptance over the current record bytes",
     "git-unresolvable": "fetch full history (fetch-depth 0), restore the object, or re-record evidence at a resolving commit",
@@ -2361,6 +2361,8 @@ def cmd_query(args) -> int:
         unmarked = []
         degraded = []
         grandfathered = []
+        run_debt: dict[str, set[str]] = {}
+        outage_debt: dict[tuple[str, str], set[str]] = {}
         _ret_lines: dict[str, list[str]] = {}
         # Frozen wall clock (D00 T01 §29 item 1): `--today` pins the
         # date for fixture-date runs (notify lookahead, unattended
@@ -2495,13 +2497,26 @@ def cmd_query(args) -> int:
                         # empty.
                         _cause = ""
                         _fix = ""
+                        rm = RUN_ID_RE.search(body)
+                        mrun = normalize_run_id(rm.group(1)) if rm else None
+                        omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
+                        orung = omt.group(1).strip() if omt else None
+                        stamp_day = s.stamped_on or ""
+                        # Marker debt by target (D00 T01 §29 item 2,
+                        # panel R1): the risk register reads a
+                        # run/outage waiver's residual off the owed
+                        # states of the markers carrying its target.
+                        # Every marked marker joins (healthy ones
+                        # contribute nothing, so their waivers read
+                        # `none`); sets because one (rung, day) can
+                        # owe on several markers.
+                        _dstates = [s for s in ("outage", "retry-owed", "partial") if s in state.split("+")]
+                        if mrun is not None:
+                            run_debt.setdefault(mrun, set()).update(_dstates)
+                        if orung is not None:
+                            outage_debt.setdefault((orung, stamp_day), set()).update(_dstates)
                         if "outage" in state or "retry-owed" in state:
                             fm = FINDINGS_RE.search(s.review_body or "")
-                            rm = RUN_ID_RE.search(body)
-                            mrun = normalize_run_id(rm.group(1)) if rm else None
-                            omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
-                            orung = omt.group(1).strip() if omt else None
-                            stamp_day = s.stamped_on or ""
                             if fm:
                                 accs = file_acceptances(fm.group(1))
                                 supd = superseded_acceptances(accs)
@@ -2517,9 +2532,14 @@ def cmd_query(args) -> int:
                                         and orung is not None
                                         and okey == (orung, stamp_day)
                                     )
+                                    # Superseded records skip silently
+                                    # (panel R1): succession is
+                                    # same-target, so a matched
+                                    # predecessor always has a
+                                    # same-target successor in the
+                                    # file, and the head's verdict
+                                    # governs. History never lists.
                                     if (tgt.lower(), rec) in supd:
-                                        if match and not _cause:
-                                            _cause = "superseded"
                                         continue
                                     # The TODO file owns run and outage
                                     # records (item 3). A reopen needs no
@@ -2758,9 +2778,11 @@ def cmd_query(args) -> int:
                         _tday = run_day(_rm.group(1)) if _rm else (s.stamped_on or "")
                         for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind in _accs:
                             _match = kind == "finding" and tgt.lower() == lr.group(1).lower()
+                            # Superseded records skip silently (panel
+                            # R1): succession is same-target, so the
+                            # head's verdict governs. History never
+                            # lists.
                             if (tgt.lower(), rec) in _supd:
-                                if _match and not _cause:
-                                    _cause = "superseded"
                                 continue
                             # The findings file owns finding records
                             # (item 3). Reopen voids by construction
@@ -3527,11 +3549,14 @@ def cmd_query(args) -> int:
             # The acceptance register (D00 T01 §29 item 2): every
             # un-superseded acceptance in a validated file with its
             # residual severity (finding rows read their row severity
-            # off row_sev, `dangling` when the target names no row;
-            # run/outage targets read `unreviewed`: the review debt
-            # remains) and its wall-clock state. History never lists.
-            # `--sync` persists the committed copy (plan-projection
-            # precedent); `--check` fails when it drifts.
+            # off row_sev, `dangling` when the target names no
+            # current row; run/outage targets read the owed states
+            # of the markers carrying them off the debt maps, `none`
+            # when the marker is healthy, `unmatched` when no marker
+            # carries the target) and its wall-clock state. History
+            # never lists. `--sync` persists the committed copy
+            # (plan-projection precedent); `--check` fails when it
+            # drifts.
             reg = []
             for path in sorted(seen):
                 _raccs = file_acceptances(path)
@@ -3541,7 +3566,24 @@ def cmd_query(args) -> int:
                 for tgt, appr, own, exp, rec, rvw, _evi, _sup, rat, kind in _raccs:
                     if (tgt.lower(), rec) in _rsupd:
                         continue
-                    sev = row_sev.get((path, tgt.lower()), "dangling") if kind == "finding" else "unreviewed"
+                    if kind == "finding":
+                        sev = row_sev.get((path, tgt.lower()), "dangling")
+                    elif kind == "run":
+                        _rkey = normalize_run_id(tgt)
+                        _rowed = run_debt.get(_rkey, set()) if _rkey else set()
+                        sev = (
+                            "+".join(sorted(_rowed))
+                            if _rowed
+                            else ("none" if _rkey in run_debt else "unmatched")
+                        )
+                    else:
+                        _okey = outage_key(tgt)
+                        _oowed = outage_debt.get(_okey, set()) if _okey else set()
+                        sev = (
+                            "+".join(sorted(_oowed))
+                            if _oowed
+                            else ("none" if _okey in outage_debt else "unmatched")
+                        )
                     state = "live" if rec <= today <= exp else ("post-dated" if rec > today else "expired")
                     reg.append(
                         {
@@ -3582,7 +3624,7 @@ def cmd_query(args) -> int:
             _rlines = [
                 "# Risk register",
                 "",
-                "Live plus lapsed acceptance instruments with residual severity. Generated by `query risk-register --sync`; do not edit (gated by `--check`).",
+                "Live plus lapsed acceptance instruments with residual severity (findings: row severity, `dangling` past history; run/outage: marker owed states, `none` when healthy, `unmatched` past any marker). Generated by `query risk-register --sync`; do not edit (gated by `--check`).",
                 "",
                 "| Target | Residual | State | Owner | Approver | Expires | Review | Rationale |",
                 "| --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -11099,7 +11141,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "|   5   |   §5    | Expired owner | -- |  [x]   |\n"
             "|   6   |   §6    | Review states | -- |  [x]   |\n"
             "|   7   |   §7    | Postdated waiver | -- |  [x]   |\n"
-            "|   8   |   §8    | Superseded-only waiver | -- |  [x]   |\n"
+            "|   8   |   §8    | Superseded predecessor defers to head | -- |  [x]   |\n"
             "|   9   |   §9    | Unresolvable evidence | -- |  [x]   |\n\n---\n\n"
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
@@ -11130,7 +11172,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §7 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc10.md\n"
             "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S7-gpt)\n\n"
-            "## 8. Superseded-only waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "## 8. Superseded predecessor defers to head\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §8 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc11.md\n"
             "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S8-gpt)\n\n"
@@ -11346,13 +11388,13 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "superseded-only match diagnoses superseded",
+            "superseded predecessor defers to the head's cause",
             (
                 len(_deg8) == 1
                 and _deg8[0]["accepted_by"] == ""
-                and _deg8[0]["noncover_cause"] == "superseded"
+                and _deg8[0]["noncover_cause"] == "post-dated"
                 and _deg8[0]["noncover_fix"]
-                == "renew on the chain head: the superseded record no longer governs"
+                == "correct the record date: a future-dated waiver covers nothing"
             ),
             True,
         )
@@ -11374,7 +11416,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 and any("§3" in ln and "cause stale-evidence" in ln for ln in _acc_sum)
                 and any("§5" in ln and "cause expired" in ln for ln in _acc_sum)
                 and any("§7" in ln and "cause post-dated" in ln for ln in _acc_sum)
-                and any("§8" in ln and "cause superseded" in ln for ln in _acc_sum)
+                and any("§8" in ln and "cause post-dated" in ln for ln in _acc_sum)
                 and any("§9" in ln and "cause git-unresolvable" in ln and "fetch-depth 0" in ln for ln in _acc_sum)
             ),
             True,
@@ -11465,11 +11507,12 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "register residuals read row severity, dangling, or unreviewed",
+            "register residuals read row severity or marker owed states",
             (
                 any(e["target"] == "D90-T01-S6-PR1" and e["residual"] == "major" for e in _rent)
                 and any(e["target"] == "D90-T01-S6-PR99" and e["residual"] == "dangling" for e in _rent)
-                and any(e["target"].endswith("S2-gpt") and e["residual"] == "unreviewed" for e in _rent)
+                and any(e["target"].endswith("S2-gpt") and e["residual"] == "retry-owed" for e in _rent)
+                and any(e["target"] == "outage gpt rung 2026-09-18" and e["residual"] == "unmatched" for e in _rent)
                 and any(e["target"].endswith("S5-gpt") and e["state"] == "expired" for e in _rent)
                 and any(e["target"].endswith("S7-gpt") and e["state"] == "post-dated" for e in _rent)
             ),
