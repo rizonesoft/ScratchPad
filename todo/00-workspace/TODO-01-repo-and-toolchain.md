@@ -96,7 +96,7 @@ track: W0
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [x]   |
 |  42   |   §42   | Requires operator vocabulary | §13 |  [x]   |
-|  43   |   §43   | Findings count touch-up | §20 |  [ ]   |
+|  43   |   §43   | Findings count touch-up | §20 |  [x]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
 |  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
@@ -1147,6 +1147,11 @@ Why this section exists: the §20 findings ledger carries 18 rows that parse as 
 - [x] Commit: `"todo: reconcile §20 findings counts"`
 
 **Test checkpoint:** tallies of `-> filed` / `-> rejected` / `-> duplicate` over the §20 ledger block equal the header's numbers (6/9/3); the §24 Why, header, and stamp carry no unannotated 10/2 tally. Falsifiable by any tally that disagrees. **Corrected 2026-09-19 (validation):** was listing §20 Why as a site; it carries no §20 tally.
+
+> **Verified:** 2026-09-19 | §43 | self-test 1100/1100 (+0: prose-only reconciliation, no code); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3 sign-off over candidates d1a9460 32fbca8 fe3149d f2e17a9 95552de; plan review 9 findings, 1 filed at D00 T04 §1, 2 accepted in the stamp run, 1 duplicate, 5 rejected
+> **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates d1a9460 32fbca8 fe3149d f2e17a9 95552de -- `adversarial` approve · `consistency` needs-attention (R3 third-§36-citer below bar, filed at D00 T04 §1) · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s43.md
+> **Plan review:** GPT high, filed D00 T04 §1, accepted 2 in the stamp (run 20260919-D00-T01-S43-gpt-r3)
+> **CRUD:** applicable | self-test wrote nothing new (1100/1100 re-observed in a clean worktree at 95552de, no code); TODO plus findings edits read back via diff; filing (fe3149d) plus panel record (f2e17a9) plus triage (95552de) read back via validate, plan --check, and fence re-hash; ledgered panel/plan artifacts under ignored build/review-runs retained as evidence, worktree removed, no disposables to tear down
 
 ## 44. Range-Fallback Lineage Guards
 
