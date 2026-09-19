@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import importlib.util
 import json
 import os
@@ -48,13 +49,19 @@ STATUSES = {"draft", "active", "blocked", "done", "superseded"}
 TODO_FILE_RE = re.compile(r"^TODO-(\d{2})-[a-z0-9-]+\.md$")
 
 # "| 3 | §2 | Deliverable text | §1, T02 §4 | [x] |"
+# Number runs feeding int() cap at 9 digits (D00 T01 §34 item 6):
+# past the 4300-digit interpreter limit int() raises instead of
+# flagging, so longer runs miss the grammar and land in the
+# existing structural diagnostics. Applies to ROW_RE, BODY_RE,
+# XREF_RE, the historical heading scan, COVER_ITEM_RE, and
+# DURATION_BODY_RE alike; only the >9-digit behavior changes.
 ROW_RE = re.compile(
-    r"^\|\s*(?P<order>\d+)\s*\|\s*§(?P<sec>\d+)\s*\|"
+    r"^\|\s*(?P<order>\d{1,9})\s*\|\s*§(?P<sec>\d{1,9})\s*\|"
     r"\s*(?P<deliverable>.+?)\s*\|\s*(?P<deps>.*?)\s*\|\s*\[(?P<status>[ x/])\]\s*\|\s*$"
 )
-BODY_RE = re.compile(r"^##\s+(?P<num>\d+)\.\s+(?P<title>.+?)\s*$")
+BODY_RE = re.compile(r"^##\s+(?P<num>\d{1,9})\.\s+(?P<title>.+?)\s*$")
 # §1 | T02 §3 | D02 T01 §4
-XREF_RE = re.compile(r"(?:D(?P<dom>\d{2})\s+)?(?:T(?P<todo>\d{2})\s+)?§(?P<sec>\d+)")
+XREF_RE = re.compile(r"(?:D(?P<dom>\d{2})\s+)?(?:T(?P<todo>\d{2})\s+)?§(?P<sec>\d{1,9})")
 BARE_TODO_RE = re.compile(r"(?<![\w§])(?:D\d{2}\s+)?T\d{2}(?!\s*§)(?![\w-])")
 STAMP_RE = re.compile(
     r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved|Plan review|Reopened|Started):\*\*\s*(?P<body>.+?)\s*$"
@@ -106,7 +113,7 @@ REVIEW_KIND_LABELS = {
     "muse-final": "Muse final",
     "adversarial-final": "Qwen final",
 }
-DURATION_BODY_RE = re.compile(r"^(?P<minutes>\d+)\s*m?$")
+DURATION_BODY_RE = re.compile(r"^(?P<minutes>\d{1,9})\s*m?$")
 DURATION_END_RE = re.compile(r"^\S+\s+to\s+(?P<end>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$")
 # A `> **Started:**` line that may anchor a Duration range (rule 26,
 # D00 T01 §32): full-instant shape, calendar-checked at the rule. A
@@ -183,7 +190,7 @@ MAX_STAMP_COVERAGE = 65
 # a forgiving finditer over free text, which is what lets a stamp's evidence
 # prose mention `§4` without claiming it -- and is no longer used on the field
 # the graph TRUSTS.
-COVER_ITEM_RE = re.compile(r"^§(?P<lo>\d+)(?:[ \t]*-[ \t]*§?(?P<hi>\d+))?$", re.ASCII)
+COVER_ITEM_RE = re.compile(r"^§(?P<lo>\d{1,9})(?:[ \t]*-[ \t]*§?(?P<hi>\d{1,9}))?$", re.ASCII)
 
 # Surface contract (D00 T03 §15). A real block starts the line. A checklist
 # item that mentions `**Fidelity:**` is not a Fidelity block (D00 T01 §22).
@@ -278,7 +285,18 @@ def parse_frontmatter(text: str) -> tuple[dict, list[str]]:
         elif val in ("true", "false"):
             data[key] = val == "true"
         elif val.isdigit():
-            data[key] = int(val)
+            # ASCII digits of sane length only (D00 T01 §34 item 5):
+            # `isdigit` admits `²` (which `int()` rejects) and
+            # unbounded runs (which `int()` refuses past 4300
+            # digits). Off-shape values keep string form and record
+            # a bounded diagnostic (FATAL through fm_errors); no
+            # live frontmatter carries one (either shape crashes the
+            # parse today, so a green tree proves absence).
+            if not val.isascii() or len(val) > 9:
+                errors.append(f"frontmatter line {lineno}: value {val[:20]!r} is outside ASCII digits of length 1-9")
+                data[key] = val
+            else:
+                data[key] = int(val)
         else:
             data[key] = val.strip("\"'")
     return data, errors
@@ -1036,6 +1054,23 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 PLAN_HEALTH_SCHEMA = "plan-health/6"
 RISK_REGISTER_SCHEMA = "risk-register/1"
 RISK_REGISTER_PATH = "docs/risk-register.md"
+
+
+def _blank_register_state(text: str) -> str:
+    """Render with the clock-derived State cell blanked (D00 T01 §34
+    item 9): --check compares normalized renders so a date crossing
+    passes while real drift fails. Only eight-cell table rows
+    normalize; every other line passes through, so foreign lines
+    still fail the check."""
+    out = []
+    for ln in text.splitlines():
+        cells = ln.split("|")
+        if len(cells) == 10 and cells[0].strip() == "" and cells[-1].strip() == "":
+            cells[3] = " "
+            out.append("|".join(cells))
+        else:
+            out.append(ln)
+    return "\n".join(out)
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
@@ -1177,7 +1212,7 @@ def section_span_lines(text: str, num: int) -> tuple[int, int] | None:
     heads = [
         (i + 1, int(m.group(1)))
         for i, ln in enumerate(text.splitlines())
-        if (m := re.match(r"^## (\d+)\.", ln))
+        if (m := re.match(r"^## (\d{1,9})\.", ln))
     ]
     for idx, (ln, n) in enumerate(heads):
         if n == num:
@@ -1527,6 +1562,11 @@ def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> s
 
 RUN_ID_RE = re.compile(r"\brun\s+(\S+?)(?=[,;)]|\s|$)")
 SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
+# An amendment proves it saw its target (D00 T01 §34 item 1):
+# `identity <12hex>` after the supersedes link, the hex being the
+# target row's subject fingerprint. Exactly 12 hex (case folds on
+# compare); anything else shaped reads as no token, fail-closed.
+IDENTITY_RE = re.compile(r"\bidentity\s+([0-9a-fA-F]{12})\b")
 # A clearance names the commit that carries the fix (D00 T01 §19 item 8):
 # `fix <sha>` in the target section, proven against the commit's tree.
 # Multi-commit fix loops name the range instead (D00 T01 §22 item 3):
@@ -1586,6 +1626,55 @@ def finding_namespace(fid: str) -> str:
     return m.group(1).lower() if m else ""
 
 
+def finding_fingerprint(subject: str, severity: str, disposition: str) -> str:
+    """The amendment identity of one ledger row (D00 T01 §34 item 1).
+
+    sha256 over the normalized (subject, severity, disposition)
+    triple, 12 hex chars: the subject and acceptance condition the
+    finding closed under, citable by a superseding row. Whitespace
+    collapses and case folds, so re-wrapping a title never breaks a
+    head; any wording, severity, or verdict edit does, forcing the
+    head to re-pin.
+    """
+    norm = " ".join(subject.split()).strip().lower()
+    payload = f"{norm}\n{severity.strip().lower()}\n{disposition.strip().lower()}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:12]
+
+
+def ledger_row_identities(block: str) -> dict[str, str]:
+    """Row ID (lowercased) -> subject fingerprint for one ledger block.
+
+    The subject is the title between the severity bracket and the
+    arrow; severity and disposition ride the row grammar. An
+    unparseable title fingerprints empty (deterministic, so a head
+    pinning it still proves it saw exactly that row).
+    """
+    out: dict[str, str] = {}
+    for lr in LEDGER_ROW_RE.finditer(block):
+        # The subject re-parses from the matched text itself, not the
+        # source line: the row grammar's leading `\s*` can swallow the
+        # prior newline, so a line split off the match start reads
+        # empty on every row but the first.
+        tm = re.match(r"\s*-\s*\[[^\]]+\]\s*\[[^\]]+\]\s*(.+?)\s*->", lr.group(0), re.IGNORECASE)
+        subject = tm.group(1) if tm else ""
+        out.setdefault(lr.group(1).lower(), finding_fingerprint(subject, lr.group(2), lr.group(3)))
+    return out
+
+
+def ledger_link_identity(block: str) -> dict[str, str | None]:
+    """Superseding row ID (lowercased) -> carried identity token, or
+    None when the row links with no token (D00 T01 §34 item 1).
+    First token wins per row, like the link itself."""
+    out: dict[str, str | None] = {}
+    for lr in LEDGER_ROW_RE.finditer(block):
+        rest = block[lr.end():].split("\n", 1)[0]
+        if SUPERSEDES_RE.search(rest) is None:
+            continue
+        im = IDENTITY_RE.search(rest)
+        out.setdefault(lr.group(1).lower(), im.group(1).lower() if im else None)
+    return out
+
+
 def ledger_supersedes(block: str) -> dict[str, str]:
     """Row ID (lowercased) -> superseded target for one ledger block.
 
@@ -1608,12 +1697,18 @@ def ledger_supersession(block: str) -> tuple[dict[str, str], set[str]]:
     """(valid links, cyclic rows) for one ledger block (D00 T01 §23).
 
     A link is valid when its target names another row of the same
-    block in the same review namespace and neither end sits in a
-    supersedes cycle. Cycles invalidate the members' links (the
-    validator owns the failure); the query resolves the rest, so a
-    broken link never hides a row and never loops the scan.
+    block in the same review namespace, carries that row's subject
+    fingerprint (D00 T01 §34 item 1: an unproven link never hides
+    its target), and neither end sits in a supersedes cycle. Cycles
+    are found on the structural links first, so cyclic rows keep
+    their cycle diagnostic instead of collapsing into unproven
+    links; the fingerprint then gates the acyclic remainder, and
+    the query resolves the rest, so a broken link never hides a row
+    and never loops the scan.
     """
     ids = {lr.group(1).lower() for lr in LEDGER_ROW_RE.finditer(block)}
+    _fps = ledger_row_identities(block)
+    _toks = ledger_link_identity(block)
     valid: dict[str, str] = {}
     for rid, tgt in ledger_supersedes(block).items():
         if finding_namespace(tgt) != finding_namespace(rid):
@@ -1632,6 +1727,9 @@ def ledger_supersession(block: str) -> tuple[dict[str, str], set[str]]:
             cyclic.update(path[path.index(cur):])
     for rid in cyclic:
         valid.pop(rid, None)
+    for rid, tgt in list(valid.items()):
+        if _toks.get(rid) != _fps.get(tgt):
+            valid.pop(rid, None)
     return valid, cyclic
 
 
@@ -2669,6 +2767,27 @@ def cmd_query(args) -> int:
                         acc_cache[path] = []
             return acc_cache[path]
 
+        def _join_debt(body: str, stamp_day: str, states: list) -> tuple:
+            # Marker debt by target (D00 T01 §29 item 2, panel R1):
+            # the risk register reads a run/outage waiver's residual
+            # off the owed states of the markers carrying its target.
+            # Every marked marker joins (healthy ones contribute
+            # nothing, so their waivers read `none`); sets because
+            # one (rung, day) can owe on several markers.
+            # Grandfathered markers join too (D00 T01 §34 item 8):
+            # they predate the accountability grammar, so they
+            # contribute no states and their waivers read `none`,
+            # never `unmatched`.
+            rm = RUN_ID_RE.search(body)
+            mrun = normalize_run_id(rm.group(1)) if rm else None
+            omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
+            orung = omt.group(1).strip() if omt else None
+            if mrun is not None:
+                run_debt.setdefault(mrun, set()).update(states)
+            if orung is not None:
+                outage_debt.setdefault((orung, stamp_day), set()).update(states)
+            return mrun, orung
+
         for t in todos:
             for num in sorted(t.verified_sections):
                 s = t.sections.get(num)
@@ -2693,6 +2812,7 @@ def cmd_query(args) -> int:
                             )
                     else:
                         marked[(t.id, num)] = s.stamped_on or "undated"
+                        _join_debt(body, s.stamped_on or "", [])
                     continue
                 if body:
                     marked[(t.id, num)] = s.stamped_on or "undated"
@@ -2718,24 +2838,9 @@ def cmd_query(args) -> int:
                         state = f"{state}+retry-owed" if state else "retry-owed"
                     if re.search(r"\bpartial\s*:", body.lower()):
                         state = f"{state}+partial" if state else "partial"
-                    rm = RUN_ID_RE.search(body)
-                    mrun = normalize_run_id(rm.group(1)) if rm else None
-                    omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
-                    orung = omt.group(1).strip() if omt else None
                     stamp_day = s.stamped_on or ""
-                    # Marker debt by target (D00 T01 §29 item 2,
-                    # panel R1): the risk register reads a
-                    # run/outage waiver's residual off the owed
-                    # states of the markers carrying its target.
-                    # Every marked marker joins (healthy ones
-                    # contribute nothing, so their waivers read
-                    # `none`); sets because one (rung, day) can
-                    # owe on several markers.
                     _dstates = [s for s in ("outage", "retry-owed", "partial") if s in state.split("+")]
-                    if mrun is not None:
-                        run_debt.setdefault(mrun, set()).update(_dstates)
-                    if orung is not None:
-                        outage_debt.setdefault((orung, stamp_day), set()).update(_dstates)
+                    mrun, orung = _join_debt(body, stamp_day, _dstates)
                     if state:
                         om = OWNER_RE.search(body)
                         dm = DUE_RE.search(body)
@@ -3999,7 +4104,7 @@ def cmd_query(args) -> int:
             _rlines = [
                 "# Risk register",
                 "",
-                "Live plus lapsed acceptance instruments with residual severity (findings: row severity, `dangling` past history; run/outage: marker owed states, `none` when healthy, `unmatched` past any marker). Generated by `query risk-register --sync`; do not edit (gated by `--check`).",
+                "Live plus lapsed acceptance instruments with residual severity (findings: row severity, `dangling` past history; run/outage: marker owed states, `none` when healthy, `unmatched` past any marker). Generated by `query risk-register --sync`; do not edit (gated by `--check`). The State column is clock-derived and refreshes on `--sync`; `--check` ignores it.",
                 "",
                 "| Target | Residual | State | Owner | Approver | Expires | Review | Rationale |",
                 "| --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -4021,10 +4126,17 @@ def cmd_query(args) -> int:
                     _rcur = _rpath.read_text(encoding="utf-8")
                 except OSError:
                     _rcur = ""
-                if _rcur != _rtext:
+                # The State column is clock-derived (D00 T01 §34 item
+                # 9): a record/expiry crossing must not fail the daily
+                # unattended gate with no repo change, so --check
+                # compares state-normalized renders (real drift still
+                # fails with the normalized diff; committed State
+                # refreshes on --sync).
+                _ncur, _ntext = _blank_register_state(_rcur), _blank_register_state(_rtext)
+                if _ncur != _ntext:
                     print("risk register is stale -- run `query risk-register --sync`", file=sys.stderr)
                     for _dl in difflib.unified_diff(
-                        _rcur.splitlines(), _rtext.splitlines(), "committed", "derived", lineterm=""
+                        _ncur.splitlines(), _ntext.splitlines(), "committed", "derived", lineterm=""
                     ):
                         print(_dl)
                     return 1
@@ -4040,7 +4152,10 @@ def cmd_query(args) -> int:
             # not failures); the scheduled job posts when the count
             # reads nonzero.
             _n = getattr(args, "within_days", None) or "7"
-            if re.fullmatch(r"[0-9]+", _n) is None:
+            # Length-capped like attempts (D00 T01 §34 item 6): past
+            # the 4300-digit interpreter limit int() raises instead
+            # of flagging, so longer runs exit 2 here.
+            if re.fullmatch(r"[0-9]{1,9}", _n) is None:
                 print(f"query notify: --within-days takes a non-negative integer, got {_n!r}", file=sys.stderr)
                 return 2
             _horizon = (_today_d + timedelta(days=int(_n))).isoformat()
@@ -8067,6 +8182,10 @@ track: Z1
 |  84   |   §84   | Untouched-proof target | - |  [x]   |
 |  85   |   §85   | Merge-tip target | - |  [x]   |
 |  86   |   §86   | Side-branch-base target | - |  [x]   |
+|  87   |   §87   | Amendment identity probe | - |  [x]   |
+|  88   |   §88   | Long attempt count fires | - |  [x]   |
+|  89   |   §89   | Huge attempt count fires | - |  [x]   |
+|  90   |   §90   | Nine-digit attempt count passes | - |  [x]   |
 
 ---
 
@@ -9122,7 +9241,51 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
-""".replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
+
+## 87. Amendment identity probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §87 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-amend.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S87-gpt)
+
+## 88. Long attempt count fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §88 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class auth attempts 1234567890 (run 20260920-D90-T07-S88-gpt)
+
+## 89. Huge attempt count fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §89 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class auth attempts __LONG9__ (run 20260920-D90-T07-S89-gpt)
+
+## 90. Nine-digit attempt count passes
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §90 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class auth attempts 123456789 (run 20260920-D90-T07-S90-gpt)
+""".replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
         (rev_dir / "90-health.md").write_text(
@@ -9496,6 +9659,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         # validly amends PR1 (the query reads PR2 as current and skips
         # PR1); PR3 names a row that does not exist; PR4 amends another
         # review's row; PR5 and PR6 amend each other; PR7 amends itself.
+        # PR2 carries PR1's subject fingerprint (D00 T01 §34 item 1),
+        # keeping the valid chain silent under the identity rule.
         # The manifest rides §57's run, so only the probed link shapes
         # can fire on each.
         (rev_dir / "90-health-supersede.md").write_text(
@@ -9503,7 +9668,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             + "Manifest: sections [D90 T07 §57]; dependents [none]; bytes 100; run 20260920-D90-T07-S57-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S57-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
-            "- [D90-T07-S57-PR2] [major] Amended worry -> accepted owner ann due 2099-02-02 supersedes D90-T07-S57-PR1\n"
+            "- [D90-T07-S57-PR2] [major] Amended worry -> accepted owner ann due 2099-02-02 supersedes D90-T07-S57-PR1 identity 360709bcdb69\n"
             "- [D90-T07-S57-PR3] [major] Dangling amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S57-PR99\n"
             "- [D90-T07-S57-PR4] [major] Foreign amendment -> accepted owner ann due 2099-04-04 supersedes D90-T07-S4-PR2\n"
             "- [D90-T07-S57-PR5] [major] Cyclic amendment -> accepted owner ann due 2099-05-05 supersedes D90-T07-S57-PR6\n"
@@ -9554,10 +9719,31 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             + "Manifest: sections [D90 T07 §62]; dependents [none]; bytes 100; run 20260920-D90-T07-S62-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S62-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
-            "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1\n"
-            "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1\n"
+            "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1 identity 360709bcdb69\n"
+            "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1 identity 360709bcdb69\n"
             "End of ledger\n"
             "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
+            encoding="utf-8",
+        )
+        # §34 probe: one head per amendment-identity shape, each on its
+        # own target (shared targets would fork first). PR2 links with
+        # no token; PR4 links with a mismatched token; PR6 links proven
+        # but bare of rationale; PR8 links proven with reason and reads
+        # current while PR7 skips. The manifest rides §87's run, so
+        # only the probed shapes can fire on each.
+        (rev_dir / "90-health-amend.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §87]; dependents [none]; bytes 100; run 20260920-D90-T07-S87-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S87-PR1] [major] Alpha worry -> accepted owner ann due 2099-01-01\n"
+            "- [D90-T07-S87-PR2] [major] Unproven amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S87-PR1\n"
+            "- [D90-T07-S87-PR3] [major] Beta worry -> accepted owner ann due 2099-03-03\n"
+            "- [D90-T07-S87-PR4] [major] Misidentified amendment -> accepted owner ann due 2099-04-04 supersedes D90-T07-S87-PR3 identity 000000000000\n"
+            "- [D90-T07-S87-PR5] [major] Gamma worry -> accepted owner ann due 2099-05-05\n"
+            "- [D90-T07-S87-PR6] [minor] Bare amendment -> accepted supersedes D90-T07-S87-PR5 identity b8b043ddf486\n"
+            "- [D90-T07-S87-PR7] [major] Delta worry -> accepted owner ann due 2099-07-07\n"
+            "- [D90-T07-S87-PR8] [major] Proven amendment -> accepted owner ann due 2099-08-08 supersedes D90-T07-S87-PR7 identity 8494060112d6\n"
+            "End of ledger\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-multirec.md").write_text(
@@ -10619,6 +10805,37 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             1,
         )
         check(
+            "ten-digit attempt count fires",
+            any(
+                "TODO-07-marker.md" in ln and "§88 " in ln and "names no positive attempt count" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§88 fires exactly once (attempts only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§88 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "4300-digit attempt count flags instead of crashing",
+            any(
+                "TODO-07-marker.md" in ln and "§89 " in ln and "names no positive attempt count" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§89 fires exactly once (attempts only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§89 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "nine-digit attempt count passes",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§90 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
             "hollow deferred trigger fires",
             any(
                 "TODO-07-marker.md" in ln and "§4 " in ln and "PR25" in ln and "without owner, due, and trigger" in ln
@@ -10875,6 +11092,43 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "§62 fires exactly once (row fork only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§62 " in ln and "FATAL" in ln),
             1,
+        )
+        check(
+            "superseding without an identity token fires",
+            any(
+                "TODO-07-marker.md" in ln and "§87 " in ln and "d90-t07-s87-pr2 supersedes D90-T07-S87-PR1 without an identity token" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "superseding with a mismatched identity fires",
+            any(
+                "TODO-07-marker.md" in ln and "§87 " in ln and "d90-t07-s87-pr4 supersedes D90-T07-S87-PR3 with identity 000000000000, want 7ec77af6c48d" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "a rationale-bare head fires",
+            any(
+                "TODO-07-marker.md" in ln and "§87 " in ln and "d90-t07-s87-pr6 supersedes D90-T07-S87-PR5 with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§87 fires exactly three times (missing, mismatch, bare rationale; the proven chain silent)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§87 " in ln and "FATAL" in ln),
+            3,
+        )
+        check(
+            "finding_fingerprint pins the (subject, severity, disposition) triple",
+            (
+                finding_fingerprint("Original worry", "major", "accepted"),
+                finding_fingerprint("  ORIGINAL   Worry ", "Major", "ACCEPTED"),
+            ),
+            ("360709bcdb69", "360709bcdb69"),
         )
         # Query run over the fixture tree (D00 T01 §24 item 4): one ID
         # resolves to candidate, scope, findings, lineage, outage
@@ -11474,8 +11728,12 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "plan-health clears the filed critical",
             # Word-boundary: the namespaced PR10 row contains PR1 as a
-            # substring, so a plain `in` would false-fire.
-            any(re.search(r"\bPR1\b", ln) for ln in health_lines),
+            # substring, so a plain `in` would false-fire. Namespaced
+            # PR1 rows (§87's current head) legitimately list, so the
+            # dash lookbehind scopes the match to the bare filed row
+            # (§87's namespaced PR1 target legitimately lists: its
+            # amendment is unproven, so the target stays current).
+            any(re.search(r"(?<!-)\bPR1\b", ln) for ln in health_lines),
             False,
         )
         check(
@@ -11601,6 +11859,16 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "plan-health skips the superseded row",
             any("D90-T07-S57-PR1" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "plan-health reads the proven amendment as current",
+            any("D90-T07-S87-PR8" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health skips the proven-amended row",
+            any("D90-T07-S87-PR7" in ln for ln in health_lines),
             False,
         )
         check(
@@ -12594,7 +12862,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "|   7   |   §7    | Postdated waiver | -- |  [x]   |\n"
             "|   8   |   §8    | Superseded predecessor defers to head | -- |  [x]   |\n"
             "|   9   |   §9    | Unresolvable evidence | -- |  [x]   |\n"
-            "|   10  |   §10   | Matched outage residual | -- |  [x]   |\n\n---\n\n"
+            "|   10  |   §10   | Matched outage residual | -- |  [x]   |\n"
+            "|   11  |   §11   | Pre-cutoff run waiver | -- |  [x]   |\n\n---\n\n"
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
@@ -12635,7 +12904,11 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "## 10. Matched outage residual\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §10 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc13.md\n"
-            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1\n",
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1\n\n"
+            "## 11. Pre-cutoff run waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-18 | §11 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc6.md\n"
+            "> **Plan review:** GPT high, no findings (run 20260918-D90-T01-S11-gpt)\n",
             encoding="utf-8",
         )
         _acc_head = (
@@ -12697,7 +12970,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             f"Risk accepted: D90-T01-S6-PR4; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence dead666; rationale stale review, never lists\n"
             f"Risk accepted: D90-T01-S6-PR99; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale dangling review, never lists\n"
             f"Risk accepted: D90-T01-S6-PR5; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale minor review, never lists\n"
-            f"Risk accepted: 20260918-D90-T01-S6-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; rationale healthy marker waiver\n",
+            f"Risk accepted: 20260918-D90-T01-S6-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; rationale healthy marker waiver\n"
+            f"Risk accepted: 20260918-D90-T01-S11-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; rationale pre-cutoff run waiver reads none\n",
             encoding="utf-8",
         )
         _r30f = (date.today() + timedelta(days=30)).isoformat()
@@ -12975,7 +13249,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "register lists every un-superseded instrument once",
             (
                 _reg["schema"] == "risk-register/1"
-                and len(_rent) == 15
+                and len(_rent) == 16
                 and not any(e["rationale"] in ("superseded waiver", "superseded review") for e in _rent)
                 and not any("S4-PR1" in e["target"] for e in _rent)
             ),
@@ -12993,6 +13267,11 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                 and any(e["target"].endswith("S5-gpt") and e["state"] == "expired" for e in _rent)
                 and any(e["target"].endswith("S7-gpt") and e["state"] == "post-dated" for e in _rent)
             ),
+            True,
+        )
+        check(
+            "pre-cutoff run waivers read none, never unmatched",
+            any(e["target"].endswith("S11-gpt") and e["residual"] == "none" for e in _rent),
             True,
         )
         check(
@@ -13032,6 +13311,20 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             _rfile.write_text(_rfile.read_text(encoding="utf-8") + "\ncorruption\n", encoding="utf-8")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rstale = cmd_query(argparse.Namespace(what="risk-register", check=True))
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+            # Date-crossing probe (D00 T01 §34 item 9): flip every
+            # State cell as a clock crossing would, with no other
+            # change; the gate must pass. Then flip one residual
+            # cell: real drift must still fail.
+            _rcrossed = re.sub(r"\| (live|post-dated|expired) \|", "| crossed |", _rfile.read_text(encoding="utf-8"))
+            _rfile.write_text(_rcrossed, encoding="utf-8")
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                rc_rcross = cmd_query(argparse.Namespace(what="risk-register", check=True))
+            _rdrift = _rcrossed.replace("| none |", "| outage |", 1)
+            _rfile.write_text(_rdrift, encoding="utf-8")
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                rc_rdrift = cmd_query(argparse.Namespace(what="risk-register", check=True))
         finally:
             TODO_DIR = saved_tree
         check(
@@ -13039,13 +13332,25 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             rc_sync == 0 and _rsynced and rc_rcheck == 0 and rc_rstale == 1,
             True,
         )
+        check(
+            "register check passes State-only drift from a date crossing",
+            rc_rcross,
+            0,
+        )
+        check(
+            "register check fails residual drift beside State drift",
+            rc_rdrift,
+            1,
+        )
         with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
             rc_badtoday = cmd_query(argparse.Namespace(what="plan-health", today="yesterday"))
         with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
             rc_badwin = cmd_query(argparse.Namespace(what="notify", within_days="soon"))
+        with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+            rc_longwin = cmd_query(argparse.Namespace(what="notify", within_days="9" * 4300))
         check(
             "malformed --today and --within-days exit 2",
-            rc_badtoday == 2 and rc_badwin == 2,
+            rc_badtoday == 2 and rc_badwin == 2 and rc_longwin == 2,
             True,
         )
         _revs = _acc_json["reviews"]
@@ -13859,6 +14164,61 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check("review_prompt fence with a malformed pair exits 2", _fpair.returncode, 2)
         _fa.unlink()
         _fb.unlink()
+        # Frontmatter ints stay ASCII and short (D00 T01 §34 item 5):
+        # non-ASCII digits and over-long runs keep string form with a
+        # bounded diagnostic instead of crashing int().
+        _fm_ok, _fm_err = parse_frontmatter("---\nschema_version: 1\nid: x\n---\n")
+        check(
+            "frontmatter parses ASCII ints",
+            (_fm_ok.get("schema_version"), _fm_err),
+            (1, []),
+        )
+        _fm_sup, _fm_sup_err = parse_frontmatter("---\nschema_version: ²\nid: x\n---\n")
+        check(
+            "frontmatter rejects non-ASCII digits with a diagnostic",
+            (_fm_sup.get("schema_version"), len(_fm_sup_err) == 1 and "ASCII" in _fm_sup_err[0]),
+            ("²", True),
+        )
+        _fm_long, _fm_long_err = parse_frontmatter("---\norder: " + "9" * 4300 + "\nid: x\n---\n")
+        check(
+            "frontmatter rejects over-long digit runs with a diagnostic",
+            (isinstance(_fm_long.get("order"), str), len(_fm_long_err) == 1 and "ASCII" in _fm_long_err[0]),
+            (True, True),
+        )
+        # Digit grammars feeding int() cap at 9 (D00 T01 §34 item 6):
+        # longer runs miss the anchored grammars and land in the
+        # existing structural diagnostics instead of crashing int().
+        _long = "9" * 4300
+        check(
+            "order-table rows reject over-long numbers",
+            (ROW_RE.match(f"| {_long} | §1 | d | -- | [x] |") is None, ROW_RE.match("| 3 | §3 | d | §2 | [x] |") is not None),
+            (True, True),
+        )
+        check(
+            "section headings reject over-long numbers",
+            (BODY_RE.match(f"## {_long}. T") is None, BODY_RE.match("## 3. T") is not None),
+            (True, True),
+        )
+        check(
+            "coverage items reject over-long numbers",
+            (COVER_ITEM_RE.match(f"§{_long}") is None, COVER_ITEM_RE.match("§3-§5") is not None),
+            (True, True),
+        )
+        check(
+            "duration minutes reject over-long numbers",
+            (DURATION_BODY_RE.fullmatch(_long) is None, DURATION_BODY_RE.fullmatch("45") is not None),
+            (True, True),
+        )
+        check(
+            "XREF section capture stays int-safe on over-long runs",
+            len(XREF_RE.search(f"§{_long}").group("sec")),
+            9,
+        )
+        check(
+            "historical heading scan skips over-long numbers",
+            section_span_lines(f"## {_long}. A\nx\n## 2. B\ny\n", 2),
+            (3, 5),
+        )
         # Canonical run IDs (D00 T01 §20 item 1): base from the TODO path
         # plus section plus family plus date, -rN walking past claims.
         check(
@@ -13928,6 +14288,23 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                 and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", -1, "gpt", "20260920"))
                 and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", True, "gpt", "20260920"))
                 and _raises(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", "4", "gpt", "20260920"))
+            ),
+            True,
+        )
+        def _raises_msg(fn):
+            try:
+                fn()
+            except ValueError as exc:
+                return str(exc)
+            return ""
+
+        check(
+            "run-id rejects non-ASCII run suffixes with a naming diagnostic",
+            (
+                "outside ASCII digits of length 1-9"
+                in _raises_msg(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "20260920", "x (run 20260920-D90-T07-S4-gpt-r²)"))
+                and "outside ASCII digits of length 1-9"
+                in _raises_msg(lambda: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "20260920", "x (run 20260920-D90-T07-S4-gpt-r" + "9" * 4300 + ")"))
             ),
             True,
         )
@@ -14001,6 +14378,214 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         )
         check("review_prompt run-id with an unreadable scan file exits 2", _runid_dir.returncode, 2)
         _rid.unlink()
+        # Bounded runner collection (D00 T01 §34 items 3-4): stub
+        # producers prove each gate kills with a naming diagnostic;
+        # no live model runs in the suite.
+        _PY = sys.executable
+        _ok, _text, _info = rp.collect_producer([_PY, "-c", "print('hi')"], b"prompt\n", 30)
+        check("collector passes clean output through exactly", (_ok, _text, _info["returncode"]), (True, "hi\n", 0))
+        _ok, _why, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; sys.stdout.write(('z' * 3000 + '\\n') * 400)"], b"", 30
+        )
+        check(
+            "collector kills past the byte cap",
+            (_ok, _why),
+            (False, f"output exceeds {rp.OUTPUT_MAX_BYTES} bytes"),
+        )
+        _ok, _why, _ = rp.collect_producer([_PY, "-c", "print('\\n'.join(['a'] * 100001))"], b"", 60)
+        check(
+            "collector kills past the line cap",
+            (_ok, _why),
+            (False, f"output exceeds {rp.OUTPUT_MAX_LINES} lines"),
+        )
+        _ok, _why, _ = rp.collect_producer([_PY, "-c", "print('x' * 5000)"], b"", 30)
+        check(
+            "collector kills past the token cap",
+            (_ok, _why),
+            (False, f"token exceeds {rp.TOKEN_MAX_CHARS} chars"),
+        )
+        _ok, _why, _ = rp.collect_producer([_PY, "-c", "import sys; sys.stdout.write('y' * 70000)"], b"", 30)
+        check(
+            "collector kills tokens spanning read chunks",
+            (_ok, _why),
+            (False, f"token exceeds {rp.TOKEN_MAX_CHARS} chars"),
+        )
+        _ok, _why, _info = rp.collect_producer([_PY, "-c", "import time; time.sleep(30)"], b"", 1)
+        check(
+            "collector kills past the wall clock",
+            (_ok, _why, _info["returncode"] != 0),
+            (False, "producer exceeded 1s wall clock", True),
+        )
+        _ok, _why, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe')"], b"", 30
+        )
+        check(
+            "collector fails malformed UTF-8 with the offset",
+            (_ok, _why),
+            (False, "malformed UTF-8 at byte offset 0"),
+        )
+        _ok, _why, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; sys.stdout.buffer.write(b'a\\x00b')"], b"", 30
+        )
+        check(
+            "collector fails NUL bytes with the offset",
+            (_ok, _why),
+            (False, "NUL byte at byte offset 1"),
+        )
+        _ok, _why, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; sys.stdout.buffer.write(b'\\xe2\\x82')"], b"", 30
+        )
+        check(
+            "collector fails truncated UTF-8 at end of output",
+            (_ok, _why),
+            (False, "malformed UTF-8 at byte offset 2"),
+        )
+        _ok, _why, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; print('boom', file=sys.stderr); sys.exit(3)"], b"", 30
+        )
+        check(
+            "collector fails nonzero producer exits with the tail",
+            (_ok, _why),
+            (False, "producer exited 3: boom"),
+        )
+        _ok, _text, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; sys.stdout.write(sys.stdin.read())"], b"feed me\n", 30
+        )
+        check("collector feeds the prompt on stdin", (_ok, _text), (True, "feed me\n"))
+        _bad_utf8 = _sp.run(
+            [sys.executable, _rp_path, "check-panel"], input=b"\xff\xfe", capture_output=True, timeout=30
+        )
+        check(
+            "check-panel fails malformed UTF-8",
+            (_bad_utf8.returncode, _bad_utf8.stdout.decode().strip()),
+            (1, "FAIL malformed UTF-8 at byte offset 0"),
+        )
+        _nul_in = _sp.run(
+            [sys.executable, _rp_path, "check-panel"], input=b"a\x00b", capture_output=True, timeout=30
+        )
+        check(
+            "check-panel fails NUL bytes",
+            (_nul_in.returncode, _nul_in.stdout.decode().strip()),
+            (1, "FAIL NUL byte at byte offset 1"),
+        )
+        check(
+            "check-panel-output fails embedded NUL",
+            rp.check_panel_output(
+                "**adversarial: approve**\n\x00\n**consistency: approve**\n\n**integration: approve**\n\n**record: approve**\n"
+            ),
+            (False, "NUL byte at offset 25"),
+        )
+        check(
+            "check-plan-output fails embedded NUL",
+            rp.check_plan_output("- only finding\n\x00"),
+            (False, "NUL byte at offset 15"),
+        )
+        # Atomic review runs (D00 T01 §34 item 7): stub producers
+        # prove mint, bound, validate, store, provenance, and ledger.
+        _rprompt = root / "run-prompt.txt"
+        _rprompt.write_text("REVIEW ME\n", encoding="utf-8")
+        _rstore = root / "run-store"
+        _rok = _sp.run(
+            [
+                sys.executable,
+                _rp_path,
+                "run",
+                "panel",
+                str(_rprompt),
+                "todo/90-x/TODO-07-y.md",
+                "4",
+                "gpt",
+                "20260920",
+                "--store",
+                str(_rstore),
+                "--candidate",
+                "aaa1111",
+                "--",
+                sys.executable,
+                "-c",
+                "print('**adversarial: approve**\\n\\n**consistency: approve**\\n\\n**integration: approve**\\n\\n**record: approve**')",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        _rwant = "**adversarial: approve**\n\n**consistency: approve**\n\n**integration: approve**\n\n**record: approve**\n"
+        _rdigest = hashlib.sha256(_rwant.encode()).hexdigest()
+        _rok_lines = _rok.stdout.splitlines()
+        _rprov = _rok_lines[3] if len(_rok_lines) > 3 else ""
+        _rled_lines = (_rstore / "ledger.jsonl").read_text(encoding="utf-8").splitlines() if (_rstore / "ledger.jsonl").exists() else []
+        _rledger = json.loads(_rled_lines[0]) if _rled_lines else {}
+        _rartifact = (_rstore / _rdigest).read_bytes() if (_rstore / _rdigest).exists() else b"<missing>"
+        check(
+            "review-run passes a clean producer end to end",
+            (
+                _rok.returncode,
+                _rok_lines[0].startswith("PASS ") if _rok_lines else False,
+                _rok_lines[1] if len(_rok_lines) > 1 else "",
+                _rartifact,
+                (
+                    _rledger.get("run"),
+                    _rledger.get("kind"),
+                    _rledger.get("digest"),
+                    _rledger.get("verdict", "").startswith("PASS "),
+                ),
+                PROVENANCE_RE.fullmatch(_rprov) is not None,
+            ),
+            (
+                0,
+                True,
+                "run 20260920-D90-T07-S4-gpt",
+                _rwant.encode(),
+                ("20260920-D90-T07-S4-gpt", "panel", "sha256:" + _rdigest, True),
+                True,
+            ),
+        )
+        _rfail = _sp.run(
+            [
+                sys.executable,
+                _rp_path,
+                "run",
+                "panel",
+                str(_rprompt),
+                "todo/90-x/TODO-07-y.md",
+                "4",
+                "gpt",
+                "20260920",
+                "--store",
+                str(_rstore),
+                "--candidate",
+                "aaa1111",
+                str(root / "run-absent.txt"),
+                "--",
+                sys.executable,
+                "-c",
+                "print('garbage')",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        _rflines = _rfail.stdout.splitlines()
+        _rfprov = _rflines[3] if len(_rflines) > 3 else ""
+        _rfled = (_rstore / "ledger.jsonl").read_text(encoding="utf-8").splitlines() if (_rstore / "ledger.jsonl").exists() else []
+        check(
+            "review-run stores and ledgers a failing producer",
+            (
+                _rfail.returncode,
+                _rflines[0].startswith("FAIL ") if _rflines else False,
+                len(_rfled) == 2 and json.loads(_rfled[1])["verdict"].startswith("FAIL "),
+                PROVENANCE_RE.fullmatch(_rfprov) is not None and "; exit 1;" in _rfprov,
+            ),
+            (1, True, True, True),
+        )
+        _rnodash = _sp.run(
+            [sys.executable, _rp_path, "run", "panel", str(_rprompt), "todo/90-x/TODO-07-y.md", "4", "gpt", "20260920"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check("review-run without a producer separator exits 2", _rnodash.returncode, 2)
+        _rprompt.unlink()
         # Delimiter-tag contract (D00 T01 §19 item 11): 64-bit entropy
         # floor, collision-checked fencing with bounded retries.
         check("tag entropy floor is 64 bits", rp.TAG_ENTROPY_BITS, 64)
@@ -14113,6 +14698,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         (rev_dir / "90-health-noprov.md").unlink()
         (rev_dir / "90-health-badprov.md").unlink()
         (rev_dir / "90-health-supersede.md").unlink()
+        (rev_dir / "90-health-amend.md").unlink()
         marker_todo.unlink()
         panel_todo.unlink()
         for extra in (

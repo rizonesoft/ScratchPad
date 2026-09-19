@@ -736,9 +736,12 @@ def validate(graph, _args) -> int:
                 # `\d+` prefix match accepts `attempts 2x` and
                 # `attempts 1.5` as counts 2 and 1; panel R2:
                 # `isdigit` accepts `²`, which `int()` rejects, so
-                # the gate crashed instead of flagging).
+                # the gate crashed instead of flagging) of length 1-9
+                # (D00 T01 §34 item 6: past the 4300-digit interpreter
+                # limit `int()` raises instead of flagging, so the
+                # grammar caps far below it and longer tokens flag).
                 _am = re.search(r"\battempts\s+(\S+)", _line)
-                if _am is None or re.fullmatch(r"[0-9]+", _am.group(1)) is None or int(_am.group(1)) < 1:
+                if _am is None or re.fullmatch(r"[0-9]{1,9}", _am.group(1)) is None or int(_am.group(1)) < 1:
                     flag(
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
@@ -1691,6 +1694,14 @@ def validate(graph, _args) -> int:
                 _links = graph.ledger_supersedes(hblock)
                 _ids = {lr.group(1).lower() for lr in graph.LEDGER_ROW_RE.finditer(hblock)}
                 _, _cyclic = graph.ledger_supersession(hblock)
+                # D00 T01 §34 items 1-2: a structurally sound link still
+                # proves its target (the identity token) and restates its
+                # reason (the transition contract). Structurally broken
+                # links skip both: no valid target row exists to
+                # fingerprint, and one fire per defect keeps the
+                # diagnostic attributable.
+                _idmap = graph.ledger_row_identities(hblock)
+                _tokmap = graph.ledger_link_identity(hblock)
                 for lr in graph.LEDGER_ROW_RE.finditer(hblock):
                     _rid = lr.group(1).lower()
                     if _rid not in _links:
@@ -1711,6 +1722,27 @@ def validate(graph, _args) -> int:
                             "ledger-supersession-broken",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} sits in a supersedes cycle",
                         )
+                    else:
+                        _tok = _tokmap.get(_rid)
+                        _want = _idmap.get(_tgt.lower())
+                        if _tok is None:
+                            flag(
+                                "ledger-supersession-broken",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} supersedes {_tgt} without an identity token (identity <12hex> over the target subject, severity, disposition)",
+                            )
+                        elif _tok != _want:
+                            flag(
+                                "ledger-supersession-broken",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} supersedes {_tgt} with identity {_tok}, want {_want} (fingerprint over the target subject, severity, disposition)",
+                            )
+                        _rrest = hblock[lr.end():].split("\n", 1)[0]
+                        _rrest = graph.SUPERSEDES_RE.sub("", _rrest)
+                        _rrest = graph.IDENTITY_RE.sub("", _rrest)
+                        if not _rrest.strip(",; \t"):
+                            flag(
+                                "ledger-supersession-broken",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} supersedes {_tgt} with no rationale (restate the reason on the head)",
+                            )
                 _claimants: dict[str, list[str]] = {}
                 _spell: dict[str, str] = {}
                 for _rid2, _tgt2 in _links.items():

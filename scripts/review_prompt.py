@@ -8,8 +8,16 @@ WSL checkouts agree), and reviewer output is validated whole (item 15: one
 valid-looking row must not mask malformed trailing findings).
 """
 
+import codecs
+import hashlib
+import json
+import os
 import re
 import secrets
+import shlex
+import subprocess
+import threading
+import time
 
 PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
 PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
@@ -43,6 +51,18 @@ _COUNT_INNER = r"(?:0|[1-9][0-9]{0," + str(_COUNT_MAX_DIGITS - 1) + r"})"
 # legitimate reviewer never nears them.
 OUTPUT_MAX_BYTES = 2**20
 OUTPUT_MAX_LINES = 100_000
+# Runner-output token cap (D00 T01 §34 item 3): one whitespace-delimited
+# run longer than this kills the producer. 4096 sits below the 4300
+# digit interpreter cliff (no single token can crash a downstream
+# int()) and above every legitimate digest, path, or URL.
+TOKEN_MAX_CHARS = 4096
+# Runner wall-clock default (D00 T01 §34 item 3): the panel precedent
+# (600s panels, 900s plan reviews) with one default; --timeout
+# overrides per run.
+RUN_TIMEOUT_SECS = 600
+# Producer stderr is diagnostic context only: captured to 64KB, then
+# truncated (a chatty producer must not exhaust the collector).
+STDERR_MAX_BYTES = 2**16
 _PANEL_LINE_RE = re.compile(
     r"^\s*\*{2}\s*(adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
     r"(approve|needs-attention|advisory)(?:\s*\((?P<c1>" + _COUNT_INNER + r")\)\*{0,2}|\*{0,2}\s*\((?P<c2>"
@@ -120,7 +140,11 @@ def _output_within_bounds(text: str) -> tuple[bool, str] | None:
     splits; both bounds are inclusive. The byte measure encodes in
     chunks with early exit, never a second full copy of the input, so
     a hostile string costs the gate bounded extra memory; the line
-    split only runs once bytes fit, so it is bounded too."""
+    split only runs once bytes fit, so it is bounded too. NUL has no
+    legitimate reading in review text (D00 T01 §34 item 4) and fails
+    here, so library callers get the same verdict as the runner."""
+    if "\x00" in text:
+        return False, f"NUL byte at offset {text.index(chr(0))}"
     total = 0
     for i in range(0, len(text), 8192):
         total += len(text[i:i + 8192].encode("utf-8"))
@@ -234,6 +258,14 @@ def next_run_id(todo_path: str, section: int, family: str, date: str, *texts: st
             mx = max(mx, 1)
         elif t.startswith(base + "-r"):
             tail = t[len(base) + 2:]
+            # ASCII digits of sane length only (D00 T01 §34 item 5):
+            # `isdigit` admits `²` (which `int()` rejects) and
+            # unbounded runs (which `int()` refuses past 4300
+            # digits), so both fail closed with a naming diagnostic
+            # instead of crashing. Non-digit tails stay non-claims.
+            if tail.isdigit() and (not tail.isascii() or len(tail) > 9):
+                shown = tail[:20] + ("..." if len(tail) > 20 else "")
+                raise ValueError(f"run suffix -r{shown} is outside ASCII digits of length 1-9")
             if tail.isdigit():
                 mx = max(mx, int(tail))
     return f"{base}-r{mx + 1}"
@@ -257,6 +289,190 @@ def check_plan_output(text: str) -> tuple[bool, str]:
         if not line.startswith("- "):
             return False, f"line {lineno} is not a `- ` finding: {line.strip()[:80]}"
     return True, f"{len(lines)} findings, one per line"
+
+
+def _read_scan_files(paths: list[str], prefix: str) -> list[str]:
+    """Claim texts for run minting, shared by run-id and run.
+
+    A genesis run mints before its findings file exists, so a missing
+    scan file warns and reads as no claims (collisions still fail loud
+    downstream at the duplicate-run check); other read errors stay
+    fatal with a naming diagnostic.
+    """
+    import sys
+
+    texts = []
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                texts.append(fh.read())
+        except FileNotFoundError:
+            print(f"{prefix}: warning: {path} does not exist, reading as no claims", file=sys.stderr)
+        except OSError as exc:
+            print(f"{prefix}: cannot read {path}: {exc}", file=sys.stderr)
+            sys.exit(2)
+    return texts
+
+
+def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tuple[bool, str, dict]:
+    """Run one reviewer producer under streaming bounds (D00 T01 §34
+    items 3-4): the prompt bytes feed stdin while stdout streams
+    through the byte, line, token, and wall-clock gates plus strict
+    UTF-8 decoding and NUL rejection. Any excess kills the producer
+    (threads + queue, so no platform needs select); a nonzero producer
+    exit fails even with well-shaped output. Returns (ok, text,
+    info) on success with the exact text, else (False, reason, info);
+    info always carries returncode, stderr_tail, bytes_read,
+    lines_read, and the raw collected bytes (partial on failure, for
+    the artifact store).
+    """
+    import queue
+
+    started = time.monotonic()
+    try:
+        proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as exc:
+        return False, f"producer failed to start: {exc}", {"returncode": None, "stderr_tail": "", "bytes_read": 0, "lines_read": 0}
+
+    def _feed() -> None:
+        try:
+            assert proc.stdin is not None
+            proc.stdin.write(prompt)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+
+    chunks: queue.Queue = queue.Queue()
+    _EOF, _EXC = object(), object()
+
+    def _drain() -> None:
+        try:
+            assert proc.stdout is not None
+            while True:
+                data = proc.stdout.read(65536)
+                if not data:
+                    chunks.put((_EOF, b""))
+                    return
+                chunks.put((None, data))
+        except (OSError, ValueError) as exc:
+            chunks.put((_EXC, exc))
+
+    errbuf: list[bytes] = []
+
+    def _derr() -> None:
+        try:
+            assert proc.stderr is not None
+            while True:
+                data = proc.stderr.read(65536)
+                if not data:
+                    return
+                errbuf.append(data)
+                if sum(len(b) for b in errbuf) > STDERR_MAX_BYTES:
+                    return
+        except (OSError, ValueError):
+            pass
+
+    feeder = threading.Thread(target=_feed, daemon=True)
+    reader = threading.Thread(target=_drain, daemon=True)
+    errout = threading.Thread(target=_derr, daemon=True)
+    feeder.start()
+    reader.start()
+    errout.start()
+
+    def _reap() -> int | None:
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        try:
+            return proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            return proc.returncode
+
+    def _stderr_tail() -> str:
+        raw = b"".join(errbuf)[:STDERR_MAX_BYTES].decode("utf-8", "replace")
+        flat = " ".join(raw.split())
+        return flat[:200]
+
+    raw_parts: list[bytes] = []
+    text_parts: list[str] = []
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    total_bytes = 0
+    total_lines = 0
+    carry = 0
+    reason = ""
+    eof = False
+    while not eof:
+        remaining = timeout_secs - (time.monotonic() - started)
+        if remaining <= 0:
+            reason = f"producer exceeded {timeout_secs:g}s wall clock"
+            break
+        try:
+            kind, payload = chunks.get(timeout=remaining)
+        except queue.Empty:
+            reason = f"producer exceeded {timeout_secs:g}s wall clock"
+            break
+        if kind is _EXC:
+            reason = f"producer output unreadable: {payload}"
+            break
+        if kind is _EOF:
+            eof = True
+            break
+        base = total_bytes
+        total_bytes += len(payload)
+        if total_bytes > OUTPUT_MAX_BYTES:
+            reason = f"output exceeds {OUTPUT_MAX_BYTES} bytes"
+            break
+        nul = payload.find(b"\x00")
+        if nul != -1:
+            reason = f"NUL byte at byte offset {base + nul}"
+            break
+        try:
+            text_parts.append(decoder.decode(payload))
+        except UnicodeDecodeError as exc:
+            reason = f"malformed UTF-8 at byte offset {base + exc.start}"
+            break
+        total_lines += payload.count(b"\n")
+        if total_lines > OUTPUT_MAX_LINES:
+            reason = f"output exceeds {OUTPUT_MAX_LINES} lines"
+            break
+        for match in re.finditer(rb"\S+", payload):
+            runlen = match.end() - match.start() + (carry if match.start() == 0 else 0)
+            if runlen > TOKEN_MAX_CHARS:
+                reason = f"token exceeds {TOKEN_MAX_CHARS} chars"
+                break
+        if reason:
+            break
+        if payload[:1] and payload[-1:] not in b" \t\n\r\f\v":
+            tail = re.search(rb"\S+$", payload)
+            assert tail is not None
+            carry = tail.end() - tail.start() + (carry if tail.start() == 0 else 0)
+        else:
+            carry = 0
+        raw_parts.append(payload)
+    if not reason and eof:
+        try:
+            text_parts.append(decoder.decode(b"", final=True))
+        except UnicodeDecodeError as exc:
+            reason = f"malformed UTF-8 at byte offset {total_bytes + exc.start}"
+    rc = proc.returncode
+    if reason:
+        rc = _reap()
+    else:
+        remaining = timeout_secs - (time.monotonic() - started)
+        try:
+            rc = proc.wait(timeout=max(remaining, 0))
+        except subprocess.TimeoutExpired:
+            reason = f"producer exceeded {timeout_secs:g}s wall clock"
+            rc = _reap()
+    errout.join(timeout=5)
+    info = {"returncode": rc, "stderr_tail": _stderr_tail(), "bytes_read": total_bytes, "lines_read": total_lines, "raw": b"".join(raw_parts)}
+    if reason:
+        return False, reason, info
+    if rc != 0:
+        tail = f": {info['stderr_tail']}" if info["stderr_tail"] else ""
+        return False, f"producer exited {rc}{tail}", info
+    return True, "".join(text_parts), info
 
 
 if __name__ == "__main__":
@@ -302,42 +518,173 @@ if __name__ == "__main__":
         except ValueError:
             print(f"run-id: section {sys.argv[3]!r} is not an integer", file=sys.stderr)
             sys.exit(2)
-        texts = []
-        for path in sys.argv[6:]:
-            try:
-                with open(path, encoding="utf-8") as fh:
-                    texts.append(fh.read())
-            except FileNotFoundError:
-                # A genesis run mints before its findings file exists, so
-                # a missing scan file warns and reads as no claims (review
-                # R3). Collisions still fail loud downstream at the
-                # duplicate-run check; other read errors stay fatal.
-                print(f"run-id: warning: {path} does not exist, reading as no claims", file=sys.stderr)
-            except OSError as exc:
-                print(f"run-id: cannot read {path}: {exc}", file=sys.stderr)
-                sys.exit(2)
+        texts = _read_scan_files(sys.argv[6:], "run-id")
         try:
             print(next_run_id(sys.argv[2], section, sys.argv[4], sys.argv[5], *texts))
         except ValueError as exc:
             print(f"run-id: {exc}", file=sys.stderr)
             sys.exit(2)
         sys.exit(0)
+    if len(sys.argv) >= 10 and sys.argv[1] == "run":
+        # run <panel|plan> <prompt-file> <todo-path> <section> <family>
+        #   <YYYYMMDD> [--timeout S] [--store DIR] [--candidate SHA]
+        #   <scan-file>... -- <producer> [args...]
+        # One atomic review run (D00 T01 §34 item 7): mint the run,
+        # execute the producer bounded, validate its output, store the
+        # bytes content-addressed, and append the run ledger. Prompt
+        # and scans read strict (item 4: malformed bytes fail, never
+        # corrupt); the receipt prints the run, the artifact, and a
+        # Provenance line. Exit 0 PASS, 1 FAIL, 2 usage/setup.
+        kind = sys.argv[2]
+        if kind not in ("panel", "plan"):
+            print(f"run: kind {kind!r} is outside panel|plan", file=sys.stderr)
+            sys.exit(2)
+        prompt_path, todo_path = sys.argv[3], sys.argv[4]
+        try:
+            run_section = int(sys.argv[5])
+        except ValueError:
+            print(f"run: section {sys.argv[5]!r} is not an integer", file=sys.stderr)
+            sys.exit(2)
+        family, date = sys.argv[6], sys.argv[7]
+        timeout: float = RUN_TIMEOUT_SECS
+        store = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "review-runs")
+        candidate = ""
+        scans: list[str] = []
+        rest = sys.argv[8:]
+        if "--" not in rest:
+            print("run: want <scan-file>... -- <producer> [args...]", file=sys.stderr)
+            sys.exit(2)
+        sep = rest.index("--")
+        pre, producer = rest[:sep], rest[sep + 1:]
+        if not producer:
+            print("run: no producer after --", file=sys.stderr)
+            sys.exit(2)
+        i = 0
+        while i < len(pre):
+            if pre[i] == "--timeout" and i + 1 < len(pre):
+                try:
+                    timeout = float(pre[i + 1])
+                except ValueError:
+                    timeout = -1
+                if not timeout > 0:
+                    print(f"run: --timeout takes a positive number of seconds, got {pre[i + 1]!r}", file=sys.stderr)
+                    sys.exit(2)
+                i += 2
+            elif pre[i] == "--store" and i + 1 < len(pre):
+                store = pre[i + 1]
+                i += 2
+            elif pre[i] == "--candidate" and i + 1 < len(pre):
+                candidate = pre[i + 1]
+                i += 2
+            elif pre[i].startswith("--"):
+                print(f"run: unknown option {pre[i]!r}", file=sys.stderr)
+                sys.exit(2)
+            else:
+                scans.append(pre[i])
+                i += 1
+        try:
+            with open(prompt_path, encoding="utf-8") as fh:
+                prompt_text = fh.read()
+        except FileNotFoundError:
+            print(f"run: prompt file {prompt_path} does not exist", file=sys.stderr)
+            sys.exit(2)
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"run: cannot read prompt file {prompt_path}: {exc}", file=sys.stderr)
+            sys.exit(2)
+        claim_texts = _read_scan_files(scans, "run")
+        try:
+            run_id = next_run_id(todo_path, run_section, family, date, *claim_texts)
+        except ValueError as exc:
+            print(f"run: {exc}", file=sys.stderr)
+            sys.exit(2)
+        if not candidate:
+            try:
+                git = subprocess.run(
+                    ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=30
+                )
+                candidate = git.stdout.strip() if git.returncode == 0 else ""
+            except OSError:
+                candidate = ""
+            if re.fullmatch(r"[0-9a-fA-F]{40}", candidate) is None:
+                print("run: cannot resolve HEAD for provenance (pass --candidate SHA)", file=sys.stderr)
+                sys.exit(2)
+        elif re.fullmatch(r"[0-9a-fA-F]{7,40}", candidate) is None:
+            print(f"run: --candidate takes 7-40 hex chars, got {candidate!r}", file=sys.stderr)
+            sys.exit(2)
+        ok, payload, info = collect_producer(producer, canonical_prompt_bytes(prompt_text), timeout)
+        raw = info["raw"]
+        digest = hashlib.sha256(raw).hexdigest()
+        try:
+            os.makedirs(store, exist_ok=True)
+            artifact = os.path.join(store, digest)
+            tmp = artifact + ".tmp"
+            with open(tmp, "wb") as fh:
+                fh.write(raw)
+            os.replace(tmp, artifact)
+        except OSError as exc:
+            print(f"run: cannot store artifact under {store}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        verdict = ""
+        if ok:
+            checker = check_panel_output if kind == "panel" else check_plan_output
+            passed, why = checker(payload)
+            verdict = ("PASS " if passed else "FAIL ") + why
+        else:
+            verdict = "FAIL " + payload
+        receipt = {
+            "run": run_id,
+            "kind": kind,
+            "digest": "sha256:" + digest,
+            "verdict": verdict,
+            "artifact": artifact,
+        }
+        try:
+            with open(os.path.join(store, "ledger.jsonl"), "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(receipt, sort_keys=True) + "\n")
+        except OSError as exc:
+            print(f"run: cannot append the run ledger under {store}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            shown = os.path.relpath(artifact, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+            if shown.startswith(".."):
+                shown = artifact
+        except ValueError:
+            shown = artifact
+        command = shlex.join(sys.argv).replace(";", " ").replace("\n", " ")
+        print(verdict)
+        print(f"run {run_id}")
+        print(f"artifact {shown}")
+        print(
+            f"Provenance: candidate {candidate}; command `{command}`; exit {0 if verdict.startswith('PASS') else 1}; "
+            f"tool CPython {sys.version.split()[0]}; digest {digest}; path {shown}; run {run_id}"
+        )
+        sys.exit(0 if verdict.startswith("PASS") else 1)
     checkers = {"check-panel": check_panel_output, "check-plan": check_plan_output}
     if len(sys.argv) != 2 or sys.argv[1] not in checkers:
         print(
-            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>... | check-panel|check-plan < output.txt",
+            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>... | run <panel|plan> <prompt-file> <todo-path> <section> <family> <YYYYMMDD> [--timeout S] [--store DIR] [--candidate SHA] <scan-file>... -- <producer> [args...] | check-panel|check-plan < output.txt",
             file=sys.stderr,
         )
         sys.exit(2)
     # Bounded at the read (D00 T01 §23 review R1): slurping stdin
     # unbounded would let hostile output exhaust memory before the
     # size gate runs. One byte past the cap proves the excess without
-    # decoding it; anything smaller decodes lossily (never a crash)
-    # and the checker re-measures the text.
+    # decoding it. Decoding is strict (D00 T01 §34 item 4): malformed
+    # bytes and NULs fail with naming diagnostics instead of decoding
+    # lossily, and the checker re-measures the text.
     raw = sys.stdin.buffer.read(OUTPUT_MAX_BYTES + 1)
     if len(raw) > OUTPUT_MAX_BYTES:
         print(f"FAIL output exceeds {OUTPUT_MAX_BYTES} bytes")
         sys.exit(1)
-    ok, reason = checkers[sys.argv[1]](raw.decode("utf-8", "replace"))
+    nul_at = raw.find(b"\x00")
+    if nul_at != -1:
+        print(f"FAIL NUL byte at byte offset {nul_at}")
+        sys.exit(1)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        print(f"FAIL malformed UTF-8 at byte offset {exc.start}")
+        sys.exit(1)
+    ok, reason = checkers[sys.argv[1]](text)
     print(("PASS " if ok else "FAIL ") + reason)
     sys.exit(0 if ok else 1)
