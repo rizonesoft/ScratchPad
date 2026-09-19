@@ -55,8 +55,10 @@ superseded_by: other-todo-id       # optional -- set with status: superseded
 
 > **Goal:** One paragraph. What is true when this file is finished, in plain terms.
 
+## Current state
+
 > [!IMPORTANT]
-> **Current state:** What exists RIGHT NOW, before this TODO runs. Without this the implementer has to grep the repo to find the starting line. Name real files and real gaps.
+> **Current state:** What exists RIGHT NOW, before this TODO runs. Without this the implementer has to grep the repo to find the starting line. Name real files and real gaps. The `## Current state` heading is optional and exists for addressability: sections that must cite the block (D00 T01 §26) name the heading, and files that need no citation keep the unheaded shape.
 
 ## Inputs
 
