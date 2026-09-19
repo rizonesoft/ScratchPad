@@ -344,6 +344,7 @@ python3 scripts/todo-graph.py query run <id>     # one run ID resolves to candid
 python3 scripts/todo-graph.py query risk-register  # acceptance instruments with residual severity: --json emits schema risk-register/1; --sync persists docs/risk-register.md, --check gates drift
 python3 scripts/todo-graph.py query dashboard      # Markdown health rollup: reviews, expiries, partials, migration, open findings (text-only)
 python3 scripts/todo-graph.py query notify         # owner lookahead payloads within N days: --today freezes the clock, --within-days sets the window (text-only; exit 0)
+python3 scripts/todo-graph.py query telemetry      # panel telemetry: tree round/token/family totals, Sol-outage coverage, per-section summary (target: section ref or findings path; --json emits schema telemetry/1)
 python3 scripts/todo-graph.py render             # mermaid dependency graph
 python3 scripts/todo-graph.py plan --sync        # re-derive the checkboxes AND re-align every table
 python3 scripts/todo-graph.py plan --check       # fail if the boxes are stale (CI runs this)
