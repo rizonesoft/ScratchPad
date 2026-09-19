@@ -82,7 +82,7 @@ track: W0
 |  26   |   §26   | Grandfathered migration execution | §21 |  [x]   |
 |  27   |   §27   | Acceptance integrity | §21 |  [x]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [x]   |
-|  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
+|  29   |   §29   | Unattended checks and risk visibility | §21 |  [x]   |
 |  30   |   §30   | Clearance fixture residuals | §22 |  [ ]   |
 |  31   |   §31   | Clearance causality and precision | §22, §23 |  [ ]   |
 |  32   |   §32   | Clearance governance and diagnostics | §22 |  [ ]   |
@@ -825,6 +825,12 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - [x] Commit: `"workspace: unattended checks and risk visibility per eighth live round"`. Done: the SHIP commit `2c9af72` dropped the suffix (panel R1 record); the range carries the exact subject on the empty recovery commit (amend/force-push forbidden, so the work hash stands and the subject rides separately). Note: the `per eighth live round` suffix looks drifted (§29 files from the §21/§25/§26/§27 reviews, not one round), recorded here, item matched as written.
 
 **Test checkpoint:** dates fire on their own and accepted risk never goes dark. Cheaper substitute that fails: remembering to look.
+
+> **Verified:** 2026-09-19 | §29 | self-test 856/856 (27 new: notify, register, dashboard, inert, cause-code, evidence-state, digest-tally, and reviews-section fixtures); live validate 0 fatal 0 warnings; 3 headless panel rounds over candidates 2c9af72 c8b3a9d 6a4757f dadc2dd (R2 re-run contract-only after a voided wrong-contract run), sign-off advisories filed as §52 plus §34 plus the stamp-fixed count; plan review 21 findings, 16 filed at §53, 1 duplicate, 4 rejected
+> **Review:** rounds 1-2 Sol, round-3 Opus sign-off, candidates 2c9af72 c8b3a9d 6a4757f dadc2dd -- `adversarial` advisory (filed D00 T01 §52) · `consistency` advisory (filed D00 T01 §34) · `integration` advisory (filed D00 T01 §34) · `record` advisory (fixed at stamp, pre-tracked D00 T01 §42); R1 head-wins causes plus owed-state residuals plus always-on notify plus commit subject, R2 residual fixture coverage after voiding a wrong-contract run. Raw findings: docs/reviews/00-workspace/D00-T01-s29.md
+> **Plan review:** GPT high, filed D00 T01 §53 (run 20260919-D00-T01-S29-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the query surface, validator, fixtures, skill, README, workflow, and the committed register (read back via self-test 856/856, live validate 0 fatal, plan --check current); filing opened §53 plus §52/§34 joiners plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T03:56:16Z to 2026-09-19T05:03:39Z
 
 ## 30. Clearance Fixture Residuals
 
