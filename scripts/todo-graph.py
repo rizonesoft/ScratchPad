@@ -1036,7 +1036,11 @@ RULE24_LEG_MARKERS = (
     ("dates", r"expir\w*\s+(before|never)|\bpredates\b"),
     (
         "review window",
-        r"record[.\-]*expir|review-window|bounds\s+inclusive|review\s+date\s+sits\s+inside",
+        # No `review-window` alternative: site A carries that token in
+        # its provenance parenthetical, so matching it would let a
+        # deleted description hide behind surviving boilerplate
+        # (D00 T01 §46 review R1).
+        r"record[.\-]*expir|bounds\s+inclusive|review\s+date\s+sits\s+inside",
     ),
 )
 
@@ -12138,6 +12142,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "leg split across lines still detects",
             "review window" in rule24_comment_legs(_fix_split),
             True,
+        )
+        _fix_provenance_only = (
+            "# (D00 T01 §21; review-window leg §21 review R4, named here\n"
+            "# D00 T01 §25)."
+        )
+        check(
+            "provenance boilerplate alone names no legs",
+            rule24_comment_legs(_fix_provenance_only),
+            frozenset(),
         )
         check(
             "both rule-24 sites name the same legs",
