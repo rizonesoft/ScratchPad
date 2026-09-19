@@ -755,6 +755,15 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} marker names unresolvable filing {xm.group(0)!r}",
                     )
+            # Over-long references name whole (D00 T01 §34 R1
+            # consistency 1): the boundary above matches nothing on
+            # them, so the companion fires quoting the full run
+            # instead of a silently truncated prefix.
+            for om in graph.OVERLONG_REF_RE.finditer(marker):
+                flag(
+                    "stamp-no-plan-review",
+                    f"{t.path}:{s.line}: §{num} marker names over-long section reference {om.group(0)!r} (at most 9 digits)",
+                )
             fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm:
                 continue
@@ -922,6 +931,15 @@ def validate(graph, _args) -> int:
                                 "stamp-no-plan-review",
                                 f"{t.path}:{s.line}: §{num} filed target {xm.group(0)!r} not named in marker",
                             )
+                    # Quoted whole like the marker side (D00 T01 §34 R1
+                    # consistency 1): an over-long filed target is one
+                    # defect with one naming diagnostic, not a silent
+                    # miss and not a misleading no-target fire.
+                    for om in graph.OVERLONG_REF_RE.finditer(rest):
+                        flag(
+                            "stamp-no-plan-review",
+                            f"{t.path}:{s.line}: §{num} filed target {om.group(0)!r} is over-long (at most 9 digits)",
+                        )
 
     # 18. plan-review records of post-cutoff stamps must be machine-shaped
     # (D00 T01 §16): the query parses manifests and ledgers, so a record
@@ -1035,7 +1053,11 @@ def validate(graph, _args) -> int:
                                 f"{t.path}:{s.line}: §{num} findings {fm.group(1)} duplicate row names no canonical finding: {lr.group(1)}",
                             )
                     elif disp == "filed":
-                        if not list(graph.XREF_RE.finditer(rest)):
+                        # An over-long target still names a target (D00
+                        # T01 §34 R1 consistency 1): the over-long leg
+                        # fires on it, so this leg stays silent rather
+                        # than misreporting no target.
+                        if not list(graph.XREF_RE.finditer(rest)) and not list(graph.OVERLONG_REF_RE.finditer(rest)):
                             flag(
                                 "plan-review-malformed",
                                 f"{t.path}:{s.line}: §{num} findings {fm.group(1)} filed row names no target: {lr.group(1)}",
@@ -1738,6 +1760,20 @@ def validate(graph, _args) -> int:
                         _rrest = hblock[lr.end():].split("\n", 1)[0]
                         _rrest = graph.SUPERSEDES_RE.sub("", _rrest)
                         _rrest = graph.IDENTITY_RE.sub("", _rrest)
+                        # Mandatory restatements are not rationale (D00
+                        # T01 §34 R1 consistency 2): strip what this
+                        # head's disposition mandates before the
+                        # emptiness test, so accountability-bearing
+                        # heads with no actual reason still fire.
+                        _hdisp = lr.group(3).lower()
+                        _hsev = lr.group(2).lower()
+                        if _hdisp == "deferred" or (_hdisp == "accepted" and _hsev in ("critical", "major")):
+                            _rrest = graph.OWNER_RE.sub("", _rrest)
+                            _rrest = graph.DUE_RE.sub("", _rrest)
+                        if _hdisp == "deferred":
+                            _rrest = re.sub(r"\btrigger\s+\S+", "", _rrest)
+                        if _hdisp == "filed":
+                            _rrest = graph.XREF_RE.sub("", _rrest)
                         if not _rrest.strip(",; \t"):
                             flag(
                                 "ledger-supersession-broken",

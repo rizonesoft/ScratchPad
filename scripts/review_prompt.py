@@ -60,6 +60,11 @@ TOKEN_MAX_CHARS = 4096
 # (600s panels, 900s plan reviews) with one default; --timeout
 # overrides per run.
 RUN_TIMEOUT_SECS = 600
+# Runner wall-clock ceiling (D00 T01 §34 R1 adversarial 3): infinite
+# or astronomic timeouts overflow the queue wait instead of bounding
+# it, so --timeout and the library gate both refuse past one day (a
+# longer round wants this constant moved, not removed).
+RUN_TIMEOUT_MAX_SECS = 86400
 # Producer stderr is diagnostic context only: captured to 64KB, then
 # truncated (a chatty producer must not exhaust the collector).
 STDERR_MAX_BYTES = 2**16
@@ -324,10 +329,18 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     info) on success with the exact text, else (False, reason, info);
     info always carries returncode, stderr_tail, bytes_read,
     lines_read, and the raw collected bytes (partial on failure, for
-    the artifact store).
+    the artifact store). Raises ValueError on a timeout outside 0 <
+    seconds <= RUN_TIMEOUT_MAX_SECS (infinite, NaN, non-positive, or
+    non-numeric: fail closed before spawning).
     """
     import queue
 
+    try:
+        _bounded = 0 < timeout_secs <= RUN_TIMEOUT_MAX_SECS
+    except TypeError:
+        _bounded = False
+    if not _bounded:
+        raise ValueError(f"timeout {timeout_secs!r} is outside 0 < seconds <= {RUN_TIMEOUT_MAX_SECS} (finite)")
     started = time.monotonic()
     try:
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -345,11 +358,15 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     chunks: queue.Queue = queue.Queue()
     _EOF, _EXC = object(), object()
 
+    # read1, not read: read() blocks for a full buffer, holding back
+    # the partial chunk a mid-stream gate must see now (D00 T01 §34 R1
+    # integration 2: a final short write would stall the line gate to
+    # the wall clock).
     def _drain() -> None:
         try:
             assert proc.stdout is not None
             while True:
-                data = proc.stdout.read(65536)
+                data = proc.stdout.read1(65536)
                 if not data:
                     chunks.put((_EOF, b""))
                     return
@@ -360,15 +377,20 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     errbuf: list[bytes] = []
 
     def _derr() -> None:
+        # Drain to EOF while retaining only the cap (D00 T01 §34 R1
+        # adversarial 2): stopping the drain at the cap lets a
+        # still-writing producer fill the pipe, block, and fail only
+        # at the wall clock.
         try:
             assert proc.stderr is not None
+            kept = 0
             while True:
-                data = proc.stderr.read(65536)
+                data = proc.stderr.read1(65536)
                 if not data:
                     return
-                errbuf.append(data)
-                if sum(len(b) for b in errbuf) > STDERR_MAX_BYTES:
-                    return
+                if kept < STDERR_MAX_BYTES:
+                    errbuf.append(data[: STDERR_MAX_BYTES - kept])
+                    kept += len(errbuf[-1])
         except (OSError, ValueError):
             pass
 
@@ -400,6 +422,27 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     total_bytes = 0
     total_lines = 0
     carry = 0
+    # Incremental splitlines count (D00 T01 §34 R1 integration 2): a
+    # per-chunk join would go quadratic under hostile short reads,
+    # so breaks count per piece with the \r\n split-pair adjusted and
+    # the unterminated tail added exactly like splitlines.
+    _breaks = 0
+    _tail_cr = False
+    _tail_break = False
+    _seen_text = False
+
+    def _count_breaks(piece: str) -> None:
+        nonlocal _breaks, _tail_cr, _tail_break, _seen_text, total_lines
+        _n = len(re.findall(r"\r\n|[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]", piece))
+        if _tail_cr and piece.startswith("\n"):
+            _n -= 1
+        _breaks += _n
+        if piece:
+            _tail_cr = piece.endswith("\r")
+            _tail_break = piece[-1] in "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
+            _seen_text = True
+        total_lines = _breaks + (0 if (not _seen_text or _tail_break) else 1)
+
     reason = ""
     eof = False
     while not eof:
@@ -420,6 +463,10 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             break
         base = total_bytes
         total_bytes += len(payload)
+        # The failing chunk is evidence (D00 T01 §34 R1 record 1):
+        # raw keeps every collected byte including the one that trips
+        # a gate, so the stored artifact and digest preserve it.
+        raw_parts.append(payload)
         if total_bytes > OUTPUT_MAX_BYTES:
             reason = f"output exceeds {OUTPUT_MAX_BYTES} bytes"
             break
@@ -428,33 +475,58 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             reason = f"NUL byte at byte offset {base + nul}"
             break
         try:
-            text_parts.append(decoder.decode(payload))
+            piece = decoder.decode(payload)
         except UnicodeDecodeError as exc:
             reason = f"malformed UTF-8 at byte offset {base + exc.start}"
             break
-        total_lines += payload.count(b"\n")
+        text_parts.append(piece)
+        # Logical lines, exactly like the checker (D00 T01 §34 R1
+        # integration 2): every splitlines break counts once (a \r\n
+        # split across pieces counts on its \r half), so a final
+        # unterminated line trips the runner boundary mid-stream
+        # instead of reaching the checker after the producer ends.
+        _count_breaks(piece)
         if total_lines > OUTPUT_MAX_LINES:
             reason = f"output exceeds {OUTPUT_MAX_LINES} lines"
             break
-        for match in re.finditer(rb"\S+", payload):
-            runlen = match.end() - match.start() + (carry if match.start() == 0 else 0)
+        # Tokens are characters delimited by Unicode whitespace (D00
+        # T01 §34 R1 adversarial 1): the str pattern measures what
+        # the cap names, and carry rides in chars across read chunks
+        # (an empty piece means the decoder held a split code point,
+        # so the run continues).
+        for match in re.finditer(r"\S+", piece):
+            runlen = len(match.group(0)) + (carry if match.start() == 0 else 0)
             if runlen > TOKEN_MAX_CHARS:
                 reason = f"token exceeds {TOKEN_MAX_CHARS} chars"
                 break
         if reason:
             break
-        if payload[:1] and payload[-1:] not in b" \t\n\r\f\v":
-            tail = re.search(rb"\S+$", payload)
-            assert tail is not None
-            carry = tail.end() - tail.start() + (carry if tail.start() == 0 else 0)
-        else:
+        if re.search(r"\s$", piece):
             carry = 0
-        raw_parts.append(payload)
+        elif piece:
+            tail = re.search(r"\S+$", piece)
+            assert tail is not None
+            run = tail.group(0)
+            carry = len(run) + (carry if tail.start() == 0 else 0)
     if not reason and eof:
         try:
-            text_parts.append(decoder.decode(b"", final=True))
+            final = decoder.decode(b"", final=True)
         except UnicodeDecodeError as exc:
             reason = f"malformed UTF-8 at byte offset {total_bytes + exc.start}"
+            final = ""
+        if not reason and final:
+            text_parts.append(final)
+            # The flush can complete a line break or a token run (a
+            # split multi-byte break or an over-cap tail must not slip
+            # past the per-chunk gates): run it through the same
+            # incremental count.
+            _count_breaks(final)
+            if total_lines > OUTPUT_MAX_LINES:
+                reason = f"output exceeds {OUTPUT_MAX_LINES} lines"
+            else:
+                fm = re.match(r"\S+", final)
+                if fm is not None and carry + len(fm.group(0)) > TOKEN_MAX_CHARS:
+                    reason = f"token exceeds {TOKEN_MAX_CHARS} chars"
     rc = proc.returncode
     if reason:
         rc = _reap()
@@ -473,6 +545,23 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
         tail = f": {info['stderr_tail']}" if info["stderr_tail"] else ""
         return False, f"producer exited {rc}{tail}", info
     return True, "".join(text_parts), info
+
+
+def _ledger_claims(store: str) -> tuple[str, set[str]]:
+    """Claim text plus claimed run IDs from a review-run ledger (D00
+    T01 §34 R1 integration 1): receipts feed the run-ID minter as
+    `run <id>` lines, so a repeated run walks past its own prior
+    receipt. A missing ledger is the first run (no claims); an
+    unreadable one raises (minting blind would duplicate rows).
+    """
+    path = os.path.join(store, "ledger.jsonl")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = fh.read()
+    except FileNotFoundError:
+        return "", set()
+    ids = re.findall(r'"run"\s*:\s*"([^"]+)"', data)
+    return "".join(f"run {i}\n" for i in ids), set(ids)
 
 
 if __name__ == "__main__":
@@ -566,8 +655,11 @@ if __name__ == "__main__":
                     timeout = float(pre[i + 1])
                 except ValueError:
                     timeout = -1
-                if not timeout > 0:
-                    print(f"run: --timeout takes a positive number of seconds, got {pre[i + 1]!r}", file=sys.stderr)
+                if not 0 < timeout <= RUN_TIMEOUT_MAX_SECS:
+                    print(
+                        f"run: --timeout takes a positive number of seconds up to {RUN_TIMEOUT_MAX_SECS}, got {pre[i + 1]!r}",
+                        file=sys.stderr,
+                    )
                     sys.exit(2)
                 i += 2
             elif pre[i] == "--store" and i + 1 < len(pre):
@@ -593,7 +685,12 @@ if __name__ == "__main__":
             sys.exit(2)
         claim_texts = _read_scan_files(scans, "run")
         try:
-            run_id = next_run_id(todo_path, run_section, family, date, *claim_texts)
+            ledger_text, _ = _ledger_claims(store)
+        except (OSError, ValueError) as exc:
+            print(f"run: cannot read the run ledger under {store}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        try:
+            run_id = next_run_id(todo_path, run_section, family, date, *claim_texts, ledger_text)
         except ValueError as exc:
             print(f"run: {exc}", file=sys.stderr)
             sys.exit(2)
@@ -617,10 +714,21 @@ if __name__ == "__main__":
         try:
             os.makedirs(store, exist_ok=True)
             artifact = os.path.join(store, digest)
-            tmp = artifact + ".tmp"
-            with open(tmp, "wb") as fh:
-                fh.write(raw)
-            os.replace(tmp, artifact)
+            # PID-suffixed temp (D00 T01 §34 R1 integration 1): two
+            # concurrent runs storing identical bytes share the
+            # digest, so a fixed temp name lets one rename steal the
+            # other's file; distinct temps converge on one artifact.
+            tmp = f"{artifact}.tmp.{os.getpid()}"
+            try:
+                with open(tmp, "wb") as fh:
+                    fh.write(raw)
+                os.replace(tmp, artifact)
+            except OSError:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
         except OSError as exc:
             print(f"run: cannot store artifact under {store}: {exc}", file=sys.stderr)
             sys.exit(1)
@@ -631,6 +739,29 @@ if __name__ == "__main__":
             verdict = ("PASS " if passed else "FAIL ") + why
         else:
             verdict = "FAIL " + payload
+        # Run uniqueness (D00 T01 §34 R1 integration 1): a repeated
+        # run mints the same ID from unchanged scans, so the append
+        # re-checks the ledger it read at mint: a lost race re-mints
+        # past the fresh claims instead of duplicating the row. The
+        # guard read sits adjacent to the append (no producer
+        # between); same-microsecond appends are the accepted
+        # residual (closing it wants OS file locks).
+        for _attempt in range(3):
+            try:
+                _fresh_text, _fresh_ids = _ledger_claims(store)
+            except (OSError, ValueError) as exc:
+                print(f"run: cannot read the run ledger under {store}: {exc}", file=sys.stderr)
+                sys.exit(1)
+            if run_id not in _fresh_ids:
+                break
+            try:
+                run_id = next_run_id(todo_path, run_section, family, date, *claim_texts, _fresh_text)
+            except ValueError as exc:
+                print(f"run: {exc}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print(f"run: run {run_id} keeps colliding in the ledger under {store}; retry the run", file=sys.stderr)
+            sys.exit(1)
         receipt = {
             "run": run_id,
             "kind": kind,

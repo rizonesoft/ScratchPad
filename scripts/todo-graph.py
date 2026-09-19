@@ -61,7 +61,12 @@ ROW_RE = re.compile(
 )
 BODY_RE = re.compile(r"^##\s+(?P<num>\d{1,9})\.\s+(?P<title>.+?)\s*$")
 # §1 | T02 §3 | D02 T01 §4
-XREF_RE = re.compile(r"(?:D(?P<dom>\d{2})\s+)?(?:T(?P<todo>\d{2})\s+)?§(?P<sec>\d{1,9})")
+# The trailing boundary (D00 T01 §34 R1 consistency 1): without it a
+# 10-digit reference silently truncates to its first 9 digits and
+# misquotes in diagnostics, so over-long runs match nothing here and
+# the companion pattern below names them whole instead.
+XREF_RE = re.compile(r"(?:D(?P<dom>\d{2})\s+)?(?:T(?P<todo>\d{2})\s+)?§(?P<sec>\d{1,9})(?!\d)")
+OVERLONG_REF_RE = re.compile(r"§\d{10,}")
 BARE_TODO_RE = re.compile(r"(?<![\w§])(?:D\d{2}\s+)?T\d{2}(?!\s*§)(?![\w-])")
 STAMP_RE = re.compile(
     r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved|Plan review|Reopened|Started):\*\*\s*(?P<body>.+?)\s*$"
@@ -1060,17 +1065,25 @@ def _blank_register_state(text: str) -> str:
     """Render with the clock-derived State cell blanked (D00 T01 §34
     item 9): --check compares normalized renders so a date crossing
     passes while real drift fails. Only eight-cell table rows
-    normalize; every other line passes through, so foreign lines
-    still fail the check."""
+    normalize, and line endings plus the terminal newline pass
+    through byte-identical (D00 T01 §34 R1 record 2: a splitlines
+    rebuild would also swallow newline drift), so foreign lines and
+    ending drift still fail the check."""
     out = []
-    for ln in text.splitlines():
-        cells = ln.split("|")
+    for ln in text.splitlines(keepends=True):
+        if ln.endswith("\r\n"):
+            body, end = ln[:-2], "\r\n"
+        elif ln.endswith("\n") or ln.endswith("\r"):
+            body, end = ln[:-1], ln[-1:]
+        else:
+            body, end = ln, ""
+        cells = body.split("|")
         if len(cells) == 10 and cells[0].strip() == "" and cells[-1].strip() == "":
             cells[3] = " "
-            out.append("|".join(cells))
+            out.append("|".join(cells) + end)
         else:
             out.append(ln)
-    return "\n".join(out)
+    return "".join(out)
 # The plan-review record shapes (D00 T01 §§15-16, §19). Module-level
 # because the query and the rules all parse them: one pattern, no copies.
 PLAN_REVIEW_HEADING_RE = re.compile(r"^#{2,6}\s+Plan review\b", re.IGNORECASE | re.MULTILINE)
@@ -4123,7 +4136,12 @@ def cmd_query(args) -> int:
                 return 0
             if getattr(args, "check", False):
                 try:
-                    _rcur = _rpath.read_text(encoding="utf-8")
+                    # No newline translation (D00 T01 §34 R1 record
+                    # 2): the committed bytes compare raw, so
+                    # line-ending drift fails instead of being
+                    # translated away at the read.
+                    with open(_rpath, encoding="utf-8", newline="") as _rfh:
+                        _rcur = _rfh.read()
                 except OSError:
                     _rcur = ""
                 # The State column is clock-derived (D00 T01 §34 item
@@ -8186,6 +8204,9 @@ track: Z1
 |  88   |   §88   | Long attempt count fires | - |  [x]   |
 |  89   |   §89   | Huge attempt count fires | - |  [x]   |
 |  90   |   §90   | Nine-digit attempt count passes | - |  [x]   |
+|  91   |   §91   | Over-long section reference probe | - |  [x]   |
+|  92   |   §92   | Restated-mandatory rationale probe | - |  [x]   |
+|  93   |   §93   | Filed-target backlink host | - |  [x]   |
 
 ---
 
@@ -9285,6 +9306,41 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §90 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class auth attempts 123456789 (run 20260920-D90-T07-S90-gpt)
+
+## 91. Over-long section reference probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §91 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-overlong.md
+> **Plan review:** GPT high, filed §9999999999 (run 20260920-D90-T07-S91-gpt)
+
+## 92. Restated-mandatory rationale probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §92 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-restated.md
+> **Plan review:** GPT high, filed §93 (run 20260920-D90-T07-S92-gpt)
+
+## 93. Filed-target backlink host
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+Backlink host for D90-T07-S92-PR6 (rule-19 probe).
+
+> **Verified:** 2026-09-20 | §93 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -9659,8 +9715,9 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         # validly amends PR1 (the query reads PR2 as current and skips
         # PR1); PR3 names a row that does not exist; PR4 amends another
         # review's row; PR5 and PR6 amend each other; PR7 amends itself.
-        # PR2 carries PR1's subject fingerprint (D00 T01 §34 item 1),
-        # keeping the valid chain silent under the identity rule.
+        # PR2 carries PR1's subject fingerprint (D00 T01 §34 item 1)
+        # plus a reason, keeping the valid chain silent under the
+        # identity and rationale rules.
         # The manifest rides §57's run, so only the probed link shapes
         # can fire on each.
         (rev_dir / "90-health-supersede.md").write_text(
@@ -9668,7 +9725,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             + "Manifest: sections [D90 T07 §57]; dependents [none]; bytes 100; run 20260920-D90-T07-S57-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S57-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
-            "- [D90-T07-S57-PR2] [major] Amended worry -> accepted owner ann due 2099-02-02 supersedes D90-T07-S57-PR1 identity 360709bcdb69\n"
+            "- [D90-T07-S57-PR2] [major] Amended worry -> accepted owner ann due 2099-02-02 supersedes D90-T07-S57-PR1 identity 360709bcdb69 narrowing the scope\n"
             "- [D90-T07-S57-PR3] [major] Dangling amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S57-PR99\n"
             "- [D90-T07-S57-PR4] [major] Foreign amendment -> accepted owner ann due 2099-04-04 supersedes D90-T07-S4-PR2\n"
             "- [D90-T07-S57-PR5] [major] Cyclic amendment -> accepted owner ann due 2099-05-05 supersedes D90-T07-S57-PR6\n"
@@ -9719,8 +9776,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             + "Manifest: sections [D90 T07 §62]; dependents [none]; bytes 100; run 20260920-D90-T07-S62-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S62-PR1] [major] Original worry -> accepted owner ann due 2099-01-01\n"
-            "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1 identity 360709bcdb69\n"
-            "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1 identity 360709bcdb69\n"
+            "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1 identity 360709bcdb69 first fix\n"
+            "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1 identity 360709bcdb69 second fix\n"
             "End of ledger\n"
             "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
             encoding="utf-8",
@@ -9729,20 +9786,54 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         # own target (shared targets would fork first). PR2 links with
         # no token; PR4 links with a mismatched token; PR6 links proven
         # but bare of rationale; PR8 links proven with reason and reads
-        # current while PR7 skips. The manifest rides §87's run, so
-        # only the probed shapes can fire on each.
+        # current while PR7 skips. Every head but PR6 carries a reason
+        # (D00 T01 §34 R1 consistency 2 bars mandated-only restatements
+        # as rationale). The manifest rides §87's run, so only the
+        # probed shapes can fire on each.
         (rev_dir / "90-health-amend.md").write_text(
             opus_panel
             + "Manifest: sections [D90 T07 §87]; dependents [none]; bytes 100; run 20260920-D90-T07-S87-gpt\n\n"
             "Ledger:\n"
             "- [D90-T07-S87-PR1] [major] Alpha worry -> accepted owner ann due 2099-01-01\n"
-            "- [D90-T07-S87-PR2] [major] Unproven amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S87-PR1\n"
+            "- [D90-T07-S87-PR2] [major] Unproven amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S87-PR1 fixing the scope\n"
             "- [D90-T07-S87-PR3] [major] Beta worry -> accepted owner ann due 2099-03-03\n"
-            "- [D90-T07-S87-PR4] [major] Misidentified amendment -> accepted owner ann due 2099-04-04 supersedes D90-T07-S87-PR3 identity 000000000000\n"
+            "- [D90-T07-S87-PR4] [major] Misidentified amendment -> accepted owner ann due 2099-04-04 supersedes D90-T07-S87-PR3 identity 000000000000 widening the scope\n"
             "- [D90-T07-S87-PR5] [major] Gamma worry -> accepted owner ann due 2099-05-05\n"
             "- [D90-T07-S87-PR6] [minor] Bare amendment -> accepted supersedes D90-T07-S87-PR5 identity b8b043ddf486\n"
             "- [D90-T07-S87-PR7] [major] Delta worry -> accepted owner ann due 2099-07-07\n"
-            "- [D90-T07-S87-PR8] [major] Proven amendment -> accepted owner ann due 2099-08-08 supersedes D90-T07-S87-PR7 identity 8494060112d6\n"
+            "- [D90-T07-S87-PR8] [major] Proven amendment -> accepted owner ann due 2099-08-08 supersedes D90-T07-S87-PR7 identity 8494060112d6 confirmed on retest\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §34 R1 consistency 1: one over-long filed target, named in
+        # both the §91 marker and its row, so each side fires once
+        # quoting the full run.
+        (rev_dir / "90-health-overlong.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §91]; dependents [none]; bytes 100; run 20260920-D90-T07-S91-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S91-PR1] [major] Over-long filing -> filed §9999999999 with reason\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        # §34 R1 consistency 2: one head per mandatory-restatement
+        # shape, each on its own target. PR5, PR6, and PR7 carry only
+        # what their dispositions mandate (deferred triple, filed
+        # target, accepted-critical owner and due) and fire for no
+        # rationale; PR8 restates the triple with a reason and stays
+        # silent. PR6 files to §93, whose section text back-links it.
+        (rev_dir / "90-health-restated.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §92]; dependents [none]; bytes 100; run 20260920-D90-T07-S92-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S92-PR1] [major] First worry -> accepted owner ann due 2099-01-01\n"
+            "- [D90-T07-S92-PR2] [major] Second worry -> accepted owner ann due 2099-02-02\n"
+            "- [D90-T07-S92-PR3] [critical] Third worry -> accepted owner ann due 2099-03-03\n"
+            "- [D90-T07-S92-PR4] [major] Fourth worry -> accepted owner ann due 2099-04-04\n"
+            "- [D90-T07-S92-PR5] [major] Bare deferral -> deferred owner ann due 2099-05-05 trigger retest supersedes D90-T07-S92-PR1 identity fe08f3b931f1\n"
+            "- [D90-T07-S92-PR6] [major] Bare filing -> filed §93 supersedes D90-T07-S92-PR2 identity b814bfd29aa3\n"
+            "- [D90-T07-S92-PR7] [critical] Bare acceptance -> accepted owner ann due 2099-07-07 supersedes D90-T07-S92-PR3 identity 84b05b5e528b\n"
+            "- [D90-T07-S92-PR8] [major] Reasoned deferral -> deferred owner ann due 2099-08-08 trigger retest supersedes D90-T07-S92-PR4 identity 616c72f686af because the window moved\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -10836,6 +10927,32 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             0,
         )
         check(
+            "an over-long marker reference fires quoting the full run",
+            any(
+                "TODO-07-marker.md" in ln and "§91 " in ln and "marker names over-long section reference '§9999999999'" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "an over-long filed target fires quoting the full run",
+            any(
+                "TODO-07-marker.md" in ln and "§91 " in ln and "filed target '§9999999999' is over-long" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§91 fires exactly twice (marker plus ledger over-long; no truncated or no-target echo)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§91 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "§93 stays silent (backlink host with no findings)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§93 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
             "hollow deferred trigger fires",
             any(
                 "TODO-07-marker.md" in ln and "§4 " in ln and "PR25" in ln and "without owner, due, and trigger" in ln
@@ -11120,6 +11237,35 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "§87 fires exactly three times (missing, mismatch, bare rationale; the proven chain silent)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§87 " in ln and "FATAL" in ln),
+            3,
+        )
+        check(
+            "a deferred head with only the mandated triple fires for no rationale",
+            any(
+                "TODO-07-marker.md" in ln and "§92 " in ln and "d90-t07-s92-pr5 supersedes D90-T07-S92-PR1 with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "a filed head with only its target fires for no rationale",
+            any(
+                "TODO-07-marker.md" in ln and "§92 " in ln and "d90-t07-s92-pr6 supersedes D90-T07-S92-PR2 with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "an accepted-critical head with only owner and due fires for no rationale",
+            any(
+                "TODO-07-marker.md" in ln and "§92 " in ln and "d90-t07-s92-pr7 supersedes D90-T07-S92-PR3 with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§92 fires exactly three times (mandated-only rationales; the reasoned control silent)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§92 " in ln and "FATAL" in ln),
             3,
         )
         check(
@@ -13325,6 +13471,19 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             _rfile.write_text(_rdrift, encoding="utf-8")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rdrift = cmd_query(argparse.Namespace(what="risk-register", check=True))
+            # Newline drift is real drift (D00 T01 §34 R1 record 2):
+            # a missing terminal newline or translated endings fail
+            # the gate even with a blanked State column.
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+            _rfile.write_text(_rfile.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                rc_rnoeol = cmd_query(argparse.Namespace(what="risk-register", check=True))
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+            _rfile.write_bytes(_rfile.read_bytes().replace(b"\n", b"\r\n"))
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                rc_rcrlf = cmd_query(argparse.Namespace(what="risk-register", check=True))
         finally:
             TODO_DIR = saved_tree
         check(
@@ -13341,6 +13500,31 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "register check fails residual drift beside State drift",
             rc_rdrift,
             1,
+        )
+        check(
+            "register check fails a missing terminal newline",
+            rc_rnoeol,
+            1,
+        )
+        check(
+            "register check fails line-ending drift",
+            rc_rcrlf,
+            1,
+        )
+        check(
+            "register State blanking preserves endings and foreign lines",
+            (
+                _blank_register_state("| a | b | live | c | d | e | f | g |\n"),
+                _blank_register_state("| a | b | live | c | d | e | f | g |"),
+                _blank_register_state("| a | b | live | c | d | e | f | g |\r\n"),
+                _blank_register_state("not a row\ntrailing"),
+            ),
+            (
+                "| a | b | | c | d | e | f | g |\n",
+                "| a | b | | c | d | e | f | g |",
+                "| a | b | | c | d | e | f | g |\r\n",
+                "not a row\ntrailing",
+            ),
         )
         with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
             rc_badtoday = cmd_query(argparse.Namespace(what="plan-health", today="yesterday"))
@@ -14210,9 +14394,14 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             (True, True),
         )
         check(
-            "XREF section capture stays int-safe on over-long runs",
-            len(XREF_RE.search(f"§{_long}").group("sec")),
-            9,
+            "XREF section capture refuses over-long runs whole",
+            (
+                XREF_RE.search(f"§{_long}") is None,
+                XREF_RE.search("§3").group("sec"),
+                OVERLONG_REF_RE.search(f"§{_long}").group(0),
+                OVERLONG_REF_RE.search("§123456789") is None,
+            ),
+            (True, "3", f"§{_long}", True),
         )
         check(
             "historical heading scan skips over-long numbers",
@@ -14452,6 +14641,48 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             [_PY, "-c", "import sys; sys.stdout.write(sys.stdin.read())"], b"feed me\n", 30
         )
         check("collector feeds the prompt on stdin", (_ok, _text), (True, "feed me\n"))
+        # Runner-boundary residuals (D00 T01 §34 R1): char tokens,
+        # drained stderr, logical lines, failing-chunk evidence.
+        _ok, _text, _ = rp.collect_producer([_PY, "-c", "print('é' * 4096)"], b"", 30)
+        check("collector measures a 4096-char non-ASCII token in chars", (_ok, len(_text.strip())), (True, 4096))
+        _ok, _why, _ = rp.collect_producer([_PY, "-c", "print('é' * 4097)"], b"", 30)
+        check(
+            "collector kills a 4097-char non-ASCII token",
+            (_ok, _why),
+            (False, f"token exceeds {rp.TOKEN_MAX_CHARS} chars"),
+        )
+        _ok, _text, _ = rp.collect_producer([_PY, "-c", "print('x' * 4096 + '\\xa0' + 'y' * 4096)"], b"", 30)
+        check("collector delimits tokens on Unicode whitespace", (_ok, len(_text.strip())), (True, 8193))
+        _ok, _text, _ = rp.collect_producer(
+            [_PY, "-c", "import sys; sys.stderr.write('e' * 200000); print('done')"], b"", 30
+        )
+        check("collector drains stderr past the capture cap", (_ok, _text), (True, "done\n"))
+        _ok, _why, _ = rp.collect_producer(
+            [
+                _PY,
+                "-c",
+                "import sys, time; sys.stdout.write('a\\n' * 100000); sys.stdout.flush(); "
+                "time.sleep(0.5); sys.stdout.write('x'); sys.stdout.flush(); time.sleep(30)",
+            ],
+            b"",
+            10,
+        )
+        check(
+            "collector kills a final unterminated line past the line cap",
+            (_ok, _why),
+            (False, f"output exceeds {rp.OUTPUT_MAX_LINES} lines"),
+        )
+        _ok, _why, _info = rp.collect_producer([_PY, "-c", "print('ok'); print('x' * 5000)"], b"", 30)
+        check(
+            "collector keeps the failing chunk in the raw evidence",
+            (_ok, _why, _info["raw"]),
+            (False, f"token exceeds {rp.TOKEN_MAX_CHARS} chars", b"ok\n" + b"x" * 5000 + b"\n"),
+        )
+        check(
+            "collector rejects an unbounded timeout before spawning",
+            _raises_msg(lambda: rp.collect_producer([_PY, "-c", "print('hi')"], b"", float("inf"))),
+            f"timeout inf is outside 0 < seconds <= {rp.RUN_TIMEOUT_MAX_SECS} (finite)",
+        )
         _bad_utf8 = _sp.run(
             [sys.executable, _rp_path, "check-panel"], input=b"\xff\xfe", capture_output=True, timeout=30
         )
@@ -14575,8 +14806,11 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
                 _rflines[0].startswith("FAIL ") if _rflines else False,
                 len(_rfled) == 2 and json.loads(_rfled[1])["verdict"].startswith("FAIL "),
                 PROVENANCE_RE.fullmatch(_rfprov) is not None and "; exit 1;" in _rfprov,
+                # Run uniqueness (D00 T01 §34 R1 integration 1): the
+                # repeated run walks past the ledger claim.
+                [json.loads(ln)["run"] for ln in _rfled] if len(_rfled) == 2 else [],
             ),
-            (1, True, True, True),
+            (1, True, True, True, ["20260920-D90-T07-S4-gpt", "20260920-D90-T07-S4-gpt-r2"]),
         )
         _rnodash = _sp.run(
             [sys.executable, _rp_path, "run", "panel", str(_rprompt), "todo/90-x/TODO-07-y.md", "4", "gpt", "20260920"],
@@ -14585,6 +14819,75 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             timeout=30,
         )
         check("review-run without a producer separator exits 2", _rnodash.returncode, 2)
+        _rtimeout_argv = [
+            sys.executable,
+            _rp_path,
+            "run",
+            "panel",
+            str(_rprompt),
+            "todo/90-x/TODO-07-y.md",
+            "4",
+            "gpt",
+            "20260920",
+            "--store",
+            str(_rstore),
+            "--candidate",
+            "aaa1111",
+        ]
+        _rinf = _sp.run(
+            _rtimeout_argv + ["--timeout", "1e309", "--", sys.executable, "-c", "print('hi')"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        _rhuge = _sp.run(
+            _rtimeout_argv + ["--timeout", "99999999", "--", sys.executable, "-c", "print('hi')"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(
+            "review-run rejects infinite and over-max timeouts",
+            (
+                _rinf.returncode,
+                _rhuge.returncode,
+                "positive number of seconds up to" in _rinf.stderr,
+                "positive number of seconds up to" in _rhuge.stderr,
+            ),
+            (2, 2, True, True),
+        )
+        # Concurrent runs mint against the same empty ledger, so the
+        # append guard re-mints the loser: both rows land distinct.
+        _rrace = root / "run-store-race"
+        _rrace_argv = [
+            sys.executable,
+            _rp_path,
+            "run",
+            "panel",
+            str(_rprompt),
+            "todo/90-x/TODO-07-y.md",
+            "4",
+            "gpt",
+            "20260920",
+            "--store",
+            str(_rrace),
+            "--candidate",
+            "aaa1111",
+            "--",
+            sys.executable,
+            "-c",
+            "import time; print('**adversarial: approve**\\n\\n**consistency: approve**\\n\\n**integration: approve**\\n\\n**record: approve**'); time.sleep(2)",
+        ]
+        _rp1 = _sp.Popen(_rrace_argv, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True)
+        _rp2 = _sp.Popen(_rrace_argv, stdout=_sp.PIPE, stderr=_sp.PIPE, text=True)
+        _rp1.communicate(timeout=60)
+        _rp2.communicate(timeout=60)
+        _rrace_lines = (_rrace / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+        check(
+            "concurrent review-runs ledger distinct run IDs",
+            (_rp1.returncode, _rp2.returncode, sorted(json.loads(ln)["run"] for ln in _rrace_lines)),
+            (0, 0, ["20260920-D90-T07-S4-gpt", "20260920-D90-T07-S4-gpt-r2"]),
+        )
         _rprompt.unlink()
         # Delimiter-tag contract (D00 T01 §19 item 11): 64-bit entropy
         # floor, collision-checked fencing with bounded retries.
@@ -14699,6 +15002,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         (rev_dir / "90-health-badprov.md").unlink()
         (rev_dir / "90-health-supersede.md").unlink()
         (rev_dir / "90-health-amend.md").unlink()
+        (rev_dir / "90-health-overlong.md").unlink()
+        (rev_dir / "90-health-restated.md").unlink()
         marker_todo.unlink()
         panel_todo.unlink()
         for extra in (
