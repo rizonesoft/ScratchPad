@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **87 of 236 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **88 of 238 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -135,6 +135,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §7`  | CI evidence capture pipeline                    |   4   |
 | [ ] | `D00 T02 §8`  | Focus-free UI suite conversion                  |   6   |
 | [ ] | `D00 T02 §9`  | Nightly full-suite regression run               |   5   |
+| [ ] | `D00 T02 §10` | Completion-first night-debt system              |  11   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                      |   5   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files             |   8   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record       |   5   |
@@ -145,7 +146,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §46` | Rule-description probe completeness             |   3   |
 | [x] | `D00 T01 §47` | Section-span scan helper                        |   3   |
 | [x] | `D00 T01 §48` | Migration completion assurance                  |   7   |
-| [ ] | `D00 T01 §49` | Multi-citer review evaluation                   |   3   |
+| [x] | `D00 T01 §49` | Multi-citer review evaluation                   |   3   |
 | [ ] | `D00 T01 §50` | Outage instance dating                          |   3   |
 | [ ] | `D00 T01 §51` | Acceptance record follow-ups                    |   7   |
 | [ ] | `D00 T01 §52` | Partial-record and quorum follow-ups            |   6   |
@@ -155,6 +156,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T04 §1`  | Sol-note and disposition follow-ups             |   8   |
 | [ ] | `D00 T04 §2`  | Rule-24 probe follow-ups                        |   6   |
 | [ ] | `D00 T04 §3`  | Migration-assurance follow-ups                  |   5   |
+| [ ] | `D00 T04 §4`  | Review-evaluation follow-ups                    |   4   |
 | [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
