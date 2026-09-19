@@ -80,7 +80,7 @@ track: W0
 |  24   |   §24   | Lineage residuals and run inspection | §20, §23 |  [x]   |
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [x]   |
 |  26   |   §26   | Grandfathered migration execution | §21 |  [x]   |
-|  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
+|  27   |   §27   | Acceptance integrity | §21 |  [x]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
 |  30   |   §30   | Clearance fixture residuals | §22 |  [ ]   |
@@ -777,6 +777,12 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - -> XREF: D00 T01 §29 -- coverage-diagnostic joiners filed there (plan-review PR12 PR15)
 
 **Test checkpoint:** every waiver binds one instance, follows its target, tracks its evidence, amends aloud, names an owner, and schedules its review. Cheaper substitute that fails: a waiver that waives itself.
+
+> **Verified:** 2026-09-19 | §27 | self-test 812/812 (17 new: hold predicate, instance/outage/prewritten/stale/reopen/expired/postdated probes, reviews states plus gate, chain shape plus identity, silent-edit history, summary next); live validate 0 fatal 0 warnings; plan-health schema /4; Full panel (Sol R1-R2, Opus R3-R6) over candidates ba50847 0f2bde0 388cef0 da34cc5 9d571aa e18a16a f4dbe48 cd9d2d8, final round advisory filed as §50; plan review 16 findings, 6 filed at §51 plus two §29 items, 2 duplicates, 6 rejected
+> **Review:** round 6 (FINAL), candidates ba50847 0f2bde0 388cef0 da34cc5 9d571aa e18a16a f4dbe48 cd9d2d8 -- `adversarial` advisory · `consistency` approve · `integration` approve · `record` approve; R1 chain shape plus expiry scope plus evidence circle, R2 record identity plus covering reviews plus absolute append-only, R3 supersession notes plus §49 filing, R4 live-escalation reviews, R5 coverage sentence plus §29 joiner, R6 stamp-day residual filed as §50. Raw findings: docs/reviews/00-workspace/D00-T01-s27.md
+> **Plan review:** GPT high, filed D00 T01 §51, D00 T01 §29 (run 20260919-D00-T01-S27-gpt)
+> **CRUD:** applicable | self-test read repo sources plus fixtures (no writes); implementation edited the acceptance shape, both covering loops, rule 24, and the plan-health reviews leg (read back via self-test 812/812, live validate 0 fatal, plan-health /4); filing opened §§49-51 plus three §29 items plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T02:09:16Z to 2026-09-19T03:12:18Z
 
 ## 28. Partial Records and Governance Docs
 
