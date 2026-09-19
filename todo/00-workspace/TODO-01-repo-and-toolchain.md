@@ -69,7 +69,7 @@ track: W0
 |  21   |   §21   | Accountability records and surfacing | §19 |  [x]   |
 |  22   |   §22   | Clearance binding | §19 |  [x]   |
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [x]   |
-|  24   |   §24   | Lineage residuals and run inspection | §20, §23 |  [ ]   |
+|  24   |   §24   | Lineage residuals and run inspection | §20, §23 |  [x]   |
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [ ]   |
 |  26   |   §26   | Grandfathered migration execution | §21 |  [ ]   |
 |  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
@@ -676,6 +676,12 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 - -> XREF: D00 T01 §43 -- §20 findings-count drift filed there
 - -> XREF: D00 T01 §44 -- range-fallback lineage guards filed there
 - -> XREF: D00 T01 §45 -- run inspection residuals filed there
+
+> **Verified:** 2026-09-19 | §24 | self-test 784/784 (38 new: 5 validator fires with exact-once counts, 6 query legs with synonym plus error exits, structure-first printing, stray-target rejection, multi-record decline, second-record, range pair); live validate 0 fatal 0 warnings; 5 mixed panel rounds (Sol 1-2, Opus 3-5) over candidates e7b1b5a 8c4d577 880aab9 e27109d f713b53 8a8b676 71588db 68deeed, final round one adversarial leftover filed as D00 T01 §44; plan review 14 findings, 3 filed at §45 plus a §43 item, 5 duplicate, 6 rejected
+> **Review:** round 5 (FINAL, hard cap), candidates e7b1b5a 8c4d577 880aab9 e27109d f713b53 8a8b676 71588db 68deeed -- `adversarial` needs-attention (genesis range misfire, filed D00 T01 §44) · `consistency` approve · `integration` approve · `record` approve; R1 truncation plus attribution plus stray target, R2 multi-record decline plus circuit-breaker sweep, R3 rebind plus dictionary plus query lists, R4 helper promotion plus range fallback, R5 range-genesis filed. Raw findings: docs/reviews/00-workspace/D00-T01-s24.md
+> **Plan review:** GPT high, filed D00 T01 §45, D00 T01 §43 (run 20260919-D00-T01-S24-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the checker, query, validator, fixtures, README, AGENTS.md, and ticks (read back via self-test 784/784, live validate 0 fatal, plan --check current); filing opened §45 plus §43 and §44 items plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-18T18:38:32Z to 2026-09-19T00:57:25Z
 
 ## 25. Rule-24 Comment Touch-Up
 
