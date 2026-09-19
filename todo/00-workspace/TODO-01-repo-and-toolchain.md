@@ -104,7 +104,7 @@ track: W0
 |  46   |   §46   | Rule-description probe completeness | §25 |  [x]   |
 |  47   |   §47   | Section-span scan helper | §26 |  [x]   |
 |  48   |   §48   | Migration completion assurance | §26 |  [x]   |
-|  49   |   §49   | Multi-citer review evaluation | §27 |  [ ]   |
+|  49   |   §49   | Multi-citer review evaluation | §27 |  [x]   |
 |  50   |   §50   | Outage instance dating | §27 |  [ ]   |
 |  51   |   §51   | Acceptance record follow-ups | §27 |  [ ]   |
 |  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [ ]   |
@@ -1262,10 +1262,18 @@ Why this section exists: the §26 plan review (`gpt-5.6-sol` high over §26 plus
 Why this section exists: the §27 Opus panel round 3 (integration advisory) found the `reviews` leg evaluating a findings file against its first citing section's marker alone (`owners[path][0]`), so an acceptance that covers under a second citer's marker lists no review obligation and its overdue review never gates. No such file exists today (findings files are per-section by convention), so the advisory filed instead of blocking §27. -> XREF: D00 T01 §27 (filed from its Opus panel round 3); -> SOURCE: Opus-panel-D00-T01-s27-round-3 (candidate `da34cc5`, round-3 integration advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s27.md`).
 
 - [x] Each citer evaluates: the reviews leg runs the hold predicate under every citing section's marker, so a covering acceptance lists its review state however many sections cite the file. Done when: a two-citer fixture lists the second citer's overdue review. Done: the leg loops all citers (first-citer-only reverted still fails the fixture); a citer-1-predated plus citer-2-covering fixture lists the overdue review.
-- [x] No double gate: one overdue review gates once no matter how many citers match it, so the gate vote stays singular. Done when: the fixture gates exactly once with two matching citers. Done: per-path listed-set dedupes identical obligations (guard removed still double-lists); both-cover fixture lists once and `--check` exits 1.
+- [x] No double gate: one overdue review gates once no matter how many citers match it, so the gate vote stays singular. Done when: the fixture gates exactly once with two matching citers. Done: row-tuple-keyed listed-set dedupes identical obligations (key is the full path, target, review, state, owner, escalation row, so distinct acceptances never collapse; guard removed still double-lists); both-cover fixture lists once and `--check` exits 1.
 - [x] Commit: `"workspace: evaluate reviews under every citer per §27 panel"`
 
 **Test checkpoint:** self-test passes at 1176/1176 (1173 plus the 3 item-1/item-2 multi-citer probes), live validate 0 fatal 0 warnings. Cheaper substitute that fails: trusting single-citer coverage. Falsifiable by any citer ignored or any double gate.
+
+- -> XREF: D00 T04 §4 -- plan-review findings PR1 PR5 PR6 filed there
+
+> **Verified:** 2026-09-19 | §49 | self-test 1176/1176 (3 new: second-citer-only cover lists, two matching citers list once, gate fires); live validate 0 fatal 0 warnings; Full panel (Sol R1-R2, Opus R3 sign-off) over candidates 909b039 96522c8, sign-off advisory rides the existing D00 T04 §2 count-refresh item; plan review 8 findings, 3 filed at D00 T04 §4, 1 reworded in place, 4 rejected
+> **Review:** round 3 (FINAL), candidates 909b039 96522c8 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` advisory; R1 duplicate computation fixed, R2 all approve, R3 stale AGENTS count rides D00 T04 §2. Raw findings: docs/reviews/00-workspace/D00-T01-s49.md
+> **Plan review:** GPT high, filed D00 T04 §4 (run 20260919-D00-T01-S49-gpt)
+> **CRUD:** applicable | self-test read repo sources plus fixtures (no writes); implementation restructured the reviews leg plus 3 probes plus filings (read back via self-test 1176/1176, live validate 0 fatal 0 warnings, plan --check current); filing opened D00 T04 §4 plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T19:03:00Z to 2026-09-19T19:25:00Z
 
 ## 50. Outage Instance Dating
 
