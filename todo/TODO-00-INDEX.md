@@ -58,6 +58,7 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [00 Workspace] [TODO-02 Test Backbone](./00-workspace/TODO-02-test-backbone.md) -- golden comparison deterministic on CI (§6); harness otherwise shipped.
 - [00 Workspace] [TODO-03 README and GitHub Repo Face](./00-workspace/TODO-03-readme-and-github.md) -- screenshots, README rewrite, badges, contributing, templates, setup-path CI.
 - [00 Workspace] [TODO-04 Panel Rule Follow-Ups](./00-workspace/TODO-04-panel-rule-follow-ups.md) -- overflow home for panel-rule residuals past the T01 section cap and §55 sizing rule; first resident the §37 review's 7.
+- [00 Workspace] [TODO-05 Runner Loop](./00-workspace/TODO-05-runner-loop.md) -- runner-skill wiring past the T01 section cap; first resident the runner file-closeout wiring.
 - [01 Notepad Core] [TODO-01 WinUI App Spine](./01-notepad-core/TODO-01-winui-app-spine.md) -- window, tab model, file IO with encoding detection, open/save round-trips.
 - [01 Notepad Core] [TODO-02 Menus, Settings and Status](./01-notepad-core/TODO-02-menus-settings-status.md) -- full menu bar, settings page, status bar, print slice.
 - [02 Editor] [TODO-01 Editing Surface](./02-editor/TODO-01-editing-surface.md) -- text engine, caret and selection, undo/redo, zoom, wrap, line endings.
