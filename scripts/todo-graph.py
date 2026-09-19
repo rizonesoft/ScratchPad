@@ -2788,6 +2788,9 @@ def cmd_query(args) -> int:
             for _rk, _rt in ledger_supersedes(_b).items():
                 _links.setdefault(_rk, _rt)
         _rid_set = {_r.lower() for _r in _run_row_ids}
+        _rid_case: dict[str, str] = {}
+        for _r in _run_row_ids:
+            _rid_case.setdefault(_r.lower(), _r)
         _by_corrected: dict[str, list[str]] = {}
         for _rk, _rt in _links.items():
             _by_corrected.setdefault(_rt.lower(), []).append(_rk)
@@ -2815,7 +2818,10 @@ def cmd_query(args) -> int:
                     "original": _trail[-1],
                     "depth": len(_trail) - 1,
                     "head_external": _external,
-                    "corrected_by": sorted(_by_corrected.get(_rid.lower(), []), key=str.lower),
+                    "corrected_by": sorted(
+                        (_rid_case.get(_x.lower(), _x) for _x in _by_corrected.get(_rid.lower(), [])),
+                        key=str.lower,
+                    ),
                 }
             )
         # Evidence confidence: provenance bound for this run plus
@@ -12503,6 +12509,19 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "D90-T07-S92-PR12 corrects D90-T07-S92-PR11 (depth 1)" in ln for ln in _clines2
             ),
             True,
+        )
+        _cbuf3 = _mio.StringIO()
+        with _mctx.redirect_stdout(_cbuf3), _mctx.redirect_stderr(_mio.StringIO()):
+            _ccode3 = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S92-gpt", json=True)
+            )
+        check("query run --json exits 0 on the amended run", _ccode3, 0)
+        _cdata3 = json.loads(_cbuf3.getvalue())
+        _pr11 = next((_c for _c in _cdata3.get("corrections", []) if _c.get("row") == "D90-T07-S92-PR11"), {})
+        check(
+            "query run corrected-by keeps identifier case",
+            _pr11.get("corrected_by"),
+            ["D90-T07-S92-PR12"],
         )
         _mbuf2 = _mio.StringIO()
         with _mctx.redirect_stdout(_mbuf2), _mctx.redirect_stderr(_mio.StringIO()):
