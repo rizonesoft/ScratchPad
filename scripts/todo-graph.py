@@ -11227,6 +11227,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             16: (_TAG40, "docs/probe-target.txt", None, "one"),
             17: (_FULL33, "docs/treelink33", None, "one"),
             18: (_FULL33, "docs/../probe-target.txt", None, "one"),
+            19: (_FULL33, "docs/submod33", None, "one"),
         }
         (dur33 / "docs" / "old-present.txt").write_text("old bytes\n", encoding="utf-8")
         (root / "escape33.txt").write_text("outside\n", encoding="utf-8")
@@ -11241,7 +11242,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             _symlink_ok = False
         _d33_rows = []
         _d33_secs = []
-        for _n in range(1, 19):
+        for _n in range(1, 20):
             _cand, _ppath, _lrun, _marks = _d33_cases[_n]
             _run = _lrun or f"20260920-D90-T33-S{_n}-gpt"
             _d33_rows.append(f"|   {_n}   |   §{_n}    | Probe {_n} | -- |  [x]   |")
@@ -11303,11 +11304,12 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         )
         # The tree leg cans its modes (round-1 integration): the
         # present pairs read 100644, the tree symlink (§17) reads
-        # 120000, and the missing pair (§6) plus the directory
-        # (§13) stay uncanned. The full candidate resolves to
-        # itself; the tag-ID candidate resolves but peels
-        # elsewhere; the b40 candidate stays unprovable (no entry:
-        # neither True nor False).
+        # 120000, the directory (§13) reads 040000, the gitlink
+        # (§19) reads 160000, and only the missing pair (§6) stays
+        # uncanned. The full candidate resolves to itself; the
+        # tag-ID candidate resolves but peels elsewhere; the b40
+        # candidate stays unprovable (no entry: neither True nor
+        # False).
         canned_resolves[_FULL33] = True
         canned_resolves[_TAG40] = True
         canned_full[_FULL33] = _FULL33
@@ -11316,6 +11318,8 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         canned_tree_modes[("aaa1111", "docs/probe-target.txt")] = "100644"
         canned_tree_modes[(_TAG40, "docs/probe-target.txt")] = "100644"
         canned_tree_modes[(_FULL33, "docs/treelink33")] = "120000"
+        canned_tree_modes[(_FULL33, "docs")] = "040000"
+        canned_tree_modes[(_FULL33, "docs/submod33")] = "160000"
         saved_tree, TODO_DIR = TODO_DIR, dur33 / "todo"
         try:
             v33 = _mio.StringIO()
@@ -11429,6 +11433,11 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
         check(
             "an in-root dotdot path fails canonical on new records",
             sum(1 for ln in v33_out if "§18 " in ln and "is not canonical" in ln),
+            1,
+        )
+        check(
+            "a gitlink fails the mode leg",
+            sum(1 for ln in v33_out if "§19 " in ln and "names no regular file in the" in ln),
             1,
         )
         # Query plan-health over the fixture tree (D00 T01 §15 item 10).
