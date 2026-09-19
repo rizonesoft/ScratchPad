@@ -1895,12 +1895,12 @@ def cmd_query(args) -> int:
                 for _lr in LEDGER_ROW_RE.finditer(_block):
                     _rest = _block[_lr.end() :].split("\n", 1)[0]
                     _rm = ROW_PARTS_RE.match(_lr.group(0))
-                    _text = _one_line(_rm.group("text"), 80) if _rm else ""
+                    _rtext = _one_line(_rm.group("text"), 80) if _rm else ""
                     _row = f"- [{_lr.group(1)}] [{_lr.group(2)}] -> {_lr.group(3)}"
                     if _rest.strip():
                         _row += f" {_one_line(_rest, 140)}"
-                    if _text:
-                        _row += f" :: {_text}"
+                    if _rtext:
+                        _row += f" :: {_rtext}"
                     rows.append((_path, _row))
         candidates: list[tuple[str, str]] = []
         # File-level by design: Candidate lines name panel rounds and
@@ -9015,6 +9015,17 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 "90-health-multirec.md" in ln and "unattributable to one run" in ln
                 for ln in vbuf.getvalue().splitlines()
             ),
+            True,
+        )
+        wbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(wbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            multi2_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S63-gpt-r2")
+            )
+        check("query run exits 0 on the second record run", multi2_code, 0)
+        check(
+            "query run resolves the second record (no rebind drop)",
+            any("D90-T07-S4-PR11" in ln for ln in wbuf.getvalue().splitlines()),
             True,
         )
         check(
