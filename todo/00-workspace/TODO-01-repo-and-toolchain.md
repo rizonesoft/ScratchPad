@@ -99,7 +99,7 @@ track: W0
 |  43   |   §43   | Findings count touch-up | §20 |  [x]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [x]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [x]   |
-|  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
+|  46   |   §46   | Rule-description probe completeness | §25 |  [x]   |
 |  47   |   §47   | Section-span scan helper | §26 |  [ ]   |
 |  48   |   §48   | Migration completion assurance | §26 |  [ ]   |
 |  49   |   §49   | Multi-citer review evaluation | §27 |  [ ]   |
@@ -1194,11 +1194,19 @@ Why this section exists: the §24 plan review found the run query short of a com
 
 Why this section exists: the §25 plan review found the rule-24 probes locking only the review-window clause per site, so a future fifth leg could land described at one site while the suite stays green. Every described leg must assert at every site, and a single-site addition must fail. -> XREF: D00 T01 §25 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s25-2026-09-19-s46 D00-T01-S25-PR4 (exact four-leg assertions plus single-site fifth-leg detection).
 
-- [x] All four legs assert per site: the severity comment plus the rule-24 header each prove shape, target, dates, and review window in normalized form. Done when: per-site assertions name every leg with fixtures. Done: 8 live probes (4 legs by 2 sites) over the normalized `rule24_comment_legs` detector plus 10 fixture checks over 9 fixture blocks (2 full-style positives, 4 single-leg negatives, split-marker pair, provenance-only pin, paren-strip proof); suite 1140 to 1162.
+- [x] All four legs assert per site: the severity comment plus the rule-24 header each prove shape, target, dates, and review window in normalized form. Done when: per-site assertions name every leg with fixtures. Done: 8 live probes (4 legs by 2 sites) over the normalized `rule24_comment_legs` detector plus 10 fixture checks over 9 fixture blocks (2 full-style positives, 4 single-leg negatives, split-marker pair, provenance-only pin, paren-strip proof); suite 1140 to 1162. **Corrected 2026-09-19 (plan review PR7):** probes live in the `scripts/todo-graph.py` self-test as `severity comment names the ... leg`, `rule-24 header names the ... leg`, and the `rule24_comment_legs` fixture checks.
 - [x] Single-site additions fail: a leg named at one site but missing at the other breaks the suite. Done when: a fixture pair proves the failure direction. Done: live leg-set equality probe plus 3 pair fixtures (mismatch both directions, matched agreement); a leg-stripped copy of site A drops shape while the live block holds all four. **Corrected 2026-09-19 (review R1):** scoped to recognized leg vocabulary: the detector matches the four legs' descriptive phrasings, so a marker-phrased addition at one site fails while wholly novel prose is outside the probe's vocabulary (PR9-class residual, see the §25 ledger).
 - [x] Commit: `"workspace: complete rule-24 probe coverage per §25 plan review"`
 
-**Test checkpoint:** self-test passes at 1162/1162 (1140 plus the 22 item-1/item-2 probes), live validate 0 fatal. Cheaper substitute that fails: trusting memory of the leg count. **Corrected 2026-09-19 (review R1):** falsifiable by any of the four legs unasserted at either site or any silent single-site addition of recognized leg vocabulary.
+**Test checkpoint:** self-test passes at 1162/1162 (1140 plus the 22 item-1/item-2 probes), live validate 0 fatal 0 warnings. Cheaper substitute that fails: trusting memory of the leg count. **Corrected 2026-09-19 (review R1):** falsifiable by any of the four legs unasserted at either site or any silent single-site addition of recognized leg vocabulary. **Corrected 2026-09-19 (plan review PR6):** gate reads the full `0 fatal 0 warnings`.
+
+- -> XREF: D00 T04 §2 -- sign-off findings R3-F1 R3-F2 R3-F3 filed there
+
+> **Verified:** 2026-09-19 | §46 | self-test 1162/1162 (22 new: 8 live per-site per-leg, 10 fixture checks over 9 blocks, live leg-set equality, 3 pair checks); live validate 0 fatal 0 warnings; Full panel (Sol R1-R2, Opus R3 sign-off) over candidates 0d6100a d80bc00 a1f6f8b 973bce4, sign-off below-bar findings filed at D00 T04 §2; plan review 9 findings, 3 filed at D00 T04 §2 with PR5 sharing the clause-specific item, 2 reworded in place, 4 rejected
+> **Review:** round 3 (FINAL), candidates 0d6100a d80bc00 a1f6f8b 973bce4 -- `adversarial` needs-attention · `consistency` advisory · `integration` approve · `record` needs-attention; R1 one family (novel-prose residual plus contract overclaim) fixed, R2 paren-strip plus count wording fixed, R3 below-bar findings filed as D00 T04 §2. Raw findings: docs/reviews/00-workspace/D00-T01-s46.md
+> **Plan review:** GPT high, filed D00 T04 §2 (run 20260919-D00-T01-S46-gpt)
+> **CRUD:** applicable | self-test read repo sources plus fixtures (no writes); implementation edited the detector plus 22 probes plus ticks plus filings plus the T04 §1/§2 split (read back via self-test 1162/1162, live validate 0 fatal 0 warnings, plan --check current); filing opened D00 T04 §2 plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T17:53:00Z to 2026-09-19T18:20:00Z
 
 ## 47. Section-Span Scan Helper
 

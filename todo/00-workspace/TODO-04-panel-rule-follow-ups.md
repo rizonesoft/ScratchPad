@@ -37,6 +37,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Sol-note and disposition follow-ups | D00 T01 §37 |  [ ]   |
+|   2   |   §2    | Rule-24 probe follow-ups | D00 T01 §46 |  [ ]   |
 
 ---
 
@@ -72,6 +73,19 @@ Why this section exists: the §37 review's sign-off round plus plan review retur
 - [ ] Commit: `"workspace: follow up panel rules per §37 review"`
 
 **Test checkpoint:** the re-anchored nothing-check passes honest openers and fires denials (matrix green), disposition tables validate with the escalated state, partial-failure and resume rules read in the matrix, the §55 Commit line is retitled; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
+
+## 2. Rule-24 Probe Follow-Ups
+
+Why this section exists: the §46 review's sign-off round plus plan review returned 6 residuals (3 panel, 3 plan-review with PR5 sharing the clause-specific item) that belong to the rule-24 probes, and §1 would pass 30 items, so they home here as the file's second subject section. -> XREF: D00 T01 §46 (review findings filed here); -> SOURCE: Opus-panel-D00-T01-s46-round-3 (candidate 973bce4, round-3 sign-off needs-attention below bar plus advisory; transcribed in docs/reviews/00-workspace/D00-T01-s46.md); -> XREF: D00 T01 §46 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s46-2026-09-19-t04 D00-T01-S46-PR2 D00-T01-S46-PR5 D00-T01-S46-PR8 (`gpt-5.6-sol` high over §46 plus §25, 9 findings, 3 filed here in 2 items with PR5 sharing the clause-specific item, 2 reworded in place, 4 rejected with reasons in the §46 findings file).
+
+- [ ] Leg markers go clause-specific: the `rule24_comment_legs` markers match each leg's distinctive clause phrasing instead of bare tokens, so deleting the target-leg clause at site B no longer hides behind the shape enumeration's `target`, and polarity pins reject negated phrasing (`always predates`) that retains recognized tokens (R3-F1, record in the §46 findings file; PR5 D00-T01-S46-PR5, shared item). This item is a joiner from the §46 review. Done when: the clause-specific markers plus per-clause deletion and polarity fixtures ship.
+- [ ] Leg-marker header states the paren strip: the `RULE24_LEG_MARKERS` comment names comment-strip, paren-strip, squeeze, and lowercase, so the entry-point contract matches the detector (R3-F2, record in the §46 findings file). This item is a joiner from the §46 review. Done when: the header names all four steps.
+- [ ] AGENTS self-test count refreshes to the suite count at the §2 ship commit, so the line never lands stale (R3-F3, record in the §46 findings file). This item is a joiner from the §46 review. Done when: the line matches the suite count at ship time.
+- [ ] §25 gains a dated scoping note: its `a future leg cannot land described in one place` claim reads scoped to recognized leg vocabulary per §46's correction, so the stamped record stops overstating protection (PR2 D00-T01-S46-PR2). This item is a joiner from the §46 plan review. Done when: the dated note reads on §25.
+- [ ] Leg-mismatch failures name the site and legs: the rule-24 leg-set equality probe reports which site lacks or adds which legs instead of a bare boolean, so rule expansion stays small safe maintenance (PR8 D00-T01-S46-PR8). This item is a joiner from the §46 plan review. Done when: the diagnostic plus fixtures ship.
+- [ ] Commit: `"workspace: follow up rule-24 probes per §46 review"`
+
+**Test checkpoint:** the markers match clauses with polarity pins, the header states all four steps, the AGENTS count matches the suite, §25 carries its scoping note, and mismatch failures name site and legs; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
 
 ## Verification
 
