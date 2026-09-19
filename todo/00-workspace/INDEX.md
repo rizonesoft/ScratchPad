@@ -12,6 +12,7 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 | [TODO-03](./TODO-03-readme-and-github.md) | README and GitHub Repo Face | draft |
 | [TODO-04](./TODO-04-panel-rule-follow-ups.md) | Panel Rule Follow-Ups | active |
 | [TODO-05](./TODO-05-runner-loop.md) | Runner Loop | active |
+| [TODO-06](./TODO-06-operator-docs.md) | Operator Docs | active |
 
 ## Completed
 

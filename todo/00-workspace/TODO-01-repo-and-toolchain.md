@@ -1104,6 +1104,8 @@ Why this section exists: the twelfth live plan review (§40 plus §1 plus §2, `
 
 **Test checkpoint:** Pointers read; uniqueness, conformance, and manifest guards green; soak proven; launcher works; clean documented. Cheaper substitute that fails: layout held by convention.
 
+- -> XREF: D00 T06 §1 -- round-5 finding filed there
+
 ## 42. Requires Operator Vocabulary
 
 Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded by prose alone: no runner capability marks them, so `query ready` lists operator-only rows as runnable-now and an unattended runner could take one. The `Requires:` closed vocabulary (§13) gains an `operator` value that holds in no agent context, and the four manual sections (D99 T01 §1, D99 T01 §2, D99 T01 §3, D99 T01 §4) take the mark. -> XREF: D99 T01 §1 (the rows this value gates); -> SOURCE: gap-audit-phase0-run4-2026-09-18 (Phase 99 prose-only guard; no runner capability marks operator rows).
