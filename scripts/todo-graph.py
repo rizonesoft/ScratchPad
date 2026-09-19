@@ -1120,6 +1120,42 @@ def fix_postdates_review(fix_ts: int | None, rts: int | None, reviewer_day: str)
     return fday > reviewer_day
 
 
+def section_span_lines(text: str, num: int) -> tuple[int, int] | None:
+    """1-based [start, end) line span of `## <num>.` in text, or None
+    when the heading is absent. The historical-section parser (D00 T01
+    §31 item 2): the fix tip's bytes carry their own spans, since live
+    line numbers drift across history.
+    """
+    heads = [
+        (i + 1, int(m.group(1)))
+        for i, ln in enumerate(text.splitlines())
+        if (m := re.match(r"^## (\d+)\.", ln))
+    ]
+    for idx, (ln, n) in enumerate(heads):
+        if n == num:
+            end = heads[idx + 1][0] if idx + 1 < len(heads) else len(text.splitlines()) + 1
+            return (ln, end)
+    return None
+
+
+def fix_predates_attestation(fix_ts: int | None, tts: int | None, tgt_day: str | None) -> bool:
+    """Whether the fix predates the target attestation (D00 T01 §31 item 1).
+
+    The mirror of fix_postdates_review: a review cannot attest a
+    candidate that did not yet exist. Unprovable timestamps fail
+    closed. With a target end instant the fix must land strictly
+    before it; without one the fix UTC day must strictly predate the
+    target day (same-day dateless attestation fails closed, like the
+    existing day-stamp rule).
+    """
+    if fix_ts is None:
+        return False
+    if tts is not None:
+        return fix_ts < tts
+    fday = datetime.fromtimestamp(fix_ts, tz=timezone.utc).date().isoformat()
+    return fday < (tgt_day or "")
+
+
 def acceptance_live(recorded: str, expires: str, today: str) -> bool:
     """Whether an acceptance covers today (D00 T01 §21 review R3).
 
@@ -1581,9 +1617,12 @@ def git_file_at(ref: str, repo_path: str) -> str | None:
 
 
 def git_commit_touches(sha: str, repo_path: str) -> bool | None:
-    """Whether a commit touched a path, or None when unprovable. The
-    clearance proof names non-merge commits (merges list no files, so
-    they fail closed); the self-test patches this name, never a repo."""
+    """Whether a commit touched a path, or None when unprovable. Clean
+    merges list no files under `show --name-only`, but
+    conflict-resolution merges list their resolved files, so this
+    helper reports those touches truthfully and clearance excludes
+    merges explicitly (D00 T01 §31 item 7); the self-test patches
+    this name, never a repo."""
     try:
         import subprocess
 
@@ -1650,8 +1689,10 @@ def git_is_ancestor(base: str, tip: str) -> bool | None:
 
 
 def git_range_touches(base: str, tip: str, repo_path: str) -> bool | None:
-    """Whether a non-merge commit in base..tip touched a path, or None
-    when unprovable. The range touch leg (D00 T01 §22 item 3)."""
+    """Whether a non-merge first-parent commit in base..tip touched a
+    path, or None when unprovable. The range touch leg (D00 T01 §22
+    item 3, linear restatement D00 T01 §31 item 4): a fix loop is
+    linear, so side-branch touches never satisfy it."""
     try:
         import subprocess
 
@@ -1662,6 +1703,7 @@ def git_range_touches(base: str, tip: str, repo_path: str) -> bool | None:
                 str(REPO),
                 "log",
                 "--no-merges",
+                "--first-parent",
                 "--pretty=format:",
                 "--name-only",
                 f"{base}..{tip}",
@@ -1707,6 +1749,94 @@ def git_resolves(sha: str) -> bool | None:
     if out.returncode == 1:
         return False
     return None
+
+
+def git_full_sha(ref: str) -> str | None:
+    """The full object ID for a ref, or None when unresolvable or
+    unprovable. The strict-ancestry leg (D00 T01 §31 item 6): short
+    strings cannot prove distinctness, so both sides resolve before
+    the comparison. Off-shape output reads None, never raises.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--verify", "--quiet", f"{ref}^{{object}}"],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    raw = out.stdout.decode("utf-8", "replace").strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", raw):
+        return None
+    return raw
+
+
+def git_is_merge(sha: str) -> bool | None:
+    """Whether a commit is a merge (two or more parents), or None when
+    unprovable. The merge-exclusion leg (D00 T01 §31 item 7): the fix
+    identity names a non-merge commit, enforced explicitly instead of
+    resting on `show --name-only` shapes. Off-shape output reads None,
+    never raises.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "log", "-1", "--pretty=%P", sha],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return len(out.stdout.decode("utf-8", "replace").strip().split()) > 1
+
+
+def git_range_touch_ts(base: str, tip: str, repo_path: str) -> int | None:
+    """The newest committer time among non-merge first-parent commits
+    in base..tip touching a path, or None when no such commit exists
+    or the range is unprovable. The range-touch recency leg (D00 T01
+    §31 item 3): the qualifying touch must postdate the finding
+    review, not merely ride a new tip. First-parent matches the
+    linear-loop restatement (D00 T01 §31 item 4). Off-shape output
+    reads None, never raises.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "log",
+                "--no-merges",
+                "--first-parent",
+                "--pretty=%ct",
+                f"{base}..{tip}",
+                "--",
+                repo_path,
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    stamps = [
+        int(ln)
+        for ln in out.stdout.decode("utf-8", "replace").splitlines()
+        if re.fullmatch(r"\d+", ln.strip())
+    ]
+    if not stamps:
+        return None
+    return max(stamps)
 
 
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
@@ -2900,43 +3030,65 @@ def cmd_query(args) -> int:
                             # this review (a stamp predating the finding
                             # proves no remediation; day granularity fails
                             # closed), with the finding ID in the target's
-                            # file (word-bounded so PR1 never matches
-                            # inside PR10), and with a `fix <sha>` naming a
-                            # non-merge commit that touched the target file
-                            # and whose tree contains the ID (fix-commit
+                            # SECTION (word-bounded so PR1 never matches
+                            # inside PR10; live spans bound the live
+                            # check, tip spans bound the fixed tree and
+                            # the proof loop, since line numbers drift;
+                            # D00 T01 §31 item 2), and with a `fix <sha>`
+                            # naming a non-merge commit that touched the
+                            # target file (merge tips excluded explicitly;
+                            # D00 T01 §31 item 7) and whose tree contains
+                            # the ID in that section (fix-commit
                             # attribution bound to the target's post-finding
                             # stamp; D00 T01 §19 item 8). Ranges name
                             # `fix <base>..<tip>` instead: the tip tree
                             # carries the ID, the tip descends from the
-                            # base, and a non-merge commit inside the
-                            # range touched the file (base excluded, so
+                            # base, a non-merge FIRST-PARENT commit inside
+                            # the range touched the file (base excluded, so
                             # name the pre-loop tip, never the first fix
-                            # commit; D00 T01 §22 item 3). Ordering reads
+                            # commit; side-branch touches never satisfy a
+                            # linear loop; D00 T01 §22 item 3, restated
+                            # D00 T01 §31 item 4), and the newest such
+                            # touch postdates the finding review (D00 T01
+                            # §31 item 3). Ordering reads
                             # Duration ends when both reviews carry them
                             # (same-day fixes order by completion
                             # instant); without both ends the day-stamp
                             # rule applies and same-day fails closed. The
                             # fix committer timestamp must postdate the
                             # review completion, with the same day
-                            # fallback (D00 T01 §22 item 2). And the
+                            # fallback (D00 T01 §22 item 2), and must
+                            # predate the target attestation end, with a
+                            # day-before fallback (no review attests a
+                            # candidate that did not yet exist; D00 T01
+                            # §31 item 1). And the
                             # target names `proof <finding-id>
                             # <path>[::<test>]` resolving at the fix tip
-                            # tree (D00 T01 §22 item 1). Stated boundary
-                            # (review R5, narrowed by §22): bytes prove
-                            # attribution plus a named proof pointer, not
-                            # remediation: the semantic proof that the
+                            # tree (D00 T01 §22 item 1): proof lines are
+                            # read from the tip span, never live, so
+                            # later edits cannot plant or uproot evidence;
+                            # a named test must occur at a definition site
+                            # (`def` or TEST_CASE, never a comment or dead
+                            # mention), and the fix must touch the proof
+                            # file (D00 T01 §31 item 5). Stated boundary
+                            # (review R5, narrowed by §22, extended by
+                            # §31): bytes prove attribution plus a named,
+                            # defined, fix-touched proof pointer, not
+                            # execution: the semantic proof that the
                             # test exercises the finding's acceptance
-                            # condition is the target's own review and
-                            # stamp. A sha whose tree lacks the ID, that
-                            # never touched the file, that git cannot
-                            # prove, that predates the review, or whose
-                            # proof names nothing resolving fails closed,
+                            # condition, and that it ran, is the target's
+                            # own review and stamp. A sha whose tree lacks
+                            # the ID, that never touched the file, that git
+                            # cannot prove, that predates the review, that
+                            # postdates its attestation, or whose proof
+                            # names nothing resolving fails closed,
                             # as do unresolvable, unverified, pre-dated,
                             # unlinked, and unnamed targets (D00 T01 §17
                             # item 8). And the review's recorded candidate
-                            # must be an ancestor of the fix (causal
-                            # history, not wall clocks alone; D00 T01
-                            # §23): records predating the provenance
+                            # must be a STRICT ancestor of the fix (the
+                            # same commit cannot both carry the defect and
+                            # remediate it; D00 T01 §23, strict D00 T01
+                            # §31 item 6): records predating the provenance
                             # mandate carry no candidate and skip the leg.
                             refs = [xm.group(0) for xm in XREF_RE.finditer(rest)]
                             provable = bool(refs)
@@ -2976,12 +3128,6 @@ def cmd_query(args) -> int:
                                         )
                                     except OSError:
                                         target_texts[tpath] = ""
-                                if not re.search(
-                                    r"\b" + re.escape(lr.group(1)) + r"\b",
-                                    target_texts[tpath],
-                                ):
-                                    provable = False
-                                    break
                                 spans = sorted(starts.get(tpath, []))
                                 tgt_start = tgt.line or 1
                                 tgt_end = next(
@@ -2991,15 +3137,32 @@ def cmd_query(args) -> int:
                                 tgt_text = "\n".join(
                                     target_texts[tpath].splitlines()[tgt_start - 1:tgt_end - 1]
                                 )
+                                if not re.search(
+                                    r"\b" + re.escape(lr.group(1)) + r"\b",
+                                    tgt_text,
+                                ):
+                                    provable = False
+                                    break
                                 fm = FIX_COMMIT_RE.search(tgt_text)
                                 if fm is None:
                                     provable = False
                                     break
                                 base, tip = fm.group(1), fm.group(2) or fm.group(1)
+                                if git_is_merge(tip):
+                                    provable = False
+                                    break
                                 fixed = git_file_at(tip, tpath)
-                                if fixed is None or not re.search(
-                                    r"\b" + re.escape(lr.group(1)) + r"\b", fixed
-                                ):
+                                fixed_span = (
+                                    section_span_lines(fixed, r[1])
+                                    if fixed is not None
+                                    else None
+                                )
+                                # Existence only: any proof line names its
+                                # row, so a passing proof already proves
+                                # the fixed span carries the ID (a
+                                # separate fixed-span ID search would be
+                                # subsumed by the proof loop below).
+                                if fixed is None or fixed_span is None:
                                     provable = False
                                     break
                                 if fm.group(2) is not None:
@@ -3009,6 +3172,10 @@ def cmd_query(args) -> int:
                                     if not git_range_touches(base, tip, tpath):
                                         provable = False
                                         break
+                                    touch_ts = git_range_touch_ts(base, tip, tpath)
+                                    if not fix_postdates_review(touch_ts, rts, reviewer_day):
+                                        provable = False
+                                        break
                                 elif not git_commit_touches(tip, tpath):
                                     provable = False
                                     break
@@ -3016,17 +3183,47 @@ def cmd_query(args) -> int:
                                 if not fix_postdates_review(fix_ts, rts, reviewer_day):
                                     provable = False
                                     break
+                                tend = tgt.duration_end
+                                tts = (
+                                    int(
+                                        datetime.strptime(tend, "%Y-%m-%dT%H:%M:%SZ")
+                                        .replace(tzinfo=timezone.utc)
+                                        .timestamp()
+                                    )
+                                    if tend is not None
+                                    else None
+                                )
+                                if not fix_predates_attestation(fix_ts, tts, tgt.stamped_on):
+                                    provable = False
+                                    break
                                 proof_ok = False
-                                for pm in PROOF_RE.finditer(tgt_text):
+                                fixed_span_text = "\n".join(
+                                    fixed.splitlines()[
+                                        fixed_span[0] - 1:fixed_span[1] - 1
+                                    ]
+                                )
+                                for pm in PROOF_RE.finditer(fixed_span_text):
                                     if pm.group(1).lower() != lr.group(1).lower():
                                         continue
                                     ppath, _, pname = pm.group(2).partition("::")
                                     pbytes = git_file_at(tip, ppath)
                                     if pbytes is None:
                                         continue
-                                    if pname and not re.search(
-                                        r"\b" + re.escape(pname) + r"\b", pbytes
+                                    if pname and not (
+                                        re.search(
+                                            r"(?m)^\s*def\s+" + re.escape(pname) + r"\s*\(",
+                                            pbytes,
+                                        )
+                                        or re.search(
+                                            r"TEST_CASE\(\s*\"" + re.escape(pname) + r"\"",
+                                            pbytes,
+                                        )
                                     ):
+                                        continue
+                                    if fm.group(2) is not None:
+                                        if not git_range_touches(base, tip, ppath):
+                                            continue
+                                    elif not git_commit_touches(tip, ppath):
                                         continue
                                     proof_ok = True
                                     break
@@ -3038,9 +3235,19 @@ def cmd_query(args) -> int:
                                     pcm = PROVENANCE_RE.match(pln)
                                     if pcm is not None:
                                         cands.append(pcm.group(1))
-                                if cands and not any(
-                                    git_is_ancestor(c, tip) for c in cands
-                                ):
+                                tip_full = git_full_sha(tip)
+                                strict_ok = False
+                                for c in cands:
+                                    cand_full = git_full_sha(c)
+                                    if (
+                                        tip_full is not None
+                                        and cand_full is not None
+                                        and cand_full != tip_full
+                                        and git_is_ancestor(c, tip)
+                                    ):
+                                        strict_ok = True
+                                        break
+                                if cands and not strict_ok:
                                     provable = False
                                     break
                             if not provable:
@@ -7551,6 +7758,14 @@ track: Z1
 |  75   |   §75   | Non-ASCII attempt count fires | - |  [x]   |
 |  76   |   §76   | Proof-ID-mismatch target | - |  [x]   |
 |  77   |   §77   | Fix-less target | - |  [x]   |
+|  78   |   §78   | Self-ancestry-negative target | - |  [x]   |
+|  79   |   §79   | Post-attestation fix target | - |  [x]   |
+|  80   |   §80   | Span-miss D90-T07-S4-PR75 target | - |  [x]   |
+|  81   |   §81   | Live-only proof target | - |  [x]   |
+|  82   |   §82   | Stale range-touch target | - |  [x]   |
+|  83   |   §83   | Comment-proof target | - |  [x]   |
+|  84   |   §84   | Untouched-proof target | - |  [x]   |
+|  85   |   §85   | Merge-tip target | - |  [x]   |
 
 ---
 
@@ -7571,7 +7786,7 @@ track: Z1
 
 **Test checkpoint:** `true`
 
--> SOURCE: fixture-health D90-T07-S4-PR1 D90-T07-S4-PR2 D90-T07-S4-PR11 fix aaa1111
+-> SOURCE: fixture-health D90-T07-S4-PR1 D90-T07-S4-PR2 D90-T07-S4-PR11 fix c000001
 
 proof PR1 tests/fix-proof.py::test_clearance
 proof D90-T07-S4-PR1 tests/fix-proof.py::test_clearance
@@ -7580,7 +7795,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 > **Verified:** __D2__ | §2 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
-> **Duration:** __D2__T10:00:00Z to __D2__T12:00:00Z
+> **Duration:** __D2__T10:00:00Z to __D2__T13:00:00Z
 
 ## 3. Cutoff stamp silent
 
@@ -7603,7 +7818,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -8098,6 +8313,7 @@ proof D90-T07-S4-PR62 tests/fix-proof.py::test_missing_name
 > **Verified:** __D5__ | §48 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 
 ## 49. Pre-completion fix target
 
@@ -8143,6 +8359,7 @@ proof D90-T07-S4-PR65 tests/fix-proof.py::test_clearance
 > **Verified:** __D5__ | §51 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 
 ## 52. Untouched range target
 
@@ -8158,6 +8375,7 @@ proof D90-T07-S4-PR66 tests/fix-proof.py::test_clearance
 > **Verified:** __D5__ | §52 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 
 ## 53. Forked range target
 
@@ -8173,6 +8391,7 @@ proof D90-T07-S4-PR67 tests/fix-proof.py::test_clearance
 > **Verified:** __D5__ | §53 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 
 ## 54. Same-day instant target
 
@@ -8219,6 +8438,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** __D5__ | §56 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 
 ## 57. Supersession probe
 
@@ -8443,6 +8663,7 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
 > **Verified:** __D5__ | §76 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 
 ## 77. Fix-less target
 
@@ -8456,6 +8677,134 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
 > **Verified:** __D5__ | §77 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
+
+## 78. Self-ancestry-negative target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureself D90-T07-S4-PR73 fix aaa1111
+
+proof D90-T07-S4-PR73 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §78 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 79. Post-attestation fix target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturepostatt D90-T07-S4-PR74 fix f000001
+
+proof D90-T07-S4-PR74 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §79 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T09:00:00Z to __D5__T10:00:00Z
+
+## 80. Span-miss target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+(No back-link: the PR75 ID rides the order-row title above, so the file contains it outside this span and the live span leg fails while rule 19 stays silent.)
+
+-> SOURCE: fixturespanmiss fix b000002
+
+> **Verified:** __D5__ | §80 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 81. Live-only proof target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturefixedspan D90-T07-S4-PR76 fix d000001
+
+proof D90-T07-S4-PR76 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §81 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 82. Stale range-touch target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturestaletouch D90-T07-S4-PR77 fix e000001..e000002
+
+proof D90-T07-S4-PR77 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §82 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 83. Comment-proof target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturecommentproof D90-T07-S4-PR78 fix a000001
+
+proof D90-T07-S4-PR78 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §83 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 84. Untouched-proof target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureuntouchedproof D90-T07-S4-PR79 fix c000002
+
+proof D90-T07-S4-PR79 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §84 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 85. Merge-tip target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturemergetip D90-T07-S4-PR80 fix f000002
+
+proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §85 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -8528,6 +8877,20 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
             # fix leg).
             "- [D90-T07-S4-PR71] [critical] Mismatched proof stays -> filed §76\n"
             "- [D90-T07-S4-PR72] [critical] Fix-less target stays -> filed §77\n"
+            # §31 probe: the fix equals the recorded candidate, so
+            # strict ancestry holds it while every other leg passes.
+            "- [D90-T07-S4-PR73] [critical] Self fix stays -> filed §78\n"
+            # §31 probes: one negative per new leg (predates, live
+            # span, fixed span, range-touch recency, definition-site
+            # proof, proof-touch, merge tip); each stays only for its
+            # leg while every earlier leg passes.
+            "- [D90-T07-S4-PR74] [critical] Post-attestation fix stays -> filed §79\n"
+            "- [D90-T07-S4-PR75] [critical] Span-miss stays -> filed §80\n"
+            "- [D90-T07-S4-PR76] [critical] Live-only proof stays -> filed §81\n"
+            "- [D90-T07-S4-PR77] [critical] Stale range touch stays -> filed §82\n"
+            "- [D90-T07-S4-PR78] [critical] Comment proof stays -> filed §83\n"
+            "- [D90-T07-S4-PR79] [critical] Untouched proof stays -> filed §84\n"
+            "- [D90-T07-S4-PR80] [critical] Merge tip stays -> filed §85\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -9076,6 +9439,103 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
             ("eee0003", "eee0004", marker_todo.as_posix()): False,
             ("eee0005", "eee0006", marker_todo.as_posix()): True,
         }
+        # §31 legs: every canned sha resolves to a distinct full ID and
+        # is a non-merge (deadbee resolves to nothing); the clearing
+        # range's newest touch postdates the finding review.
+        _all_shas = (
+            "aaa1111",
+            "ccc3333",
+            "fff0001",
+            "ddd0001",
+            "ddd0002",
+            "eee0001",
+            "eee0002",
+            "eee0003",
+            "eee0004",
+            "eee0005",
+            "eee0006",
+            "fff0002",
+            "fff0003",
+            "b000001",
+            "f000001",
+        )
+        canned_full = {s: s + "0" * (40 - len(s)) for s in _all_shas}
+        canned_merges = {s: False for s in _all_shas}
+        canned_range_ts = {
+            ("eee0001", "eee0002", marker_todo.as_posix()): _tss(d5, "12:00:00"),
+        }
+        # §31 item 6: `c000001` mirrors the `aaa1111` clearing profile
+        # as a distinct descendant, so basic clearance survives strict
+        # ancestry; the clearing range touched its proof file.
+        canned_git[("c000001", marker_todo.as_posix())] = _mtxt
+        canned_touches[("c000001", marker_todo.as_posix())] = True
+        canned_git[("c000001", "tests/fix-proof.py")] = _proof_ok
+        canned_touches[("c000001", "tests/fix-proof.py")] = True
+        canned_ts["c000001"] = _tss(d2, "12:00:00")
+        canned_full["c000001"] = "c000001" + "0" * 33
+        canned_merges["c000001"] = False
+        canned_ancestors[("aaa1111", "c000001")] = True
+        canned_range_touches[("eee0001", "eee0002", "tests/fix-proof.py")] = True
+        # §31 negative probes: full passing profiles except the probed
+        # leg. `d000001` sees a fixed tree with the §81 back-link
+        # redacted (live text keeps it); the `e000001..e000002`
+        # range's newest touch predates the finding; `a000001`'s
+        # proof names a test that only occurs in a comment;
+        # `c000002` never touched its proof file; `f000002` is a
+        # merge tip.
+        _proof_comment = "# test_clearance is flaky, skip it\ndef test_other():\n    pass\n"
+        _span81 = section_span_lines(_mtxt, 81)
+        _fixed81 = _mtxt
+        if _span81 is not None:
+            _lns81 = _mtxt.splitlines()
+            _redacted = [
+                ln.replace("D90-T07-S4-PR76", "D90-T07-S4-PR9X")
+                for ln in _lns81[_span81[0] - 1:_span81[1] - 1]
+            ]
+            _fixed81 = "\n".join(_lns81[:_span81[0] - 1] + _redacted + _lns81[_span81[1] - 1:])
+        for _sha in ("d000001", "e000002", "a000001", "c000002", "f000002"):
+            canned_git[(_sha, marker_todo.as_posix())] = _mtxt
+            canned_touches[(_sha, marker_todo.as_posix())] = True
+            canned_git[(_sha, "tests/fix-proof.py")] = _proof_ok
+            canned_ts[_sha] = _tss(d5, "12:00:00")
+            canned_full[_sha] = _sha + "0" * 33
+            canned_merges[_sha] = _sha == "f000002"
+            canned_ancestors[("aaa1111", _sha)] = True
+        canned_git[("d000001", marker_todo.as_posix())] = _fixed81
+        canned_git[("a000001", "tests/fix-proof.py")] = _proof_comment
+        canned_touches[("d000001", "tests/fix-proof.py")] = True
+        canned_touches[("a000001", "tests/fix-proof.py")] = True
+        canned_touches[("f000002", "tests/fix-proof.py")] = True
+        # PR74/PR75 isolate predates and live-span only when every
+        # later leg passes, so their shared fix touched its proof.
+        canned_touches[("f000001", "tests/fix-proof.py")] = True
+        canned_ancestors[("e000001", "e000002")] = True
+        canned_full["e000001"] = "e000001" + "0" * 33
+        canned_merges["e000001"] = False
+        canned_range_touches[("e000001", "e000002", marker_todo.as_posix())] = True
+        canned_range_touches[("e000001", "e000002", "tests/fix-proof.py")] = True
+        canned_range_ts[("e000001", "e000002", marker_todo.as_posix())] = _tss(d1, "12:00:00")
+        # PR75's fix saw the back-link before its removal: the tip tree
+        # carries the §80 back-link plus proof line that live dropped,
+        # so only the live span leg holds the row.
+        _fixed80 = _mtxt.replace(
+            "-> SOURCE: fixturespanmiss fix b000002",
+            "-> SOURCE: fixturespanmiss fix b000002 D90-T07-S4-PR75\n\n"
+            "proof D90-T07-S4-PR75 tests/fix-proof.py::test_clearance",
+            1,
+        )
+        canned_git[("b000002", marker_todo.as_posix())] = _fixed80
+        canned_touches[("b000002", marker_todo.as_posix())] = True
+        canned_git[("b000002", "tests/fix-proof.py")] = _proof_ok
+        canned_touches[("b000002", "tests/fix-proof.py")] = True
+        canned_ts["b000002"] = _tss(d5, "12:00:00")
+        canned_full["b000002"] = "b000002" + "0" * 33
+        canned_merges["b000002"] = False
+        canned_ancestors[("aaa1111", "b000002")] = True
+        # §31 item 5: the clearing fixes touched their proof files.
+        canned_touches[("aaa1111", "tests/fix-proof.py")] = True
+        canned_touches[("eee0002", "tests/fix-proof.py")] = True
+        canned_touches[("fff0002", "tests/fix-proof.py")] = True
         # Rule-23 negatives, written after the migration loop so they stay
         # bare: one file without any line, one with a run-less line, an
         # off-shape-run line, and (§23) one single-leg probe per new leg:
@@ -9116,12 +9576,18 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
         _real_git_ancestor = git_is_ancestor
         _real_git_range = git_range_touches
         _real_git_resolves = git_resolves
+        _real_git_full = git_full_sha
+        _real_git_merge = git_is_merge
+        _real_git_rangets = git_range_touch_ts
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
         globals()["git_is_ancestor"] = lambda a, b: canned_ancestors.get((a, b))
         globals()["git_range_touches"] = lambda a, b, p: canned_range_touches.get((a, b, p))
         globals()["git_resolves"] = lambda sha: canned_resolves.get(sha)
+        globals()["git_full_sha"] = lambda ref: canned_full.get(ref)
+        globals()["git_is_merge"] = lambda sha: canned_merges.get(sha)
+        globals()["git_range_touch_ts"] = lambda a, b, p: canned_range_ts.get((a, b, p))
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -10319,6 +10785,61 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
         check(
             "clearance fails a fix-less target",
             any("D90-T07-S4-PR72" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails self-ancestry",
+            any("D90-T07-S4-PR73" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a post-attestation fix",
+            any("D90-T07-S4-PR74" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails an out-of-span back-link",
+            any("D90-T07-S4-PR75" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a live-only proof",
+            any("D90-T07-S4-PR76" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "section spans resolve headings",
+            section_span_lines("## 1. A\nx\n## 2. B\ny\n", 2),
+            (3, 5),
+        )
+        check(
+            "section spans run to end of text",
+            section_span_lines("## 1. A\nx\n", 1),
+            (1, 3),
+        )
+        check(
+            "section spans miss absent headings",
+            section_span_lines("## 1. A\nx\n", 9),
+            None,
+        )
+        check(
+            "clearance fails a stale range touch",
+            any("D90-T07-S4-PR77" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a comment-only proof",
+            any("D90-T07-S4-PR78" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails an untouched proof file",
+            any("D90-T07-S4-PR79" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a merge tip",
+            any("D90-T07-S4-PR80" in ln for ln in health_lines),
             True,
         )
         check(
@@ -11912,6 +12433,9 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
         globals()["git_is_ancestor"] = _real_git_ancestor
         globals()["git_range_touches"] = _real_git_range
         globals()["git_resolves"] = _real_git_resolves
+        globals()["git_full_sha"] = _real_git_full
+        globals()["git_is_merge"] = _real_git_merge
+        globals()["git_range_touch_ts"] = _real_git_rangets
         # Real-git helper fixtures (D00 T01 §30 item 3): the six git
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
@@ -11995,9 +12519,9 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
                     check("real git touch on a bad ref is unprovable", git_commit_touches("deadbee", "proof.txt"), None)
                     # Merge visibility, characterized live (git 2.43.0): a
                     # clean merge lists no files, but a conflict-resolution
-                    # merge lists its resolved files. D00 T01 §31 owns the
-                    # merge exclusion plus the docstring narrowing; the
-                    # conflict pin flips with that fix.
+                    # merge lists its resolved files. D00 T01 §31 excludes
+                    # merge tips in clearance while this helper stays
+                    # truthful, so this pin stands as helper truth.
                     check("real git reports no touch on a clean merge", git_commit_touches(_gm1, "side.txt"), False)
                     check("real git reports a touch on a conflict merge", git_commit_touches(_gr1, "proof.txt"), True)
                     check("real git reads conflict-merge content", git_file_at(_gr1, "proof.txt"), "cr\n")
@@ -12007,11 +12531,21 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
                     check("real git refuses reversed ancestry", git_is_ancestor(_gm1, _gc1), False)
                     check("real git proves self-ancestry", git_is_ancestor(_gc2, _gc2), True)
                     check("real git ancestry on a bad ref is unprovable", git_is_ancestor("deadbee", _gm1), None)
-                    check("real git proves a range touch", git_range_touches(_gc1, _gm1, "side.txt"), True)
+                    # Linear restatement (D00 T01 §31 item 4): the side-branch
+                    # touch no longer satisfies a range; first-parent does.
+                    check("real git refuses a side-branch range touch", git_range_touches(_gc1, _gm1, "side.txt"), False)
+                    check("real git proves a first-parent range touch", git_range_touches(_gc1, _gc2, "proof.txt"), True)
                     check("real git refuses an out-of-range touch", git_range_touches(_gc1, _gc2, "side.txt"), False)
                     check("real git resolves a commit", git_resolves(_gc1), True)
                     check("real git refuses a bad short", git_resolves("deadbee"), False)
                     check("real git refuses an absent full hex", git_resolves("f" * 40), False)
+                    check("real git spells a full sha", git_full_sha(_gc2), _gc2)
+                    check("real git full-sha on a bad ref is unprovable", git_full_sha("deadbee"), None)
+                    check("real git spots a merge", git_is_merge(_gm1), True)
+                    check("real git clears a non-merge", git_is_merge(_gc2), False)
+                    check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee"), None)
+                    check("real git dates a range touch", git_range_touch_ts(_gc1, _gc2, "proof.txt"), _gts)
+                    check("real git range touch ts misses off-branch", git_range_touch_ts(_gc1, _gm1, "side.txt"), None)
                 finally:
                     globals()["REPO"] = _saved_repo
             finally:
