@@ -1616,6 +1616,7 @@ TELEMETRY_LINE_RE = re.compile(
     r"\s*duration\s+([^;]+?)\s*;\s*outcome\s+([^;]+?)\s*;\s*tokens\s+([^;]+?)\s*$"
 )
 TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|GPT panel)\b(.*)$", re.IGNORECASE)
+TELEMETRY_NEAR_RE = re.compile(r"^\s{0,3}[*>\-]?\s*Telemetry\s*:", re.IGNORECASE)
 TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
 TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
 TELEMETRY_ROUND_RE = re.compile(r"round\s+(\d+)", re.IGNORECASE)
@@ -2391,19 +2392,28 @@ def telemetry_parse(text: str) -> dict:
     for ln in text.splitlines():
         for _r in RUN_ID_RE.findall(ln):
             _rid = normalize_run_id(_r.strip("`"))
-            if RUN_ID_SHAPE_RE.match(_rid) and _rid not in file_runs:
+            if not RUN_ID_SHAPE_RE.match(_rid):
+                continue
+            if _rid not in file_runs:
                 file_runs.append(_rid)
-                if cur is not None:
-                    round_runs.setdefault(cur["n"], [])
-                    if _rid not in round_runs[cur["n"]]:
-                        round_runs[cur["n"]].append(_rid)
+            if cur is not None:
+                round_runs.setdefault(cur["n"], [])
+                if _rid not in round_runs[cur["n"]]:
+                    round_runs[cur["n"]].append(_rid)
         hm = TELEMETRY_PANEL_RE.match(ln)
         if hm:
             order += 1
             rm = TELEMETRY_ROUND_RE.search(hm.group(3) or "")
+            if rm:
+                rn = int(rm.group(1))
+            else:
+                rn = order
+                used = {r["n"] for r in rounds}
+                while rn in used:
+                    rn += 1
             cur_level = len(hm.group(1))
             cur = {
-                "n": int(rm.group(1)) if rm else order,
+                "n": rn,
                 "family": "Opus" if hm.group(2).lower() == "opus panel" else "GPT",
                 "telemetry": None,
                 "verdicts": [],
@@ -2439,6 +2449,11 @@ def telemetry_parse(text: str) -> dict:
                 malformed.append(ln[:160])
             else:
                 cur["telemetry"] = tel
+            continue
+        if TELEMETRY_NEAR_RE.match(ln):
+            # Shaped like telemetry but not the pinned bare line
+            # (indented, marked, or miscapitalized): report, never parse.
+            malformed.append(ln[:160])
             continue
         vm = TELEMETRY_VERDICT_RE.match(ln)
         if vm and cur is not None:
@@ -2839,8 +2854,8 @@ def cmd_query(args) -> int:
         malformed_total = 0
         malformed_files: list[str] = []
         no_tel = 0
-        sol_files: list[tuple[str, list[str], list[str]]] = []
-        opus_files: list[tuple[str, list[str], list[str]]] = []
+        sol_files: list[tuple[str, list[tuple[str, list[str]]]]] = []
+        opus_files: list[tuple[str, list[tuple[str, list[str]]]]] = []
         for path in sorted(parsed):
             d = parsed[path]
             panel_n += len(d["rounds"])
@@ -16504,6 +16519,30 @@ Sol outage: CLI missing before round 2
             "telemetry matches panel headings case-insensitively like the validator",
             [(r["n"], r["family"]) for r in _TEL_LC["rounds"]],
             [(4, "GPT")],
+        )
+        _TEL_RD = telemetry_parse(
+            "run 20260920-D90-T09-S1-gpt\n\n## GPT panel (round 2)\n\nrun 20260920-D90-T09-S1-gpt\n"
+        )
+        check(
+            "telemetry attributes a repeated run ID to its round",
+            _TEL_RD["round_runs"],
+            {2: ["20260920-D90-T09-S1-gpt"]},
+        )
+        _TEL_NM = telemetry_parse(
+            "## GPT panel (round 1)\n\n- `adversarial` approve\n"
+            "  Telemetry: round 1; model m; effort e; duration 1s; outcome approve; tokens 1\n"
+            "- Telemetry: round 1; model m; effort e; duration 1s; outcome approve; tokens 1\n"
+        )
+        check(
+            "telemetry near-miss lines count malformed without parsing",
+            (_TEL_NM["rounds"][0]["telemetry"], len(_TEL_NM["malformed"])),
+            (None, 2),
+        )
+        _TEL_CN = telemetry_parse("## GPT panel (round 2)\n\n## Opus panel\n")
+        check(
+            "telemetry fallback round numbers avoid collisions",
+            [r["n"] for r in _TEL_CN["rounds"]],
+            [2, 3],
         )
         _tbuf = _tio.StringIO()
         with _tctx.redirect_stdout(_tbuf), _tctx.redirect_stderr(_tio.StringIO()):

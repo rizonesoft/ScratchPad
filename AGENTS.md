@@ -52,7 +52,7 @@ Answer from source first (captures, protocol docs, code). When an unanswered que
 ## Validation
 
 ```bash
-python3 scripts/todo-graph.py self-test      # 1083 cases, must stay green
+python3 scripts/todo-graph.py self-test      # 1086 cases, must stay green
 python3 scripts/todo-graph.py validate       # FATAL blocks; new WARN* blocks until fixed or accepted
 python3 scripts/todo-graph.py query ready    # dependency-safe work right now
 python3 scripts/todo-graph.py query blocked  # sections waiting on something
@@ -63,6 +63,7 @@ python3 scripts/todo-graph.py query run <id>     # one run ID resolves to candid
 python3 scripts/todo-graph.py query risk-register  # acceptance instruments with residual severity: --json emits schema risk-register/1; --sync persists docs/risk-register.md, --check gates drift
 python3 scripts/todo-graph.py query dashboard      # Markdown health rollup: reviews, expiries, partials, migration, open findings (text-only)
 python3 scripts/todo-graph.py query notify         # owner lookahead payloads within N days: --today freezes the clock, --within-days sets the window (text-only; exit 0)
+python3 scripts/todo-graph.py query telemetry      # panel telemetry: tree totals, Sol-outage coverage, per-section summary (--json emits schema telemetry/1)
 python3 scripts/todo-graph.py plan --sync    # re-derive the plan projection after TODO edits
 python3 scripts/todo-graph.py plan --check   # fail if the projection went stale
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # ref -> file, section, deps, status
