@@ -943,6 +943,7 @@ SEVERITY_MAP: dict[str, str] = {
     # D00 T01 §25).
     "risk-acceptance-malformed": "fatal",
     "risk-acceptance-silent-edit": "fatal",
+    "risk-acceptance-chain-broken": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
@@ -1152,16 +1153,26 @@ def superseded_acceptances(
 def evidence_fresh(sha: str, repo_path: str, current_text: str) -> bool:
     """Whether the owning record still reads as the acceptance's
     evidence commit saw it (D00 T01 §27 item 3): the file bytes at
-    the recorded commit equal today's bytes. Any change voids
-    (fail-closed materiality: renewal rides a superseding record),
-    and an unresolvable commit voids too (unprovable fails closed,
-    the clearance precedent). The self-test patches `git_file_at`,
-    never a repo.
+    the recorded commit equal today's bytes, acceptance lines
+    excluded on both sides. The exclusion breaks the circle (panel
+    R1): the record cannot cite a commit that already contains it,
+    so the cited ancestor never carries the new line and a
+    whole-file compare would void every finding acceptance on its
+    first day. The evidence binds the target's record (ledger rows,
+    manifest, marker); the acceptance lines themselves are item 4's
+    to guard. Any other change voids (fail-closed materiality:
+    renewal rides a superseding record), and an unresolvable commit
+    voids too (unprovable fails closed, the clearance precedent).
+    The self-test patches `git_file_at`, never a repo.
     """
+
+    def _sans_acceptances(text: str) -> str:
+        return "\n".join(ln for ln in text.split("\n") if not ln.startswith("Risk accepted:"))
+
     was = git_file_at(sha, repo_path)
     if was is None:
         return False
-    return was == current_text
+    return _sans_acceptances(was) == _sans_acceptances(current_text)
 
 
 def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
@@ -2404,8 +2415,11 @@ def cmd_query(args) -> int:
                                     if not acceptance_live(rec, exp, today):
                                         # Item 5: an expired match names
                                         # the escalation owner instead of
-                                        # covering.
-                                        if not esc_owner:
+                                        # covering. Expiry only: a
+                                        # post-dated record is dangling,
+                                        # and its escalation stays with
+                                        # the operator (panel R1).
+                                        if exp < today and not esc_owner:
                                             esc_owner = own
                                         continue
                                     # Item 3: stale evidence voids (the
@@ -2630,7 +2644,10 @@ def cmd_query(args) -> int:
                             if not acceptance_live(rec, exp, today):
                                 # Item 5: an expired match names the
                                 # escalation owner instead of covering.
-                                if not esc_owner:
+                                # Expiry only: a post-dated record is
+                                # dangling, and its escalation stays
+                                # with the operator (panel R1).
+                                if exp < today and not esc_owner:
                                     esc_owner = own
                                 continue
                             # Item 3: stale evidence voids (the findings
@@ -10430,7 +10447,8 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "|   3   |   §3    | Stale evidence | -- |  [x]   |\n"
             "|   4   |   §4    | Reopened | -- |  [ ]   |\n"
             "|   5   |   §5    | Expired owner | -- |  [x]   |\n"
-            "|   6   |   §6    | Review states | -- |  [x]   |\n\n---\n\n"
+            "|   6   |   §6    | Review states | -- |  [x]   |\n"
+            "|   7   |   §7    | Postdated waiver | -- |  [x]   |\n\n---\n\n"
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
@@ -10455,7 +10473,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "## 6. Review states\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §6 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc6.md\n"
-            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S6-gpt)\n",
+            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S6-gpt)\n\n"
+            "## 7. Postdated waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §7 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc10.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 (run 20260919-D90-T01-S7-gpt)\n",
             encoding="utf-8",
         )
         _acc_head = (
@@ -10516,6 +10538,14 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; supersedes {_r60}; rationale successor review\n",
             encoding="utf-8",
         )
+        _r30f = (date.today() + timedelta(days=30)).isoformat()
+        (clean / "docs" / "reviews" / "90-acc10.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §7]; dependents [none]; bytes 100; run 20260919-D90-T01-S7-gpt\n\n"
+            "Ledger:\n- [D90-T01-S7-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: 20260919-D90-T01-S7-gpt; approver bob; owner bob; date {_r30f}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; rationale postdated waiver, operator escalates\n",
+            encoding="utf-8",
+        )
         _clean_todo = (clean / "todo" / "90-clean" / "TODO-01-clean.md").as_posix()
         canned_git[("deadbee", _clean_todo)] = "stale bytes, never the live record\n"
         canned_git[("cafe444", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
@@ -10537,6 +10567,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         _deg2 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§2")]
         _deg3 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§3")]
         _deg5 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§5")]
+        _deg7 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§7")]
         check(
             "outage acceptance with the wrong instance date never covers",
             (
@@ -10569,6 +10600,15 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 and _deg5[0]["accepted_by"] == ""
                 and _deg5[0]["escalation"] == "bob: renew the acceptance or rerun the review"
                 and any("§5" in ln and "escalate bob" in ln for ln in _acc_lines)
+            ),
+            True,
+        )
+        check(
+            "postdated match keeps the operator escalation",
+            (
+                len(_deg7) == 1
+                and _deg7[0]["accepted_by"] == ""
+                and _deg7[0]["escalation"].startswith("operator:")
             ),
             True,
         )
@@ -10655,6 +10695,15 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             evidence_fresh("0000000", "docs/reviews/90-acc1.md", "anything"),
             False,
         )
+        _acc1_now = (rev_dir / "90-health-accept.md").read_text(encoding="utf-8")
+        canned_git[("acc7070", "docs/reviews/90-health-accept.md")] = "\n".join(
+            ln for ln in _acc1_now.split("\n") if not ln.startswith("Risk accepted:")
+        )
+        check(
+            "evidence ignores the acceptance lines themselves",
+            evidence_fresh("acc7070", "docs/reviews/90-health-accept.md", _acc1_now),
+            True,
+        )
         # Item 4 history legs (D00 T01 §27): silent edits, chained
         # silence, and dangling links against canned HEAD bytes. The
         # current file carries all three shapes; HEAD carries the
@@ -10680,11 +10729,17 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "## Implementation Order\n\n"
             "| Order | Section | Deliverable | Depends On | Status |\n"
             "| :---: | :-----: | ----------- | ---------- | :----: |\n"
-            "|   1   |   §1    | History | -- |  [x]   |\n\n---\n\n## 1. History\n\n"
+            "|   1   |   §1    | History | -- |  [x]   |\n"
+            "|   2   |   §2    | Chains | -- |  [x]   |\n\n---\n\n## 1. History\n\n"
             "- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc7.md\n"
-            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S1-gpt)\n",
+            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S1-gpt)\n\n"
+            "## 2. Chains\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §2 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc9.md\n"
+            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S2-gpt)\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc7.md").write_text(
@@ -10698,6 +10753,30 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             + "Risk accepted: D90-T01-S1-PR3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
             + "; evidence aaa1111; supersedes 2026-01-01; rationale dangling link\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc9.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §2]; dependents [none]; bytes 100; run 20260919-D90-T01-S2-gpt\n\n"
+            "Ledger:\n- [D90-T01-S2-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            + "Risk accepted: D90-T01-S2-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-09-19; rationale self link\n"
+            + "Risk accepted: D90-T01-S2-PR2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-09-11; rationale cycle member a\n"
+            + "Risk accepted: D90-T01-S2-PR2; approver bob; owner bob; date 2026-09-11; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-09-10; rationale cycle member b\n"
+            + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale forked predecessor\n"
+            + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-18; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-09-10; rationale first successor\n"
+            + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; supersedes 2026-09-10; rationale second successor\n",
             encoding="utf-8",
         )
         canned_git[("HEAD", "docs/reviews/90-acc7.md")] = _acc7_was
@@ -10726,6 +10805,23 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "chained supersession stays silent",
             (not any("pr2" in ln.lower() for ln in _silent)),
+            True,
+        )
+        _chain = [
+            ln
+            for ln in _acc7_buf.getvalue().splitlines()
+            if "acceptance " in ln
+            and ("sits in a supersedes cycle" in ln or "re-supersedes" in ln)
+        ]
+        check(
+            "self links, cycles, and double successors fire",
+            (
+                len(_chain) == 4
+                and any("d90-t01-s2-pr1 2026-09-19 sits in a supersedes cycle" in ln for ln in _chain)
+                and any("d90-t01-s2-pr2 2026-09-10 sits in a supersedes cycle" in ln for ln in _chain)
+                and any("d90-t01-s2-pr2 2026-09-11 sits in a supersedes cycle" in ln for ln in _chain)
+                and any("d90-t01-s2-pr3 2026-09-19 re-supersedes d90-t01-s2-pr3 2026-09-10" in ln for ln in _chain)
+            ),
             True,
         )
         globals()["git_file_at"] = _real_git_file_at

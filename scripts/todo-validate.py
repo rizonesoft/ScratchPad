@@ -1391,8 +1391,11 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(6)} not in {am.group(4)}..{am.group(5)}",
                     )
 
-            def _acceptance_records(text: str) -> dict[tuple[str, str], str]:
-                recs: dict[tuple[str, str], str] = {}
+            def _acceptance_records(text: str) -> dict[tuple[str, str], tuple[str, str]]:
+                # Key (target, record date) to (full line, supersedes
+                # date or ""); malformed and uncoverable lines skip
+                # (rule 24's shape leg already flags the current ones).
+                recs: dict[tuple[str, str], tuple[str, str]] = {}
                 stripped, _u = graph.strip_fenced_code(text)
                 for rln in stripped.splitlines():
                     if not rln.startswith("Risk accepted:"):
@@ -1400,8 +1403,51 @@ def validate(graph, _args) -> int:
                     ram = graph.RISK_ACCEPTED_RE.match(rln)
                     if ram is None or graph.risk_target_kind(ram.group(1)) is None:
                         continue
-                    recs[(ram.group(1).lower(), ram.group(4))] = rln.strip()
+                    recs[(ram.group(1).lower(), ram.group(4))] = (rln.strip(), ram.group(8) or "")
                 return recs
+
+            # Chain shape (D00 T01 §27 item 4, panel R1, mirroring rule
+            # 25): a supersedes link that names its own record, a cycle
+            # of links, or two successors claiming one predecessor each
+            # break the single-current-head read the query relies on.
+            # Current-file edges only: HEAD-only records carry no live
+            # edge (their successor, if any, is current).
+            _now_edges: dict[tuple[str, str], tuple[str, str]] = {}
+            for _ln in ftext.splitlines():
+                if not _ln.startswith("Risk accepted:"):
+                    continue
+                _am = graph.RISK_ACCEPTED_RE.match(_ln)
+                if _am is None or graph.risk_target_kind(_am.group(1)) is None or not _am.group(8):
+                    continue
+                _now_edges[(_am.group(1).lower(), _am.group(4))] = (_am.group(1).lower(), _am.group(8))
+            _cyclic: set[tuple[str, str]] = set()
+            for _start in _now_edges:
+                _seen: set[tuple[str, str]] = set()
+                _walk: tuple[str, str] | None = _start
+                while _walk is not None and _walk not in _seen:
+                    _seen.add(_walk)
+                    _walk = _now_edges.get(_walk)
+                if _walk is not None:
+                    _cyc: tuple[str, str] | None = _walk
+                    while _cyc is not None and _cyc not in _cyclic:
+                        _cyclic.add(_cyc)
+                        _cyc = _now_edges.get(_cyc)
+            for _key in sorted(_cyclic):
+                flag(
+                    "risk-acceptance-chain-broken",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_key[0]} {_key[1]} sits in a supersedes cycle",
+                )
+            _claimants: dict[tuple[str, str], list[tuple[str, str]]] = {}
+            for _succ, _pred in _now_edges.items():
+                _claimants.setdefault(_pred, []).append(_succ)
+            for _pred in sorted(_claimants):
+                if len(_claimants[_pred]) < 2:
+                    continue
+                for _dup in _claimants[_pred][1:]:
+                    flag(
+                        "risk-acceptance-chain-broken",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_dup[0]} {_dup[1]} re-supersedes {_pred[0]} {_pred[1]} (one target, one successor)",
+                    )
 
             committed = graph.git_file_at("HEAD", fm.group(1))
             if committed is not None:
@@ -1419,7 +1465,7 @@ def validate(graph, _args) -> int:
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} vanished without a superseding record",
                         )
                 for key in sorted(set(was_recs) & set(now_recs)):
-                    if was_recs[key] != now_recs[key] and key not in chained:
+                    if now_recs[key][0] != was_recs[key][0] and key not in chained:
                         flag(
                             "risk-acceptance-silent-edit",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} edited without a superseding record",
