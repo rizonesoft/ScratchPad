@@ -2,7 +2,8 @@
 // window every 250 ms and records each change as
 // <utc-timestamp> <hwnd> <process> <title>. Alongside, a census snapshots
 // every app HWND each poll (monitor, rect, iconic state), recording each
-// HWND once at first sighting. Usage:
+// HWND at first sighting and upgrading to the latest non-iconic sighting
+// so resting placement reads off the lines. Usage:
 //   ForegroundLog <seconds> <logpath> [process-name-to-flag] [--expect-primary]
 //   ForegroundLog launch <exe> [args]  (no-activate process start for probing)
 // The gate is green when the app never held the foreground AND no app
@@ -147,7 +148,20 @@ void UpdateCensus(Dictionary<nint, CensusEntry> census, Dictionary<nint, int> si
                 }
             }
 
-            census.TryAdd(hwnd, new CensusEntry((int)pid, monitor, rect, iconic, visible, WindowTitle(hwnd)));
+            // Resting state wins: backgrounded windows are born minimized,
+            // so first-sighting-only lines would read iconic forever and
+            // carry no placement. Non-iconic sightings overwrite; never-shown
+            // windows keep their iconic birth record.
+            var entry = new CensusEntry((int)pid, monitor, rect, iconic, visible, WindowTitle(hwnd));
+            if (iconic)
+            {
+                census.TryAdd(hwnd, entry);
+            }
+            else
+            {
+                census[hwnd] = entry;
+            }
+
             return true;
         },
         nint.Zero);

@@ -40,6 +40,8 @@ public sealed class MultiWindowTests
             Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
                 ? windows[1]
                 : windows[0];
+            UiForeground.InPlace(second, fgBefore);
+            Assert.True(second.BoundingRectangle.X > -10000, "second window reports no placed bounds; the cascade comparison below would be vacuous");
             Assert.NotEqual(first.BoundingRectangle.Location, second.BoundingRectangle.Location);
             Assert.Equal(TabAccessibilityName.For("Untitled", isDirty: false), TabItemAt(second, 0).Name);
             Assert.Null(second.FindFirstDescendant(cf => cf.ByAutomationId("WhatsNewDialog")));
@@ -167,6 +169,7 @@ public sealed class MultiWindowTests
             Window second = windows[0].Properties.NativeWindowHandle.Value == first.Properties.NativeWindowHandle.Value
                 ? windows[1]
                 : windows[0];
+            UiForeground.PlaceForBackground(second);
             ShellSettings newer = ShellSettings.Load();
             newer.WhatsNewSeen = false;
             newer.Save();
