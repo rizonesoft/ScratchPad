@@ -1212,7 +1212,7 @@ def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> l
     return out
 
 
-RETIRED_RE = re.compile(r"^>\s*\*\*Retired:\*\*\s*(\d{4}-\d{2}-\d{2})\s*\|")
+RETIRED_RE = re.compile(r"^>\s*\*\*Retired:\*\*\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|\s*(.+?)\s*$")
 
 
 def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> str | None:
@@ -1220,9 +1220,11 @@ def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> s
 
     A retirement note (`> **Retired:** YYYY-MM-DD | ref | reason`)
     migrates a grandfathered stamp without asserting a review that
-    never ran. The date plus pipe are required, so prose merely
-    mentioning retirement never counts. Malformed notes read as
-    absent: the stamp stays listed and the gap stays visible.
+    never ran. Fail-closed: the date must be real, the ref must name
+    this section (a copied note never migrates its new neighbor),
+    and the reason must be non-empty, so prose merely mentioning
+    retirement never counts. Malformed notes read as absent: the
+    stamp stays listed and the gap stays visible.
     """
     if todo.path not in todo_lines:
         try:
@@ -1236,8 +1238,17 @@ def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> s
     end = following[0] if following else len(lines) + 1
     for ln in lines[start - 1 : end - 1]:
         rm = RETIRED_RE.match(ln)
-        if rm:
-            return rm.group(1)
+        if rm is None:
+            continue
+        try:
+            datetime.strptime(rm.group(1), "%Y-%m-%d")
+        except ValueError:
+            continue
+        if f"§{num}" not in rm.group(2):
+            continue
+        if not rm.group(3).strip():
+            continue
+        return rm.group(1)
     return None
 
 
@@ -6763,6 +6774,8 @@ track: Z1
 |  65   |   §65   | Range pair two | - |  [x]   |
 |  66   |   §66   | Retired grandfathered probe | - |  [x]   |
 |  67   |   §67   | Malformed retirement probe | - |  [x]   |
+|  68   |   §68   | Wrong-ref retirement probe | - |  [x]   |
+|  69   |   §69   | Bad-date retirement probe | - |  [x]   |
 
 ---
 
@@ -7552,6 +7565,28 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-18 | §67 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Retired:** someday | D90 T07 §67 | no date, stays listed
+
+## 68. Wrong-ref retirement probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-18 | §68 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Retired:** 2026-09-19 | D90 T07 §67 | copied note names the wrong section, stays listed
+
+## 69. Bad-date retirement probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-18 | §69 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Retired:** 9999-99-99 | D90 T07 §69 | unreal date, stays listed
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -9147,11 +9182,13 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             0,
         )
         check(
-            "§§66-67 fire exactly zero (retirement notes validator-silent)",
+            "§§66-69 fire exactly zero (retirement notes validator-silent)",
             sum(
                 1
                 for ln in marker_out
-                if "TODO-07-marker.md" in ln and ("§66 " in ln or "§67 " in ln) and "FATAL" in ln
+                if "TODO-07-marker.md" in ln
+                and ("§66 " in ln or "§67 " in ln or "§68 " in ln or "§69 " in ln)
+                and "FATAL" in ln
             ),
             0,
         )
@@ -9398,6 +9435,16 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "plan-health keeps the malformed retirement listed",
             any("TODO-07-marker.md §67 " in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health keeps the wrong-ref retirement listed",
+            any("TODO-07-marker.md §68 " in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health keeps the bad-date retirement listed",
+            any("TODO-07-marker.md §69 " in ln for ln in health_lines),
             True,
         )
         check(
