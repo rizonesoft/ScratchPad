@@ -101,6 +101,7 @@ track: W0
 |  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
 |  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
 |  47   |   §47   | Section-span scan helper | §26 |  [ ]   |
+|  48   |   §48   | Migration completion assurance | §26 |  [ ]   |
 
 ---
 
@@ -742,6 +743,8 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - [x] Current state is addressable: the migration and provenance blockquotes gain a real heading or move into the owning sections, so references resolve (PR5 D00-T01-S21-PR5). Done when: every Current-state reference names a heading that exists. Done: `## Current state` heading added; stale 2026-09-14 base sentence corrected with date.
 - [x] Commit: `"workspace: execute grandfathered migration per eighth live round"`
 - -> XREF: D00 T01 §47 -- section-span scan helper filed there (Opus panel round-4 advisory)
+- -> XREF: D00 T01 §48 -- migration completion assurance filed there (plan-review PR6 PR7 PR8 PR9 PR12 PR14)
+- -> XREF: D00 T01 §29 -- migration-zero gate joiner filed there (plan-review PR10)
 
 **Test checkpoint:** the baseline reads one way, the batches drain to zero, and every reference resolves. Cheaper substitute that fails: machinery nobody runs.
 
@@ -775,12 +778,13 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 
 ## 29. Unattended Checks and Risk Visibility
 
-Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes unattended enforcement plus risk visibility (PR14, PR22, PR24): dates must fire without an operator at the keyboard, and accepted risk must stay visible with its residual weight. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s29 D00-T01-S21-PR14 D00-T01-S21-PR22 D00-T01-S21-PR24 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file); -> XREF: D00 T01 §25 (plan-review joiners filed here); -> SOURCE: plan-review-D00-T01-s25-2026-09-19-s29 D00-T01-S25-PR6 D00-T01-S25-PR8 (review-date firing plus inert-waiver surfacing).
+Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes unattended enforcement plus risk visibility (PR14, PR22, PR24): dates must fire without an operator at the keyboard, and accepted risk must stay visible with its residual weight. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s29 D00-T01-S21-PR14 D00-T01-S21-PR22 D00-T01-S21-PR24 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file); -> XREF: D00 T01 §25 (plan-review joiners filed here); -> SOURCE: plan-review-D00-T01-s25-2026-09-19-s29 D00-T01-S25-PR6 D00-T01-S25-PR8 (review-date firing plus inert-waiver surfacing); -> XREF: D00 T01 §26 (plan-review joiner filed here); -> SOURCE: plan-review-D00-T01-s26-2026-09-19-s29 D00-T01-S26-PR10 (immediate migration-zero gate).
 
 - [ ] Scheduled enforcement runs the gates: CI runs plan-health on a schedule and notifies owners before dates pass, so unattended obligations cannot expire silently (PR22 D00-T01-S21-PR22). Done when: the schedule plus notification path fire on a fixture date.
 - [ ] Accepted risk stays visible: a persistent gatable register with residual severity plus a health dashboard over reviews, expiries, partials, and migration progress (PR14 plus PR24 D00-T01-S21-PR14 D00-T01-S21-PR24, two findings one item). Done when: the register gates and the dashboard renders from structured data.
 - [ ] Review dates fire: acceptances gain review-due and review-overdue states in plan-health and summary, so a passed review date escalates instead of decorating (PR6 D00-T01-S25-PR6). Done when: both states emit with fixtures.
 - [ ] Inert waivers surface: post-dated acceptances that cover nothing raise a plan-health warning plus a summary entry, so no waiver reads as authorization while inactive (PR8 D00-T01-S25-PR8). Done when: the warning plus the entry emit with fixtures.
+- [ ] Migration zero gates now: the completed migration asserts zero grandfathered leftovers in the unattended gates today, not only past the 2026-12-31 deadline, so a faulty completion claim cannot hide until expiry (PR10 D00-T01-S26-PR10). Done when: a nonzero leftover fails the gate with fixtures.
 - [ ] Commit: `"workspace: unattended checks and risk visibility per eighth live round"`
 
 **Test checkpoint:** dates fire on their own and accepted risk never goes dark. Cheaper substitute that fails: remembering to look.
@@ -1023,6 +1027,20 @@ Why this section exists: the §26 Opus panel round 4 (advisory) found `section_r
 - [ ] Commit: `"workspace: share the section-span scan per §26 panel"`
 
 **Test checkpoint:** one helper computes the window for both callers; all existing probes pass unedited. Falsifiable by any caller-local span math or any probe edit.
+
+## 48. Migration Completion Assurance
+
+Why this section exists: the §26 plan review (`gpt-5.6-sol` high over §26 plus §21) returned 14 findings; 6 file here plus a §29 joiner, 1 duplicates the §28 identity item, 6 are rejected with reasons in the §26 findings file. The migration is complete but its record is thin: the acceptance names no fields, the §21 waiver reads live past its discharge, the stamp/file/run mapping lives only in prose totals, boundary cases are unstated, batch notes link no evidence, and nothing stops a backdated stamp from re-opening the grandfathered set. -> XREF: D00 T01 §26 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s26-2026-09-19-s48 D00-T01-S26-PR6 D00-T01-S26-PR7 D00-T01-S26-PR8 D00-T01-S26-PR9 D00-T01-S26-PR12 D00-T01-S26-PR14 (`gpt-5.6-sol` high over §26 plus §21, 14 findings, 6 filed here plus a §29 joiner, 1 duplicate, 6 rejected with reasons in the §26 findings file).
+
+- [ ] Acceptance record names its fields: the blessed prose acceptance carries batch, candidate range, verifier, gate results, and acceptance date, so the audit path proves the event, not just the current zero (PR6 D00-T01-S26-PR6). Done when: the fields read in the record.
+- [ ] Waiver state reconciles: the §21 migration risk acceptance reads discharged, superseded, or still live against the zero-leftover completion, so no stale waiver distorts plan-health or operator decisions (PR7 D00-T01-S26-PR7). Done when: the acceptance line carries its dated state.
+- [ ] Mapping is durable: the stamp/file/run reconciliation (53 stamps, 57 run-less files, 9 lineage-era files) reads as a reproducible mapping, not totals alone (PR8 D00-T01-S26-PR8). Done when: a recount reproduces the populations from the record.
+- [ ] Boundary rules read: mixed files, newly discovered pre-cutoff stamps, and post-inventory stamps each have a stated rule, so the completed set cannot silently expand or regress (PR9 D00-T01-S26-PR9). Done when: all three boundaries resolve.
+- [ ] Batch notes link evidence: each batch completion note names its candidate range, review run, and evidence reference (PR12 D00-T01-S26-PR12). Done when: all four notes link.
+- [ ] Backdated stamps fail: a stamp dated on or before the cutoff but committed after it fires the validator (or a stated rule blesses the shape), so the grandfathered set cannot silently re-open (PR14 D00-T01-S26-PR14). Done when: the rule plus fixtures ship.
+- [ ] Commit: `"workspace: assure migration completion per §26 plan review"`
+
+**Test checkpoint:** the acceptance proves its event, the waiver reads current, the mapping reproduces, boundaries resolve, notes link, and backdating fails. Falsifiable by any field missing or any silent backdate.
 
 ## Verification
 
