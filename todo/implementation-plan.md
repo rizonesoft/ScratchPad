@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **75 of 230 sections complete (33%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **76 of 230 sections complete (33%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -120,7 +120,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §33` | Provenance residuals                            |   8   |
 | [x] | `D00 T01 §34` | Amendment and runner residuals                  |   6   |
 | [x] | `D00 T01 §35` | Mixed Sol/Opus panel with soft and hard caps    |  11   |
-| [ ] | `D00 T01 §36` | README mixed-panel touch-up                     |   2   |
+| [x] | `D00 T01 §36` | README mixed-panel touch-up                     |   2   |
 | [ ] | `D00 T01 §37` | Panel rule residuals                            |   6   |
 | [ ] | `D00 T01 §38` | Architecture gate residuals                     |   5   |
 | [ ] | `D00 T01 §39` | Panel telemetry                                 |   4   |

@@ -89,7 +89,7 @@ track: W0
 |  33   |   §33   | Provenance residuals | §23 |  [x]   |
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [x]   |
 |  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [x]   |
-|  36   |   §36   | README mixed-panel touch-up | §35 |  [ ]   |
+|  36   |   §36   | README mixed-panel touch-up | §35 |  [x]   |
 |  37   |   §37   | Panel rule residuals | §35 |  [ ]   |
 |  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
@@ -982,6 +982,12 @@ Why this section exists: the §35 Opus sign-off (round 3) reported one consisten
 - [x] Commit: `"workspace: name mixed panel in README Deferred"`
 
 **Test checkpoint:** the bullet names the mixed panel; the re-sweep is quoted clean; live `validate` stays 0 fatal. Cheaper substitute that fails: trusting memory of the title count.
+
+> **Verified:** 2026-09-19 | §36 | self-test 1038/1038 (0 new: docs-only); live validate 0 fatal 0 warnings; Light panel Sol R1 plus Opus R2 sign-off escalated to Full R3 over candidates 4800663 56b17c3, R3 all approve; plan review 16 findings, 5 filed at §37 plus §38 plus §55, 3 duplicates, 8 rejected
+> **Review:** round 1 Sol, round-2 Opus sign-off, round-3 Opus escalated, candidates 4800663 56b17c3 -- `adversarial` approve · `consistency` approve · `integration` approve (R2 stale-projection needs-attention fixed by sync) · `record` approve (R1 unquoted-evidence needs-attention fixed on the item); Light escalated to Full at R2 per the sign-off rule. Raw findings: docs/reviews/00-workspace/D00-T01-s36.md
+> **Plan review:** GPT high, filed D00 T01 §37, D00 T01 §38, D00 T01 §55 (run 20260919-D00-T01-S36-gpt)
+> **CRUD:** applicable | one README line plus TODO ticks, correction, and evidence note (read back via the re-sweep grep, live validate 0 fatal, plan --check current); filing opened §37 plus §38 plus §55 joiners (read back via plan --check current)
+> **Duration:** 2026-09-19T11:42:53Z to 2026-09-19T11:59:00Z
 
 ## 37. Panel Rule Residuals
 
