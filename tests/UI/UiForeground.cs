@@ -22,7 +22,7 @@ internal static class UiForeground
     internal static void Background(Window? window, nint before)
     {
         PlaceForBackground(window);
-        Restore(before);
+        Restore(before, OwnHwnd(window));
     }
 
     // InPlace: for tests whose premise is app-chosen placement (restored
@@ -40,8 +40,11 @@ internal static class UiForeground
         }
 
         Show(window);
-        Restore(before);
+        Restore(before, OwnHwnd(window));
     }
+
+    static nint OwnHwnd(Window? window) =>
+        window?.Properties.NativeWindowHandle.Value ?? nint.Zero;
 
     // Moves a window to the suite display and shows it no-activate: the
     // secondary monitor when one exists (visible, so layout and UIA
@@ -112,18 +115,30 @@ internal static class UiForeground
         Thread.Sleep(250);
     }
 
-    internal static void Restore(nint hwnd)
+    // Restores the pre-test foreground only when the suite itself holds
+    // it: if the operator navigated elsewhere mid-test, yanking focus back
+    // to the stale window would interrupt them (probed 2026-09-19: a
+    // background SetForegroundWindow succeeds on this box, so the guard is
+    // load-bearing, not theoretical). A third window holding the foreground
+    // stays put so the census flags the real steal loud.
+    internal static void Restore(nint before, nint own)
     {
-        if (hwnd == nint.Zero || Native.GetForegroundWindow() == hwnd)
+        if (before == nint.Zero)
         {
             return;
         }
 
-        _ = Native.SetForegroundWindow(hwnd);
-        Thread.Sleep(250);
-        if (Native.GetForegroundWindow() != hwnd)
+        nint current = Native.GetForegroundWindow();
+        if (current == before || current != own)
         {
-            Debug.WriteLine($"UiForeground: restore refused for {hwnd}");
+            return;
+        }
+
+        _ = Native.SetForegroundWindow(before);
+        Thread.Sleep(250);
+        if (Native.GetForegroundWindow() != before)
+        {
+            Debug.WriteLine($"UiForeground: restore refused for {before}");
         }
     }
 

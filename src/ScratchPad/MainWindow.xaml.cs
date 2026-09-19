@@ -83,6 +83,10 @@ public sealed partial class MainWindow : Window, IDisposable
         _ = NativeMethods.SetWindowLong(hwnd, exStyle, NativeMethods.GetWindowLong(hwnd, exStyle) | noActivate);
         const uint noMoveSizeZOrderActivateFrameChanged = 0x0037;
         _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, 0, 0, 0, 0, noMoveSizeZOrderActivateFrameChanged);
+        if ((NativeMethods.GetWindowLong(hwnd, exStyle) & noActivate) != noActivate)
+        {
+            throw new InvalidOperationException("background launch could not set WS_EX_NOACTIVATE; refusing a foreground-capable test window");
+        }
     }
 
     // Shows without ever activating (background launches only): the

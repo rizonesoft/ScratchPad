@@ -244,7 +244,7 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 - [x] System picker and dialog HWNDs land on the secondary monitor (enumeration/watcher) or their tests fence. Done when: the full-run census shows no dialog HWND on the primary monitor. Done: Run A census records every app HWND with monitor plus rect plus iconic state and asserts primary=0 across 746 census lines, so no dialog HWND rested on primary; no new fences owed.
 - [x] Commit: `"workspace: convert UI suite to focus-free input"`
 
-**Test checkpoint:** The default `tests/UI` run passes locally while the operator's foreground window never changes (foreground log quoted); the placement run passes with its census on primary; the fenced set passes in a visible on-demand run. Cheaper substitute that fails: running the suite while the operator is away and calling it uninterrupted.
+**Test checkpoint:** The default `tests/UI` run passes locally while the operator's foreground window never changes (foreground log quoted); the placement run passes with its census on primary; the fenced set is fenced plus skip-proofed with its visible pass Night-owed to the collector (**Revision (operator 2026-09-19):** completion-first, hardened by D00 T02 §10; was "the fenced set passes in a visible on-demand run"). Cheaper substitute that fails: running the suite while the operator is away and calling it uninterrupted.
 
 ## 9. Nightly Full-Suite Regression Run
 
