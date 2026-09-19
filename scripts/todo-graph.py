@@ -7549,6 +7549,8 @@ track: Z1
 |  73   |   §73   | Malformed attempt count fires | - |  [x]   |
 |  74   |   §74   | Bare partial missing detail fires | - |  [x]   |
 |  75   |   §75   | Non-ASCII attempt count fires | - |  [x]   |
+|  76   |   §76   | Proof-ID-mismatch target | - |  [x]   |
+|  77   |   §77   | Fix-less target | - |  [x]   |
 
 ---
 
@@ -7601,7 +7603,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -8426,6 +8428,34 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §75 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, filed §2, retry-owed owner ann due 2020-01-01 class auth attempts ² (run 20260920-D90-T07-S75-gpt)
+
+## 76. Proof-ID-mismatch target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturemismatch D90-T07-S4-PR71 fix f000001
+
+proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §76 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+
+## 77. Fix-less target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturefixless D90-T07-S4-PR72
+
+> **Verified:** __D5__ | §77 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -8492,6 +8522,12 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             # with the back-link, the fix token, and proof; every other
             # leg passes, so only the ancestry leg can hold it).
             "- [D90-T07-S4-PR70] [critical] Unrelated fix stays -> filed §56\n"
+            # §30 probes: a resolving proof for another ID must not clear
+            # this row (PR71 isolates the ID comparison), and a target
+            # with no fix token must not clear either (PR72 isolates the
+            # fix leg).
+            "- [D90-T07-S4-PR71] [critical] Mismatched proof stays -> filed §76\n"
+            "- [D90-T07-S4-PR72] [critical] Fix-less target stays -> filed §77\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -8980,6 +9016,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "fff0002",
             "fff0003",
             "b000001",
+            "f000001",
         ):
             canned_git[(_sha, marker_todo.as_posix())] = _mtxt
             canned_touches[(_sha, marker_todo.as_posix())] = True
@@ -8994,6 +9031,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "fff0002",
             "fff0003",
             "b000001",
+            "f000001",
         ):
             canned_git[(_sha, "tests/fix-proof.py")] = _proof_ok
         canned_ts = {
@@ -9007,6 +9045,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "fff0002": _tss(d4, "14:00:00"),
             "fff0003": _tss(d5, "12:00:00"),
             "b000001": _tss(d5, "12:00:00"),
+            # §30: `f000001` passes every leg, so PR71 stays only for
+            # the proof/row ID mismatch (its proof names PR90).
+            "f000001": _tss(d5, "12:00:00"),
         }
         # Base-exclusion canary: the eee0003 base touched the file, but
         # the range leg never consults it, so PR66 stays listed. If a
@@ -9024,6 +9065,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             ("aaa1111", "eee0002"): True,
             ("aaa1111", "fff0002"): True,
             ("aaa1111", "b000001"): False,
+            ("aaa1111", "f000001"): True,
         }
         # §23 provenance candidates: the migration's uniform candidate
         # resolves, the badprov typo resolves to nothing, and anything
@@ -10267,6 +10309,16 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "clearance fails a fix outside the review candidate's ancestry",
             any("D90-T07-S4-PR70" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a proof/row ID mismatch",
+            any("D90-T07-S4-PR71" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a fix-less target",
+            any("D90-T07-S4-PR72" in ln for ln in health_lines),
             True,
         )
         check(
@@ -11860,6 +11912,110 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         globals()["git_is_ancestor"] = _real_git_ancestor
         globals()["git_range_touches"] = _real_git_range
         globals()["git_resolves"] = _real_git_resolves
+        # Real-git helper fixtures (D00 T01 §30 item 3): the six git
+        # helpers run against a real temp repo (commits, a branch, a
+        # merge, fixed timestamps, proof files), so command shapes
+        # cannot regress unseen. Only REPO is patched (save/restore);
+        # the helpers run for real. Skips honestly when git is absent.
+        if shutil.which("git") is None:
+            print("todo-graph self-test: SKIP real-git helper probes (no git)")
+        else:
+            _gtmp = tempfile.TemporaryDirectory(prefix="todo-graph-git-")
+            try:
+                _grepo = Path(_gtmp.name)
+                _genv = dict(
+                    os.environ,
+                    HOME=_gtmp.name,
+                    GIT_CONFIG_NOSYSTEM="1",
+                    GIT_AUTHOR_NAME="selftest",
+                    GIT_AUTHOR_EMAIL="selftest@example.invalid",
+                    GIT_COMMITTER_NAME="selftest",
+                    GIT_COMMITTER_EMAIL="selftest@example.invalid",
+                    GIT_AUTHOR_DATE="2026-01-02T03:04:05Z",
+                    GIT_COMMITTER_DATE="2026-01-02T03:04:05Z",
+                )
+
+                def _git(*args):
+                    import subprocess
+
+                    out = subprocess.run(
+                        ["git", *args],
+                        cwd=_gtmp.name,
+                        env=_genv,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    if out.returncode != 0:
+                        raise RuntimeError(f"git {' '.join(args)}: {out.stderr.decode()[:200]}")
+                    return out.stdout.decode("utf-8", "replace").strip()
+
+                _git("init", "-q", ".")
+                _gbranch = _git("symbolic-ref", "--short", "HEAD")
+                (_grepo / "proof.txt").write_text("v1\n", encoding="utf-8")
+                _git("add", "proof.txt")
+                _git("commit", "-qm", "one")
+                _gc1 = _git("rev-parse", "HEAD")
+                (_grepo / "proof.txt").write_text("v2\n", encoding="utf-8")
+                _git("commit", "-qam", "two")
+                _gc2 = _git("rev-parse", "HEAD")
+                _git("checkout", "-qb", "side")
+                (_grepo / "side.txt").write_text("s\n", encoding="utf-8")
+                _git("add", "side.txt")
+                _git("commit", "-qm", "side")
+                _git("checkout", "-q", _gbranch)
+                _git("merge", "--no-ff", "-qm", "merge", "side")
+                _gm1 = _git("rev-parse", "HEAD")
+                _git("checkout", "-qb", "cside")
+                (_grepo / "proof.txt").write_text("cs\n", encoding="utf-8")
+                _git("commit", "-qam", "confs side")
+                _git("checkout", "-q", _gbranch)
+                (_grepo / "proof.txt").write_text("cm\n", encoding="utf-8")
+                _git("commit", "-qam", "confs main")
+                try:
+                    _git("merge", "--no-ff", "-m", "confs merge", "cside")
+                except RuntimeError:
+                    (_grepo / "proof.txt").write_text("cr\n", encoding="utf-8")
+                    _git("add", "proof.txt")
+                    _git("commit", "-qm", "confs resolved")
+                _gr1 = _git("rev-parse", "HEAD")
+                _saved_repo = REPO
+                globals()["REPO"] = _grepo
+                try:
+                    _gts = int(
+                        datetime.strptime("2026-01-02T03:04:05Z", "%Y-%m-%dT%H:%M:%SZ")
+                        .replace(tzinfo=timezone.utc)
+                        .timestamp()
+                    )
+                    check("real git reads file bytes at a ref", git_file_at(_gc2, "proof.txt"), "v2\n")
+                    check("real git reads older bytes at an older ref", git_file_at(_gc1, "proof.txt"), "v1\n")
+                    check("real git misses a bad ref", git_file_at("deadbee", "proof.txt"), None)
+                    check("real git misses a missing path", git_file_at(_gc2, "missing.txt"), None)
+                    check("real git sees a commit touch", git_commit_touches(_gc2, "proof.txt"), True)
+                    check("real git sees a commit miss", git_commit_touches(_gc2, "side.txt"), False)
+                    check("real git touch on a bad ref is unprovable", git_commit_touches("deadbee", "proof.txt"), None)
+                    # Merge visibility, characterized live (git 2.43.0): a
+                    # clean merge lists no files, but a conflict-resolution
+                    # merge lists its resolved files. D00 T01 §31 owns the
+                    # merge exclusion plus the docstring narrowing; the
+                    # conflict pin flips with that fix.
+                    check("real git reports no touch on a clean merge", git_commit_touches(_gm1, "side.txt"), False)
+                    check("real git reports a touch on a conflict merge", git_commit_touches(_gr1, "proof.txt"), True)
+                    check("real git reads conflict-merge content", git_file_at(_gr1, "proof.txt"), "cr\n")
+                    check("real git reads committer epoch", git_commit_ts(_gc2), _gts)
+                    check("real git ts on a bad ref is unprovable", git_commit_ts("deadbee"), None)
+                    check("real git proves ancestry", git_is_ancestor(_gc1, _gm1), True)
+                    check("real git refuses reversed ancestry", git_is_ancestor(_gm1, _gc1), False)
+                    check("real git proves self-ancestry", git_is_ancestor(_gc2, _gc2), True)
+                    check("real git ancestry on a bad ref is unprovable", git_is_ancestor("deadbee", _gm1), None)
+                    check("real git proves a range touch", git_range_touches(_gc1, _gm1, "side.txt"), True)
+                    check("real git refuses an out-of-range touch", git_range_touches(_gc1, _gc2, "side.txt"), False)
+                    check("real git resolves a commit", git_resolves(_gc1), True)
+                    check("real git refuses a bad short", git_resolves("deadbee"), False)
+                    check("real git refuses an absent full hex", git_resolves("f" * 40), False)
+                finally:
+                    globals()["REPO"] = _saved_repo
+            finally:
+                _gtmp.cleanup()
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.
