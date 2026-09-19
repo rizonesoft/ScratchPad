@@ -28,6 +28,8 @@ track: R1
 - No release ships without the checklist proving green suites, clean audit, and current docs.
 - Versions derive from release tags at build time; no hand-edited version string ships.
 - Product identity (copyright, publisher, logo, links) renders from one registry.
+- Help content builds from the user guide with checked links and a surface map.
+- The published guide and the F1 link switch land after the first signed release.
 
 **Adjacency:** list=not-applicable (no lists in this file); document=not-applicable (no printed output in this file); settings=not-applicable (update preference lives in D01 T02 §2); reporting=not-applicable (no reports in this file); notifications=applicable @ D07 T01 §3; permissions=not-applicable (install consent is platform UI); audit=not-applicable (release log is section 4, not a user audit trail); exchange=not-applicable (no import/export in this file); reverse=applicable @ D07 T01 §3
 
@@ -37,7 +39,7 @@ track: R1
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | MSIX package build | D00 T01 §2, §9, §10 |  [ ]   |
+|   1   |   §1    | MSIX package build | D00 T01 §2, §9, §10, §11 |  [ ]   |
 |   2   |   §2    | Clean-machine install test | §1 |  [ ]   |
 |   3   |   §3    | Update channel with rollback | §2 |  [ ]   |
 |   4   |   §4    | Release checklist | §3 |  [ ]   |
@@ -47,6 +49,8 @@ track: R1
 |   8   |   §8    | Inno Setup installer and distribution | §1 |  [ ]   |
 |   9   |   §9    | Dynamic version scheme | D00 T01 §2 |  [ ]   |
 |  10   |   §10   | Product identity registry | -- |  [ ]   |
+|  11   |   §11   | Help content pipeline | -- |  [ ]   |
+|  12   |   §12   | Guide web publishing and link switch | §5 |  [ ]   |
 
 ---
 
@@ -181,6 +185,28 @@ Why this section exists: the product's legal and brand strings live in exactly o
 - [ ] Commit: `"release: add the product identity registry"`
 
 **Test checkpoint:** Registry parses with confirmed URLs and verified assets; header check green with a red probe; the About row list is complete for D01 T02 §17. Cheaper substitute that fails: strings pasted per surface.
+
+## 11. Help Content Pipeline
+
+Why this section exists: the per-section `docs/user-guide/` pages are the help source, and this section turns them into shippable offline help. Operator direction 2026-09-19 picked browser-based local HTML over an in-app viewer (parity-pure: no new chrome) with F1 context help (D01 T01 §33) opening it. Web publishing is deferred to §12; in-app only for v1.
+
+- [ ] A build step renders `docs/user-guide/*.md` to HTML under the package content dir with a pinned Markdown renderer. Done when: every guide page renders with stable anchors and a missing-page probe is red.
+- [ ] A surface map binds surface ids to page plus anchor with a help-home default for unmapped surfaces. Done when: the map validates against the rendered TOC and an unknown-surface probe reads the default.
+- [ ] A link check verifies internal links plus anchors and the well-formedness of §10 registry URLs. Done when: the check is green and a broken-link plus broken-anchor probe pair is red.
+- [ ] Read base resolves from config with the local package path as default, so §12 flips to web without regenerating content. Done when: a base-override probe renders web URLs from identical content.
+- [ ] Commit: `"release: build help content from the guide"`
+
+**Test checkpoint:** Every guide page renders with a validated map and checked links; the base override proves the §12 switch needs no content change. Cheaper substitute that fails: HTML hand-written beside the guide.
+
+## 12. Guide Web Publishing and Link Switch
+
+Why this section exists: this is the remembered afterwards. Operator direction 2026-09-19 defers web publishing past v1; when it lands, F1 and the help links open the published pages instead of the local HTML. The §5 dependency parks this row until the first signed release ships.
+
+- [ ] The guide HTML publishes to the rizonesoft.com docs path by a mechanism decided at build (CI deploy or operator upload, operator-confirmed). Done when: published pages match the packaged HTML content with the web base.
+- [ ] The read base flips to the web default with local fallback when offline. Done when: F1 opens web URLs and a forced-offline probe falls back to local.
+- [ ] Commit: `"release: publish the guide and switch help links to web"`
+
+**Test checkpoint:** Published pages match packaged content; F1 reads web online and local offline. Cheaper substitute that fails: web pages without the base flip, or the flip without fallback.
 
 ## Verification
 

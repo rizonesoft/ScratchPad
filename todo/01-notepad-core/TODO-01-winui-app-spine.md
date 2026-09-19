@@ -45,6 +45,7 @@ track: N1
 - Tabs open, switch, reorder, and close with dirty-state prompts.
 - Files round-trip byte-identical for supported encodings and line endings.
 - Unsaved work is never lost silently: every destructive path prompts or recovers.
+- F1 opens context help for the focused surface in the default browser.
 
 **Adjacency:** list=applicable @ D01 T01 §6; document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=applicable @ D01 T01 §4; reverse=applicable @ D01 T01 §7
 
@@ -85,6 +86,7 @@ track: N1
 |  29   |   §29   | Open with explicit encoding | §4 |  [x]   |
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
 |  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [x]   |
+|  32   |   §33   | F1 context help | D07 T01 §11 |  [ ]   |
 
 ---
 
@@ -985,6 +987,27 @@ Why this section exists: two more UI tests failed nondeterministically on the D0
 > **CRUD:** applicable | CI runs wrote conclusions plus suite counts (read back via success, Passed/Skipped/Failed per attempt); Skips wrote skips (read back via the 3-skip line); rows wrote procedure state (read back via signatures, owners, dues)
 > **Duration:** 62
 > **Implementer:** Muse Code (Meta Muse Spark)
+
+## 33. F1 Context Help
+
+Why this section exists: F1 summons the guide page for the focused surface. Deliberate addition beyond parity (stock Notepad binds no help to F1), justified like the AI panel: agent, consent, and diff flows need explanation where the user is. Operator direction 2026-09-19 picked browser-based over an in-app viewer, so no new chrome ships here.
+
+**Fidelity:** No new chrome; the default browser opens outside the app, so no capture compares. Stock binds nothing to F1, which is the deviation, fenced above.
+
+**Job:** The user can summon help for the focused surface. Consumer: the D07 T01 §11 surface map, which is the only binding writer.
+
+**Treatment:** OS default browser through the launcher seam. Cheaper substitute that fails the checkpoint: an in-app viewer.
+
+**Chrome:** None added. Do not invent a help window.
+
+**Needs:** Windows host (build/test)
+
+- [ ] F1 at window level resolves the focused surface through the §11 map with the help-home default for unmapped surfaces. Done when: a drive proves a mapped surface, an unmapped surface, and no-focus.
+- [ ] Each resolution invokes the system launcher with the configured base plus local fallback on failure. Done when: the invoked URI per case matches with the seam mocked and a forced-failure probe falls back.
+- [ ] The guide documents the F1 behavior on the keyboard-behavior page, or a new `docs/user-guide/keyboard.md` if none exists. Done when: the page names F1, the default, and the fallback.
+- [ ] Commit: `"notepad-core: open context help on F1"`
+
+**Test checkpoint:** Drive proves mapped, unmapped, and fallback cases with matched URIs; guide documents the behavior. Cheaper substitute that fails: F1 opening a fixed home page regardless of focus.
 
 ## Verification
 

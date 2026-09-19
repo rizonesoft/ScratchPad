@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **74 of 227 sections complete (33%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **74 of 230 sections complete (32%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -228,6 +228,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §29` | Open with explicit encoding                                         |   4   |
 | [x] | `D01 T01 §30` | Locked-tab residue hardening                                        |   4   |
 | [x] | `D01 T01 §32` | Quarantine the AppIcon and Launch CI flakes                         |   4   |
+| [ ] | `D01 T01 §33` | F1 context help                                                     |   4   |
 | [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   5   |
 | [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   4   |
 | [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |
@@ -329,11 +330,13 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | :-: | ------------- | ------------------------------------- | :---: |
 | [ ] | `D07 T01 §9`  | Dynamic version scheme                |   5   |
 | [ ] | `D07 T01 §10` | Product identity registry             |   5   |
+| [ ] | `D07 T01 §11` | Help content pipeline                 |   5   |
 | [ ] | `D07 T01 §1`  | MSIX package build                    |   4   |
 | [ ] | `D07 T01 §2`  | Clean-machine install test            |   4   |
 | [ ] | `D07 T01 §3`  | Update channel with rollback          |   4   |
 | [ ] | `D07 T01 §4`  | Release checklist                     |   4   |
 | [ ] | `D07 T01 §5`  | First signed release                  |   4   |
+| [ ] | `D07 T01 §12` | Guide web publishing and link switch  |   3   |
 | [ ] | `D07 T01 §6`  | Store and WinGet distribution         |   4   |
 | [ ] | `D07 T01 §7`  | Share target registration             |   4   |
 | [ ] | `D07 T01 §8`  | Inno Setup installer and distribution |   6   |
