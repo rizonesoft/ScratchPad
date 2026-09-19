@@ -26,6 +26,8 @@ track: R1
 - A signed Inno Setup exe installs, runs, and uninstalls cleanly for users outside the Store path.
 - Updates arrive through a committed channel with rollback on failure.
 - No release ships without the checklist proving green suites, clean audit, and current docs.
+- Versions derive from release tags at build time; no hand-edited version string ships.
+- Product identity (copyright, publisher, logo, links) renders from one registry.
 
 **Adjacency:** list=not-applicable (no lists in this file); document=not-applicable (no printed output in this file); settings=not-applicable (update preference lives in D01 T02 §2); reporting=not-applicable (no reports in this file); notifications=applicable @ D07 T01 §3; permissions=not-applicable (install consent is platform UI); audit=not-applicable (release log is section 4, not a user audit trail); exchange=not-applicable (no import/export in this file); reverse=applicable @ D07 T01 §3
 
@@ -35,7 +37,7 @@ track: R1
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | MSIX package build | D00 T01 §2 |  [ ]   |
+|   1   |   §1    | MSIX package build | D00 T01 §2, §9, §10 |  [ ]   |
 |   2   |   §2    | Clean-machine install test | §1 |  [ ]   |
 |   3   |   §3    | Update channel with rollback | §2 |  [ ]   |
 |   4   |   §4    | Release checklist | §3 |  [ ]   |
@@ -43,6 +45,8 @@ track: R1
 |   6   |   §6    | Store and WinGet distribution | §1 |  [ ]   |
 |   7   |   §7    | Share target registration | §1, D01 T01 §24 |  [ ]   |
 |   8   |   §8    | Inno Setup installer and distribution | §1 |  [ ]   |
+|   9   |   §9    | Dynamic version scheme | D00 T01 §2 |  [ ]   |
+|  10   |   §10   | Product identity registry | -- |  [ ]   |
 
 ---
 
@@ -153,6 +157,30 @@ Why this section exists: MSIX plus Store plus WinGet (§§1-6) covers the manage
 - [ ] Commit: `"release: ship the Inno Setup installer"`
 
 **Test checkpoint:** Signed setup exe artifact in CI with §1 identity; clean-VM install, launch, and uninstall green; checksums published on the release draft. Cheaper substitute that fails: an unsigned exe on a release page.
+
+## 9. Dynamic Version Scheme
+
+Why this section exists: the only version source is the release tag. A tag-derived versioner computes SemVer from the tag plus height at build time, so releasing is tagging and no hand-edited version string can drift between the assembly, the About panel, the installer, and the feed. The stub `0.0.0` default (D00 T01 §2) retires to tagless local builds only.
+
+- [ ] `docs/release-versioning.md` records the scheme: tag shape `vMAJOR.MINOR.PATCH`, SemVer with height plus sha past the tag, Win32 four-part file version with the CI run number as fourth part, channel rule (tag on main reads stable, everything else reads preview), tagless local builds read `0.0.0-preview+<sha>`. Done when: every rule above is stated with an example string each.
+- [ ] A tag-derived versioner (MinVer, version pinned with lockfile) wires into `Directory.Build.props` so assembly, file, and informational versions stamp from the tag at build time. Done when: a build under a synthetic tag reports that tag from the binary and an untagged build reports the preview shape.
+- [ ] `NotepadCore.Version` keeps seeding from the assembly stamp with no second source; no hardcoded version string remains under `src/` or `tests/`. Done when: the blanked-stamp probe still fails loud and the version-literal grep is quoted clean.
+- [ ] A version-agreement test binds every stamped surface that exists now (assembly, file version, `NotepadCore.Version`) and names the late binders (§1 installer identity, §3 feed version) as skipped-until-landed with owner refs. Done when: `dotnet test --filter Version` is green and a mismatched-stamp probe is red.
+- [ ] Commit: `"release: derive versions from tags"`
+
+**Test checkpoint:** A synthetic-tag build reports the tag end to end (binary, core, agreement test); an untagged build reports the preview shape; no literal version ships. Cheaper substitute that fails: a version constant edited per release.
+
+## 10. Product Identity Registry
+
+Why this section exists: the product's legal and brand strings live in exactly one machine-readable place. The About panel (D01 T02 §17), the installers (§§1, 8), and the headers below all render from it, so identity can never disagree with itself. The app name is final (D01 T02 §13 shipped); this section owns everything around it.
+
+- [ ] `resources/brand/identity.json` carries the product name, publisher `Rizonetech (Pty) Ltd`, copyright `© [build-year] Rizonetech (Pty) Ltd. All rights reserved` with the build-year substitution rule, and the link slots (homepage, support, repository) holding operator-confirmed URLs. Done when: the file parses, every slot holds an `https://` URL confirmed by the operator at build time, and a malformed-URL probe is red.
+- [ ] The logo assets verify: `resources/rizonesoft-logo-dark.svg`, `resources/rizonesoft-logo-light.svg`, and their PNG mates exist and the registry records the About cap of 48px tall (auto width, about 172px at the wordmark ratio). Done when: a presence test names all four files and the cap, and a missing-asset probe is red.
+- [ ] `docs/product-identity.md` records the rules the JSON cannot carry: the 48px About cap with its reason (small lockup, operator direction 2026-09-19), the About row list for D01 T02 §17 (copyright, publisher, links, logo placement; the version row stays as D01 T02 §3 shipped it), and the source-header template (copyright line plus the SPDX identifier of the `LICENSE` of record). Done when: each rule names its consumer section.
+- [ ] Every code file under `src/` and `tests/` carries the header and a check fails headerless files. Done when: the tree is quoted clean after the mechanical pass and a headerless-file probe is red.
+- [ ] Commit: `"release: add the product identity registry"`
+
+**Test checkpoint:** Registry parses with confirmed URLs and verified assets; header check green with a red probe; the About row list is complete for D01 T02 §17. Cheaper substitute that fails: strings pasted per surface.
 
 ## Verification
 

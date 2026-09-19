@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **74 of 224 sections complete (33%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **74 of 227 sections complete (33%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -183,6 +183,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §11` | Session word goal                                                   |   4   |
 | [ ] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
 | [ ] | `D01 T02 §16` | Quarantine the MenuBarTests flakes                                  |   5   |
+| [ ] | `D01 T02 §17` | About panel identity rows                                           |   6   |
 | [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   5   |
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |   5   |
 | [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |   5   |
@@ -324,16 +325,18 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 4 -- Release: packaging, install, update
 
-|  ✔  | Section      | Deliverable                           | Items |
-| :-: | ------------ | ------------------------------------- | :---: |
-| [ ] | `D07 T01 §1` | MSIX package build                    |   4   |
-| [ ] | `D07 T01 §2` | Clean-machine install test            |   4   |
-| [ ] | `D07 T01 §3` | Update channel with rollback          |   4   |
-| [ ] | `D07 T01 §4` | Release checklist                     |   4   |
-| [ ] | `D07 T01 §5` | First signed release                  |   4   |
-| [ ] | `D07 T01 §6` | Store and WinGet distribution         |   4   |
-| [ ] | `D07 T01 §7` | Share target registration             |   4   |
-| [ ] | `D07 T01 §8` | Inno Setup installer and distribution |   6   |
+|  ✔  | Section       | Deliverable                           | Items |
+| :-: | ------------- | ------------------------------------- | :---: |
+| [ ] | `D07 T01 §9`  | Dynamic version scheme                |   5   |
+| [ ] | `D07 T01 §10` | Product identity registry             |   5   |
+| [ ] | `D07 T01 §1`  | MSIX package build                    |   4   |
+| [ ] | `D07 T01 §2`  | Clean-machine install test            |   4   |
+| [ ] | `D07 T01 §3`  | Update channel with rollback          |   4   |
+| [ ] | `D07 T01 §4`  | Release checklist                     |   4   |
+| [ ] | `D07 T01 §5`  | First signed release                  |   4   |
+| [ ] | `D07 T01 §6`  | Store and WinGet distribution         |   4   |
+| [ ] | `D07 T01 §7`  | Share target registration             |   4   |
+| [ ] | `D07 T01 §8`  | Inno Setup installer and distribution |   6   |
 
 ### Phase 99 -- Manual: operator-only steps
 

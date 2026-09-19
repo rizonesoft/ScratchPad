@@ -37,6 +37,7 @@ track: N1
 - Settings persist, take effect without restart where Notepad does, and have exactly one store.
 - The status bar shows live line/column, zoom, encoding, and line endings.
 - Print produces Notepad's output for the active document.
+- The Settings About panel shows the product identity (copyright, publisher, links, logo) from the D07 registry.
 
 **Adjacency:** list=applicable @ D01 T02 §8; document=applicable @ D01 T02 §5; settings=applicable @ D01 T02 §2; reporting=not-applicable (a text editor reports nothing); notifications=not-applicable (no notification surface in this file); permissions=not-applicable (single-user desktop app, no roles); audit=not-applicable (no audit trail in this file); exchange=not-applicable (no import/export in this file); reverse=applicable @ D01 T02 §2
 
@@ -62,6 +63,7 @@ track: N1
 |  14   |   §11   | Session word goal | §4, §9 |  [ ]   |
 |  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
 |  16   |   §16   | Quarantine the MenuBarTests flakes | §1 |  [ ]   |
+|  17   |   §17   | About panel identity rows | D07 T01 §10 |  [ ]   |
 
 ---
 
@@ -486,6 +488,29 @@ Why this section exists: three `MenuBarTests` failed nondeterministically on CI 
 - [ ] Commit: `"notepad-core: quarantine the MenuBarTests flakes"`
 
 **Test checkpoint:** All three Skips plus all three rows land; local full run green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
+
+## 17. About Panel Identity Rows
+
+Why this section exists: the shipped Settings About panel (D01 T02 §3) shows name plus assembly version only; its recorded decision lands copyright and publisher rows with D07 identity. This section binds those rows plus links and the logo from the D07 T01 §10 registry. It touches only the About panel's row list; name, version, cards, and treatments stay as shipped.
+
+**Fidelity:** Notepad About side panel -- `resources/baseline/windows/notepad-open-in-setting-n11.2607.14.0-win25h2.png` (full page with the About panel) plus the refreshed settings golden. Rows sit in stock positions where stock has them (name, version, copyright, links); the logo is ours (registry-capped 48px tall) and the links are ours (registry URLs). Deviations: logo added, Microsoft legal rows replaced.
+
+**Job:** The user can read the app identity and open each link. Consumer: the §10 registry, which is the only identity writer.
+
+**Treatment:** Stock settings cards through the §3 card treatment. Cheaper substitute that fails the checkpoint: a second About dialog outside Settings.
+
+**Chrome:** Consume the §3 settings-card treatment. Do not invent a second settings treatment.
+
+**Needs:** Windows host (build/test)
+
+- [ ] `src/ScratchPad/SettingsPage.xaml` renders copyright, publisher, links, and logo rows in the About panel from the §10 registry. Done when: each row's text matches the registry and no identity string is hardcoded in the page.
+- [ ] Each link row invokes the system launcher with its registry URL. Done when: the invoked URI per row matches the registry with the launcher seam mocked.
+- [ ] The logo renders at most 48px tall in both themes with the theme-correct asset. Done when: the capture comparison shows the cap holding on light and dark goldens.
+- [ ] The name and version rows read exactly as D01 T02 §3 shipped them. Done when: the row texts are byte-identical to the shipped golden strings.
+- [ ] `docs/user-guide/settings.md` documents the new rows. Done when: the guide names every row and its source.
+- [ ] Commit: `"notepad-core: add the About identity rows"`
+
+**Test checkpoint:** UI drive proves every row from the registry with launcher URIs matched; capture comparison passes both themes; guide updated. Cheaper substitute that fails: rows that render but read pasted strings.
 
 ## Verification
 
