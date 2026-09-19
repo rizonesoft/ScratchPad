@@ -160,7 +160,7 @@ Why this section exists: MSIX plus Store plus WinGet (§§1-6) covers the manage
 
 ## 9. Dynamic Version Scheme
 
-Why this section exists: the only version source is the release tag. A tag-derived versioner computes SemVer from the tag plus height at build time, so releasing is tagging and no hand-edited version string can drift between the assembly, the About panel, the installer, and the feed. The stub `0.0.0` default (D00 T01 §2) retires to tagless local builds only.
+Why this section exists: the only version source is the release tag. A tag-derived versioner computes SemVer from the tag plus height at build time, so releasing is tagging and no hand-edited version string can drift between the assembly, the About panel, the installer, and the feed. The stub `0.0.0` default (D00 T01 §2) retires to tagless local builds only. Operator-confirmed 2026-09-19: the scheme stays as filed.
 
 - [ ] `docs/release-versioning.md` records the scheme: tag shape `vMAJOR.MINOR.PATCH`, SemVer with height plus sha past the tag, Win32 four-part file version with the CI run number as fourth part, channel rule (tag on main reads stable, everything else reads preview), tagless local builds read `0.0.0-preview+<sha>`. Done when: every rule above is stated with an example string each.
 - [ ] A tag-derived versioner (MinVer, version pinned with lockfile) wires into `Directory.Build.props` so assembly, file, and informational versions stamp from the tag at build time. Done when: a build under a synthetic tag reports that tag from the binary and an untagged build reports the preview shape.
@@ -172,7 +172,7 @@ Why this section exists: the only version source is the release tag. A tag-deriv
 
 ## 10. Product Identity Registry
 
-Why this section exists: the product's legal and brand strings live in exactly one machine-readable place. The About panel (D01 T02 §17), the installers (§§1, 8), and the headers below all render from it, so identity can never disagree with itself. The app name is final (D01 T02 §13 shipped); this section owns everything around it.
+Why this section exists: the product's legal and brand strings live in exactly one machine-readable place. The About panel (D01 T02 §17), the installers (§§1, 8), and the headers below all render from it, so identity can never disagree with itself. The app name is final (D01 T02 §13 shipped); this section owns everything around it. Operator-confirmed 2026-09-19: the GPL-3.0 LICENSE stays.
 
 - [ ] `resources/brand/identity.json` carries the product name, publisher `Rizonetech (Pty) Ltd`, copyright `© [build-year] Rizonetech (Pty) Ltd. All rights reserved` with the build-year substitution rule, and the link slots (homepage, support, repository) holding operator-confirmed URLs. Done when: the file parses, every slot holds an `https://` URL confirmed by the operator at build time, and a malformed-URL probe is red.
 - [ ] The logo assets verify: `resources/rizonesoft-logo-dark.svg`, `resources/rizonesoft-logo-light.svg`, and their PNG mates exist and the registry records the About cap of 48px tall (auto width, about 172px at the wordmark ratio). Done when: a presence test names all four files and the cap, and a missing-asset probe is red.
