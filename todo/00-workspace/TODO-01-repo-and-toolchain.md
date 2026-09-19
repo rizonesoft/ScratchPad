@@ -88,6 +88,7 @@ track: W0
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [ ]   |
 |  42   |   §42   | Requires operator vocabulary | §13 |  [ ]   |
+|  43   |   §43   | Findings count touch-up | §20 |  [ ]   |
 
 ---
 
@@ -584,6 +585,7 @@ Why this section exists: the sixth live plan review (§19 plus §17, `gpt-5.6-so
 - -> XREF: D00 T01 §21 -- seventh-live-plan-review filing (grandfathered provenance inventory: PR9) filed there
 - -> XREF: D00 T01 §23 -- seventh-live-plan-review filing (provenance-run equality: PR7) filed there
 - -> XREF: D00 T01 §24 -- seventh-live-plan-review filings (lineage residuals and run inspection: PR2, PR5, PR15, PR18) filed there
+- -> XREF: D00 T01 §43 -- findings-count reconciliation filed there
 
 > **Verified:** 2026-09-18 | §20 | self-test 653/653 (34 new: generator, lineage, synonym, provenance, fixtures, CLI); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 6ab8eae f02b812 41a7141 d109a92 d6142aa 81dcc2d, final round all approve; plan review 18 findings, 6 filed at §§21/23/24, 10 rejected, 2 duplicate
 > **Review:** round 5 (FINAL), candidates 6ab8eae f02b812 41a7141 d109a92 d6142aa 81dcc2d -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1 six findings (immediate outage, synonym, invocation, counts), R2 dictionary row, R3 outage predicate plus genesis scan plus day scope, R4 paren close. Raw findings: docs/reviews/00-workspace/D00-T01-s20.md
@@ -667,6 +669,8 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 - [ ] Commit: `"workspace: lineage residuals per seventh live round"`
 
 **Test checkpoint:** singletons carry no ancestry, new manifests carry runs, chains fork nowhere, and one query explains any run. Cheaper substitute that fails: prose restating the gaps.
+
+- -> XREF: D00 T01 §43 -- §20 findings-count drift filed there
 
 ## 25. Rule-24 Comment Touch-Up
 
@@ -918,6 +922,16 @@ Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded 
 - [ ] Commit: `"workspace: gate manual rows behind Requires operator"`
 
 **Test checkpoint:** `query ready` hides D99 rows by default and shows them under `--context operator`; self-test green with the new cases; `validate` silent. Cheaper substitute that fails: prose claiming runners skip Phase 99.
+
+## 43. Findings Count Touch-Up
+
+Why this section exists: the §20 findings ledger carries 18 rows that parse as 6 filed, 9 rejected, and 3 duplicate, but the file's prose header and the §20 stamp both record 10 rejected and 2 duplicate: PR11 is a `duplicate` row whose `(rejected: ...)` parenthetical names the reason, and the headcount read the parenthetical as the disposition. Rows are the validator-enforced authority, so the prose reconciles to them without rewriting history. -> XREF: D00 T01 §20 (reconciles its recorded counts); -> XREF: D00 T01 §24 (filed from its validation); -> SOURCE: s20-count-drift-2026-09-19 (prose header counts vs parsed ledger rows in docs/reviews/00-workspace/D00-T01-s20.md).
+
+- [ ] Reconcile the §20 ledger header to the parsed tallies: 6 filed, 9 rejected, 3 duplicate. Done when: the header states the parsed numbers.
+- [ ] Annotate the §20 stamp's counts as historical with a dated note, §17-annotation precedent. Done when: the note names the old counts and the reason.
+- [ ] Commit: `"todo: reconcile §20 findings counts"`
+
+**Test checkpoint:** tallies of `-> filed` / `-> rejected` / `-> duplicate` over the §20 ledger block equal the header's numbers (6/9/3). Falsifiable by any tally that disagrees.
 
 ## Verification
 
