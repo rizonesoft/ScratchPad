@@ -70,7 +70,7 @@ track: W0
 |  22   |   §22   | Clearance binding | §19 |  [x]   |
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [x]   |
 |  24   |   §24   | Lineage residuals and run inspection | §20, §23 |  [x]   |
-|  25   |   §25   | Rule-24 comment touch-up | §21 |  [ ]   |
+|  25   |   §25   | Rule-24 comment touch-up | §21 |  [x]   |
 |  26   |   §26   | Grandfathered migration execution | §21 |  [ ]   |
 |  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
@@ -698,6 +698,12 @@ Why this section exists: the §21 panel's round 5 (the cap) reported one consist
 
 - -> XREF: D00 T01 §46 -- rule-description probe completeness filed there
 - -> XREF: D00 T01 §29 -- plan-review joiners (review-date firing, inert-waiver surfacing) filed there
+
+> **Verified:** 2026-09-19 | §25 | self-test 786/786 (2 new: one review-window probe per rule-24 description); live validate 0 fatal 0 warnings; 3 Opus panel rounds over candidates 7f24021 b9bf393 aacaa83, final round all approve; plan review 9 findings, 3 filed at §46 plus two §29 items, 1 duplicate, 5 rejected
+> **Review:** round 3 (FINAL), candidates 7f24021 b9bf393 aacaa83 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1 probe anchoring plus citation provenance, R2 Done-note wording, R3 all approve. Raw findings: docs/reviews/00-workspace/D00-T01-s25.md
+> **Plan review:** GPT high, filed D00 T01 §46, D00 T01 §29 (run 20260919-D00-T01-S25-gpt)
+> **CRUD:** applicable | self-test read repo sources for probe greps (no writes); implementation edited two comments plus two probes plus ticks (read back via self-test 786/786, live validate 0 fatal); filing opened §46 plus two §29 items plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T01:14:55Z to 2026-09-19T01:28:31Z
 
 ## 26. Grandfathered Migration Execution
 
