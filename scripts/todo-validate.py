@@ -586,57 +586,19 @@ def validate(graph, _args) -> int:
     # All `Plan review:` lines of one section, in order (D00 T01 §19 item
     # 4): the parser keeps the last (last-governs), but lineage is a
     # property of the chain, so the validator re-slices the span. A
-    # range stamp's fields reach sections whose spans hold no marker
-    # lines; those read the parsed body as their single line.
+    # Marker helpers live in the graph module (D00 T01 §24 review
+    # R4): the validator and the run query share one `outage marker`
+    # reading and one chain slice, so the two can never drift apart.
     todo_lines: dict[str, list[str]] = {}
 
     def section_markers(todo, num: int) -> list[str] | None:
-        if todo.path not in todo_lines:
-            try:
-                todo_lines[todo.path] = (graph.TODO_DIR.parent / todo.path).read_text(
-                    encoding="utf-8"
-                ).splitlines()
-            except OSError:
-                return None
-        lines = todo_lines[todo.path]
-        spans = sorted((s2.line or 0, n2) for n2, s2 in todo.sections.items())
-        start = max(todo.sections[num].line or 0, 1)
-        following = [ln for ln, _n in spans if ln > start]
-        end = following[0] if following else len(lines) + 1
-        out = []
-        for ln in lines[start - 1 : end - 1]:
-            sm = graph.STAMP_RE.match(ln)
-            if sm and sm.group("kind") == "Plan review":
-                out.append(sm.group("body"))
-        if not out:
-            parsed = (todo.sections[num].plan_review_body or "").strip()
-            if parsed:
-                out.append(parsed)
-        return out
+        return graph.section_markers(todo_lines, todo, num)
 
     def marker_states(body: str) -> dict[str, bool]:
-        # The five grammar predicates over one marker body (D00 T01 §17
-        # item 2). One function serves the last-line grammar below and
-        # the §20 outage-predecessor test, so both sites read `outage
-        # marker` the same way (review R3: a bare `outage:` substring
-        # also matches prose about an outage beside real filings).
-        low = body.lower()
-        return {
-            "outage": "outage:" in low,
-            "nofind": "no findings" in low,
-            "filed": re.search(r"\bfiled\b", low) is not None,
-            "retry": "retry-owed" in low,
-            "partial": re.search(r"\bpartial\s*:", low) is not None,
-        }
+        return graph.marker_states(body)
 
     def is_outage_marker(body: str) -> bool:
-        # A predecessor counts as the outage a rerun follows only when it
-        # parses as an outage marker: `outage:` with none of the success
-        # states beside it (D00 T01 §20 item 4). Prose that merely
-        # mentions an outage beside filings is a normal marker, and a
-        # rerun after it chains via `supersedes`.
-        st = marker_states(body)
-        return st["outage"] and not (st["filed"] or st["nofind"] or st["retry"] or st["partial"])
+        return graph.is_outage_marker(body)
 
     for t in todos:
         for num, s in sorted(t.sections.items()):

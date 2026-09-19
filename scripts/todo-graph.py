@@ -1155,6 +1155,61 @@ def normalize_run_id(run: str) -> str:
     return run
 
 
+def marker_states(body: str) -> dict[str, bool]:
+    # The five grammar predicates over one marker body (D00 T01 §17
+    # item 2). One function serves the validator's last-line grammar,
+    # the §20 outage-predecessor test, and the run query, so every
+    # site reads `outage marker` the same way (review R3: a bare
+    # `outage:` substring also matches prose about an outage beside
+    # real filings).
+    low = body.lower()
+    return {
+        "outage": "outage:" in low,
+        "nofind": "no findings" in low,
+        "filed": re.search(r"\bfiled\b", low) is not None,
+        "retry": "retry-owed" in low,
+        "partial": re.search(r"\bpartial\s*:", low) is not None,
+    }
+
+
+def is_outage_marker(body: str) -> bool:
+    # A predecessor counts as the outage a rerun follows only when it
+    # parses as an outage marker: `outage:` with none of the success
+    # states beside it (D00 T01 §20 item 4). Prose that merely
+    # mentions an outage beside filings is a normal marker, and a
+    # rerun after it chains via `supersedes`.
+    st = marker_states(body)
+    return st["outage"] and not (st["filed"] or st["nofind"] or st["retry"] or st["partial"])
+
+
+def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> list[str] | None:
+    """Every `Plan review:` line body of one section, in file order.
+
+    A range stamp's fields reach sections whose spans hold no marker
+    lines; those read the parsed body as their single line.
+    """
+    if todo.path not in todo_lines:
+        try:
+            todo_lines[todo.path] = (TODO_DIR.parent / todo.path).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return None
+    lines = todo_lines[todo.path]
+    spans = sorted((s2.line or 0, n2) for n2, s2 in todo.sections.items())
+    start = max(todo.sections[num].line or 0, 1)
+    following = [ln for ln, _n in spans if ln > start]
+    end = following[0] if following else len(lines) + 1
+    out = []
+    for ln in lines[start - 1 : end - 1]:
+        sm = STAMP_RE.match(ln)
+        if sm and sm.group("kind") == "Plan review":
+            out.append(sm.group("body"))
+    if not out:
+        parsed = (todo.sections[num].plan_review_body or "").strip()
+        if parsed:
+            out.append(parsed)
+    return out
+
+
 RUN_ID_RE = re.compile(r"\brun\s+(\S+?)(?=[,;)]|\s|$)")
 SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
 # A clearance names the commit that carries the fix (D00 T01 §19 item 8):
@@ -1823,33 +1878,14 @@ def cmd_query(args) -> int:
         def _one_line(text: str, width: int) -> str:
             return re.sub(r"\s+", " ", text).strip()[:width]
 
-        def _is_outage(body: str) -> bool:
-            low = body.lower()
-            return "outage:" in low and not (
-                re.search(r"\bfiled\b", low)
-                or "no findings" in low
-                or "retry-owed" in low
-                or re.search(r"\bpartial\s*:", low)
-            )
-
-        # Marker chains: every Plan review line per section, in file
-        # order, so the lineage leg reads genesis-first.
+        # Marker chains through the shared slice, so range-stamped
+        # sections read their parsed fallback exactly like the
+        # validator does and the two can never drift apart.
         chains: dict[tuple[str, int], list[str]] = {}
+        _chain_lines: dict[str, list[str]] = {}
         for t in todos:
-            try:
-                tlines = (TODO_DIR.parent / t.path).read_text(encoding="utf-8").splitlines()
-            except OSError:
-                continue
-            spans = sorted((s2.line or 0, n2) for n2, s2 in t.sections.items())
-            for num, s in t.sections.items():
-                start = max(s.line or 0, 1)
-                following = [ln for ln, _n in spans if ln > start]
-                end = following[0] if following else len(tlines) + 1
-                bodies = []
-                for ln in tlines[start - 1 : end - 1]:
-                    sm = STAMP_RE.match(ln)
-                    if sm and sm.group("kind") == "Plan review":
-                        bodies.append(sm.group("body"))
+            for num in t.sections:
+                bodies = section_markers(_chain_lines, t, num) or []
                 if bodies:
                     chains[(t.path, num)] = bodies
 
@@ -1966,7 +2002,7 @@ def cmd_query(args) -> int:
             (_path, _num, _b)
             for (_path, _num), _bodies in sorted(carrying.items())
             for _b in _bodies
-            if _is_outage(_b)
+            if is_outage_marker(_b)
         ]
         if not _outages:
             print("    clean (no outage markers)")
@@ -6688,6 +6724,8 @@ track: Z1
 |  61   |   §61   | Forward-edge probe | - |  [x]   |
 |  62   |   §62   | Ledger-row fork probe | - |  [x]   |
 |  63   |   §63   | Multi-record probe | - |  [x]   |
+|  64   |   §64   | Range pair one | - |  [x]   |
+|  65   |   §65   | Range pair two | - |  [x]   |
 
 ---
 
@@ -7437,6 +7475,24 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §63 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-multirec.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S63-gpt)
+
+## 64. Range pair one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §64-§65 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-range.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S64-gpt)
+
+## 65. Range pair two
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -7860,6 +7916,14 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR11] [major] Re-cited multirecord rerun finding -> filed §2\n"
             "End of ledger\n"
             "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-range.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §64, D90 T07 §65]; dependents [none]; bytes 100; run 20260920-D90-T07-S64-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited range finding -> filed §2\n"
+            "End of ledger\n",
             encoding="utf-8",
         )
         # Provenance migration (D00 T01 §20 item 2, per-file runs D00 T01
@@ -9026,6 +9090,27 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "query run resolves the second record (no rebind drop)",
             any("D90-T07-S4-PR11" in ln for ln in wbuf.getvalue().splitlines()),
+            True,
+        )
+        check(
+            "§§64-65 fire exactly zero (range-pair silence)",
+            sum(
+                1
+                for ln in marker_out
+                if "TODO-07-marker.md" in ln and ("§64 " in ln or "§65 " in ln) and "FATAL" in ln
+            ),
+            0,
+        )
+        gbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(gbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            range_code = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S64-gpt")
+            )
+        glines = gbuf.getvalue().splitlines()
+        check("query run exits 0 on the range-stamped run", range_code, 0)
+        check(
+            "query run resolves range-stamped non-first sections",
+            any("§65" in ln and "S64-gpt" in ln for ln in glines),
             True,
         )
         check(
