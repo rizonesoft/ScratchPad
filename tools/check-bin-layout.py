@@ -56,11 +56,12 @@ def cmd_stems(root: Path) -> int:
     seen: dict[str, Path] = {}
     failed = False
     for p in iter_projects(root):
-        if p.stem in seen:
-            print(f"collision: stem {p.stem}: {seen[p.stem]} and {p}")
+        key = p.stem.casefold()
+        if key in seen:
+            print(f"collision: stem {p.stem}: {seen[key]} and {p}")
             failed = True
         else:
-            seen[p.stem] = p
+            seen[key] = p
     if failed:
         return 1
     print(f"unique stems: {len(seen)} projects, no collisions")
@@ -80,8 +81,7 @@ def evaluated(dotnet: str, project: Path, prop: str) -> str | None:
         return None
     lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
     if not lines:
-        print(f"evaluation empty: {project} ({prop})")
-        return None
+        return ""
     return lines[-1].strip()
 
 
@@ -105,7 +105,15 @@ def cmd_conformance(root: Path, dotnet: str, skip_eval: bool) -> int:
                 norm, prefix = norm.casefold(), prefix.casefold()
             rest = norm[len(prefix):].strip("/") if norm.startswith(prefix) else None
             legs = rest.split("/") if rest else []
-            if rest is None or len(legs) not in (1, 2) or any(not leg for leg in legs):
+            config = evaluated(dotnet, p, "Configuration")
+            rid = evaluated(dotnet, p, "RuntimeIdentifier")
+            if config is None or rid is None:
+                failed = True
+                continue
+            if os.name == "nt":
+                config, rid = config.casefold(), rid.casefold()
+            want = [config] + ([rid] if rid else [])
+            if rest is None or legs != want:
                 print(f"shape violation: {p} evaluates to {out}")
                 failed = True
     for d in SCAN_DIRS:
