@@ -9,6 +9,7 @@ valid-looking row must not mask malformed trailing findings).
 """
 
 import codecs
+import contextlib
 import hashlib
 import json
 import os
@@ -18,6 +19,15 @@ import shlex
 import subprocess
 import threading
 import time
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+try:
+    import msvcrt
+except ImportError:  # Unix
+    msvcrt = None
 
 PANEL_LENSES = ("adversarial", "consistency", "integration", "record")
 PANEL_VERDICTS = ("approve", "needs-attention", "advisory")
@@ -68,6 +78,11 @@ RUN_TIMEOUT_MAX_SECS = 86400
 # Producer stderr is diagnostic context only: captured to 64KB, then
 # truncated (a chatty producer must not exhaust the collector).
 STDERR_MAX_BYTES = 2**16
+# Pending-reader chunks (D00 T01 §34 R2 adversarial 1): an unbounded
+# queue lets a fast producer outrun a stalled validator without
+# bound, so 32 chunks (2MB) of backpressure cap the backlog and the
+# producer blocks on the pipe instead.
+COLLECT_QUEUE_CHUNKS = 32
 _PANEL_LINE_RE = re.compile(
     r"^\s*\*{2}\s*(adversarial|consistency|integration|record)\*{0,2}\s*:?\s*"
     r"(approve|needs-attention|advisory)(?:\s*\((?P<c1>" + _COUNT_INNER + r")\)\*{0,2}|\*{0,2}\s*\((?P<c2>"
@@ -316,6 +331,12 @@ def _read_scan_files(paths: list[str], prefix: str) -> list[str]:
         except OSError as exc:
             print(f"{prefix}: cannot read {path}: {exc}", file=sys.stderr)
             sys.exit(2)
+        except UnicodeDecodeError as exc:
+            # Malformed scans fail named (D00 T01 §34 R2 adversarial
+            # 2): UnicodeDecodeError is not an OSError, so without
+            # this leg both run-id and run crash on hostile bytes.
+            print(f"{prefix}: cannot decode {path}: {exc}", file=sys.stderr)
+            sys.exit(2)
     return texts
 
 
@@ -345,7 +366,11 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     try:
         proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as exc:
-        return False, f"producer failed to start: {exc}", {"returncode": None, "stderr_tail": "", "bytes_read": 0, "lines_read": 0}
+        # The raw key rides even here (D00 T01 §34 R2 integration
+        # 1): the run branch stores info["raw"] unconditionally, so
+        # an unstartable producer must ledger an empty artifact
+        # instead of crashing on the missing key.
+        return False, f"producer failed to start: {exc}", {"returncode": None, "stderr_tail": "", "bytes_read": 0, "lines_read": 0, "raw": b""}
 
     def _feed() -> None:
         try:
@@ -355,7 +380,7 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
         except (BrokenPipeError, OSError, ValueError):
             pass
 
-    chunks: queue.Queue = queue.Queue()
+    chunks: queue.Queue = queue.Queue(maxsize=COLLECT_QUEUE_CHUNKS)
     _EOF, _EXC = object(), object()
 
     # read1, not read: read() blocks for a full buffer, holding back
@@ -410,6 +435,19 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             return proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             return proc.returncode
+
+    def _drain_queue() -> None:
+        # Free a reader blocked in put (D00 T01 §34 R2 adversarial
+        # 1): the bounded queue backpressures the reader, so after
+        # the reap the main loop takes until EOF, error, or quiet
+        # instead of stranding the thread.
+        while True:
+            try:
+                kind, _ = chunks.get(timeout=5)
+            except queue.Empty:
+                return
+            if kind is not None:
+                return
 
     def _stderr_tail() -> str:
         raw = b"".join(errbuf)[:STDERR_MAX_BYTES].decode("utf-8", "replace")
@@ -475,9 +513,14 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             reason = f"NUL byte at byte offset {base + nul}"
             break
         try:
+            # Error offsets index the decoder's combined buffered
+            # plus new bytes (D00 T01 §34 R2 adversarial 3: probed, a
+            # split sequence reports exc.start against the held
+            # prefix), so the held count comes off the base.
+            _held = len(decoder.getstate()[0])
             piece = decoder.decode(payload)
         except UnicodeDecodeError as exc:
-            reason = f"malformed UTF-8 at byte offset {base + exc.start}"
+            reason = f"malformed UTF-8 at byte offset {base - _held + exc.start}"
             break
         text_parts.append(piece)
         # Logical lines, exactly like the checker (D00 T01 §34 R1
@@ -512,6 +555,10 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
         try:
             final = decoder.decode(b"", final=True)
         except UnicodeDecodeError as exc:
+            # End-relative, unlike the mid-stream gate above: only a
+            # valid-prefix truncation can reach the flush (anything
+            # invalid already raised), so the defect sits at the
+            # stream end.
             reason = f"malformed UTF-8 at byte offset {total_bytes + exc.start}"
             final = ""
         if not reason and final:
@@ -530,6 +577,7 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     rc = proc.returncode
     if reason:
         rc = _reap()
+        _drain_queue()
     else:
         remaining = timeout_secs - (time.monotonic() - started)
         try:
@@ -562,6 +610,57 @@ def _ledger_claims(store: str) -> tuple[str, set[str]]:
         return "", set()
     ids = re.findall(r'"run"\s*:\s*"([^"]+)"', data)
     return "".join(f"run {i}\n" for i in ids), set(ids)
+
+
+@contextlib.contextmanager
+def _held_ledger_lock(store: str):
+    """Mutual exclusion for the run-ledger append (D00 T01 §34 R2
+    record 1): the guard read and the append hold one lock, so two
+    concurrent runs cannot both observe an ID as absent. A sidecar
+    lock file carries the mutex (never the ledger handle: no offset
+    games on either side); locks release on close and crash, so the
+    file never goes stale. fcntl on Unix, msvcrt on Windows (the two
+    do not interoperate, but the store is always local); no
+    primitive fails closed rather than appending unlocked.
+    """
+    if fcntl is None and msvcrt is None:
+        raise OSError("no file-locking primitive for the run ledger")
+    os.makedirs(store, exist_ok=True)
+    with open(os.path.join(store, "ledger.lock"), "a+b") as fh:
+        if os.fstat(fh.fileno()).st_size == 0:
+            fh.write(b"x")
+            fh.flush()
+        if fcntl is not None:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        else:
+            assert msvcrt is not None
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+        try:
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            else:
+                assert msvcrt is not None
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+def _record_run(store: str, run_id: str, mint, build) -> tuple[str, dict]:
+    """Finalize one run ID and append its receipt atomically: under
+    the ledger lock the claims re-read, a taken ID re-mints once
+    (nothing interleaves, so one pass suffices), and the built
+    receipt appends. Returns the final ID plus receipt.
+    """
+    with _held_ledger_lock(store):
+        claims_text, ids = _ledger_claims(store)
+        if run_id in ids:
+            run_id = mint(claims_text)
+        receipt = build(run_id)
+        with open(os.path.join(store, "ledger.jsonl"), "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(receipt, sort_keys=True) + "\n")
+        return run_id, receipt
 
 
 if __name__ == "__main__":
@@ -739,41 +838,25 @@ if __name__ == "__main__":
             verdict = ("PASS " if passed else "FAIL ") + why
         else:
             verdict = "FAIL " + payload
-        # Run uniqueness (D00 T01 §34 R1 integration 1): a repeated
-        # run mints the same ID from unchanged scans, so the append
-        # re-checks the ledger it read at mint: a lost race re-mints
-        # past the fresh claims instead of duplicating the row. The
-        # guard read sits adjacent to the append (no producer
-        # between); same-microsecond appends are the accepted
-        # residual (closing it wants OS file locks).
-        for _attempt in range(3):
-            try:
-                _fresh_text, _fresh_ids = _ledger_claims(store)
-            except (OSError, ValueError) as exc:
-                print(f"run: cannot read the run ledger under {store}: {exc}", file=sys.stderr)
-                sys.exit(1)
-            if run_id not in _fresh_ids:
-                break
-            try:
-                run_id = next_run_id(todo_path, run_section, family, date, *claim_texts, _fresh_text)
-            except ValueError as exc:
-                print(f"run: {exc}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            print(f"run: run {run_id} keeps colliding in the ledger under {store}; retry the run", file=sys.stderr)
-            sys.exit(1)
-        receipt = {
-            "run": run_id,
-            "kind": kind,
-            "digest": "sha256:" + digest,
-            "verdict": verdict,
-            "artifact": artifact,
-        }
+        # Run uniqueness (D00 T01 §34 R1 integration 1, locked D00
+        # T01 §34 R2 record 1): the mint already walked past the
+        # ledger claims read before the producer ran; recording
+        # re-checks under the lock and re-mints once when taken.
         try:
-            with open(os.path.join(store, "ledger.jsonl"), "a", encoding="utf-8") as fh:
-                fh.write(json.dumps(receipt, sort_keys=True) + "\n")
-        except OSError as exc:
-            print(f"run: cannot append the run ledger under {store}: {exc}", file=sys.stderr)
+            run_id, receipt = _record_run(
+                store,
+                run_id,
+                lambda ct: next_run_id(todo_path, run_section, family, date, *claim_texts, ct),
+                lambda rid: {
+                    "run": rid,
+                    "kind": kind,
+                    "digest": "sha256:" + digest,
+                    "verdict": verdict,
+                    "artifact": artifact,
+                },
+            )
+        except (OSError, ValueError) as exc:
+            print(f"run: cannot record the run under {store}: {exc}", file=sys.stderr)
             sys.exit(1)
         try:
             shown = os.path.relpath(artifact, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))

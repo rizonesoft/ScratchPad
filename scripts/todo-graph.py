@@ -1681,9 +1681,14 @@ def ledger_link_identity(block: str) -> dict[str, str | None]:
     out: dict[str, str | None] = {}
     for lr in LEDGER_ROW_RE.finditer(block):
         rest = block[lr.end():].split("\n", 1)[0]
-        if SUPERSEDES_RE.search(rest) is None:
+        sm = SUPERSEDES_RE.search(rest)
+        if sm is None:
             continue
-        im = IDENTITY_RE.search(rest)
+        # After the link only (D00 T01 §34 R2 consistency 1): the
+        # documented grammar puts `identity <12hex>` after
+        # `supersedes <id>`, so a token riding before the link
+        # proves nothing and the row reads token-less.
+        im = IDENTITY_RE.search(rest, sm.end())
         out.setdefault(lr.group(1).lower(), im.group(1).lower() if im else None)
     return out
 
@@ -4130,7 +4135,12 @@ def cmd_query(args) -> int:
             _rpath = TODO_DIR.parent / RISK_REGISTER_PATH
             if getattr(args, "sync", False):
                 _rtmp = _rpath.with_suffix(".md.tmp")
-                _rtmp.write_text(_rtext, encoding="utf-8")
+                # Untranslated like the --check read (D00 T01 §34 R2
+                # integration 2): write_text would emit CRLF on
+                # Windows, which the raw read then rejects as drift,
+                # so sync-then-check must round-trip on every OS.
+                with open(_rtmp, "w", encoding="utf-8", newline="") as _rfh:
+                    _rfh.write(_rtext)
                 os.replace(_rtmp, _rpath)
                 print(f"risk register synced -- {len(reg_sorted)} entries")
                 return 0
@@ -9821,7 +9831,10 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         # what their dispositions mandate (deferred triple, filed
         # target, accepted-critical owner and due) and fire for no
         # rationale; PR8 restates the triple with a reason and stays
-        # silent. PR6 files to §93, whose section text back-links it.
+        # silent. PR12 carries a valid token before its link (D00 T01
+        # §34 R2 consistency 1) and fires token-less anyway, since the
+        # grammar puts identity after supersedes. PR6 files to §93,
+        # whose section text back-links it.
         (rev_dir / "90-health-restated.md").write_text(
             opus_panel
             + "Manifest: sections [D90 T07 §92]; dependents [none]; bytes 100; run 20260920-D90-T07-S92-gpt\n\n"
@@ -9834,6 +9847,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "- [D90-T07-S92-PR6] [major] Bare filing -> filed §93 supersedes D90-T07-S92-PR2 identity b814bfd29aa3\n"
             "- [D90-T07-S92-PR7] [critical] Bare acceptance -> accepted owner ann due 2099-07-07 supersedes D90-T07-S92-PR3 identity 84b05b5e528b\n"
             "- [D90-T07-S92-PR8] [major] Reasoned deferral -> deferred owner ann due 2099-08-08 trigger retest supersedes D90-T07-S92-PR4 identity 616c72f686af because the window moved\n"
+            "- [D90-T07-S92-PR11] [major] Fifth worry -> accepted owner ann due 2099-09-09\n"
+            "- [D90-T07-S92-PR12] [major] Misplaced identity -> accepted owner ann due 2099-10-10 identity 1e0b970b5e0f supersedes D90-T07-S92-PR11 with reason\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -11264,9 +11279,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "§92 fires exactly three times (mandated-only rationales; the reasoned control silent)",
+            "an identity token before its link fires token-less",
+            any(
+                "TODO-07-marker.md" in ln and "§92 " in ln and "d90-t07-s92-pr12 supersedes D90-T07-S92-PR11 without an identity token" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§92 fires exactly four times (mandated-only rationales plus misplaced identity; the reasoned control silent)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§92 " in ln and "FATAL" in ln),
-            3,
+            4,
         )
         check(
             "finding_fingerprint pins the (subject, severity, disposition) triple",
@@ -13484,6 +13507,13 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _rfile.write_bytes(_rfile.read_bytes().replace(b"\n", b"\r\n"))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rcrlf = cmd_query(argparse.Namespace(what="risk-register", check=True))
+            # Byte-exact sync runs under the fixture redirect (D00 T01
+            # §34 R2 integration 2): past the finally the sync would
+            # target the real tree and the fixture bytes below could
+            # never change.
+            _rsync_bytes = _rfile.read_bytes()
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="risk-register", sync=True))
         finally:
             TODO_DIR = saved_tree
         check(
@@ -13510,6 +13540,16 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "register check fails line-ending drift",
             rc_rcrlf,
             1,
+        )
+        check(
+            # Byte-exact sync (D00 T01 §34 R2 integration 2): the
+            # committed bytes equal the derived render, so a
+            # sync-then-check round-trips; the Windows-only bite
+            # (translated CRLF rejected as drift) is unobservable
+            # on Linux, where translation is a no-op.
+            "register sync writes the derived bytes exactly",
+            _rfile.read_bytes().endswith(b"\n") and b"\r" not in _rfile.read_bytes() and _rsync_bytes != _rfile.read_bytes(),
+            True,
         )
         check(
             "register State blanking preserves endings and foreign lines",
@@ -14683,6 +14723,37 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _raises_msg(lambda: rp.collect_producer([_PY, "-c", "print('hi')"], b"", float("inf"))),
             f"timeout inf is outside 0 < seconds <= {rp.RUN_TIMEOUT_MAX_SECS} (finite)",
         )
+        # Bounded backlog (D00 T01 §34 R2 adversarial 1): the chunk
+        # queue carries a maxsize so a fast producer backpressures
+        # instead of outrunning a stalled validator without bound.
+        import queue as _qmod
+        from unittest import mock as _umock
+
+        _seen_maxsize: dict = {}
+        _RealQueue = _qmod.Queue
+
+        def _spy_queue(*a, **k):
+            _seen_maxsize.update(k)
+            return _RealQueue(*a, **k)
+
+        with _umock.patch.object(_qmod, "Queue", side_effect=_spy_queue):
+            rp.collect_producer([_PY, "-c", "print('hi')"], b"", 30)
+        check("collector bounds its chunk queue", _seen_maxsize.get("maxsize"), rp.COLLECT_QUEUE_CHUNKS)
+        _ok, _why, _ = rp.collect_producer(
+            [
+                _PY,
+                "-c",
+                "import sys, time; sys.stdout.buffer.write(b'ok\\n\\xe2\\x82'); sys.stdout.flush(); "
+                "time.sleep(0.2); sys.stdout.buffer.write(b'A'); sys.stdout.flush()",
+            ],
+            b"",
+            30,
+        )
+        check(
+            "collector offsets a split UTF-8 sequence to its start",
+            (_ok, _why),
+            (False, "malformed UTF-8 at byte offset 3"),
+        )
         _bad_utf8 = _sp.run(
             [sys.executable, _rp_path, "check-panel"], input=b"\xff\xfe", capture_output=True, timeout=30
         )
@@ -14856,6 +14927,54 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             (2, 2, True, True),
         )
+        # Malformed scans fail named (D00 T01 §34 R2 adversarial 2):
+        # both run-id and run shape the diagnostic instead of
+        # crashing on hostile bytes.
+        _rbadscan = root / "run-badscan.txt"
+        _rbadscan.write_bytes(b"\xff\xfe claims")
+        _rbad_id = _sp.run(
+            [sys.executable, _rp_path, "run-id", "todo/90-x/TODO-07-y.md", "4", "gpt", "20260920", str(_rbadscan)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        _rbad_run = _sp.run(
+            _rtimeout_argv + [str(_rbadscan), "--", sys.executable, "-c", "print('hi')"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(
+            "run-id and run name malformed scan files",
+            (
+                _rbad_id.returncode,
+                _rbad_run.returncode,
+                "cannot decode" in _rbad_id.stderr,
+                "cannot decode" in _rbad_run.stderr,
+            ),
+            (2, 2, True, True),
+        )
+        _rbadscan.unlink()
+        _rnostart = _sp.run(
+            _rtimeout_argv + ["--", "/nonexistent-producer-xyz"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        _rns_lines = _rnostart.stdout.splitlines()
+        _rns_led = (_rstore / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+        _rns_last = json.loads(_rns_led[-1]) if _rns_led else {}
+        _rns_artifact = _rstore / hashlib.sha256(b"").hexdigest()
+        check(
+            "review-run ledgers an unstartable producer instead of crashing",
+            (
+                _rnostart.returncode,
+                _rns_lines[0].startswith("FAIL producer failed to start") if _rns_lines else False,
+                _rns_last.get("verdict", "").startswith("FAIL producer failed to start"),
+                _rns_artifact.read_bytes() if _rns_artifact.exists() else b"<missing>",
+            ),
+            (1, True, True, b""),
+        )
         # Concurrent runs mint against the same empty ledger, so the
         # append guard re-mints the loser: both rows land distinct.
         _rrace = root / "run-store-race"
@@ -14887,6 +15006,38 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "concurrent review-runs ledger distinct run IDs",
             (_rp1.returncode, _rp2.returncode, sorted(json.loads(ln)["run"] for ln in _rrace_lines)),
             (0, 0, ["20260920-D90-T07-S4-gpt", "20260920-D90-T07-S4-gpt-r2"]),
+        )
+        # Locked recording (D00 T01 §34 R2 record 1): eight threads
+        # race the same base ID through _record_run; the ledger lock
+        # serializes the guard read plus append, so every receipt
+        # lands distinct.
+        import threading as _tmod
+
+        _rlock_store = root / "run-store-locked"
+        _rlock_base = "20260920-D90-T07-S4-gpt"
+        _rlock_errs: list = []
+
+        def _rlock_work() -> None:
+            try:
+                rp._record_run(
+                    str(_rlock_store),
+                    _rlock_base,
+                    lambda ct: rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "20260920", ct),
+                    lambda rid: {"run": rid, "kind": "panel", "digest": "sha256:0", "verdict": "PASS x", "artifact": "a"},
+                )
+            except Exception as exc:  # noqa: BLE001 -- thread failures surface in the check
+                _rlock_errs.append(exc)
+
+        _rlock_threads = [_tmod.Thread(target=_rlock_work) for _ in range(8)]
+        for _rt in _rlock_threads:
+            _rt.start()
+        for _rt in _rlock_threads:
+            _rt.join(60)
+        _rlock_rows = (_rlock_store / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+        check(
+            "locked recording keeps racing runs distinct",
+            (sorted(json.loads(ln)["run"] for ln in _rlock_rows), _rlock_errs),
+            ([_rlock_base] + [f"{_rlock_base}-r{n}" for n in range(2, 9)], []),
         )
         _rprompt.unlink()
         # Delimiter-tag contract (D00 T01 §19 item 11): 64-bit entropy
