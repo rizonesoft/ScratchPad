@@ -1116,15 +1116,17 @@ Why this section exists: the twelfth live plan review (§40 plus §1 plus §2, `
 
 ## 42. Requires Operator Vocabulary
 
-Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded by prose alone: no runner capability marks them, so `query ready` lists operator-only rows as runnable-now and an unattended runner could take one. The `Requires:` closed vocabulary (§13) gains an `operator` value that holds in no agent context, and the four manual sections (D99 T01 §1, D99 T01 §2, D99 T01 §3, D99 T01 §4) take the mark. -> XREF: D99 T01 §1 (the rows this value gates); -> SOURCE: gap-audit-phase0-run4-2026-09-18 (Phase 99 prose-only guard; no runner capability marks operator rows).
+> **Started:** 2026-09-19T16:01:31Z
 
-- [ ] `operator` joins `REQUIRES_ALLOWED` with a detector that holds in no agent context (a declared `--context operator` excepted: the operator declares their own keyboard, no agent self-reports one), reason required like every mark. Done when: fixtures lock the accept (marked rows split elsewhere by default, runnable under declared `operator`), the rejects (unknown value, missing reason), and the detector never self-reporting True.
-- [ ] D99 T01 §1, D99 T01 §2, D99 T01 §3, and D99 T01 §4 carry `**Requires:** operator -- <reason citing this section>`. Done when: all four rows read runnable-elsewhere in the default context.
-- [ ] `todo/README.md` vocabulary table gains the `operator` row with its meaning and detector. Done when: the table names it beside `display-session`.
-- [ ] AGENTS.md self-test count syncs to the landed total (sibling §§9-11 convention). Done when: the count reads the new total.
-- [ ] Commit: `"workspace: gate manual rows behind Requires operator"`
+Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded by prose alone: no runner capability marks them, so once D00 T03 §2 ships `query ready` would list the operator-only rows as runnable-now and an unattended runner could take one. The `Requires:` closed vocabulary (§13) gains an `operator` value that holds in no agent context, and the four manual sections (D99 T01 §1, D99 T01 §2, D99 T01 §3, D99 T01 §4) take the mark. **Corrected 2026-09-19 (validation):** was present-tense runnable-now; D99 rows are blocked on D00 T03 §2 today, so the mark is preventive and verification runs through fixtures plus `resolve` verdicts. -> XREF: D99 T01 §1 (the rows this value gates); -> SOURCE: gap-audit-phase0-run4-2026-09-18 (Phase 99 prose-only guard; no runner capability marks operator rows).
 
-**Test checkpoint:** `query ready` hides D99 rows by default and shows them under `--context operator`; self-test green with the new cases; `validate` silent. Cheaper substitute that fails: prose claiming runners skip Phase 99.
+- [x] `operator` joins `REQUIRES_ALLOWED` with a detector that holds in no agent context (a declared `--context operator` excepted: the operator declares their own keyboard, no agent self-reports one), reason required like every mark. Done when: fixtures lock the accept (marked rows split elsewhere by default, runnable under declared `operator`), the rejects (unknown value, missing reason), and the detector never self-reporting True. Done: `operator` in REQUIRES_ALLOWED (`--context` choices follow); detector adds no branch, docstring states it; 12 cases (2 parser, 3 validator, 4 detector, 3 split); self-test 1100 green.
+- [x] D99 T01 §1, D99 T01 §2, D99 T01 §3, and D99 T01 §4 carry `**Requires:** operator -- <reason citing this section>`. Done when: all four rows carry the mark with reasons citing this section and each resolves `missing here: operator` in the default context (runnable-elsewhere follows once D00 T03 §2 ships; the split itself is locked by fixture). Done: all four marked with §42-citing reasons; each resolves `missing here: operator` (blocked on D00 T03 §2, so the live rows park by dependency today and by mark at unblock).
+- [x] `todo/README.md` vocabulary table gains the `operator` row with its meaning and detector. Done when: the table names it beside `display-session`. Done: table names `operator` beside `display-session` with meaning and detector.
+- [x] AGENTS.md self-test count syncs to the landed total (sibling §§9-11 convention). Done when: the count reads the new total. Done: AGENTS.md reads 1100.
+- [x] Commit: `"workspace: gate manual rows behind Requires operator"`
+
+**Test checkpoint:** fixtures prove the split (marked rows park by default, run under `--context operator`); the four live rows resolve `missing here: operator`; self-test green with the new cases; `validate` silent. Cheaper substitute that fails: prose claiming runners skip Phase 99.
 
 ## 43. Findings Count Touch-Up
 

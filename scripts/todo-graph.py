@@ -223,6 +223,7 @@ NEEDS_ALLOWED: dict[str, str] = {
 # one detector branch below, and its self-test cases.
 REQUIRES_ALLOWED: tuple[str, ...] = (
     "display-session",
+    "operator",
 )
 REQUIRES_BLOCK_RE = re.compile(r"^\*\*Requires:\*\*\s*(?P<body>.+?)\s*$")
 REQUIRES_REASON_SEP = " -- "
@@ -238,6 +239,10 @@ def detect_context(platform: str | None = None, environ=None) -> set[str]:
     window-station-less session reads black frames (D00 T02 §7), per the
     run-5 §15 verdict, and never as session 0, which names itself
     "Services" and has no window station (headless services, CI runners).
+
+    `operator` holds in no detected context: no agent self-reports an
+    operator's keyboard, so only a declared `--context operator`
+    satisfies it (D00 T01 §42).
     """
     plat = sys.platform if platform is None else platform
     env = os.environ if environ is None else environ
@@ -6142,6 +6147,9 @@ track: Z1
 |   4   |   §4    | Valid mark | -- |  [ ]   |
 |   5   |   §5    | Shipped unmarked | -- |  [x]   |
 |   6   |   §6    | Two lines, last wins | -- |  [ ]   |
+|   7   |   §7    | Valid operator mark | -- |  [ ]   |
+|   8   |   §8    | Operator typo | -- |  [ ]   |
+|   9   |   §9    | Operator missing reason | -- |  [ ]   |
 
 ---
 
@@ -6197,6 +6205,33 @@ track: Z1
 **Requires:** printerz -- first line loses
 
 **Requires:** display-session -- second wins
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 7. Valid operator mark
+
+**Requires:** operator -- fixture operator reason
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 8. Operator typo
+
+**Requires:** operater -- fixture typo reason
+
+- [ ] Do the thing
+- [ ] Commit: `"selftest: gamma"`
+
+**Test checkpoint:** `true`
+
+## 9. Operator missing reason
+
+**Requires:** operator
 
 - [ ] Do the thing
 - [ ] Commit: `"selftest: gamma"`
@@ -6377,6 +6412,12 @@ def cmd_self_test(_args) -> int:
                   (g.sections[3].requires, g.sections[3].requires_unknown,
                    g.sections[3].requires_reason),
                   ([], [], ""))
+            check("an operator mark parses values plus reason",
+                  (g.sections[7].requires, g.sections[7].requires_reason),
+                  (["operator"], "fixture operator reason"))
+            check("an operator typo parses into requires_unknown",
+                  (g.sections[8].requires, g.sections[8].requires_unknown),
+                  ([], ["operater"]))
             vbuf = _bio.StringIO()
             with _bctx.redirect_stdout(vbuf), _bctx.redirect_stderr(_bio.StringIO()):
                 cmd_validate(None)
@@ -6396,6 +6437,12 @@ def cmd_self_test(_args) -> int:
                   any("§5" in ln for ln in rfatal), False)
             check("a valid last line draws no Requires FATAL",
                   any("§6" in ln for ln in rfatal), False)
+            check("an operator typo is FATAL (requires-unknown)",
+                  any("§8" in ln and "not in the closed list" in ln for ln in rfatal), True)
+            check("an operator mark without its reason is FATAL (requires-no-reason)",
+                  any("§9" in ln and "with no reason" in ln for ln in rfatal), True)
+            check("a valid operator mark draws no Requires FATAL",
+                  any("§7" in ln for ln in rfatal), False)
             check("display-session holds on Windows with SESSIONNAME",
                   detect_context(platform="win32", environ={"SESSIONNAME": "Console"}),
                   {"display-session"})
@@ -6409,6 +6456,18 @@ def cmd_self_test(_args) -> int:
                   detect_context(platform="linux", environ={}),
                   set())
             check("display-session fails in session 0 (Services)",
+                  detect_context(platform="win32", environ={"SESSIONNAME": "Services"}),
+                  set())
+            check("operator never self-reports on Windows with SESSIONNAME",
+                  detect_context(platform="win32", environ={"SESSIONNAME": "Console"}),
+                  {"display-session"})
+            check("operator never self-reports when SESSIONNAME is missing",
+                  detect_context(platform="win32", environ={}),
+                  set())
+            check("operator never self-reports off Windows",
+                  detect_context(platform="linux", environ={}),
+                  set())
+            check("operator never self-reports in session 0 (Services)",
                   detect_context(platform="win32", environ={"SESSIONNAME": "Services"}),
                   set())
 
@@ -6434,6 +6493,14 @@ def cmd_self_test(_args) -> int:
                   code, 0)
             check("the split summary names both counts",
                   any("runnable now" in ln and "runnable elsewhere" in ln for ln in lines), True)
+            code, lines = ready_lines(context=[])
+            check("an operator-marked row parks by default with its requirement named",
+                  (code, any("requires operator (missing: operator)" in ln and "§7" in ln for ln in lines)), (0, True))
+            code, lines = ready_lines(context=["operator"])
+            check("a declared operator context lists the marked row runnable",
+                  (code, any("§7" in ln and "requires" not in ln for ln in lines)), (0, True))
+            check("an operator typo parks even in an operator context",
+                  (code, any("unknown:operater" in ln and "§8" in ln for ln in lines)), (0, True))
         finally:
             gamma.unlink()
         check("§2 has a Commit item", ta.sections[2].has_commit_item, True)

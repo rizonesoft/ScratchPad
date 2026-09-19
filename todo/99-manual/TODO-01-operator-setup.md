@@ -70,6 +70,8 @@ Why this section exists: the About bar is the repo's thirty-second pitch and the
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent curls the public repo API and reads the proof image. Done when: the API quotes the description plus all seven topics and the proof image shows them.
 - [ ] Commit: `"docs: record Phase 99 §1 completion with proof"` -- operator ticks every item above via the GitHub web editor (open this file, pencil icon, `- [ ]` to `- [x]` on each finished line, `Commit changes`); the agent appends its verification note in a second commit, and review stamps the range.
 
+**Requires:** operator -- owner's logged-in browser session for About, topics, and social preview; agents hold no GitHub credentials (D00 T01 §42).
+
 **Test checkpoint:** a logged-out browser on the repo page shows the description and topics, the social-preview box in Settings renders the hero, and the proof file exists on `main`. Cheaper substitute that fails: trusting the Settings form without reloading the public page.
 
 ## 2. Branch Protection with Required Checks
@@ -94,6 +96,8 @@ Why this section exists: `main` currently accepts anything, including a force-pu
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent reads the proof image. Done when: the rule name, the required-checks list, and the force-push block all read in the image. (Branch rules are not public, so the image is the evidence.)
 - [ ] Commit: `"docs: record Phase 99 §2 completion with proof"` -- operator ticks via the web editor and commits; the agent appends its verification note; review stamps the range.
 
+**Requires:** operator -- owner admin clicks for branch rules; agents hold no GitHub credentials (D00 T01 §42).
+
 **Test checkpoint:** the rule page shows `main` protected with the collected checks required, and pushing straight to `main` is refused (try it from a scratch clone and watch it fail). Cheaper substitute that fails: a rule page that was opened but never saved.
 
 ## 3. Cold-Reader Taste Pass
@@ -116,6 +120,8 @@ Why this section exists: the best README test is a stranger following it in a cl
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent checks every pasted issue URL over the public API, or confirms the no-gaps line. Done when: every URL resolves to an open issue, or the line is present.
 - [ ] Commit: `"docs: record Phase 99 §3 completion with issue list"` -- operator ticks via the web editor and commits; the agent appends its verification note; review stamps the range.
 
+**Requires:** operator -- human taste plus a human-owned clean machine; an agent grading its own README proves nothing (D00 T01 §42).
+
 **Test checkpoint:** the section on `main` names every surprise as a resolving issue URL, or carries a dated no-gaps line, and the quick start you ran is the one on `main`, not a draft. Cheaper substitute that fails: a pass run from memory instead of from the page.
 
 ## 4. Demo Clip Recorded and Embedded
@@ -137,6 +143,8 @@ Why this section exists: a playing demo beats a static screenshot for the premiu
   3. Commit the edit.
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent checks the file exists, stays under 10 MB, and is referenced exactly once. Done when: all three hold with quoted output.
 - [ ] Commit: `"docs: record Phase 99 §4 completion with demo clip"` -- operator ticks via the web editor and commits; the agent appends its verification note; review stamps the range.
+
+**Requires:** operator -- human driving the app on a display machine plus the owner's session for the upload (D00 T01 §42).
 
 **Test checkpoint:** the README on `main` plays the clip under the hero image, and the clip file on `main` is under 10 MB. Cheaper substitute that fails: a clip that plays locally but was never uploaded.
 

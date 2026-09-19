@@ -262,6 +262,7 @@ Values are comma-separated closed vocabulary (`todo-graph.py` `REQUIRES_ALLOWED`
 | Value | Means | Detected how (local context) |
 | ----- | ----- | ---------------------------- |
 | `display-session` | A Windows interactive session able to render WinUI: eyeball probes, palette sampling, real pixels instead of black frames | `sys.platform == "win32"` with `SESSIONNAME` naming an interactive session (not `Services`, never empty); every other context evaluates False |
+| `operator` | A human operator at their own keyboard: repo settings, eyeball passes, recordings; steps no agent context can satisfy | Holds in no detected context; runnable only under a declared `--context operator` |
 
 A section whose open work is worked OUTSIDE this tree carries a `Moved:` marker under its heading:
 
