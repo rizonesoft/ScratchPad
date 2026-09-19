@@ -1100,11 +1100,12 @@ Why this section exists: the twelfth live plan review (§40 plus §1 plus §2, `
 - [x] The smoke artifact is manifest-checked: CI asserts the exe, dlls, symbols, provenance version, and no foreign project outputs in the uploaded artifact (PR10 D00-T01-S40-PR10). Done when: the manifest check is green on the branch. Done: build.yml windows job asserts exe, dlls, pdbs, full-sha provenance version, and no foreign stems; legs pre-proven against the prior green artifact (47 dlls, 2 pdbs, 0.0.0+48c62c2 full sha) and green on this branch (build run 35451971220, manifest step success).
 - [x] Launch is one command: a stable launcher or pointer resolves to the current exe without flattening collision-safe outputs (PR11 D00-T01-S40-PR11). Done when: it works from a clean clone on Windows and Linux where applicable. Done: `tools/launch.py` resolves and launches; smoke resolves through it on clean Windows CI and Linux CI asserts the resolved shape (the binary itself is Windows-only, so Linux proves resolution only); branch-green on build run 35451971220.
 - [x] Cleaning is documented and scripted: `rm -rf Bin` plus a tools script clear stale project dirs, with a note that CI runners are always clean (PR12 D00-T01-S40-PR12). Done when: the doc plus script exist and a stale-dir fixture proves the script clears it. Done: docs/build.md carries the clean section; `tools/clean-bin.py` prunes stale dirs; CI proves the fixture (DefunctProject removed, AcpLoopback kept); local dry-run on Bin/: 0 removed, 7 kept.
-- [x] Commit: `"workspace: harden Bin output per twelfth live round"`
+- [x] Commit: `"workspace: harden Bin output per twelfth live round"` Ship `2941c85`; `12d33a9` (self-review), `673c305` (R1), `74c07cb` (R3), `3301a9d` (R4); probe `d601618` reverted in `3ec7d6c`.
 
 **Test checkpoint:** Pointers read; uniqueness, conformance, and manifest guards green; soak proven; launcher works; clean documented. Cheaper substitute that fails: layout held by convention.
 
 - -> XREF: D00 T06 §1 -- round-5 finding filed there
+- -> XREF: D00 T07 §1 -- plan-review findings filed there
 
 ## 42. Requires Operator Vocabulary
 
