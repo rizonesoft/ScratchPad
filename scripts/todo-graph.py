@@ -7120,6 +7120,8 @@ track: Z1
 |  70   |   §70   | Outage missing failure class | - |  [x]   |
 |  71   |   §71   | Retry missing attempt count | - |  [x]   |
 |  72   |   §72   | Zero attempt count fires | - |  [x]   |
+|  73   |   §73   | Malformed attempt count fires | - |  [x]   |
+|  74   |   §74   | Bare partial missing detail fires | - |  [x]   |
 
 ---
 
@@ -7206,7 +7208,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §7 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs class timeout attempts 3; attempted §99
+> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs; attempted §99 class timeout attempts 3
 
 ## 8. Malformed ledger row
 
@@ -7318,7 +7320,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §17 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial.md
-> **Plan review:** GPT high, partial: opus rung, filed §2 (run 20260920-D90-T07-S17-gpt)
+> **Plan review:** GPT high, partial: opus rung, filed §2 class timeout attempts 2 (run 20260920-D90-T07-S17-gpt)
 
 ## 18. Rerun lineage clean
 
@@ -7552,7 +7554,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §37 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial3.md
-> **Plan review:** GPT high, partial: gpt rung, filed §2 (run 20260920-D90-T07-S37-gpt)
+> **Plan review:** GPT high, partial: gpt rung, filed §2 class timeout attempts 2 (run 20260920-D90-T07-S37-gpt)
 
 ## 38. Unowed partial retry carried
 
@@ -7574,7 +7576,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §39 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial5.md
-> **Plan review:** GPT high, partial: rung 9, filed §2 (run 20260920-D90-T07-S39-gpt)
+> **Plan review:** GPT high, partial: rung 9, filed §2 class timeout attempts 2 (run 20260920-D90-T07-S39-gpt)
 
 ## 40. Complete partial with fields
 
@@ -7585,7 +7587,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §40 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial6.md
-> **Plan review:** GPT high, partial: opus rung, filed §2, owner bob due 2099-01-01 (run 20260920-D90-T07-S40-gpt)
+> **Plan review:** GPT high, partial: opus rung, filed §2, owner bob due 2099-01-01 class auth attempts 1 (run 20260920-D90-T07-S40-gpt)
 
 ## 42. Live run acceptance covers
 
@@ -7964,6 +7966,28 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 > **Verified:** 2026-09-20 | §72 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT timeout then Opus timeout, outage: both rungs (owner ann, due 2099-01-01) class timeout attempts 0
+
+## 73. Malformed attempt count fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §73 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus fallback (GPT unreachable), no findings, retry-owed (owner ann, due 2099-01-01) class auth attempts 2x
+
+## 74. Bare partial missing detail fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §74 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, partial: opus rung, filed §2 attempts 2
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -7989,6 +8013,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [PR13] [major] Unlinked filing -> filed §2\n"
             "- [PR14] [minor] Patient wait -> deferred owner ann due 2026-10-01 trigger review-lands\n"
             "- [PR15] [minor] Vague wait -> deferred someday\n"
+            # Panel R1 probe: bare `trigger` with no value is not a
+            # triple (shaped legs, not substrings).
+            "- [PR25] [minor] Hollow wait -> deferred owner bob due 2099-06-06 trigger\n"
             "- [PR16] [minor] Same worry -> duplicate PR12\n"
             # §19 probe: a filed critical whose fix commit the tree cannot
             # prove (§21 stamps post-finding with the back-link and the fix
@@ -8656,9 +8683,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             True,
         )
         check(
-            "§4 fires exactly four times (17b x2 on §99 targets, 18 lifecycle x1, 19 backlink x1; 16, 17a, 20 silent)",
+            "§4 fires exactly five times (17b x2 on §99 targets, 18 lifecycle x1, 19 backlink x1, PR25 hollow trigger x1; 16, 17a, 20 silent)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§4 " in ln and "FATAL" in ln),
-            4,
+            5,
         )
         check(
             "marker naming an unresolvable filing fires",
@@ -9243,6 +9270,40 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "§72 fires exactly once (attempts only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§72 " in ln and "FATAL" in ln),
             1,
+        )
+        check(
+            "malformed attempt count fires",
+            any(
+                "TODO-07-marker.md" in ln and "§73 " in ln and "names no positive attempt count" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§73 fires exactly once (attempts only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§73 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "bare partial missing detail fires",
+            any(
+                "TODO-07-marker.md" in ln and "§74 " in ln and "names no failure class" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§74 fires exactly once (class only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§74 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "hollow deferred trigger fires",
+            any(
+                "TODO-07-marker.md" in ln and "§4 " in ln and "PR25" in ln and "without owner, due, and trigger" in ln
+                for ln in marker_out
+            ),
+            True,
         )
         check(
             "risk-acceptance-malformed is a FATAL class",

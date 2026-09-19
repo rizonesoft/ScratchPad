@@ -707,30 +707,36 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} partial run with a fallback survivor owes a retry (retry-owed (owner, due))",
                     )
             # D00 T01 §28 item 2: degraded lines carry failure detail.
-            # Every outage or retry-owed line in the chain names its
-            # failure class (`class <class>`, open vocabulary: auth,
-            # timeout, model-error, malformed-output, infra, ...) and
-            # its attempt count (`attempts <n>`, a positive integer),
-            # so recurring failures are diagnosable from the record.
-            # Chain-wide, not last-line-only: a superseded outage line
-            # is the failure history a rerun follows, and detail is
-            # record, never claim (last-governs voids claims, not
-            # history). The outage leg reads through the shared
-            # outage-marker predicate, so prose merely mentioning an
-            # outage beside filings owes no fields; bare partials
-            # carry no fields by the survivor rule above.
+            # Every outage, retry-owed, or partial line in the chain
+            # names its failure class (`class <class>`, open
+            # vocabulary: auth, timeout, model-error,
+            # malformed-output, infra, ...) and its attempt count
+            # (`attempts <n>`, a positive integer), so recurring
+            # failures are diagnosable from the record. Chain-wide,
+            # not last-line-only: a superseded outage line is the
+            # failure history a rerun follows, and detail is record,
+            # never claim (last-governs voids claims, not history).
+            # The outage leg reads through the shared outage-marker
+            # predicate, so prose merely mentioning an outage beside
+            # filings owes no fields. Bare partials carry detail but
+            # no accountability fields (panel R1: the failed rung is
+            # still a failure, and detail is diagnostic, never the
+            # owner/due the survivor rule withholds).
             _dchain = section_markers(t, num) or []
             for _line in _dchain:
                 _lst = marker_states(_line)
-                if not (is_outage_marker(_line) or _lst["retry"]):
+                if not (is_outage_marker(_line) or _lst["retry"] or _lst["partial"]):
                     continue
                 if not re.search(r"\bclass\s+\S+", _line):
                     flag(
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no failure class (class <class>)",
                     )
-                _am = re.search(r"\battempts\s+(\d+)", _line)
-                if _am is None or int(_am.group(1)) < 1:
+                # The whole token must be the count (panel R1: a
+                # `\d+` prefix match accepts `attempts 2x` and
+                # `attempts 1.5` as counts 2 and 1).
+                _am = re.search(r"\battempts\s+(\S+)", _line)
+                if _am is None or not _am.group(1).isdigit() or int(_am.group(1)) < 1:
                     flag(
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
@@ -1005,10 +1011,13 @@ def validate(graph, _args) -> int:
                     disp = lr.group(3).lower()
                     rest = block[lr.end():].split("\n", 1)[0]
                     if disp == "deferred":
+                        # Shaped legs, not substrings (panel R1): bare
+                        # `owner` or `trigger` words with no values
+                        # used to satisfy the triple.
                         if not (
-                            "owner" in rest.lower()
+                            graph.OWNER_RE.search(rest)
                             and re.search(r"\bdue\s+\d{4}-\d{2}-\d{2}", rest)
-                            and "trigger" in rest.lower()
+                            and re.search(r"\btrigger\s+\S+", rest)
                         ):
                             flag(
                                 "plan-review-malformed",
