@@ -107,6 +107,7 @@ track: W0
 |  51   |   §51   | Acceptance record follow-ups | §27 |  [ ]   |
 |  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [ ]   |
 |  53   |   §53   | Unattended notification and register follow-ups | §29 |  [ ]   |
+|  54   |   §54   | Clearance fixture follow-ups | §30 |  [ ]   |
 
 ---
 
@@ -836,7 +837,7 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 
 > **Started:** 2026-09-19T05:08:00Z
 
-Why this section exists: the §22 panel's round 5 (the cap) reported one adversarial leftover, verified by mutation: the proof-to-row ID comparison and the missing-fix-token rejection have no negative fixtures, so dropping either guard keeps the suite green. A clearance feature whose guards are unlocked is a claim, not a control. -> XREF: D00 T01 §22 (filed from its review round 5); -> SOURCE: panel-D00-T01-s22-2026-09-18-R5 (Opus round 5, adversarial 1; ledger in the §22 findings file); plan-review-D00-T01-s22-2026-09-18 D00-T01-S22-PR10 (real-git joiner; ledger in the §22 findings file); -> XREF: D00 T01 §31 (merge-touches finding filed there).
+Why this section exists: the §22 panel's round 5 (the cap) reported one adversarial leftover, verified by mutation: the proof-to-row ID comparison and the missing-fix-token rejection have no negative fixtures, so dropping either guard keeps the suite green. A clearance feature whose guards are unlocked is a claim, not a control. -> XREF: D00 T01 §22 (filed from its review round 5); -> SOURCE: panel-D00-T01-s22-2026-09-18-R5 (Opus round 5, adversarial 1; ledger in the §22 findings file); plan-review-D00-T01-s22-2026-09-18 D00-T01-S22-PR10 (real-git joiner; ledger in the §22 findings file); -> XREF: D00 T01 §31 (merge-touches finding filed there); -> XREF: D00 T01 §54 (plan-review findings filed there).
 
 - [x] Proof mismatch stays listed: a target carrying a resolving proof line for another finding ID plus a filed row with no proof of its own (suggested shape: a PR70 row filed to §48 beside a dangling resolving line; the 55-section cap bars new marker sections, so reuse §48 or a clean-tree form). Done when: dropping the ID comparison clears the row and fails the suite. **Corrected 2026-09-19 (validation):** D90-T07-S4-PR70 is taken (§23 ancestry probe) and the 55-cap governs real TODO files while the D90-T07 fixture file already runs past §75, so new fixture sections are free: PR71 filed to new fixture §76 carrying a resolving PR90 proof line and no PR71 proof of its own. Done: PR71 row plus §76 target plus the `f000001` all-legs-pass canned profile plus the S4 marker extension ship; dropping the comparison clears PR71 and fails "clearance fails a proof/row ID mismatch" (mutation verified red).
 - [x] Fix-less targets stay listed: a target passing every other leg without a `fix` token (same cap note: clean-tree form or a shared section). Done when: letting fix-less targets clear fails the suite. **Corrected 2026-09-19 (validation):** PR72 filed to new fixture §77 with no `fix` token; the post-fix mutation fails the suite via AttributeError on the unguarded `fm.group(1)`, since no execution can pass a missing fix without crashing. Done: PR72 row plus fix-less §77 target ship; the mutation crashes on `fm.group(1)` and the suite aborts red (verified).
@@ -1163,6 +1164,21 @@ Why this section exists: the §29 plan review (`gpt-5.6-sol` high over §29 plus
 - [ ] Commit: `"workspace: follow up unattended notification and register per §29 plan review"`
 
 **Test checkpoint:** the poster proves itself, issues track obligations, owners receive notice, the clock reads stated, gates vote independently, reviews dispose, and the register plus dashboard contracts say what the code does. Falsifiable by any unproven post, silent wave, or undocumented boundary.
+
+## 54. Clearance Fixture Follow-Ups
+
+Why this section exists: the §30 plan review (`gpt-5.6-sol` high over §30 plus §22, one review dependent) returned 15 findings; 8 file here, 4 duplicate earlier clearance triage, 3 are rejected with reasons in the §30 findings file. The shipped fixtures lock the guards, but SHAs stay short, token ambiguity stays unruled, the fix-less lock leans on a crash, clearance has no query-level end-to-end proof, git absence skips silently, fixture IDs collide by convention, and Windows never runs the git probes. -> XREF: D00 T01 §30 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s30-2026-09-19-s54 D00-T01-S30-PR2 D00-T01-S30-PR5 D00-T01-S30-PR6 D00-T01-S30-PR7 D00-T01-S30-PR8 D00-T01-S30-PR9 D00-T01-S30-PR13 D00-T01-S30-PR15 (`gpt-5.6-sol` high over §30 plus §22, 15 findings, 8 filed here, 4 duplicates of D00-T01-S22-PR3 D00-T01-S22-PR8 D00-T01-S22-PR9 D00-T01-S22-PR11, 3 rejected with reasons in the §30 findings file).
+
+- [ ] SHAs canonicalize at capture: clearance requires and persists full object IDs (or canonicalizes abbreviations immediately), so a once-valid short SHA cannot later turn ambiguous and make clearance unreproducible (PR2 D00-T01-S30-PR2). Done when: the canonical form ships with fixtures.
+- [ ] Token ambiguity resolves declared: duplicate or conflicting `proof` and `fix` tokens reject or follow a tested precedence, and multiple same-ID proof lines disagreeing on path or test pin which pointer governs, so reordered metadata cannot silently change what clears a finding (PR5 plus PR6 D00-T01-S30-PR5 D00-T01-S30-PR6, two findings one item). Done when: the policy plus ambiguity fixtures ship.
+- [ ] Fix-less lock reads diagnostic: the fix leg fails closed with a normal diagnostic result instead of an AttributeError crash, so the mutation that incorrectly clears the row (not any stray exception) is what turns the suite red (PR7 D00-T01-S30-PR7). Done when: the diagnostic plus clearing mutation ships with fixtures.
+- [ ] Clearance proves end to end: the public clearance query runs over a complete temporary repository (commits, branches, merges, timestamps, proof files), so composition, parsing, and reporting cannot regress while every helper stays green (PR8 D00-T01-S30-PR8). Done when: the query-level proof ships with fixtures.
+- [ ] Git absence fails a required lane: at least one CI lane designates git present and fails the run when it is missing, so the clearance contract keeps a guaranteed end-to-end execution instead of an honest skip everywhere (PR9 D00-T01-S30-PR9). Done when: the lane designation ships with a skip-elsewhere fixture.
+- [ ] Fixture IDs check unique: fixed fixture addresses (finding IDs, section numbers, canned SHAs) generate or validate unique at build, so later fixture growth cannot make tests exercise the wrong row or section (PR13 D00-T01-S30-PR13). Done when: the uniqueness check ships with a collision fixture.
+- [ ] Git fixtures run on Windows: the real-repository probes run on a Windows lane as well as the neutral host, covering path case, separators, CRLF, and file locking, so the Windows-first product never relies solely on Linux git semantics (PR15 D00-T01-S30-PR15). Done when: the Windows lane runs them with fixtures.
+- [ ] Commit: `"workspace: follow up clearance fixtures per §30 plan review"`
+
+**Test checkpoint:** SHAs canonicalize, tokens resolve declared, the fix-less lock diagnoses, clearance proves end to end on every required lane, fixture IDs collide nowhere, and Windows runs the git probes. Falsifiable by any ambiguous clear, silent skip, or Linux-only proof.
 
 ## Verification
 
