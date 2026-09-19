@@ -91,6 +91,7 @@ track: W0
 |  43   |   §43   | Findings count touch-up | §20 |  [ ]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
+|  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
 
 ---
 
@@ -689,11 +690,14 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 
 Why this section exists: the §21 panel's round 5 (the cap) reported one consistency leftover: two in-code descriptions of `risk-acceptance-malformed` enumerate three legs while rule 24 has four (the review-window leg landed in §21 review R4). Comments must describe the rule they head, and the cap sends leftovers here instead of a sixth round. -> XREF: D00 T01 §21 (filed from its review round 5); -> SOURCE: panel-D00-T01-s21-2026-09-18-R5 (Opus round 5, consistency 1; ledger in the §21 findings file); plan-review-D00-T01-s21-2026-09-18 D00-T01-S21-PR25 (assertion joiner; ledger in the §21 findings file).
 
-- [x] Both rule-24 descriptions name all four legs: the `SEVERITY_MAP` entry in `scripts/todo-graph.py` and the rule 24 header comment in `scripts/todo-validate.py` enumerate shape, uncoverable target, inverted dates, and the review-window bound. Done when: both comments name the fourth leg and no behavior changes. Done: both comments name the review-window leg (record-expiry window, bounds inclusive); behavior untouched (comment-only diff outside the probes).
+- [x] Both rule-24 descriptions name all four legs: the `SEVERITY_MAP` entry in `scripts/todo-graph.py` and the rule 24 header comment in `scripts/todo-validate.py` enumerate shape, uncoverable target, inverted dates, and the review-window bound. Done when: both comments name the fourth leg and production behavior is unchanged (the suite gains the 2 item-2 probes). Done: both comments name the review-window leg (record-expiry window, bounds inclusive); behavior untouched (comment-only diff outside the probes). **Corrected 2026-09-19 (plan review PR3):** no-behavior-changes scoped to production; suite count moves by item 2.
 - [x] Exact assertions lock both descriptions: the self-test greps each site for the fourth leg (not just aggregate counts), so a future leg cannot land described in one place (PR25 D00-T01-S21-PR25). Done when: one probe per site names the review-window clause. Done: one probe per site, each scanning its comment block's own extent (upward/downward to the first non-`#` line). **Corrected 2026-09-19 (review R2):** fixed-window wording replaced; the shipped probes carry no line bound.
 - [x] Commit: `"workspace: rule-24 comments name the review-window leg"`
 
-**Test checkpoint:** self-test still passes with no count change, live validate stays 0 fatal. Cheaper substitute that fails: trusting memory of the leg count. **Corrected 2026-09-19:** the count moves by the item-2 probes (two new cases, 784 to 786); "no count change" holds for behavior, not for the added probes.
+**Test checkpoint:** self-test passes at 786/786 (784 plus the 2 item-2 probes), live validate stays 0 fatal. Cheaper substitute that fails: trusting memory of the leg count. **Corrected 2026-09-19:** the count moves by the item-2 probes (two new cases, 784 to 786). **Corrected 2026-09-19 (plan review PR2):** the contradictory no-count-change clause removed; lone expectation is 786.
+
+- -> XREF: D00 T01 §46 -- rule-description probe completeness filed there
+- -> XREF: D00 T01 §29 -- plan-review joiners (review-date firing, inert-waiver surfacing) filed there
 
 ## 26. Grandfathered Migration Execution
 
@@ -740,10 +744,12 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 
 ## 29. Unattended Checks and Risk Visibility
 
-Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes unattended enforcement plus risk visibility (PR14, PR22, PR24): dates must fire without an operator at the keyboard, and accepted risk must stay visible with its residual weight. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s29 D00-T01-S21-PR14 D00-T01-S21-PR22 D00-T01-S21-PR24 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file).
+Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; this section takes unattended enforcement plus risk visibility (PR14, PR22, PR24): dates must fire without an operator at the keyboard, and accepted risk must stay visible with its residual weight. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s29 D00-T01-S21-PR14 D00-T01-S21-PR22 D00-T01-S21-PR24 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file); -> XREF: D00 T01 §25 (plan-review joiners filed here); -> SOURCE: plan-review-D00-T01-s25-2026-09-19-s29 D00-T01-S25-PR6 D00-T01-S25-PR8 (review-date firing plus inert-waiver surfacing).
 
 - [ ] Scheduled enforcement runs the gates: CI runs plan-health on a schedule and notifies owners before dates pass, so unattended obligations cannot expire silently (PR22 D00-T01-S21-PR22). Done when: the schedule plus notification path fire on a fixture date.
 - [ ] Accepted risk stays visible: a persistent gatable register with residual severity plus a health dashboard over reviews, expiries, partials, and migration progress (PR14 plus PR24 D00-T01-S21-PR14 D00-T01-S21-PR24, two findings one item). Done when: the register gates and the dashboard renders from structured data.
+- [ ] Review dates fire: acceptances gain review-due and review-overdue states in plan-health and summary, so a passed review date escalates instead of decorating (PR6 D00-T01-S25-PR6). Done when: both states emit with fixtures.
+- [ ] Inert waivers surface: post-dated acceptances that cover nothing raise a plan-health warning plus a summary entry, so no waiver reads as authorization while inactive (PR8 D00-T01-S25-PR8). Done when: the warning plus the entry emit with fixtures.
 - [ ] Commit: `"workspace: unattended checks and risk visibility per eighth live round"`
 
 **Test checkpoint:** dates fire on their own and accepted risk never goes dark. Cheaper substitute that fails: remembering to look.
@@ -966,6 +972,16 @@ Why this section exists: the §24 plan review found the run query short of a com
 - [ ] Commit: `"workspace: round out run inspection per §24 plan review"`
 
 **Test checkpoint:** one run answers approved-plus-trustworthy or states what is unavailable; `--json` validates against the versioned schema. Falsifiable by any leg missing or any output outside the schema.
+
+## 46. Rule-Description Probe Completeness
+
+Why this section exists: the §25 plan review found the rule-24 probes locking only the review-window clause per site, so a future fifth leg could land described at one site while the suite stays green. Every described leg must assert at every site, and a single-site addition must fail. -> XREF: D00 T01 §25 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s25-2026-09-19-s46 D00-T01-S25-PR4 (exact four-leg assertions plus single-site fifth-leg detection).
+
+- [ ] All four legs assert per site: the severity comment plus the rule-24 header each prove shape, target, dates, and review window in normalized form. Done when: per-site assertions name every leg with fixtures.
+- [ ] Single-site additions fail: a leg named at one site but missing at the other breaks the suite. Done when: a fixture pair proves the failure direction.
+- [ ] Commit: `"workspace: complete rule-24 probe coverage per §25 plan review"`
+
+**Test checkpoint:** all four legs assert at both sites; a one-site fifth leg fails the suite. Falsifiable by any leg unasserted or any silent single-site addition.
 
 ## Verification
 
