@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **70 of 223 sections complete (31%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **71 of 223 sections complete (32%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -114,7 +114,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §27` | Acceptance integrity                            |   7   |
 | [x] | `D00 T01 §28` | Partial records and governance docs             |   7   |
 | [x] | `D00 T01 §29` | Unattended checks and risk visibility           |   9   |
-| [ ] | `D00 T01 §30` | Clearance fixture residuals                     |   4   |
+| [x] | `D00 T01 §30` | Clearance fixture residuals                     |   4   |
 | [ ] | `D00 T01 §31` | Clearance causality and precision               |   7   |
 | [ ] | `D00 T01 §32` | Clearance governance and diagnostics            |   6   |
 | [ ] | `D00 T01 §33` | Provenance residuals                            |   8   |

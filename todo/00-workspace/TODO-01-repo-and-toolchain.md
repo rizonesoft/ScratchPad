@@ -83,7 +83,7 @@ track: W0
 |  27   |   §27   | Acceptance integrity | §21 |  [x]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [x]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [x]   |
-|  30   |   §30   | Clearance fixture residuals | §22 |  [ ]   |
+|  30   |   §30   | Clearance fixture residuals | §22 |  [x]   |
 |  31   |   §31   | Clearance causality and precision | §22, §23 |  [ ]   |
 |  32   |   §32   | Clearance governance and diagnostics | §22 |  [ ]   |
 |  33   |   §33   | Provenance residuals | §23 |  [ ]   |
@@ -845,6 +845,12 @@ Why this section exists: the §22 panel's round 5 (the cap) reported one adversa
 - [x] Commit: `"workspace: lock clearance negatives per sixth live round"`. Done: SHIP carries the exact subject.
 
 **Test checkpoint:** both guards are mutation-locked: dropping either fails the suite. Cheaper substitute that fails: a listed row that lists for another reason.
+
+> **Verified:** 2026-09-19 | §30 | self-test 879/879 (23 new: 2 clearance negatives plus 21 real-git helper checks); live validate 0 fatal 0 warnings; 3 headless panel rounds over candidates 8b2f9a1 653aee3, sign-off record fixed at stamp; plan review 15 findings, 8 filed at §54, 4 duplicates, 3 rejected
+> **Review:** rounds 1-2 Sol, round-3 Opus sign-off, candidates 8b2f9a1 653aee3 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` needs-attention (fixed at stamp, pre-tracked D00 T01 §42); R1 item-3 tick fixed, R2 all approve. Raw findings: docs/reviews/00-workspace/D00-T01-s30.md
+> **Plan review:** GPT high, filed D00 T01 §54 (run 20260919-D00-T01-S30-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under temp roots (the acc-tree plus a real git repo, both removed after, read back via per-line case assertions); implementation edited the self-test block only (read back via self-test 879/879, live validate 0 fatal, plan --check current); filing opened §54 plus the §31 joiner plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T05:08:00Z to 2026-09-19T05:26:54Z
 
 ## 31. Clearance Causality and Precision
 
