@@ -22,7 +22,7 @@ Install order: git first (if missing), then clone, then provision (which install
 3. Put the repo-local SDK on the path. Linux: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0`. Windows: `$env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"; $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH; $env:DOTNET_MULTILEVEL_LOOKUP = "0"`. Every SDK command below needs these set; step output that says otherwise means you skipped this step (see failure 1).
 4. Build. Linux: `dotnet build src/Notepad.Neutral.slnf`. Windows: `dotnet build src/ScratchPad.slnx`. Expect `Build succeeded` with `0 Warning(s)`.
 5. Test. Linux: `dotnet test src/Notepad.Neutral.slnf`. Windows: `dotnet test src/ScratchPad.slnx`. Expect `Passed!` with 1/1.
-6. (Windows only) Run the stub: `python3 tools/launch.py`. It resolves `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe` and launches it. Expect a window whose title carries the stub version and runtime.
+6. (Windows only) Run the stub: `py tools/launch.py`. It resolves `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe` and launches it. Expect a window whose title carries the stub version and runtime.
 
 ## Git hooks (one-time for existing clones)
 

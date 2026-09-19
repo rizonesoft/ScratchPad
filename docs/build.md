@@ -16,7 +16,7 @@ Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the 
 
 ## Cleaning build outputs
 
-Full clean is `rm -rf Bin` (use `Remove-Item -Recurse Bin` on Windows): outputs regenerate on the next build. To clear only stale project dirs (leftovers of renamed or removed projects) without wiping everything, run `python3 tools/clean-bin.py` (`--dry-run` lists without removing). CI runners check out clean every run, so they never need either.
+Full clean is `rm -rf Bin` (use `Remove-Item -Recurse Bin` on Windows): outputs regenerate on the next build. To clear only stale project dirs (leftovers of renamed or removed projects) without wiping everything, run `python3 tools/clean-bin.py` on Linux (`py tools/clean-bin.py` on Windows) (`--dry-run` lists without removing). CI runners check out clean every run, so they never need either.
 
 ## Test
 
@@ -28,7 +28,7 @@ Warnings fail the build everywhere: `Directory.Build.props` sets `TreatWarningsA
 
 ## Run the stub (Windows)
 
-Build the solution, then run `python3 tools/launch.py`: it resolves `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe` (`--config Release` for a Release build, `--print-path` to resolve without launching) and launches it. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
+Build the solution, then run `py tools/launch.py`: it resolves `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe` (`--config Release` for a Release build, `--print-path` to resolve without launching) and launches it. The window title carries the stub version and runtime (for example `ScratchPad (stub 0.0.0+<sha>, .NET 10.0.12)`).
 
 ## Provenance
 
