@@ -4407,7 +4407,6 @@ def cmd_query(args) -> int:
                 _pomt = re.search(r"outage:\s*([^\(;]+)", _pbody.lower())
                 _porung = _pomt.group(1).strip() if _pomt else None
                 _pday = _ps.stamped_on or ""
-                _psupd = superseded_acceptances(_paccs)
                 for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind in _paccs:
                     if (tgt.lower(), rec) in _psupd:
                         continue
