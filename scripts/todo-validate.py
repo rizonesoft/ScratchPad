@@ -451,6 +451,12 @@ def validate(graph, _args) -> int:
     # transcription. Substring, not line-anchored: the note explains, it
     # does not authorize, so marker strictness would reject honest prose.
     GPT_OUTAGE_RE = re.compile(r"opus outage", re.IGNORECASE)
+    # The Sol note is shaped, not bare words: the skill mandates
+    # `Sol outage: <what failed>`, so the colon plus failure text is
+    # required -- a bare "Sol outage" mention (or a "no Sol outage"
+    # denial) names no failure. Case-insensitive like the Opus note;
+    # runs on stripped text so fenced quotes never satisfy (D00 T01 §37).
+    SOL_OUTAGE_RE = re.compile(r"sol outage:[ \t]*\S", re.IGNORECASE)
     # Verdicts are line-anchored, never substring: the mandated shape puts
     # each verdict on its own marker-led line, so unheaded prose after an
     # incomplete panel (or a mid-line mention anywhere) must not supply a
@@ -505,7 +511,7 @@ def validate(graph, _args) -> int:
             # satisfy the rule nor, under last-wins, displace the real
             # panel. The stripper lives in the graph module (shared with
             # `query plan-health` since D00 T01 §15); the move is verbatim
-            # and the 39 panel cases prove it.
+            # and the 43 panel cases prove it.
             text, unbalanced = graph.strip_fenced_code(text)
             if unbalanced is not None:
                 flag(
@@ -571,6 +577,21 @@ def validate(graph, _args) -> int:
                     f"{where} findings {m.group(1)} panel lacks verdicts for: "
                     + ", ".join(missing),
                 )
+            # Sol accountability on Opus-only records (D00 T01 §37 item
+            # 1): past the rule birthday an all-Opus review proves Sol
+            # was unreachable, or it ran Sol. Mixed records (any GPT
+            # panel section) never meet the condition; stamps on or
+            # before 2026-09-19 predate the rule (s25 the named
+            # same-day grandfather); undated stamps fail closed like
+            # rule 16 (unreachable via parsing today: Verified lines
+            # require real calendar dates).
+            if heads and not gpt_heads:
+                if s.stamped_on is None or s.stamped_on > "2026-09-19":
+                    if not SOL_OUTAGE_RE.search(text):
+                        flag(
+                            "panel-sol-outage-missing",
+                            f"{where} findings {m.group(1)} Opus-only panel lacks the Sol outage line",
+                        )
 
     # 17. a stamp dated after the plan-review rule landed must carry the
     # review's completion marker (D00 T01 §15). The skill runs the review

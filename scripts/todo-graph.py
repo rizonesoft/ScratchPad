@@ -812,7 +812,7 @@ def strip_fenced_code(text: str) -> tuple[str, int | None]:
 
     Moved out of rule 16 verbatim (D00 T01 §15): the plan-health query
     scans the same findings files, and two fence implementations would
-    drift back into the bugs §§10-11 fixed. The 39 panel cases prove the
+    drift back into the bugs §§10-11 fixed. The 43 panel cases prove the
     move changed nothing.
     """
     kept = []
@@ -938,6 +938,11 @@ SEVERITY_MAP: dict[str, str] = {
     # panel verdicts reads as reviewed evidence while verifying nothing --
     # the same lie as a malformed stamp, so the same severity (D00 T01 §9).
     "stamp-no-opus-panel": "fatal",
+    # an Opus-only review past the rule birthday with no Sol-outage
+    # accountability reads as a planned-mixed record while Sol never
+    # ran: skipped rounds cannot pass silently, so the note (or the
+    # Sol run) is mechanical (D00 T01 §37).
+    "panel-sol-outage-missing": "fatal",
     # a `**Requires:**` value outside REQUIRES_ALLOWED: the list is closed
     # so a misspelt capability cannot silently unmark a section (D00 T01 §13).
     "requires-unknown": "fatal",
@@ -7082,6 +7087,10 @@ track: Z1
 |  37   |   §37   | Mixed Full record stays silent | - |  [x]   |
 |  38   |   §38   | Mixed Light record stays silent | - |  [x]   |
 |  39   |   §39   | Defective GPT-early under a clean Opus last stays silent | - |  [x]   |
+|  40   |   §40   | Opus-only with Sol outage note stays silent | - |  [x]   |
+|  41   |   §41   | Opus-only without Sol outage note fires | - |  [x]   |
+|  42   |   §42   | Birthday-boundary Opus-only without note stays silent | - |  [x]   |
+|  43   |   §43   | Bare Sol outage without failure fires | - |  [x]   |
 
 ---
 
@@ -7378,7 +7387,7 @@ track: Z1
 
 **Test checkpoint:** `true`
 
-> **Verified:** 2026-09-20 | §27 | fixture
+> **Verified:** 2026-09-19 | §27 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-window1.md
 > **Plan review:** GPT high, no findings
 
@@ -7389,7 +7398,7 @@ track: Z1
 
 **Test checkpoint:** `true`
 
-> **Verified:** 2026-09-20 | §28 | fixture
+> **Verified:** 2026-09-19 | §28 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-blankquote.md
 > **Plan review:** GPT high, no findings
 
@@ -7512,6 +7521,50 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §39 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedearlybad.md
+> **Plan review:** GPT high, no findings
+
+## 40. Opus-only with Sol outage note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §40 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnoted.md
+> **Plan review:** GPT high, no findings
+
+## 41. Opus-only without Sol outage note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §41 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnonote.md
+> **Plan review:** GPT high, no findings
+
+## 42. Birthday-boundary Opus-only without note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-19 | §42 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solgrand.md
+> **Plan review:** GPT high, no findings
+
+## 43. Bare Sol outage without failure fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §43 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solbare.md
 > **Plan review:** GPT high, no findings
 """,
             encoding="utf-8",
@@ -7785,6 +7838,32 @@ track: Z1
             "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
+        (rev_dir / "90-panel-solnoted.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-solnonote.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-solgrand.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-solbare.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage\n\nno Sol outage occurred here\n",
+            encoding="utf-8",
+        )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
         # findings carry provenance, so the panel fixtures carry it too.
         for _ppf in sorted(rev_dir.glob("90-panel-*.md")):
@@ -7796,6 +7875,35 @@ track: Z1
                 f"path docs/reviews/{_ppf.name}; run 20260920-D90-T06-S5-gpt\n"
             )
             _ppf.write_text(_pfirst + _pnl + _pline + _prest, encoding="utf-8")
+        # Sol-note compliance for pre-rule Opus-only fixtures (D00 T01
+        # §37 item 1): the new rule fires on Opus-only records past
+        # its birthday, and every panel fixture below stamps
+        # 2026-09-20, so Opus-only shapes without a note would fire
+        # outside their own checks. The deliberately-noncompliant
+        # pins are excluded by name; files already carrying a note
+        # are left alone.
+        _sol_exempt = {
+            "90-panel-solnonote.md",
+            "90-panel-solgrand.md",
+            "90-panel-solbare.md",
+            # Fence-shape fixtures: any appended line heals their
+            # intentionally-unbalanced fences (probed), so they stamp
+            # pre-rule and stay untouched.
+            "90-panel-window1.md",
+            "90-panel-blankquote.md",
+        }
+        for _spf in sorted(rev_dir.glob("90-panel-*.md")):
+            if _spf.name in _sol_exempt:
+                continue
+            _spt = _spf.read_text(encoding="utf-8")
+            if "GPT panel" in _spt or "Opus panel" not in _spt:
+                continue
+            if "sol outage" in _spt.lower():
+                continue
+            # No blank separator: a blank line ends quotes and would
+            # heal the intentionally-unbalanced fence fixtures below.
+            _sep = "" if _spt.endswith("\n") else "\n"
+            _spf.write_text(f"{_spt}{_sep}Sol outage: model error (fixture note)\n", encoding="utf-8")
         # Rule 23 reads candidates through git (D00 T01 §23), so the
         # panel run patches the reader like the marker run does: the
         # fixture candidate resolves, anything else is unprovable.
@@ -8091,9 +8199,35 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§39 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        check(
+            "Opus-only with Sol outage note stays silent",
+            any("TODO-06-panel.md" in ln and "§40 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "Opus-only without Sol outage note fires",
+            any(
+                "TODO-06-panel.md" in ln and "§41 " in ln and "lacks the Sol outage line" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "birthday-boundary Opus-only without note stays silent",
+            any("TODO-06-panel.md" in ln and "§42 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "bare Sol outage without failure fires",
+            any(
+                "TODO-06-panel.md" in ln and "§43 " in ln and "lacks the Sol outage line" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
         # landed must carry the `Plan review:` completion marker. Own
-        # fixture TODO (the panel file's 39 sections stay untouched); all
+        # fixture TODO (the panel file's 43 sections stay untouched); all
         # three stamps point Review at the clean panel fixture so rule 16
         # stays silent and only the marker rule can fire. Runs before the
         # panel unlink below, while the clean fixture still exists.
@@ -9530,6 +9664,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
+            # All-Opus record by construction (D00 T01 §37 item 1):
+            # the Sol note keeps every health fixture compliant.
+            "Sol outage: model error (fixture note)\n\n"
             "## Plan review\n\n"
         )
         (rev_dir / "90-health-partial.md").write_text(
@@ -10190,13 +10327,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         (rev_dir / "90-health-noprov.md").write_text(
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
-            "**integration: approve**\n**record: approve**\n",
+            "**integration: approve**\n**record: approve**\n"
+            # All-Opus record by construction (D00 T01 §37 item 1).
+            "Sol outage: model error (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-badprov.md").write_text(
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
+            # All-Opus record by construction (D00 T01 §37 item 1).
+            "Sol outage: model error (fixture note)\n\n"
             "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md\n"
             "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
@@ -11547,6 +11688,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "# Review: fixture\n\n## Opus panel (round 1)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
+            # All-Opus record by construction (D00 T01 §37 item 1).
+            "Sol outage: model error (fixture note)\n\n"
             "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-dur26.md; run 20260920-D90-T32-S1-gpt\n\n"
             + "\n".join(_d26_recs),
@@ -11702,6 +11845,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "# Review: fixture\n\n## Opus panel (round 1)\n\n"
                 "**adversarial: approve**\n**consistency: approve**\n"
                 "**integration: approve**\n**record: approve**\n\n"
+                # All-Opus record by construction (D00 T01 §37 item 1).
+                "Sol outage: model error (fixture note)\n\n"
                 f"Provenance: candidate {_cand}; command true; exit 0; tool fixture 1; "
                 f"digest 0123456789abcdef; path {_ppath}; run {_run}\n\n"
                 "## Plan review\n\n" + _man + "Ledger:\n"
@@ -12283,6 +12428,40 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "TODO-07-marker.md §17" in ln and "UNACCOUNTABLE" in ln
                 for ln in health_lines
             ),
+            True,
+        )
+        # The fallback definition rides `query --help` (D00 T01 §37
+        # item 5). Exact-assertion: the probe fails on any rewording,
+        # so help and schema drift loud together.
+        _ph_def = (
+            "plan-health fallback membership is GPT-last: only records whose last panel "
+            "section is GPT count as fallback (planned GPT-early rounds under an Opus "
+            "sign-off are not fallback); this membership rule is the compat guarantee "
+            "holding the plan-health/6 shape stable."
+        )
+        _ph_buf = _mio.StringIO()
+        _ph_argv = sys.argv
+        _ph_cols = os.environ.get("COLUMNS")
+        _ph_rc = None
+        sys.argv = ["todo-graph", "query", "--help"]
+        # argparse reflows the description to the terminal width, so
+        # the probe pins every word in order (whitespace-normalized),
+        # not raw bytes: any rewording still fails, at any width.
+        os.environ["COLUMNS"] = "1000"
+        try:
+            with _mctx.redirect_stdout(_ph_buf):
+                main()
+        except SystemExit as _phe:
+            _ph_rc = _phe.code
+        finally:
+            sys.argv = _ph_argv
+            if _ph_cols is None:
+                del os.environ["COLUMNS"]
+            else:
+                os.environ["COLUMNS"] = _ph_cols
+        check(
+            "query help carries the fallback definition verbatim",
+            (_ph_rc == 0 and " ".join(_ph_def.split()) in " ".join(_ph_buf.getvalue().split())),
             True,
         )
         check(
@@ -15756,7 +15935,20 @@ def main() -> int:
         "self-test",
         help="prove this script's own contract against fixtures (fast; run it after editing this file)",
     ).set_defaults(fn=cmd_self_test)
-    q = sub.add_parser("query", help="ask the graph a question")
+    q = sub.add_parser(
+        "query",
+        help="ask the graph a question",
+        # The fallback definition rides the command help, not a
+        # per-choice string (argparse has no per-choice help): GPT-last
+        # membership is the compat guarantee holding the plan-health/6
+        # shape stable (D00 T01 §37 item 5). Pinned verbatim by probe.
+        description=(
+            "plan-health fallback membership is GPT-last: only records whose last panel "
+            "section is GPT count as fallback (planned GPT-early rounds under an Opus "
+            "sign-off are not fallback); this membership rule is the compat guarantee "
+            "holding the plan-health/6 shape stable."
+        ),
+    )
     q.add_argument(
         "what",
         choices=[
