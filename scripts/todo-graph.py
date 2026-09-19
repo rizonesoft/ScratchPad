@@ -1244,7 +1244,13 @@ def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> s
             datetime.strptime(rm.group(1), "%Y-%m-%d")
         except ValueError:
             continue
-        if f"§{num}" not in rm.group(2):
+        xm = XREF_RE.search(rm.group(2))
+        if xm is None or int(xm.group("sec")) != num:
+            continue
+        xdom, xtodo = xm.group("dom"), xm.group("todo")
+        if xdom is not None and not todo.domain.startswith(xdom + "-"):
+            continue
+        if xtodo is not None and xtodo != todo.number:
             continue
         if not rm.group(3).strip():
             continue
@@ -9446,6 +9452,43 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "plan-health keeps the bad-date retirement listed",
             any("TODO-07-marker.md §69 " in ln for ln in health_lines),
             True,
+        )
+        _rt = Todo(
+            path="90-synth.md",
+            domain="90-selftest",
+            number="07",
+            sections={6: Section(num=6, line=1)},
+        )
+        _rbase = [
+            "## 6. Synthetic",
+            "> **Verified:** 2026-09-18 | §6 | fixture",
+        ]
+        check(
+            "retirement ref rejects prefix collisions",
+            section_retired(
+                {"90-synth.md": _rbase + ["> **Retired:** 2026-09-19 | D90 T07 §66 | copied"]},
+                _rt,
+                6,
+            ),
+            None,
+        )
+        check(
+            "retirement ref rejects cross-file copies",
+            section_retired(
+                {"90-synth.md": _rbase + ["> **Retired:** 2026-09-19 | D00 T01 §6 | copied"]},
+                _rt,
+                6,
+            ),
+            None,
+        )
+        check(
+            "retirement ref accepts its own section",
+            section_retired(
+                {"90-synth.md": _rbase + ["> **Retired:** 2026-09-19 | D90 T07 §6 | exact"]},
+                _rt,
+                6,
+            ),
+            "2026-09-19",
         )
         check(
             "plan-health lists the current accepted major",
