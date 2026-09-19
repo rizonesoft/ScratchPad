@@ -218,9 +218,10 @@ NEEDS_ALLOWED: dict[str, str] = {
 # Environment capabilities a section can require (`**Requires:**` line, D00
 # T01 §13). CLOSED like NEEDS_ALLOWED: `validate` refuses any other value,
 # and refuses a mark without its reason, so a typo cannot silently unmark a
-# section and every mark cites the measurement that convicted it. One value
-# today (the sole evidenced mark); a second value is one more entry here,
-# one detector branch below, and its self-test cases.
+# section and every mark cites the measurement that convicted it. Two values
+# today: display-session (detected) and operator (declared-only, no detector
+# branch by design); a further value is one more entry here, a detector
+# branch below unless declared-only, and its self-test cases.
 REQUIRES_ALLOWED: tuple[str, ...] = (
     "display-session",
     "operator",
