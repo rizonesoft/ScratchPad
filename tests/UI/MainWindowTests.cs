@@ -65,7 +65,7 @@ public sealed class MainWindowTests
         Assert.True(result.Match, $"shell golden mismatch: {result.DifferentFraction:P3} different");
     }
 
-    [Fact]
+    [PrimaryFact]
     [Trait("Category", "Primary")]
     public void GeometryRestoresAcrossLaunches()
     {

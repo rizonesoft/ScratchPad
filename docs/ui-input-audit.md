@@ -144,7 +144,6 @@ Element `.Click()`/`.DoubleClick()`/`.RightClick()` move the real cursor, so the
 | `tests/UI/TabBarTests.cs:409` | ContextMenuDrives | RightClick | fence | context menu IS the point |
 | `tests/UI/TabBarTests.cs:416` | ContextMenuDrives | RightClick | fence | context menu IS the point |
 | `tests/UI/UiCapture.cs:88` | PrepareSettings | Click | keep | fallback only when Invoke unsupported; foreground log audits any hit |
-
 | `tests/UI/MenuBarTests.cs:1272` | ClickFoundItem | Click | fence | MouseOnlyItems path: Invoke blocks on the synchronous native dialog (recorded in 156839b; the §8 Invoke spike hung corroborating it), so dialog tests keep real clicks |
 
 ## Focus calls (added 2026-09-17)

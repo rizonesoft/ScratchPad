@@ -452,6 +452,7 @@ public sealed class MenuBarTests
                 Assert.Equal(2, both.Result);
                 var windows = app.GetAllTopLevelWindows(automation).ToList();
                 var other = windows.First(w => w.Properties.NativeWindowHandle.Value != window.Properties.NativeWindowHandle.Value);
+                UiForeground.PlaceForBackground(other);
                 other.Close();
                 var back = Retry.While(
                     () => app.GetAllTopLevelWindows(automation).ToList().Count,

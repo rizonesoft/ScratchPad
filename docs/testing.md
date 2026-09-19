@@ -1,6 +1,6 @@
 # Testing
 
-Unit, smoke, UI-automation, and protocol tests each have a harness under `tests/`, and one `dotnet test` run executes every suite the host OS supports: `dotnet test src/Notepad.Neutral.slnf` on Linux, `dotnet test src/ScratchPad.slnx` on Windows. The Windows run includes the fenced interactive UI tests (below) plus the Category=Primary placement set: inside the 02:00-06:50 window (or with SCRATCHPAD_INTERACTIVE_FORCE=1) the fenced set owns the foreground while it runs, and outside the window it skips so the run reads green-plus-skipped; the per-section gate is the default-filtered run, which never takes the foreground.
+Unit, smoke, UI-automation, and protocol tests each have a harness under `tests/`, and one `dotnet test` run executes every suite the host OS supports: `dotnet test src/Notepad.Neutral.slnf` on Linux, `dotnet test src/ScratchPad.slnx` on Windows. The Windows run includes the fenced interactive UI tests (below) plus the Category=Primary placement set, and each skips unless its safe context holds: the fenced set runs only inside the 02:00-06:50 window (or with SCRATCHPAD_INTERACTIVE_FORCE=1), owning the foreground while it runs, and the Primary set runs only under SCRATCHPAD_BACKGROUND=1 (or in the window/forced), so outside those contexts the run reads green-plus-skipped; the per-section gate is the default-filtered run, which never takes the foreground.
 
 ## Framework
 

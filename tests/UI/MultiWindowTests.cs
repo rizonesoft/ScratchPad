@@ -16,7 +16,7 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class MultiWindowTests
 {
-    [Fact]
+    [PrimaryFact]
     [Trait("Category", "Primary")]
     public void CtrlShiftNOpensSecondWindowAtCascade()
     {

@@ -119,4 +119,60 @@ public sealed class QuietHoursTests
 
         Assert.True(missing.Count == 0, $"Missing gate on [Trait(\"Category\", \"Interactive\")]: {string.Join(", ", missing)}");
     }
+
+    [Fact]
+    public void EveryPrimaryFactCarriesThePrimaryTrait()
+    {
+        var missing = new List<string>();
+        foreach (Type type in typeof(QuietHoursTests).Assembly.GetTypes())
+        {
+            foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+            {
+                if (!method.GetCustomAttributes().Any(a => a is PrimaryFactAttribute))
+                {
+                    continue;
+                }
+
+                bool placed = method.GetCustomAttributesData()
+                    .Where(a => a.AttributeType.Name == nameof(TraitAttribute))
+                    .Any(a => a.ConstructorArguments.Count == 2
+                        && a.ConstructorArguments[0].Value?.ToString() == "Category"
+                        && a.ConstructorArguments[1].Value?.ToString() == "Primary");
+                if (!placed)
+                {
+                    missing.Add($"{type.Name}.{method.Name}");
+                }
+            }
+        }
+
+        Assert.True(missing.Count == 0, $"Missing [Trait(\"Category\", \"Primary\")]: {string.Join(", ", missing)}");
+    }
+
+    [Fact]
+    public void EveryPrimaryTraitCarriesAGate()
+    {
+        var missing = new List<string>();
+        foreach (Type type in typeof(QuietHoursTests).Assembly.GetTypes())
+        {
+            foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+            {
+                bool placed = method.GetCustomAttributesData()
+                    .Where(a => a.AttributeType.Name == nameof(TraitAttribute))
+                    .Any(a => a.ConstructorArguments.Count == 2
+                        && a.ConstructorArguments[0].Value?.ToString() == "Category"
+                        && a.ConstructorArguments[1].Value?.ToString() == "Primary");
+                if (!placed)
+                {
+                    continue;
+                }
+
+                if (!method.GetCustomAttributes().Any(a => a is PrimaryFactAttribute))
+                {
+                    missing.Add($"{type.Name}.{method.Name}");
+                }
+            }
+        }
+
+        Assert.True(missing.Count == 0, $"Missing gate on [Trait(\"Category\", \"Primary\")]: {string.Join(", ", missing)}");
+    }
 }
