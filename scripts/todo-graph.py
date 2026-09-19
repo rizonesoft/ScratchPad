@@ -2943,13 +2943,19 @@ def cmd_query(args) -> int:
         # void acceptance lists no obligation it cannot back, which
         # would double-count the already-persisting escalation, so
         # the leg runs the same hold predicate as covering (match,
-        # target-before-record, liveness, evidence). History never
-        # lists (a superseded record's review rode its successor),
-        # and lapsed records never list either (expiry escalates on
-        # the covered dimension, item 5). Overdue clears only through
-        # a superseding record whose rationale is the review outcome.
+        # target-before-record, liveness, evidence). Covering means a
+        # live escalation on the target's dimension (panel R4): a
+        # waiver for a minor row or a healthy marker covers nothing
+        # (the loops never consult it), so its review must not gate
+        # either. History never lists (a superseded record's review
+        # rode its successor), and lapsed records never list either
+        # (expiry escalates on the covered dimension, item 5).
+        # Overdue clears only through a superseding record whose
+        # rationale is the review outcome.
         reviews = []
         due_line = (datetime.now(timezone.utc).date() + timedelta(days=7)).isoformat()
+        _escalated_rows = {(f, pr.lower()) for f, pr, *_rest in criticals + majors}
+        _deg_state = {d["ref"]: d["state"] for d in degraded}
         for path in sorted(seen):
             _paccs = file_acceptances(path)
             if not _paccs or path not in owners or not owners[path]:
@@ -2962,18 +2968,6 @@ def cmd_query(args) -> int:
                 _praw = (TODO_DIR.parent / path).read_text(encoding="utf-8")
             except OSError:
                 continue
-            _prow_ids: set[str] = set()
-            _pstripped, _u = strip_fenced_code(_praw)
-            for _ph in PLAN_REVIEW_HEADING_RE.finditer(_pstripped):
-                _phsec = _pstripped[_ph.end():]
-                _phnxt = re.search(r"^#{1,6}\s+", _phsec, re.MULTILINE)
-                if _phnxt:
-                    _phsec = _phsec[: _phnxt.start()]
-                _phblock, _php = ledger_block(_phsec)
-                if _phblock is None:
-                    continue
-                for _plr in LEDGER_ROW_RE.finditer(_phblock):
-                    _prow_ids.add(_plr.group(1).lower())
             _pbody = (_ps.plan_review_body or "").strip()
             _prm = RUN_ID_RE.search(_pbody)
             _pmrun = normalize_run_id(_prm.group(1)) if _prm else None
@@ -2991,17 +2985,24 @@ def cmd_query(args) -> int:
                     # signal, not this list.
                     continue
                 _okey = outage_key(tgt) if kind == "outage" else None
+                _cref = f"{_pt.path} §{_pnum}"
+                _consulted = "outage" in _deg_state.get(_cref, "") or "retry-owed" in _deg_state.get(_cref, "")
                 if kind == "finding":
-                    _pmatch = tgt.lower() in _prow_ids
+                    _pmatch = (path, tgt.lower()) in _escalated_rows
                     _ptday = run_day(_prm.group(1)) if _prm else _pday
                     _ppath, _ptext = path, _praw
                 elif kind == "run":
-                    _pmatch = _pmrun is not None and normalize_run_id(tgt) == _pmrun
+                    _pmatch = (
+                        _consulted and _pmrun is not None and normalize_run_id(tgt) == _pmrun
+                    )
                     _ptday = run_day(tgt)
                     _ppath, _ptext = _pt.path, todo_text(_pt.path)
                 else:
                     _pmatch = (
-                        _okey is not None and _porung is not None and _okey == (_porung, _pday)
+                        _consulted
+                        and _okey is not None
+                        and _porung is not None
+                        and _okey == (_porung, _pday)
                     )
                     _ptday = _pday
                     _ppath, _ptext = _pt.path, todo_text(_pt.path)
@@ -10600,13 +10601,14 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         (clean / "docs" / "reviews" / "90-acc6.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §6]; dependents [none]; bytes 100; run 20260918-D90-T01-S6-gpt\n\n"
-            "Ledger:\n- [D90-T01-S6-PR1] [minor] watched row -> accepted\n- [D90-T01-S6-PR2] [minor] watched row -> accepted\n- [D90-T01-S6-PR3] [minor] watched row -> accepted\n- [D90-T01-S6-PR4] [minor] watched row -> accepted\nEnd of ledger\n"
+            "Ledger:\n- [D90-T01-S6-PR1] [major] watched row -> accepted\n- [D90-T01-S6-PR2] [major] watched row -> accepted\n- [D90-T01-S6-PR3] [major] watched row -> accepted\n- [D90-T01-S6-PR4] [major] watched row -> accepted\n- [D90-T01-S6-PR5] [minor] quiet row -> accepted\nEnd of ledger\n"
             f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale overdue review\n"
             f"Risk accepted: D90-T01-S6-PR2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc6e66; rationale due review\n"
             f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale superseded review\n"
             f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date {_r0}; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; supersedes 2026-09-18; rationale successor review\n"
             f"Risk accepted: D90-T01-S6-PR4; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence dead666; rationale stale review, never lists\n"
-            f"Risk accepted: D90-T01-S6-PR99; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale dangling review, never lists\n",
+            f"Risk accepted: D90-T01-S6-PR99; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale dangling review, never lists\n"
+            f"Risk accepted: D90-T01-S6-PR5; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale minor review, never lists\n",
             encoding="utf-8",
         )
         _r30f = (date.today() + timedelta(days=30)).isoformat()
@@ -10719,7 +10721,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         (clean / "docs" / "reviews" / "90-acc8.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260918-D90-T01-S1-gpt\n\n"
-            "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\n- [D90-T01-S9-PR9] [minor] foreign row -> accepted\nEnd of ledger\n"
+            "Ledger:\n- [D90-T01-S1-PR0] [major] clean round -> accepted\n- [D90-T01-S9-PR9] [major] foreign row -> accepted\nEnd of ledger\n"
             f"Risk accepted: D90-T01-S1-PR0; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc8e88; rationale due review sorts first\n"
             f"Risk accepted: D90-T01-S9-PR9; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc8e88; rationale overdue review\n",
             encoding="utf-8",
@@ -10742,6 +10744,11 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
                 in _acc8_buf.getvalue(),
             ),
             (1, True),
+        )
+        check(
+            "minor-row waivers list no review obligation",
+            (not any(e["target"] == "D90-T01-S6-PR5" for e in _revs)),
+            True,
         )
         check(
             "reviews gate overdue only",
