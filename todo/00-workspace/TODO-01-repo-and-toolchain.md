@@ -97,7 +97,7 @@ track: W0
 |  41   |   §41   | Bin output residuals | §40 |  [x]   |
 |  42   |   §42   | Requires operator vocabulary | §13 |  [x]   |
 |  43   |   §43   | Findings count touch-up | §20 |  [x]   |
-|  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
+|  44   |   §44   | Range-fallback lineage guards | §24 |  [x]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
 |  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
 |  47   |   §47   | Section-span scan helper | §26 |  [ ]   |
@@ -1164,6 +1164,11 @@ Why this section exists: the §24 round-5 panel proved the genesis flag misfires
 - [x] Commit: `"workspace: guard lineage checks against range fallback"`
 
 **Test checkpoint:** a two-marker range stamp (rerun over genesis) validates silent on both members; a true singleton with supersedes still fires. Falsifiable by any fire or silence that flips.
+
+> **Verified:** 2026-09-19 | §44 | self-test 1102/1102 (+2: range-rerun silence, range-follows silence); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3 sign-off over candidates 2de3c7f 6a96c0a 918bc93 47cf731; plan review 12 findings, 3 filed at D00 T04 §1, 1 accepted in the stamp, 1 duplicate, 7 rejected
+> **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 2de3c7f 6a96c0a 918bc93 47cf731 -- `adversarial` approve · `consistency` advisory (R3 wrapper-convention filed at D00 T04 §1) · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s44.md
+> **Plan review:** GPT high, filed D00 T04 §1, accepted 1 in the stamp (run 20260919-D00-T01-S44-gpt-r3)
+> **CRUD:** applicable | self-test wrote nothing new (1102/1102 re-observed in a clean worktree at 47cf731; fixtures live in the suite file); code plus TODO edits read back via diff; filing (6a96c0a) plus panel record (918bc93) plus triage (47cf731) read back via validate, plan --check, and fence re-hash; ledgered panel/plan artifacts under ignored build/review-runs retained as evidence, worktree removed, no disposables to tear down
 
 ## 45. Run Inspection Residuals
 
