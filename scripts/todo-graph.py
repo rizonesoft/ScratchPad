@@ -1616,6 +1616,8 @@ TELEMETRY_LINE_RE = re.compile(
     r"\s*duration\s+([^;]+?)\s*;\s*outcome\s+([^;]+?)\s*;\s*tokens\s+([^;]+?)\s*$"
 )
 TELEMETRY_PANEL_RE = re.compile(r"^(#{1,6})\s+(Opus panel|GPT panel)\b(.*)$")
+TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
+TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
 TELEMETRY_ROUND_RE = re.compile(r"round\s+(\d+)", re.IGNORECASE)
 # Verdict-line shape mirrors the validator's PANEL_VERDICT_RES (D00 T01
 # §39 queries what the validator recognizes): marker, optional padding,
@@ -2378,16 +2380,28 @@ def telemetry_parse(text: str) -> dict:
     """
     rounds: list[dict] = []
     malformed: list[str] = []
-    sol: list[str] = []
-    opus: list[str] = []
+    sol: list[tuple[str, int | None]] = []
+    opus: list[tuple[str, int | None]] = []
     disps: list[tuple[str, str, str, int | None]] = []
+    round_runs: dict[int, list[str]] = {}
+    file_runs: list[str] = []
     cur: dict | None = None
+    cur_level = 0
     order = 0
     for ln in text.splitlines():
+        for _r in RUN_ID_RE.findall(ln):
+            _rid = normalize_run_id(_r.strip("`"))
+            if RUN_ID_SHAPE_RE.match(_rid) and _rid not in file_runs:
+                file_runs.append(_rid)
+                if cur is not None:
+                    round_runs.setdefault(cur["n"], [])
+                    if _rid not in round_runs[cur["n"]]:
+                        round_runs[cur["n"]].append(_rid)
         hm = TELEMETRY_PANEL_RE.match(ln)
         if hm:
             order += 1
             rm = TELEMETRY_ROUND_RE.search(hm.group(3) or "")
+            cur_level = len(hm.group(1))
             cur = {
                 "n": int(rm.group(1)) if rm else order,
                 "family": "Opus" if hm.group(2) == "Opus panel" else "GPT",
@@ -2395,6 +2409,11 @@ def telemetry_parse(text: str) -> dict:
                 "verdicts": [],
             }
             rounds.append(cur)
+            continue
+        gm = TELEMETRY_HEADING_RE.match(ln)
+        if gm and cur is not None and len(gm.group(1)) <= cur_level:
+            cur = None
+            cur_level = 0
             continue
         if ln.startswith("Telemetry:"):
             m = TELEMETRY_LINE_RE.match(ln)
@@ -2412,8 +2431,9 @@ def telemetry_parse(text: str) -> dict:
                         "model": m.group(2).strip(),
                         "effort": m.group(3).strip(),
                         "duration": dur_v,
-                        "outcome": m.group(5).strip(),
+                        "outcome": m.group(5).strip().lower(),
                         "tokens": tok_v,
+                        "_line": ln[:160],
                     }
             if tel is None or cur is None:
                 malformed.append(ln[:160])
@@ -2428,31 +2448,36 @@ def telemetry_parse(text: str) -> dict:
         if sm:
             val = sm.group(1).strip()
             if val and not TELEMETRY_SOL_DENY_RE.match(val):
-                sol.append(val[:160])
+                sol.append((val[:160], cur["n"] if cur else None))
             continue
         om = TELEMETRY_OPUS_RE.search(ln)
         if om and om.group(1).strip():
-            opus.append(om.group(1).strip()[:160])
+            opus.append((om.group(1).strip()[:160], cur["n"] if cur else None))
             continue
         dm = TELEMETRY_DISP_RE.match(ln)
         if dm:
             disps.append(
                 (dm.group(1), dm.group(2), dm.group(3).strip()[:80], cur["n"] if cur else None)
             )
-    runs = sorted(
-        {
-            rid
-            for _r in RUN_ID_RE.findall(text)
-            if RUN_ID_SHAPE_RE.match(rid := normalize_run_id(_r.strip("`")))
-        }
-    )
+    for r in rounds:
+        t = r["telemetry"]
+        if t is not None and r["verdicts"]:
+            worst = max(TELEMETRY_WORST[v.lower()] for _a, v in r["verdicts"])
+            if TELEMETRY_WORST.get(t["outcome"], -1) != worst:
+                # The shape defines outcome as the round's worst lens
+                # verdict; a disagreeing line is corrupt totals, not data.
+                malformed.append(t["_line"])
+                r["telemetry"] = None
+        if r["telemetry"] is not None:
+            del r["telemetry"]["_line"]
     return {
         "rounds": rounds,
         "malformed": malformed,
         "sol": sol,
         "opus": opus,
         "disps": disps,
-        "runs": runs,
+        "runs": sorted(file_runs),
+        "round_runs": {n: sorted(v) for n, v in round_runs.items()},
     }
 
 
@@ -2792,6 +2817,14 @@ def cmd_query(args) -> int:
                         files[_fm.group(1)] = _txt
 
         parsed = {p: telemetry_parse(t) for p, t in files.items()}
+
+        def _affected(d: dict, ctx: int | None) -> list[str]:
+            # An outage line under a panel section affects that round's
+            # runs; a file-level line falls back to the file's runs.
+            if ctx is not None:
+                return d["round_runs"].get(ctx, [])
+            return d["runs"]
+
         tel_n = panel_n = gpt_n = opus_n = 0
         tok_sum = tok_unknown = mismatch = 0
         outcomes: dict[str, int] = {}
@@ -2824,9 +2857,9 @@ def cmd_query(args) -> int:
                 malformed_total += len(d["malformed"])
                 malformed_files.append(path)
             if d["sol"]:
-                sol_files.append((path, d["sol"], d["runs"]))
+                sol_files.append((path, [(v, _affected(d, c)) for v, c in d["sol"]]))
             if d["opus"]:
-                opus_files.append((path, d["opus"], d["runs"]))
+                opus_files.append((path, [(v, _affected(d, c)) for v, c in d["opus"]]))
 
         if not section_mode and not as_json:
             print("telemetry -- tree-wide panel rounds")
@@ -2840,14 +2873,14 @@ def cmd_query(args) -> int:
                 print("outcomes (telemetry rounds): (none)")
             print("outages -- Sol-outage coverage (plan-health fallback untouched)")
             print(f"  Sol outages: {len(sol_files)} reviews")
-            for _p, _vals, _runs in sol_files:
-                _r = ", ".join(_runs) if _runs else "no runs recorded"
-                for _v in _vals:
+            for _p, _outs in sol_files:
+                for _v, _ar in _outs:
+                    _r = ", ".join(_ar) if _ar else "no runs recorded"
                     print(f"    {_p}: {_v} (runs: {_r})")
             print(f"  Opus outages: {len(opus_files)} reviews")
-            for _p, _vals, _runs in opus_files:
-                _r = ", ".join(_runs) if _runs else "no runs recorded"
-                for _v in _vals:
+            for _p, _outs in opus_files:
+                for _v, _ar in _outs:
+                    _r = ", ".join(_ar) if _ar else "no runs recorded"
                     print(f"    {_p}: {_v} (runs: {_r})")
             print(f"sections without telemetry: {no_tel} (past records read as unknown, not zero)")
             if malformed_total:
@@ -2887,12 +2920,33 @@ def cmd_query(args) -> int:
                         f"  R{r['n']} ({r['family']}): model {t['model']}, effort {t['effort']}, "
                         f"duration {_du}, outcome {t['outcome']}, tokens {_tk}"
                     )
-            if d["sol"] or d["opus"]:
-                _o = [f"Sol outage: {v}" for v in d["sol"]] + [f"Opus outage: {v}" for v in d["opus"]]
-                _r = ", ".join(d["runs"]) if d["runs"] else "no runs recorded"
-                lines.append(f"outages: {'; '.join(_o)} (runs: {_r})")
-            else:
-                lines.append("outages: none")
+            _got = [r for r in d["rounds"] if r["telemetry"]]
+            _tsum = sum(r["telemetry"]["tokens"] for r in _got if r["telemetry"]["tokens"] is not None)
+            _tunk = sum(1 for r in _got if r["telemetry"]["tokens"] is None)
+            _fam = {
+                "GPT": sum(1 for r in _got if r["family"] == "GPT"),
+                "Opus": sum(1 for r in _got if r["family"] == "Opus"),
+            }
+            _out: dict[str, int] = {}
+            for r in _got:
+                _o = r["telemetry"]["outcome"]
+                _out[_o] = _out.get(_o, 0) + 1
+            _tot = (
+                f"totals: {len(_got)} telemetry rounds ({len(d['rounds'])} panel sections); "
+                f"tokens {_tsum} known ({_tunk} unknown); "
+                f"families GPT {_fam['GPT']}, Opus {_fam['Opus']}"
+            )
+            if _out:
+                _tot += "; outcomes " + ", ".join(f"{k} {v}" for k, v in sorted(_out.items()))
+            lines.append(_tot)
+            _oo = []
+            for _v, _c in d["sol"]:
+                _ar = _affected(d, _c)
+                _oo.append(f"Sol outage: {_v} (runs: {', '.join(_ar) if _ar else 'none recorded'})")
+            for _v, _c in d["opus"]:
+                _ar = _affected(d, _c)
+                _oo.append(f"Opus outage: {_v} (runs: {', '.join(_ar) if _ar else 'none recorded'})")
+            lines.append(f"outages: {'; '.join(_oo)}" if _oo else "outages: none")
             if blockers:
                 lines.append("open blockers: " + ", ".join(f"{i} live ({finals[i][1]})" for i in blockers))
             else:
@@ -2925,8 +2979,19 @@ def cmd_query(args) -> int:
                     }
                     for r in d["rounds"]
                 ],
-                "outages": {"sol": d["sol"], "opus": d["opus"]},
+                "outages": {
+                    "sol": [{"value": v, "runs": _affected(d, c)} for v, c in d["sol"]],
+                    "opus": [{"value": v, "runs": _affected(d, c)} for v, c in d["opus"]],
+                },
                 "runs": d["runs"],
+                "totals": {
+                    "telemetry_rounds": len(_got),
+                    "panel_sections": len(d["rounds"]),
+                    "tokens_known": _tsum,
+                    "tokens_unknown": _tunk,
+                    "families": _fam,
+                    "outcomes": _out,
+                },
                 "blockers": blockers,
                 "filed": {i: finals[i][1] for i in filed},
                 "lineage": {i: chains[i] for i in sorted(chains)},
@@ -2959,10 +3024,12 @@ def cmd_query(args) -> int:
                     "families_telemetry": fam_tel,
                     "outcomes": outcomes,
                     "sol_outages": [
-                        {"path": p, "values": v, "runs": r} for p, v, r in sol_files
+                        {"path": p, "outages": [{"value": v, "runs": r} for v, r in o]}
+                        for p, o in sol_files
                     ],
                     "opus_outages": [
-                        {"path": p, "values": v, "runs": r} for p, v, r in opus_files
+                        {"path": p, "outages": [{"value": v, "runs": r} for v, r in o]}
+                        for p, o in opus_files
                     ],
                     "sections_without_telemetry": no_tel,
                     "malformed_total": malformed_total,
@@ -16376,8 +16443,45 @@ Opus outage model failure at sign-off
         check("telemetry heading without a number falls back to order", [_tb["rounds"][0]["n"]], [1])
         check("telemetry counts three malformed lines", len(_tb["malformed"]), 3)
         check("telemetry keeps the surviving line with its claimed round", _tb["rounds"][0]["telemetry"]["round"], 5)
-        check("telemetry counts honest Sol lines only", _tb["sol"], ["CLI missing before round 1"])
-        check("telemetry counts Opus lines", _tb["opus"], ["model failure at sign-off"])
+        check("telemetry counts honest Sol lines only", _tb["sol"], [("CLI missing before round 1", 1)])
+        check("telemetry counts Opus lines", _tb["opus"], [("model failure at sign-off", 1)])
+        _TEL_LIE = """## GPT panel (round 1)
+
+- `adversarial` needs-attention
+Telemetry: round 1; model gpt-5.6-sol; effort medium; duration 9s; outcome approve; tokens 10
+"""
+        _tl = telemetry_parse(_TEL_LIE)
+        check("telemetry drops an outcome that conceals verdicts", (_tl["rounds"][0]["telemetry"], len(_tl["malformed"])), (None, 1))
+        _TEL_CLOSE = """## GPT panel (round 1)
+
+- `adversarial` approve
+
+### A deeper note
+
+- `record` approve
+
+## Plan review
+
+| ID | Disposition | Evidence |
+| R9-F9 | live | elsewhere |
+
+run 20260920-D90-T09-S9-gpt
+
+## Opus panel (round 2)
+
+run 20260920-D90-T09-S9-opus
+Sol outage: CLI missing before round 2
+"""
+        _tc = telemetry_parse(_TEL_CLOSE)
+        check(
+            "telemetry keeps verdicts under deeper headings",
+            _tc["rounds"][0]["verdicts"],
+            [("adversarial", "approve"), ("record", "approve")],
+        )
+        check("telemetry closes context at same-level headings", _tc["disps"], [("R9-F9", "live", "elsewhere", None)])
+        check("telemetry scopes runs to their round", _tc["round_runs"], {2: ["20260920-D90-T09-S9-opus"]})
+        check("telemetry scopes the outage to its round", _tc["sol"], [("CLI missing before round 2", 2)])
+        check("telemetry keeps file-wide runs too", _tc["runs"], ["20260920-D90-T09-S9-gpt", "20260920-D90-T09-S9-opus"])
         _tbuf = _tio.StringIO()
         with _tctx.redirect_stdout(_tbuf), _tctx.redirect_stderr(_tio.StringIO()):
             _tcode = cmd_query(argparse.Namespace(what="telemetry"))
@@ -16466,6 +16570,16 @@ track: Z1
         _jrep = json.loads(_jbuf.getvalue())
         check("query telemetry --json exits 0", _jcode, 0)
         check("query telemetry --json carries schema telemetry/1", _jrep.get("schema"), "telemetry/1")
+        check(
+            "query telemetry section shows per-section totals",
+            any("totals: 2 telemetry rounds" in ln and "tokens 16561 known (1 unknown)" in ln for ln in _slines),
+            True,
+        )
+        check(
+            "query telemetry --json carries section totals",
+            _jrep["sections"][0]["totals"]["telemetry_rounds"],
+            2,
+        )
         _bbuf = _tio.StringIO()
         with _tctx.redirect_stdout(_bbuf), _tctx.redirect_stderr(_tio.StringIO()):
             _bcode = cmd_query(
