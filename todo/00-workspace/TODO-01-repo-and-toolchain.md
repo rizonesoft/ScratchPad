@@ -1172,11 +1172,13 @@ Why this section exists: the §24 round-5 panel proved the genesis flag misfires
 
 ## 45. Run Inspection Residuals
 
+> **Started:** 2026-09-19T17:04:36Z
+
 Why this section exists: the §24 plan review found the run query short of a complete operator view (no verdict, correction lineage, or confidence state) and automation-unfriendly (prose only, no machine contract). One view must answer whether a run is approved and trustworthy, and tooling must read it without scraping. -> XREF: D00 T01 §24 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s24-2026-09-19-s45 D00-T01-S24-PR9 D00-T01-S24-PR14 (`gpt-5.6-sol` high over §24 plus §20 plus §23 plus §43, 14 findings, 2 filed here plus a §43 item, 5 duplicate, 6 rejected with reasons in the §24 findings file).
 
-- [ ] Trust legs: verdict, correction lineage, and evidence-confidence ride the run view. Done when: the legs emit with fixtures.
-- [ ] Machine contract: `query run --json` emits a versioned schema with deterministic ordering and explicit unavailable fields. Done when: the schema ships with fixtures.
-- [ ] Commit: `"workspace: round out run inspection per §24 plan review"`
+- [x] Trust legs: verdict (worst last-marker state over carrying chains, worst-first unknown, outage, retry-owed, partial, complete; unavailable when no marker carries the run), correction lineage (per-row corrects trails plus corrected-by lists via `ledger_supersedes`), and evidence-confidence (high/medium/low from provenance binding plus candidate resolution) ride the run view. Done when: the legs emit with fixtures. Done: legs emit in prose plus JSON; fixtures lock verdicts (complete/retry-owed/partial/unavailable), the S92 amendment trail, and confidence high/low. **Default 2026-09-19 (validation):** raw PR9/PR14 text lost (pre-ledger era); semantics above are justified defaults (cost of changing: leg redefinition plus fixture updates).
+- [x] Machine contract: `query run --json` emits a versioned schema with deterministic ordering and explicit unavailable fields. Done when: the schema ships with fixtures. Done: schema `run/1` over the whole view (11 keys), sort_keys plus byte-determinism fixture, null-plus-reason unavailable fields, gatekeeper plus README updated. **Default 2026-09-19 (validation):** schema `run/1` mirroring `telemetry/1`; the whole view rides the JSON (all legs, missing legs null plus reason); errors stay prose plus exit codes (cost of changing: shape change plus fixture updates).
+- [x] Commit: `"workspace: round out run inspection per §24 plan review"`
 
 **Test checkpoint:** one run answers approved-plus-trustworthy or states what is unavailable; `--json` validates against the versioned schema. Falsifiable by any leg missing or any output outside the schema.
 

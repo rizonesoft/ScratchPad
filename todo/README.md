@@ -341,7 +341,7 @@ python3 scripts/todo-graph.py query blocked      # sections waiting on something
 python3 scripts/todo-graph.py query stats        # tree health
 python3 scripts/todo-graph.py query plan-health  # review-loop governance: --json emits schema plan-health/6 (total sort keys, exits 0); --check/--fail-on gate automation
 python3 scripts/todo-graph.py query summary      # operator digest: incomplete runs, blocked clearances, overdue owners, next action, gate verdict (text-only; exits 1 when the gate fails)
-python3 scripts/todo-graph.py query run <id>     # one run ID resolves to candidate, scope, findings, lineage, outage, artifacts
+python3 scripts/todo-graph.py query run <id>     # one run ID resolves to candidate, scope, findings, lineage, outage, artifacts, verdict, corrections, confidence (--json: schema run/1)
 python3 scripts/todo-graph.py query risk-register  # acceptance instruments with residual severity: --json emits schema risk-register/1; --sync persists docs/risk-register.md, --check gates drift
 python3 scripts/todo-graph.py query dashboard      # Markdown health rollup: reviews, expiries, partials, migration, open findings (text-only)
 python3 scripts/todo-graph.py query notify         # owner lookahead payloads within N days: --today freezes the clock, --within-days sets the window (text-only; exit 0)

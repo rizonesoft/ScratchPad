@@ -1070,6 +1070,7 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 PLAN_HEALTH_SCHEMA = "plan-health/6"
 TELEMETRY_SCHEMA = "telemetry/1"
 RISK_REGISTER_SCHEMA = "risk-register/1"
+RUN_SCHEMA = "run/1"
 RISK_REGISTER_PATH = "docs/risk-register.md"
 
 
@@ -2696,6 +2697,8 @@ def cmd_query(args) -> int:
                 seen_files[_fm.group(1)], _u = strip_fenced_code(_raw)
         manifests: list[tuple[str, str, str]] = []
         rows: list[tuple[str, str]] = []
+        _run_blocks: list[str] = []
+        _run_row_ids: list[str] = []
         for _path, _text in sorted(seen_files.items()):
             for h in PLAN_REVIEW_HEADING_RE.finditer(_text):
                 _sec = _text[h.end() :]
@@ -2711,7 +2714,9 @@ def cmd_query(args) -> int:
                 _block, _bp = ledger_block(_sec)
                 if _block is None:
                     continue
+                _run_blocks.append(_block)
                 for _lr in LEDGER_ROW_RE.finditer(_block):
+                    _run_row_ids.append(_lr.group(1))
                     _rest = _block[_lr.end() :].split("\n", 1)[0]
                     _rm = ROW_PARTS_RE.match(_lr.group(0))
                     _rtext = _one_line(_rm.group("text"), 80) if _rm else ""
@@ -2749,9 +2754,133 @@ def cmd_query(args) -> int:
                 artifacts.append(
                     (_path, _pm.group(1), _pm.group(2), _pm.group(3), _pm.group(4), _pm.group(5), _pm.group(6))
                 )
+        # Trust legs (D00 T01 §45 item 1): verdict is the worst
+        # last-marker state over carrying chains (unknown above
+        # outage above retry-owed above partial above complete);
+        # outage lasts count (a later failed attempt with no
+        # rerun), chain outages otherwise surface in the outage
+        # leg. Unknown when no marker carries the run.
+        _VERDICT_WORST = {"unknown": 4, "outage": 3, "retry-owed": 2, "partial": 1, "complete": 0}
+        _verdict = None
+        for _bodies in carrying.values():
+            _last = _bodies[-1]
+            if is_outage_marker(_last):
+                _vs = "outage"
+            else:
+                _st = marker_states(_last)
+                if _st["retry"]:
+                    _vs = "retry-owed"
+                elif _st["partial"]:
+                    _vs = "partial"
+                elif _st["filed"] or _st["nofind"]:
+                    _vs = "complete"
+                else:
+                    _vs = "unknown"
+            if _verdict is None or _VERDICT_WORST[_vs] > _VERDICT_WORST[_verdict]:
+                _verdict = _vs
+        _verdict_unavailable = None if carrying else "no marker carries this run"
+        # Correction lineage: per-row corrects trails plus
+        # corrected-by lists, following ledger supersedes links
+        # within the run's own rows (visited set: the walk never
+        # loops; the validator owns cycle diagnostics).
+        _links: dict[str, str] = {}
+        for _b in _run_blocks:
+            for _rk, _rt in ledger_supersedes(_b).items():
+                _links.setdefault(_rk, _rt)
+        _rid_set = {_r.lower() for _r in _run_row_ids}
+        _by_corrected: dict[str, list[str]] = {}
+        for _rk, _rt in _links.items():
+            _by_corrected.setdefault(_rt.lower(), []).append(_rk)
+        _corrections = []
+        for _rid in sorted(set(_run_row_ids), key=str.lower):
+            _trail = [_rid]
+            _seen = {_rid.lower()}
+            _external = False
+            _cur = _links.get(_rid.lower())
+            while _cur is not None:
+                if _cur.lower() not in _rid_set:
+                    _trail.append(_cur)
+                    _external = True
+                    break
+                if _cur.lower() in _seen:
+                    _trail.append(_cur)
+                    break
+                _trail.append(_cur)
+                _seen.add(_cur.lower())
+                _cur = _links.get(_cur.lower())
+            _corrections.append(
+                {
+                    "row": _rid,
+                    "corrects": _trail,
+                    "original": _trail[-1],
+                    "depth": len(_trail) - 1,
+                    "head_external": _external,
+                    "corrected_by": sorted(_by_corrected.get(_rid.lower(), []), key=str.lower),
+                }
+            )
+        # Evidence confidence: provenance bound for this run plus
+        # candidate resolution (high/medium/low with reasons).
+        _conf_reasons = []
+        if not artifacts:
+            _conf = "low"
+            _conf_reasons.append("no provenance bound to this run")
+        else:
+            _res = [git_resolves(_c) for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts]
+            if any(_r is True for _r in _res):
+                _conf = "high"
+                _conf_reasons.append("provenance bound; candidate resolves")
+            elif any(_r is None for _r in _res):
+                _conf = "medium"
+                _conf_reasons.append("provenance bound; candidate unverifiable here")
+            else:
+                _conf = "medium"
+                _conf_reasons.append("provenance bound; candidate resolves to nothing")
+        # Structured marker rows serve prose and JSON alike, so the
+        # two can never drift apart.
+        _marker_rows = []
+        for (_path, _num), _bodies in sorted(carrying.items()):
+            for _i, _b in enumerate(_bodies, 1):
+                _rm2 = RUN_ID_RE.search(_b)
+                _run2 = _rm2.group(1) if _rm2 else "none"
+                _edges = []
+                _sm2 = SUPERSEDES_RE.search(_b)
+                if _sm2:
+                    _edges.append(f"supersedes {_sm2.group(1)}")
+                if FOLLOWS_OUTAGE_RE.search(_b):
+                    _edges.append("follows-outage")
+                _marker_rows.append((_path, _num, _i, len(_bodies), _run2, _edges, _one_line(_b, 120)))
+        _outage_rows = [
+            (_path, _num, _b)
+            for (_path, _num), _bodies in sorted(carrying.items())
+            for _b in _bodies
+            if is_outage_marker(_b)
+        ]
         if not carrying and not manifests and not artifacts:
             print(f"unknown run: {target}")
             return 1
+        if getattr(args, "json", False):
+            _jd = {
+                "schema": RUN_SCHEMA,
+                "run": target,
+                "verdict": _verdict,
+                "verdict_unavailable": _verdict_unavailable,
+                "corrections": _corrections,
+                "confidence": {"level": _conf, "reasons": _conf_reasons},
+                "candidates": [{"path": _p, "text": _s} for _p, _s in candidates],
+                "scope": [{"path": _p, "sections": _s, "dependents": _d} for _p, _s, _d in manifests],
+                "findings": [{"path": _p, "row": _r} for _p, _r in rows],
+                "markers": [
+                    {"path": _p, "section": _n, "index": _i, "of": _m, "run": _r, "edges": _e, "text": _t}
+                    for _p, _n, _i, _m, _r, _e, _t in _marker_rows
+                ],
+                "outages": [{"path": _p, "section": _n, "text": _one_line(_b, 160)} for _p, _n, _b in _outage_rows],
+                "artifacts": [
+                    {"path": _p, "candidate": _c, "command": _cm, "exit": _ex, "tool": _t, "digest": _dg, "target": _pp}
+                    for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts
+                ],
+            }
+            print(json.dumps(_jd, indent=2, sort_keys=True))
+            return 0
         print(f"run {target}")
         print("candidate -- review candidates in files carrying this run (file-level: rounds share the file)")
         if not candidates:
@@ -2769,27 +2898,15 @@ def cmd_query(args) -> int:
         for _path, _row in rows:
             print(f"    {_path} {_row}")
         print("marker lineage -- full chains carrying this run")
-        if not carrying:
+        if not _marker_rows:
             print("    (none)")
-        for (_path, _num), _bodies in sorted(carrying.items()):
-            for _i, _b in enumerate(_bodies, 1):
-                _rm2 = RUN_ID_RE.search(_b)
-                _run2 = _rm2.group(1) if _rm2 else "none"
-                _sm2 = SUPERSEDES_RE.search(_b)
-                _edge = f" supersedes {_sm2.group(1)}" if _sm2 else ""
-                if FOLLOWS_OUTAGE_RE.search(_b):
-                    _edge += " follows-outage"
-                print(f"    {_path} §{_num} [{_i}/{len(_bodies)}] run={_run2}{_edge} :: {_one_line(_b, 120)}")
+        for _path, _num, _i, _of, _run2, _edges, _text in _marker_rows:
+            _edge = f" {' '.join(_edges)}" if _edges else ""
+            print(f"    {_path} §{_num} [{_i}/{_of}] run={_run2}{_edge} :: {_text}")
         print("outage state")
-        _outages = [
-            (_path, _num, _b)
-            for (_path, _num), _bodies in sorted(carrying.items())
-            for _b in _bodies
-            if is_outage_marker(_b)
-        ]
-        if not _outages:
+        if not _outage_rows:
             print("    clean (no outage markers)")
-        for _path, _num, _b in _outages:
+        for _path, _num, _b in _outage_rows:
             print(f"    {_path} §{_num} {_one_line(_b, 160)}")
         print("verified artifacts -- provenance bound to this run")
         if not artifacts:
@@ -2799,6 +2916,20 @@ def cmd_query(args) -> int:
                 f"    {_path} candidate {_cand} exit {_exit} digest {_digest} "
                 f"{_one_line(_cmd, 80)} ({_one_line(_tool, 40)}) {_ppath}"
             )
+        print("verdict -- worst last-marker state over carrying chains")
+        if _verdict is None:
+            print(f"    (unavailable: {_verdict_unavailable})")
+        else:
+            print(f"    {_verdict}")
+        print("corrections -- amendment trails under this run")
+        _amended = [_c for _c in _corrections if _c["depth"]]
+        if not _amended:
+            print(f"    (none; {len(_corrections)} rows unamended)")
+        for _c in _amended:
+            _ext = " (head outside this run)" if _c["head_external"] else ""
+            print(f"    {_c['row']} corrects {' -> '.join(_c['corrects'][1:])} (depth {_c['depth']}){_ext}")
+        print("evidence confidence -- provenance binding plus candidate resolution")
+        print(f"    {_conf} ({'; '.join(_conf_reasons)})")
         return 0
 
     if what == "telemetry":
@@ -8948,6 +9079,7 @@ track: Z1
 |  95   |   §95   | Range rerun pair two | - |  [x]   |
 |  96   |   §96   | Range follows pair one | - |  [x]   |
 |  97   |   §97   | Range follows pair two | - |  [x]   |
+|  98   |   §98   | Manifest-only run host | - |  [x]   |
 
 ---
 
@@ -10120,6 +10252,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 - [x] Commit: `"selftest: marker"`
 
 **Test checkpoint:** `true`
+
+## 98. Manifest-only run host
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §98 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-manifestonly.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S98-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -10659,6 +10802,19 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             + "Manifest: sections [D90 T07 §96, D90 T07 §97]; dependents [none]; bytes 100; run 20260920-D90-T07-S96-gpt-r2\n\n"
             "Ledger:\n"
             "- [D90-T07-S4-PR2] [major] Re-cited range follows finding -> filed §2\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-manifestonly.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §98]; dependents [none]; bytes 100; run 20260920-D90-T07-S98-gpt\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR2] [major] Re-cited manifest-only host finding -> filed §2\n"
+            "End of ledger\n"
+            "## Plan review\n\n"
+            "Manifest: sections [D90 T07 §98]; dependents [none]; bytes 100; run 20260920-D90-T07-S98-gpt-r2\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S4-PR11] [major] Re-cited orphan manifest finding -> filed §2\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -12272,6 +12428,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             0,
         )
+        check(
+            "§98 fires exactly zero (manifest-only host silence)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§98 " in ln and "FATAL" in ln),
+            0,
+        )
         gbuf = _mio.StringIO()
         with _mctx.redirect_stdout(gbuf), _mctx.redirect_stderr(_mio.StringIO()):
             range_code = cmd_query(
@@ -12283,6 +12444,127 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "query run resolves range-stamped non-first sections",
             any("§65" in ln and "S64-gpt" in ln for ln in glines),
             True,
+        )
+        # Trust legs (D00 T01 §45 item 1): verdict, correction
+        # lineage, and evidence confidence ride the run view.
+        check(
+            "query run verdicts a filed run complete",
+            "    complete" in run_lines,
+            True,
+        )
+        check(
+            "query run confidence is high on a resolving candidate",
+            any("high (provenance bound; candidate resolves)" in ln for ln in run_lines),
+            True,
+        )
+        check(
+            "query run verdicts a recovered outage chain complete",
+            "    complete" in outage_lines,
+            True,
+        )
+        _vbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_vbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _vcode = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S43-gpt"))
+        _vlines = _vbuf.getvalue().splitlines()
+        check("query run exits 0 on the retry-owed run", _vcode, 0)
+        check(
+            "query run verdicts a retry-owed run retry-owed",
+            "    retry-owed" in _vlines,
+            True,
+        )
+        _pbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_pbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _pcode = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S17-gpt"))
+        _plines = _pbuf.getvalue().splitlines()
+        check("query run exits 0 on the partial run", _pcode, 0)
+        check(
+            "query run verdicts a partial run partial",
+            "    partial" in _plines,
+            True,
+        )
+        _bbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_bbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _bcode = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S60-gpt"))
+        _blines = _bbuf.getvalue().splitlines()
+        check("query run exits 0 on the superseded base run", _bcode, 0)
+        check(
+            "query run confidence is low with no bound provenance",
+            any("low (no provenance bound to this run)" in ln for ln in _blines),
+            True,
+        )
+        _cbuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(_cbuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            _ccode2 = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S92-gpt"))
+        _clines2 = _cbuf2.getvalue().splitlines()
+        check("query run exits 0 on the amended run", _ccode2, 0)
+        check(
+            "query run shows the amendment trail",
+            any(
+                "D90-T07-S92-PR12 corrects D90-T07-S92-PR11 (depth 1)" in ln for ln in _clines2
+            ),
+            True,
+        )
+        _mbuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(_mbuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            _mcode2 = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S98-gpt-r2"))
+        _mlines2 = _mbuf2.getvalue().splitlines()
+        check("query run exits 0 on the manifest-only run", _mcode2, 0)
+        check(
+            "query run verdict is unavailable with no carrying marker",
+            any("(unavailable: no marker carries this run)" in ln for ln in _mlines2),
+            True,
+        )
+        # Machine contract (D00 T01 §45 item 2): run/1 JSON over
+        # the whole view, deterministic, unavailable explicit.
+        _jbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_jbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _jcode = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S60-gpt-r3", json=True)
+            )
+        _jtext = _jbuf.getvalue()
+        check("query run --json exits 0 on a known run", _jcode, 0)
+        _jdata = json.loads(_jtext)
+        check("query run --json carries schema run/1", _jdata.get("schema"), "run/1")
+        check("query run --json carries the verdict", _jdata.get("verdict"), "complete")
+        check(
+            "query run --json carries confidence",
+            (_jdata.get("confidence") or {}).get("level"),
+            "high",
+        )
+        check(
+            "query run --json names every leg",
+            all(
+                _k in _jdata
+                for _k in (
+                    "verdict",
+                    "verdict_unavailable",
+                    "corrections",
+                    "confidence",
+                    "candidates",
+                    "scope",
+                    "findings",
+                    "markers",
+                    "outages",
+                    "artifacts",
+                )
+            ),
+            True,
+        )
+        _jbuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(_jbuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S60-gpt-r3", json=True))
+        check("query run --json is byte-deterministic", _jbuf2.getvalue() == _jtext, True)
+        _jubuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_jubuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _jucode = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S98-gpt-r2", json=True)
+            )
+        _judata = json.loads(_jubuf.getvalue())
+        check("query run --json exits 0 on the manifest-only run", _jucode, 0)
+        check(
+            "query run --json states unavailable verdicts explicitly",
+            (_judata.get("verdict"), _judata.get("verdict_unavailable")),
+            (None, "no marker carries this run"),
         )
         check(
             "rule 23 skips grandfathered findings",
@@ -16910,7 +17192,7 @@ def main() -> int:
     q.add_argument("--all", action="store_true", help="findings: include ones already done")
     q.add_argument("--file", help="adjacency: exact repository-relative TODO path")
     q.add_argument("--at", help="adjacency: inspect an isolated historical commit")
-    q.add_argument("--json", action="store_true", help="adjacency, plan-health, risk-register, telemetry: machine-readable report")
+    q.add_argument("--json", action="store_true", help="adjacency, plan-health, risk-register, run, telemetry: machine-readable report")
     q.add_argument("--check", action="store_true", help="plan-health: exit 1 on actionable entries (covered escalations and bare partials pass; --fail-on gates presence); risk-register: exit 1 when the committed register is stale")
     q.add_argument("--today", metavar="YYYY-MM-DD", default=None, help="plan-health, summary, dashboard, risk-register, notify: freeze wall clock here instead of today (fixture-date runs)")
     q.add_argument("--within-days", metavar="N", default=None, help="notify: warn on dates within N days (default 7)")
@@ -16966,8 +17248,8 @@ def main() -> int:
     args = p.parse_args()
     if args.cmd == "query" and args.what != "adjacency" and any(getattr(args, key, None) for key in ("file", "at", "require_owned", "require_conformance")):
         p.error("--file/--at/--require-owned/--require-conformance apply only to query adjacency")
-    if args.cmd == "query" and args.what not in ("adjacency", "plan-health", "risk-register", "telemetry") and getattr(args, "json", None):
-        p.error("--json applies only to query adjacency, query plan-health, query risk-register, and query telemetry")
+    if args.cmd == "query" and args.what not in ("adjacency", "plan-health", "risk-register", "run", "telemetry") and getattr(args, "json", None):
+        p.error("--json applies only to query adjacency, query plan-health, query risk-register, query run, and query telemetry")
     return args.fn(args)
 
 
