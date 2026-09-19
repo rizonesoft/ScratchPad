@@ -812,7 +812,7 @@ def strip_fenced_code(text: str) -> tuple[str, int | None]:
 
     Moved out of rule 16 verbatim (D00 T01 §15): the plan-health query
     scans the same findings files, and two fence implementations would
-    drift back into the bugs §§10-11 fixed. The 43 panel cases prove the
+    drift back into the bugs §§10-11 fixed. The 45 panel cases prove the
     move changed nothing.
     """
     kept = []
@@ -7091,6 +7091,8 @@ track: Z1
 |  41   |   §41   | Opus-only without Sol outage note fires | - |  [x]   |
 |  42   |   §42   | Birthday-boundary Opus-only without note stays silent | - |  [x]   |
 |  43   |   §43   | Bare Sol outage without failure fires | - |  [x]   |
+|  44   |   §44   | Empty GPT-early plus Opus-last fires | - |  [x]   |
+|  45   |   §45   | Single-verdict GPT-early plus Opus-last stays silent | - |  [x]   |
 
 ---
 
@@ -7566,6 +7568,28 @@ track: Z1
 > **Verified:** 2026-09-20 | §43 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solbare.md
 > **Plan review:** GPT high, no findings
+
+## 44. Empty GPT-early plus Opus-last fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §44 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptempty.md
+> **Plan review:** GPT high, no findings
+
+## 45. Single-verdict GPT-early plus Opus-last stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §45 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptsingle.md
+> **Plan review:** GPT high, no findings
 """,
             encoding="utf-8",
         )
@@ -7863,6 +7887,22 @@ track: Z1
             "**integration: approve**\n**record: approve**\n\n"
             "Sol outage\n\nno Sol outage occurred here\n\n"
             "No Sol outage: occurred\n\nSol outage: none\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptempty.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "(no verdicts: Sol skipped)\n\n"
+            "## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptsingle.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+            "**adversarial: approve**\n\n"
+            "## Opus panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
             encoding="utf-8",
         )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -8226,9 +8266,22 @@ track: Z1
             ),
             True,
         )
+        check(
+            "empty GPT-early plus Opus-last fires",
+            any(
+                "TODO-06-panel.md" in ln and "§44 " in ln and "lacks the Sol outage line" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "single-verdict GPT-early plus Opus-last stays silent",
+            any("TODO-06-panel.md" in ln and "§45 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
         # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
         # landed must carry the `Plan review:` completion marker. Own
-        # fixture TODO (the panel file's 43 sections stay untouched); all
+        # fixture TODO (the panel file's 45 sections stay untouched); all
         # three stamps point Review at the clean panel fixture so rule 16
         # stays silent and only the marker rule can fire. Runs before the
         # panel unlink below, while the clean fixture still exists.

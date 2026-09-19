@@ -519,7 +519,7 @@ def validate(graph, _args) -> int:
             # satisfy the rule nor, under last-wins, displace the real
             # panel. The stripper lives in the graph module (shared with
             # `query plan-health` since D00 T01 §15); the move is verbatim
-            # and the 43 panel cases prove it.
+            # and the 45 panel cases prove it.
             text, unbalanced = graph.strip_fenced_code(text)
             if unbalanced is not None:
                 flag(
@@ -587,13 +587,25 @@ def validate(graph, _args) -> int:
                 )
             # Sol accountability on Opus-only records (D00 T01 §37 item
             # 1): past the rule birthday an all-Opus review proves Sol
-            # was unreachable, or it ran Sol. Mixed records (any GPT
-            # panel section) never meet the condition; stamps on or
-            # before 2026-09-19 predate the rule (s25 the named
-            # same-day grandfather); undated stamps fail closed like
-            # rule 16 (unreachable via parsing today: Verified lines
-            # require real calendar dates).
-            if heads and not gpt_heads:
+            # was unreachable, or it ran Sol. A GPT heading alone
+            # proves no Sol round ran (R2-F1): only a GPT section
+            # carrying at least one lens verdict counts as Sol
+            # evidence, so empty GPT sections neither satisfy rule 16
+            # (early defects stay silent) nor shield this rule.
+            # Stamps on or before 2026-09-19 predate the rule (s25 the
+            # named same-day grandfather); undated stamps fail closed
+            # like rule 16 (unreachable via parsing today: Verified
+            # lines require real calendar dates).
+            _gpt_ran = False
+            for _gh in gpt_heads:
+                _gslice = text[_gh.end():]
+                _gnxt = re.search(r"^#{1,6}\s+", _gslice, re.MULTILINE)
+                if _gnxt:
+                    _gslice = _gslice[:_gnxt.start()]
+                if any(rx.search(_gslice) for rx in PANEL_VERDICT_RES.values()):
+                    _gpt_ran = True
+                    break
+            if heads and not _gpt_ran:
                 if s.stamped_on is None or s.stamped_on > "2026-09-19":
                     if not SOL_OUTAGE_RE.search(text):
                         flag(
