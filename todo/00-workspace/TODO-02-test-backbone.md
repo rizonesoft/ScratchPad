@@ -17,6 +17,7 @@ track: W0
 > **Corrected 2026-09-17 (groom):** §§1-7 have shipped since (unit project, FlaUI driver spike, capture store, loopback fixture, soak procedure, golden determinism, CI evidence pipeline). Open: §8 only, in progress; since 2026-09-17 the suites it wires run locally on the dev box, not in CI.
 >
 > **Filed 2026-09-17:** §9 (nightly full-suite regression run). Open: §§8-9.
+> **Filed 2026-09-19:** §10 (completion-first night-debt system). Open: §§8-10.
 
 ## Inputs
 
@@ -45,6 +46,7 @@ track: W0
 |   7   |   §7    | CI evidence capture pipeline | D01 T02 §14 |  [x]   |
 |   8   |   §8    | Focus-free UI suite conversion | §2 |  [ ]   |
 |   9   |   §9    | Nightly full-suite regression run | §8 |  [ ]   |
+|   10  |   §10   | Completion-first night-debt system | §8 |  [ ]   |
 
 ---
 
@@ -225,6 +227,7 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §9 -- the nightly run executes this fence; the two tiers (default plus fenced) are that run's two halves.
+- -> XREF: D00 T02 §10 -- completion-first hardening plus the collector that collects this section's Interactive debt.
 
 - [x] Every `Keyboard.*` and `Mouse.*` call in `tests/UI/` is dispositioned to convert-to-pattern, fence-as-interactive, or keep-with-reason, recorded as an audit table. Done when: the table quotes all 112 calls with a disposition each. **Corrected 2026-09-17 (§8 validation):** filed as 104; re-derived 112. Done: `docs/ui-input-audit.md` quotes all 112 (final: 88 convert, 24 fence, 0 keep). **Corrected 2026-09-17 (§8 item 2):** scope grew three more times during implementation: 22 cursor-moving `.Click()`/`.DoubleClick()`/`.RightClick()` sites (final: 1 convert, 17 fence, 4 keep-with-reason) plus 51 `.Focus()` sites (dispositioned by rule: dropped in default tests, kept in fenced tests) plus 2 raw `mouse_event` helpers (both fence), all appended to the same table with per-row corrections. Full inventory is 187 sites.
 - [ ] Convertibles move to UIA patterns (`ValuePattern`, `InvokePattern`, selection) behind one shared helper, and the converted tests stay green locally. Done when: the default trait-filtered run passes with zero focus-dependent calls outside the fenced set. **Corrected 2026-09-17 (§8 validation):** filed as unfiltered `dotnet test tests/UI`, which contradicts item 3's fence; the gate is the default run.
@@ -251,6 +254,7 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 
 - -> XREF: D00 T02 §8 -- the fence this run executes; the two tiers (default plus fenced) are this run's two halves.
 - -> XREF: D00 T02 §5 -- flakes this run surfaces quarantine by that procedure; soak stays the flake-hunting repeat loop, this run stays the regression proof.
+- -> XREF: D00 T02 §10 -- debt ledger plus collector plus morning report that this run executes.
 
 - [ ] `docs/testing.md` carries the nightly procedure: trigger (nightly cron inside 02:00-06:50; operator bedtime call stays as manual backup), the two commands (background-safe default run with foreground-plus-census proof, then the full solution run with the fenced set), and the pass/fail bar for each half. Done when: a second operator can run it or read the cron without asking.
 - [ ] Nightly logs land under `build/nightly/YYYY-MM-DD-{default,full}.log` (ignored scratch, never committed) with the run's section range and HEAD recorded at the top. Done when: the convention is written and the first logs follow it.
@@ -262,6 +266,34 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 - [ ] Commit: `"workspace: govern the nightly regression run"`
 
 **Test checkpoint:** Procedure, log convention, and report format written; first governed run quoted with both logs; fenced half executed in-window. Cheaper substitute that fails: an ad-hoc night run whose evidence lives in chat.
+
+## 10. Completion-First Night-Debt System
+
+Why this section exists: sections stall waiting for the 02:00-06:50 quiet window to prove focus-needing tests, so completion-first becomes the rule: a section ships its focus-free proofs, records Interactive skips as structured night debt, and flips the same session while the nightly collector closes the debt async, and runners plus reviewers plus the plan all know the rule so nothing parks on quiet time again. -> SOURCE: operator-completion-first-2026-09-19 (operator instruction 2026-09-19: never wait for quiet to test, review, stamp, or flip; ship what proves focus-free and skip the rest as debt; completion-first binds runners, reviewers, and the plan; workspace self-repair ends manual timer, hook, and workflow tweaks). Box facts the design rests on: Venom-PC never locks, the 4K 150% display is the always-attached primary, the 1080p 100% display is the secondary, so locked-box and missing-monitor are never debt causes.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §8 -- the fence tiers this system collects; §8's stamp records the completion-first default this section hardens.
+- -> XREF: D00 T02 §9 -- the nightly run executes the collector halves; the run-guard stays §9 item 7 and quarantine stays §5.
+
+- [ ] `todo/README.md` gains the completion-first rule: a section ships its focus-free proofs, records Interactive skips as `Night-owed`, and flips the same session; review and stamp never wait for quiet time. Done when: the rule names the stamp lines, the collector owner, and the only true flip blockers (unmet Depends, missing baseline artifact, unreachable host, both review families down).
+- [ ] `scripts/todo-graph.py` parses `Night-owed:` plus `Night-collected:` stamp lines and `query night-debt` lists open debt with debt id, section, count, age in nights, and last log. Done when: a fixture with one open plus one collected debt lists exactly the open row.
+- [ ] `validate` treats open night debt as information, never FATAL: no gate vote, no row park, no stamp invalidation while debt sits uncollected. Done when: self-test pins a 5-night-old open debt validating clean.
+- [ ] `tools/nightly.ps1` becomes the collector: inside 02:00-06:50 it resolves each open debt id to its trait filter, runs the fenced set visibly, and writes logs under `build/nightly/` with section range plus HEAD at the top. Done when: a dry run against one debt id quotes its log path plus counts.
+- [ ] `tools/nightly.ps1` closes the loop: green collection appends `Night-collected:` (date, debt id, passed/failed/skipped, log path) to the owning section, red collection files findings via `add-todo` against the owning file and quarantines per the §5 procedure, and only safety or data-integrity reds reopen through audit stance. Done when: one green append plus one filed red are quoted with their commits.
+- [ ] The morning report lands at `build/nightly/morning-YYYY-MM-DD.md` (ignored scratch, never committed) with per-debt counts plus uncollected debt as information with its cause (box off, suite red, collector bug only). Done when: a worked example carries one collected plus one uncollected entry.
+- [ ] `docs/testing.md` documents the ship-with-debt gate: daytime default plus Primary green plus the Interactive skip count with its debt id is a complete gate, and the collector closes the debt async. Done when: a second section can follow it without asking.
+- [ ] `AGENTS.md` gains completion-first under Working rules: runners do everything to 100% complete the section, tool, or feature in the shipping session, quiet time never parks work, and repeated manual workspace tweaks become owned automation. Done when: the rule reads as one paragraph under Working rules.
+- [ ] The runner skills learn ship-with-debt (D00 T05 §1 owns the closeout-invocation lines in the same files; this item owns the never-park lines only, so the two never edit the same step). Done when: all four sub-steps below hold.
+  1. `.claude/skills/process-todo-section/SKILL.md` ships with debt instead of waiting for quiet time. Done when: step 6 names the debt record plus the flip.
+  2. `.claude/skills/review-todo-section/SKILL.md` stamps a debt-carrying candidate when the focus-free proofs are green. Done when: the guardrails name debt as stampable.
+  3. `.claude/skills/process-phase/SKILL.md` never parks a ready row on quiet time. Done when: its scheduling step names never-park.
+  4. `.claude/skills/process-plan/SKILL.md` never parks a ready phase on quiet time. Done when: its chaining step names never-park.
+- [ ] `tools/provision.ps1` becomes self-healing: one idempotent command verifies plus repairs the scheduled tasks, git hooks, and CI workflows on Windows, and session start runs the verify half. Done when: a fresh checkout quotes every timer plus hook verified, and a deliberately broken hook is repaired by re-run.
+- [ ] `scripts/todo-graph.py` `query summary` surfaces open night debt beside blocked rows, so the operator digest is where the plan knows completion-first (the plan projection itself stays stamp-derived). Done when: summary quotes one open debt line from the fixture.
+- [ ] Commit: `"workspace: ship completion-first night-debt system"`
+
+**Test checkpoint:** `query night-debt` lists open debt only, a 5-night-old debt validates clean, the collector dry run quotes its log, the morning example names one uncollected cause, and all four skills name never-park. Cheaper substitute that fails: a debt list in chat with no query behind it.
 
 ## Verification
 
