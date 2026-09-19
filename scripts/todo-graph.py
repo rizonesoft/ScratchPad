@@ -1536,6 +1536,61 @@ def confidence_for(bound: bool, resolutions: list[bool | None]) -> tuple[str, li
     return "low", ["provenance bound; no candidate resolves"]
 
 
+def correction_trails(row_ids: list[str], blocks: list[str]) -> list[dict]:
+    """Per-row corrects trails plus corrected-by lists (D00 T01 §45).
+
+    Trails follow ledger supersedes links within the run's own rows
+    (visited set: the walk never loops; the validator owns cycle
+    diagnostics). Identifiers normalize to row-declared case, so
+    trails join against rows without lowercasing (review R3);
+    out-of-run targets keep their citing text.
+    """
+    links: dict[str, str] = {}
+    for _b in blocks:
+        for _rk, _rt in ledger_supersedes(_b).items():
+            links.setdefault(_rk, _rt)
+    rid_set = {_r.lower() for _r in row_ids}
+    rid_case: dict[str, str] = {}
+    for _r in row_ids:
+        rid_case.setdefault(_r.lower(), _r)
+    by_corrected: dict[str, list[str]] = {}
+    for _rk, _rt in links.items():
+        by_corrected.setdefault(_rt.lower(), []).append(_rk)
+    out = []
+    for _rid in sorted(set(rid_case.values()), key=str.lower):
+        trail = [_rid]
+        seen = {_rid.lower()}
+        external = False
+        cur = links.get(_rid.lower())
+        while cur is not None:
+            key = cur.lower()
+            shown = rid_case.get(key, cur)
+            if key not in rid_set:
+                trail.append(shown)
+                external = True
+                break
+            if key in seen:
+                trail.append(shown)
+                break
+            trail.append(shown)
+            seen.add(key)
+            cur = links.get(key)
+        out.append(
+            {
+                "row": _rid,
+                "corrects": trail,
+                "original": trail[-1],
+                "depth": len(trail) - 1,
+                "head_external": external,
+                "corrected_by": sorted(
+                    (rid_case.get(_x.lower(), _x) for _x in by_corrected.get(_rid.lower(), [])),
+                    key=str.lower,
+                ),
+            }
+        )
+    return out
+
+
 def ledger_row_due(disp: str, rest: str) -> str:
     # A deferred row spells `due` under the deferred vocabulary
     # (owner/due/trigger, renamed from `date` by D00 T01 §28 item 4 so
@@ -2806,50 +2861,8 @@ def cmd_query(args) -> int:
                 _verdict = _vs
         _verdict_unavailable = None if carrying else "no marker carries this run"
         # Correction lineage: per-row corrects trails plus
-        # corrected-by lists, following ledger supersedes links
-        # within the run's own rows (visited set: the walk never
-        # loops; the validator owns cycle diagnostics).
-        _links: dict[str, str] = {}
-        for _b in _run_blocks:
-            for _rk, _rt in ledger_supersedes(_b).items():
-                _links.setdefault(_rk, _rt)
-        _rid_set = {_r.lower() for _r in _run_row_ids}
-        _rid_case: dict[str, str] = {}
-        for _r in _run_row_ids:
-            _rid_case.setdefault(_r.lower(), _r)
-        _by_corrected: dict[str, list[str]] = {}
-        for _rk, _rt in _links.items():
-            _by_corrected.setdefault(_rt.lower(), []).append(_rk)
-        _corrections = []
-        for _rid in sorted(set(_run_row_ids), key=str.lower):
-            _trail = [_rid]
-            _seen = {_rid.lower()}
-            _external = False
-            _cur = _links.get(_rid.lower())
-            while _cur is not None:
-                if _cur.lower() not in _rid_set:
-                    _trail.append(_cur)
-                    _external = True
-                    break
-                if _cur.lower() in _seen:
-                    _trail.append(_cur)
-                    break
-                _trail.append(_cur)
-                _seen.add(_cur.lower())
-                _cur = _links.get(_cur.lower())
-            _corrections.append(
-                {
-                    "row": _rid,
-                    "corrects": _trail,
-                    "original": _trail[-1],
-                    "depth": len(_trail) - 1,
-                    "head_external": _external,
-                    "corrected_by": sorted(
-                        (_rid_case.get(_x.lower(), _x) for _x in _by_corrected.get(_rid.lower(), [])),
-                        key=str.lower,
-                    ),
-                }
-            )
+        # corrected-by lists over the run's own rows.
+        _corrections = correction_trails(_run_row_ids, _run_blocks)
         # Evidence confidence: provenance bound for this run plus
         # candidate resolution (high/medium/low with reasons).
         _conf, _conf_reasons = confidence_for(
@@ -12627,6 +12640,27 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 confidence_for(True, [False])[0],
             ],
             ["low", "high", "high", "medium", "medium", "low"],
+        )
+        _trail_block = (
+            "- [D90-T07-S1-PR2] [minor] New thing -> filed §2 supersedes d90-t07-s1-pr1\n"
+            "- [D90-T07-S1-PR1] [minor] Old thing -> filed §2\n"
+        )
+        _trails = correction_trails(["D90-T07-S1-PR2", "D90-T07-S1-PR1"], [_trail_block])
+        check(
+            "correction_trails normalizes trails to declared case",
+            [(_t["row"], _t["corrects"], _t["original"], _t["depth"]) for _t in _trails],
+            [
+                ("D90-T07-S1-PR1", ["D90-T07-S1-PR1"], "D90-T07-S1-PR1", 0),
+                ("D90-T07-S1-PR2", ["D90-T07-S1-PR2", "D90-T07-S1-PR1"], "D90-T07-S1-PR1", 1),
+            ],
+        )
+        check(
+            "correction_trails dedupes cross-block case variants",
+            [
+                _t["row"]
+                for _t in correction_trails(["D90-T07-S1-PR1", "d90-t07-s1-pr1"], [_trail_block])
+            ],
+            ["D90-T07-S1-PR1"],
         )
         _sbuf2 = _mio.StringIO()
         with _mctx.redirect_stdout(_sbuf2), _mctx.redirect_stderr(_mio.StringIO()):
