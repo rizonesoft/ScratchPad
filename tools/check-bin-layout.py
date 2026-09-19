@@ -15,6 +15,7 @@ each proven by CI running green with the fixtures present):
 """
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -74,7 +75,8 @@ def evaluated(dotnet: str, project: Path, prop: str) -> str | None:
         text=True,
     )
     if r.returncode != 0:
-        print(f"evaluation failed: {project} ({prop}): {r.stderr.strip().splitlines()[:1]}")
+        first = r.stderr.strip().splitlines()[:1]
+        print(f"evaluation failed: {project} ({prop}): {first[0] if first else ''}")
         return None
     lines = [ln for ln in r.stdout.splitlines() if ln.strip()]
     if not lines:
@@ -99,6 +101,8 @@ def cmd_conformance(root: Path, dotnet: str, skip_eval: bool) -> int:
                 continue
             norm = out.replace("\\", "/")
             prefix = f"{root_norm}/Bin/{p.stem}/"
+            if os.name == "nt":
+                norm, prefix = norm.casefold(), prefix.casefold()
             rest = norm[len(prefix):].strip("/") if norm.startswith(prefix) else None
             legs = rest.split("/") if rest else []
             if rest is None or len(legs) not in (1, 2) or any(not leg for leg in legs):
