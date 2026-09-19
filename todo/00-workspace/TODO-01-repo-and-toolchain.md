@@ -94,7 +94,7 @@ track: W0
 |  38   |   §38   | Architecture gate residuals | §35 |  [x]   |
 |  39   |   §39   | Panel telemetry | §35 |  [x]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
-|  41   |   §41   | Bin output residuals | §40 |  [ ]   |
+|  41   |   §41   | Bin output residuals | §40 |  [x]   |
 |  42   |   §42   | Requires operator vocabulary | §13 |  [ ]   |
 |  43   |   §43   | Findings count touch-up | §20 |  [ ]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
@@ -1106,6 +1106,13 @@ Why this section exists: the twelfth live plan review (§40 plus §1 plus §2, `
 
 - -> XREF: D00 T06 §1 -- round-5 finding filed there
 - -> XREF: D00 T07 §1 -- plan-review findings filed there
+
+> **Verified:** 2026-09-19 | §41 | self-test 1088/1088 (+0: no graph changes; guards proven by CI legs plus fixtures); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3-R5 sign-off over candidates 2941c85 12d33a9 673c305 74c07cb 1193f28 9771e99 3301a9d; plan review 24 findings, 11 filed at D00 T06 §1 plus D00 T07 §1, 2 accepted, 1 duplicate, 10 rejected
+> **Review:** rounds 1-5 (FINAL: Sol R1+R2, Opus R3-R5 sign-off), candidates 2941c85 12d33a9 673c305 74c07cb 1193f28 9771e99 3301a9d -- `adversarial` approve (R1 casefold fixed, R3 denylist fixed) · `consistency` approve (R5 advisory filed at D00 T06 §1) · `integration` approve (R1 legs plus manifest, R3 launcher, R4 docs fixed) · `record` approve (R1 plus R3 citations, R3 trigger fixed). Dispositions: 9 fixed, 1 filed. Raw findings: docs/reviews/00-workspace/D00-T01-s41.md
+> **Plan review:** GPT high, filed D00 T06 §1, D00 T07 §1 (run 20260919-D00-T01-S41-gpt-r3)
+> **CRUD:** applicable | self-test 1088/1088 re-observed live at stamp; code plus CI plus docs edits read back via diff; probe plus revert (d601618/3ec7d6c) verified byte-exact; tick plus citations (1193f28, 9771e99) plus filings (8aa7524, b99c34c) plus panel record (137eca2) read back via validate, plan --check, and fence re-hash; soak goldens downloaded to ignored /tmp scratch; no repo scratch written
+> **Duration:** 2026-09-19T14:48:06Z to 2026-09-19T15:52:34Z
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 42. Requires Operator Vocabulary
 
