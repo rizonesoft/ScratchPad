@@ -79,7 +79,7 @@ track: W0
 |  23   |   §23   | Ledger, provenance, and output hardening | §19 |  [x]   |
 |  24   |   §24   | Lineage residuals and run inspection | §20, §23 |  [x]   |
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [x]   |
-|  26   |   §26   | Grandfathered migration execution | §21 |  [ ]   |
+|  26   |   §26   | Grandfathered migration execution | §21 |  [x]   |
 |  27   |   §27   | Acceptance integrity | §21 |  [ ]   |
 |  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
@@ -747,6 +747,12 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - -> XREF: D00 T01 §29 -- migration-zero gate joiner filed there (plan-review PR10)
 
 **Test checkpoint:** the baseline reads one way, the batches drain to zero, and every reference resolves. Cheaper substitute that fails: machinery nobody runs.
+
+> **Verified:** 2026-09-19 | §26 | self-test 795/795 (9 new: drain, retirement fixtures, direct ref checks, garbage rejection); live validate 0 fatal 0 warnings; plan-health grandfathered 0; Full panel (Sol R1-R2, Opus R3-R4) over candidates 5ba4970 6d7f11f 12e5579 b04c585 4ec094a 45e2e17, final round advisory filed as §47; plan review 14 findings, 6 filed at §48 plus one §29 item, 1 duplicate, 6 rejected
+> **Review:** round 4 (FINAL), candidates 5ba4970 6d7f11f 12e5579 b04c585 4ec094a 45e2e17 -- `adversarial` approve · `consistency` advisory · `integration` approve · `record` approve; R1 garbage drain, R2 all approve, R3 anatomy standing plus quoted count, R4 span-dup advisory filed as §47. Raw findings: docs/reviews/00-workspace/D00-T01-s26.md
+> **Plan review:** GPT high, filed D00 T01 §48, D00 T01 §29 (run 20260919-D00-T01-S26-gpt)
+> **CRUD:** applicable | self-test read repo sources plus fixtures (no writes); implementation edited the retirement scan plus 53 notes plus docs (read back via self-test 795/795, live validate 0 fatal, plan-health grandfathered 0); filing opened §47 plus §48 plus one §29 item plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T01:29:41Z to 2026-09-19T02:08:01Z
 
 ## 27. Acceptance Integrity
 
