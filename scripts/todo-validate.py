@@ -1411,15 +1411,28 @@ def validate(graph, _args) -> int:
             # of links, or two successors claiming one predecessor each
             # break the single-current-head read the query relies on.
             # Current-file edges only: HEAD-only records carry no live
-            # edge (their successor, if any, is current).
+            # edge (their successor, if any, is current). Panel R2 adds
+            # identity (one record per target and date: a dict would
+            # silently collapse twins) and one head per target (two
+            # unlinked records fork the read the query must follow).
             _now_edges: dict[tuple[str, str], tuple[str, str]] = {}
+            _key_count: dict[tuple[str, str], int] = {}
             for _ln in ftext.splitlines():
                 if not _ln.startswith("Risk accepted:"):
                     continue
                 _am = graph.RISK_ACCEPTED_RE.match(_ln)
-                if _am is None or graph.risk_target_kind(_am.group(1)) is None or not _am.group(8):
+                if _am is None or graph.risk_target_kind(_am.group(1)) is None:
                     continue
-                _now_edges[(_am.group(1).lower(), _am.group(4))] = (_am.group(1).lower(), _am.group(8))
+                _akey = (_am.group(1).lower(), _am.group(4))
+                _key_count[_akey] = _key_count.get(_akey, 0) + 1
+                if not _am.group(8):
+                    continue
+                _now_edges[_akey] = (_am.group(1).lower(), _am.group(8))
+            for _key in sorted(k for k, n in _key_count.items() if n > 1):
+                flag(
+                    "risk-acceptance-chain-broken",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_key[0]} {_key[1]} recorded twice (one record per target and date)",
+                )
             _cyclic: set[tuple[str, str]] = set()
             for _start in _now_edges:
                 _seen: set[tuple[str, str]] = set()
@@ -1440,13 +1453,34 @@ def validate(graph, _args) -> int:
             _claimants: dict[tuple[str, str], list[tuple[str, str]]] = {}
             for _succ, _pred in _now_edges.items():
                 _claimants.setdefault(_pred, []).append(_succ)
+            _forked: set[tuple[str, str]] = set()
             for _pred in sorted(_claimants):
                 if len(_claimants[_pred]) < 2:
                     continue
                 for _dup in _claimants[_pred][1:]:
+                    _forked.add(_dup)
                     flag(
                         "risk-acceptance-chain-broken",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_dup[0]} {_dup[1]} re-supersedes {_pred[0]} {_pred[1]} (one target, one successor)",
+                    )
+            _named_preds = set(_now_edges.values())
+            _heads: dict[str, list[tuple[str, str]]] = {}
+            for _key in _key_count:
+                if _key not in _named_preds:
+                    _heads.setdefault(_key[0], []).append(_key)
+            for _tgt in sorted(_heads):
+                _extra = sorted(_heads[_tgt])
+                if len(_extra) < 2:
+                    continue
+                # The first head stands; each further unlinked record
+                # forks the target. Records already flagged as forked
+                # successors read once, under the precise diagnostic.
+                for _x in _extra[1:]:
+                    if _x in _forked:
+                        continue
+                    flag(
+                        "risk-acceptance-chain-broken",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_x[0]} {_x[1]} forks {_x[0]} (one head per target: supersede or withdraw the twin)",
                     )
 
             committed = graph.git_file_at("HEAD", fm.group(1))
@@ -1458,17 +1492,19 @@ def validate(graph, _args) -> int:
                     for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k in graph.acceptance_lines(ftext)
                     if sup
                 }
+                # Append-only is absolute (panel R2, the ledger
+                # precedent): the predecessor stays byte-identical next
+                # to its successor; a chain never licenses a rewrite.
                 for key in sorted(set(was_recs) - set(now_recs)):
-                    if key not in chained:
-                        flag(
-                            "risk-acceptance-silent-edit",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} vanished without a superseding record",
-                        )
+                    flag(
+                        "risk-acceptance-silent-edit",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} vanished (supersession adds, never removes)",
+                    )
                 for key in sorted(set(was_recs) & set(now_recs)):
-                    if now_recs[key][0] != was_recs[key][0] and key not in chained:
+                    if now_recs[key][0] != was_recs[key][0]:
                         flag(
                             "risk-acceptance-silent-edit",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} edited without a superseding record",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} edited (supersession adds, never rewrites)",
                         )
                 for tgt, sup in sorted(chained):
                     if (tgt, sup) not in was_recs and (tgt, sup) not in now_recs:

@@ -1150,6 +1150,40 @@ def superseded_acceptances(
     return {(tgt.lower(), sup) for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k in accs if sup}
 
 
+def acceptance_hold(
+    rec: str,
+    exp: str,
+    evi: str,
+    tday: str,
+    match: bool,
+    owning_path: str,
+    owning_text: str,
+    today: str,
+) -> str:
+    """The verdict on one consulted acceptance (D00 T01 §27): `cover`
+    when it terminates its escalation, `expired` when a true expiry
+    redirects the escalation to the acceptance owner (item 5), or
+    "" when it holds nothing. One predicate serves both covering
+    loops and the reviews leg (panel R2: a void acceptance must not
+    list a review obligation it cannot back, which would double-count
+    the already-persisting escalation). Order is load-bearing: match,
+    then target-before-record (item 2), then liveness (expiry only;
+    a post-dated record dangles to the operator), then evidence
+    freshness (item 3). Supersession skips before this runs (the
+    caller holds the file's records); the chain-shape rule guards
+    the links.
+    """
+    if not match:
+        return ""
+    if not tday or tday > rec:
+        return ""
+    if not acceptance_live(rec, exp, today):
+        return "expired" if exp < today else ""
+    if not evidence_fresh(evi, owning_path, owning_text):
+        return ""
+    return "cover"
+
+
 def evidence_fresh(sha: str, repo_path: str, current_text: str) -> bool:
     """Whether the owning record still reads as the acceptance's
     evidence commit saw it (D00 T01 §27 item 3): the file bytes at
@@ -2403,37 +2437,28 @@ def cmd_query(args) -> int:
                                         and orung is not None
                                         and okey == (orung, stamp_day)
                                     )
-                                    if not match:
-                                        continue
-                                    # Item 2: the target predates the
-                                    # record (run date prefix, outage
-                                    # stamp day); a prewritten waiver
-                                    # covers nothing.
-                                    tday = run_day(tgt) if kind == "run" else stamp_day
-                                    if not tday or tday > rec:
-                                        continue
-                                    if not acceptance_live(rec, exp, today):
-                                        # Item 5: an expired match names
-                                        # the escalation owner instead of
-                                        # covering. Expiry only: a
-                                        # post-dated record is dangling,
-                                        # and its escalation stays with
-                                        # the operator (panel R1).
-                                        if exp < today and not esc_owner:
-                                            esc_owner = own
-                                        continue
-                                    # Item 3: stale evidence voids (the
-                                    # TODO file owns run and outage
-                                    # records). A reopen needs no check
-                                    # here: it discards the section from
+                                    # The TODO file owns run and outage
+                                    # records (item 3). A reopen needs no
+                                    # check: it discards the section from
                                     # verified_sections (§17 item 12), so
-                                    # no acceptance is ever consulted for
+                                    # nothing here is ever consulted for
                                     # it and every cover voids by
                                     # construction.
-                                    if not evidence_fresh(evi, t.path, todo_text(t.path)):
-                                        continue
-                                    ab, ae, ar, at, ao = appr, exp, rvw, rat, own
-                                    break
+                                    hold = acceptance_hold(
+                                        rec,
+                                        exp,
+                                        evi,
+                                        run_day(tgt) if kind == "run" else stamp_day,
+                                        match,
+                                        t.path,
+                                        todo_text(t.path),
+                                        today,
+                                    )
+                                    if hold == "cover":
+                                        ab, ae, ar, at, ao = appr, exp, rvw, rat, own
+                                        break
+                                    if hold == "expired" and not esc_owner:
+                                        esc_owner = own
                             if ab:
                                 overdue = False
                         degraded.append(
@@ -2627,37 +2652,33 @@ def cmd_query(args) -> int:
                         esc_owner = ""
                         _accs = file_acceptances(m.group(1))
                         _supd = superseded_acceptances(_accs)
+                        # Item 2: the review predates the record (marker
+                        # run day, stamp day when run-less); the row
+                        # exists because this loop holds it.
+                        _rm = RUN_ID_RE.search(s.plan_review_body or "")
+                        _tday = run_day(_rm.group(1)) if _rm else (s.stamped_on or "")
                         for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind in _accs:
                             if (tgt.lower(), rec) in _supd:
                                 continue
-                            if not (kind == "finding" and tgt.lower() == lr.group(1).lower()):
-                                continue
-                            # Item 2: the row exists (this loop holds
-                            # it) and the review predates the record
-                            # (marker run day, stamp day when
-                            # run-less); a prewritten waiver covers
-                            # nothing.
-                            _rm = RUN_ID_RE.search(s.plan_review_body or "")
-                            _tday = run_day(_rm.group(1)) if _rm else (s.stamped_on or "")
-                            if not _tday or _tday > rec:
-                                continue
-                            if not acceptance_live(rec, exp, today):
-                                # Item 5: an expired match names the
-                                # escalation owner instead of covering.
-                                # Expiry only: a post-dated record is
-                                # dangling, and its escalation stays
-                                # with the operator (panel R1).
-                                if exp < today and not esc_owner:
-                                    esc_owner = own
-                                continue
-                            # Item 3: stale evidence voids (the findings
-                            # file owns finding records). Reopen voids by
-                            # construction (§17 item 12 discard), never
-                            # reaching this loop; no check here.
-                            if not evidence_fresh(evi, m.group(1), raw_text):
-                                continue
-                            ab, ae, ar, at, ao = appr, exp, rvw, rat, own
-                            break
+                            # The findings file owns finding records
+                            # (item 3). Reopen voids by construction
+                            # (§17 item 12 discard), never reaching this
+                            # loop; no check here.
+                            hold = acceptance_hold(
+                                rec,
+                                exp,
+                                evi,
+                                _tday,
+                                kind == "finding" and tgt.lower() == lr.group(1).lower(),
+                                m.group(1),
+                                raw_text,
+                                today,
+                            )
+                            if hold == "cover":
+                                ab, ae, ar, at, ao = appr, exp, rvw, rat, own
+                                break
+                            if hold == "expired" and not esc_owner:
+                                esc_owner = own
                         if sev == "major" and disp in ("accepted", "deferred"):
                             # Open majors age visibly (D00 T01 §17 item 11,
                             # §19 review R3: deferred majors count too, or
@@ -2916,9 +2937,13 @@ def cmd_query(args) -> int:
             own = owners.get(path, [])
             if own and all(not _owed(ot.sections[onum]) for ot, onum in own if onum in ot.sections):
                 legacy.append(path)
-        # Acceptance review states (D00 T01 §27 item 6): live,
-        # un-superseded acceptances whose review date is near (due:
-        # within 7 days before) or past (overdue). History never
+        # Acceptance review states (D00 T01 §27 item 6): covering
+        # acceptances whose review date is near (due: within 7 days
+        # before) or past (overdue). Covering only (panel R2): a
+        # void acceptance lists no obligation it cannot back, which
+        # would double-count the already-persisting escalation, so
+        # the leg runs the same hold predicate as covering (match,
+        # target-before-record, liveness, evidence). History never
         # lists (a superseded record's review rode its successor),
         # and lapsed records never list either (expiry escalates on
         # the covered dimension, item 5). Overdue clears only through
@@ -2927,17 +2952,60 @@ def cmd_query(args) -> int:
         due_line = (datetime.now(timezone.utc).date() + timedelta(days=7)).isoformat()
         for path in sorted(seen):
             _paccs = file_acceptances(path)
-            _psupd = superseded_acceptances(_paccs)
-            for tgt, _appr, own, exp, rec, rvw, _evi, _sup, _rat, _kind in _paccs:
-                if (tgt.lower(), rec) in _psupd:
+            if not _paccs or path not in owners or not owners[path]:
+                continue
+            _pt, _pnum = owners[path][0]
+            _ps = _pt.sections.get(_pnum)
+            if _ps is None:
+                continue
+            try:
+                _praw = (TODO_DIR.parent / path).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _prow_ids: set[str] = set()
+            _pstripped, _u = strip_fenced_code(_praw)
+            for _ph in PLAN_REVIEW_HEADING_RE.finditer(_pstripped):
+                _phsec = _pstripped[_ph.end():]
+                _phnxt = re.search(r"^#{1,6}\s+", _phsec, re.MULTILINE)
+                if _phnxt:
+                    _phsec = _phsec[: _phnxt.start()]
+                _phblock, _php = ledger_block(_phsec)
+                if _phblock is None:
                     continue
-                if not acceptance_live(rec, exp, today):
+                for _plr in LEDGER_ROW_RE.finditer(_phblock):
+                    _prow_ids.add(_plr.group(1).lower())
+            _pbody = (_ps.plan_review_body or "").strip()
+            _prm = RUN_ID_RE.search(_pbody)
+            _pmrun = normalize_run_id(_prm.group(1)) if _prm else None
+            _pomt = re.search(r"outage:\s*([^\(;]+)", _pbody.lower())
+            _porung = _pomt.group(1).strip() if _pomt else None
+            _pday = _ps.stamped_on or ""
+            _psupd = superseded_acceptances(_paccs)
+            for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind in _paccs:
+                if (tgt.lower(), rec) in _psupd:
                     continue
                 if rvw < rec or rvw > exp:
                     # A review date outside its own record-expiry
                     # window is validator-malformed (rule 24) and
                     # names no coherent obligation; the FATAL is the
                     # signal, not this list.
+                    continue
+                _okey = outage_key(tgt) if kind == "outage" else None
+                if kind == "finding":
+                    _pmatch = tgt.lower() in _prow_ids
+                    _ptday = run_day(_prm.group(1)) if _prm else _pday
+                    _ppath, _ptext = path, _praw
+                elif kind == "run":
+                    _pmatch = _pmrun is not None and normalize_run_id(tgt) == _pmrun
+                    _ptday = run_day(tgt)
+                    _ppath, _ptext = _pt.path, todo_text(_pt.path)
+                else:
+                    _pmatch = (
+                        _okey is not None and _porung is not None and _okey == (_porung, _pday)
+                    )
+                    _ptday = _pday
+                    _ppath, _ptext = _pt.path, todo_text(_pt.path)
+                if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today) != "cover":
                     continue
                 if rvw < today:
                     _rstate = "review-overdue"
@@ -8161,8 +8229,8 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 "- [D90-T07-S4-PR53] [major] Post-dated waiver target -> accepted owner ann due 2099-01-01\n"
             "End of ledger\n"
             + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; owner bob; date 2026-09-01; review 2026-10-01; evidence ccc4444; rationale missing expires\n"
-            + "Risk accepted: D90-T07-S4-PR1; approver bob; owner bob; date 2026-09-01; expires 2026-01-01; review 2026-10-01; evidence ccc4445; rationale inverted dates\n"
-            + "Risk accepted: D90-T07-S4-PR1; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446; rationale review before record\n"
+            + "Risk accepted: D90-T07-S4-PR1; approver bob; owner bob; date 2026-09-02; expires 2026-01-01; review 2026-10-01; evidence ccc4445; rationale inverted dates\n"
+            + "Risk accepted: D90-T07-S4-PR2; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446; rationale review before record\n"
             + "Risk accepted: D90-T07-S4-PR53; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447; rationale typo'd year\n",
             encoding="utf-8",
         )
@@ -10431,6 +10499,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         # dynamic offsets like the d1..d5 precedent.
         _r30 = (date.today() - timedelta(days=30)).isoformat()
         _r60 = (date.today() - timedelta(days=60)).isoformat()
+        _r0 = date.today().isoformat()
         _rvw_over = (date.today() - timedelta(days=1)).isoformat()
         _rvw_due = (date.today() + timedelta(days=3)).isoformat()
         _rvw_far = (date.today() + timedelta(days=300)).isoformat()
@@ -10473,7 +10542,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "## 6. Review states\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §6 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc6.md\n"
-            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S6-gpt)\n\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260918-D90-T01-S6-gpt)\n\n"
             "## 7. Postdated waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §7 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc10.md\n"
@@ -10530,12 +10599,14 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         )
         (clean / "docs" / "reviews" / "90-acc6.md").write_text(
             _acc_head
-            + "Manifest: sections [D90 T01 §6]; dependents [none]; bytes 100; run 20260919-D90-T01-S6-gpt\n\n"
-            "Ledger:\n- [D90-T01-S6-PR1] [minor] watched row -> accepted\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_over}; evidence aaa1111; rationale overdue review\n"
-            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_due}; evidence aaa1111; rationale due review\n"
-            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r60}; expires {_exp_far}; review {_rvw_over}; evidence aaa1111; rationale superseded review\n"
-            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; supersedes {_r60}; rationale successor review\n",
+            + "Manifest: sections [D90 T01 §6]; dependents [none]; bytes 100; run 20260918-D90-T01-S6-gpt\n\n"
+            "Ledger:\n- [D90-T01-S6-PR1] [minor] watched row -> accepted\n- [D90-T01-S6-PR2] [minor] watched row -> accepted\n- [D90-T01-S6-PR3] [minor] watched row -> accepted\n- [D90-T01-S6-PR4] [minor] watched row -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale overdue review\n"
+            f"Risk accepted: D90-T01-S6-PR2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc6e66; rationale due review\n"
+            f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale superseded review\n"
+            f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date {_r0}; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; supersedes 2026-09-18; rationale successor review\n"
+            f"Risk accepted: D90-T01-S6-PR4; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence dead666; rationale stale review, never lists\n"
+            f"Risk accepted: D90-T01-S6-PR99; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale dangling review, never lists\n",
             encoding="utf-8",
         )
         _r30f = (date.today() + timedelta(days=30)).isoformat()
@@ -10551,6 +10622,10 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         canned_git[("cafe444", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
         )
+        canned_git[("acc6e66", "docs/reviews/90-acc6.md")] = (clean / "docs" / "reviews" / "90-acc6.md").read_text(
+            encoding="utf-8"
+        )
+        canned_git[("dead666", "docs/reviews/90-acc6.md")] = "stale bytes, never the live record\n"
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
         try:
             _acc_buf = _mio.StringIO()
@@ -10617,7 +10692,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "reviews list due and overdue acceptances, never the superseded",
             (
                 sorted((e["target"], e["state"]) for e in _revs)
-                == [("D90-T01-S6-PR1", "review-due"), ("D90-T01-S6-PR1", "review-overdue")]
+                == [("D90-T01-S6-PR1", "review-overdue"), ("D90-T01-S6-PR2", "review-due")]
                 and [e for e in _revs if e["state"] == "review-overdue"][0]["escalation"]
                 == "bob: record the review outcome in a superseding acceptance"
                 and [e for e in _revs if e["state"] == "review-due"][0]["escalation"] == ""
@@ -10638,16 +10713,19 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc8.md\n"
-            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S1-gpt)\n",
+            "> **Plan review:** GPT high, filed §1 (run 20260918-D90-T01-S1-gpt)\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc8.md").write_text(
             _acc_head
-            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260919-D90-T01-S1-gpt\n\n"
-            "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S1-PR0; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_due}; evidence aaa1111; rationale due review sorts first\n"
-            f"Risk accepted: D90-T01-S9-PR9; approver bob; owner bob; date {_r30}; expires {_exp_far}; review {_rvw_over}; evidence aaa1111; rationale overdue review\n",
+            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260918-D90-T01-S1-gpt\n\n"
+            "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\n- [D90-T01-S9-PR9] [minor] foreign row -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S1-PR0; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc8e88; rationale due review sorts first\n"
+            f"Risk accepted: D90-T01-S9-PR9; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc8e88; rationale overdue review\n",
             encoding="utf-8",
+        )
+        canned_git[("acc8e88", "docs/reviews/90-acc8.md")] = (clean / "docs" / "reviews" / "90-acc8.md").read_text(
+            encoding="utf-8"
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
         try:
@@ -10710,7 +10788,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         # pre-edit original plus the superseded record.
         _acc7_head = (
             _acc_head
-            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260919-D90-T01-S1-gpt\n\n"
+            + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260918-D90-T01-S1-gpt\n\n"
             "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
         )
         _acc7_was = (
@@ -10734,7 +10812,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc7.md\n"
-            "> **Plan review:** GPT high, filed §1 (run 20260919-D90-T01-S1-gpt)\n\n"
+            "> **Plan review:** GPT high, filed §1 (run 20260918-D90-T01-S1-gpt)\n\n"
             "## 2. Chains\n\n"
             "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §2 | fixture\n"
@@ -10747,6 +10825,9 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             + "Risk accepted: D90-T01-S1-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
             + "; evidence aaa1111; rationale EDITED rationale\n"
+            + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale superseded record\n"
             + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
             + "; evidence aaa1111; supersedes 2026-09-10; rationale successor record\n"
@@ -10776,7 +10857,19 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             + "; evidence aaa1111; supersedes 2026-09-10; rationale first successor\n"
             + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-10; rationale second successor\n",
+            + "; evidence aaa1111; supersedes 2026-09-10; rationale second successor\n"
+            + "Risk accepted: D90-T01-S2-PR4; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale twin a\n"
+            + "Risk accepted: D90-T01-S2-PR4; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale twin b\n"
+            + "Risk accepted: D90-T01-S2-PR5; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale first head\n"
+            + "Risk accepted: D90-T01-S2-PR5; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
+            + "; evidence aaa1111; rationale second head\n",
             encoding="utf-8",
         )
         canned_git[("HEAD", "docs/reviews/90-acc7.md")] = _acc7_was
@@ -10791,7 +10884,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             ln
             for ln in _acc7_buf.getvalue().splitlines()
             if "acceptance " in ln
-            and ("without a superseding record" in ln or "names no record" in ln)
+            and ("supersession adds, never" in ln or "names no record" in ln)
         ]
         check(
             "silent acceptance edits and dangling links fire",
@@ -10811,16 +10904,18 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             ln
             for ln in _acc7_buf.getvalue().splitlines()
             if "acceptance " in ln
-            and ("sits in a supersedes cycle" in ln or "re-supersedes" in ln)
+            and ("sits in a supersedes cycle" in ln or "re-supersedes" in ln or "recorded twice" in ln or "forks " in ln)
         ]
         check(
-            "self links, cycles, and double successors fire",
+            "self links, cycles, double successors, twins, and forks fire",
             (
-                len(_chain) == 4
+                len(_chain) == 6
                 and any("d90-t01-s2-pr1 2026-09-19 sits in a supersedes cycle" in ln for ln in _chain)
                 and any("d90-t01-s2-pr2 2026-09-10 sits in a supersedes cycle" in ln for ln in _chain)
                 and any("d90-t01-s2-pr2 2026-09-11 sits in a supersedes cycle" in ln for ln in _chain)
                 and any("d90-t01-s2-pr3 2026-09-19 re-supersedes d90-t01-s2-pr3 2026-09-10" in ln for ln in _chain)
+                and any("d90-t01-s2-pr4 2026-09-19 recorded twice" in ln for ln in _chain)
+                and any("d90-t01-s2-pr5 2026-09-19 forks d90-t01-s2-pr5" in ln for ln in _chain)
             ),
             True,
         )
