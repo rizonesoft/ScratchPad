@@ -19,6 +19,7 @@ track: W0
 > **Filed 2026-09-17:** §9 (nightly full-suite regression run). Open: §§8-9.
 > **Filed 2026-09-19:** §10 (completion-first night-debt system). Open: §§8-10.
 > **Filed 2026-09-19:** §11 (central launch helper with off-screen birth). Open: §§8-11.
+> **Filed 2026-09-19:** §12 (accelerator binding coverage sweep). Open: §§8-12.
 
 ## Inputs
 
@@ -49,6 +50,7 @@ track: W0
 |   9   |   §9    | Nightly full-suite regression run | §8 |  [ ]   |
 |   10  |   §10   | Completion-first night-debt system | §8 |  [ ]   |
 |   11  |   §11   | Central launch helper with off-screen birth | §8 |  [ ]   |
+|   12  |   §12   | Accelerator binding coverage sweep | §8 |  [ ]   |
 
 ---
 
@@ -231,6 +233,7 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 - -> XREF: D00 T02 §9 -- the nightly run executes this fence; the two tiers (default plus fenced) are that run's two halves.
 - -> XREF: D00 T02 §10 -- completion-first hardening plus the collector that collects this section's Interactive debt.
 - -> XREF: D00 T02 §11 -- central-launch plus off-screen-birth hardening filed from this section's Sol panel round 2.
+- -> XREF: D00 T02 §12 -- accelerator binding coverage sweep filed from this section's Opus panel round 5.
 
 - [x] Every `Keyboard.*` and `Mouse.*` call in `tests/UI/` is dispositioned to convert-to-pattern, fence-as-interactive, or keep-with-reason, recorded as an audit table. Done when: the table quotes all 112 calls with a disposition each. **Corrected 2026-09-17 (§8 validation):** filed as 104; re-derived 112. Done: `docs/ui-input-audit.md` quotes all 112 (final: 88 convert, 24 fence, 0 keep). **Corrected 2026-09-17 (§8 item 2):** scope grew three more times during implementation: 22 cursor-moving `.Click()`/`.DoubleClick()`/`.RightClick()` sites (final: 1 convert, 17 fence, 4 keep-with-reason) plus 51 `.Focus()` sites (dispositioned by rule: dropped in default tests, kept in fenced tests) plus 2 raw `mouse_event` helpers (both fence), all appended to the same table with per-row corrections. Full inventory is 187 sites.
 - [x] Convertibles move to UIA patterns (`ValuePattern`, `InvokePattern`, selection) behind one shared helper, and the converted tests stay green locally. Done when: the default trait-filtered run passes with zero focus-dependent calls outside the fenced set. **Corrected 2026-09-17 (§8 validation):** filed as unfiltered `dotnet test tests/UI`, which contradicts item 3's fence; the gate is the default run. Done: Run A green 2026-09-19 (default filter with `-e SCRATCHPAD_BACKGROUND=1`: 162 passed, 3 skipped, 0 failed, 9m29s, re-proofed after the R4 loop) with ForegroundLog clean (flagged=0, census 739, primary=0, exit 0); golden-capture DPI fix in `tests/UI/UiCapture.cs` (window-DPI re-placement via `GetDpiForWindow`: primary-registry 1.5x sizing laid out 1350 effective px off-screen at 100% and shrunk content to 0.667x, fresh/shell 690px plus settings 5905px vs 500px threshold) focused-proof 5/5 backgrounded; slnx builds 0 warnings 0 errors.
@@ -313,6 +316,21 @@ Why this section exists: every UI test file carries its own LaunchApp plus SeedS
 - [ ] Commit: `"workspace: centralize UI launch with off-screen birth"`
 
 **Test checkpoint:** Run A census shows zero visible-primary flashes, Run B still rests 2/2 on primary, and the helper greps return one file. Cheaper substitute that fails: seeding X/Y by hand in 20-plus files.
+
+## 12. Accelerator Binding Coverage Sweep
+
+Why this section exists: conversion swaps physical key-means for pattern-means, so accelerator BINDINGS (key chord to command) lose their only exercise unless a test's point is the keys; R5 caught Ctrl+Shift+N at zero suite coverage with the converted cascade test name still asserting it. This section sweeps every binding for coverage and restores the missing ones as fenced tests. -> SOURCE: Opus-panel-D00-T02-s8-round-5 (R5 accelerator finding: converted test presses menu Invoke while named for Ctrl+Shift+N; no Shift+N press remains in the suite).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §8 -- the conversion that narrowed the coverage; filed from its Opus panel round 5.
+
+- [ ] Sweep every accelerator binding the app declares (menu shortcuts, tab-bar number shortcuts, any Ctrl/Alt chords) against suite coverage and record the binding-to-test table in `docs/ui-input-audit.md`. Done when: each binding names its covering test or none, and Ctrl+Shift+N is listed as none.
+- [ ] Each uncovered binding gains a fenced `Category=Interactive` test pressing the physical chord (or a written reason it cannot be physical), following the §8 fence rule with proof citations. Done when: the restored set passes in the collector window and daytime skips quote the window.
+- [ ] Rename `CtrlShiftNOpensSecondWindowAtCascade` to what it asserts (menu-driven cascade placement, no keys) and update its pair comment; §8's stamped record keeps the old name as reviewed. Done when: no test name asserts keys it does not press (grep `Ctrl|Shift|Alt` in test names vs `UiInput.Press` call sites).
+- [ ] Commit: `"workspace: sweep accelerator binding coverage"`
+
+**Test checkpoint:** The sweep table is complete, the restored chord tests pass in-window, and the name-vs-press grep is clean. Cheaper substitute that fails: renaming the test without restoring the coverage.
 
 ## Verification
 
