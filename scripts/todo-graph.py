@@ -1212,6 +1212,35 @@ def section_markers(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> l
     return out
 
 
+RETIRED_RE = re.compile(r"^>\s*\*\*Retired:\*\*\s*(\d{4}-\d{2}-\d{2})\s*\|")
+
+
+def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> str | None:
+    """Retirement date of one section, or None (D00 T01 §26).
+
+    A retirement note (`> **Retired:** YYYY-MM-DD | ref | reason`)
+    migrates a grandfathered stamp without asserting a review that
+    never ran. The date plus pipe are required, so prose merely
+    mentioning retirement never counts. Malformed notes read as
+    absent: the stamp stays listed and the gap stays visible.
+    """
+    if todo.path not in todo_lines:
+        try:
+            todo_lines[todo.path] = (TODO_DIR.parent / todo.path).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            return None
+    lines = todo_lines[todo.path]
+    spans = sorted((s2.line or 0, n2) for n2, s2 in todo.sections.items())
+    start = max(todo.sections[num].line or 0, 1)
+    following = [ln for ln, _n in spans if ln > start]
+    end = following[0] if following else len(lines) + 1
+    for ln in lines[start - 1 : end - 1]:
+        rm = RETIRED_RE.match(ln)
+        if rm:
+            return rm.group(1)
+    return None
+
+
 RUN_ID_RE = re.compile(r"\brun\s+(\S+?)(?=[,;)]|\s|$)")
 SUPERSEDES_RE = re.compile(r"\bsupersedes\s+(\S+?)(?=[,;)]|\s|$)")
 # A clearance names the commit that carries the fix (D00 T01 §19 item 8):
@@ -2128,6 +2157,7 @@ def cmd_query(args) -> int:
         unmarked = []
         degraded = []
         grandfathered = []
+        _ret_lines: dict[str, list[str]] = {}
         today = datetime.now(timezone.utc).date().isoformat()
         # Acceptance provenance (D00 T01 §21 review R1): rule 24
         # validates only files attached to a post-cutoff (or
@@ -2174,16 +2204,19 @@ def cmd_query(args) -> int:
                 if not _owed(s):
                     # Unmarked and excused: the coverage hole `0 unmarked`
                     # hides (D00 T01 §17 item 7). Marked grandfathered
-                    # stamps stay in `marked`; only the invisible set lists
-                    # here.
+                    # stamps stay in `marked`; retired ones drain out of
+                    # the list (D00 T01 §26: a dated retirement note
+                    # migrates without asserting a review); only the
+                    # invisible unmigrated set lists here.
                     if not body:
-                        grandfathered.append(
-                            (
-                                f"{t.path} §{num}",
-                                s.stamped_on or "undated",
-                                migration_overdue_today(today),
+                        if section_retired(_ret_lines, t, num) is None:
+                            grandfathered.append(
+                                (
+                                    f"{t.path} §{num}",
+                                    s.stamped_on or "undated",
+                                    migration_overdue_today(today),
+                                )
                             )
-                        )
                     else:
                         marked[(t.id, num)] = s.stamped_on or "undated"
                     continue
@@ -6728,6 +6761,8 @@ track: Z1
 |  63   |   §63   | Multi-record probe | - |  [x]   |
 |  64   |   §64   | Range pair one | - |  [x]   |
 |  65   |   §65   | Range pair two | - |  [x]   |
+|  66   |   §66   | Retired grandfathered probe | - |  [x]   |
+|  67   |   §67   | Malformed retirement probe | - |  [x]   |
 
 ---
 
@@ -7495,6 +7530,28 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 - [x] Commit: `"selftest: marker"`
 
 **Test checkpoint:** `true`
+
+## 66. Retired grandfathered probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-18 | §66 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Retired:** 2026-09-19 | D90 T07 §66 | predates plan-review lineage; record stands as shipped
+
+## 67. Malformed retirement probe
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-18 | §67 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Retired:** someday | D90 T07 §67 | no date, stays listed
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -9089,6 +9146,15 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§63 " in ln and "FATAL" in ln),
             0,
         )
+        check(
+            "§§66-67 fire exactly zero (retirement notes validator-silent)",
+            sum(
+                1
+                for ln in marker_out
+                if "TODO-07-marker.md" in ln and ("§66 " in ln or "§67 " in ln) and "FATAL" in ln
+            ),
+            0,
+        )
         vbuf = _mio.StringIO()
         with _mctx.redirect_stdout(vbuf), _mctx.redirect_stderr(_mio.StringIO()):
             multi_code = cmd_query(
@@ -9322,6 +9388,16 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         check(
             "plan-health names the grandfathered stamp",
             any("TODO-07-marker.md §3 " in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "plan-health drains the retired stamp",
+            any("TODO-07-marker.md §66 " in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "plan-health keeps the malformed retirement listed",
+            any("TODO-07-marker.md §67 " in ln for ln in health_lines),
             True,
         )
         check(

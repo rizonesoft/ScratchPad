@@ -117,6 +117,7 @@ Why this section exists: everything visible hangs off the main window. Build the
 **Test checkpoint:** UI drive launches the app, asserts the four regions and the title convention, and compares against the golden capture within tolerance. Cheaper substitute that fails: regions asserted in unit tests without rendering the window.
 
 > **Verified:** 2026-09-14 | §1 | Shell with 4 UIA regions, title convention (5 theory cases plus live asserts), geometry restore, light/dark/system Mica with brightness proof, first-run plus megaphone dialog drives, shell golden in tolerance; UI 9/9, Unit 7/7, Protocol 8/8 locally and in CI both jobs (run 34813967613) after the artifact-proven first-run red (run 34812982991, fixed by seam-seeding captures); validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D01 T01 §1 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates 8d7c266 93bf74f 79f6786 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s1.md
 > **CRUD:** applicable | title composer wrote window titles (read back via 5 cases plus live asserts); seam wrote geometry, theme, seen-flag (read back via relaunch, brightness polls, flag polls); dialog wrote dismissals (read back via close plus persist); captures wrote goldens (read back via comparison fractions and the 3.537% red artifact)
 > **Duration:** 43
@@ -143,6 +144,7 @@ Why this section exists: tabs are the unit of work. The model must be right befo
 **Test checkpoint:** `dotnet test --filter TabModel` green, including edit-then-undo-to-clean semantics as Notepad defines them. Cheaper substitute that fails: dirty tracked in the UI layer where two paths can disagree.
 
 > **Verified:** 2026-09-14 | §2 | Tab model with dirty tracking, auto-naming (first-line/trim/35), observable path, SaveAs routing, unbounded closed stack with proven skip rules; TabModel 24/24 locally and Unit 31/31 in CI both jobs (run 34816231797); mutation probe on the discard guard red then green; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D01 T01 §2 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates f16aeae a0dbe54 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s2.md
 > **CRUD:** applicable | edits wrote dirty plus display names (read back via IsDirty and DisplayName asserts); closes wrote stack entries or skips (read back via entry fields and empty-stack asserts); reopens wrote tabs (read back via path, contents, dirty, LIFO order); observers wrote event streams (read back via identical-sequence assert)
 > **Duration:** 28
@@ -179,6 +181,7 @@ Why this section exists: the tab bar is the most-touched surface in the app. It 
 **Test checkpoint:** UI drive opens three tabs, attempts reorder (order unchanged), switches, and closes each, comparing against captures; dirty close prompts. Cheaper substitute that fails: tab actions unit-tested without rendering the bar.
 
 > **Verified:** 2026-09-14 | §3 | Tab bar UI: TabView strip with new-tab, switch, close glyph, Ctrl+T/W/Tab/1-9, Ctrl+Shift+T, 4-item context menu, middle-click close via low-level hook, shrink-to-fit overflow, dirty prompt with cancel-keeps-tab; UI 18/18 (9 TabBar, 3 consecutive 9/9 runs), Unit 31/31, Protocol 8/8, Smoke 1/1 on Windows, neutral suite green on Linux, build 0 warnings, golden refreshed and in tolerance; two transient flakes disclosed (unknown 8/9 once, empty TabItems query once, both green on rerun, latter covered by polling helper); validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D01 T01 §3 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidate fea3412 -- `adversarial` advisory · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s3.md
 > **CRUD:** applicable | tab gestures wrote model tabs (read back via UIA counts, names, content asserts); edits wrote dirty plus display names (read back via dot glyph, title marker, prompt naming); closes wrote removals and stack entries (read back via counts, survivor contents, reopen no-ops); dialog wrote answers (read back via tab kept on Cancel, closed on Don't-save); captures wrote the refreshed golden (read back via in-tolerance comparison)
 > **Duration:** 125
@@ -206,6 +209,7 @@ Why this section exists: opening must never corrupt. Detection decides the bytes
 **Test checkpoint:** Encoding fixture matrix green byte-identical; failure and external-change paths driven. Cheaper substitute that fails: UTF-8-only open that mangles the rest.
 
 > **Verified:** 2026-09-15 | §4 | File open: 12-case encoding matrix plus 7-case EOL matrix byte-identical, stock-verbatim failure messages with OS detail, watcher detection, focus-existing dedup, 1 MiB progress threshold with 4 MiB scale drive, .txt-plus-all-files filter spec, 1 GiB over-limit refusal; FileOpen 37/37, Unit 89/89, Protocol 35/35 both OSes, UI 18/18 and Smoke 1/1 on Windows, build 0 warnings; stock quotes read verbatim from the failure and dialog captures; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §4 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 2, candidates 625c7f2 plus 5c28ed3 (review fix: >2 GiB refuses as TooLarge instead of throwing) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve (neutral section, rendered dialog defers to the menus TODO Open trigger). Raw findings: docs/reviews/01-notepad-core/D01-T01-s4.md
 > **CRUD:** applicable | temp-file opens wrote bytes (read back via OpenSuccess text, encoding, BOM, and EOL asserts); failure opens wrote nothing (read back via tab-count and result-type asserts); external writes wrote Changed (read back via the fired gate); the 4 MiB open wrote progress (read back via final-report-equals-length); .LOG opens wrote the stamp (read back via exact-text asserts); fixtures wrote bytes once (read back via blob inspection after the gitattributes fix)
 > **Duration:** 179
@@ -231,6 +235,7 @@ Why this section exists: saving is the one path where a bug destroys user data. 
 **Test checkpoint:** Round-trip matrix byte-identical; fault-injection save keeps old-or-new; Save As honors every offered combination. Cheaper substitute that fails: direct overwrite that can leave a truncated file.
 
 > **Verified:** 2026-09-15 | §5 | File save: atomic temp-plus-rename with fault injection, 5-by-3 Save As matrix through detect, 12-fixture open-save byte-identical round-trips, read-only and locked redirect to Save As, structural failures report OS text, UTF-8/CRLF/Untitled.txt defaults, Save All strict tab order with continue-on-cancel; Unit 119/119 Windows (116 plus 3 OS-skipped Linux), Protocol 35/35, UI 22/22, Smoke 1/1, build 0 warnings; encoding list verbatim from the expanded dropdown capture; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §5 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 2, candidates 911ff19 plus 4615807 (review fix: strict encoders fail loud on unencodable characters) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve (neutral section, Save As rendering defers to the menus TODO trigger). Raw findings: docs/reviews/01-notepad-core/D01-T01-s5.md
 > **CRUD:** applicable | saves wrote bytes (read back via exact-text and byte-identical asserts); injected crash wrote old bytes (read back via intact original); redirects wrote nothing (read back via intact originals); Save All wrote per-tab files (read back via bytes, tab state, entries, and the call-order log); skips and failures wrote nothing (read back via dirty flags and entries)
 > **Duration:** 50
@@ -266,6 +271,7 @@ Why this section exists: Notepad reopens where the user left off. So do we, with
 **Test checkpoint:** UI drive quits with saved tabs, an untitled unsaved tab, and a dirty tab, and relaunches to all three with contents and carets; both startup modes driven; missing-file skip driven. Cheaper substitute that fails: restore that works only when every file still exists.
 
 > **Verified:** 2026-09-15 | §6 | Session restore (paths, active, carets, buffers) plus both when-starts modes, missing-file resurrect with lazy notice plus snapshot eviction, recents order/truncation/trigger with the rendered submenu deferred to the menu-bar owner, cited continue default, multi-window restore; UI 7/7, Unit §6 24/24 (suite 143/143), full gate green with 1 pre-existing quarantine; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §6 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 2, candidates 9f43493 62656a2 44021cc ae76a8a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s6.md
 > **CRUD:** applicable | session store wrote session.json (read back via relaunch plus snapshot asserts plus typing-at-caret); settings wrote whenstarts plus recents (read back via mode drives plus recents asserts); dialog wrote nothing persistent (read back via notice text plus OK-keeps-tab); captures wrote goldens (read back via wording and label reads)
 > **Duration:** 180
@@ -300,6 +306,7 @@ Why this section exists: this section is the last line before data loss. Every d
 
 **Forwarded 2026-09-15 (not this section):** a bare `notepad.exe` launch with a live window opens a NEW window (for §8's launch rules), and stock Ctrl+T opens a new tab (matches our TabBar; for the record).
 > **Verified:** 2026-09-15 | §7 | Dirty prompts and crash recovery: tab-close prompt matrix over the §3 dialog (pathed Save writes bytes and closes, untitled Save keeps dirty with nothing written, Dont-save discards, Cancel keeps exactly), full-path and tab-name.txt prompt naming from the prompts captures, silent window close with full restore, continuous 2 s checkpoint with silent kill recovery and files untouched; DirtyPrompt 7/7, CrashCheckpoint 5/5, Smoke 1/1, Unit 148/148, Protocol 35/35, UI 37 plus 1 pre-existing quarantine of 38, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §7 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates 0a40085 284e49a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s7.md
 > **CRUD:** applicable | prompt answers wrote tab fates (read back via closed/kept plus file-bytes asserts); window close wrote the session (read back via zero-dialog plus restored-buffer asserts); checkpoint ticks wrote session.json (read back via kill-relaunch buffer and identical-bytes asserts); fresh typing wrote stale deletion (read back via file-gone assert); probes wrote the prompts captures (read back via verbatim wording asserts)
 > **Duration:** 260
@@ -324,6 +331,7 @@ Why this section exists: Notepad opens from Explorer and from the command line. 
 **Test checkpoint:** Association, multi-file open, missing-file offer, and clean uninstall all driven in Windows Sandbox. Cheaper substitute that fails: association tested only on the dev machine. **Corrected 2026-09-15:** Sandbox absent (see box 3): the association cycle is driven on the dev machine with registry snapshot-diff proof, and multi-file plus missing-offer are driven in-process; the Sandbox re-drive is owed when a Sandbox host exists.
 
 > **Verified:** 2026-09-15 | §8 | File association and command-line open: single-instance routing per OpenIn (7 drives), missing offer verbatim with No/Yes/Enter-default (crop filed), §4 failures rendered in situ, HKCU assoc cycle with backup/restore plus double-click command, 9-extension claim, jump recents plus pins with taskbar read-back, wired drop entry (end-to-end owed on a capable host), /p and /pt parser plus print seam; Unit 26/26, UI 20/20, full gate Smoke 1/1 Unit 174/174 Protocol 35/35 UI 54 plus 1 pre-existing quarantine, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §8 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 2, candidates 511c99a plus 973d50e (review fix: Enter-default drive, Press honors withControl, dialog comment current) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s8.md
 > **CRUD:** applicable | launches wrote tabs and windows (read back via counts, names, contents, origins); offer answers wrote tab fates (read back via bound tabs, names, file absence/presence); registry verbs wrote claims and backups (read back via snapshot-diff identical plus claim reads); drops wrote JSON (read back via drains in redirect tests); jump refresh wrote the feed (read back via taskbar read-back); probes wrote the crop (read back via eyeball plus UIA text)
 > **Duration:** 319
@@ -356,6 +364,7 @@ Why this section exists: Notepad opens new windows, and the "Opening files" sett
 **Test checkpoint:** New window, open-in modes, and isolation driven (restore is now §6 here). Cheaper substitute that fails: multi-window that shares one tab list.
 
 > **Verified:** 2026-09-15 | §9 | Multi-window: Ctrl+Shift+N opens a same-size second window at the OS cascade (3 probed offsets, captures filed), Opening-files value plus routing proven with unknown staying put, model plus live two-window isolation, merge-on-close mutation-driven, no-tear-off parity negative; Unit 90/90, Protocol 35/35 both OSes, UI 22/22 and Smoke 1/1 on Windows, build 0 warnings; item 4 struck with two clean drag-out negatives; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §9 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 2, candidates d4416bb plus 172a857 (review fix: close merges onto fresh settings instead of clobbering) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s9.md
 > **CRUD:** applicable | Ctrl+Shift+N wrote a window (read back via count 1 to 2 to 1, differing origins, untitled tab, no dialog); Ctrl+T in the second wrote a tab (read back via per-window counts 1 vs 2); content set wrote isolation (read back via empty first-window box and clean title); external flag flip plus close wrote preservation (read back via flag still flipped; red unfixed); outside-strip drag wrote nothing (read back via count 1 and 1 tab)
 > **Duration:** 418
@@ -415,6 +424,7 @@ Why this section exists: the operator supplied the app icon. It must show in the
 **Test checkpoint:** Exe, window, and taskbar captures show the asset; MSIX visual assets stay D07 T01 §1's. Cheaper substitute that fails: the icon in one place only.
 
 > **Verified:** 2026-09-15 | §11 | App icon wiring: exe embeds the operator asset, window sets it at Loaded, taskbar renders the mark with no default glyph; `ExeIconMatchesAsset` plus `WindowChromeIconMatchesAsset` 0-diff, taskbar and chrome crops filed and eyeballed; UI 2/2, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §11 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidate 22f6b4c plus the `SetIcon` lines in 9f43493 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s11.md
 > **CRUD:** applicable | build wrote the exe icon and content copy (read back via extraction 0-diff plus shipped-asset presence); `SetIcon` wrote the window icon (read back via `WM_GETICON` 0-diff); captures wrote PNGs (read back via eyeball)
 > **Duration:** 115
@@ -456,6 +466,7 @@ Why this section exists: pinned tabs survive restarts and shrug off accidental c
 **Test checkpoint:** pin, persist, and skip are all driven in the room. Cheaper substitute that fails: pins that forget.
 
 > **Verified:** 2026-09-15 | §13 | Pinned tabs: double-click toggles the pin glyph with the 4-item menu untouched, pins persist through session restore, bulk closes skip pinned while single closes release normally (feed entry goes with the tab), pathed pins feed the jump list; PinnedTabs 5/5, full gate Smoke 1/1 Unit 182/182 Protocol 35/35 UI 62 plus 1 pre-existing quarantine of 63, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §13 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 0-1, candidate a14f5d8 plus 6a5d36d plus 7799a73 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s13.md
 > **CRUD:** applicable | double-click wrote pin state (read back via glyph UIA plus settings feed); relaunch wrote session.json (read back via restored glyph); close wrote feed removal (read back via settings absence); jump refresh ran through the §8 fingerprint-gated commit (no pin-specific taskbar read-back; §8's read-back covers the path)
 > **Duration:** 75
@@ -488,6 +499,7 @@ Why this section exists: writers who measure want top words, sentence lengths, a
 **Test checkpoint:** words, lengths, flags, and on-demand refresh are all driven in the room. Cheaper substitute that fails: stats that never update.
 
 > **Verified:** 2026-09-16 | §14 | Text statistics panel: Ctrl+Shift+G dialog with fixture-exact top words, sentence distribution, and repetition flags over the active tab's buffer, compute on open with on-demand Refresh, menu trigger deferred to the menu owner with a recorded contract; StatsPanel 4/4, TextStats 9/9, full gate Smoke 1/1 Unit 182/182 Protocol 35/35 UI 66 plus 1 pre-existing quarantine of 67, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §14 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 0-1, candidate b247cff plus ab51d4f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s14.md
 > **CRUD:** applicable | open wrote a fresh compute (read back via exact rows); Refresh wrote a recompute (read back via re-rendered rows); close wrote nothing (reopen recomputes); settings and session untouched by the panel
 > **Duration:** 1519
@@ -529,6 +541,7 @@ Why this section exists: named local versions with one-click restore and no clou
 **Test checkpoint:** snapshot, restore, dirty prompt, and retention are all driven in the room. Cheaper substitute that fails: restore that overwrites blindly.
 
 > **Verified:** 2026-09-16 | §16 | File snapshots: Ctrl+Shift+H dialog with named takes byte-identical to FileSave output, one-click restore buttons with sequential §7 dirty prompt (Save saves then restores, Don't-save restores, Cancel aborts, save-failure aborts with work preserved), retention cap 10 with oldest-first eviction, menu trigger deferred to the menu owner with a recorded contract; SnapshotTests 8/8, SnapshotStoreTests 8/8, full gate Smoke 1/1 Unit 190/190 Protocol 35/35 UI 74 plus 1 pre-existing quarantine of 75, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §16 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1-3, candidate 44404da plus 089922a plus a628db3 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s16.md
 > **CRUD:** applicable | take wrote a snap bin plus manifest entry (read back via list plus decode); restore wrote buffer text (read back via the room); eviction deleted the oldest bin (read back via absence); failed save wrote nothing (buffer and disk read back unchanged); settings and session untouched by the dialog
 > **Duration:** 34
@@ -558,6 +571,7 @@ Why this section exists: new files start from templates with date and title fill
 **Test checkpoint:** picker, variables, and custom persistence are all driven in the room. Cheaper substitute that fails: templates that never update.
 
 > **Verified:** 2026-09-16 | §17 | New-file templates: Ctrl+Shift+E picker with three built-ins opening expanded (title prompt plus locale date), save-current-as-template customs persisting as .txt across relaunch, menu trigger deferred to the menu owner with a recorded contract; UI TemplateTests 6/6, Unit TemplateTests 5/5, full gate Smoke 1/1 Unit 190/190 Protocol 35/35 UI 80 plus 1 pre-existing quarantine of 81, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §17 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate 2ff23cb plus d7cc0d1 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s17.md
 > **CRUD:** applicable | save-custom wrote a .txt (read back via list plus use); use wrote a new tab body (read back via the room); relaunch wrote nothing (custom read back still listed); session untouched beyond the suite's standard cleanup
 > **Duration:** 1625
@@ -586,6 +600,7 @@ Why this section exists: Markdown, HTML, or plain text out of any view, to file.
 **Test checkpoint:** export and fidelity are all driven in the room. Cheaper substitute that fails: HTML that drops structure.
 
 > **Verified:** 2026-09-16 | §18 | Export as Markdown, HTML, plain text: Ctrl+Shift+X dialog converting the live buffer through the shared UI-free converter and writing beside the source with a safe default name, HTML as a document shell, untitled save-first state, menu trigger deferred to the menu owner with a recorded contract; UI ExportTests 4/4, Unit FormatConverterTests 13/13, full gate Smoke 1/1 Unit 203/203 Protocol 35/35 UI 84 plus 1 pre-existing quarantine of 85, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §18 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate 29b9f2f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s18.md
 > **CRUD:** applicable | each export wrote converted bytes beside the source (read back exact, source untouched); the failure path is undriven (invalid names fail gracefully by construction, advisory); session untouched beyond the suite's standard cleanup
 > **Duration:** 14
@@ -617,6 +632,7 @@ Why this section exists: some notes need a password. Files lock with a clearly s
 **Test checkpoint:** stated algorithm, lock, unlock, loud failure, and memory-only keys are all driven in the room. Cheaper substitute that fails: encryption nobody can audit.
 
 > **Verified:** 2026-09-16 | §19 | Encrypted notes: AES-256-GCM plus PBKDF2-SHA256-600k with a stated header and doc plus pinned vector, Ctrl+Shift+L lock dialog, unlock on open with in-dialog retry, re-lock on every write with restore ghosting, menu trigger deferred to the menu owner with a recorded contract; UI EncryptedNotesTests 6/6, Unit NoteCryptoTests 16/16, full gate Smoke 1/1 Unit 219/219 Protocol 35/35 UI 90 plus 1 pre-existing quarantine of 91, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §19 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate f0937c8 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s19.md
 > **CRUD:** applicable | lock wrote ciphertext over the source (read back locked, no plaintext); unlock wrote a buffer (read back exact); wrong password wrote nothing (file bytes read back untouched); re-lock wrote ciphertext again (read back decrypting to the edit); app data scanned clean of the password
 > **Duration:** 31
@@ -646,6 +662,7 @@ Why this section exists: saves overwrite. A timestamped .bak sibling beside the 
 **Test checkpoint:** sibling, retention, and crash safety are all driven in the room. Cheaper substitute that fails: backups that pile up forever.
 
 > **Verified:** 2026-09-16 | §20 | Backup on save: every SaveFile and SaveBytes commit keeps the pre-save bytes in a timestamped sibling first, cap 5 with oldest-first rotation of own-pattern names, backup failures map through the §5 redirect map, rotation best-effort after the commit; UI BackupTests 3/3, Unit FileSaveBackupTests 5/5, full gate Smoke 1/1 Unit 224/224 Protocol 35/35 UI 93 plus 1 pre-existing quarantine of 94, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §20 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate f32b447 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s20.md
 > **CRUD:** applicable | each save wrote a sibling with the pre-save bytes (read back exact); rotation deleted the oldest past the cap (read back absent, foreign `.bak` untouched); the failed save wrote a sibling and left the file untouched (both read back); no temp debris left behind
 > **Duration:** 17
@@ -676,6 +693,7 @@ Why this section exists: files change behind us (sync tools, other editors). The
 **Test checkpoint:** prompt, both answers, dirty resolution, and the unsaved negative are all driven in the room. Cheaper substitute that fails: a prompt that defaults to data loss.
 
 > **Verified:** 2026-09-16 | §21 | Reload prompt on external change: per-tab watchers pend on foreign bytes and ask when window and tab are both active; reload fills with the detected spec applied, keep and Cancel hold the buffer dirty; own commits baseline via WroteFile and never prompt; convergent bytes auto-resolve clean; deleted files reuse the missing-file dialog, locked files route through the unlock detour; UI ReloadTests 8/8, Unit WroteFile contract 2/2, full gate Smoke 1/1 Unit 226/226 Protocol 35/35 UI 101 plus 1 pre-existing quarantine of 102, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §21 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidates e71fa04 plus 5c2c1e6 (review fix: dirty-dot Keep postcondition, path-filtered static-event tests, Cancel drive) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s21.md
 > **CRUD:** applicable | reload replaced the buffer with the disk bytes (box read back exact); keep held the buffer and dirtied (close prompted, Don't-save closed); Cancel kept like keep (close prompted); own save raised no prompt (dialog absent); untitled typing plus identical-bytes writes stayed silent
 > **Duration:** 65
@@ -704,6 +722,7 @@ Why this section exists: untitled tabs show their first line as the live default
 **Test checkpoint:** live default and capture confirmation are driven in the room. Cheaper substitute that fails: tabs that all read Untitled.
 
 > **Verified:** 2026-09-16 | §22 | First-line titles for untitled tabs: typing renames the rendered tab through the existing header binding, whitespace restores Untitled, trim plus 35-cap proven at the surface; stock parity proven live (tab from first line, trailing space trimmed, 40-char line titled at exactly 35, no difference); UI UntitledTitleTests 2/2, full gate Smoke 1/1 Unit 226/226 Protocol 35/35 UI 103 plus 1 pre-existing quarantine of 104, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §22 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidates 47b571d plus 28e355f (review fix: retried snapshot prompt-button lookup) -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s22.md
 > **CRUD:** applicable | typing wrote the tab name from the first line (UIA name read back); clearing to whitespace rewrote Untitled (read back); the 40-char line wrote the 35-char title (read back); stock drive wrote two probe tabs and closed both (tab list read back equal before and after, debris tabs untouched)
 > **Duration:** 75
@@ -746,6 +765,7 @@ Why this section exists: Windows apps share text; we receive it into a new tab. 
 **Test checkpoint:** receive and graceful decline are driven in the room (registration is D07 T01 §7's). Cheaper substitute that fails: a target that eats shares silently.
 
 > **Verified:** 2026-09-16 | §24 | Share receive path: text opens an untitled dirty active tab, null/empty declines with the model untouched, registration plus activation routing deferred to the named release section; Unit ShareReceiverTests 3/3, full gate Smoke 1/1 Unit 226/226 Protocol 35/35 UI 103 plus 1 pre-existing quarantine of 104, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §24 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate 5dff99f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s24.md
 > **CRUD:** applicable | receive wrote a tab with the text (read back via untitled, first-line, dirty, active asserts); decline wrote nothing (model read back empty)
 > **Duration:** 40
@@ -775,6 +795,7 @@ Why this section exists: new note and pinned notes on the taskbar icon. (Jump-li
 **Test checkpoint:** tasks, new, pinned, and recent launches are all driven in the room. Cheaper substitute that fails: a jump list that jumps nowhere.
 
 > **Verified:** 2026-09-16 | §25 | Jump list tasks: static new-note task commits ahead of the pin/recent feed, the flag opens or selects a fresh tab on fresh and redirected paths with files-first ordering, verbatim feed arguments launch to their files; UI JumpListTaskTests 5/5, Unit launch/feed 29/29, full gate Smoke 1/1 Unit 236/236 Protocol 35/35 UI 108 plus 1 pre-existing quarantine of 109, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §25 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate fcdd3b4 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s25.md
 > **CRUD:** applicable | task commit wrote the task plus pin plus recent to the taskbar list (read back with titles, args, groups); redirected flag wrote a third active untitled tab (read back); fresh flag-plus-file selected the spare (read back via selection); verbatim args wrote file tabs (names read back)
 > **Duration:** 90
@@ -804,6 +825,7 @@ Why this section exists: links can open a path in the app.
 **Test checkpoint:** registration, open, and graceful decline are all driven in the room. Cheaper substitute that fails: links that open the wrong file.
 
 > **Verified:** 2026-09-16 | §26 | Protocol handler: scheme registered with backup and restore through verbs, links map to their carried path and open through the file path, malformed links open a bare window with nothing offered, shell-executed links proven end to end; UI ProtocolHandlerTests 5/5, Unit association plus args suites green, full gate Smoke 1/1 Unit 259/259 Protocol 35/35 UI 113 plus 1 pre-existing quarantine of 114, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §26 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate 11816b6 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s26.md
 > **CRUD:** applicable | register wrote the scheme keys (read back with marker, command, backup); unregister removed them and restored priors (read back absent); argv link wrote a file tab with bytes (read back); malformed links wrote a bare window (tab read back Untitled, no dialog); shell link wrote a file tab (name read back)
 > **Duration:** 100
@@ -839,6 +861,7 @@ Why this section exists: the operator compared the app against Windows 11 Notepa
 
 **Test checkpoint:** add-vs-caption, zero-tab centering, dot size/color, and crash survival are all measured in the room, and the §3 dot contract plus the full suite stay green. Cheaper substitute that fails: geometry asserted from constants without rendering the strip.
 > **Verified:** 2026-09-15 | §27 | Tab-strip chrome parity repair: 43/32 rows with the editor step at 76 DIP (1px rounding over stock 75), full-strip add parked left of minimize, zero-tab add centered, 6-DIP dot at stock gray with the kept bullet name, last-tab close crash-free, golden refreshed; ChromeTests 2/2, Smoke 1/1, Unit 148/148, Protocol 35/35, UI 37 plus 1 pre-existing quarantine of 38, build 0 warnings; tab-top clicks proven live; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §27 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates 1b19937 69d082f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s27.md
 
 ## 28. UIA Tab Accessibility Names
@@ -864,6 +887,7 @@ Why this section exists: stock tab UIA names carry ". Modified." / ". Unmodified
 **Test checkpoint:** stock-matching names and live tracking are driven in the room. Cheaper substitute that fails: accessible names that lie about dirty state.
 
 > **Verified:** 2026-09-16 | §28 | UIA tab accessibility names: stock suffixes on both SetName sites tracking the dirty model live, suite-wide asserts migrated to settled suffixed names; UI TabAccessibilityTests 2/2, Unit formatter 2/2, full gate Smoke 1/1 Unit 259/259 Protocol 35/35 UI 115 plus 1 pre-existing quarantine of 116, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §28 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate 1475bbb -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s28.md
 > **CRUD:** applicable | rewire wrote suffixed names (read back literal both halves); edit wrote the Modified suffix (read back); save plus reopen wrote the Unmodified suffix (read back)
 > **Duration:** 120
@@ -897,6 +921,7 @@ Why this section exists: stock's Open dialog offers an Encoding picker defaultin
 **Test checkpoint:** option list, forced decode, auto-detect equivalence, and save handoff are all driven in the room. Cheaper substitute that fails: a picker that detects anyway.
 
 > **Verified:** 2026-09-16 | §29 | Explicit-encoding open: option list pinned verbatim off the expanded-picker capture (Auto-Detect plus the save list), forced decode bypassing detection with replacement fallback and match-only BOM strip, null path record-equal to §4 across all 12 fixtures, forced name flowing open to tab to save; Unit FileOpenEncodingTests 9/9, full gate Smoke 1/1 Unit 268/268 Protocol 35/35 UI 115 plus 1 pre-existing quarantine of 116, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §29 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate 5a7bf3a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s29.md
 > **CRUD:** applicable | forced opens wrote decoded text plus the recorded name (read back via exact-text, contains-replacement, and equality asserts); unknown names wrote nothing (read back via the throw); temp-file open plus tab plus save wrote forced-encoding bytes (read back exact)
 > **Duration:** 60
@@ -928,6 +953,7 @@ Why this section exists: §19 locks the file but the decrypted buffer still rest
 **Test checkpoint:** refused takes, path-only persistence, and both disk scans are all driven in the room. Cheaper substitute that fails: plaintext asserted absent only where the test looked before.
 
 > **Verified:** 2026-09-16 | §30 | Locked-tab residues: takes refused with an inline note and no sidecar, session plus checkpoint path-only for locked tabs restoring as ghosts, sidecar and app-data scans clean of locked plaintext, pre-section residues and the dirty-drop consequence named in the encrypted-notes doc; UI LockedResidueTests 2/2, Unit capture 3/3, full gate Smoke 1/1 Unit 271/271 Protocol 35/35 UI 117 plus 1 pre-existing quarantine of 118, build 0 warnings; validate 0 fatal; self-test 393/393
+> **Retired:** 2026-09-19 | D01 T01 §30 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1, candidate b04f7f0 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve · `design` approve. Raw findings: docs/reviews/01-notepad-core/D01-T01-s30.md
 > **CRUD:** applicable | refusal wrote no sidecar (read back via dir absence); session plus checkpoint wrote path-only entries (read back via null Content plus the clean app-data scan); relaunch wrote a ghost (read back via empty box, no unlock prompt, still-locked bytes)
 > **Duration:** 22
@@ -954,6 +980,7 @@ Why this section exists: two more UI tests failed nondeterministically on the D0
 **Test checkpoint:** Both Skips plus both rows land; CI green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.
 
 > **Verified:** 2026-09-17 | §32 | AppIcon and Launch flakes quarantined by the §5 procedure: `WindowChromeIconMatchesAsset` Skipped (`chrome-icon-uia-timeout`, owner §11) and `MissingFileOfferYesBindsTabAndSaveCreates` Skipped (`save-prompt-dialog-null`, owner §7, failing surface corrected from the offer dialog to the Ctrl+W save prompt per the stack); both rows carry stable signatures, quoted red-then-green proof (run 35234746568 attempt 1 red, rerun green), and 2026-09-24 dues; ship run 35249487881 attempt 3 success both jobs, UI.dll 167 passed, 3 skipped, 0 failed (attempts 1-2 red-flagged the §16-filed `ToolsMenuInvokesStats` flake)
+> **Retired:** 2026-09-19 | D01 T01 §32 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1-2, candidates 869c49a cd0e338 -- Opus panel `adversarial` advisory · `consistency` advisory · `integration` approve · `record` advisory, all four round-2 advisories fixed in the stamp commit (findings file ships, §8 coverage note, HEAD run re-quote, evidence-map wording). Raw findings: docs/reviews/01-notepad-core/D01-T01-s32.md
 > **CRUD:** applicable | CI runs wrote conclusions plus suite counts (read back via success, Passed/Skipped/Failed per attempt); Skips wrote skips (read back via the 3-skip line); rows wrote procedure state (read back via signatures, owners, dues)
 > **Duration:** 62

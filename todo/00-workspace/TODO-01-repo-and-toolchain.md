@@ -11,8 +11,10 @@ track: W0
 
 > **Goal:** A clean checkout builds the app and runs the tests with one command each, on a pinned .NET toolchain, with CI proving the build plus launch smoke on Linux and Windows runners on every push. **Corrected 2026-09-17 (groom):** was "CI proving the same"; since 2026-09-17 CI proves build plus launch smoke only and the suites run locally on the dev box.
 
+## Current state
+
 > [!IMPORTANT]
-> **Current state:** The repo holds only `todo/`, `scripts/`, `docs/`, and root docs. No source tree, no solution, no CI. The first section that touches the .NET SDK decides the layout below; until then every path in this file is a proposal, not a fact.
+> **Current state:** The repo holds `todo/`, `scripts/`, `docs/`, root docs, plus the .NET solution, `src/`, `tests/`, and CI on Linux and Windows runners. **Corrected 2026-09-19 (§26):** was "only `todo/`, `scripts/`, `docs/`, and root docs. No source tree, no solution, no CI" (true 2026-09-14, false since §§1-2 shipped); the SDK layout below is decided and built.
 >
 > **Corrected 2026-09-17 (groom):** §§1-7 and §§9-11 have shipped since (layout and SDK pin, scaffold, CI, warning gates, test wiring, bootstrap doc, graph checks, panel enforcement plus follow-ups, lookahead removal); §8 moved to `docs/testing.md` 2026-09-14. Open: §12 only.
 >
@@ -27,6 +29,12 @@ track: W0
 > **Grandfathered migration 2026-09-18 (§19):** owner the operator; risk accepted (the 53 unmarked pre-cutoff stamps predate the second-family round, and audit stance re-verifies any of them on demand); deadline 2026-12-31. Recorded default, cost of changing it a dated line. Batches 2026-09-18 (§21): bounded by file with original counts frozen (A TODO-01-repo-and-toolchain 13, B TODO-02-test-backbone 7, C TODO-01-winui-app-spine 27, D TODO-02-menus-settings-status 6); a batch completes when every stamp in it carries a Plan review marker or is explicitly retired; progress reads in plan-health grandfathered; past the deadline unmigrated batches read OVERDUE and fail --check, and --fail-on grandfathered gates progress on any date.
 
 > **Grandfathered provenance 2026-09-18 (§21):** owner the operator; risk accepted (read-only history: backfilling runs would rewrite it); deadline 2026-12-31. 57 run-less pre-cutoff findings files (17 T01, 7 T02, 27 D01-T01, 6 D01-T02), all attached to pre-cutoff stamps; s19/s20 carry provenance voluntarily; D00-T02-s7 carries a prose mention, not a record.
+
+> **Reconciliation 2026-09-19 (§26, verified live):** two real populations, not one miscount. Population one: 53 unmarked pre-cutoff stamps (13/7/27/6 across the four batch files), each a shipped section whose stamp predates the second-family round. Population two: 57 run-less findings files (17/7/27/6), each attached to a pre-cutoff stamp as read-only history. The nine files carrying runs are exactly the lineage-era records (this TODO's findings s19-s25, s35, s40). Migration unit is the stamp: a file completes when every stamp in it carries a Plan review marker or a retirement note (`> **Retired:** YYYY-MM-DD | ref | reason`, date plus pipe required, validator-silent prose); plan-health drains retired stamps out of grandfathered. No fabricated markers: no plan review ran over these sections, so all 53 retire (a real future review marks normally). Recorded default, cost of changing it a dated line plus the marker.
+
+> **Batch acceptance 2026-09-19 (§26):** prose path (no grammar change: a batch-target grammar for a one-time migration expiring 2026-12-31 is disproportionate). The Grandfathered migration risk acceptance above is the migration-scale record: owner the operator, audit path plan-health grandfathered (per-batch leftovers, OVERDUE past the deadline, `--fail-on grandfathered` gates progress on any date). Recorded default, cost of changing it a grammar extension plus fixtures.
+
+> **Batch completion 2026-09-19 (§26):** all four batches migrated, owner the operator, per-stamp verification scripted (stamp names its section, cited findings files exist; 53/53 pass, 0 skipped). Batch A (this file) 13/13 retired; batch B (test-backbone) 7/7 retired; batch C (winui-app-spine) 27/27 retired; batch D (menus-settings-status) 6/6 retired. plan-health grandfathered reads 0. No fabricated markers: retirement notes assert no review.
 
 ## Inputs
 
@@ -116,6 +124,7 @@ Why this section exists: every path, command, and gate below assumes a layout an
 **Test checkpoint:** Wipe `.tools/`, re-run the provisioner for the session OS, and confirm `dotnet --info` reproduces the pinned versions; `git status` is clean after listing the tree. Falsifiable by any version that does not resolve or any path the doc names that does not exist.
 
 > **Verified:** 2026-09-13 | §1 | wipe+provision reproduces SDK 10.0.401/runtime 10.0.12 from repo-local .tools (Linux twice, Windows via interop once); pinned test trio restores+builds clean; fresh clones clean on Linux+Windows; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §1 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 2, candidates a5daf42 52a4218 -- `adversarial` approve · `consistency` approve (round-1 needs-attention on the exec bit, fixed) · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s1.md
 > **CRUD:** applicable | provisioners wrote the SDK tree and read it back via SHA512 verify plus dotnet --info/--list-sdks; repo files written and read back via git status and fresh clones on both OSes
 > **Duration:** 17
@@ -141,6 +150,7 @@ Why this section exists: the scaffold is the first thing that compiles. One comm
 **Test checkpoint:** `dotnet build src/Notepad.Neutral.slnf` exits 0 on Linux; `dotnet build src/ScratchPad.slnx` exits 0 on Windows and the stub window launches with its versioned title observed; `git status` shows no build outputs. Cheaper substitute that fails: a solution that builds only inside the IDE on the author's machine. **Corrected 2026-09-13:** per-OS commands per the item-1 correction; was bare `dotnet build` green from Linux.
 
 > **Verified:** 2026-09-13 | §2 | slnf green on Linux (0w/0e); slnx green on Windows (0w/0e); stub launched, versioned title + HWND observed; ProductVersion 0.0.0+sha from the binary; fresh clones clean both OSes; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §2 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidate 46319af -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s2.md
 > **CRUD:** applicable | builds wrote bin/obj trees (read back via dll presence plus launch) and the lockfile (read back via restore); launch wrote a window (read back via title plus handle)
 > **Duration:** 19
@@ -163,6 +173,7 @@ Why this section exists: without CI the toolchain pin rots and "works on my mach
 **Test checkpoint:** Push the workflow and read both runs: green on good code with the stub artifact downloadable, red-with-cause on a deliberately broken probe commit (reverted immediately), green again after the revert. Cheaper substitute that fails: a workflow that exists but never ran. **Corrected 2026-09-13:** dropped the UI-suites clause (no UI suites exist; T02 §2 owns them on Windows runners).
 
 > **Verified:** 2026-09-13 | §3 | run 34785141981 green both jobs with stub artifact downloaded (exe+dll+XAML); run 34785638088 red both jobs with MSB4025 naming file+line; run 34786154222 green after revert; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §3 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates ef12eb3 6fb4909 e858133 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s3.md
 > **CRUD:** applicable | pushes wrote CI runs (read back via run conclusions, logs, and artifact download); probe wrote a failure (read back via MSB4025 in both Build steps)
 > **Duration:** 34
@@ -186,6 +197,7 @@ Why this section exists: warnings are defects with seniority. Gate them at zero 
 **Test checkpoint:** An unused-variable probe fails the build and a probe analysis finding fails CI; both reproduce locally with documented commands. Cheaper substitute that fails: warnings counted in a dashboard nobody reads.
 
 > **Verified:** 2026-09-13 | §4 | gates green locally both OSes (0 warnings); run 34787039263 green both jobs; probe run 34787733488 red both jobs with CS0169+CA1822+CA1823 named, reproduced locally; run 34788413405 green after revert; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §4 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates f5482ca f554b05 2e8a38f -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s4.md
 > **CRUD:** applicable | gates wrote props+ruleset (read back via warning-free builds); probe wrote violations (read back via named diagnostics locally and in CI)
 > **Duration:** 50
@@ -209,6 +221,7 @@ Why this section exists: the test command must exist before the first real test,
 **Test checkpoint:** `dotnet test` exits 0; blanking the version string turns it red; CI mirrors both. Cheaper substitute that fails: a test project that builds but whose tests CI never runs.
 
 > **Verified:** 2026-09-14 | §5 | suite 1/1 green both OSes locally and in CI (run 34790029058); --filter Smoke passes; blanked version red locally; probe run 34790728911 red both jobs with test named; run 34791418524 green after revert; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §5 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates a7f6fce 805ce64 c317b8a -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s5.md
 > **CRUD:** applicable | test runs wrote results (read back via Passed/Failed counts); probe wrote a failure (read back via named test in both CI logs); blank-check wrote red locally
 > **Duration:** 62
@@ -233,6 +246,7 @@ Why this section exists: the second developer (or a fresh agent session) should 
 **Test checkpoint:** A cold follow of the doc on a clean machine reaches a green build and test run. Falsifiable by any step that does not work as written.
 
 > **Verified:** 2026-09-14 | §6 | doc cold-followed green on Linux (0 warnings, Passed 1/1) and Windows (0 warnings, Passed 1/1, stub launch title observed); env-failure entries reproduced verbatim on both OSes; run 34792965135 green both jobs on the push; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §6 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidate ef2e014 -- `adversarial` advisory (cold machines had step-1 prereqs preinstalled; bare metal follows the documented vendor installers) · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s6.md
 > **CRUD:** not applicable | doc-only section; cold follows wrote build and test outputs outside the repo (read back via warning counts, test counts, window title)
 > **Duration:** 22
@@ -255,6 +269,7 @@ Why this section exists: the plan is load-bearing, so a broken plan must fail th
 **Test checkpoint:** Probe commits prove each of the three checks fails the run for the right reason; all probes reverted. Cheaper substitute that fails: checks that run but whose failures do not fail the run.
 
 > **Verified:** 2026-09-14 | §7 | plan-gates green (run 34793534551, 391 cases 0 failed); self-test probe red 34793587854, validate probe red 34793710261 with FATALs named, projection probe red 34793805213, each reverted to green; docs-only push ran no plan-gates job; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T01 §7 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates ba504d2 d51bbf5 7adbd7c d18932b bbaf5c6 f18b59d 7c2b739 294ec5e -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s7.md
 > **CRUD:** applicable | CI wrote step conclusions (read back via run/job/step APIs); probes wrote red runs (read back via failed step names and log lines); docs-only push wrote no run (read back via empty run list)
 > **Duration:** 12
@@ -292,6 +307,7 @@ Why this section exists: `review-todo-section` requires lens verdicts from the h
 - -> XREF: D00 T01 §10 -- round-5 panel residuals (unheaded-prose verdicts, unbalanced fence, fence-only fixture) filed there
 
 > **Verified:** 2026-09-17 | §9 | self-test 405/405 (12 panel cases, each mutation-proven); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 6de1d9a f405c7a 8ea92aa b922ded 2305e87 with zero needs-attention at close; live drives (post-cutoff paneled stamp silent, unpointed stamp 1 fatal) reverted clean
+> **Retired:** 2026-09-19 | D00 T01 §9 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 5 (FINAL), candidates 6de1d9a f405c7a 8ea92aa b922ded 2305e87 -- `adversarial` advisory · `consistency` advisory · `integration` approve · `record` advisory. Leftovers filed at D00 T01 §10. Raw findings: docs/reviews/00-workspace/D00-T01-s9.md
 > **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); live drives wrote temp stamp edits (reverted clean, read back via validate output); filing wrote §10 plus its plan row (read back via plan --check current)
 > **Duration:** 28
@@ -313,6 +329,7 @@ Why this section exists: the round-5 Opus panel on §9 (final round, all lenses 
 - -> XREF: D00 T01 §11 -- round-5 leftovers (quote-end lookahead removal, lazy-comment correction, README alignment) filed there
 
 > **Verified:** 2026-09-17 | §10 | self-test 418/418 (13 new panel cases §§12-24, full 11-mutation battery measured); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates f8740c2 7f7fcfa 9c4dc55 fe5e6cc b6c858b closing with one needs-attention filed, not patched, per max-5; live panels re-probed passing under the anchored regex; self-application drive (post-cutoff §9 stamp) silent, reverted clean
+> **Retired:** 2026-09-19 | D00 T01 §10 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 5 (FINAL), candidates f8740c2 7f7fcfa 9c4dc55 fe5e6cc b6c858b -- `adversarial` needs-attention · `consistency` advisory · `integration` advisory · `record` approve. Leftovers filed at D00 T01 §11. Raw findings: docs/reviews/00-workspace/D00-T01-s10.md
 > **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); mutation battery wrote temp rule edits (restored exact, read back via failure sets and byte compare); filing wrote §11 plus its plan row (read back via plan --check current)
 > **Duration:** 44
@@ -332,6 +349,7 @@ Why this section exists: the round-5 Opus panel on §10 (final round, max 5 reac
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at 422/422; the two round-5 adversarial probe shapes are fixtures (§25 silent, §26 firing) with cases, plus §27 locking the forward window and §28 the blank rule; refreshed mutation map, every line re-measured this round: §17/§18/§19/§20/§22/§23/§28 fail exactly their case under their own fix's revert; shared machinery fails together (anchored-to-substring to §12/§15/§20; unbalanced-flag removal to §13/§23/§27/§28; quote handling removal to §21/§27/§28; strip tracking removal with the flag kept to §9/§13/§14/§16/§17/§18/§21/§23/§27/§28; lookahead restored to §25/§26/§27/§28; early-close block dropped to §24/§25/§26/§27/§28). Cheaper substitute that fails: bounding the lookahead window instead of deleting the branch (a 2-line bound fails exactly §27 and §28).
 
 > **Verified:** 2026-09-17 | §11 | self-test 422/422 (4 new panel cases §§25-28, full 13-mutation battery measured); live validate 0 fatal 0 warnings; 5 Opus panel rounds over candidates 3375f2f f847d09 0aaab16 77016ec ba9be18 closing with all four lenses approve and zero leftovers; blank-line rebuttal overturned by spec citation and fixed with §28 in the same round
+> **Retired:** 2026-09-19 | D00 T01 §11 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 5 (FINAL), candidates 3375f2f f847d09 0aaab16 77016ec ba9be18 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. No leftovers. Raw findings: docs/reviews/00-workspace/D00-T01-s11.md
 > **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); mutation battery wrote temp rule edits (restored exact, read back via failure sets and byte compare); blank-line probe wrote a temp TODO plus findings (removed after, read back via rule silence)
 > **Duration:** 29
@@ -356,6 +374,7 @@ Why this section exists: no git hooks are installed in this clone (only `.git/ho
 **Test checkpoint:** FATAL fixture refused locally; setup step followed cold. Cheaper substitute that fails: hooks documented but installing nothing.
 
 > **Verified:** 2026-09-17 | §12 | staged FATAL refused exit 1 (Linux T1, Windows W1 via git.exe); clean staged commits pass (T2 with warning, T3 0s silent, W2); path-limited refused via the temp index (T4, GIT_INDEX_FILE measured); autocrlf=true checkout od LF; assert step positive plus pin/index-removal negatives; self-test 422/422, validate 0 fatal, plan current
+> **Retired:** 2026-09-19 | D00 T01 §12 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1-3, candidates 01fb330 d4e1f9c 2fa3f30 5a8a2a2 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` advisory (candidate list completed in this stamp). Raw findings: docs/reviews/00-workspace/D00-T01-s12.md
 > **CRUD:** applicable | hook plus provisioners plus workflow plus docs written and read back via execution (snippet runs, interop git.exe and PowerShell runs, CI provision steps green); fixtures planted and reverted byte-identical (cmp) with scratch clones removed after each probe
 > **Duration:** 44
@@ -380,6 +399,7 @@ Why this section exists: `query ready` answers dependency readiness only, so an 
 **Test checkpoint:** Marker spec in the format doc; split proven in both contexts; self-test green with the new cases; live tree silent; known sections marked with cited evidence; skills offer runnable-now only. Cheaper substitute that fails: a comment convention no query reads.
 
 > **Verified:** 2026-09-18 | §13 | split live (12 runnable now, 1 elsewhere locally with §15 named; --context display-session lists 13); resolve prints the missing-here verdict; requires-unknown plus requires-no-reason FATALs live; Phase 1 first_ready moved §15 to §5; skills hold elsewhere rows back at select, start, and authoring; self-test 446/446 (+24 cases); live validate 0 fatal 0 warnings; plan current
+> **Retired:** 2026-09-19 | D00 T01 §13 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1-5 (FINAL), candidates 21c53b2 ceae321 5c29b83 3b0653b 2a697a4 3f922ce 9a20476 -- `adversarial` approve · `consistency` advisory (blank-line separation, fixed post-panel in 9a20476) · `integration` advisory (authoring prompts, fixed post-panel in 9a20476) · `record` approve. No leftovers. Raw findings: docs/reviews/00-workspace/D00-T01-s13.md
 > **CRUD:** applicable | self-test wrote the gamma fixture under a temp root (unlinked after, read back via case assertions); live typo and no-values probes reverted clean (read back via query output); skills and docs wrote prose (read back via grep sweeps)
 > **Duration:** 45
@@ -403,6 +423,7 @@ Why this section exists: the Opus panel gates what a section built, but no lens 
 **Test checkpoint:** Skill carries the plan-review timing, scope, reviewer, and fallback chain plus the panel's mirror rung with its honest-record shape; the GPT-high, Opus-high, and GPT-medium probes are quoted passing; a forced runner failure is observed to reach the Opus rung; self-test is green at the new quoted count with the GPT-panel accept and reject cases; live-tree `validate` stays silent. **Corrected 2026-09-18 (validation):** filed covering only the plan-review chain; the panel chain, validator cases, and count are item-4 work the checkpoint must also gate. Cheaper substitute that fails: a second-family round with no fallback, which blocks the run on every runner outage.
 
 > **Verified:** 2026-09-18 | §14 | skill carries the plan-review step (post-stamp advisory, section-plus-neighbors scope, `add-todo` route), the GPT-high reviewer pin with the lowercase probe note, both fallback chains, and the panel mirror rung with the `Plan review` record heading; probes quoted (GPT-high, Opus-high, GPT-medium `runner-ok`; bogus-model 400 reaching the Opus rung); validator takes the GPT fallback record (4 verdicts plus outage note, last of either family governs); self-test 454/454 (+8 §§29-36, §32 flipped with reason, §36 mutation-proven); live validate 0 fatal; live drives A-D reverted clean
+> **Retired:** 2026-09-19 | D00 T01 §14 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1-3, candidates 5eaef41 2bf7f1f bb801bf -- `adversarial` approve (R1 needs-attention on Opus-governs fixed with last-wins plus §§34-35; R2 advisory on §36 coverage fixed) · `consistency` approve · `integration` approve (R1 advisory on the plan-review heading fixed) · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s14.md
 > **CRUD:** applicable | self-test wrote panel fixtures under a temp root (unlinked after, read back via per-line case assertions); live drives wrote temp Review re-points plus a scratch findings file (reverted clean, scratch deleted, read back via validate output); runner probes wrote nothing (verbatim-echo, read-only); skill and doc edits read back via grep
 > **Duration:** 14
@@ -707,16 +728,18 @@ Why this section exists: the §21 panel's round 5 (the cap) reported one consist
 
 ## 26. Grandfathered Migration Execution
 
+> **Started:** 2026-09-19T01:29:41Z
+
 Why this section exists: the eighth live plan review (§21 plus §19 plus §20 plus §25 plus transitive §17, `gpt-5.6-sol` high) returned 25 findings; 22 file across §§26-29 plus a §25 item, 3 are rejected with reasons in the §21 findings file (PR7 wrong premise, PR16 complete by design, PR21 machine contract exists). This section takes migration execution (PR1, PR2, PR3, PR4, PR5): the baseline must reconcile, the unit must be canonical, the batches must run as tracked work, the batch acceptance must have effect, and the unnamed Current state must be addressable. -> XREF: D00 T01 §21 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s21-2026-09-18-s26 D00-T01-S21-PR1 D00-T01-S21-PR2 D00-T01-S21-PR3 D00-T01-S21-PR4 D00-T01-S21-PR5 (`gpt-5.6-sol` high over §21 plus §19 plus §20 plus §25 plus transitive §17, 25 findings, 22 filed across §§26-29 plus a §25 item, 3 rejected with reasons in the §21 findings file).
 
-- [ ] Baseline reconciles and the unit is canonical: the 53 unmarked stamps and the 57 run-less files are explained as two real populations (verified live), one is named the migration unit, and multi-stamp files have a completion rule (PR1 plus PR4 D00-T01-S21-PR1 D00-T01-S21-PR4, two findings one item). Done when: Current state carries the reconciliation plus the unit with its per-file rule.
-- [ ] Batch acceptance has effect: either the acceptance grammar gains a batch or stamp target that the validator and query enforce, or the prose acceptance is blessed as the migration-scale record with its audit path stated (PR3 D00-T01-S21-PR3). Done when: the chosen record is machine-checkable or explicitly prose with a stated audit path.
-- [ ] Batch A migrates: TODO-01-repo-and-toolchain, 13 stamps, with owner, per-stamp verification, and a dated completion note (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
-- [ ] Batch B migrates: TODO-02-test-backbone, 7 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
-- [ ] Batch C migrates: TODO-01-winui-app-spine, 27 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
-- [ ] Batch D migrates: TODO-02-menus-settings-status, 6 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note.
-- [ ] Current state is addressable: the migration and provenance blockquotes gain a real heading or move into the owning sections, so references resolve (PR5 D00-T01-S21-PR5). Done when: every Current-state reference names a heading that exists.
-- [ ] Commit: `"workspace: execute grandfathered migration per eighth live round"`
+- [x] Baseline reconciles and the unit is canonical: the 53 unmarked stamps and the 57 run-less files are explained as two real populations (verified live), one is named the migration unit, and multi-stamp files have a completion rule (PR1 plus PR4 D00-T01-S21-PR1 D00-T01-S21-PR4, two findings one item). Done when: Current state carries the reconciliation plus the unit with its per-file rule. Done: counts verified live (53 stamps 13/7/27/6, 57 files 17/7/27/6, 9 lineage-era files with runs); unit is the stamp, file completes when all stamps marked-or-retired; retirement shape defined (dated, piped, validator-silent).
+- [x] Batch acceptance has effect: either the acceptance grammar gains a batch or stamp target that the validator and query enforce, or the prose acceptance is blessed as the migration-scale record with its audit path stated (PR3 D00-T01-S21-PR3). Done when: the chosen record is machine-checkable or explicitly prose with a stated audit path. Done: prose path (grammar disproportionate for a one-time migration); the Grandfathered migration acceptance blessed with audit path plan-health grandfathered plus OVERDUE.
+- [x] Batch A migrates: TODO-01-repo-and-toolchain, 13 stamps, with owner, per-stamp verification, and a dated completion note (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note. Done: 13/13 retired, owner operator, scripted verification 13/13, completion noted 2026-09-19.
+- [x] Batch B migrates: TODO-02-test-backbone, 7 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note. Done: 7/7 retired, same bar, completion noted 2026-09-19.
+- [x] Batch C migrates: TODO-01-winui-app-spine, 27 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note. Done: 27/27 retired, same bar, completion noted 2026-09-19.
+- [x] Batch D migrates: TODO-02-menus-settings-status, 6 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note. Done: 6/6 retired, same bar, completion noted 2026-09-19.
+- [x] Current state is addressable: the migration and provenance blockquotes gain a real heading or move into the owning sections, so references resolve (PR5 D00-T01-S21-PR5). Done when: every Current-state reference names a heading that exists. Done: `## Current state` heading added; stale 2026-09-14 base sentence corrected with date.
+- [x] Commit: `"workspace: execute grandfathered migration per eighth live round"`
 
 **Test checkpoint:** the baseline reads one way, the batches drain to zero, and every reference resolves. Cheaper substitute that fails: machinery nobody runs.
 

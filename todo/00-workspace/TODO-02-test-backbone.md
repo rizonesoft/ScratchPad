@@ -67,6 +67,7 @@ Why this section exists: unit tests need a home and a framework before the first
 **Test checkpoint:** `dotnet test tests/Unit` green on Linux; inverted assertion red; CI mirrors both. Cheaper substitute that fails: a framework vendored but wired to nothing.
 
 > **Verified:** 2026-09-14 | §1 | Unit 2/2 green locally on both OSes and in CI (run 34794828910); inverted assertion red locally; probe run 34795487610 red both jobs with the test named; run 34796097790 green after revert; v3/MTP re-evaluation reproduced zero-test discovery on the vendor template; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T02 §1 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates f0b847c 1468835 7629678 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s1.md
 > **CRUD:** applicable | test runs wrote results (read back via Passed/Failed counts); probe wrote failures (read back via the named test in both CI logs); inverted check wrote red locally
 > **Duration:** 45
@@ -89,6 +90,7 @@ Why this section exists: "automatic and complete" testing of a WinUI app needs a
 **Test checkpoint:** The UISmoke drive passes on a Windows runner in CI against the real stub window; the spike doc carries measured verdicts. Cheaper substitute that fails: a driver chosen by reputation with no drive of our binary.
 
 > **Verified:** 2026-09-14 | §2 | FlaUI and WinAppDriver both measured on the stub (FlaUI 506 ms attach, island traversal works; WinAppDriver 3755 ms with admin/client costs); UISmoke green locally and in CI (run 34798097715, UI.dll 1/1) after the crash-dialog red run 34797312338; gaps routed to D06 T01 §1/§3, T02 §3/§5; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T02 §2 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates 749fe22 4eb476f 40d3373 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s2.md
 > **CRUD:** applicable | spike drives wrote measurements and screenshots (read back via timings, byte counts, pixels); UISmoke wrote pass/fail plus a failure screenshot path (read back in CI logs)
 > **Duration:** 41
@@ -111,6 +113,7 @@ Why this section exists: parity with Windows 11 Notepad is checkable only agains
 **Test checkpoint:** A deliberate layout shift fails the comparison; a reviewed refresh passes. Cheaper substitute that fails: screenshots in a chat thread instead of a committed store.
 
 > **Verified:** 2026-09-14 | §3 | 4 stock captures (Notepad 11.2607.14.0) plus app golden with README procedure; comparison green in CI (run 34804426231, UI 3/3) with 10px shift failing (736px vs 410px budget, PIL cross-checked); refresh shakedown reviewed and green (run 34805175346); validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T02 §3 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates bf39eb8 9501c57 4d459fd e9414bf 8d866b7 dbcd869 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s3.md
 > **CRUD:** applicable | captures wrote pngs (read back via pixels and dims); comparisons wrote fractions plus failure artifacts (read back in CI logs and downloads); refresh wrote new goldens (reviewed pixel by pixel)
 > **Duration:** 117
@@ -133,6 +136,7 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 **Test checkpoint:** A scripted prompt turn passes; each injected fault is survived; a malformed client message fails. Cheaper substitute that fails: tests that pass against a mock that accepts anything.
 
 > **Verified:** 2026-09-14 | §4 | Loopback fixture plus Protocol suite (turn, 3 faults, 4 validation tests) green locally (Protocol 8/8) and in CI both jobs (run 34807778662, Protocol 8/8; run 34807053331 green at 7/7 before hardening); mutation probe (accepting fixture) red then green on revert; ownership recorded here with D03 T01/T02 back-refs; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T02 §4 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates 6fdfda3 b505081 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve · `source-defect` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s4.md
 > **CRUD:** applicable | prompt turns wrote responses plus notifications (read back via chunk text, stopReason, sessionId); faults wrote garbage/timeouts/delays (read back via skip count, TimeoutException, completion); violations wrote errors plus exits (read back via codes 2/-32601/-32602 and stderr); mutation wrote a red test (read back, then green on revert)
 > **Duration:** 38
@@ -155,6 +159,7 @@ Why this section exists: UI and protocol tests flake. Without a procedure, flake
 **Test checkpoint:** A deliberately flaky probe test is quarantined by the procedure, the suite stays green, and the probe is then removed with its decision recorded. Cheaper substitute that fails: a retry loop that hides the flake.
 
 > **Verified:** 2026-09-14 | §5 | Soak workflow plus procedure doc; soak green twice by dispatch (runs 34808621885, 34809456063; 22 passed, 0 failed each) with run links in the doc; probe lifecycle proven locally (pass/fail/fail/fail/fail/pass same binary, quarantined suite green 2+1 skipped twice, removed with decision row); red-repeat swallow fixed in 77aff94 with shell-construct proof; validate 0 fatal; self-test 391/391
+> **Retired:** 2026-09-19 | D00 T02 §5 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidates 549ff76 77aff94 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s5.md
 > **CRUD:** applicable | probe wrote pass/fail outcomes (read back across six runs); quarantine wrote a skip (read back via Skipped count with suite green); soak wrote trx plus artifacts (read back via 22 Passed lines per run); removal wrote a decision row (read back in the doc)
 > **Duration:** 24
@@ -181,6 +186,7 @@ Why this section exists: the golden tests pass on the capture machine and fail o
 **Needs:** Windows host (build/test)
 
 > **Verified:** 2026-09-17 | §6 | All 25 HEAD failures fixed at named roots: track A (WindowsPath helper, 3 call sites, 7 test literals) neutral green locally (Unit 333 + 3 skipped) and CI build-linux success; track B (3x3 comparer blur, delta/threshold unchanged) CI noise 1128/3414 to 18/21px with 10px shift still 1069px vs 500px threshold; track C (HideFileExt 0 CI step) all 6 dialog tests reproduced locally under hiding and green without. Windows host slnx green (Smoke 1/1, Unit 336/336, Protocol 35/35, UI 166 + 1 pre-existing skip, 0 warnings); CI run 35208253143 success both jobs with zero golden-failure artifacts; b5ec3ac named as tracks A+C; validate 0 fatal
+> **Retired:** 2026-09-19 | D00 T02 §6 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** round 1, candidate 7e0283d + record ticks -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (source-defect/design not owed). Raw findings: docs/reviews/00-workspace/D00-T02-s6.md
 > **CRUD:** applicable | CI runs wrote conclusions plus artifacts (read back via success, suite counts, artifact names); golden artifacts wrote PNGs (read back via md5, pixels, PIL comparer replica to exact CI counts); registry wrote HideFileExt flips (read back via 6/6 reproductions, restored to 0); comparer wrote blurred diffs (read back via wobble pin green and shift probe red); suites wrote passes (read back via Passed/Failed counts on both OSes)
 > **Duration:** 61
@@ -204,6 +210,7 @@ Why this section exists: eyeball-evidence crops (D01 T02 §14 item 4 is the firs
 **Test checkpoint:** CI artifact present and non-black; §14 crop committed and eyeballed; a second section could follow the procedure without asking. Cheaper substitute that fails: an operator capture with no pipeline behind it.
 
 > **Verified:** 2026-09-17 | §7 | CI evidence pipeline live and verified whole: green Windows builds reset the suite-driven profile, seed `WhatsNewSeen`, capture a canonical frame via `tools/CaptureBaseline stub`, and assert 900x650 plus non-black before uploading `evidence-capture` (red builds skip to golden failures); fresh frame from run 35234746568 (900x650, extrema (12, 255)); `titlebar-icon-evidence.png` (320x110, box (8, 0, 328, 110)) eyeballed clean beside the §11 crops, resolving the §14 deferral; README evidence procedure followed verbatim for the crop; ship run 35241743948 attempt 3 success both jobs with the capture step green (attempts 1-2: 34 then 9 UI reds on identical binaries, proven environmental by the green third; the capture step never failed)
+> **Retired:** 2026-09-19 | D00 T02 §7 | predates plan-review lineage; exempt by the 2026-09-18 cutoff; record stands as shipped (D00 T01 §26)
 > **Review:** rounds 1-4, candidates bb2d879 bcb6bb4 c07b2c6 91e6d46 98140ed 821f233 -- Opus panel `adversarial` approve · `consistency` advisory · `integration` approve · `record` advisory, all four round-4 advisories fixed in the stamp commit (comment mechanism wording, run-35241743948 citation, incident-note refresh, D06 T01 §6 XREF pair). Raw findings: docs/reviews/00-workspace/D00-T02-s7.md
 > **CRUD:** applicable | CI runs wrote conclusions plus artifacts (read back via success, job conclusions, artifact names plus bytes); downloads wrote frames (read back via PIL size plus extrema, then eyeballed); crops wrote PNGs (read back via dims plus eyeball); reruns wrote attempts (read back via conclusions per attempt); filings wrote sections (read back via validate plus plan --check)
 > **Duration:** 152
