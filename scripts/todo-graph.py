@@ -1824,7 +1824,10 @@ def git_on_first_parent_chain(base: str, tip: str) -> bool | None:
         return None
     if out.returncode != 0:
         return None
-    return full in out.stdout.decode("utf-8", "replace").splitlines()
+    lines = out.stdout.decode("utf-8", "replace").splitlines()
+    if any(not re.fullmatch(r"[0-9a-fA-F]{40}", ln.strip()) for ln in lines):
+        return None
+    return full in lines
 
 
 def git_range_touch_ts(base: str, tip: str, repo_path: str) -> int | None:
