@@ -47,15 +47,15 @@ depends_on: []
 
 ## 1. About Bar, Topics, and Social Preview
 
-Why this section exists: the About bar is the repo's thirty-second pitch and the social preview is its face in every link unfurl. Both need the owner's logged-in session, and the preview needs the §1 hero shot committed first. -> SOURCE: operator-readme-brief-2026-09-18-t99-s1.
+Why this section exists: the About bar is the repo's thirty-second pitch and the social preview is its face in every link unfurl. Both need the owner's logged-in session, and the preview needs the D00 T03 §1 hero shot committed first. -> SOURCE: operator-readme-brief-2026-09-18-t99-s1.
 
 **Manual:** operator-only -- needs the owner's logged-in browser session; agents hold no GitHub credentials by design (AGENTS.md Credentials).
 
 - [ ] The About description is set to the README one-liner. Done when: the repo page shows the description under the repo name.
   1. Open `https://github.com/rizonesoft/ScratchPad` in a browser where you are logged in as the owner.
   2. On the right side, find the `About` heading and click the gear icon beside it.
-  3. In the `Description` field, paste the README one-liner: `Notepad, exact down to the status bar. Plus your AI agents. Minus the subscription nag.`
-  4. Leave `Website` blank and click `Save changes`.
+  3. In the `Description` field, paste the README one-liner, copied live from the top of `README.md` (never trust a quoted copy).
+  4. Leave `Website` unchanged and click `Save changes`.
 - [ ] The topics are set. Done when: the About bar lists all seven topics.
   1. Click the About gear icon again.
   2. In the `Topics` field, type each name and press Enter: `notepad`, `winui-3`, `dotnet`, `acp`, `ai-agents`, `windows-11`, `text-editor`.
@@ -65,10 +65,10 @@ Why this section exists: the About bar is the repo's thirty-second pitch and the
   2. Open `https://github.com/rizonesoft/ScratchPad/settings`, scroll to `Social preview`, and click `Edit`.
   3. Click `Upload an image...`, pick the saved hero file, and click `Save`.
 - [ ] Proof is captured in the repo. Done when: `docs/assets/setup-proof/phase99-s1-about.png` exists on `main` and shows the finished About bar.
-  1. Screenshot the repo page About bar (description plus topics visible) and save it as `phase99-s1-about.png`.
+  1. Screenshot the repo page About bar (description plus topics visible), cropped to the About bar with avatars, account menus, and browser chrome excluded, and save it as `phase99-s1-about.png`.
   2. On GitHub, open the `docs/assets/setup-proof/` folder (create the folders with `Add file`, `Create new file`, typing `docs/assets/setup-proof/.gitkeep` first if the folder does not exist yet), click `Add file`, `Upload files`, drop the screenshot, and click `Commit changes`.
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent curls the public repo API and reads the proof image. Done when: the API quotes the description plus all seven topics and the proof image shows them.
-- [ ] Commit: `"docs: record Phase 99 §1 completion with proof"` -- operator ticks every item above via the GitHub web editor (open this file, pencil icon, `- [ ]` to `- [x]` on each finished line, `Commit changes`); the agent appends its verification note in a second commit, and review stamps the range.
+- [ ] Commit: `"docs: record Phase 99 §1 completion with proof"` -- operator ticks every item above except agent verification via the GitHub web editor (open this file, pencil icon, `- [ ]` to `- [x]` on each finished line, `Commit changes`); the agent verifies, ticks its item, and appends its verification note in a second commit, and review stamps the range.
 
 **Requires:** operator -- owner's logged-in browser session for About, topics, and social preview; agents hold no GitHub credentials (D00 T01 §42).
 
@@ -94,7 +94,7 @@ Why this section exists: `main` currently accepts anything, including a force-pu
   1. Screenshot the finished rule page and save it as `phase99-s2-protection.png`.
   2. Upload it to `docs/assets/setup-proof/` via `Add file`, `Upload files`, `Commit changes`, as in §1.
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent reads the proof image. Done when: the rule name, the required-checks list, and the force-push block all read in the image. (Branch rules are not public, so the image is the evidence.)
-- [ ] Commit: `"docs: record Phase 99 §2 completion with proof"` -- operator ticks via the web editor and commits; the agent appends its verification note; review stamps the range.
+- [ ] Commit: `"docs: record Phase 99 §2 completion with proof"` -- operator ticks every item above except agent verification via the web editor and commits; the agent verifies, ticks its item, and appends its verification note; review stamps the range.
 
 **Requires:** operator -- owner admin clicks for branch rules; agents hold no GitHub credentials (D00 T01 §42).
 
@@ -118,7 +118,7 @@ Why this section exists: the best README test is a stranger following it in a cl
   1. Open this file on GitHub, click the pencil icon, and paste the issue URLs (or the no-gaps line) directly under this checklist item.
   2. Commit the edit (this is the record commit below; tick the boxes in the same edit).
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent checks every pasted issue URL over the public API, or confirms the no-gaps line. Done when: every URL resolves to an open issue, or the line is present.
-- [ ] Commit: `"docs: record Phase 99 §3 completion with issue list"` -- operator ticks via the web editor and commits; the agent appends its verification note; review stamps the range.
+- [ ] Commit: `"docs: record Phase 99 §3 completion with issue list"` -- operator ticks every item above except agent verification via the web editor and commits; the agent verifies, ticks its item, and appends its verification note; review stamps the range.
 
 **Requires:** operator -- human taste plus a human-owned clean machine; an agent grading its own README proves nothing (D00 T01 §42).
 
@@ -142,7 +142,7 @@ Why this section exists: a playing demo beats a static screenshot for the premiu
   2. Open `README.md` on GitHub, click the pencil icon, find the hero image line (the one ending in `readme-hero.png`), and add directly under it: `![Demo](docs/assets/demo.gif)`.
   3. Commit the edit.
 - [ ] Agent verification (agent-run, after your record commit below lands): the agent checks the file exists, stays under 10 MB, and is referenced exactly once. Done when: all three hold with quoted output.
-- [ ] Commit: `"docs: record Phase 99 §4 completion with demo clip"` -- operator ticks via the web editor and commits; the agent appends its verification note; review stamps the range.
+- [ ] Commit: `"docs: record Phase 99 §4 completion with demo clip"` -- operator ticks every item above except agent verification via the web editor and commits; the agent verifies, ticks its item, and appends its verification note; review stamps the range.
 
 **Requires:** operator -- human driving the app on a display machine plus the owner's session for the upload (D00 T01 §42).
 
