@@ -98,7 +98,7 @@ track: W0
 |  42   |   §42   | Requires operator vocabulary | §13 |  [x]   |
 |  43   |   §43   | Findings count touch-up | §20 |  [x]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [x]   |
-|  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
+|  45   |   §45   | Run inspection residuals | §24 |  [x]   |
 |  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
 |  47   |   §47   | Section-span scan helper | §26 |  [ ]   |
 |  48   |   §48   | Migration completion assurance | §26 |  [ ]   |
@@ -1182,6 +1182,11 @@ Why this section exists: the §24 plan review found the run query short of a com
 - [x] Commit: `"workspace: round out run inspection per §24 plan review"`
 
 **Test checkpoint:** one run answers approved-plus-trustworthy or states what is unavailable; `--json` validates against the versioned schema. Falsifiable by any leg missing or any output outside the schema.
+
+> **Verified:** 2026-09-19 | §45 | self-test 1140/1140 (+38: trust legs, run/1 contract, mapping tables); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3-R5 over candidates 0361722 85d7f0d e5b9b60 ff3abdd 3fb997c ba51a6e 8fc6381 2dbe513; plan review 14 findings, 4 filed at D00 T04 §1, 4 accepted in the stamp, 6 rejected
+> **Review:** rounds 1-5 (FINAL: Sol R1+R2, Opus R3-R5), candidates 0361722 85d7f0d e5b9b60 ff3abdd 3fb997c ba51a6e 8fc6381 2dbe513 -- `adversarial` needs-attention (R1 mapping, R4 truncation, R5 mixed-order below bar filed at D00 T04 §1) · `consistency` needs-attention (R1 stale line, R3 case skew) · `integration` needs-attention (R1 prose gap, R4 synonym plus structure) · `record` needs-attention (R1 key count). Raw findings: docs/reviews/00-workspace/D00-T01-s45.md
+> **Plan review:** GPT high, filed D00 T04 §1, accepted 4 in the stamp (run 20260919-D00-T01-S45-gpt-r3)
+> **CRUD:** applicable | self-test wrote nothing new (1140/1140 re-observed in a clean worktree at 2dbe513; fixtures live in the suite file); code plus TODO edits read back via diff; filings plus panel record plus triage read back via validate, plan --check, and fence re-hash; ledgered panel/plan artifacts under ignored build/review-runs retained as evidence, worktree removed, no disposables to tear down
 
 ## 46. Rule-Description Probe Completeness
 
