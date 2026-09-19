@@ -1051,7 +1051,11 @@ def rule24_comment_legs(block: str) -> frozenset:
         ln.strip()[1:].strip() if ln.strip().startswith("#") else ln.strip()
         for ln in block.splitlines()
     ]
-    normed = re.sub(r"\s+", " ", " ".join(stripped)).lower()
+    # Parenthesized spans are provenance boilerplate, not description:
+    # a marker-shaped token inside parens must not conceal a deleted
+    # description (D00 T01 §46 review R2).
+    deparen = re.sub(r"\([^()]*\)", " ", " ".join(stripped))
+    normed = re.sub(r"\s+", " ", deparen).lower()
     return frozenset(leg for leg, rx in RULE24_LEG_MARKERS if re.search(rx, normed))
 # Stamps on or before this date predate the plan-review marker rule and are
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
@@ -12151,6 +12155,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "provenance boilerplate alone names no legs",
             rule24_comment_legs(_fix_provenance_only),
             frozenset(),
+        )
+        _fix_paren_proof = (
+            "# a line outside the record shape (see record-expiry window handling);\n"
+            "# with an uncoverable target"
+        )
+        check(
+            "paren-strip keeps description legs, drops paren markers",
+            rule24_comment_legs(_fix_paren_proof),
+            frozenset({"shape", "target"}),
         )
         check(
             "both rule-24 sites name the same legs",
