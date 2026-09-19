@@ -12,9 +12,10 @@ namespace UI;
 // window starts minimized, no-activate, no flash, no steal) and
 // Background moves each window to the secondary monitor (off-screen on
 // single-monitor boxes) and re-shows it no-activate before driving:
-// UIA, menu Invoke, and ValuePattern all dispatch there (spiked), the
-// operator's primary screen and focus stay untouched, and PrintWindow
-// still captures for goldens.
+// UIA, menu Invoke, and ValuePattern all dispatch there (spiked), no
+// window is ever activated and none dwells on the primary (a millisecond
+// birth transient at the cascade, below the census poll, is excluded by
+// the seen-twice rule), and PrintWindow still captures for goldens.
 internal static class UiForeground
 {
     internal static nint Capture() => Native.GetForegroundWindow();
@@ -40,6 +41,7 @@ internal static class UiForeground
         }
 
         Show(window);
+        Thread.Sleep(250);
         Restore(before, OwnHwnd(window));
     }
 
@@ -62,11 +64,16 @@ internal static class UiForeground
         }
 
         // Show first, then move: SetWindowPos on a minimized window is
-        // silently ignored (spiked: the move never sticks and Show restores
-        // at the birth cascade, 50,50 on the primary), while a visible
-        // window obeys. Both calls are no-activate and back-to-back, so the
-        // birth-position flash lasts microseconds: no focus steal, and the
-        // census persistence rule (seen twice) cannot catch it.
+        // silently ignored (spiked twice: hidden-minimized ignores moves
+        // exactly like minimized, so no pre-show ordering avoids the
+        // restore), while a visible window obeys. The restore paints at
+        // the birth cascade (50,50 on the primary), so the move fires
+        // immediately with no settle between: the flash lasts the move
+        // latency (milliseconds), and the settle sleep runs after the
+        // window is already on the suite display. A 250 ms sleep sat
+        // between show and move before R2 and dwelled 61 visible flashes
+        // on the primary per full run (census-caught); sub-poll
+        // transients are what the seen-twice rule exists to exclude.
         // Thread awareness (UiDpi pattern): testhost is DPI-unaware, so
         // coordinates go through physical pixels explicitly.
         nint previous = UiDpi.Enter();
@@ -79,6 +86,8 @@ internal static class UiForeground
             {
                 throw new InvalidOperationException($"UiForeground: SetWindowPos failed for {hwnd} (Win32 error {Marshal.GetLastWin32Error()})");
             }
+
+            Thread.Sleep(250);
         }
         finally
         {
@@ -103,7 +112,9 @@ internal static class UiForeground
         PickSuiteOrigin(Screen.AllScreens.Select(s => new SuiteDisplay(s.Primary, s.Bounds, s.WorkingArea)));
 
     // Shows without activating (minimized-start windows need this before
-    // driving: menu Invoke does not dispatch while minimized).
+    // driving: menu Invoke does not dispatch while minimized). No settle
+    // sleep here: callers sleep after the window reaches its final
+    // position, so no dwell happens at the birth cascade (R2).
     internal static void Show(Window? window)
     {
         if (window is null)
@@ -112,7 +123,6 @@ internal static class UiForeground
         }
 
         _ = Native.ShowWindow(window.Properties.NativeWindowHandle.Value, 4);
-        Thread.Sleep(250);
     }
 
     // Restores the pre-test foreground only when the suite itself holds
