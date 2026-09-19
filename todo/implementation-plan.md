@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **67 of 219 sections complete (31%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **67 of 220 sections complete (30%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -113,7 +113,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §26` | Grandfathered migration execution            |   8   |
 | [ ] | `D00 T01 §27` | Acceptance integrity                         |   7   |
 | [ ] | `D00 T01 §28` | Partial records and governance docs          |   7   |
-| [ ] | `D00 T01 §29` | Unattended checks and risk visibility        |   7   |
+| [ ] | `D00 T01 §29` | Unattended checks and risk visibility        |   9   |
 | [ ] | `D00 T01 §30` | Clearance fixture residuals                  |   4   |
 | [ ] | `D00 T01 §31` | Clearance causality and precision            |   7   |
 | [ ] | `D00 T01 §32` | Clearance governance and diagnostics         |   6   |
@@ -147,6 +147,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T01 §48` | Migration completion assurance               |   7   |
 | [ ] | `D00 T01 §49` | Multi-citer review evaluation                |   3   |
 | [ ] | `D00 T01 §50` | Outage instance dating                       |   3   |
+| [ ] | `D00 T01 §51` | Acceptance record follow-ups                 |   7   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 
