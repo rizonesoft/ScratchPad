@@ -9,6 +9,12 @@ on:
       - 'tools/githooks/**'
       - '.gitattributes'
       - '.github/workflows/plan.yml'
+  # Unattended gate (D00 T01 §29 item 1): daily, off-peak, away from
+  # soak's 3:17 slot. The unattended job below runs on every trigger
+  # (its gates also catch push-time drift); only the notify post is
+  # schedule-gated, so pushes never file issues.
+  schedule:
+    - cron: '23 4 * * *'
 
 jobs:
   plan-gates:
@@ -33,3 +39,37 @@ jobs:
           git show HEAD:tools/githooks/pre-commit > /tmp/hook-blob || exit 1
           if grep -q $'\r' /tmp/hook-blob; then echo "hook blob carries CR"; exit 1; fi
           git check-attr eol -- tools/githooks/pre-commit | grep -q ': eol: lf$' || { echo "hook eol pin missing"; exit 1; }
+  unattended:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Gate plan health plus migration zero
+        run: python3 scripts/todo-graph.py query plan-health --check --fail-on grandfathered
+      - name: Gate risk register freshness
+        run: python3 scripts/todo-graph.py query risk-register --check
+      - name: Record the operator digest
+        run: python3 scripts/todo-graph.py query summary
+      - name: Notify owners of due dates
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/todo-graph.py query notify --within-days 7 > /tmp/notify.txt
+          N=$(sed -n 's/^notify: \([0-9]*\) payloads.*/\1/p' /tmp/notify.txt)
+          TITLE="Unattended risk watch (scheduled)"
+          NUM=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number -q '.[0].number')
+          if [ "$N" != "0" ]; then
+            if [ -z "$NUM" ]; then
+              gh issue create --title "$TITLE" --body-file /tmp/notify.txt
+            else
+              gh issue comment "$NUM" --body-file /tmp/notify.txt
+            fi
+          elif [ -n "$NUM" ]; then
+            echo "clear as of $(date -u +%F): 0 payloads within 7 days" | gh issue comment "$NUM" --body-file -
+            gh issue close "$NUM"
+          fi
