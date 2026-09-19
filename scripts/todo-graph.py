@@ -1806,8 +1806,8 @@ def git_on_first_parent_chain(base: str, tip: str) -> bool | None:
     is linear, so a side-branch base merged into the tip cannot open
     a linear range, even when first-parent touches exist past it.
     The base resolves to full before the membership test (short
-    prefixes never prove identity). Off-shape output reads False
-    (not on chain) or None on command failure, never raises.
+    prefixes never prove identity). Off-shape output reads None,
+    never raises.
     """
     full = git_full_sha(base)
     if full is None:
@@ -1827,7 +1827,7 @@ def git_on_first_parent_chain(base: str, tip: str) -> bool | None:
     lines = out.stdout.decode("utf-8", "replace").splitlines()
     if any(not re.fullmatch(r"[0-9a-fA-F]{40}", ln.strip()) for ln in lines):
         return None
-    return full in lines
+    return full in [ln.strip() for ln in lines]
 
 
 def git_range_touch_ts(base: str, tip: str, repo_path: str) -> int | None:
