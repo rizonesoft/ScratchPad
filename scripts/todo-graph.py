@@ -1244,7 +1244,7 @@ def section_retired(todo_lines: dict[str, list[str]], todo: Todo, num: int) -> s
             datetime.strptime(rm.group(1), "%Y-%m-%d")
         except ValueError:
             continue
-        xm = XREF_RE.search(rm.group(2))
+        xm = XREF_RE.fullmatch(rm.group(2).strip())
         if xm is None or int(xm.group("sec")) != num:
             continue
         xdom, xtodo = xm.group("dom"), xm.group("todo")
@@ -9476,6 +9476,15 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "retirement ref rejects cross-file copies",
             section_retired(
                 {"90-synth.md": _rbase + ["> **Retired:** 2026-09-19 | D00 T01 §6 | copied"]},
+                _rt,
+                6,
+            ),
+            None,
+        )
+        check(
+            "retirement ref rejects surrounding garbage",
+            section_retired(
+                {"90-synth.md": _rbase + ["> **Retired:** 2026-09-19 | garbage D90 T07 §6 garbage | copied"]},
                 _rt,
                 6,
             ),
