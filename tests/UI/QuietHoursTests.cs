@@ -88,4 +88,35 @@ public sealed class QuietHoursTests
 
         Assert.True(missing.Count == 0, $"Missing [Trait(\"Category\", \"Interactive\")]: {string.Join(", ", missing)}");
     }
+
+    [Fact]
+    public void EveryInteractiveTraitCarriesAGate()
+    {
+        // The reverse direction: a test fenced by trait but running under a
+        // plain [Fact] would execute in an unfiltered daytime run and take
+        // the foreground, so the trait must always pair with its gate.
+        var missing = new List<string>();
+        foreach (Type type in typeof(QuietHoursTests).Assembly.GetTypes())
+        {
+            foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
+            {
+                bool fenced = method.GetCustomAttributesData()
+                    .Where(a => a.AttributeType.Name == nameof(TraitAttribute))
+                    .Any(a => a.ConstructorArguments.Count == 2
+                        && a.ConstructorArguments[0].Value?.ToString() == "Category"
+                        && a.ConstructorArguments[1].Value?.ToString() == "Interactive");
+                if (!fenced)
+                {
+                    continue;
+                }
+
+                if (!method.GetCustomAttributes().Any(a => a is InteractiveFactAttribute or HookFactAttribute))
+                {
+                    missing.Add($"{type.Name}.{method.Name}");
+                }
+            }
+        }
+
+        Assert.True(missing.Count == 0, $"Missing gate on [Trait(\"Category\", \"Interactive\")]: {string.Join(", ", missing)}");
+    }
 }
