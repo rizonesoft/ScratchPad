@@ -100,6 +100,7 @@ track: W0
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
 |  46   |   §46   | Rule-description probe completeness | §25 |  [ ]   |
+|  47   |   §47   | Section-span scan helper | §26 |  [ ]   |
 
 ---
 
@@ -740,6 +741,7 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - [x] Batch D migrates: TODO-02-menus-settings-status, 6 stamps, same bar as batch A (PR2 D00-T01-S21-PR2). Done when: every stamp carries a Plan review marker or a retirement note. Done: 6/6 retired, same bar, completion noted 2026-09-19.
 - [x] Current state is addressable: the migration and provenance blockquotes gain a real heading or move into the owning sections, so references resolve (PR5 D00-T01-S21-PR5). Done when: every Current-state reference names a heading that exists. Done: `## Current state` heading added; stale 2026-09-14 base sentence corrected with date.
 - [x] Commit: `"workspace: execute grandfathered migration per eighth live round"`
+- -> XREF: D00 T01 §47 -- section-span scan helper filed there (Opus panel round-4 advisory)
 
 **Test checkpoint:** the baseline reads one way, the batches drain to zero, and every reference resolves. Cheaper substitute that fails: machinery nobody runs.
 
@@ -1011,6 +1013,16 @@ Why this section exists: the §25 plan review found the rule-24 probes locking o
 - [ ] Commit: `"workspace: complete rule-24 probe coverage per §25 plan review"`
 
 **Test checkpoint:** all four legs assert at both sites; a one-site fifth leg fails the suite. Falsifiable by any leg unasserted or any silent single-site addition.
+
+## 47. Section-Span Scan Helper
+
+Why this section exists: the §26 Opus panel round 4 (advisory) found `section_retired` duplicating the lazy `todo_lines` load plus section-span computation verbatim from `section_markers`, so a future span fix applied to one copy leaves the other scanning the wrong range. One helper must own the scan window and both callers must use it. -> XREF: D00 T01 §26 (filed from its Opus panel round 4); -> SOURCE: Opus-panel-D00-T01-s26-round-4 (candidate `45e2e17`, round-4 consistency advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s26.md`).
+
+- [ ] One helper owns the window: the lazy file load plus span-bound computation ships as a single helper used by both `section_markers` and `section_retired`. Done when: both callers share the helper with fixtures.
+- [ ] No behavior moves: every existing retirement and marker probe passes unchanged, proving the extraction is behavior-preserving. Done when: the suite stays green with no probe edits.
+- [ ] Commit: `"workspace: share the section-span scan per §26 panel"`
+
+**Test checkpoint:** one helper computes the window for both callers; all existing probes pass unedited. Falsifiable by any caller-local span math or any probe edit.
 
 ## Verification
 
