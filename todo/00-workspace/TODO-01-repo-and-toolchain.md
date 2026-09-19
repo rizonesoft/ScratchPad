@@ -90,6 +90,7 @@ track: W0
 |  42   |   §42   | Requires operator vocabulary | §13 |  [ ]   |
 |  43   |   §43   | Findings count touch-up | §20 |  [ ]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
+|  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
 
 ---
 
@@ -674,6 +675,7 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 
 - -> XREF: D00 T01 §43 -- §20 findings-count drift filed there
 - -> XREF: D00 T01 §44 -- range-fallback lineage guards filed there
+- -> XREF: D00 T01 §45 -- run inspection residuals filed there
 
 ## 25. Rule-24 Comment Touch-Up
 
@@ -928,13 +930,14 @@ Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded 
 
 ## 43. Findings Count Touch-Up
 
-Why this section exists: the §20 findings ledger carries 18 rows that parse as 6 filed, 9 rejected, and 3 duplicate, but the file's prose header and the §20 stamp both record 10 rejected and 2 duplicate: PR11 is a `duplicate` row whose `(rejected: ...)` parenthetical names the reason, and the headcount read the parenthetical as the disposition. Rows are the validator-enforced authority, so the prose reconciles to them without rewriting history. -> XREF: D00 T01 §20 (reconciles its recorded counts); -> XREF: D00 T01 §24 (filed from its validation); -> SOURCE: s20-count-drift-2026-09-19 (prose header counts vs parsed ledger rows in docs/reviews/00-workspace/D00-T01-s20.md).
+Why this section exists: the §20 findings ledger carries 18 rows that parse as 6 filed, 9 rejected, and 3 duplicate, but the file's prose header and the §20 stamp both record 10 rejected and 2 duplicate: PR11 is a `duplicate` row whose `(rejected: ...)` parenthetical names the reason, and the headcount read the parenthetical as the disposition. Rows are the validator-enforced authority, so the prose reconciles to them without rewriting history. -> XREF: D00 T01 §20 (reconciles its recorded counts); -> XREF: D00 T01 §24 (filed from its validation); -> SOURCE: s20-count-drift-2026-09-19 (prose header counts vs parsed ledger rows in docs/reviews/00-workspace/D00-T01-s20.md); -> SOURCE: plan-review-D00-T01-s24-2026-09-19-s43 D00-T01-S24-PR11 (rationale copies of the wrong tally).
 
 - [ ] Reconcile the §20 ledger header to the parsed tallies: 6 filed, 9 rejected, 3 duplicate. Done when: the header states the parsed numbers.
 - [ ] Annotate the §20 stamp's counts as historical with a dated note, §17-annotation precedent. Done when: the note names the old counts and the reason.
+- [ ] Reconcile or date-annotate the rationale copies of the wrong tally (§20 Why, §24 Why) so no copied claim survives (PR11 D00-T01-S24-PR11). Done when: every copied tally reads reconciled or annotated.
 - [ ] Commit: `"todo: reconcile §20 findings counts"`
 
-**Test checkpoint:** tallies of `-> filed` / `-> rejected` / `-> duplicate` over the §20 ledger block equal the header's numbers (6/9/3). Falsifiable by any tally that disagrees.
+**Test checkpoint:** tallies of `-> filed` / `-> rejected` / `-> duplicate` over the §20 ledger block equal the header's numbers (6/9/3); the §20 Why, §24 Why, header, and stamp carry no unannotated 10/2 tally. Falsifiable by any tally that disagrees.
 
 ## 44. Range-Fallback Lineage Guards
 
@@ -945,6 +948,16 @@ Why this section exists: the §24 round-5 panel proved the genesis flag misfires
 - [ ] Commit: `"workspace: guard lineage checks against range fallback"`
 
 **Test checkpoint:** a two-marker range stamp (rerun over genesis) validates silent on both members; a true singleton with supersedes still fires. Falsifiable by any fire or silence that flips.
+
+## 45. Run Inspection Residuals
+
+Why this section exists: the §24 plan review found the run query short of a complete operator view (no verdict, correction lineage, or confidence state) and automation-unfriendly (prose only, no machine contract). One view must answer whether a run is approved and trustworthy, and tooling must read it without scraping. -> XREF: D00 T01 §24 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s24-2026-09-19-s45 D00-T01-S24-PR9 D00-T01-S24-PR14 (`gpt-5.6-sol` high over §24 plus §20 plus §23 plus §43, 14 findings, 2 filed here plus a §43 item, 5 duplicate, 6 rejected with reasons in the §24 findings file).
+
+- [ ] Trust legs: verdict, correction lineage, and evidence-confidence ride the run view. Done when: the legs emit with fixtures.
+- [ ] Machine contract: `query run --json` emits a versioned schema with deterministic ordering and explicit unavailable fields. Done when: the schema ships with fixtures.
+- [ ] Commit: `"workspace: round out run inspection per §24 plan review"`
+
+**Test checkpoint:** one run answers approved-plus-trustworthy or states what is unavailable; `--json` validates against the versioned schema. Falsifiable by any leg missing or any output outside the schema.
 
 ## Verification
 
