@@ -685,13 +685,15 @@ Why this section exists: the seventh live plan review (§20 plus §19 plus §17,
 
 ## 25. Rule-24 Comment Touch-Up
 
+> **Started:** 2026-09-19T01:14:55Z
+
 Why this section exists: the §21 panel's round 5 (the cap) reported one consistency leftover: two in-code descriptions of `risk-acceptance-malformed` enumerate three legs while rule 24 has four (the review-window leg landed in §21 review R4). Comments must describe the rule they head, and the cap sends leftovers here instead of a sixth round. -> XREF: D00 T01 §21 (filed from its review round 5); -> SOURCE: panel-D00-T01-s21-2026-09-18-R5 (Opus round 5, consistency 1; ledger in the §21 findings file); plan-review-D00-T01-s21-2026-09-18 D00-T01-S21-PR25 (assertion joiner; ledger in the §21 findings file).
 
-- [ ] Both rule-24 descriptions name all four legs: the `SEVERITY_MAP` entry in `scripts/todo-graph.py` and the rule 24 header comment in `scripts/todo-validate.py` enumerate shape, uncoverable target, inverted dates, and the review-window bound. Done when: both comments name the fourth leg and no behavior changes.
-- [ ] Exact assertions lock both descriptions: the self-test greps each site for the fourth leg (not just aggregate counts), so a future leg cannot land described in one place (PR25 D00-T01-S21-PR25). Done when: one probe per site names the review-window clause.
-- [ ] Commit: `"workspace: rule-24 comments name the review-window leg"`
+- [x] Both rule-24 descriptions name all four legs: the `SEVERITY_MAP` entry in `scripts/todo-graph.py` and the rule 24 header comment in `scripts/todo-validate.py` enumerate shape, uncoverable target, inverted dates, and the review-window bound. Done when: both comments name the fourth leg and no behavior changes. Done: both comments name the review-window leg (record-expiry window, bounds inclusive); behavior untouched (comment-only diff outside the probes).
+- [x] Exact assertions lock both descriptions: the self-test greps each site for the fourth leg (not just aggregate counts), so a future leg cannot land described in one place (PR25 D00-T01-S21-PR25). Done when: one probe per site names the review-window clause. Done: one probe per site, each scoped to its comment window (4 lines above the map entry, 10-line rule header).
+- [x] Commit: `"workspace: rule-24 comments name the review-window leg"`
 
-**Test checkpoint:** self-test still passes with no count change, live validate stays 0 fatal. Cheaper substitute that fails: trusting memory of the leg count.
+**Test checkpoint:** self-test still passes with no count change, live validate stays 0 fatal. Cheaper substitute that fails: trusting memory of the leg count. **Corrected 2026-09-19:** the count moves by the item-2 probes (two new cases, 784 to 786); "no count change" holds for behavior, not for the added probes.
 
 ## 26. Grandfathered Migration Execution
 

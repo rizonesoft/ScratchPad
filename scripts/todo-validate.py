@@ -1331,9 +1331,11 @@ def validate(graph, _args) -> int:
     # 24. risk acceptances terminate escalations in a checkable shape
     # (D00 T01 §21 item 2): every live `Risk accepted:` line carries
     # target, approver, record date, expiry, review date, and rationale;
-    # the target names a finding ID, a run ID, or `outage <rung>`; and
-    # expiry never predates the record. Date-scoped and fence-stripped
-    # like rule 23; first reporter wins per file. Dangling targets
+    # the target names a finding ID, a run ID, or `outage <rung>`;
+    # expiry never predates the record; and the review date sits
+    # inside record..expiry, bounds inclusive (§21 review R4, named
+    # here D00 T01 §25). Date-scoped and fence-stripped like rule 23;
+    # first reporter wins per file. Dangling targets
     # (well-formed but covering nothing) stay silent here: the query
     # only consults acceptances for live escalations, so a typo'd
     # target fails loud as a persisting escalation, not here.

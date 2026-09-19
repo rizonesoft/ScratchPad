@@ -937,8 +937,9 @@ SEVERITY_MAP: dict[str, str] = {
     # contradictory amendment history (D00 T01 §23).
     "ledger-supersession-broken": "fatal",
     # a `Risk accepted:` line outside the record shape, with an
-    # uncoverable target, or expiring before it is recorded: an
-    # unauditable waiver (D00 T01 §21).
+    # uncoverable target, expiring before it is recorded, or reviewed
+    # outside its record-expiry window: an unauditable waiver
+    # (D00 T01 §21, review-window leg D00 T01 §25).
     "risk-acceptance-malformed": "fatal",
 }
 # Stamps on or before this date predate the plan-review marker rule and are
@@ -8723,6 +8724,20 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
             "risk-acceptance-malformed is a FATAL class",
             SEVERITY_MAP.get("risk-acceptance-malformed"),
             "fatal",
+        )
+        _gtext = (REPO / "scripts" / "todo-graph.py").read_text(encoding="utf-8").splitlines()
+        _gidx = next(i for i, ln in enumerate(_gtext) if '"risk-acceptance-malformed"' in ln)
+        check(
+            "severity comment names the review-window leg",
+            "record-expiry window" in "\n".join(_gtext[max(0, _gidx - 4) : _gidx]),
+            True,
+        )
+        _vtext = (REPO / "scripts" / "todo-validate.py").read_text(encoding="utf-8").splitlines()
+        _vidx = next(i for i, ln in enumerate(_vtext) if ln.strip().startswith("# 24. risk acceptances"))
+        check(
+            "rule-24 header names the review-window leg",
+            "record..expiry" in "\n".join(_vtext[_vidx : _vidx + 10]),
+            True,
         )
         check(
             "live acceptance stays validator-silent",
