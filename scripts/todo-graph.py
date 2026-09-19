@@ -1124,6 +1124,12 @@ MANIFEST_RE = re.compile(
     r"^Manifest:\s*sections\s*\[(.*?)\];\s*dependents\s*\[(.*?)\];\s*bytes\s*(\d+)(?:;\s*run\s+(\S+))?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
+# Row parts for the run query (D00 T01 §24 item 4): the same shape
+# LEDGER_ROW_RE just matched, split so structural fields (ID,
+# severity, disposition) print whole while only prose truncates.
+ROW_PARTS_RE = re.compile(
+    r"^\s*-\s*\[(?P<id>[^\]]+)\]\s*\[(?P<sev>[^\]]+)\]\s*(?P<text>.+?)\s*->\s*(?P<disp>[A-Za-z]+)\s*$"
+)
 # A run ID binds one review run across its marker, manifest, rows, and
 # artifacts (D00 T01 §19 item 1): `YYYYMMDD-DNN-TNN-SN-<family>[-rN]`.
 # The date prefix is the run's timestamp; `-rN` disambiguates reruns.
@@ -1687,6 +1693,9 @@ def unmet_dependencies(
 
 
 def cmd_query(args) -> int:
+    if args.what != "run" and getattr(args, "target", None):
+        print(f"query {args.what} takes no target")
+        return 2
     if args.what == "adjacency":
         return adjacency_module().cli(sys.modules[__name__], args)
     todos = load_todos()
@@ -1885,8 +1894,20 @@ def cmd_query(args) -> int:
                     continue
                 for _lr in LEDGER_ROW_RE.finditer(_block):
                     _rest = _block[_lr.end() :].split("\n", 1)[0]
-                    rows.append((_path, _one_line(_lr.group(0) + _rest, 160)))
+                    _rm = ROW_PARTS_RE.match(_lr.group(0))
+                    _text = _one_line(_rm.group("text"), 80) if _rm else ""
+                    _row = f"- [{_lr.group(1)}] [{_lr.group(2)}] -> {_lr.group(3)}"
+                    if _rest.strip():
+                        _row += f" {_one_line(_rest, 140)}"
+                    if _text:
+                        _row += f" :: {_text}"
+                    rows.append((_path, _row))
         candidates: list[tuple[str, str]] = []
+        # File-level by design: Candidate lines name panel rounds and
+        # carry no run, so per-record attribution is impossible; the
+        # file's candidates are the review's candidates across its
+        # rounds. Every findings file in the tree holds one record,
+        # where file-level is exact.
         for _path, _text in sorted(seen_files.items()):
             if not any(_path == _mp for _mp, _ms, _md in manifests):
                 continue
@@ -1894,18 +1915,20 @@ def cmd_query(args) -> int:
                 _shas = re.findall(r"[0-9a-fA-F]{7,40}", _cl.group(1))
                 if _shas:
                     candidates.append((_path, " ".join(_shas)))
-        artifacts: list[tuple[str, str, str, str, str]] = []
+        artifacts: list[tuple[str, str, str, str, str, str, str]] = []
         for _path, _text in sorted(seen_files.items()):
             for _ln in _text.splitlines():
                 _pm = PROVENANCE_RE.match(_ln)
                 if not _pm or normalize_run_id(_pm.group(7)) != want:
                     continue
-                artifacts.append((_path, _pm.group(1), _pm.group(2), _pm.group(4), _pm.group(6)))
+                artifacts.append(
+                    (_path, _pm.group(1), _pm.group(2), _pm.group(3), _pm.group(4), _pm.group(5), _pm.group(6))
+                )
         if not carrying and not manifests and not artifacts:
             print(f"unknown run: {target}")
             return 1
         print(f"run {target}")
-        print("candidate -- review candidate under this run")
+        print("candidate -- review candidates in files carrying this run (file-level: rounds share the file)")
         if not candidates:
             print("    (none recorded)")
         for _path, _shas in candidates:
@@ -1925,7 +1948,13 @@ def cmd_query(args) -> int:
             print("    (none)")
         for (_path, _num), _bodies in sorted(carrying.items()):
             for _i, _b in enumerate(_bodies, 1):
-                print(f"    {_path} §{_num} [{_i}/{len(_bodies)}] {_one_line(_b, 160)}")
+                _rm2 = RUN_ID_RE.search(_b)
+                _run2 = _rm2.group(1) if _rm2 else "none"
+                _sm2 = SUPERSEDES_RE.search(_b)
+                _edge = f" supersedes {_sm2.group(1)}" if _sm2 else ""
+                if FOLLOWS_OUTAGE_RE.search(_b):
+                    _edge += " follows-outage"
+                print(f"    {_path} §{_num} [{_i}/{len(_bodies)}] run={_run2}{_edge} :: {_one_line(_b, 120)}")
         print("outage state")
         _outages = [
             (_path, _num, _b)
@@ -1940,8 +1969,11 @@ def cmd_query(args) -> int:
         print("verified artifacts -- provenance bound to this run")
         if not artifacts:
             print("    (none)")
-        for _path, _cand, _cmd, _tool, _ppath in artifacts:
-            print(f"    {_path} candidate {_cand} {_one_line(_cmd, 80)} ({_one_line(_tool, 40)}) {_ppath}")
+        for _path, _cand, _cmd, _exit, _tool, _digest, _ppath in artifacts:
+            print(
+                f"    {_path} candidate {_cand} exit {_exit} digest {_digest} "
+                f"{_one_line(_cmd, 80)} ({_one_line(_tool, 40)}) {_ppath}"
+            )
         return 0
 
     if what == "frozen":
@@ -8907,6 +8939,33 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
         with _mctx.redirect_stdout(mbuf2), _mctx.redirect_stderr(_mio.StringIO()):
             missing_code = cmd_query(argparse.Namespace(what="run"))
         check("query run exits 2 with no target", missing_code, 2)
+        check(
+            "query run prints rows structure-first",
+            any("[D90-T07-S4-PR2] [major] -> filed §2 ::" in ln for ln in run_lines),
+            True,
+        )
+        check(
+            "query run prints the lineage run up front",
+            any("§60" in ln and "run=20260920-D90-T07-S60-gpt-r3" in ln for ln in run_lines),
+            True,
+        )
+        check(
+            "query run prints artifact exit plus digest",
+            any(
+                "candidate aaa1111 exit 0 digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" in ln
+                for ln in run_lines
+            ),
+            True,
+        )
+        tbuf = _mio.StringIO()
+        with _mctx.redirect_stdout(tbuf), _mctx.redirect_stderr(_mio.StringIO()):
+            stray_code = cmd_query(argparse.Namespace(what="stats", target="junk"))
+        check("query stats rejects a stray target", stray_code, 2)
+        check(
+            "query stats names the rejection",
+            any("query stats takes no target" in ln for ln in tbuf.getvalue().splitlines()),
+            True,
+        )
         check(
             "rule 23 skips grandfathered findings",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§10 " in ln and "FATAL" in ln),
