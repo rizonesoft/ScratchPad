@@ -100,7 +100,7 @@ track: W0
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [x]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [x]   |
 |  46   |   §46   | Rule-description probe completeness | §25 |  [x]   |
-|  47   |   §47   | Section-span scan helper | §26 |  [ ]   |
+|  47   |   §47   | Section-span scan helper | §26 |  [x]   |
 |  48   |   §48   | Migration completion assurance | §26 |  [ ]   |
 |  49   |   §49   | Multi-citer review evaluation | §27 |  [ ]   |
 |  50   |   §50   | Outage instance dating | §27 |  [ ]   |
@@ -1214,11 +1214,19 @@ Why this section exists: the §25 plan review found the rule-24 probes locking o
 
 Why this section exists: the §26 Opus panel round 4 (advisory) found `section_retired` duplicating the lazy `todo_lines` load plus section-span computation verbatim from `section_markers`, so a future span fix applied to one copy leaves the other scanning the wrong range. One helper must own the scan window and both callers must use it. -> XREF: D00 T01 §26 (filed from its Opus panel round 4); -> SOURCE: Opus-panel-D00-T01-s26-round-4 (candidate `45e2e17`, round-4 consistency advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s26.md`).
 
-- [x] One helper owns the window: the lazy file load plus span-bound computation ships as a single helper used by both `section_markers` and `section_retired`. Done when: both callers share the helper with fixtures. Done: `section_window_lines` owns the load plus bounds; `span_marker_bodies` and `section_retired` call it directly (`section_markers` shares transitively through `span_marker_bodies` since §44), with 4 direct-helper fixtures (mid-span slice, last-span EOF, OSError None, preloaded cache hit); suite 1162 to 1166.
+- [x] One helper owns the window: the lazy file load plus span-bound computation ships as a single helper used by both `section_markers` and `section_retired`. Done when: both callers share the helper with fixtures. Done: `section_window_lines` owns the load plus bounds; `span_marker_bodies` and `section_retired` call it directly (`section_markers` shares transitively through `span_marker_bodies` since §44), with 4 direct-helper fixtures (mid-span slice, last-span EOF, OSError None, preloaded cache hit); suite 1162 to 1166. **Corrected 2026-09-19 (plan review PR1):** the call graph is `section_markers` to `span_marker_bodies` to `section_window_lines` plus `section_retired` to `section_window_lines`; `used by both` reads transitively for `section_markers`.
 - [x] No behavior moves: every existing retirement and marker probe passes unchanged, proving the extraction is behavior-preserving. Done when: the suite stays green with no probe edits. Done: 1162 pre-existing probes pass unedited (the diff removes only the two inlined copies; no `check(` line touched).
 - [x] Commit: `"workspace: share the section-span scan per §26 panel"`
 
 **Test checkpoint:** self-test passes at 1166/1166 (1162 plus the 4 item-1 helper probes), live validate 0 fatal 0 warnings. Cheaper substitute that fails: eyeballing the extraction. Falsifiable by any caller-local span math or any probe edit.
+
+- -> XREF: D00 T04 §1 -- plan-review findings PR3 PR7 filed there
+
+> **Verified:** 2026-09-19 | §47 | self-test 1166/1166 (4 new: direct `section_window_lines` fixtures); live validate 0 fatal 0 warnings; Full panel (Sol R1-R2 all approve, Opus R3 sign-off) over candidate 758c818, sign-off below-bar finding rides the existing D00 T04 §2 count-refresh item; plan review 7 findings, 2 filed at D00 T04 §1, 1 reworded in place, 4 rejected
+> **Review:** round 3 (FINAL), candidate 758c818 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` needs-attention; R1-R2 all approve, R3 stale AGENTS count rides D00 T04 §2. Raw findings: docs/reviews/00-workspace/D00-T01-s47.md
+> **Plan review:** GPT high, filed D00 T04 §1 (run 20260919-D00-T01-S47-gpt)
+> **CRUD:** applicable | self-test read repo sources plus fixtures (no writes); implementation extracted the helper plus 4 probes plus ticks plus filings (read back via self-test 1166/1166, live validate 0 fatal 0 warnings, plan --check current); filing opened 2 D00 T04 §1 items (read back via plan --check current)
+> **Duration:** 2026-09-19T18:22:00Z to 2026-09-19T18:35:00Z
 
 ## 48. Migration Completion Assurance
 
