@@ -2758,6 +2758,9 @@ def cmd_query(args) -> int:
         def _one_line(text: str, width: int) -> str:
             return re.sub(r"\s+", " ", text).strip()[:width]
 
+        def _full_line(text: str) -> str:
+            return re.sub(r"\s+", " ", text).strip()
+
         # Marker chains through the shared slice, so range-stamped
         # sections read their parsed fallback exactly like the
         # validator does and the two can never drift apart.
@@ -2792,7 +2795,7 @@ def cmd_query(args) -> int:
                     continue
                 seen_files[_fm.group(1)], _u = strip_fenced_code(_raw)
         manifests: list[tuple[str, str, str]] = []
-        rows: list[tuple[str, str]] = []
+        rows: list[dict] = []
         _run_blocks: list[str] = []
         _run_row_ids: list[str] = []
         for _path, _text in sorted(seen_files.items()):
@@ -2816,12 +2819,26 @@ def cmd_query(args) -> int:
                     _rest = _block[_lr.end() :].split("\n", 1)[0]
                     _rm = ROW_PARTS_RE.match(_lr.group(0))
                     _rtext = _one_line(_rm.group("text"), 80) if _rm else ""
+                    _rtext_full = _full_line(_rm.group("text")) if _rm else ""
                     _row = f"- [{_lr.group(1)}] [{_lr.group(2)}] -> {_lr.group(3)}"
+                    _row_full = _row
                     if _rest.strip():
                         _row += f" {_one_line(_rest, 140)}"
+                        _row_full += f" {_full_line(_rest)}"
                     if _rtext:
                         _row += f" :: {_rtext}"
-                    rows.append((_path, _row))
+                    if _rtext_full:
+                        _row_full += f" :: {_rtext_full}"
+                    rows.append(
+                        {
+                            "path": _path,
+                            "prose": _row,
+                            "full": _row_full,
+                            "id": _lr.group(1),
+                            "severity": _lr.group(2),
+                            "disposition": _lr.group(3),
+                        }
+                    )
         candidates: list[tuple[str, str]] = []
         # File-level by design: Candidate lines name panel rounds and
         # carry no run, so per-record attribution is impossible; the
@@ -2882,7 +2899,7 @@ def cmd_query(args) -> int:
                     _edges.append(f"supersedes {_sm2.group(1)}")
                 if FOLLOWS_OUTAGE_RE.search(_b):
                     _edges.append("follows-outage")
-                _marker_rows.append((_path, _num, _i, len(_bodies), _run2, _edges, _one_line(_b, 120)))
+                _marker_rows.append((_path, _num, _i, len(_bodies), _run2, _edges, _full_line(_b)))
         _outage_rows = [
             (_path, _num, _b)
             for (_path, _num), _bodies in sorted(carrying.items())
@@ -2895,19 +2912,28 @@ def cmd_query(args) -> int:
         if getattr(args, "json", False):
             _jd = {
                 "schema": RUN_SCHEMA,
-                "run": target,
+                "run": want,
                 "verdict": _verdict,
                 "verdict_unavailable": _verdict_unavailable,
                 "corrections": _corrections,
                 "confidence": {"level": _conf, "reasons": _conf_reasons},
                 "candidates": [{"path": _p, "text": _s} for _p, _s in candidates],
                 "scope": [{"path": _p, "sections": _s, "dependents": _d} for _p, _s, _d in manifests],
-                "findings": [{"path": _p, "row": _r} for _p, _r in rows],
+                "findings": [
+                    {
+                        "path": _fr["path"],
+                        "row": _fr["full"],
+                        "id": _fr["id"],
+                        "severity": _fr["severity"],
+                        "disposition": _fr["disposition"],
+                    }
+                    for _fr in rows
+                ],
                 "markers": [
                     {"path": _p, "section": _n, "index": _i, "of": _m, "run": _r, "edges": _e, "text": _t}
                     for _p, _n, _i, _m, _r, _e, _t in _marker_rows
                 ],
-                "outages": [{"path": _p, "section": _n, "text": _one_line(_b, 160)} for _p, _n, _b in _outage_rows],
+                "outages": [{"path": _p, "section": _n, "text": _full_line(_b)} for _p, _n, _b in _outage_rows],
                 "artifacts": [
                     {"path": _p, "candidate": _c, "command": _cm, "exit": _ex, "tool": _t, "digest": _dg, "target": _pp}
                     for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts
@@ -2929,14 +2955,14 @@ def cmd_query(args) -> int:
         print("findings -- ledger rows under this run")
         if not rows:
             print("    (none)")
-        for _path, _row in rows:
-            print(f"    {_path} {_row}")
+        for _fr in rows:
+            print(f"    {_fr['path']} {_fr['prose']}")
         print("marker lineage -- full chains carrying this run")
         if not _marker_rows:
             print("    (none)")
         for _path, _num, _i, _of, _run2, _edges, _text in _marker_rows:
             _edge = f" {' '.join(_edges)}" if _edges else ""
-            print(f"    {_path} §{_num} [{_i}/{_of}] run={_run2}{_edge} :: {_text}")
+            print(f"    {_path} §{_num} [{_i}/{_of}] run={_run2}{_edge} :: {_one_line(_text, 120)}")
         print("outage state")
         if not _outage_rows:
             print("    clean (no outage markers)")
@@ -10851,7 +10877,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "## Plan review\n\n"
             "Manifest: sections [D90 T07 §98]; dependents [none]; bytes 100; run 20260920-D90-T07-S98-gpt-r2\n\n"
             "Ledger:\n"
-            "- [D90-T07-S4-PR11] [major] Re-cited orphan manifest finding -> filed §2\n"
+            "- [D90-T07-S4-PR11] [major] Re-cited orphan manifest finding with a deliberately overlong subject crossing eighty characters here -> filed §2 plus a deliberately overlong rationale tail crossing one hundred forty characters with plain padding words only padding padding padding padding padding padding\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -12614,6 +12640,48 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "query run --json states unavailable verdicts explicitly",
             (_judata.get("verdict"), _judata.get("verdict_unavailable")),
             (None, "no marker carries this run"),
+        )
+        _sybuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_sybuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _sycode = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S33-gpt-r1", json=True)
+            )
+        _sybuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(_sybuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            _sycode2 = cmd_query(
+                argparse.Namespace(what="run", target="20260920-D90-T07-S33-gpt", json=True)
+            )
+        check("query run --json exits 0 under the -r1 synonym", (_sycode, _sycode2), (0, 0))
+        check(
+            "query run --json is synonym-deterministic",
+            _sybuf.getvalue() == _sybuf2.getvalue(),
+            True,
+        )
+        check(
+            "query run --json emits the normalized run",
+            json.loads(_sybuf.getvalue()).get("run"),
+            "20260920-D90-T07-S33-gpt",
+        )
+        _s60first = next(
+            (_f for _f in _jdata.get("findings", []) if _f.get("id") == "D90-T07-S4-PR2"), {}
+        )
+        check(
+            "query run --json findings carry structured fields",
+            (_s60first.get("severity"), _s60first.get("disposition")),
+            ("major", "filed"),
+        )
+        _orphan = next(
+            (_f for _f in _judata.get("findings", []) if _f.get("id") == "D90-T07-S4-PR11"), {}
+        )
+        check(
+            "query run --json rows are never truncated",
+            "padding padding padding padding" in (_orphan.get("row") or ""),
+            True,
+        )
+        check(
+            "query run prose truncates the overlong row",
+            any("D90-T07-S4-PR11" in ln and "padding padding padding padding" not in ln for ln in _mlines2),
+            True,
         )
         # Trust-leg mapping tables (review R1): every verdict state
         # and confidence branch resolves without a fixture run.
