@@ -4379,7 +4379,10 @@ def cmd_query(args) -> int:
         # rode its successor), and lapsed records never list either
         # (expiry escalates on the covered dimension, item 5).
         # Overdue clears only through a superseding record whose
-        # rationale is the review outcome.
+        # rationale is the review outcome. Every citing section's
+        # marker evaluates (D00 T01 §49): the hold predicate runs
+        # per citer, and one obligation lists once no matter how
+        # many citers cover it, so the gate vote stays singular.
         reviews = []
         due_line = (_today_d + timedelta(days=7)).isoformat()
         _escalated_rows = {(f, pr.lower()) for f, pr, *_rest in criticals + majors}
@@ -4388,62 +4391,63 @@ def cmd_query(args) -> int:
             _paccs = file_acceptances(path)
             if not _paccs or path not in owners or not owners[path]:
                 continue
-            _pt, _pnum = owners[path][0]
-            _ps = _pt.sections.get(_pnum)
-            if _ps is None:
-                continue
             try:
                 _praw = (TODO_DIR.parent / path).read_text(encoding="utf-8")
             except OSError:
                 continue
-            _pbody = (_ps.plan_review_body or "").strip()
-            _prm = RUN_ID_RE.search(_pbody)
-            _pmrun = normalize_run_id(_prm.group(1)) if _prm else None
-            _pomt = re.search(r"outage:\s*([^\(;]+)", _pbody.lower())
-            _porung = _pomt.group(1).strip() if _pomt else None
-            _pday = _ps.stamped_on or ""
             _psupd = superseded_acceptances(_paccs)
-            for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind in _paccs:
-                if (tgt.lower(), rec) in _psupd:
+            _plisted: set[tuple] = set()
+            for _pt, _pnum in owners[path]:
+                _ps = _pt.sections.get(_pnum)
+                if _ps is None:
                     continue
-                if rvw < rec or rvw > exp:
-                    # A review date outside its own record-expiry
-                    # window is validator-malformed (rule 24) and
-                    # names no coherent obligation; the FATAL is the
-                    # signal, not this list.
-                    continue
-                _okey = outage_key(tgt) if kind == "outage" else None
-                _cref = f"{_pt.path} §{_pnum}"
-                _consulted = "outage" in _deg_state.get(_cref, "") or "retry-owed" in _deg_state.get(_cref, "")
-                if kind == "finding":
-                    _pmatch = (path, tgt.lower()) in _escalated_rows
-                    _ptday = run_day(_prm.group(1)) if _prm else _pday
-                    _ppath, _ptext = path, _praw
-                elif kind == "run":
-                    _pmatch = (
-                        _consulted and _pmrun is not None and normalize_run_id(tgt) == _pmrun
-                    )
-                    _ptday = run_day(tgt)
-                    _ppath, _ptext = _pt.path, todo_text(_pt.path)
-                else:
-                    _pmatch = (
-                        _consulted
-                        and _okey is not None
-                        and _porung is not None
-                        and _okey == (_porung, _pday)
-                    )
-                    _ptday = _pday
-                    _ppath, _ptext = _pt.path, todo_text(_pt.path)
-                if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today) != "cover":
-                    continue
-                if rvw < today:
-                    _rstate = "review-overdue"
-                elif rvw <= due_line:
-                    _rstate = "review-due"
-                else:
-                    continue
-                reviews.append(
-                    (
+                _pbody = (_ps.plan_review_body or "").strip()
+                _prm = RUN_ID_RE.search(_pbody)
+                _pmrun = normalize_run_id(_prm.group(1)) if _prm else None
+                _pomt = re.search(r"outage:\s*([^\(;]+)", _pbody.lower())
+                _porung = _pomt.group(1).strip() if _pomt else None
+                _pday = _ps.stamped_on or ""
+                _psupd = superseded_acceptances(_paccs)
+                for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind in _paccs:
+                    if (tgt.lower(), rec) in _psupd:
+                        continue
+                    if rvw < rec or rvw > exp:
+                        # A review date outside its own record-expiry
+                        # window is validator-malformed (rule 24) and
+                        # names no coherent obligation; the FATAL is the
+                        # signal, not this list.
+                        continue
+                    _okey = outage_key(tgt) if kind == "outage" else None
+                    _cref = f"{_pt.path} §{_pnum}"
+                    _consulted = "outage" in _deg_state.get(_cref, "") or "retry-owed" in _deg_state.get(_cref, "")
+                    if kind == "finding":
+                        _pmatch = (path, tgt.lower()) in _escalated_rows
+                        _ptday = run_day(_prm.group(1)) if _prm else _pday
+                        _ppath, _ptext = path, _praw
+                    elif kind == "run":
+                        _pmatch = (
+                            _consulted and _pmrun is not None and normalize_run_id(tgt) == _pmrun
+                        )
+                        _ptday = run_day(tgt)
+                        _ppath, _ptext = _pt.path, todo_text(_pt.path)
+                    else:
+                        _pmatch = (
+                            _consulted
+                            and _okey is not None
+                            and _porung is not None
+                            and _okey == (_porung, _pday)
+                        )
+                        _ptday = _pday
+                        _ppath, _ptext = _pt.path, todo_text(_pt.path)
+                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today) != "cover":
+                        continue
+                    if rvw < today:
+                        _rstate = "review-overdue"
+                    elif rvw <= due_line:
+                        _rstate = "review-due"
+                    else:
+                        continue
+                    _prow = (
                         path,
                         tgt,
                         rvw,
@@ -4455,7 +4459,9 @@ def cmd_query(args) -> int:
                             else ""
                         ),
                     )
-                )
+                    if _prow not in _plisted:
+                        _plisted.add(_prow)
+                        reviews.append(_prow)
         # Inert waivers (D00 T01 §29 item 4): post-dated acceptances
         # cover nothing while reading as authorization, so they list
         # as a warning here and in the summary. Un-superseded records
@@ -15351,6 +15357,89 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "minor-row waivers list no review obligation",
             (not any(e["target"] == "D90-T01-S6-PR5" for e in _revs)),
             True,
+        )
+        # --- multi-citer review evaluation (D00 T01 §49): the reviews
+        # leg runs the hold predicate under every citing section's
+        # marker, and one obligation lists once however many citers
+        # cover it. Citer 1's marker run postdates the record
+        # (predated-target under citer 1); citer 2's predates it
+        # (cover). Pre-fix, owners[path][0] alone evaluated and the
+        # second citer's overdue review never listed.
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: multi-citer review evaluation.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | First citer | -- |  [x]   |\n"
+            "|   2   |   §2    | Second citer | -- |  [x]   |\n"
+            "|   3   |   §3    | Both cover a | -- |  [x]   |\n"
+            "|   4   |   §4    | Both cover b | -- |  [x]   |\n\n---\n\n"
+            "## 1. First citer\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-mc1.md\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S1-gpt)\n\n"
+            "## 2. Second citer\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §2 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-mc1.md\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260918-D90-T01-S2-gpt)\n\n"
+            "## 3. Both cover a\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §3 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-mc2.md\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260918-D90-T01-S3-gpt)\n\n"
+            "## 4. Both cover b\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §4 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-mc2.md\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260918-D90-T01-S4-gpt)\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-mc1.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §1, D90 T01 §2]; dependents [none]; bytes 100; run 20260918-D90-T01-S9-gpt\n\n"
+            "Ledger:\n- [D90-T01-S9-PR1] [major] watched row -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S9-PR1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence ac1e111; rationale second-citer cover\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-mc2.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §3, D90 T01 §4]; dependents [none]; bytes 100; run 20260918-D90-T01-S9-gpt\n\n"
+            "Ledger:\n- [D90-T01-S9-PR2] [major] watched row -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S9-PR2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence ac2e222; rationale both-citer cover\n",
+            encoding="utf-8",
+        )
+        canned_git[("ac1e111", "docs/reviews/90-mc1.md")] = (clean / "docs" / "reviews" / "90-mc1.md").read_text(
+            encoding="utf-8"
+        )
+        canned_git[("ac2e222", "docs/reviews/90-mc2.md")] = (clean / "docs" / "reviews" / "90-mc2.md").read_text(
+            encoding="utf-8"
+        )
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            _mc_json_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_mc_json_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=True, check=False, fail_on=None))
+            _mc_json = json.loads(_mc_json_buf.getvalue())
+            _mc_chk_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_mc_chk_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                _mc_rc = cmd_query(argparse.Namespace(what="plan-health", check=True))
+        finally:
+            TODO_DIR = saved_tree
+        _mc_revs = _mc_json["reviews"]
+        check(
+            "a second-citer-only cover lists its overdue review",
+            [(e["target"], e["state"]) for e in _mc_revs if e["target"] == "D90-T01-S9-PR1"],
+            [("D90-T01-S9-PR1", "review-overdue")],
+        )
+        check(
+            "two matching citers list their overdue review once",
+            [(e["target"], e["state"]) for e in _mc_revs if e["target"] == "D90-T01-S9-PR2"],
+            [("D90-T01-S9-PR2", "review-overdue")],
+        )
+        check(
+            "the two-citer overdue review gates",
+            _mc_rc,
+            1,
         )
         check(
             "reviews gate overdue only",

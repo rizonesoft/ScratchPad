@@ -1257,13 +1257,15 @@ Why this section exists: the §26 plan review (`gpt-5.6-sol` high over §26 plus
 
 ## 49. Multi-Citer Review Evaluation
 
+> **Started:** 2026-09-19T19:03:00Z
+
 Why this section exists: the §27 Opus panel round 3 (integration advisory) found the `reviews` leg evaluating a findings file against its first citing section's marker alone (`owners[path][0]`), so an acceptance that covers under a second citer's marker lists no review obligation and its overdue review never gates. No such file exists today (findings files are per-section by convention), so the advisory filed instead of blocking §27. -> XREF: D00 T01 §27 (filed from its Opus panel round 3); -> SOURCE: Opus-panel-D00-T01-s27-round-3 (candidate `da34cc5`, round-3 integration advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s27.md`).
 
-- [ ] Each citer evaluates: the reviews leg runs the hold predicate under every citing section's marker, so a covering acceptance lists its review state however many sections cite the file. Done when: a two-citer fixture lists the second citer's overdue review.
-- [ ] No double gate: one overdue review gates once no matter how many citers match it, so the gate vote stays singular. Done when: the fixture gates exactly once with two matching citers.
-- [ ] Commit: `"workspace: evaluate reviews under every citer per §27 panel"`
+- [x] Each citer evaluates: the reviews leg runs the hold predicate under every citing section's marker, so a covering acceptance lists its review state however many sections cite the file. Done when: a two-citer fixture lists the second citer's overdue review. Done: the leg loops all citers (first-citer-only reverted still fails the fixture); a citer-1-predated plus citer-2-covering fixture lists the overdue review.
+- [x] No double gate: one overdue review gates once no matter how many citers match it, so the gate vote stays singular. Done when: the fixture gates exactly once with two matching citers. Done: per-path listed-set dedupes identical obligations (guard removed still double-lists); both-cover fixture lists once and `--check` exits 1.
+- [x] Commit: `"workspace: evaluate reviews under every citer per §27 panel"`
 
-**Test checkpoint:** every citer's marker evaluates, and one overdue review gates once. Falsifiable by any citer ignored or any double gate.
+**Test checkpoint:** self-test passes at 1176/1176 (1173 plus the 3 item-1/item-2 multi-citer probes), live validate 0 fatal 0 warnings. Cheaper substitute that fails: trusting single-citer coverage. Falsifiable by any citer ignored or any double gate.
 
 ## 50. Outage Instance Dating
 
