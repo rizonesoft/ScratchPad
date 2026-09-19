@@ -38,6 +38,7 @@ track: W0
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Sol-note and disposition follow-ups | D00 T01 §37 |  [ ]   |
 |   2   |   §2    | Rule-24 probe follow-ups | D00 T01 §46 |  [ ]   |
+|   3   |   §3    | Migration-assurance follow-ups | D00 T01 §48 |  [ ]   |
 
 ---
 
@@ -88,6 +89,18 @@ Why this section exists: the §46 review's sign-off round plus plan review retur
 - [ ] Commit: `"workspace: follow up rule-24 probes per §46 review"`
 
 **Test checkpoint:** the markers match clauses with polarity pins, the header states all four steps, the AGENTS count matches the suite, §25 carries its scoping note, and mismatch failures name site and legs; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
+
+## 3. Migration-Assurance Follow-Ups
+
+Why this section exists: the §48 plan review (`gpt-5.6-sol` high over §48 plus §26 plus §28) returned 14 findings; 4 file here, 6 are reworded in place, 4 are rejected with reasons in the §48 findings file. The shipped assurance holds but its membership proof is count-level, its tamper residual is human-only, its diagnostics name no anchor, and its report is prose. -> XREF: D00 T01 §48 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s48-2026-09-19-t04 D00-T01-S48-PR1 D00-T01-S48-PR7 D00-T01-S48-PR13 D00-T01-S48-PR14 (`gpt-5.6-sol` high over §48 plus §26 plus §28, 14 findings, 4 filed here, 6 reworded in place, 4 rejected with reasons in the §48 findings file).
+
+- [ ] Membership exactness pins pair-for-pair: a probe asserts the live retired set equals `MIGRATION_FROZEN` exactly (not just count plus split), so a substituted member cannot hide behind equal totals; the frozen set reads as the machine per-record manifest (PR1 D00-T01-S48-PR1). This item is a joiner from the §48 plan review. Done when: the exactness probe ships green.
+- [ ] Tampering residual gains a control: the retired-member stamp-date tamper path gets an owner, a trigger, and a periodic integrity check (or an immutable-history comparison), so the assurance's known bypass reads owned instead of human-only (PR7 D00-T01-S48-PR7). This item is a joiner from the §48 plan review. Done when: the control ships with owner plus trigger, or the immutable comparison reads.
+- [ ] Rule-27 diagnostics name the cutoff anchor plus prong: both fire messages carry the cutoff date, the violated prong, and the remediation (no detected commit exists: membership-keyed, not history-keyed), so a governance failure reads as a small operator fix (PR13 D00-T01-S48-PR13). This item is a joiner from the §48 plan review. Done when: the enriched messages plus fixtures ship.
+- [ ] Migration assurance reports as JSON: a deterministic migration-assurance report (frozen members, batches, commit set, gates, waiver states, evidence links, verifier attribution) plus a human dashboard, so compliance reads without reconstructing prose and grep (PR14 D00-T01-S48-PR14). This item is a joiner from the §48 plan review. Done when: the report plus dashboard ship with fixtures.
+- [ ] Commit: `"workspace: follow up migration assurance per §48 plan review"`
+
+**Test checkpoint:** membership exactness holds pair-for-pair, the tamper path reads owned, rule-27 failures name anchor plus prong, and the assurance report renders; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
 
 ## Verification
 
