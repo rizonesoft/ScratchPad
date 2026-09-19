@@ -1794,7 +1794,37 @@ def git_is_merge(sha: str) -> bool | None:
         return None
     if out.returncode != 0:
         return None
-    return len(out.stdout.decode("utf-8", "replace").strip().split()) > 1
+    toks = out.stdout.decode("utf-8", "replace").strip().split()
+    if any(not re.fullmatch(r"[0-9a-fA-F]+", t) for t in toks):
+        return None
+    return len(toks) > 1
+
+
+def git_on_first_parent_chain(base: str, tip: str) -> bool | None:
+    """Whether base lies on tip's first-parent chain, or None when
+    unprovable. The linear-range leg (D00 T01 §31 item 4): a fix loop
+    is linear, so a side-branch base merged into the tip cannot open
+    a linear range, even when first-parent touches exist past it.
+    The base resolves to full before the membership test (short
+    prefixes never prove identity). Off-shape output reads False
+    (not on chain) or None on command failure, never raises.
+    """
+    full = git_full_sha(base)
+    if full is None:
+        return None
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "rev-list", "--first-parent", tip],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return full in out.stdout.decode("utf-8", "replace").splitlines()
 
 
 def git_range_touch_ts(base: str, tip: str, repo_path: str) -> int | None:
@@ -1829,14 +1859,10 @@ def git_range_touch_ts(base: str, tip: str, repo_path: str) -> int | None:
         return None
     if out.returncode != 0:
         return None
-    stamps = [
-        int(ln)
-        for ln in out.stdout.decode("utf-8", "replace").splitlines()
-        if re.fullmatch(r"\d+", ln.strip())
-    ]
-    if not stamps:
+    lines = out.stdout.decode("utf-8", "replace").splitlines()
+    if not lines or any(not re.fullmatch(r"\d+", ln.strip()) for ln in lines):
         return None
-    return max(stamps)
+    return max(int(ln) for ln in lines)
 
 
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
@@ -3043,14 +3069,16 @@ def cmd_query(args) -> int:
                             # stamp; D00 T01 §19 item 8). Ranges name
                             # `fix <base>..<tip>` instead: the tip tree
                             # carries the ID, the tip descends from the
-                            # base, a non-merge FIRST-PARENT commit inside
-                            # the range touched the file (base excluded, so
-                            # name the pre-loop tip, never the first fix
-                            # commit; side-branch touches never satisfy a
-                            # linear loop; D00 T01 §22 item 3, restated
-                            # D00 T01 §31 item 4), and the newest such
-                            # touch postdates the finding review (D00 T01
-                            # §31 item 3). Ordering reads
+                            # base, the base lies on the tip's first-parent
+                            # chain (a side-branch base merged in cannot
+                            # open a linear range), a non-merge FIRST-PARENT
+                            # commit inside the range touched the file (base
+                            # excluded, so name the pre-loop tip, never the
+                            # first fix commit; side-branch touches never
+                            # satisfy a linear loop; D00 T01 §22 item 3,
+                            # restated D00 T01 §31 item 4), and the newest
+                            # such touch postdates the finding review (D00
+                            # T01 §31 item 3). Ordering reads
                             # Duration ends when both reviews carry them
                             # (same-day fixes order by completion
                             # instant); without both ends the day-stamp
@@ -3148,7 +3176,7 @@ def cmd_query(args) -> int:
                                     provable = False
                                     break
                                 base, tip = fm.group(1), fm.group(2) or fm.group(1)
-                                if git_is_merge(tip):
+                                if git_is_merge(tip) is not False:
                                     provable = False
                                     break
                                 fixed = git_file_at(tip, tpath)
@@ -3167,6 +3195,9 @@ def cmd_query(args) -> int:
                                     break
                                 if fm.group(2) is not None:
                                     if not git_is_ancestor(base, tip):
+                                        provable = False
+                                        break
+                                    if not git_on_first_parent_chain(base, tip):
                                         provable = False
                                         break
                                     if not git_range_touches(base, tip, tpath):
@@ -7766,6 +7797,7 @@ track: Z1
 |  83   |   §83   | Comment-proof target | - |  [x]   |
 |  84   |   §84   | Untouched-proof target | - |  [x]   |
 |  85   |   §85   | Merge-tip target | - |  [x]   |
+|  86   |   §86   | Side-branch-base target | - |  [x]   |
 
 ---
 
@@ -7818,7 +7850,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -8805,6 +8837,22 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 86. Side-branch-base target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturesidebase D90-T07-S4-PR81 fix 9f00001..9f00002
+
+proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §86 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5),
             encoding="utf-8",
         )
@@ -8891,6 +8939,10 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR78] [critical] Comment proof stays -> filed §83\n"
             "- [D90-T07-S4-PR79] [critical] Untouched proof stays -> filed §84\n"
             "- [D90-T07-S4-PR80] [critical] Merge tip stays -> filed §85\n"
+            # §31 item 4 (panel R1): the base merged in from a side
+            # branch, so the range is not linear although ancestry
+            # holds and first-parent touches exist past it.
+            "- [D90-T07-S4-PR81] [critical] Side-branch base stays -> filed §86\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -9464,6 +9516,14 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
         canned_range_ts = {
             ("eee0001", "eee0002", marker_todo.as_posix()): _tss(d5, "12:00:00"),
         }
+        # §31 item 4 (panel R1): linear ranges open on the first-parent
+        # chain; the `9f00001..9f00002` side-branch base does not.
+        canned_fpchain = {
+            ("eee0001", "eee0002"): True,
+            ("eee0003", "eee0004"): True,
+            ("e000001", "e000002"): True,
+            ("9f00001", "9f00002"): False,
+        }
         # §31 item 6: `c000001` mirrors the `aaa1111` clearing profile
         # as a distinct descendant, so basic clearance survives strict
         # ancestry; the clearing range touched its proof file.
@@ -9515,6 +9575,21 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
         canned_range_touches[("e000001", "e000002", marker_todo.as_posix())] = True
         canned_range_touches[("e000001", "e000002", "tests/fix-proof.py")] = True
         canned_range_ts[("e000001", "e000002", marker_todo.as_posix())] = _tss(d1, "12:00:00")
+        # PR81 passes every leg except the first-parent-chain base.
+        canned_ancestors[("9f00001", "9f00002")] = True
+        canned_git[("9f00002", marker_todo.as_posix())] = _mtxt
+        canned_touches[("9f00002", marker_todo.as_posix())] = True
+        canned_git[("9f00002", "tests/fix-proof.py")] = _proof_ok
+        canned_touches[("9f00002", "tests/fix-proof.py")] = True
+        canned_ts["9f00002"] = _tss(d5, "12:00:00")
+        canned_full["9f00001"] = "9f00001" + "0" * 33
+        canned_full["9f00002"] = "9f00002" + "0" * 33
+        canned_merges["9f00001"] = False
+        canned_merges["9f00002"] = False
+        canned_ancestors[("aaa1111", "9f00002")] = True
+        canned_range_touches[("9f00001", "9f00002", marker_todo.as_posix())] = True
+        canned_range_touches[("9f00001", "9f00002", "tests/fix-proof.py")] = True
+        canned_range_ts[("9f00001", "9f00002", marker_todo.as_posix())] = _tss(d5, "12:00:00")
         # PR75's fix saw the back-link before its removal: the tip tree
         # carries the §80 back-link plus proof line that live dropped,
         # so only the live span leg holds the row.
@@ -9579,6 +9654,7 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
         _real_git_full = git_full_sha
         _real_git_merge = git_is_merge
         _real_git_rangets = git_range_touch_ts
+        _real_git_fpchain = git_on_first_parent_chain
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
@@ -9588,6 +9664,7 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
         globals()["git_full_sha"] = lambda ref: canned_full.get(ref)
         globals()["git_is_merge"] = lambda sha: canned_merges.get(sha)
         globals()["git_range_touch_ts"] = lambda a, b, p: canned_range_ts.get((a, b, p))
+        globals()["git_on_first_parent_chain"] = lambda a, b: canned_fpchain.get((a, b))
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -10840,6 +10917,11 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
         check(
             "clearance fails a merge tip",
             any("D90-T07-S4-PR80" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a side-branch base",
+            any("D90-T07-S4-PR81" in ln for ln in health_lines),
             True,
         )
         check(
@@ -12436,6 +12518,7 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
         globals()["git_full_sha"] = _real_git_full
         globals()["git_is_merge"] = _real_git_merge
         globals()["git_range_touch_ts"] = _real_git_rangets
+        globals()["git_on_first_parent_chain"] = _real_git_fpchain
         # Real-git helper fixtures (D00 T01 §30 item 3): the six git
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
@@ -12486,6 +12569,7 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
                 (_grepo / "side.txt").write_text("s\n", encoding="utf-8")
                 _git("add", "side.txt")
                 _git("commit", "-qm", "side")
+                _gc3 = _git("rev-parse", "HEAD")
                 _git("checkout", "-q", _gbranch)
                 _git("merge", "--no-ff", "-qm", "merge", "side")
                 _gm1 = _git("rev-parse", "HEAD")
@@ -12546,6 +12630,9 @@ proof D90-T07-S4-PR80 tests/fix-proof.py::test_clearance
                     check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee"), None)
                     check("real git dates a range touch", git_range_touch_ts(_gc1, _gc2, "proof.txt"), _gts)
                     check("real git range touch ts misses off-branch", git_range_touch_ts(_gc1, _gm1, "side.txt"), None)
+                    check("real git proves first-parent membership", git_on_first_parent_chain(_gc1, _gm1), True)
+                    check("real git refuses a side-branch base", git_on_first_parent_chain(_gc3, _gm1), False)
+                    check("real git chain probe on a bad ref is unprovable", git_on_first_parent_chain("deadbee", _gm1), None)
                 finally:
                     globals()["REPO"] = _saved_repo
             finally:
