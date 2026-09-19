@@ -95,7 +95,7 @@ track: W0
 |  39   |   §39   | Panel telemetry | §35 |  [x]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [x]   |
-|  42   |   §42   | Requires operator vocabulary | §13 |  [ ]   |
+|  42   |   §42   | Requires operator vocabulary | §13 |  [x]   |
 |  43   |   §43   | Findings count touch-up | §20 |  [ ]   |
 |  44   |   §44   | Range-fallback lineage guards | §24 |  [ ]   |
 |  45   |   §45   | Run inspection residuals | §24 |  [ ]   |
@@ -1127,6 +1127,11 @@ Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded 
 - [x] Commit: `"workspace: gate manual rows behind Requires operator"`
 
 **Test checkpoint:** fixtures prove the split (marked rows park by default, run under `--context operator`); the four live rows resolve `missing here: operator`; self-test green with the new cases; `validate` silent. Cheaper substitute that fails: prose claiming runners skip Phase 99.
+
+> **Verified:** 2026-09-19 | §42 | self-test 1100/1100 (+12: 2 parser, 3 validator, 4 detector, 3 split operator cases); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3 sign-off over candidates 9961740 f9a3760 6825ba1 4ab4159 ccc2660; plan review 17 findings, 4 filed at D00 T04 §1, 5 accepted in the stamp run, 2 duplicates, 6 rejected
+> **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 9961740 f9a3760 6825ba1 4ab4159 ccc2660 -- `adversarial` advisory (R3 detector-duplication filed at D00 T04 §1) · `consistency` needs-attention (R1 stale vocabulary comment fixed) · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s42.md
+> **Plan review:** GPT high, filed D00 T04 §1, accepted 5 in D99 T01 (run 20260919-D00-T01-S42-gpt-r3)
+> **CRUD:** applicable | self-test wrote nothing new (1100/1100 re-observed in a clean worktree at ccc2660, no code in the stamp run); TODO plus D99 edits read back via diff; triage (ccc2660) plus findings record read back via validate, plan --check, and fence re-hash; ledgered plan artifact under ignored build/review-runs retained as evidence, worktree removed, no disposables to tear down
 
 ## 43. Findings Count Touch-Up
 
