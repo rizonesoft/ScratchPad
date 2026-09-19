@@ -84,7 +84,7 @@ track: W0
 |  28   |   §28   | Partial records and governance docs | §21 |  [x]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [x]   |
 |  30   |   §30   | Clearance fixture residuals | §22 |  [x]   |
-|  31   |   §31   | Clearance causality and precision | §22, §23 |  [ ]   |
+|  31   |   §31   | Clearance causality and precision | §22, §23 |  [x]   |
 |  32   |   §32   | Clearance governance and diagnostics | §22 |  [ ]   |
 |  33   |   §33   | Provenance residuals | §23 |  [ ]   |
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [ ]   |
@@ -869,6 +869,12 @@ Why this section exists: the ninth live plan review (§22 plus §19 plus §30 pl
 - [x] Commit: `"workspace: harden clearance causality per ninth live round"`. Done: SHIP carries the exact subject.
 
 **Test checkpoint:** every clearance proves what happened, where, when, and on whose evidence. Cheaper substitute that fails: bytes that merely mention the finding.
+
+> **Verified:** 2026-09-19 | §31 | self-test 902/902 (23 new: 7 clearance legs plus probes, helpers, and pins); live validate 0 fatal 0 warnings; 4 headless panel rounds over candidates 0ad715f 9f882d9 0a7b498 366b5d3 (R2 adversarial rejected as false positive), sign-off record fixed at stamp; plan review 17 findings, 12 filed at §55, 3 duplicates, 2 rejected
+> **Review:** rounds 1-2 Sol, rounds 3-4 Opus sign-off, candidates 0ad715f 9f882d9 0a7b498 366b5d3 -- `adversarial` approve · `consistency` approve · `integration` approve · `record` needs-attention (fixed at stamp, pre-tracked D00 T01 §42); R1 fail-closed merges plus strict shapes plus linear bases, R2 strip parity (adversarial rejected), R3 docstring truth plus strip parity. Raw findings: docs/reviews/00-workspace/D00-T01-s31.md
+> **Plan review:** GPT high, filed D00 T01 §55 (run 20260919-D00-T01-S31-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under temp roots (the acc-tree plus a real git repo, both removed after, read back via per-line case assertions); implementation edited the clearance query, git helpers, fixtures, and pins (read back via self-test 902/902, live validate 0 fatal, plan --check current, 10 red mutations); filing opened §55 plus plan rows (read back via plan --check current)
+> **Duration:** 2026-09-19T05:33:00Z to 2026-09-19T06:10:03Z
 
 ## 32. Clearance Governance and Diagnostics
 
