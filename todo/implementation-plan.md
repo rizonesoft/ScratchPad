@@ -113,7 +113,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §26` | Grandfathered migration execution            |   8   |
 | [ ] | `D00 T01 §27` | Acceptance integrity                         |   7   |
 | [ ] | `D00 T01 §28` | Partial records and governance docs          |   7   |
-| [ ] | `D00 T01 §29` | Unattended checks and risk visibility        |   6   |
+| [ ] | `D00 T01 §29` | Unattended checks and risk visibility        |   7   |
 | [ ] | `D00 T01 §30` | Clearance fixture residuals                  |   4   |
 | [ ] | `D00 T01 §31` | Clearance causality and precision            |   7   |
 | [ ] | `D00 T01 §32` | Clearance governance and diagnostics         |   6   |
