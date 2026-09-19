@@ -1136,7 +1136,7 @@ Why this section exists: the run-4 gap audit found Phase 99 manual rows guarded 
 
 ## 43. Findings Count Touch-Up
 
-> **Started:** 2026-09-19T17:42:00Z
+> **Started:** 2026-09-19T16:29:41Z
 
 Why this section exists: the §20 findings ledger carries 18 rows that parse as 6 filed, 9 rejected, and 3 duplicate, but the file's prose header and the §20 stamp both recorded 10 rejected and 2 duplicate: PR11 is a `duplicate` row whose `(rejected: ...)` parenthetical names the reason, and the headcount read the parenthetical as the disposition. Rows are the validator-enforced authority, so the prose reconciles to them without rewriting history. -> XREF: D00 T01 §20 (reconciles its recorded counts); -> XREF: D00 T01 §24 (filed from its validation); -> SOURCE: s20-count-drift-2026-09-19 (prose header counts vs parsed ledger rows in docs/reviews/00-workspace/D00-T01-s20.md); -> SOURCE: plan-review-D00-T01-s24-2026-09-19-s43 D00-T01-S24-PR11 (rationale copies of the wrong tally); -> XREF: D00 T01 §37 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s37-2026-09-19-s43 D00-T01-S37-PR15 (`gpt-5.6-sol` high over §37 plus §35 plus §36 plus §55, 26 findings, 1 filed here, 4 duplicates, 13 rejected with reasons in the §37 findings file).
 
