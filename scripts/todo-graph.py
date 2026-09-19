@@ -1024,6 +1024,10 @@ SEVERITY_MAP: dict[str, str] = {
     # rather than blocks -- new records resolve at mint time and
     # record the full 40-hex ID (D00 T01 §33 item 3).
     "provenance-short-candidate": "warn",
+    # a pre-cutoff stamp or retirement note outside the frozen
+    # migration membership: backdated past completion, silently
+    # re-opening the grandfathered set (D00 T01 §48 item 6).
+    "backdated-stamp": "fatal",
 }
 # Rule-24 leg markers for the description probes (D00 T01 §46): each
 # leg of the `risk-acceptance-malformed` rule matches a normalized
@@ -1061,6 +1065,76 @@ def rule24_comment_legs(block: str) -> frozenset:
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
 PLAN_REVIEW_CUTOFF = "2026-09-18"
+
+
+# Frozen grandfathered-migration membership (D00 T01 §48 item 6):
+# the 53 (file, section) pairs retired 2026-09-19 at migration
+# completion (13/7/27/6). A retirement note or an unmarked
+# pre-cutoff stamp outside this set is backdated and fires rule 27;
+# the set never grows (newly discovered pre-cutoff stamps mark via
+# a real review, never retire). Recount: `section_retired` over the
+# tree yields exactly these pairs (item 3).
+MIGRATION_FROZEN = frozenset({
+    # todo/00-workspace/TODO-01-repo-and-toolchain.md
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 1),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 2),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 3),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 4),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 5),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 6),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 7),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 9),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 10),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 11),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 12),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 13),
+    ("todo/00-workspace/TODO-01-repo-and-toolchain.md", 14),
+    # todo/00-workspace/TODO-02-test-backbone.md
+    ("todo/00-workspace/TODO-02-test-backbone.md", 1),
+    ("todo/00-workspace/TODO-02-test-backbone.md", 2),
+    ("todo/00-workspace/TODO-02-test-backbone.md", 3),
+    ("todo/00-workspace/TODO-02-test-backbone.md", 4),
+    ("todo/00-workspace/TODO-02-test-backbone.md", 5),
+    ("todo/00-workspace/TODO-02-test-backbone.md", 6),
+    ("todo/00-workspace/TODO-02-test-backbone.md", 7),
+    # todo/01-notepad-core/TODO-01-winui-app-spine.md
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 1),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 2),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 3),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 4),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 5),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 6),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 7),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 8),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 9),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 11),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 13),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 14),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 16),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 17),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 18),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 19),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 20),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 21),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 22),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 24),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 25),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 26),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 27),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 28),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 29),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 30),
+    ("todo/01-notepad-core/TODO-01-winui-app-spine.md", 32),
+    # todo/01-notepad-core/TODO-02-menus-settings-status.md
+    ("todo/01-notepad-core/TODO-02-menus-settings-status.md", 1),
+    ("todo/01-notepad-core/TODO-02-menus-settings-status.md", 2),
+    ("todo/01-notepad-core/TODO-02-menus-settings-status.md", 3),
+    ("todo/01-notepad-core/TODO-02-menus-settings-status.md", 4),
+    ("todo/01-notepad-core/TODO-02-menus-settings-status.md", 13),
+    ("todo/01-notepad-core/TODO-02-menus-settings-status.md", 14),
+})
+
+
 # The grandfathered migration deadline (D00 T01 §21 item 3): past this
 # date, unmigrated batches read OVERDUE and fail `--check`.
 MIGRATION_DEADLINE = "2026-12-31"
@@ -11315,8 +11389,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             False,
         )
         check(
-            "cutoff-dated stamp without the marker stays silent",
-            any("TODO-07-marker.md" in ln and "§3 " in ln and "FATAL" in ln for ln in marker_out),
+            "cutoff-dated stamp without the marker fires only the membership leg",
+            any(
+                "TODO-07-marker.md" in ln
+                and "§3 " in ln
+                and "FATAL" in ln
+                and "frozen migration membership" not in ln
+                for ln in marker_out
+            ),
             False,
         )
         check(
@@ -12242,8 +12322,12 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             0,
         )
         check(
-            "grandfathered unmarked stamp stays validator-silent",
-            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§47 " in ln and "FATAL" in ln),
+            "grandfathered unmarked stamp fires only the membership leg",
+            sum(
+                1
+                for ln in marker_out
+                if "TODO-07-marker.md" in ln and "§47 " in ln and "FATAL" in ln and "frozen migration membership" not in ln
+            ),
             0,
         )
         check(
@@ -12610,13 +12694,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             0,
         )
         check(
-            "§§66-69 fire exactly zero (retirement notes validator-silent)",
+            "§§66-69 fire only the membership leg (retirement notes otherwise validator-silent)",
             sum(
                 1
                 for ln in marker_out
                 if "TODO-07-marker.md" in ln
                 and ("§66 " in ln or "§67 " in ln or "§68 " in ln or "§69 " in ln)
                 and "FATAL" in ln
+                and "frozen migration membership" not in ln
             ),
             0,
         )
@@ -13075,6 +13160,107 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 sum(1 for ln in v26_out if f"§{_n} " in ln and "FATAL" in ln),
                 0,
             )
+        # --- rule 27: backdated stamps fail (D00 T01 §48 item 6)
+        bd27 = root / "bd27"
+        (bd27 / "todo" / "90-bd27").mkdir(parents=True)
+        (bd27 / "docs" / "reviews").mkdir(parents=True)
+        _bd27_rows = []
+        _bd27_secs = []
+        # (stamp, marker-or-None, retired-note-or-None)
+        _bd27_cases = {
+            1: ("2026-09-18", None, "> **Retired:** 2026-09-19 | D90 T01 §1 | backdated note"),
+            2: ("2026-09-18", None, None),
+            3: ("2026-09-18", "GPT high, no findings (run 20260920-D90-T48-S3-gpt)", None),
+            4: ("2026-09-20", None, None),
+        }
+        for _n, (_stamp, _mark, _note) in _bd27_cases.items():
+            _bd27_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
+            _sec = [f"## {_n}. Span {_n}\n"]
+            _sec.append('\n- [x] Did the thing\n- [x] Commit: `"selftest: bd27"`\n\n')
+            _sec.append("**Test checkpoint:** `true`\n\n")
+            _sec.append(f"> **Verified:** {_stamp} | §{_n} | fixture\n")
+            _sec.append("> **Review:** round 1 -- Raw findings: docs/reviews/90-bd27.md\n")
+            if _mark is not None:
+                _sec.append(f"> **Plan review:** {_mark}\n")
+            if _note is not None:
+                _sec.append(f"{_note}\n")
+            _bd27_secs.append("".join(_sec))
+        (bd27 / "todo" / "90-bd27" / "TODO-01-backdate.md").write_text(
+            "---\nschema_version: 1\nid: bd27\ndomain: 90-bd27\nstatus: active\n"
+            'title: "TODO-01 -- Backdate"\ntrack: Z1\n---\n\n# TODO-01 -- Backdate\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            + "\n".join(_bd27_rows)
+            + "\n\n"
+            + "\n".join(_bd27_secs),
+            encoding="utf-8",
+        )
+        (bd27 / "todo" / "90-bd27" / "INDEX.md").write_text(
+            "# 90 Bd27\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-01](./TODO-01-backdate.md) | Backdate | active |\n",
+            encoding="utf-8",
+        )
+        (bd27 / "docs" / "reviews" / "90-bd27.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-bd27.md; run 20260920-D90-T48-S1-gpt\n\n"
+            "## Plan review\n\nManifest: sections [D90 T01 §1]; dependents [none]; "
+            "bytes 100; run 20260920-D90-T48-S1-gpt\n\nLedger:\n"
+            "- [D90-T48-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n",
+            encoding="utf-8",
+        )
+        canned_tree_modes[("aaa1111", "docs/reviews/90-bd27.md")] = "100644"
+        saved_tree, TODO_DIR = TODO_DIR, bd27 / "todo"
+        try:
+            v27 = _mio.StringIO()
+            with _mctx.redirect_stdout(v27), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_validate(None)
+            v27_out = v27.getvalue().splitlines()
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "backdated-stamp is a FATAL class",
+            SEVERITY_MAP.get("backdated-stamp"),
+            "fatal",
+        )
+        check(
+            "a retirement note outside the frozen membership fires",
+            any("§1 " in ln and "frozen migration membership" in ln for ln in v27_out),
+            True,
+        )
+        check(
+            "a bare pre-cutoff stamp outside the frozen membership fires",
+            any("§2 " in ln and "frozen migration membership" in ln for ln in v27_out),
+            True,
+        )
+        check(
+            "a marked pre-cutoff stamp stays silent",
+            sum(1 for ln in v27_out if "§3 " in ln and "frozen migration membership" in ln),
+            0,
+        )
+        check(
+            "a post-cutoff stamp stays silent",
+            sum(1 for ln in v27_out if "§4 " in ln and "frozen migration membership" in ln),
+            0,
+        )
+        check(
+            "the frozen membership holds 53 pairs",
+            len(MIGRATION_FROZEN),
+            53,
+        )
+        _bd27_counts: dict[str, int] = {}
+        for _mpath, _mnum in MIGRATION_FROZEN:
+            _bd27_counts[_mpath] = _bd27_counts.get(_mpath, 0) + 1
+        check(
+            "the frozen membership splits 13/7/27/6",
+            sorted(_bd27_counts.values()),
+            [6, 7, 13, 27],
+        )
         # --- rule-23 residuals: degraded WARNs, tree legs, last-run binding (D00 T01 §33)
         # Isolated root, one findings file per probe section (first
         # reporter wins per file, so per-section lines stay exact).

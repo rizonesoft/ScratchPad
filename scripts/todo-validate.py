@@ -1972,6 +1972,41 @@ def validate(graph, _args) -> int:
                     )
                 seen_sources.setdefault(key, here)
 
+    # 27. Backdated stamps fail (D00 T01 §48 item 6): the migration
+    # membership froze at completion (2026-09-19, the 53 retired
+    # pairs in `graph.MIGRATION_FROZEN`, never growing: newly
+    # discovered pre-cutoff stamps mark via a real review, never
+    # retire). A retirement note on a section outside the frozen
+    # set, or an unmarked pre-cutoff stamp outside it, is dated on
+    # or before the cutoff but committed after it: either would
+    # silently re-open the grandfathered set (bare leftovers hide
+    # in pre-deadline progress; a drained note hides everywhere).
+    # Marked pre-cutoff stamps never fire (a real review ran).
+    # FATAL: the fix is mechanical (date honestly, mark for real).
+    _r27_lines: dict[str, list[str]] = {}
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is None or s.stamped_on > graph.PLAN_REVIEW_CUTOFF:
+                continue
+            if (s.plan_review_body or "").strip():
+                continue
+            if (t.path, num) in graph.MIGRATION_FROZEN:
+                continue
+            if graph.section_retired(_r27_lines, t, num) is not None:
+                flag(
+                    "backdated-stamp",
+                    f"{t.path}:{s.line}: §{num} retirement note outside the frozen migration membership "
+                    "(the 53 retired 2026-09-19; newly discovered pre-cutoff stamps mark via a real review, never retire)",
+                )
+            else:
+                flag(
+                    "backdated-stamp",
+                    f"{t.path}:{s.line}: §{num} pre-cutoff stamp outside the frozen migration membership "
+                    "(backdated: post-inventory stamps read as post-cutoff and must mark)",
+                )
+
     # Internal self-tests deliberately point TODO_DIR at a standalone fixture.
     # Normal checkout validation always inspects its actual platform sources.
     # Intelligent Notepad day-1 port: the coming-soon inspector is not ported
