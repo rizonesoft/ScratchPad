@@ -91,7 +91,7 @@ track: W0
 |  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [x]   |
 |  36   |   §36   | README mixed-panel touch-up | §35 |  [x]   |
 |  37   |   §37   | Panel rule residuals | §35 |  [x]   |
-|  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
+|  38   |   §38   | Architecture gate residuals | §35 |  [x]   |
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [ ]   |
@@ -1030,6 +1030,13 @@ Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 
 - [x] Commit: `"workspace: complete architecture gate per eleventh live round"`
 
 **Test checkpoint:** the gate records its trigger (dry-run record quotes the line), survives its outage (Sol-high rung command echo-probed, outage record shape shown), numbers outside the cap (Arch-N in the dry-run record), and runs in a stated order (skill names panel, gate, re-gates, plan review, stamp with blocking powers). Cheaper substitute that fails: an undefined gate nobody runs the same way twice. **Corrected 2026-09-19 (validation):** was outcome-only prose; the outage half named no executable proof, so each leg now names its quoted evidence.
+
+> **Verified:** 2026-09-19 | §38 | self-test 1045/1045 (+0: prose-only skill section, no code); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3 sign-off over candidates 510a94f 8bc5d63 92196b5; plan review 18 findings, 3 filed at D00 T04 §1, 2 duplicates, 13 rejected
+> **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 510a94f 8bc5d63 92196b5 -- `adversarial` approve · `consistency` approve (R1 trigger-count contradiction fixed) · `integration` approve · `record` approve (R1 live-proof record fixed). Raw findings: docs/reviews/00-workspace/D00-T01-s38.md
+> **Plan review:** GPT high, filed D00 T04 §1 (run 20260919-D00-T01-S38-gpt)
+> **CRUD:** applicable | self-test wrote nothing new (no code; 1045/1045 re-observed in a clean worktree); skill plus TODO edits read back via grep and diff; TODO filings (25d3ab5) plus findings record (82348bb) plus live-proof provenance (ab5f439) read back via validate, plan --check, and fence re-hash; disposable dry-run /tmp artifacts torn down (verified absent)
+> **Duration:** 2026-09-19T13:06:13Z to 2026-09-19T13:28:56Z
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 39. Panel Telemetry
 
