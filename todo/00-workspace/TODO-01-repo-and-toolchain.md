@@ -92,7 +92,7 @@ track: W0
 |  36   |   §36   | README mixed-panel touch-up | §35 |  [x]   |
 |  37   |   §37   | Panel rule residuals | §35 |  [x]   |
 |  38   |   §38   | Architecture gate residuals | §35 |  [x]   |
-|  39   |   §39   | Panel telemetry | §35 |  [ ]   |
+|  39   |   §39   | Panel telemetry | §35 |  [x]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
 |  41   |   §41   | Bin output residuals | §40 |  [ ]   |
 |  42   |   §42   | Requires operator vocabulary | §13 |  [ ]   |
@@ -1052,6 +1052,13 @@ Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 
 - [x] Commit: `"workspace: add panel telemetry per eleventh live round"`
 
 **Test checkpoint:** rounds self-report, both runners feed the record, one query totals the tree, the outages leg counts degraded reviews with their runs, and one section view shows its panel summary. Cheaper substitute that fails: anecdote-driven caps. **Corrected 2026-09-19 (validation):** was items-1-3 only; the joiners (outage metric, panel summary) had no checkpoint leg.
+
+> **Verified:** 2026-09-19 | §39 | self-test 1088/1088 (+43: telemetry watcher, outcome rule, run scoping, round fallback, file-view counts, near-miss); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3-R5 sign-off over candidates b51982a dc6e819 5d3e659 3084869 8e2263b 8c07c19; plan review 18 findings, 4 filed at D00 T04 §1, 2 duplicates, 12 rejected
+> **Review:** rounds 1-5 (FINAL: Sol R1+R2, Opus R3-R5 sign-off), candidates b51982a dc6e819 5d3e659 3084869 8e2263b 8c07c19 -- `adversarial` needs-attention (R5-F1 below bar, filed at D00 T04 §1) · `consistency` approve · `integration` approve · `record` approve. Dispositions: 17 fixed, 1 filed. Raw findings: docs/reviews/00-workspace/D00-T01-s39.md
+> **Plan review:** GPT high, filed D00 T04 §1 (run 20260919-D00-T01-S39-gpt)
+> **CRUD:** applicable | self-test 1088/1088 re-observed live at stamp; code plus skill edits read back via diff; panel filings (59d4883) plus plan filings and review record (a55436a) read back via validate, plan --check, and fence re-hash; no repo scratch written (prompts and outputs under /tmp only)
+> **Duration:** 2026-09-19T13:30:23Z to 2026-09-19T14:42:22Z
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 40. Centralized Build Output in Bin
 
