@@ -12698,6 +12698,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ["complete", "complete", "partial", "retry-owed", "outage", "unknown"],
         )
         check(
+            "VERDICT_WORST orders unknown above outage above retry-owed above partial above complete",
+            sorted(VERDICT_WORST, key=VERDICT_WORST.get),
+            ["complete", "partial", "retry-owed", "outage", "unknown"],
+        )
+        check(
             "confidence_for maps binding plus resolution",
             [
                 confidence_for(False, [])[0],
