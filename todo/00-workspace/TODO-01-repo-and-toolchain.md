@@ -81,7 +81,7 @@ track: W0
 |  25   |   §25   | Rule-24 comment touch-up | §21 |  [x]   |
 |  26   |   §26   | Grandfathered migration execution | §21 |  [x]   |
 |  27   |   §27   | Acceptance integrity | §21 |  [x]   |
-|  28   |   §28   | Partial records and governance docs | §21 |  [ ]   |
+|  28   |   §28   | Partial records and governance docs | §21 |  [x]   |
 |  29   |   §29   | Unattended checks and risk visibility | §21 |  [ ]   |
 |  30   |   §30   | Clearance fixture residuals | §22 |  [ ]   |
 |  31   |   §31   | Clearance causality and precision | §22, §23 |  [ ]   |
@@ -800,6 +800,12 @@ Why this section exists: the eighth live plan review (§21 plus §19 plus §20 p
 - [x] Commit: `"workspace: partial records and governance docs per eighth live round"`
 
 **Test checkpoint:** the record explains its failures and every rule says what it means. Cheaper substitute that fails: tribal knowledge.
+
+> **Verified:** 2026-09-19 | §28 | self-test 829/829 (17 new: 4 due-date helper units, 6 marker-field cases, 5 panel-hardening cases, PR25 hollow trigger, §75 non-ASCII); live validate 0 fatal 0 warnings; 3 headless panel rounds over candidates 5b43b08 f45c71d 915cdd6, sign-off adversarial advisory filed as §34, consistency approve, integration approve, record needs-attention pre-tracked at §42; plan review 14 findings, 5 filed at §52 plus §48 joiner, 8 rejected
+> **Review:** rounds 1-2 Sol, round-3 Opus sign-off, candidates 5b43b08 f45c71d 915cdd6 -- `adversarial` advisory (filed D00 T01 §34) · `consistency` approve · `integration` approve · `record` needs-attention (pre-tracked D00 T01 §42); R1 whole-token attempts plus shaped triple legs plus partial detail plus ticked boxes, R2 ASCII digits plus README scope plus §34 sibling sweep. Raw findings: docs/reviews/00-workspace/D00-T01-s28.md
+> **Plan review:** GPT high, filed D00 T01 §52, D00 T01 §48 (run 20260919-D00-T01-S28-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-line case assertions); implementation edited the validator, query, fixtures, skill, README, and ticks (read back via self-test 829/829, live validate 0 fatal, plan --check current); filing opened §52 plus §48 joiner plus plan row (read back via plan --check current)
+> **Duration:** 2026-09-19T03:13:25Z to 2026-09-19T03:54:11Z
 
 ## 29. Unattended Checks and Risk Visibility
 
