@@ -18,6 +18,7 @@ track: W0
 >
 > **Filed 2026-09-17:** §9 (nightly full-suite regression run). Open: §§8-9.
 > **Filed 2026-09-19:** §10 (completion-first night-debt system). Open: §§8-10.
+> **Filed 2026-09-19:** §11 (central launch helper with off-screen birth). Open: §§8-11.
 
 ## Inputs
 
@@ -47,6 +48,7 @@ track: W0
 |   8   |   §8    | Focus-free UI suite conversion | §2 |  [ ]   |
 |   9   |   §9    | Nightly full-suite regression run | §8 |  [ ]   |
 |   10  |   §10   | Completion-first night-debt system | §8 |  [ ]   |
+|   11  |   §11   | Central launch helper with off-screen birth | §8 |  [ ]   |
 
 ---
 
@@ -228,6 +230,7 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 
 - -> XREF: D00 T02 §9 -- the nightly run executes this fence; the two tiers (default plus fenced) are that run's two halves.
 - -> XREF: D00 T02 §10 -- completion-first hardening plus the collector that collects this section's Interactive debt.
+- -> XREF: D00 T02 §11 -- central-launch plus off-screen-birth hardening filed from this section's Sol panel round 2.
 
 - [x] Every `Keyboard.*` and `Mouse.*` call in `tests/UI/` is dispositioned to convert-to-pattern, fence-as-interactive, or keep-with-reason, recorded as an audit table. Done when: the table quotes all 112 calls with a disposition each. **Corrected 2026-09-17 (§8 validation):** filed as 104; re-derived 112. Done: `docs/ui-input-audit.md` quotes all 112 (final: 88 convert, 24 fence, 0 keep). **Corrected 2026-09-17 (§8 item 2):** scope grew three more times during implementation: 22 cursor-moving `.Click()`/`.DoubleClick()`/`.RightClick()` sites (final: 1 convert, 17 fence, 4 keep-with-reason) plus 51 `.Focus()` sites (dispositioned by rule: dropped in default tests, kept in fenced tests) plus 2 raw `mouse_event` helpers (both fence), all appended to the same table with per-row corrections. Full inventory is 187 sites.
 - [x] Convertibles move to UIA patterns (`ValuePattern`, `InvokePattern`, selection) behind one shared helper, and the converted tests stay green locally. Done when: the default trait-filtered run passes with zero focus-dependent calls outside the fenced set. **Corrected 2026-09-17 (§8 validation):** filed as unfiltered `dotnet test tests/UI`, which contradicts item 3's fence; the gate is the default run. Done: Run A green 2026-09-19 (default filter with `-e SCRATCHPAD_BACKGROUND=1`: 159 passed, 3 skipped, 0 failed, 9m6s) with ForegroundLog clean (flagged=0, census 746, primary=0, exit 0); golden-capture DPI fix in `tests/UI/UiCapture.cs` (window-DPI re-placement via `GetDpiForWindow`: primary-registry 1.5x sizing laid out 1350 effective px off-screen at 100% and shrunk content to 0.667x, fresh/shell 690px plus settings 5905px vs 500px threshold) focused-proof 5/5 backgrounded; slnx builds 0 warnings 0 errors.
@@ -294,6 +297,22 @@ Why this section exists: sections stall waiting for the 02:00-06:50 quiet window
 - [ ] Commit: `"workspace: ship completion-first night-debt system"`
 
 **Test checkpoint:** `query night-debt` lists open debt only, a 5-night-old debt validates clean, the collector dry run quotes its log, the morning example names one uncollected cause, and all four skills name never-park. Cheaper substitute that fails: a debt list in chat with no query behind it.
+
+## 11. Central Launch Helper With Off-Screen Birth
+
+Why this section exists: every UI test file carries its own LaunchApp plus SeedSettings copies (21 plus 23 and counting), so background birth behavior cannot be set in one place, and §8 R2 measured 61 visible birth flashes on the primary per full run (250 ms dwell each, census-caught) because first windows restore at the 50,50 cascade before the funnel moves them. Centralizing the helpers lets background launches birth off-screen, which removes the flashes at the source instead of shrinking them. -> SOURCE: Sol-panel-D00-T02-s8-round-2 (R2 birth-flash family: 61 census-caught visible primary flashes per Run A; per-file helpers block central birth control).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §8 -- the funnel this hardens; filed from its Sol panel round 2.
+
+- [ ] `tests/UI/UiLaunch.cs` (new) centralizes `LaunchApp`, `LaunchAppWithArgs`, `SeedSettings`, and `AppExePath` behind one helper, and every per-file copy (21 `LaunchApp` plus 23 `SeedSettings` at filing) delegates to it or is removed. Done when: greps for both definitions return the one file.
+- [ ] Background birth: the central helper seeds off-screen geometry (X/Y 10000) when `SCRATCHPAD_BACKGROUND=1` unless the caller set explicit geometry, so Primary premises survive. Done when: a backgrounded first window restores off-screen and Run A census shows zero visible-primary flashes while the Primary set still rests on primary.
+- [ ] `tests/UI/UiForeground.cs` keeps show-then-move with sleep-after-move as the safety net for unseeded paths (redirect-created windows, direct launches), with its comment citing this section. Done when: the funnel tests pass unchanged.
+- [ ] `docs/testing.md` documents the birth rule (backgrounded launches birth off-screen, explicit geometry always wins). Done when: a second section can follow it without asking.
+- [ ] Commit: `"workspace: centralize UI launch with off-screen birth"`
+
+**Test checkpoint:** Run A census shows zero visible-primary flashes, Run B still rests 2/2 on primary, and the helper greps return one file. Cheaper substitute that fails: seeding X/Y by hand in 20-plus files.
 
 ## Verification
 
