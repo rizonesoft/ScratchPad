@@ -1495,6 +1495,47 @@ def is_outage_marker(body: str) -> bool:
     return st["outage"] and not (st["filed"] or st["nofind"] or st["retry"] or st["partial"])
 
 
+VERDICT_WORST = {"unknown": 4, "outage": 3, "retry-owed": 2, "partial": 1, "complete": 0}
+
+
+def marker_verdict(body: str) -> str:
+    """One last marker's verdict state (D00 T01 §45 item 1).
+
+    Pure outage first (a later failed attempt with no rerun),
+    then retry-owed, partial, filed-or-clean, else unknown.
+    The run verdict is the worst over carrying chains.
+    """
+    if is_outage_marker(body):
+        return "outage"
+    st = marker_states(body)
+    if st["retry"]:
+        return "retry-owed"
+    if st["partial"]:
+        return "partial"
+    if st["filed"] or st["nofind"]:
+        return "complete"
+    return "unknown"
+
+
+def confidence_for(bound: bool, resolutions: list[bool | None]) -> tuple[str, list[str]]:
+    """Evidence-confidence level plus reasons (D00 T01 §45 item 1).
+
+    High needs every bound candidate resolving: one verified quote
+    beside a bogus sibling is medium (partially verified), because
+    a resolving-to-nothing candidate attests nothing (review R1).
+    Unverifiable git degrades to medium, never high or low.
+    """
+    if not bound:
+        return "low", ["no provenance bound to this run"]
+    if all(_r is True for _r in resolutions):
+        return "high", ["provenance bound; every candidate resolves"]
+    if any(_r is True for _r in resolutions):
+        return "medium", ["provenance partially verified; some candidate unverified"]
+    if any(_r is None for _r in resolutions):
+        return "medium", ["provenance bound; candidate unverifiable here"]
+    return "low", ["provenance bound; no candidate resolves"]
+
+
 def ledger_row_due(disp: str, rest: str) -> str:
     # A deferred row spells `due` under the deferred vocabulary
     # (owner/due/trigger, renamed from `date` by D00 T01 §28 item 4 so
@@ -2755,28 +2796,13 @@ def cmd_query(args) -> int:
                     (_path, _pm.group(1), _pm.group(2), _pm.group(3), _pm.group(4), _pm.group(5), _pm.group(6))
                 )
         # Trust legs (D00 T01 §45 item 1): verdict is the worst
-        # last-marker state over carrying chains (unknown above
-        # outage above retry-owed above partial above complete);
-        # outage lasts count (a later failed attempt with no
-        # rerun), chain outages otherwise surface in the outage
-        # leg. Unknown when no marker carries the run.
-        _VERDICT_WORST = {"unknown": 4, "outage": 3, "retry-owed": 2, "partial": 1, "complete": 0}
+        # last-marker state over carrying chains; chain outages
+        # otherwise surface in the outage leg. Unknown when no
+        # marker carries the run.
         _verdict = None
         for _bodies in carrying.values():
-            _last = _bodies[-1]
-            if is_outage_marker(_last):
-                _vs = "outage"
-            else:
-                _st = marker_states(_last)
-                if _st["retry"]:
-                    _vs = "retry-owed"
-                elif _st["partial"]:
-                    _vs = "partial"
-                elif _st["filed"] or _st["nofind"]:
-                    _vs = "complete"
-                else:
-                    _vs = "unknown"
-            if _verdict is None or _VERDICT_WORST[_vs] > _VERDICT_WORST[_verdict]:
+            _vs = marker_verdict(_bodies[-1])
+            if _verdict is None or VERDICT_WORST[_vs] > VERDICT_WORST[_verdict]:
                 _verdict = _vs
         _verdict_unavailable = None if carrying else "no marker carries this run"
         # Correction lineage: per-row corrects trails plus
@@ -2826,21 +2852,10 @@ def cmd_query(args) -> int:
             )
         # Evidence confidence: provenance bound for this run plus
         # candidate resolution (high/medium/low with reasons).
-        _conf_reasons = []
-        if not artifacts:
-            _conf = "low"
-            _conf_reasons.append("no provenance bound to this run")
-        else:
-            _res = [git_resolves(_c) for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts]
-            if any(_r is True for _r in _res):
-                _conf = "high"
-                _conf_reasons.append("provenance bound; candidate resolves")
-            elif any(_r is None for _r in _res):
-                _conf = "medium"
-                _conf_reasons.append("provenance bound; candidate unverifiable here")
-            else:
-                _conf = "medium"
-                _conf_reasons.append("provenance bound; candidate resolves to nothing")
+        _conf, _conf_reasons = confidence_for(
+            bool(artifacts),
+            [git_resolves(_c) for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts],
+        )
         # Structured marker rows serve prose and JSON alike, so the
         # two can never drift apart.
         _marker_rows = []
@@ -2928,12 +2943,15 @@ def cmd_query(args) -> int:
         else:
             print(f"    {_verdict}")
         print("corrections -- amendment trails under this run")
-        _amended = [_c for _c in _corrections if _c["depth"]]
+        _amended = [_c for _c in _corrections if _c["depth"] or _c["corrected_by"]]
         if not _amended:
             print(f"    (none; {len(_corrections)} rows unamended)")
         for _c in _amended:
             _ext = " (head outside this run)" if _c["head_external"] else ""
-            print(f"    {_c['row']} corrects {' -> '.join(_c['corrects'][1:])} (depth {_c['depth']}){_ext}")
+            if _c["depth"]:
+                print(f"    {_c['row']} corrects {' -> '.join(_c['corrects'][1:])} (depth {_c['depth']}){_ext}")
+            if _c["corrected_by"]:
+                print(f"    {_c['row']} corrected by {', '.join(_c['corrected_by'])}")
         print("evidence confidence -- provenance binding plus candidate resolution")
         print(f"    {_conf} ({'; '.join(_conf_reasons)})")
         return 0
@@ -12460,7 +12478,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         )
         check(
             "query run confidence is high on a resolving candidate",
-            any("high (provenance bound; candidate resolves)" in ln for ln in run_lines),
+            any("high (provenance bound; every candidate resolves)" in ln for ln in run_lines),
             True,
         )
         check(
@@ -12551,23 +12569,22 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "high",
         )
         check(
-            "query run --json names every leg",
-            all(
-                _k in _jdata
-                for _k in (
-                    "verdict",
-                    "verdict_unavailable",
-                    "corrections",
-                    "confidence",
-                    "candidates",
-                    "scope",
-                    "findings",
-                    "markers",
-                    "outages",
-                    "artifacts",
-                )
-            ),
-            True,
+            "query run --json names exactly the run/1 legs",
+            set(_jdata),
+            {
+                "schema",
+                "run",
+                "verdict",
+                "verdict_unavailable",
+                "corrections",
+                "confidence",
+                "candidates",
+                "scope",
+                "findings",
+                "markers",
+                "outages",
+                "artifacts",
+            },
         )
         _jbuf2 = _mio.StringIO()
         with _mctx.redirect_stdout(_jbuf2), _mctx.redirect_stderr(_mio.StringIO()):
@@ -12584,6 +12601,47 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "query run --json states unavailable verdicts explicitly",
             (_judata.get("verdict"), _judata.get("verdict_unavailable")),
             (None, "no marker carries this run"),
+        )
+        # Trust-leg mapping tables (review R1): every verdict state
+        # and confidence branch resolves without a fixture run.
+        check(
+            "marker_verdict maps last-marker states",
+            [
+                marker_verdict("GPT high, filed §2 (run r)"),
+                marker_verdict("GPT high, no findings (run r)"),
+                marker_verdict("GPT high, partial: opus rung, filed §2 (run r)"),
+                marker_verdict("GPT high, filed §2, retry-owed owner a due 2099-01-01 (run r)"),
+                marker_verdict("outage: both rungs (owner a, due 2099-01-01) class x attempts 1"),
+                marker_verdict("(run r)"),
+            ],
+            ["complete", "complete", "partial", "retry-owed", "outage", "unknown"],
+        )
+        check(
+            "confidence_for maps binding plus resolution",
+            [
+                confidence_for(False, [])[0],
+                confidence_for(True, [True])[0],
+                confidence_for(True, [True, True])[0],
+                confidence_for(True, [True, False])[0],
+                confidence_for(True, [None])[0],
+                confidence_for(True, [False])[0],
+            ],
+            ["low", "high", "high", "medium", "medium", "low"],
+        )
+        _sbuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(_sbuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            _scode2 = cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S30-gpt"))
+        _slines2 = _sbuf2.getvalue().splitlines()
+        check("query run exits 0 on the mixed-evidence run", _scode2, 0)
+        check(
+            "query run confidence is medium on partially verified evidence",
+            any("medium (provenance partially verified; some candidate unverified)" in ln for ln in _slines2),
+            True,
+        )
+        check(
+            "query run shows corrected-by lines",
+            any("D90-T07-S92-PR11 corrected by D90-T07-S92-PR12" in ln for ln in _clines2),
+            True,
         )
         check(
             "rule 23 skips grandfathered findings",
