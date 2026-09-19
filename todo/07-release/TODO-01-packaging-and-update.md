@@ -97,9 +97,9 @@ Why this section exists: updates must arrive and must be survivable. A failed up
 
 ## 4. Release Checklist
 
-Why this section exists: releases are proven, not declared. The checklist names every proof and blocks the release until each is green.
+Why this section exists: releases are proven, not declared. The checklist names every proof and blocks the release until each is green. -> SOURCE: operator-finding-2026-09-19-release-acceptance (required list omitted update/rollback proof and an explicit docs-present leg; filed 2026-09-19).
 
-- [ ] `docs/release-checklist.md` requires: green suites, clean secret scan, current compatibility record, current docs, and clean install test. Done when: each item names its proof.
+- [ ] `docs/release-checklist.md` requires: green suites, clean secret scan, current compatibility record, current docs with help content shipped (§11) and guide links resolved (§12), clean install test, and update/rollback proof (§3 tests green on the candidate). Done when: each item names its proof.
 - [ ] The checklist runs as a CI gate on the release branch or tag. Done when: a probe gap blocks the release (reverted immediately).
 - [ ] Each release records its checklist results with the version. Done when: the record format exists.
 - [ ] Commit: `"release: add the release checklist"`
