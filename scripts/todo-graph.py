@@ -1615,7 +1615,7 @@ TELEMETRY_LINE_RE = re.compile(
     r"^Telemetry:\s*round\s+(\d+)\s*;\s*model\s+([^;]+?)\s*;\s*effort\s+([^;]+?)\s*;"
     r"\s*duration\s+([^;]+?)\s*;\s*outcome\s+([^;]+?)\s*;\s*tokens\s+([^;]+?)\s*$"
 )
-TELEMETRY_PANEL_RE = re.compile(r"^(#{1,6})\s+(Opus panel|GPT panel)\b(.*)$")
+TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|GPT panel)\b(.*)$", re.IGNORECASE)
 TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
 TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
 TELEMETRY_ROUND_RE = re.compile(r"round\s+(\d+)", re.IGNORECASE)
@@ -2404,7 +2404,7 @@ def telemetry_parse(text: str) -> dict:
             cur_level = len(hm.group(1))
             cur = {
                 "n": int(rm.group(1)) if rm else order,
-                "family": "Opus" if hm.group(2) == "Opus panel" else "GPT",
+                "family": "Opus" if hm.group(2).lower() == "opus panel" else "GPT",
                 "telemetry": None,
                 "verdicts": [],
             }
@@ -2461,15 +2461,22 @@ def telemetry_parse(text: str) -> dict:
             )
     for r in rounds:
         t = r["telemetry"]
-        if t is not None and r["verdicts"]:
-            worst = max(TELEMETRY_WORST[v.lower()] for _a, v in r["verdicts"])
-            if TELEMETRY_WORST.get(t["outcome"], -1) != worst:
-                # The shape defines outcome as the round's worst lens
-                # verdict; a disagreeing line is corrupt totals, not data.
-                malformed.append(t["_line"])
-                r["telemetry"] = None
-        if r["telemetry"] is not None:
-            del r["telemetry"]["_line"]
+        if t is None:
+            continue
+        if not r["verdicts"]:
+            # No recognized verdicts, no checkable outcome: the line is
+            # unverifiable totals input, not data.
+            malformed.append(t["_line"])
+            r["telemetry"] = None
+            continue
+        worst = max(TELEMETRY_WORST[v.lower()] for _a, v in r["verdicts"])
+        if TELEMETRY_WORST.get(t["outcome"], -1) != worst:
+            # The shape defines outcome as the round's worst lens
+            # verdict; a disagreeing line is corrupt totals, not data.
+            malformed.append(t["_line"])
+            r["telemetry"] = None
+            continue
+        del r["telemetry"]["_line"]
     return {
         "rounds": rounds,
         "malformed": malformed,
@@ -16482,6 +16489,22 @@ Sol outage: CLI missing before round 2
         check("telemetry scopes runs to their round", _tc["round_runs"], {2: ["20260920-D90-T09-S9-opus"]})
         check("telemetry scopes the outage to its round", _tc["sol"], [("CLI missing before round 2", 2)])
         check("telemetry keeps file-wide runs too", _tc["runs"], ["20260920-D90-T09-S9-gpt", "20260920-D90-T09-S9-opus"])
+        _TEL_NOV = telemetry_parse(
+            "## GPT panel (round 1)\n\nTelemetry: round 1; model m; effort e; duration 1s; outcome approve; tokens 1\n"
+        )
+        check(
+            "telemetry without verdicts counts malformed",
+            (_TEL_NOV["rounds"][0]["telemetry"], len(_TEL_NOV["malformed"])),
+            (None, 1),
+        )
+        _TEL_L1 = telemetry_parse("# Opus panel\n\n- `adversarial` approve\n")
+        check("telemetry rejects level-1 panel headings like the validator", _TEL_L1["rounds"], [])
+        _TEL_LC = telemetry_parse("## gpt panel (round 4)\n\n- `adversarial` approve\n")
+        check(
+            "telemetry matches panel headings case-insensitively like the validator",
+            [(r["n"], r["family"]) for r in _TEL_LC["rounds"]],
+            [(4, "GPT")],
+        )
         _tbuf = _tio.StringIO()
         with _tctx.redirect_stdout(_tbuf), _tctx.redirect_stderr(_tio.StringIO()):
             _tcode = cmd_query(argparse.Namespace(what="telemetry"))
