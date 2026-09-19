@@ -2,11 +2,12 @@
 """Resolve and launch the ScratchPad app (D00 T01 §41 item 7, PR11).
 
 The stable pointer over the deep tree: computes
-Bin/ScratchPad/<Config>[/<RID>]/ScratchPad(.exe) and execs it, so operators
+Bin/ScratchPad/<Config>[/<RID>]/ScratchPad.exe and execs it, so operators
 never spell the layout. `--print-path` resolves without launching (CI smoke
-resolves through it; Linux asserts the shape through it, since the binary
-itself is Windows-only). RID defaults to win-<arch> on Windows (matching the
-csproj default) and no RID leg elsewhere. Extra arguments forward to the app.
+resolves through it; Linux asserts the resolved path against the evaluated
+`OutputPath`, since the binary itself is Windows-only). RID defaults to
+win-<arch> on every OS, mirroring the csproj unconditional default; `--rid ''`
+empties the leg for explicit-RID-empty builds. Extra arguments forward to the app.
 """
 
 import argparse
@@ -20,13 +21,11 @@ def exe_path(root: Path, config: str, rid: str | None) -> Path:
     parts = ["Bin", "ScratchPad", config]
     if rid:
         parts.append(rid)
-    parts.append("ScratchPad.exe" if os.name == "nt" else "ScratchPad")
+    parts.append("ScratchPad.exe")
     return root.joinpath(*parts)
 
 
 def default_rid() -> str | None:
-    if os.name != "nt":
-        return None
     arch = platform.machine().lower()
     return "win-arm64" if arch in ("arm64", "aarch64") else "win-x64"
 
