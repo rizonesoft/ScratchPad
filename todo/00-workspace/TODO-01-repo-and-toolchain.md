@@ -90,7 +90,7 @@ track: W0
 |  34   |   §34   | Amendment and runner residuals | §20, §23 |  [x]   |
 |  35   |   §35   | Mixed Sol/Opus panel with soft and hard caps | §9, §14 |  [x]   |
 |  36   |   §36   | README mixed-panel touch-up | §35 |  [x]   |
-|  37   |   §37   | Panel rule residuals | §35 |  [ ]   |
+|  37   |   §37   | Panel rule residuals | §35 |  [x]   |
 |  38   |   §38   | Architecture gate residuals | §35 |  [ ]   |
 |  39   |   §39   | Panel telemetry | §35 |  [ ]   |
 |  40   |   §40   | Centralized build output in Bin | §1, §2 |  [x]   |
@@ -1007,6 +1007,13 @@ Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 
 - [x] Commit: `"workspace: harden panel rules per eleventh live round"`
 
 **Test checkpoint:** skipped Sol rounds fire, blocking round-5 leftovers stop the run, every panel finding carries a disposition, the all-Opus shape reads plainly, and the help guarantees the fallback definition. Cheaper substitute that fails: prose controls nobody checks.
+
+> **Verified:** 2026-09-19 | §37 | self-test 1045/1045 (+7: outage-rule pins, help-definition probe, R2 verdict-evidence pins §§44-45); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3 sign-off over candidates 3bb28dc 3310659 a242025c; plan review 26 findings, 9 filed at §39 plus §43 plus D00 T04 §1, 4 duplicates, 13 rejected
+> **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 3bb28dc 3310659 a242025c -- `adversarial` advisory (R1 colon-denial fixed; R2 empty-GPT shield fixed; R3 nothing-check false-fire filed at D00 T04 §1) · `consistency` needs-attention below bar (R2 table shape fixed; R3 verdict-evidence condition filed at D00 T04 §1) · `integration` approve · `record` approve (R2 premature tick fixed). Raw findings: docs/reviews/00-workspace/D00-T01-s37.md
+> **Plan review:** GPT high, filed D00 T01 §39, D00 T01 §43, D00 T04 §1 (run 20260919-D00-T01-S37-gpt)
+> **CRUD:** applicable | self-test wrote outage-rule fixtures under a temp root (unlinked after, read back via case assertions); skill plus validator plus help plus README edits read back via grep and diff; TODO filings (12a67d1) plus findings record (4b34a05) plus live-proof provenance (d5b046a) plus plan row read back via validate, plan --check, and fence re-hash
+> **Duration:** 2026-09-19T12:05:34Z to 2026-09-19T12:59:21Z
+> **Implementer:** Muse Code (Meta Muse Spark)
 
 ## 38. Architecture Gate Residuals
 
