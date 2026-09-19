@@ -183,7 +183,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §11` | Session word goal                                                   |   4   |
 | [ ] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
 | [ ] | `D01 T02 §16` | Quarantine the MenuBarTests flakes                                  |   5   |
-| [ ] | `D01 T02 §17` | About panel identity rows                                           |   6   |
+| [ ] | `D01 T02 §17` | About panel identity rows                                           |   7   |
 | [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   5   |
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |   5   |
 | [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |   5   |

@@ -506,6 +506,7 @@ Why this section exists: the shipped Settings About panel (D01 T02 §3) shows na
 - [ ] `src/ScratchPad/SettingsPage.xaml` renders copyright, publisher, links, and logo rows in the About panel from the §10 registry. Done when: each row's text matches the registry and no identity string is hardcoded in the page.
 - [ ] Each link row invokes the system launcher with its registry URL. Done when: the invoked URI per row matches the registry with the launcher seam mocked.
 - [ ] The logo renders at most 48px tall in both themes with the theme-correct asset. Done when: the capture comparison shows the cap holding on light and dark goldens.
+- [ ] The GitHub and X link rows render their registry brand icons at row height. Done when: the capture comparison shows both icons on light and dark goldens.
 - [ ] The name and version rows read exactly as D01 T02 §3 shipped them. Done when: the row texts are byte-identical to the shipped golden strings.
 - [ ] `docs/user-guide/settings.md` documents the new rows. Done when: the guide names every row and its source.
 - [ ] Commit: `"notepad-core: add the About identity rows"`
