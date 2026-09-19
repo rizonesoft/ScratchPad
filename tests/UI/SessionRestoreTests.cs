@@ -20,6 +20,7 @@ public sealed class SessionRestoreTests
     [Trait("Category", "Interactive")]
     public void QuitAndRelaunchRestoresTabsContentsAndCarets()
     {
+        // Fenced (grandfather §8): caret-offset asserts need real keystroke insertion (audit keyboard).
         string dir = NewTempDir();
         string fileA = Path.Combine(dir, "alpha.txt");
         string fileB = Path.Combine(dir, "bravo.txt");
@@ -704,7 +705,8 @@ public sealed class SessionRestoreTests
             NameAt,
             name => name != expected,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
     }
 

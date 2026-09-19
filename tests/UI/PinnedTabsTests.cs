@@ -20,6 +20,7 @@ public sealed class PinnedTabsTests
     [Trait("Category", "Interactive")]
     public void DoubleClickTogglesPinGlyph()
     {
+        // Fenced (grandfather §8): double-click IS the point; no pattern path pins a tab (audit clicks).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -45,6 +46,7 @@ public sealed class PinnedTabsTests
     [Trait("Category", "Interactive")]
     public void PinsSurviveRelaunch()
     {
+        // Fenced (grandfather §8): pin setup needs the cursor (audit clicks).
         string dir = NewTempDir();
         string file = Path.Combine(dir, "persist13.txt");
         File.WriteAllText(file, "pin me");
@@ -101,6 +103,7 @@ public sealed class PinnedTabsTests
     [Trait("Category", "Interactive")]
     public void CloseOthersSkipsPinned()
     {
+        // Fenced (grandfather §8): pin setup plus context menu need the cursor (audit clicks).
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -145,6 +148,7 @@ public sealed class PinnedTabsTests
     [Trait("Category", "Interactive")]
     public void CloseRightSkipsPinned()
     {
+        // Fenced (grandfather §8): pin setup plus context menu need the cursor (audit clicks).
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -190,6 +194,7 @@ public sealed class PinnedTabsTests
     [Trait("Category", "Interactive")]
     public void SingleCloseStillClosesPinned()
     {
+        // Fenced (grandfather §8): pin setup needs the cursor (audit clicks).
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -273,7 +278,8 @@ public sealed class PinnedTabsTests
             NameAt,
             name => name != expected,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
     }
 

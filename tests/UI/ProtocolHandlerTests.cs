@@ -112,11 +112,13 @@ public sealed class ProtocolHandlerTests
         try
         {
             string url = ProtocolAssociation.Scheme + "://" + Uri.EscapeDataString(file);
+            nint fgBefore = UiForeground.Capture();
             using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             Assert.NotNull(process);
             using var app = Application.Attach(process.Id);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
             Assert.NotNull(window);
             try
             {
@@ -246,7 +248,8 @@ public sealed class ProtocolHandlerTests
             NameAt,
             name => name != expected,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
     }
 

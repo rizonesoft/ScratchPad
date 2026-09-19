@@ -84,7 +84,8 @@ public sealed class UntitledTitleTests
             NameAt,
             name => name != expected,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
     }
 

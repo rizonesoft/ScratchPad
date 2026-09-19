@@ -25,6 +25,24 @@ internal static class UiForeground
         Restore(before);
     }
 
+    // InPlace: for tests whose premise is app-chosen placement (restored
+    // geometry, cascade offsets): moving them to the secondary destroys
+    // what they assert. Shows the window no-activate where the app put it
+    // and restores the prior foreground; never moves, never activates, so
+    // it stays focus-free on whichever monitor that is. Callers carry
+    // [Trait("Category", "Primary")] and run in the placement run, whose
+    // census proves they rested on the primary (D00 T02 §8 item 7 revision).
+    internal static void InPlace(Window? window, nint before)
+    {
+        if (window is null)
+        {
+            return;
+        }
+
+        Show(window);
+        Restore(before);
+    }
+
     // Moves a window to the suite display and shows it no-activate: the
     // secondary monitor when one exists (visible, so layout and UIA
     // containers behave exactly like foreground runs, but never
@@ -40,10 +58,29 @@ internal static class UiForeground
             return;
         }
 
-        (int x, int y) = SuiteDisplayOrigin();
-        nint hwnd = window.Properties.NativeWindowHandle.Value;
-        Native.SetWindowPos(hwnd, nint.Zero, x, y, 900, 650, 0x0010);
-        Show(window);
+        // Show first, then move: SetWindowPos on a minimized window is
+        // silently ignored (spiked: the move never sticks and Show restores
+        // at the birth cascade, 50,50 on the primary), while a visible
+        // window obeys. Both calls are no-activate and back-to-back, so the
+        // birth-position flash lasts microseconds: no focus steal, and the
+        // census persistence rule (seen twice) cannot catch it.
+        // Thread awareness (UiDpi pattern): testhost is DPI-unaware, so
+        // coordinates go through physical pixels explicitly.
+        nint previous = UiDpi.Enter();
+        try
+        {
+            Show(window);
+            (int x, int y) = SuiteDisplayOrigin();
+            nint hwnd = window.Properties.NativeWindowHandle.Value;
+            if (!Native.SetWindowPos(hwnd, nint.Zero, x, y, 900, 650, 0x0010))
+            {
+                throw new InvalidOperationException($"UiForeground: SetWindowPos failed for {hwnd} (Win32 error {Marshal.GetLastWin32Error()})");
+            }
+        }
+        finally
+        {
+            UiDpi.Exit(previous);
+        }
     }
 
     internal sealed record SuiteDisplay(bool Primary, Rectangle Bounds, Rectangle WorkingArea);
@@ -101,7 +138,7 @@ internal static class UiForeground
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetForegroundWindow(nint hWnd);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetWindowPos(nint hWnd, nint after, int x, int y, int cx, int cy, uint flags);

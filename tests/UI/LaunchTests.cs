@@ -152,6 +152,10 @@ public sealed class LaunchTests
                     TimeSpan.FromSeconds(10),
                     TimeSpan.FromMilliseconds(250)).Result ?? [];
                 Assert.Equal(2, windows.Count);
+                foreach (Window w in windows)
+                {
+                    UiForeground.Background(w, fgBefore);
+                }
             }
             finally
             {
@@ -245,6 +249,7 @@ public sealed class LaunchTests
     [Trait("Category", "Interactive")]
     public void MissingFileOfferEnterAcceptsAsYes()
     {
+        // Fenced (grandfather §8): ENTER acceptance IS the point (audit keyboard).
         string dir = NewTempDir();
         string missing = Path.Combine(dir, "enter8.txt");
         SeedFresh();
@@ -424,7 +429,12 @@ public sealed class LaunchTests
                 }
 
                 SettleForProviders();
-                var fileWindow = windows.Select(w => (Window: w, Tabs: TabItems(w).Count)).OrderByDescending(pair => pair.Tabs).First().Window;
+                // The file window is the one that is not the first window:
+                // both hold exactly one tab, so a most-tabs pick ties and
+                // falls back to enumeration (Z) order, which the background
+                // move reshuffles (D00 T02 §8 item 10).
+                nint firstHwnd = window.Properties.NativeWindowHandle.Value;
+                var fileWindow = windows.Single(w => w.Properties.NativeWindowHandle.Value != firstHwnd);
                 Assert.Equal(1, WaitForTabCount(fileWindow, 1));
                 WaitForTabName(fileWindow, 0, TabAccessibilityName.For("w8.txt", isDirty: false));
                 Assert.Empty(LaunchDrops.Drain());
@@ -936,7 +946,8 @@ public sealed class LaunchTests
             NameAt,
             name => name != expected,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
     }
 

@@ -65,17 +65,22 @@ public sealed class MainWindowTests
         Assert.True(result.Match, $"shell golden mismatch: {result.DifferentFraction:P3} different");
     }
 
-    [InteractiveFact]
-    [Trait("Category", "Interactive")]
+    [Fact]
+    [Trait("Category", "Primary")]
     public void GeometryRestoresAcrossLaunches()
     {
-        // Fenced: restored screen geometry IS the point, and off-screen
-        // placement destroys its premise (D00 T02 §8).
+        // Primary placement (pair §8 item 7 revision): moved to the
+        // secondary the restored-geometry premise is destroyed (nothing at
+        // the seeded primary rect to assert); shown in place on the primary
+        // it passes. Focus-free: InPlace shows no-activate and restores
+        // the foreground.
         SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 120, Y = 130, Width = 800, Height = 600 });
+        nint fgBefore = UiForeground.Capture();
         using (var app = LaunchApp())
         {
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
+            UiForeground.InPlace(window, fgBefore);
             Assert.NotNull(window);
             // AppWindow geometry is physical pixels; read the rect DPI-aware to match.
             var previous = UiDpi.Enter();

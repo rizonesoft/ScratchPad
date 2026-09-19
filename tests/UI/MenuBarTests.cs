@@ -232,6 +232,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void AccessKeysOpenEachMenu()
     {
+        // Fenced (grandfather §8): Alt access keys ARE the point (audit keyboard).
         (VirtualKeyShort Key, string Menu, string First)[] cases =
         [
             (VirtualKeyShort.KEY_F, "MenuFile", "MenuFileNewTab"),
@@ -282,6 +283,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileMenuLiveAcceleratorsWork()
     {
+        // Fenced (grandfather §8): live Ctrl accelerators via UiInput.Press; shortcut dispatch IS the point.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
@@ -394,8 +396,7 @@ public sealed class MenuBarTests
                 Assert.True(item.IsEnabled, id);
             }
 
-            Keyboard.Press(VirtualKeyShort.ESCAPE);
-            Thread.Sleep(350);
+            DismissMenu(window, top);
         }
     }
 
@@ -474,6 +475,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileOpenShowsPickerWithEncodingList()
     {
+        // Fenced (grandfather §8): native picker needs real clicks; Invoke blocks on the synchronous dialog (audit clicks).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
@@ -518,6 +520,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileOpenLoadsFileWithForcedEncoding()
     {
+        // Fenced (grandfather §8): native picker dialog flow (same family as FileOpenShowsPickerWithEncodingList).
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -558,6 +561,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileOpenOpensExactlyOneFile()
     {
+        // Fenced (grandfather §8): dialog needs real clicks; stays physical (audit keyboard).
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -631,6 +635,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileOpenMissingNameOffersCreate()
     {
+        // Fenced (grandfather §8): native picker dialog flow (same family as FileOpenShowsPickerWithEncodingList).
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -719,6 +724,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileSaveOnUntitledOpensSaveAs()
     {
+        // Fenced (grandfather §8): native Save As dialog flow.
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -760,6 +766,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileSaveAsWritesChosenPathAndEncoding()
     {
+        // Fenced (grandfather §8): native Save As dialog flow.
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -811,6 +818,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileSaveAsPrefillsEncodingAndEol()
     {
+        // Fenced (grandfather §8): native Save As dialog flow.
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
@@ -871,6 +879,7 @@ public sealed class MenuBarTests
     [Trait("Category", "Interactive")]
     public void FileSaveAllWalksDirtyTabs()
     {
+        // Fenced (grandfather §8): multi-dialog dirty walk via physical keys.
         string dir = NewTempDir();
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try

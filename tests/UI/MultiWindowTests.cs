@@ -16,16 +16,20 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class MultiWindowTests
 {
-    [InteractiveFact]
-    [Trait("Category", "Interactive")]
+    [Fact]
+    [Trait("Category", "Primary")]
     public void CtrlShiftNOpensSecondWindowAtCascade()
     {
-        // Fenced: cascade placement IS the point, and off-screen
-        // placement destroys its premise (D00 T02 §8).
+        // Primary placement (pair §8 item 7 revision): moved to the
+        // secondary the cascade premise is destroyed (no app-chosen offset
+        // to assert); shown in place on the primary it passes. Focus-free:
+        // InPlace shows no-activate and restores the foreground.
         SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 100, Y = 100, Width = 900, Height = 650 });
+        nint fgBefore = UiForeground.Capture();
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
         var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.InPlace(first, fgBefore);
         Assert.NotNull(first);
         try
         {
@@ -87,6 +91,7 @@ public sealed class MultiWindowTests
     [Trait("Category", "Interactive")]
     public void TabDragOutsideStripDetachesNothing()
     {
+        // Fenced (grandfather §8): drag physics IS the point (audit mouse).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();

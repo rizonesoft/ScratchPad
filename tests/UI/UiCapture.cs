@@ -136,12 +136,30 @@ internal static class UiCapture
                 throw new InvalidOperationException("app showed no main window");
             }
 
-            UiForeground.Restore(fgBefore);
+            UiForeground.Background(window, fgBefore);
 
             var scale = DisplayScale();
             if (!Place(window, 10000, 10000, (int)Math.Round(tolerance.CanonicalWidth * scale), (int)Math.Round(tolerance.CanonicalHeight * scale)))
             {
                 throw new InvalidOperationException("app window refused placement");
+            }
+
+            // The registry guess names the primary display, but backgrounded
+            // windows live off-screen at 100%: sizing by the primary 150% lays
+            // out 1350 effective px and the canonical downscale shrinks content
+            // to 0.667x (measured Run A 2026-09-19: 690px fresh/shell,
+            // 5905px settings). The window's own DPI context wins, so the
+            // size is re-placed when the guess is wrong. Single-monitor boxes
+            // read the primary DPI here and skip the second placement.
+            var actual = WindowDpi(window) / 96.0;
+            if (Math.Abs(actual - scale) > 0.001)
+            {
+                if (!Place(window, 10000, 10000, (int)Math.Round(tolerance.CanonicalWidth * actual), (int)Math.Round(tolerance.CanonicalHeight * actual)))
+                {
+                    throw new InvalidOperationException("app window refused DPI-corrected placement");
+                }
+
+                scale = actual;
             }
 
             prepare?.Invoke(window);
@@ -168,14 +186,26 @@ internal static class UiCapture
         }
     }
 
-    // Primary-display scale without DPI-awareness dependence. Assumes the captured
-    // window opens on the primary display; multi-monitor mixed-DPI is out of scope.
+    // First-guess scale from the primary display without DPI-awareness
+    // dependence. CaptureInner corrects it from the window's own DPI
+    // context after placement; mixed-DPI capture is in scope since D00
+    // T02 §8 (backgrounded windows render off-screen at 100%).
     static double DisplayScale()
     {
         const int fallback = 96;
         using var key = Registry.CurrentUser.OpenSubKey(@"Control Panel\Desktop\WindowMetrics");
         var dpi = key?.GetValue("AppliedDPI") as int? ?? fallback;
         return dpi <= 0 ? 1.0 : dpi / 96.0;
+    }
+
+    // The DPI context Windows assigned the window at its final position
+    // (nearest monitor for off-screen windows), so the size math follows
+    // the render context instead of the primary registry key. Falls back
+    // to the guess on API failure (0): mis-sized beats unplaced.
+    static uint WindowDpi(Window window)
+    {
+        var dpi = NativeMethods.GetDpiForWindow(window.Properties.NativeWindowHandle.Value);
+        return dpi == 0 ? (uint)Math.Round(DisplayScale() * 96) : dpi;
     }
 
     // DWM-surface capture that works off-screen (spiked D00 T02 §8:
@@ -253,5 +283,9 @@ internal static class UiCapture
         {
             _ = SetWindowPos(hwnd, 0, x, y, width, height, flags);
         }
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetDpiForWindow(nint hWnd);
     }
 }

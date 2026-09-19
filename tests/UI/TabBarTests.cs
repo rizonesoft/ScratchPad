@@ -63,6 +63,7 @@ public sealed class TabBarTests
     [Trait("Category", "Interactive")]
     public void ThreeTabsSwitchAndClose()
     {
+        // Fenced (grandfather §8): Ctrl+Tab/Ctrl+W shortcuts via UiInput.Press; shortcut dispatch IS the point.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -136,6 +137,7 @@ public sealed class TabBarTests
     [Trait("Category", "Interactive")]
     public void NumberShortcutsAndReopenMatchNotepad()
     {
+        // Fenced (grandfather §8): number shortcuts via UiInput.Press.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -193,6 +195,7 @@ public sealed class TabBarTests
     [Trait("Category", "Interactive")]
     public void DragAttemptLeavesOrderUnchanged()
     {
+        // Fenced (grandfather §8): drag physics IS the point (audit mouse).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -305,6 +308,7 @@ public sealed class TabBarTests
     [Trait("Category", "Interactive")]
     public void DontSaveClosesAndNeverReopens()
     {
+        // Fenced (grandfather §8): Ctrl+W plus dirty-prompt dialog flow via UiInput.Press.
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -339,6 +343,7 @@ public sealed class TabBarTests
     [Trait("Category", "Interactive")]
     public void ContextMenuMatchesNotepad()
     {
+        // Fenced (grandfather §8): context menu needs the cursor (audit clicks; quarantined ctxmenu-name-race).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -431,6 +436,7 @@ public sealed class TabBarTests
     [Trait("Category", "Interactive")]
     public void MiddleClickClosesTheTabUnderTheCursor()
     {
+        // Fenced (grandfather §8): middle-click IS the point; raw mouse_event (audit raw input).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -633,7 +639,8 @@ public sealed class TabBarTests
             NameAt,
             name => name != expected,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
     }
 

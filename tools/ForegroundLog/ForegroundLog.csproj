@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- CA1303 (localizable strings): a dev-only probe tool; its console output is never localized. -->
     <NoWarn>$(NoWarn);CA1303</NoWarn>
   </PropertyGroup>

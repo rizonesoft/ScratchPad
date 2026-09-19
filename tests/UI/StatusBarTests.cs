@@ -56,6 +56,7 @@ public sealed class StatusBarTests
     [Trait("Category", "Interactive")]
     public void KeystrokesAndCaretMovesUpdateStrip()
     {
+        // Fenced (grandfather §8): keystroke handling IS the point (audit keyboard).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = LaunchApp();
         using var automation = new UIA3Automation();
@@ -170,6 +171,7 @@ public sealed class StatusBarTests
     [Trait("Category", "Interactive")]
     public void StatusSegmentsHaveNoClickPath()
     {
+        // Fenced (grandfather §8): the click IS the point; proves no-op (audit clicks).
         SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
@@ -408,7 +410,8 @@ public sealed class StatusBarTests
             () => SegmentName(window, id),
             name => !string.Equals(name, expected, StringComparison.Ordinal),
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.Equal(expected, actual);
     }
 
@@ -418,7 +421,8 @@ public sealed class StatusBarTests
             () => window.FindFirstDescendant(cf => cf.ByAutomationId("StatusLineColumn")) is not null,
             present => present,
             TimeSpan.FromSeconds(10),
-            TimeSpan.FromMilliseconds(250)).Result;
+            TimeSpan.FromMilliseconds(250),
+            lastValueOnTimeout: true).Result;
         Assert.False(absent);
     }
 
