@@ -108,6 +108,11 @@ REVIEW_KIND_LABELS = {
 }
 DURATION_BODY_RE = re.compile(r"^(?P<minutes>\d+)\s*m?$")
 DURATION_END_RE = re.compile(r"^\S+\s+to\s+(?P<end>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)$")
+# A `> **Started:**` line that may anchor a Duration range (rule 26,
+# D00 T01 §32): full-instant shape, calendar-checked at the rule. A
+# prefix-only comparison would let `2026-09-20-invalid` anchor a span
+# (round-1 adversarial), so the shape binds the whole line.
+STARTED_INSTANT_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 VERIFIED_DATE_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})\b")
 # A deferral names its owner with "-> XREF: <ref>" and, optionally, the exact
 # checklist item that owner carries. Both are what make closure checkable.
@@ -10994,8 +10999,10 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             8: ("2026-09-18", "2026-09-18T08:00:00Z", "unclear"),
             9: ("2026-09-20", None, "2026-09-20T08:00:00Z to 2026-09-20T08:45:00Z"),
             10: ("2026-09-20", "2026-09-20T08:00:00Z", "2026-09-19T08:00:00Z to 2026-09-21T08:00:00Z"),
+            11: ("2026-09-20", "2026-09-20-approx", "2026-09-20T08:00:00Z to 2026-09-20T08:45:00Z"),
+            12: ("2026-09-20", "2026-09-31T08:00:00Z", "2026-09-20T08:00:00Z to 2026-09-20T08:45:00Z"),
         }
-        for _n in range(1, 11):
+        for _n in range(1, 13):
             _stamp, _started, _dur = _d26_cases[_n]
             _d26_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
             _sec = [f"## {_n}. Span {_n}\n"]
@@ -11029,7 +11036,7 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             encoding="utf-8",
         )
         _d26_recs = []
-        for _n in range(1, 11):
+        for _n in range(1, 13):
             _d26_recs.append(
                 f"## Plan review\n\nManifest: sections [D90 T01 §{_n}]; dependents [none]; "
                 f"bytes 100; run 20260920-D90-T32-S{_n}-gpt\n\nLedger:\n"
@@ -11081,6 +11088,16 @@ proof D90-T07-S4-PR81 tests/fix-proof.py::test_clearance
             "a start-and-end miss fires exactly twice",
             sum(1 for ln in v26_out if "§10 " in ln and "FATAL" in ln),
             2,
+        )
+        check(
+            "an unshaped Started anchor fails closed",
+            sum(1 for ln in v26_out if "§11 " in ln and "outside the UTC-instant shape" in ln),
+            1,
+        )
+        check(
+            "a calendar-impossible Started anchor fails closed",
+            sum(1 for ln in v26_out if "§12 " in ln and "not a real calendar instant" in ln),
+            1,
         )
         for _n, _why in (
             (1, "a tied range stays silent"),

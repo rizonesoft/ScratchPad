@@ -1639,12 +1639,15 @@ def validate(graph, _args) -> int:
     # range whose start day misses the Started day or whose end day
     # misses the stamp day is a span the record cannot vouch for --
     # either would let arbitrary well-shaped instants manufacture
-    # clearance ordering. Minute forms carry no instants and skip;
-    # sections without a Duration line skip (the field is optional);
-    # an absent Started line anchors nothing (only the end binds);
-    # pre-cutoff stamps keep the silent fallback (rule-16 precedent).
-    # FATAL: the fix is mechanical (shape the span, align the ends)
-    # and an uncheckable span breaks the clearance contract.
+    # clearance ordering. The Started anchor itself must be a shaped,
+    # calendar-real UTC instant: a prefix-only tie would let
+    # `2026-09-20-invalid` vouch for a span (round-1 adversarial), so
+    # an unshaped Started fails closed. Minute forms carry no instants
+    # and skip; sections without a Duration line skip (the field is
+    # optional); an absent Started line anchors nothing (only the end
+    # binds); pre-cutoff stamps keep the silent fallback (rule-16
+    # precedent). FATAL: the fix is mechanical (shape the span, align
+    # the ends) and an uncheckable span breaks the clearance contract.
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -1660,12 +1663,33 @@ def validate(graph, _args) -> int:
                 continue
             if s.duration_start is None or s.duration_end is None:
                 continue
-            if s.started_at and s.duration_start[:10] != s.started_at[:10]:
+            if s.started_at and graph.STARTED_INSTANT_RE.match(s.started_at) is None:
+                # Unshaped anchors fail closed (round-1 adversarial):
+                # a prefix-only tie would let `2026-09-20-invalid`
+                # vouch for a span. The fix is mechanical (write the
+                # instant), and Started without a range still skips
+                # (nothing to anchor).
                 flag(
                     "duration-range-uncheckable",
-                    f"{t.path}:{s.line}: §{num} Duration starts {s.duration_start[:10]} "
-                    f"but Started: reads {s.started_at[:10]} (align the start with the Started day)",
+                    f"{t.path}:{s.line}: §{num} Started: line is outside the UTC-instant shape "
+                    "(write `YYYY-MM-DDTHH:MM:SSZ`)",
                 )
+            elif s.started_at:
+                try:
+                    graph.datetime.strptime(s.started_at, "%Y-%m-%dT%H:%M:%SZ")
+                except ValueError:
+                    flag(
+                        "duration-range-uncheckable",
+                        f"{t.path}:{s.line}: §{num} Started: line {s.started_at!r} "
+                        "is not a real calendar instant",
+                    )
+                else:
+                    if s.duration_start[:10] != s.started_at[:10]:
+                        flag(
+                            "duration-range-uncheckable",
+                            f"{t.path}:{s.line}: §{num} Duration starts {s.duration_start[:10]} "
+                            f"but Started: reads {s.started_at[:10]} (align the start with the Started day)",
+                        )
             if s.stamped_on is not None and s.duration_end[:10] != s.stamped_on:
                 flag(
                     "duration-range-uncheckable",
