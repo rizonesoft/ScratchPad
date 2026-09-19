@@ -24,9 +24,9 @@ It is not a subscription. Saying it twice because it bears repeating.
 
 | Path | What it is |
 | ---- | ---------- |
-| `src/` | The app (lands with `D00 T01 §2`) |
+| `src/` | The app (WinUI 3 shell plus editor, ACP, agents) |
 | `tests/` | Unit, UI, protocol, and perf suites (backbone: `D00 T02`) |
-| `resources/baseline/` | Captured Notepad baseline for parity checks (lands with `D00 T02 §3`) |
+| `resources/baseline/` | Captured Notepad baseline for parity checks |
 | `todo/` | The live execution plan. Start here. |
 | `scripts/todo-graph.py` | Build, validate, query, and render the TODO graph (stdlib-only) |
 | `docs/` | User guide, review records, phase runs, plans |

@@ -4,13 +4,13 @@ Agent instructions for this repository. Human orientation lives in `README.md`. 
 
 ## What is here
 
-`ScratchPad` is the monorepo for an exact Windows 11 Notepad clone (C#, WinUI 3 on .NET) with Claude Code and Codex inside via the Agent Client Protocol. Day 1: the plan and its tooling. `src/` lands with `D00 T01 §2`.
+`ScratchPad` is the monorepo for an exact Windows 11 Notepad clone (C#, WinUI 3 on .NET) with Claude Code and Codex inside via the Agent Client Protocol. Toolchain, scaffold, CI, and the TODO tooling are live; the app grows under `src/`.
 
 | Path | Purpose |
 | ---- | ------- |
-| `src/` | The app (not yet scaffolded) |
+| `src/` | The app (WinUI 3 shell plus editor, ACP, agents) |
 | `tests/` | Unit, UI, protocol, perf suites (backbone: `D00 T02`) |
-| `resources/baseline/` | Captured Notepad baseline for parity checks (lands with `D00 T02 §3`) |
+| `resources/baseline/` | Captured Notepad baseline for parity checks |
 | `todo/` | Canonical execution contracts; read `todo/README.md` before authoring or implementing |
 | `todo/implementation-plan.md` | Ordered execution plan synchronized through `scripts/todo-graph.py` |
 | `scripts/` | Neutral tooling: graph, validator, adjacency inspector |
@@ -65,7 +65,7 @@ python3 scripts/todo-graph.py plan --check   # fail if the projection went stale
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # ref -> file, section, deps, status
 ```
 
-Build and test commands arrive with `D00 T01` (one-command build, `dotnet test` suite). Until they land, `todo-graph.py` is the only thing to run, and it is stdlib-only by design.
+One-command build and `dotnet test` suite live under `src/` and `tests/` (owned by `D00 T01 §2`); `todo-graph.py` stays stdlib-only by design.
 
 Run checks owed by the task. Report only commands actually run, and distinguish static evidence, test output, and review proof.
 
