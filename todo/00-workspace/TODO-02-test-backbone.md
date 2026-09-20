@@ -58,6 +58,7 @@ track: W0
 |   17  |   §17   | Nightly notify plus trend surface | §9 |  [ ]   |
 |   18  |   §18   | Central launch hardening and evidence | §11 |  [ ]   |
 |   19  |   §19   | Night-debt due dates and escalation | §10 |  [ ]   |
+|   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [ ]   |
 
 ---
 
@@ -509,6 +510,16 @@ Why this section exists: open night debt carries age but no absolute due date an
 - [ ] Commit: `"workspace: give night debt due dates"`
 
 **Test checkpoint:** N1 quotes due plus escalation, and the overdue fixture pins the line. Cheaper substitute that fails: age alone with no date anyone owes.
+
+## 20. Accelerator Sweep Sign-Off Polish
+
+Why this section exists: the §12 Opus sign-off left two advisories that file instead of re-rounding: a dead foreground capture in the N chord test, and the audit doc missing its trailing newline. -> SOURCE: Opus-panel-D00-T02-s12-round-3 (candidates `ae8b8c1` `4fe8166` `0b38dd2`, round-3 consistency advisory R3-F1 plus record advisory R3-F2; transcribed in `docs/reviews/00-workspace/D00-T02-s12.md`).
+
+- [ ] The dead `fgBefore` capture in `AcceleratorTests.ChordCtrlShiftNOpensSecondWindow` is removed (or paired with a restore if a funnel call belongs there). Done when: no capture in the file lacks its restore. (D00-T02-S12-R3-F1.)
+- [ ] `docs/ui-input-audit.md` ends with its trailing newline. Done when: the diff marker is gone. (D00-T02-S12-R3-F2.)
+- [ ] Commit: `"workspace: polish the accelerator sweep sign-off"`
+
+**Test checkpoint:** Dead capture gone and trailing newline restored. Cheaper substitute that fails: leaving either for a drive-by.
 
 ## Verification
 

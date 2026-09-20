@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **95 of 254 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **95 of 255 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -145,6 +145,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §17` | Nightly notify plus trend surface               |   2   |
 | [ ] | `D00 T02 §18` | Central launch hardening and evidence           |   7   |
 | [ ] | `D00 T02 §19` | Night-debt due dates and escalation             |   2   |
+| [ ] | `D00 T02 §20` | Accelerator sweep sign-off polish               |   2   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                      |   5   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files             |   8   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record       |   5   |
