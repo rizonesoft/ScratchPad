@@ -2160,7 +2160,10 @@ def stamp_generations_by_section(text: str) -> dict[int, int]:
     second sigil plus spaced ranges, and letting evidence prose
     name sections the stamp never covered). Last stamp wins per
     section, mirroring the parser; sections without stamps read
-    absent, never 0 (absence is not a regression baseline)."""
+    absent, never 0 (absence is not a regression baseline).
+    Over-wide stamps skip whole (panel R2): the parser refuses
+    coverage past MAX_STAMP_COVERAGE, so the map claims nothing
+    there either, and no crafted range can stall validation."""
     out: dict[int, int] = {}
     for ln in text.splitlines():
         sm = STAMP_RE.match(ln)
@@ -2171,6 +2174,8 @@ def stamp_generations_by_section(text: str) -> dict[int, int]:
             continue
         gm = STAMP_GENERATION_RE.match(shaped.group("evidence"))
         gen = int(gm.group(1)) if gm is not None else 0
+        claimed: list[int] = []
+        over = False
         for element in shaped.group("cover").split(","):
             item = COVER_ITEM_RE.match(element.strip())
             if item is None:
@@ -2179,8 +2184,14 @@ def stamp_generations_by_section(text: str) -> dict[int, int]:
             hi = int(item.group("hi")) if item.group("hi") else lo
             if lo < 1 or hi < lo:
                 continue
-            for num in range(lo, hi + 1):
-                out[num] = gen
+            if len(claimed) + (hi - lo + 1) > MAX_STAMP_COVERAGE:
+                over = True
+                break
+            claimed.extend(range(lo, hi + 1))
+        if over:
+            continue
+        for num in claimed:
+            out[num] = gen
     return out
 
 
@@ -13299,6 +13310,13 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "> **Verified:** 2026-09-20 | §40-41, §42 - §43 | generation 2 | unlike §44\n"
             ),
             {40: 2, 41: 2, 42: 2, 43: 2},
+        )
+        check(
+            "generation map skips over-wide stamps without stalling",
+            stamp_generations_by_section(
+                "> **Verified:** 2026-09-20 | §1-999999999 | generation 2 | too wide\n"
+            ),
+            {},
         )
         check(
             "an edited marker fails against history",
