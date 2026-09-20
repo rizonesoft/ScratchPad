@@ -65,8 +65,14 @@ function Invoke-Step([string]$Name, [scriptblock]$Cmd) {
 function Start-LegLog([string]$Path, [string]$Scope) {
   if (Test-Path $Path) { Remove-Item $Path -Force }
   Start-Transcript -Path $Path | Out-Null
-  $head = 'unknown'
-  try { $head = (git -C $Root rev-parse HEAD).Trim() } catch { }
+  # Build-time HEAD, captured once after the up-front build: a commit
+  # landing mid-run must not misattribute legs (the 04:13 task run's legs
+  # read 7ec7495 then 2fd0ea4 while running one build).
+  $head = $script:buildHead
+  if ([string]::IsNullOrWhiteSpace($head)) {
+    $head = 'unknown'
+    try { $head = (git -C $Root rev-parse HEAD).Trim() } catch { }
+  }
   Write-Output "nightly: scope=$Scope head=$head day=$(Get-Date -Format 'yyyy-MM-dd') leg=$(Split-Path -Leaf $Path)"
 }
 
@@ -308,6 +314,8 @@ try {
   if ($code -ne 0) { throw "nightly: solution build failed ($code); no leg runs on a broken build" }
   $code = Invoke-Step 'build-gate' { & $Dotnet build tools/ForegroundLog/ForegroundLog.csproj --nologo }
   if (($code -ne 0) -or (-not (Test-Path $GateExe))) { throw "nightly: gate build failed ($code); Run A and B need the gate binary" }
+  $script:buildHead = 'unknown'
+  try { $script:buildHead = (git -C $Root rev-parse HEAD).Trim() } catch { }
 
   if (-not $SkipDefault) {
     $log = Join-Path $nightDir "$stamp-default.log"
@@ -385,8 +393,11 @@ try {
 
 # Morning report (D00 T02 §9 item 3): per-leg counts plus failures with
 # filing refs appended at triage. Always written, green or red.
-$head = 'unknown'
-try { $head = (git -C $Root rev-parse HEAD).Trim() } catch { }
+$head = $script:buildHead
+if ([string]::IsNullOrWhiteSpace($head)) {
+  $head = 'unknown'
+  try { $head = (git -C $Root rev-parse HEAD).Trim() } catch { }
+}
 $trigger = 'manual (see transcript head)'
 try {
   $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
