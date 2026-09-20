@@ -143,8 +143,8 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §15` | Nightly enforcement and count hardening         |   3   |
 | [ ] | `D00 T02 §16` | Verify timer-fired completion and green         |   3   |
 | [ ] | `D00 T02 §17` | Nightly notify plus trend surface               |   2   |
-| [ ] | `D00 T02 §18` | Central launch hardening and evidence           |   8   |
-| [ ] | `D00 T02 §19` | Night-debt due dates and escalation             |   3   |
+| [ ] | `D00 T02 §18` | Central launch hardening and evidence           |   7   |
+| [ ] | `D00 T02 §19` | Night-debt due dates and escalation             |   2   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                      |   5   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files             |   8   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record       |   5   |
