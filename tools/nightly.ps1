@@ -203,7 +203,10 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
 
 function Get-TrxSummary([string]$TrxPath) {
   if (-not (Test-Path $TrxPath)) { return $null }
-  $t = [xml](Get-Content $TrxPath -Raw)
+  # A killed leg can leave truncated XML; a throw here would kill the
+  # report under $ErrorActionPreference = 'Stop', so malformed trx reads
+  # as absent (the transcript still carries the counts).
+  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $null }
   $results = @($t.TestRun.Results.UnitTestResult)
   $passed = @($results | Where-Object { $_.outcome -eq 'Passed' }).Count
   $failed = @($results | Where-Object { $_.outcome -eq 'Failed' })
@@ -254,7 +257,9 @@ function Get-NonQuarantineSkips([string]$TrxPath) {
   # stays zero under skips, so the trx is the enforcement point.
   $names = @()
   if (-not (Test-Path $TrxPath)) { return $names }
-  $t = [xml](Get-Content $TrxPath -Raw)
+  # Same truncated-XML guard as Get-TrxSummary: malformed trx reads as
+  # no skips (the transcript skip merge still reports the names).
+  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $names }
   foreach ($r in @($t.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'NotExecuted' })) {
     $msg = ''
     if ($r.Output -and $r.Output.ErrorInfo -and $r.Output.ErrorInfo.Message) { $msg = $r.Output.ErrorInfo.Message }
@@ -310,6 +315,14 @@ function Format-LegRow([string]$Leg, $Sum, $Gate, [string]$LogName, [string]$Not
   if ($Sum.Assemblies) { $counts += " ($($Sum.Assemblies))" }
   if ($Note -ne '') { $counts += " ($Note)" }
   return "| $Leg | $counts | $gate | $($LogName) |"
+}
+
+function Write-AtomicReport([string[]]$Lines, [string]$Path) {
+  # Same-volume rename is atomic on NTFS: a kill between the write and
+  # the rename leaves the previous report, never a truncation.
+  $tmp = "$Path.tmp"
+  $Lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
+  Move-Item -Path $tmp -Destination $Path -Force
 }
 
 function Get-LegNote([string]$Leg, $Gate, [bool]$Killed) {
@@ -618,7 +631,7 @@ try {
   $coreReport += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
   $coreReport += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
   $coreReport += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
-  $coreReport -join "`r`n" | Set-Content -Path (Join-Path $nightDir "morning-$day.md") -Encoding UTF8
+  Write-AtomicReport $coreReport (Join-Path $nightDir "morning-$day.md")
   Write-Output "nightly: core verdicts published before soak"
   if (-not $SkipSoak) {
     for ($i = 1; $i -le 5; $i++) {
@@ -724,7 +737,10 @@ foreach ($i in 1..5) { $soakNames += "protocol-soak-$i" }
 $soakAny = $false
 foreach ($n in $soakNames) {
   $st = Get-TrxSummary (Join-Path $trxDir "$n.trx")
-  if ($null -eq $st) { continue }
+  if ($null -eq $st) {
+    if ($soakKilled -contains $n) { $soakAny = $true; $report += "- $n : no trx (killed at cap: unproven)" }
+    continue
+  }
   $soakAny = $true
   $tag = if ($soakKilled -contains $n) { 'killed at cap: unproven' } else { 'proved' }
   $report += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped ($tag)"
@@ -832,7 +848,7 @@ if ($stagedStubs.Count -gt 0) {
   $report += ''
 }
 $reportPath = Join-Path $nightDir "morning-$day.md"
-$report -join "`r`n" | Set-Content -Path $reportPath -Encoding UTF8
+Write-AtomicReport $report $reportPath
 Write-Output "nightly: report at $reportPath"
 
 if ($failed) { Write-Output 'nightly: RED (see above)'; exit 1 }
