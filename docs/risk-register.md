@@ -4,3 +4,4 @@ Live plus lapsed acceptance instruments with residual severity (findings: row se
 
 | Target | Residual | State | Owner | Approver | Expires | Review | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| D00-T02-S10-PR1 | critical | live | DerickPayne | DerickPayne | 2026-10-20 | 2026-09-27 | Self-filed critical cannot clear by ordering (target == reviewer §10); proofs ride §11's pipeline, re-review at its landing |
