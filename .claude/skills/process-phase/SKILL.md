@@ -64,7 +64,7 @@ Read the phase as a user would use it, end to end, and ask what is missing: surf
 
 In table order, for each open row: `process-todo-section`, then `review-todo-section`. Record each outcome in the findings file's Sections log. After each stamp, sync the plan. Commit per section; push per the two-push discipline (ship push, then stamp push).
 
-Skip rows whose `resolve` is not exit 0 or whose verdict is runnable-elsewhere here, and re-check them after each stamp: the graph moves as rows flip. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
+Skip rows whose `resolve` is not exit 0 or whose verdict is runnable-elsewhere here, and re-check them after each stamp: the graph moves as rows flip. Never park a ready row on quiet time: ship-with-debt rows run now and the collector closes their debt async. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
 
 ## Step 4 -- closeout
 

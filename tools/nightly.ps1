@@ -15,7 +15,9 @@
   that otherwise follows the legs. -SkipDefault, -SkipPrimary, and -SkipFenced
   drop their legs (morning triage re-drives Run A plus Run B with -SkipFenced
   -SkipSoak). -Force runs the Interactive leg outside
-  the window for an explicitly accepted interruption. Uses the repo-local SDK
+  the window for an explicitly accepted interruption. -CollectDebt <id>
+  limits the Interactive leg to one night debt's trait filter (with
+  -CheckOnly it dry-runs the resolution). Uses the repo-local SDK
   only. Procedure: docs/testing.md "Nightly regression run".
 #>
 [CmdletBinding()]
@@ -26,7 +28,8 @@ param(
   [switch]$SkipFenced,
   [switch]$SkipSoak,
   [switch]$Smoke,
-  [switch]$CheckOnly
+  [switch]$CheckOnly,
+  [string]$CollectDebt = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -34,6 +37,7 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $SdkDir = Join-Path $Root '.tools\dotnet-win-x64'
 $Dotnet = Join-Path $SdkDir 'dotnet.exe'
 $GateExe = Join-Path $Root 'Bin\ForegroundLog\Debug\ForegroundLog.exe'
+. (Join-Path $PSScriptRoot 'NightDebt.ps1')
 
 function Get-InInteractiveWindow {
   $spec = $env:SCRATCHPAD_INTERACTIVE_WINDOW
@@ -299,6 +303,19 @@ $inWindow = Get-InInteractiveWindow
 $locked = Get-WorkstationLocked
 Write-Output "nightly: window=$inWindow locked=$locked force=$($Force.IsPresent)"
 
+if ($CheckOnly -and ($CollectDebt -ne '')) {
+  # Collector dry run (D00 T02 §10 item 4): resolve one debt id, quote
+  # its filter, owed count, and the log path it would write. No dirs,
+  # no tests, no side effects.
+  $debts = @(Get-OpenNightDebts $Root)
+  $debt = @($debts | Where-Object { $_.Id -eq $CollectDebt })
+  if ($debt.Count -ne 1) { Write-Output "nightly: unknown debt id '$CollectDebt'"; exit 2 }
+  $dryStamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
+  $dryFilter = Get-DebtDotnetFilter $debt[0].Filter
+  Write-Output "nightly: collect-debt $($debt[0].Id) section $($debt[0].Section) filter $dryFilter owed $($debt[0].Count)"
+  Write-Output "nightly: collect-debt log build/nightly/$dryStamp-full.log trx build/nightly/$dryStamp/interactive.trx"
+  exit 0
+}
 if ($CheckOnly) { Write-Output 'nightly: environment OK'; exit 0 }
 
 # Single-writer: the mutex serializes governed runs, so a manual backup
@@ -334,6 +351,27 @@ $failed = $false
 $buildError = ''
 $gateA = $null
 $gateB = $null
+$interactiveRan = $false
+$interactiveKilled = $false
+$interactiveLeaked = @()
+$interactiveSkipReason = ''
+# Collector snapshot (D00 T02 §10 items 4-6): open debts before the
+# legs, so the report attributes per-debt entries against this run's
+# start state, never a mid-run re-read. A failed query reds the run
+# but the report still lands (report-always outranks attribution).
+$debtSnapshot = @()
+$debtQueryError = ''
+try { $debtSnapshot = @(Get-OpenNightDebts $Root) } catch { $debtQueryError = "$_"; $failed = $true }
+$collectFilter = 'Category=Interactive'
+$collectId = ''
+if ($CollectDebt -ne '') {
+  $hit = @($debtSnapshot | Where-Object { $_.Id -eq $CollectDebt })
+  if ($hit.Count -ne 1) { throw "nightly: unknown debt id '$CollectDebt'" }
+  $collectId = $CollectDebt
+  $collectFilter = Get-DebtDotnetFilter $hit[0].Filter
+}
+$interactiveScope = "tests/UI, $collectFilter, foreground"
+if ($collectId -ne '') { $interactiveScope += ", debt $collectId" }
 
 if ($Smoke) {
   $log = Join-Path $nightDir "$stamp-smoke.log"
@@ -413,36 +451,46 @@ try {
   if (-not $SkipFenced) {
     $log = Join-Path $nightDir "$stamp-full.log"
     if ($Force) {
-      Start-LegLog $log 'tests/UI, Category=Interactive, foreground, forced'
+      Start-LegLog $log ($interactiveScope + ', forced')
       try {
         $trx = Join-Path $trxDir 'interactive.trx'
-        $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Interactive', '-e', 'SCRATCHPAD_INTERACTIVE_FORCE=1', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
+        $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', $collectFilter, '-e', 'SCRATCHPAD_INTERACTIVE_FORCE=1', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
         $r = Invoke-TimedStep 'interactive' 1800 $stepArgs "$trx.testcode"
+        $interactiveRan = $true
+        $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
         $leaked = @(Get-NonQuarantineSkips $trx)
+        $interactiveLeaked = $leaked
         if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
       }
     } elseif (-not $inWindow) {
       Write-Output 'nightly: interactive leg skipped (outside the quiet-hours window); the bar fails the run (see docs/testing.md)'
+      $interactiveSkipReason = 'outside the quiet-hours window'
       $failed = $true
     } elseif ($locked) {
       Write-Output 'nightly: interactive leg skipped (workstation locked; UI cannot be driven); the bar fails the run (see docs/testing.md)'
+      $interactiveSkipReason = 'workstation locked'
       $failed = $true
     } else {
-      Start-LegLog $log 'tests/UI, Category=Interactive, foreground'
+      Start-LegLog $log $interactiveScope
       try {
         $trx = Join-Path $trxDir 'interactive.trx'
-        $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Interactive', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
+        $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', $collectFilter, '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
         $r = Invoke-TimedStep 'interactive' 1800 $stepArgs "$trx.testcode"
+        $interactiveRan = $true
+        $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
         $leaked = @(Get-NonQuarantineSkips $trx)
+        $interactiveLeaked = $leaked
         if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
       }
     }
+  } else {
+    $interactiveSkipReason = '-SkipFenced'
   }
 
   if (-not $SkipSoak) {
@@ -528,10 +576,64 @@ foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sum
   }
 }
 if (-not $anySkip) { $report += '(none)' ; $report += '' }
+# Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
+# Interactive collection per open debt, append Night-collected on
+# green, stage finding stubs on red. Triage commits the appends;
+# runs never commit. A zero-executed collection never closes debt
+# (vacuous proof); it reds as a collector bug.
+$debtEntries = @()
+$stagedStubs = @()
+if ($debtQueryError -ne '') {
+  $debtEntries += "- debt query failed: $debtQueryError (debts neither attributed nor closed)"
+} else {
+  foreach ($debt in $debtSnapshot) {
+    $debtFilter = ''
+    try { $debtFilter = Get-DebtDotnetFilter $debt.Filter } catch { $debtFilter = '' }
+    $covered = $interactiveRan -and ($debtFilter -ne '') -and ($debtFilter -eq $collectFilter)
+    if (-not $covered) {
+      if ($interactiveSkipReason -ne '') { $cause = "interactive leg skipped ($interactiveSkipReason)" }
+      else { $cause = "filter $debtFilter not covered this run (leg ran $collectFilter)" }
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: $cause"
+      continue
+    }
+    if (($null -eq $sumI) -or $interactiveKilled) {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: collector bug (leg killed or no summary)"
+      $failed = $true
+      continue
+    }
+    $executed = $sumI.Passed + $sumI.FailedCount
+    if ($executed -le 0) {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: collector bug (filter matched no tests)"
+      $failed = $true
+      continue
+    }
+    if (($sumI.FailedCount -gt 0) -or ($interactiveLeaked.Count -gt 0)) {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); findings staged below; debt stays open"
+      continue
+    }
+    $logRel = "build/nightly/$stamp/interactive.trx"
+    $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel
+    $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
+    Write-Output "nightly: night-debt $($debt.Id): $note"
+    $debtEntries += "- $($debt.Id) ($($debt.Section)): collected $($sumI.Passed) passed, $($sumI.FailedCount) failed, $($sumI.Skipped.Count) skipped; log $logRel"
+  }
+}
+if ($interactiveRan -and ($null -ne $sumI) -and ($sumI.FailedCount -gt 0)) {
+  $stagedStubs = @(Format-FindingStubs $sumI.Failed $Root)
+}
+$report += '## Night debt'
+$report += ''
+if ($debtEntries.Count -eq 0) { $report += '(no open debt at run start)'; $report += '' }
+else { $report += $debtEntries; $report += '' }
 $report += '## Filings'
 $report += ''
 $report += '(triage appends one line per failure: test name, finding ref or quarantine row)'
 $report += ''
+if ($stagedStubs.Count -gt 0) {
+  $report += '### Nightly collector (staged; triage files via add-todo)'
+  $report += $stagedStubs
+  $report += ''
+}
 $reportPath = Join-Path $nightDir "morning-$day.md"
 $report -join "`r`n" | Set-Content -Path $reportPath -Encoding UTF8
 Write-Output "nightly: report at $reportPath"

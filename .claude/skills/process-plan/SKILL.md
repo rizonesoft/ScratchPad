@@ -33,9 +33,10 @@ python3 scripts/todo-graph.py validate
 python3 scripts/todo-graph.py plan --check
 python3 scripts/todo-graph.py query ready
 python3 scripts/todo-graph.py query blocked
+powershell -ExecutionPolicy Bypass -File tools/provision.ps1 -Verify
 ```
 
-The audit is these commands and the recorded lines, nothing more: the deep phase repair belongs to `process-phase` step 1. Fix every FATAL before talking about shipping. If `plan --check` is stale, run `plan --sync`, then re-check. **Never tick a box in `implementation-plan.md` by hand**: the boxes are a projection of the Implementation Order tables.
+The audit is these commands and the recorded lines, nothing more: the deep phase repair belongs to `process-phase` step 1. Fix every FATAL before talking about shipping. If `plan --check` is stale, run `plan --sync`, then re-check. Run the provision verify half with the audit: if it faults, repair first (`tools/provision.ps1` without `-Verify`), then ship. **Never tick a box in `implementation-plan.md` by hand**: the boxes are a projection of the Implementation Order tables.
 
 Record these lines **in the run's findings file**, not as the turn's last words:
 
@@ -67,7 +68,7 @@ A parked phase is **not** complete, and it is **not** a stall. Do not call it ei
 python3 scripts/todo-graph.py query ready
 ```
 
-If another phase has a ready row, re-point the guard to the new phase's run file (delete, recreate, record the new id) and start `process-phase` on it in the same turn. Same session, same rules. If no phase has a ready row, the remaining leftovers are blocked, runnable-elsewhere in this context, or the plan is done: delete the guard, record the deletion in the findings file, and report which.
+If another phase has a ready row, re-point the guard to the new phase's run file (delete, recreate, record the new id) and start `process-phase` on it in the same turn. Same session, same rules. Never park a ready phase on quiet time: completion-first binds the chain, not just the row. If no phase has a ready row, the remaining leftovers are blocked, runnable-elsewhere in this context, or the plan is done: delete the guard, record the deletion in the findings file, and report which.
 
 ## 3. Deny
 

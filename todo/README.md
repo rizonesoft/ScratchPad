@@ -169,6 +169,12 @@ Alternative markers, one per stamp (the last marker line governs, so these never
 - Clearance tokens -- a section clearing a filed critical names `fix <sha>` (or `fix <base>..<tip>` for a multi-commit loop, base excluded) and `proof <finding-id> <path>[::<test>]` in its own text; the query proves the fix against git and the proof against the fix tree, and a clearance missing either stays listed.
 - `Implementer:` -- optional `Name (model-id)` recording who built the section.
 - `Resolved:` -- a deferral that has been closed. Replaces the `Deferred:` marker **in place**, keeping the original text and XREF and adding the date and what closed it. Closure is a state change, not a deletion: what was owed, and who paid it, both stay on the record.
+- `Night-owed:` -- one line per night debt: `**Night-owed:** <DEBT-ID> (<count> <filter>, collector <collector>, owed <YYYY-MM-DD>[, ...])`, where the id is `<domain>-T<todo>-S<section>-N<n>` (for example `D00-T02-S8-N1`), the filter is a bare `Category` value or a full `--filter` expression, and prose may follow the parens (the parser reads the id plus the paren fields and ignores the rest). New debt always carries `owed`; debt predating the format ages from its section's stamp date.
+- `Night-collected:` -- one line per collection proving a debt closed: `**Night-collected:** <YYYY-MM-DD> <DEBT-ID> (<passed> passed, <failed> failed, <skipped> skipped; log <path>)`, appended to the owning section by the collector. A debt id is open while it has a `Night-owed:` line and no `Night-collected:` line naming it; green collection appends and closes, red collection stages findings and stays open for the next window.
+
+### Completion-first: ship with night debt
+
+A section ships its focus-free proofs, records Interactive skips as `Night-owed` debt, and flips the same session; review and stamp never wait for quiet time. The `\ScratchPad\Nightly UI` run's Interactive leg (`tools/nightly.ps1`, D00 T02 §9) is the collector: green collection appends `Night-collected:` and closes the debt, red collection stages finding stubs in the morning report and the debt stays open. The only true flip blockers are unmet Depends, a missing baseline artifact, an unreachable host, and both review families down; open night debt is information, never a blocker, and quiet time never parks work.
 
 ### A deferral cannot be left to rot
 

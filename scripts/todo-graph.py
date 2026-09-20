@@ -1539,6 +1539,12 @@ LEDGER_ROW_RE = re.compile(
     r"^\s*-\s*\[((?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+)\]\s*\[(critical|major|minor)\]\s+.+?->\s*(accepted|filed|duplicate|rejected|deferred)\b",
     re.IGNORECASE | re.MULTILINE,
 )
+# Night-debt stamp lines (D00 T02 §10 item 2): the parser reads the
+# id plus the paren fields and ignores trailing prose, so the N1
+# collection note rides the same line without breaking the parse.
+NIGHT_OWED_RE = re.compile(r"\*\*Night-owed:\*\*\s*(\S+)\s*\(([^)]*)\)")
+NIGHT_COLLECTED_RE = re.compile(r"\*\*Night-collected:\*\*\s*(\d{4}-\d{2}-\d{2})\s+(\S+)\s*\(([^)]*)\)")
+DEBT_ID_RE = re.compile(r"[A-Z0-9]+-T[0-9]+-S[0-9]+-N[0-9]+\Z")
 MANIFEST_RE = re.compile(
     r"^Manifest:\s*sections\s*\[(.*?)\];\s*dependents\s*\[(.*?)\];\s*bytes\s*(\d+)(?:;\s*run\s+(\S+))?\s*$",
     re.IGNORECASE | re.MULTILINE,
@@ -2740,6 +2746,110 @@ def telemetry_parse(text: str) -> dict:
     }
 
 
+def _parse_owed_paren(paren: str):
+    """Split a Night-owed paren into (count, filter, owed-date).
+
+    Lenient by design: debt is informational (D00 T02 §10 item 3),
+    so an unparseable chunk yields None, never a fatal.
+    """
+    count, filt, owed = None, "", None
+    chunks = [c.strip() for c in paren.split(",")]
+    if chunks:
+        m = re.match(r"(\d+)\s+(.+)", chunks[0])
+        if m:
+            count, filt = int(m.group(1)), m.group(2).strip()
+    for c in chunks[1:]:
+        m = re.match(r"owed\s+(\d{4}-\d{2}-\d{2})\Z", c)
+        if m:
+            owed = m.group(1)
+    return count, filt, owed
+
+
+def _parse_collected_paren(paren: str):
+    """Split a Night-collected paren into (counts, log path)."""
+    log = None
+    m = re.search(r"log\s+(\S+)", paren)
+    if m:
+        log = m.group(1)
+    counts = {}
+    for k in ("passed", "failed", "skipped"):
+        m = re.search(r"(\d+)\s+" + k, paren)
+        counts[k] = int(m.group(1)) if m else 0
+    return counts, log
+
+
+def night_debts(todos: list["Todo"], today_d):
+    """Open night debt across the tree (D00 T02 §10 item 2).
+
+    Reads Night-owed plus Night-collected stamp lines straight from
+    the TODO files: no load-time state, and a parse here can never
+    FATAL (item 3). One dict per owed id, sorted by id: id, file,
+    section, count, filter, owed date, age in nights (owed date,
+    else the owning section's stamp date, else None), last
+    collection log, open. The latest collected line per id wins;
+    open means owed with no collected line naming it.
+    """
+    owed: dict[str, dict] = {}
+    collected: dict[str, dict] = {}
+    for t in todos:
+        try:
+            raw = (TODO_DIR.parent / t.path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        num = None
+        for ln in raw.splitlines():
+            hm = re.match(r"## (\d+)[. ]", ln)
+            if hm:
+                num = int(hm.group(1))
+                continue
+            if num is None:
+                continue
+            om = NIGHT_OWED_RE.search(ln)
+            if om and DEBT_ID_RE.match(om.group(1)):
+                count, filt, owed_on = _parse_owed_paren(om.group(2))
+                sec = t.sections.get(num)
+                owed[om.group(1)] = {
+                    "file": t.path,
+                    "section": f"D{t.domain.split('-')[0]} T{t.number} §{num}",
+                    "count": count,
+                    "filter": filt,
+                    "owed": owed_on,
+                    "stamp": sec.stamped_on if sec is not None else None,
+                }
+                continue
+            cm = NIGHT_COLLECTED_RE.search(ln)
+            if cm and DEBT_ID_RE.match(cm.group(2)):
+                counts, log = _parse_collected_paren(cm.group(3))
+                prev = collected.get(cm.group(2))
+                if prev is None or cm.group(1) >= prev["date"]:
+                    collected[cm.group(2)] = {"date": cm.group(1), "log": log, "counts": counts}
+    out = []
+    for did in sorted(owed):
+        o = owed[did]
+        c = collected.get(did)
+        base = o["owed"] or o["stamp"]
+        age = None
+        if base:
+            try:
+                age = max(0, (today_d - datetime.fromisoformat(base).date()).days)
+            except ValueError:
+                age = None
+        out.append(
+            {
+                "id": did,
+                "file": o["file"],
+                "section": o["section"],
+                "count": o["count"],
+                "filter": o["filter"],
+                "owed": o["owed"],
+                "age": age,
+                "last_log": c["log"] if c else None,
+                "open": c is None,
+            }
+        )
+    return out
+
+
 def cmd_query(args) -> int:
     if args.what not in ("run", "telemetry") and getattr(args, "target", None):
         print(f"query {args.what} takes no target")
@@ -2808,6 +2918,33 @@ def cmd_query(args) -> int:
         print(f"\n{len(open_)} open, {len(closed)} resolved")
         print("Staleness is enforced by `validate`, not reported here: a deferral")
         print("whose owner has shipped is a FATAL, so it cannot sit in this list.")
+        return 0
+
+    if what == "night-debt":
+        # Open night debt (D00 T02 §10 item 2): one greppable line
+        # per debt id owed without a later collection, for the
+        # operator and the collector (nightly.ps1 resolves each id
+        # to its trait filter plus owning file). Informational:
+        # open debt never gates (item 3), so this exits 0 always.
+        # --today freezes age exactly like notify (fixture runs).
+        _today_arg = getattr(args, "today", None)
+        if _today_arg is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _today_arg) is None:
+            print(f"query {what}: --today takes YYYY-MM-DD, got {_today_arg!r}", file=sys.stderr)
+            return 2
+        _today_s = _today_arg or datetime.now(timezone.utc).date().isoformat()
+        try:
+            _today_d = datetime.fromisoformat(_today_s).date()
+        except ValueError:
+            print(f"query {what}: --today takes a real date, got {_today_s!r}", file=sys.stderr)
+            return 2
+        _debts = [d for d in night_debts(todos, _today_d) if d["open"]]
+        print(f"night debt: {len(_debts)} open (today {_today_s})")
+        for d in _debts:
+            _age = f"{d['age']}n" if d["age"] is not None else "?n"
+            print(
+                f"    {d['file']} {d['id']} {d['section']} count {d['count']}"
+                f" filter {d['filter']} age {_age} last-log {d['last_log'] or 'none'}"
+            )
         return 0
 
     if what == "findings":
@@ -4754,6 +4891,14 @@ def cmd_query(args) -> int:
                     + ("  OVERDUE" if od else "")
                     + (f"  cause {ncc}; fix: {ncf}" if ncc else "")
                     + (f"  failure {fc}" if fc else "")
+                )
+            _debts = [d for d in night_debts(todos, _today_d) if d["open"]]
+            print(f"night debt          {len(_debts)} open")
+            for d in _debts:
+                _age = f"{d['age']}n" if d["age"] is not None else "?n"
+                print(
+                    f"    {d['id']}  {d['section']}  count {d['count']}"
+                    f"  age {_age}  last log {d['last_log'] or 'none'}"
                 )
             print(f"overdue owners      {len(od_by_owner)}")
             for own in sorted(od_by_owner):
@@ -17802,6 +17947,80 @@ track: Z1
         with _tctx.redirect_stdout(_nbuf), _tctx.redirect_stderr(_tio.StringIO()):
             _ncode = cmd_query(argparse.Namespace(what="telemetry", target="D90 T09 §2"))
         check("query telemetry exits 1 when no findings file is named", _ncode, 1)
+        # --- night debt (D00 T02 §10 items 2, 3, 11) -----------------------
+        nd10 = root / "nd10"
+        (nd10 / "todo" / "90-night").mkdir(parents=True)
+        (nd10 / "todo" / "90-night" / "TODO-01-night.md").write_text(
+            "---\nschema_version: 1\nid: night\ndomain: 90-night\nstatus: active\n"
+            'title: "TODO-01 -- Night"\ntrack: Z9\n---\n\n# TODO-01 -- Night\n\n'
+            "> **Goal:** Fixture: one open plus one collected debt.\n\n"
+            "## Outcome\n\n- Fixture debt lists.\n\n"
+            "**Adjacency:** all=not-applicable (fixture)\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Owed work | -- |  [ ]   |\n"
+            "|   2   |   §2    | Collected work | -- |  [ ]   |\n\n---\n\n## 1. Owed work\n\n"
+            "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
+            "**Test checkpoint:** `true`\n\n"
+            "**Night-owed:** D90-T01-S1-N1 (3 Interactive, collector Nightly UI 02:30, owed 2026-09-15)\n\n"
+            "## 2. Collected work\n\n"
+            "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
+            "**Test checkpoint:** `true`\n\n"
+            "**Night-owed:** D90-T01-S2-N1 (2 Interactive, collector Nightly UI 02:30, owed 2026-08-28)\n"
+            "**Night-collected:** 2026-09-01 D90-T01-S2-N1 (2 passed, 0 failed, 0 skipped; log build/nightly/fixture.log)\n\n"
+            "## Verification\n\n- [ ] Fixture file validates\n",
+            encoding="utf-8",
+        )
+        (nd10 / "todo" / "90-night" / "INDEX.md").write_text(
+            "# 90 Night\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-01](./TODO-01-night.md) | Night | active |\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, nd10 / "todo"
+        try:
+            _ndbuf = _tio.StringIO()
+            with _tctx.redirect_stdout(_ndbuf), _tctx.redirect_stderr(_tio.StringIO()):
+                _ndcode = cmd_query(argparse.Namespace(what="night-debt", today="2026-09-20"))
+            _ndlines = _ndbuf.getvalue().splitlines()
+            _vdbuf = _tio.StringIO()
+            with _tctx.redirect_stdout(_vdbuf), _tctx.redirect_stderr(_tio.StringIO()):
+                _vdcode = cmd_validate(None)
+            _ndsum = _tio.StringIO()
+            with _tctx.redirect_stdout(_ndsum), _tctx.redirect_stderr(_tio.StringIO()):
+                _ndsumcode = cmd_query(argparse.Namespace(what="summary", today="2026-09-20"))
+            _ndsumlines = _ndsum.getvalue().splitlines()
+        finally:
+            TODO_DIR = saved_tree
+        check("query night-debt exits 0", _ndcode, 0)
+        check(
+            "query night-debt lists the open debt",
+            any("D90-T01-S1-N1" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "query night-debt omits the collected debt",
+            any("D90-T01-S2-N1" in ln for ln in _ndlines),
+            False,
+        )
+        check(
+            "query night-debt ages the 5-night-old debt",
+            any("D90-T01-S1-N1" in ln and "age 5n" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "query night-debt names file plus filter for the collector",
+            any("TODO-01-night.md" in ln and "filter Interactive" in ln for ln in _ndlines),
+            True,
+        )
+        check("a 5-night-old open debt validates clean", _vdcode, 0)
+        check("query summary exits 0 with open debt", _ndsumcode, 0)
+        check(
+            "query summary surfaces the open debt line",
+            any("D90-T01-S1-N1" in ln for ln in _ndsumlines),
+            True,
+        )
 
     finally:
         TODO_DIR, PLAN = saved_todo_dir, saved_plan
@@ -17866,6 +18085,7 @@ def main() -> int:
             "risk-register",
             "dashboard",
             "notify",
+            "night-debt",
             "telemetry",
         ],
     )
@@ -17875,7 +18095,7 @@ def main() -> int:
     q.add_argument("--at", help="adjacency: inspect an isolated historical commit")
     q.add_argument("--json", action="store_true", help="adjacency, plan-health, risk-register, run, telemetry: machine-readable report")
     q.add_argument("--check", action="store_true", help="plan-health: exit 1 on actionable entries (covered escalations and bare partials pass; --fail-on gates presence); risk-register: exit 1 when the committed register is stale")
-    q.add_argument("--today", metavar="YYYY-MM-DD", default=None, help="plan-health, summary, dashboard, risk-register, notify: freeze wall clock here instead of today (fixture-date runs)")
+    q.add_argument("--today", metavar="YYYY-MM-DD", default=None, help="plan-health, summary, dashboard, risk-register, notify, night-debt: freeze wall clock here instead of today (fixture-date runs)")
     q.add_argument("--within-days", metavar="N", default=None, help="notify: warn on dates within N days (default 7)")
     q.add_argument("--sync", action="store_true", help="risk-register: write the committed register file")
     q.add_argument("--fail-on", metavar="DIMS", help="plan-health: comma-separated dimensions whose non-emptiness exits 1")

@@ -45,6 +45,8 @@ The lifecycle is: capture, author, validate the plan and source claims, record `
 - **Section atomicity is the candidate range:** one section ships as one logical change, and review fix-loop commits append to that range (never amend); each fix is re-reviewed and the stamp names the whole range. "One section = one commit" never means "one hash".
 - **Source of truth:** Notepad behavior via captures, ACP via [agentclientprotocol.com](https://agentclientprotocol.com/get-started/agents), plan state via `todo/`. [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) is prior art, never a design authority. Disagreements are recorded decisions, not silent reinterpretations.
 
+Completion-first: runners do everything to 100% complete the section, tool, or feature in the shipping session: ship focus-free proofs, record Interactive skips as `Night-owed` debt, and flip the same session; quiet time never parks work, review and stamp never wait for it, and repeated manual workspace tweaks become owned automation.
+
 ## Unknowns and questions
 
 Answer from source first (captures, protocol docs, code). When an unanswered question would change implementation, take a justified default, record that it is a default with its cost of changing, and carry on. Do not stall a section waiting for an answer; do not silently reinterpret a section into something buildable.
@@ -64,6 +66,7 @@ python3 scripts/todo-graph.py query risk-register  # acceptance instruments with
 python3 scripts/todo-graph.py query dashboard      # Markdown health rollup: reviews, expiries, partials, migration, open findings (text-only)
 python3 scripts/todo-graph.py query notify         # owner lookahead payloads within N days: --today freezes the clock, --within-days sets the window (text-only; exit 0)
 python3 scripts/todo-graph.py query telemetry      # panel telemetry: tree totals, Sol-outage coverage, per-section summary (--json emits schema telemetry/1)
+python3 scripts/todo-graph.py query night-debt     # open night debt, one greppable line per owed id (text-only; exit 0)
 python3 scripts/todo-graph.py plan --sync    # re-derive the plan projection after TODO edits
 python3 scripts/todo-graph.py plan --check   # fail if the projection went stale
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # ref -> file, section, deps, status
