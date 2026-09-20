@@ -438,7 +438,7 @@ Treat a warning as a decision to make rather than noise to clear. The tree curre
 | Outcome | Coverage | Obligation |
 | ------- | -------- | ---------- |
 | `renewed` | continues | next review at the successor's review date |
-| `remediated` | terminates in effect | target reads healthy; waiver inert |
+| `remediated` | continues | file the row; the waiver covers until filed |
 | `rejected` | terminates | escalation returns to unhandled |
 | `closed` | terminates | none; target out of scope |
 

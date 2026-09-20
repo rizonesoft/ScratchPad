@@ -1706,17 +1706,21 @@ def acceptance_hold(
     `post-dated` (a future record dangles to the operator),
     `stale-evidence`, `git-unresolvable` (item 8: the commit cannot
     be read, an infrastructure fault, not silent noncoverage),
-    `terminal-outcome` (D00 T04 §6 item 4: a `rejected` or `closed`
-    record voids even when every leg passes -- the review already
-    decided, and nothing revives it).
+    `terminal-outcome` (D00 T04 §6 item 4: a MATCHED `rejected`
+    or `closed` record voids even when every leg passes -- the
+    review already decided, and nothing revives it).
     One predicate serves both covering loops and the reviews leg
     (panel R2: a void acceptance must not list a review obligation
     it cannot back, which would double-count the
     already-persisting escalation; the leg reads `!= "cover"`, so
-    every code stays excluded). Order is load-bearing: outcome,
-    then match, then generation, then target day, then
+    every code stays excluded). Order is load-bearing: match,
+    then outcome, then generation, then target day, then
     target-before-record, then evidence ancestry, then liveness,
-    then evidence lineage, then target freshness.
+    then evidence lineage, then target freshness. The outcome
+    rides after the match (D00 T04 §6 panel R1): the first
+    version voided before matching, so an unrelated terminal
+    record reported `terminal-outcome` for a target it never
+    named, poisoning that target's cause and fix.
     Unprovable ancestry defers to the evidence leg (the same fetch
     feeds both), so an unresolvable commit still reports
     `git-unresolvable`, never a false order verdict; unprovable
@@ -1726,10 +1730,10 @@ def acceptance_hold(
     `superseded` cause is unreachable (panel R1). The chain-shape
     rule guards the links.
     """
-    if outcome in ("rejected", "closed"):
-        return "terminal-outcome"
     if not match:
         return "no-match"
+    if outcome in ("rejected", "closed"):
+        return "terminal-outcome"
     if recgen != secgen:
         return "stale-generation"
     if not tday:
@@ -1771,16 +1775,18 @@ NONCOVER_FIX = {
 
 # Acceptance outcome semantics (D00 T04 §6 item 4): outcome ->
 # (coverage, obligation). The review's verdict governs: `renewed`
-# continues under the successor, `remediated` terminates in
-# effect (the debt is gone; the waiver rides inert), `rejected`
-# and `closed` terminate (the record voids even when every leg
-# passes). No outcome narrows; narrowing rides a fresh waiver
-# with a narrower target. Mirrored row-for-row in
-# todo/README.md's outcome matrix (the self-test compares the
-# two, so the doc cannot drift from the code).
+# continues under the successor, `remediated` continues until
+# the row files (established §22 behavior: a remediated
+# successor still covers; the debt being gone obligates filing,
+# not renewing), `rejected` and `closed` terminate (a matched
+# record voids even when every leg passes). No outcome narrows;
+# narrowing rides a fresh waiver with a narrower target.
+# Mirrored row-for-row in todo/README.md's outcome matrix (the
+# self-test compares the two, so the doc cannot drift from the
+# code).
 OUTCOME_MATRIX = {
     "renewed": ("continues", "next review at the successor's review date"),
-    "remediated": ("terminates in effect", "target reads healthy; waiver inert"),
+    "remediated": ("continues", "file the row; the waiver covers until filed"),
     "rejected": ("terminates", "escalation returns to unhandled"),
     "closed": ("terminates", "none; target out of scope"),
 }
@@ -16504,7 +16510,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "the renewed marker waiver covers and reports its outcome",
+            "the remediated marker waiver covers and reports its outcome",
             (
                 len(_deg22) == 1
                 and _deg22[0]["accepted_by"] == "bob"
@@ -17233,13 +17239,23 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "no-match",
         )
         check(
-            "a closed record voids before match",
+            "an unmatched closed record reads no-match, never terminal",
             acceptance_hold("2026-09-19", "2099-01-01", "evi", "", False, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0, "closed"),
+            "no-match",
+        )
+        check(
+            "an unmatched rejected record reads no-match, never terminal",
+            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", False, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0, "rejected"),
+            "no-match",
+        )
+        check(
+            "a matched closed record voids before the remaining legs",
+            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0, "closed"),
             "terminal-outcome",
         )
         check(
-            "a rejected record voids before match",
-            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", False, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0, "rejected"),
+            "a matched rejected record voids before the remaining legs",
+            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0, "rejected"),
             "terminal-outcome",
         )
         check(
