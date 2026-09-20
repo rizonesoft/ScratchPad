@@ -60,6 +60,17 @@ function Get-InInteractiveWindow {
   return ($now -ge $start) -and ($now -lt $end)
 }
 
+function Get-InteractiveWindowEnd {
+  # Today's window end as a DateTime, from the same spec
+  # Get-InInteractiveWindow resolves (D00 T02 §14 R5-F1). Returns $null
+  # on a malformed spec; the deadline then falls back to the task limit.
+  $spec = $env:SCRATCHPAD_INTERACTIVE_WINDOW
+  if ([string]::IsNullOrWhiteSpace($spec)) { $spec = '02:00-06:50' }
+  $m = [regex]::Match($spec, '^(\d{2}):(\d{2})-(\d{2}):(\d{2})$')
+  if (-not $m.Success) { return $null }
+  return (Get-Date -Hour ([int]$m.Groups[3].Value) -Minute ([int]$m.Groups[4].Value) -Second 0)
+}
+
 function Get-WorkstationLocked {
   return $null -ne (Get-Process logonui -ErrorAction SilentlyContinue)
 }
@@ -207,6 +218,10 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   $gateTimeout = [int](($GateSeconds + 120) - ((Get-Date) - $job.PSBeginTime).TotalSeconds)
   $gateDone = $null
   if ($gateTimeout -gt 0) { $gateDone = Wait-Job -Job $job -Timeout $gateTimeout }
+  # A slow teardown can exhaust the grace after a HEALTHY gate already
+  # wrote its verdict (D00 T02 §14 R5-F2): only a still-running job at
+  # grace expiry is hung; anything else receives normally, verdict kept.
+  elseif ($job.State -ne 'Running') { $gateDone = $job }
   if ($null -eq $gateDone) {
     $gateHung = $true
     if ($job.State -eq 'Running') { Stop-Job -Job $job }
@@ -417,15 +432,25 @@ $deadlineReserve = 300
 # beyond the cap. Without it, teardown leaks past the deadline.
 $killSlack = 180
 $taskLimit = $runStart.AddHours(4)
-$windowEnd = Get-Date -Hour 6 -Minute 50 -Second 0
+# Window end follows the resolved window (D00 T02 §14 R5-F1), never a
+# hardcoded 06:50: Force plus SCRATCHPAD_INTERACTIVE_WINDOW move the
+# window, and a stale 06:50 would fail healthy daytime runs fast. An
+# in-window run whose end already passed today sits in a
+# crossing-midnight window, so the end rolls to tomorrow.
+$windowEndToday = Get-InteractiveWindowEnd
 $deadline = $taskLimit
-if ($inWindow -and ($windowEnd -lt $taskLimit)) { $deadline = $windowEnd }
+if ($inWindow -and ($null -ne $windowEndToday)) {
+  if ($windowEndToday -le $runStart) { $windowEndToday = $windowEndToday.AddDays(1) }
+  if ($windowEndToday -lt $taskLimit) { $deadline = $windowEndToday }
+}
 $deadline = $deadline.AddSeconds(-$deadlineReserve)
 $simDeadline = $env:SCRATCHPAD_RUN_DEADLINE_SECONDS
 $simMode = $false
+$reserveBypassed = $false
 if (-not [string]::IsNullOrWhiteSpace($simDeadline)) {
   $deadline = $runStart.AddSeconds([int]$simDeadline)
   $simMode = $true
+  $reserveBypassed = $true
   Write-Warning "nightly: SIMULATION run deadline ${simDeadline}s from start (ends $($deadline.ToString('HH:mm:ss'))); not a governed proof"
 }
 $simCap = $env:SCRATCHPAD_LEG_CAP_SECONDS
@@ -435,7 +460,7 @@ if (-not [string]::IsNullOrWhiteSpace($simCap)) {
   $simMode = $true
   Write-Warning "nightly: SIMULATION leg caps ${simCap}s; not a governed proof"
 }
-if ($simMode) { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (simulation: reserve bypassed)" }
+if ($reserveBypassed) { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (simulation: reserve bypassed)" }
 else { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (reserve ${deadlineReserve}s)" }
 function Test-LegBudget([int]$CapSeconds) {
   return (($deadline - (Get-Date)).TotalSeconds -ge ($CapSeconds + $killSlack))
@@ -667,6 +692,10 @@ try {
   $coreTitle = "# Morning report: $day (core verdicts, pre-soak)"
   if ($simMode) { $coreTitle += ' (SIMULATION: not a governed proof)' }
   $coreReport += $coreTitle
+  # Machine-checkable publication marker (D00 T02 §14 R5-F4): the guard
+  # plus triage distinguish the pre-soak core from the final report by
+  # this Status line, never by presence alone.
+  $coreReport += 'Status: pre-soak core verdicts (final report overwrites after soak)'
   $coreReport += ''
   $coreReport += "- HEAD: $script:buildHead"
   $coreReport += "- Core verdicts published before soak; the final report overwrites after soak (or budget-cut)"
@@ -729,11 +758,12 @@ $report = @()
 $reportTitle = "# Morning report: $day"
 if ($simMode) { $reportTitle += ' (SIMULATION: not a governed proof)' }
 $report += $reportTitle
+$report += 'Status: final'
 $report += ''
 $report += "- HEAD: $head"
 $report += "- Trigger: $trigger"
 $report += "- Window: 02:00-06:50 local (or SCRATCHPAD_INTERACTIVE_WINDOW)"
-$reserveNote = if ($simMode) { 'simulation: reserve bypassed' } else { "reserve ${deadlineReserve}s" }
+$reserveNote = if ($reserveBypassed) { 'simulation: reserve bypassed' } else { "reserve ${deadlineReserve}s" }
 $report += "- Deadline: $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) ($reserveNote)"
 $cutLine = if ($budgetCut.Count -eq 0) { 'none' } else { ($budgetCut -join '; ') }
 $report += "- Budget-cut: $cutLine"
