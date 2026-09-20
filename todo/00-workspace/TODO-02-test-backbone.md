@@ -59,6 +59,7 @@ track: W0
 |   18  |   §18   | Central launch hardening and evidence | §11 |  [ ]   |
 |   19  |   §19   | Night-debt due dates and escalation | §10 |  [ ]   |
 |   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [ ]   |
+|   21  |   §21   | Accelerator sweep follow-ups | §12 |  [ ]   |
 
 ---
 
@@ -520,6 +521,27 @@ Why this section exists: the §12 Opus sign-off left two advisories that file in
 - [ ] Commit: `"workspace: polish the accelerator sweep sign-off"`
 
 **Test checkpoint:** Dead capture gone and trailing newline restored. Cheaper substitute that fails: leaving either for a drive-by.
+
+## 21. Accelerator Sweep Follow-Ups
+
+Why this section exists: the §12 plan review returned 22 findings; 11 file here, 10 are rejected with reasons in the §12 findings file, 1 duplicates D00-T02-S11-PR17. The sweep is complete and the restoration fenced; what remains is hardening the fence rule, the coverage proof, and the binding inventory around it. -> SOURCE: plan-review-D00-T02-s12-2026-09-20-s21 D00-T02-S12-PR2 D00-T02-S12-PR8 D00-T02-S12-PR9 D00-T02-S12-PR11 D00-T02-S12-PR12 D00-T02-S12-PR13 D00-T02-S12-PR14 D00-T02-S12-PR15 D00-T02-S12-PR16 D00-T02-S12-PR18 D00-T02-S12-PR20 (fence, diagnostics, edges, launcher, framework, drift, metadata, collision, focus, taxonomy, and display-text findings from the §12 plan review).
+
+**Needs:** Windows host (build/test)
+
+- [ ] The §8 fence-with-proof rule gains an interruption-risk exception: a chord test that passes backgrounded stays fenced when its Press steals the operator foreground, with the exception cited in its Fenced comment. Done when: the rule names the exception and the G/H/X comments cite it. (D00-T02-S12-PR2.)
+- [ ] `NumberShortcutsCoverMiddlePositions` splits or parameterizes into independently reported cases, one per number. Done when: each number reports alone. (D00-T02-S12-PR8.)
+- [ ] Number-shortcut edges are covered: too few tabs, more than nine tabs, selected-tab reuse, and Ctrl+9 last-tab semantics. Done when: each edge pins its behavior. (D00-T02-S12-PR9.)
+- [ ] The Bing launcher path is asserted through an injectable or intercepted launcher: URI correctness, escaping, and no orphan browser processes. Done when: both Bing commands pin their URIs without opening a browser. (D00-T02-S12-PR11.)
+- [ ] Pressed-but-undeclared framework chords (Ctrl+Home/End caret moves, Alt-letter access keys) gain an owning section or a recorded framework-behavior exemption. Done when: each names its owner. (D00-T02-S12-PR12.)
+- [ ] A generated binding manifest (or meta-test) fails when a declared accelerator lacks an audit plus test entry. Done when: a planted undeclared binding fails the guard. (D00-T02-S12-PR13.)
+- [ ] Chord tests carry test-to-binding metadata (or semantic validation) proving the pressed chord matches the named binding. Done when: a wrong-key mutation fails the gate. (D00-T02-S12-PR14.)
+- [ ] A conflict matrix checks duplicate chords, OS-reserved combinations, access keys, and context routing across editor, tab bar, menus, and dialogs. Done when: the Ctrl+E duplicate plus a planted conflict both surface. (D00-T02-S12-PR15.)
+- [ ] Physical-input tests assert the HWND plus focus precondition immediately before each press and verify cleanup after. Done when: a focus-loss mutation fails loud instead of escaping keystrokes. (D00-T02-S12-PR16.)
+- [ ] The written-reason escape gains a reason taxonomy with approver plus follow-up owner. Done when: the taxonomy reads and the 18 §12 reasons classify under it. (D00-T02-S12-PR18.)
+- [ ] Menu-displayed shortcut text is checked against the binding manifest plus accessible descriptions. Done when: a mismatched label fails the check. (D00-T02-S12-PR20.)
+- [ ] Commit: `"workspace: follow up the accelerator sweep"`
+
+**Test checkpoint:** Exception named, numbers split, edges pinned, launcher intercepted, framework chords owned, manifest guards, metadata gates, conflicts surface, focus asserts, taxonomy classifies, labels match. Cheaper substitute that fails: the §12 table alone with no follow-through.
 
 ## Verification
 
