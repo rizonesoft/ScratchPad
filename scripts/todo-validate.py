@@ -1744,6 +1744,10 @@ def validate(graph, _args) -> int:
             # silent git skip without a sound (the query fails
             # closed at consult time), so this leg never fires on
             # unprovable inputs.
+            # Peel-identity deliberately not required (D00 T04 §6
+            # item 2 decides, and the query leg agrees): tag-object
+            # evidence peels to its commit and proceeds like any
+            # evidence; only proven foreignness reports.
             # Per-acceptance candidates (D00 T01 §51 review R2-F2):
             # run-target waivers bind their run's candidate, not the
             # file's first; peels cache per distinct candidate so one
@@ -2194,6 +2198,35 @@ def validate(graph, _args) -> int:
                         "marker-history",
                         f"{where}marker edited or deleted against history (chains append, never rewrite): {_detail}",
                     )
+
+    # 29. stamp generations never regress (D00 T04 §6 item 3): a
+    # persisted stamp generation below the HEAD-committed one
+    # fails, so a hand edit stripping `generation <n>` off a
+    # post-lift stamp (or a re-verification forgetting it) cannot
+    # silently revive old waivers. Generations only increase; new
+    # sections and missing history skip (rule-22 precedent:
+    # without history nothing is provable). No date scope: the
+    # diff is inherently scoped to uncommitted edits.
+    for t in todos:
+        committed = graph.git_file_at("HEAD", t.path)
+        if committed is None:
+            continue
+        try:
+            live_text = (graph.TODO_DIR.parent / t.path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        was = graph.stamp_generations_by_section(committed)
+        now = graph.stamp_generations_by_section(live_text)
+        for num in sorted(now):
+            if num not in was:
+                continue
+            if now[num] < was[num]:
+                sec = t.sections.get(num)
+                where = f"{t.path}:{sec.line}: §{num} " if sec is not None else f"{t.path}: "
+                flag(
+                    "stamp-generation-regressed",
+                    f"{where}stamp generation {now[num]} regresses {was[num]} committed at HEAD",
+                )
 
     # Internal self-tests deliberately point TODO_DIR at a standalone fixture.
     # Normal checkout validation always inspects its actual platform sources.
