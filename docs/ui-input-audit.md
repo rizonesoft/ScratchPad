@@ -212,3 +212,43 @@ Element `.Click()`/`.DoubleClick()`/`.RightClick()` move the real cursor, so the
 | ---- | ---------------- | ---- | ----------- | --------- |
 | `tests/UI/TabBarTests.cs:571` | MiddleClick | SetCursorPos + mouse_event | fence | middle-click IS the point (FlaUI middle-click never lands the close) |
 | `tests/UI/TitleBarIconTests.cs:146` | LeftClick | SetCursorPos + mouse_event | fence | real click through the caption zone IS the point (hit-testing invisible to Invoke) |
+
+## Accelerator binding sweep (D00 T02 §12 item 1)
+
+Swept 2026-09-20: every `KeyboardAccelerator` declared in `src/ScratchPad/MenuBar.xaml` (31 declarations, no other key handling in `src/`: no `KeyDown`/`PreviewKeyDown` handlers, no other XAML accelerators) against physical-press coverage in `tests/UI` (`UiInput.Press` plus `Keyboard.Press` call sites). A binding is covered only by a test pressing the physical chord; menu-Invoke tests assert the command, not the binding.
+
+| Binding | Command | Covering test or none |
+| ------- | ------- | --------------------- |
+| Ctrl+N | File: New tab | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
+| Ctrl+Shift+N | File: New window | none (restored by §12 item 2) |
+| Ctrl+O | File: Open | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
+| Ctrl+S | File: Save | `MenuBarTests.FileSaveOnUntitledOpensSaveAs` |
+| Ctrl+Shift+S | File: Save as | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
+| Ctrl+Alt+S | File: Save all | `MenuBarTests.FileSaveAllWalksDirtyTabs` |
+| Ctrl+P | File: Print (disabled) | none: command disabled (pending-owner per D01 T02 §1); no dispatch to assert until it ships |
+| Ctrl+W | File: Close tab | `TabBarTests.ThreeTabsSwitchAndClose` |
+| Ctrl+Shift+W | File: Close window | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
+| Ctrl+Z | Edit: Undo (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+X | Edit: Cut (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+C | Edit: Copy (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+V | Edit: Paste (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Delete | Edit: Delete (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+E | Edit: Search with Bing | none: effect escapes the app (`Launcher.LaunchUriAsync` opens the system browser); URL shape unit-pinned by `BingSearchTests` |
+| Ctrl+E | Edit: Define with Bing | none: same chord as Search with Bing (duplicate declaration); same browser-launch reason; URL shape unit-pinned by `BingSearchTests` |
+| Ctrl+F | Edit: Find (disabled) | none: command disabled; no dispatch to assert until it ships |
+| F3 | Edit: Find next (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Shift+F3 | Edit: Find previous (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+H | Edit: Replace (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+G | Edit: Go to (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+A | Edit: Select all (disabled) | none: command disabled; no dispatch to assert until it ships |
+| F5 | Edit: Time/Date (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+Plus | View: Zoom in (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+Minus | View: Zoom out (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+0 | View: Restore default zoom (disabled) | none: command disabled; no dispatch to assert until it ships |
+| Ctrl+Shift+G | Tools: Statistics | none (restored by §12 item 2) |
+| Ctrl+Shift+H | Tools: Snapshots | none (restored by §12 item 2) |
+| Ctrl+Shift+E | Tools: Templates | none (restored by §12 item 2) |
+| Ctrl+Shift+X | Tools: Export | none (restored by §12 item 2) |
+| Ctrl+Shift+L | Tools: Lock file | none (restored by §12 item 2) |
+
+Pressed but not app-declared (framework or control behavior, outside the sweep; covering tests named so a future declaration does not double-cover): Ctrl+T (`TabBarTests`, `PinnedTabsTests`), Ctrl+Tab and Ctrl+Shift+Tab (`TabBarTests`), Ctrl+1/3/9 (`TabBarTests.NumberShortcutsAndReopenMatchNotepad`), Ctrl+Shift+T (`TabBarTests`), Ctrl+Home/Ctrl+End (caret moves in `StatusBarTests`/`SessionRestoreTests`), Alt+letter access keys (`MenuBarTests.AccessKeysOpenEachMenu`).

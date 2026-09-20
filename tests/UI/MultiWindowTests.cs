@@ -18,9 +18,9 @@ public sealed class MultiWindowTests
 {
     [PrimaryFact]
     [Trait("Category", "Primary")]
-    public void CtrlShiftNOpensSecondWindowAtCascade()
+    public void MenuNewWindowOpensSecondWindowAtCascade()
     {
-        // Primary placement (pair §8 item 7 revision): moved to the
+        // Primary placement (pair §8 item 7 revision; renamed §12 item 3: the drive is menu Invoke, never the Ctrl+Shift+N chord, whose coverage lives in AcceleratorTests.ChordCtrlShiftNOpensSecondWindow): moved to the
         // secondary the cascade premise is destroyed (no app-chosen offset
         // to assert); shown in place on the primary it passes. Focus-free:
         // InPlace shows no-activate and restores the foreground.

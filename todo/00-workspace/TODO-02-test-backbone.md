@@ -369,18 +369,22 @@ Why this section exists: every UI test file carries its own LaunchApp plus SeedS
 
 ## 12. Accelerator Binding Coverage Sweep
 
+> **Started:** 2026-09-20T15:01:24Z
+
 Why this section exists: conversion swaps physical key-means for pattern-means, so accelerator BINDINGS (key chord to command) lose their only exercise unless a test's point is the keys; R5 caught Ctrl+Shift+N at zero suite coverage with the converted cascade test name still asserting it. This section sweeps every binding for coverage and restores the missing ones as fenced tests. -> SOURCE: Opus-panel-D00-T02-s8-round-5 (R5 accelerator finding: converted test presses menu Invoke while named for Ctrl+Shift+N; no Shift+N press remains in the suite).
 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §8 -- the conversion that narrowed the coverage; filed from its Opus panel round 5.
 
-- [ ] Sweep every accelerator binding the app declares (menu shortcuts, tab-bar number shortcuts, any Ctrl/Alt chords) against suite coverage and record the binding-to-test table in `docs/ui-input-audit.md`. Done when: each binding names its covering test or none, and Ctrl+Shift+N is listed as none.
-- [ ] Each uncovered binding gains a fenced `Category=Interactive` test pressing the physical chord (or a written reason it cannot be physical), following the §8 fence rule with proof citations. Done when: the restored set passes in the collector window and daytime skips quote the window.
-- [ ] Rename `CtrlShiftNOpensSecondWindowAtCascade` to what it asserts (menu-driven cascade placement, no keys) and update its pair comment; §8's stamped record keeps the old name as reviewed. Done when: no test name asserts keys it does not press (grep `Ctrl|Shift|Alt` in test names vs `UiInput.Press` call sites).
+- [x] Sweep every accelerator binding the app declares (menu shortcuts, tab-bar number shortcuts, any Ctrl/Alt chords) against suite coverage and record the binding-to-test table in `docs/ui-input-audit.md`. Done when: each binding names its covering test or none, and Ctrl+Shift+N is listed as none. Done: 31 `MenuBar.xaml` declarations swept (no other key handling in `src/`); 7 covered by physical presses, Ctrl+Shift+N listed as none at sweep, 6 restored by item 2, 18 reasoned (16 disabled commands, 2 browser-launch escapes); pressed-but-undeclared framework chords noted.
+- [x] Each uncovered binding gains a fenced `Category=Interactive` test pressing the physical chord (or a written reason it cannot be physical), following the §8 fence rule with proof citations. Done when: the restored set passes in the collector window and daytime skips quote the window. Done: 6 fenced tests in `tests/UI/AcceleratorTests.cs`; daytime 6/6 skip quoting `02:00-06:50`; N pair quoted (backgrounded-fail 1 window, foreground-pass 2 windows); G/H/X backgrounded-pass (interruption fences); E/L backgrounded-fail; foreground confirmation Night-owed D00-T02-S12-N1 (daytime forced attempts for E/L/G/H/X void: TickTick held OS foreground).
+- [x] Rename `CtrlShiftNOpensSecondWindowAtCascade` to what it asserts (menu-driven cascade placement, no keys) and update its pair comment; §8's stamped record keeps the old name as reviewed. Done when: no test name asserts keys it does not press (grep `Ctrl|Shift|Alt` in test names vs `UiInput.Press` call sites). Done: renamed `MenuNewWindowOpensSecondWindowAtCascade` with the pair comment noting the rename plus the chord home; name-vs-press grep clean (6 `Chord*` all press; 3 substring false positives); stamped records (D00-T02-s8, D01-T01-s7/s9, D01 T01 §9 item) keep the old name as history. Re-proof: Run B `build/s11-runb-20260920-172225` gate exit 0 `primary=1 expect=primary` with the renamed test passed 2/2.
 - [ ] Commit: `"workspace: sweep accelerator binding coverage"`
 
 **Test checkpoint:** The sweep table is complete, the restored chord tests pass in-window, and the name-vs-press grep is clean. Cheaper substitute that fails: renaming the test without restoring the coverage.
+
+**Night-owed:** D00-T02-S12-N1 (6 Interactive, collector Nightly UI 02:30, first collection due the coming window).
 
 ## 13. Backgrounding Leak on the Default Leg
 
