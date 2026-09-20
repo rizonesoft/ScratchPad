@@ -5,7 +5,7 @@ using Xunit;
 namespace UI;
 
 // Central launch helpers (D00 T02 §11): the per-file LaunchApp,
-// LaunchAppWithArgs, SeedSettings, and AppExePath copies (21 plus 23
+// LaunchAppWithArgs, SeedSettings, SeedSettingsFile, and AppExePath copies (21 plus 23 plus 1
 // plus 13 plus 15 at filing) delegate here, so background birth
 // behavior is set in exactly one place. Four files drain launch
 // drops inside their copies (JumpListTask, Launch,
@@ -60,13 +60,18 @@ internal static class UiLaunch
     // paint. Explicit geometry always wins: any X/Y the caller set
     // survives, so Primary premises (which seed on-primary rects)
     // are untouched.
-    internal static void SeedSettings(ShellSettings settings, bool drainLaunchDrops = false)
+    static void SeedBackgroundGeometry(ShellSettings settings)
     {
         if (IsBackground() && settings.X == Untouched.X && settings.Y == Untouched.Y)
         {
             settings.X = OffScreen;
             settings.Y = OffScreen;
         }
+    }
+
+    internal static void SeedSettings(ShellSettings settings, bool drainLaunchDrops = false)
+    {
+        SeedBackgroundGeometry(settings);
 
         settings.Save();
         // Every close snapshots the session, so a seeded launch also
@@ -77,5 +82,18 @@ internal static class UiLaunch
         {
             LaunchDrops.Drain();
         }
+    }
+
+    // Path-returning seed (SettingsPageTests): same background rule,
+    // but the caller owns session cleanup plus the settings file,
+    // so no delete here. R1 fix: the per-file copy bypassed
+    // off-screen birth for 10 launches.
+    internal static string SeedSettingsFile(ShellSettings settings)
+    {
+        string path = ShellSettings.FilePath;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        SeedBackgroundGeometry(settings);
+        settings.Save();
+        return path;
     }
 }

@@ -30,7 +30,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void GearOpensSettingsAndBackReturns()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -70,7 +70,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void ThemeEachOptionAppliesLive()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
         try
         {
             SessionData.Delete();
@@ -113,7 +113,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void FontEachChoiceWritesStore()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -158,7 +158,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void WordWrapToggleWritesStore()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, WordWrap = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, WordWrap = true });
         try
         {
             SessionData.Delete();
@@ -190,7 +190,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void OpeningEachOptionWritesStore()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -222,7 +222,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void WhenStartsEachOptionWritesStore()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -255,7 +255,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void DisabledCardsStayDisabled()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -299,7 +299,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void SettingsPageHasNoReset()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -350,7 +350,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void EditFontMenuJumpsToSettings()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -422,7 +422,7 @@ public sealed class SettingsPageTests
     [Fact]
     public void AboutShowsNameAndVersion()
     {
-        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
@@ -482,14 +482,6 @@ public sealed class SettingsPageTests
         }
 
         Assert.True(result.Match, $"golden mismatch: {result.DifferentFraction:P3} different ({result.DifferentPixels}/{result.TotalPixels})");
-    }
-
-    static string SeedSettingsFile(ShellSettings settings)
-    {
-        string path = ShellSettings.FilePath;
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        settings.Save();
-        return path;
     }
 
     static void CleanSettings(string path)
