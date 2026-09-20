@@ -791,7 +791,8 @@ def validate(graph, _args) -> int:
             # D00 T01 §50 item 1: outage lines date their event. Every
             # outage line in the chain names `event <YYYY-MM-DD>`, the
             # calendar day the outage happened, so two outages of one
-            # rung under one stamp key differently. Chain-wide like the
+            # rung on different days under one stamp key differently
+            # (same-day same-rung pairs still share a key). Chain-wide like the
             # detail fields above, prose-outage excluded via the shared
             # predicate; retry-owed and partial lines owe none (run
             # targets bind runs, and a pure retry-owed marker never
@@ -799,11 +800,11 @@ def validate(graph, _args) -> int:
             for _line in _dchain:
                 if not is_outage_marker(_line):
                     continue
-                # Start-or-whitespace boundary like the query's
-                # EVENT_RE (D00 T01 §50 review R1-R2): joined
-                # `no-event` and `no/event` prose never satisfies
-                # the leg.
-                _em = re.search(r"(?<!\S)event\s+(\S+)", _line)
+                # The query's EVENT_RE, reused, never re-literalized
+                # (D00 T01 §50 review R3: one reader, no drift):
+                # start-or-whitespace boundary, so joined `no-event`
+                # and `no/event` prose never satisfies the leg.
+                _em = graph.EVENT_RE.search(_line)
                 _eday = _em.group(1) if _em else ""
                 _ereal = _em is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _eday) is not None
                 if _ereal:
