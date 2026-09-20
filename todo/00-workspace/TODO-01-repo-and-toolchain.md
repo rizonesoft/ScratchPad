@@ -105,7 +105,7 @@ track: W0
 |  47   |   §47   | Section-span scan helper | §26 |  [x]   |
 |  48   |   §48   | Migration completion assurance | §26 |  [x]   |
 |  49   |   §49   | Multi-citer review evaluation | §27 |  [x]   |
-|  50   |   §50   | Outage instance dating | §27 |  [ ]   |
+|  50   |   §50   | Outage instance dating | §27 |  [x]   |
 |  51   |   §51   | Acceptance record follow-ups | §27 |  [ ]   |
 |  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [ ]   |
 |  53   |   §53   | Unattended notification and register follow-ups | §29 |  [ ]   |
@@ -1277,7 +1277,7 @@ Why this section exists: the §27 Opus panel round 3 (integration advisory) foun
 
 ## 50. Outage Instance Dating
 
-> **Started:** 2026-09-20T08:07:00Z
+> **Started:** 2026-09-20T06:07:00Z
 
 Why this section exists: the §27 Opus panel round 6 (adversarial advisory) showed the outage instance key binding the section stamp day, not the outage event, so a fix loop spanning days under one stamp reuses one key and a waiver written after round 1's outage covers a round-3 rerun outage of the same rung. The marker grammar carries no outage-instance date to bind instead, so the fix needs a grammar decision, not a predicate tweak. Advisory, filed instead of blocking §27. -> XREF: D00 T01 §27 (filed from its Opus panel round 6); -> SOURCE: Opus-panel-D00-T01-s27-round-6 (candidate `f4dbe48`, round-6 adversarial advisory; transcribed in `docs/reviews/00-workspace/D00-T01-s27.md`). -> XREF: D00 T01 §51 (plan-review PR6 joiner filed there).
 
@@ -1286,6 +1286,12 @@ Why this section exists: the §27 Opus panel round 6 (adversarial advisory) show
 - [x] Commit: `"workspace: date outage instances per §27 panel"`
 
 **Test checkpoint:** two same-rung outages on different days under one stamp key differently, and no earlier waiver covers the later. Falsifiable by any shared different-day key or any cross-outage cover.
+
+> **Verified:** 2026-09-20 | §50 | self-test 1197/1197 (13 new: 8 event-leg, 5 moved-event probes); live validate 0 fatal 0 warnings; Full panel (Sol R1-R2, Opus R3) over candidates ff3cd86 bbbf1e4 66c7e8e 7b88f43, sign-off advisories stamp-fixed; plan review 13 findings, 1 filed at §51, 12 rejected
+> **Review:** round 3 (FINAL), candidates ff3cd86 bbbf1e4 66c7e8e 7b88f43 -- `adversarial` approve · `consistency` advisory (stamp-fixed) · `integration` approve · `record` approve; R1 hyphen boundary plus prose scoping, R2 slash-boundary variant, R3 sign-off advisories stamp-fixed. Raw findings: docs/reviews/00-workspace/D00-T01-s50.md
+> **Plan review:** GPT high, filed D00 T01 §51 (run 20260920-D00-T01-S50-gpt)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-case assertions); implementation edited the query, validator, fixtures, skill, README, and ticks (read back via self-test 1197/1197, live validate 0 fatal, plan --check current); filing opened the §51 joiner (read back via plan --check current)
+> **Duration:** 2026-09-20T06:07:00Z to 2026-09-20T06:48:17Z
 
 ## 51. Acceptance Record Follow-Ups
 
