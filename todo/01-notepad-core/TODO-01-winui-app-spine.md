@@ -87,6 +87,7 @@ track: N1
 |  30   |   §30   | Locked-tab residue hardening | §6, §7, §16, §19 |  [x]   |
 |  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [x]   |
 |  32   |   §33   | F1 context help | D07 T01 §11 |  [ ]   |
+|  33   |   §34   | Pinned-tab close regressions | §13 |  [ ]   |
 
 ---
 
@@ -459,6 +460,8 @@ Why this section exists: pinned tabs survive restarts and shrug off accidental c
 **Chrome:** Consume the shared tab styles. Do not invent a second pin treatment.
 
 **Needs:** Windows host (build/test)
+
+- -> XREF: D01 T01 §34 -- filed from the D00 T02 §9 night triage; its close regressions red-flagged this section's drives.
 
 - [x] Pin and unpin a tab under host drive. Done when: pinned tabs render pinned and unpin restores normal. **Corrected 2026-09-15:** the gesture is double-click on the tab (toggle); the context menu keeps its 4 stock items untouched (parity surface, §3-pinned). Stock tab double-click is a no-op by default (probe attempted: try 1 mismatched windows with no change observed, tries 2-3 defeated by single-instance routing; cost if wrong: one gesture plus this drive). Pin state also feeds `ShellSettings.PinnedFiles` for pathed tabs (the §8 jump feed reads it; §25 launches from it; untitled pins stay session-only). **Driven 2026-09-15:** `DoubleClickTogglesPinGlyph` (pin FontIcon named Pinned appears/vanishes), `PinsSurviveRelaunch` (settings write read back), green in the §13 filter run.
 - [x] Pinned tabs survive restart through §6 session restore. Done when: pins persist across an app relaunch. Pins round-trip in `session.json` (`SessionTab.IsPinned`, additive default false); §6's missing-file rules are unchanged (pin protects against close, not deletion); a pinned tab makes a session non-trivial. **Driven 2026-09-15:** `PinsSurviveRelaunch` end-to-end plus `CaptureCopiesPinState` and `TrivialPinnedTabPersists`, green in the §13 filter run.
@@ -1008,6 +1011,30 @@ Why this section exists: F1 summons the guide page for the focused surface. Deli
 - [ ] Commit: `"notepad-core: open context help on F1"`
 
 **Test checkpoint:** Drive proves mapped, unmapped, and fallback cases with matched URIs; guide documents the behavior. Cheaper substitute that fails: F1 opening a fixed home page regardless of focus.
+
+## 34. Pinned-Tab Close Regressions
+
+Why this section exists: two §13 drives fail deterministically in the night runs (`SingleCloseStillClosesPinned` and `CloseRightSkipsPinned`, both `Assert.NotNull` in the pin-close path, red in the 02:30 collection and red again in the governed re-run), so the pinned close path regressed after §13 stamped green and needs its cause found, not its tests skipped.
+
+**Fidelity:** new build, no baseline (stock Notepad pins nothing).
+
+**Job:** The user can close and close-around pinned tabs without null-reference failures. Consumer: the tab model (§2), which carries pin state into the close paths.
+
+**Treatment:** Diagnose first (pin state, tab lookup, or close dispatch), then fix app or test with the cause quoted; no Skip, no logic change without the quoted cause. Cheaper substitute that fails the checkpoint: skipping the pair into quarantine (they are red-red deterministic, not flakes).
+
+**Chrome:** Consume the shared tab styles. Do not invent a second pin treatment.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T01 §13 -- owns the pinned close path this section repairs; its drives red-flagged.
+- -> XREF: D00 T02 §9 -- filed from its night triage; both runs' evidence quoted there.
+- -> SOURCE: night-triage-2026-09-20 (`UI.PinnedTabsTests.SingleCloseStillClosesPinned`: `Assert.NotNull` (`PinnedTabsTests.cs:213`); `UI.PinnedTabsTests.CloseRightSkipsPinned`: `Assert.NotNull` in `WaitForPin` (`PinnedTabsTests.cs:339`); both red in the 02:30 `ui-interactive.trx` (24 passed, 3 failed, 1 skipped) and red again in the re-run `interactive.trx` (24 passed, 3 failed, 1 skipped); counts quoted in `docs/reviews/00-workspace/D00-T02-s9.md`).
+
+- [ ] `SingleCloseStillClosesPinned` passes: the NotNull cause is quoted and fixed in app or test. Done when: the test passes in the room and in a full run.
+- [ ] `CloseRightSkipsPinned` passes: the NotNull cause is quoted and fixed in app or test. Done when: the test passes in the room and in a full run.
+- [ ] Commit: `"notepad-core: fix the pinned-tab close regressions"`
+
+**Test checkpoint:** Both tests pass in the room and in a full UI run with the causes quoted; no Skip carries them. Cheaper substitute that fails: green by quarantine.
 
 ## Verification
 

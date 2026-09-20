@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **89 of 240 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **89 of 241 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -70,11 +70,11 @@ Chase them in this order. The first gates the whole build.
 
 ### 1. A Windows 11 host to run the app
 
-The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere with the repo-local SDK, while the app itself runs on Windows only. **Corrected 2026-09-17:** the SDK pin (`D00 T01 §1`) shipped, so the wait is over; the standing fact is the OS boundary. Scripts and plan checks run anywhere; app launch, UI suites, captures, and packaging need the Windows 11 host (Venom-PC), with the UI suites driving the real binary on its interactive session.
+The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere with the repo-local SDK, while the app itself runs on Windows only. **Corrected 2026-09-17:** the SDK pin (`D00 T01 §1`) shipped, so the wait is over; the standing fact is the OS boundary. Scripts and plan checks run anywhere; app launch, UI suites, captures, and packaging need the Windows 11 host (Venom-PC), with the UI suites driving the real binary on its interactive session. **Corrected 2026-09-20:** CI and dev are Windows-only (operator decision 2026-09-19); the neutral filter still builds anywhere but nothing proves it outside Windows.
 
-### 2. Linux and Windows CI runners
+### 2. Windows CI runners
 
-`D00 T01 §3` owns them. **Corrected 2026-09-17:** was "Until CI runs the build and tests, gates are prose"; since 2026-09-17 CI gates the build plus launch smoke plus the TODO graph checks only, and the UI suites run locally on the dev box (background-safe default run per section, full fenced run on its own cadence). No implementation section is blocked on CI existing, but no section's build evidence is trustworthy without it, and no section's UI evidence is trustworthy without the local runs.
+`D00 T01 §3` owns them. **Corrected 2026-09-17:** was "Until CI runs the build and tests, gates are prose"; since 2026-09-17 CI gates the build plus launch smoke plus the TODO graph checks only, and the UI suites run locally on the dev box (background-safe default run per section, full fenced run on its own cadence). No implementation section is blocked on CI existing, but no section's build evidence is trustworthy without it, and no section's UI evidence is trustworthy without the local runs. **Corrected 2026-09-20:** was "Linux and Windows CI runners"; Linux legs retired (operator decision 2026-09-19).
 
 ### 3. Codex and Claude Code adapters for compatibility runs
 
@@ -239,6 +239,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §30` | Locked-tab residue hardening                                        |   4   |
 | [x] | `D01 T01 §32` | Quarantine the AppIcon and Launch CI flakes                         |   4   |
 | [ ] | `D01 T01 §33` | F1 context help                                                     |   4   |
+| [ ] | `D01 T01 §34` | Pinned-tab close regressions                                        |   3   |
 | [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   5   |
 | [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   4   |
 | [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |

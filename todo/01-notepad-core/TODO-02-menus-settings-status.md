@@ -472,19 +472,22 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 
 ## 16. Quarantine the MenuBarTests Flakes
 
-Why this section exists: three `MenuBarTests` failed nondeterministically on CI within the hours (details in the SOURCE line), each red-then-green with no test-affecting change between, which is exactly the D00 T02 §5 quarantine criterion. Until they are quarantined, every full run gambles on them. **Corrected 2026-09-17 (groom):** UI suites left CI the day this section was filed, so the quarantine proves on the local full run, not a main CI run; the CI signatures below stay as the filing evidence.
+Why this section exists: three `MenuBarTests` failed nondeterministically on CI within the hours (details in the SOURCE line), each red-then-green with no test-affecting change between, which is exactly the D00 T02 §5 quarantine criterion. Until they are quarantined, every full run gambles on them. **Corrected 2026-09-17 (groom):** UI suites left CI the day this section was filed, so the quarantine proves on the local full run, not a main CI run; the CI signatures below stay as the filing evidence. **Corrected 2026-09-20:** two more `MenuBarTests` flakes (`FileOpenMissingNameOffersCreate`: "menu item MenuFileOpen never dispatched"; `LiveItemsStayEnabledAcrossStates`: `Assert.NotNull`) filed from the D00 T02 §9 night triage (red 02:30 run, green governed re-run, test-identical trees); this section now quarantines five.
 
 **Job:** The suite stays green without the flakes while their owners get a fix-or-remove window. Consumer: every local full run.
 
 **Treatment:** Quarantine by the D00 T02 §5 procedure verbatim (prove, Skip with the quarantine stamp, quarantine-list rows), one row per test. No test logic changes; the fix-or-remove window that follows belongs to the owners, not this section. Cheaper substitute that fails the checkpoint: re-running red builds until one goes green.
 
 - -> XREF: D00 T02 §7 -- filed from its pipeline run; the flakes blocked its first artifact.
+- -> XREF: D00 T02 §9 -- two more flakes filed from its night triage (FileOpen plus LiveItems, red 02:30 run, green governed re-run).
 - -> SOURCE: CI-flakes-2026-09-17 (`UI.MenuBarTests.FileSaveAllWalksDirtyTabs`: COMException UIA timeout in `WaitForNativeModalGone`, red on run 35230396785 attempt 1, green on the rerun of the same commit; `UI.MenuBarTests.ToolsMenuInvokesStats`: `Assert.NotNull` in `OpenToolsDialog`, red on run 35230230322, green on run 35230396785 whose tree differs only in workflow YAML plus TODO prose, i.e. a bit-identical test binary; `UI.MenuBarTests.FileMenuLiveAcceleratorsWork`: `Assert.NotNull`, red on run 35234746568 attempt 1, green on the rerun of the same commit. All smell like slow-runner load; the owners confirm via soak.)
 
 - [ ] `FileSaveAllWalksDirtyTabs` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
 - [ ] `ToolsMenuInvokesStats` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
 - [ ] `FileMenuLiveAcceleratorsWork` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
-- [ ] A local full run is green with all three tests skipped. Done when: the run output is quoted with the 3-skip line.
+- [ ] `FileOpenMissingNameOffersCreate` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
+- [ ] `LiveItemsStayEnabledAcrossStates` carries the quarantine Skip with its signature id and quarantine-list row. Done when: the attribute names the doc entry and the row quotes both runs.
+- [ ] A local full run is green with all five tests skipped. Done when: the run output is quoted with the 5-skip line.
 - [ ] Commit: `"notepad-core: quarantine the MenuBarTests flakes"`
 
 **Test checkpoint:** All three Skips plus all three rows land; local full run green with the skips counted. Cheaper substitute that fails: Skips without rows, or rows without the quoted proof.

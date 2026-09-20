@@ -32,6 +32,24 @@ Quiet hours hard-gate the fenced set: every `Category=Interactive` test runs und
 
 A test is fenced only with a quoted background-fail plus foreground-pass pair: run it backgrounded (the default run with `-e SCRATCHPAD_BACKGROUND=1`) and quote the failure, run it foreground and quote the pass, and cite both in a `// Fenced:` comment on the test. A fence without its pair is a guess, not a gate. The 28 fences shipped with §8 predate the rule and carry grandfather notes citing the audit (`docs/ui-input-audit.md`) section or mechanism instead; a grandfathered fence that is ever un-fenced and re-fenced owes the pair like any new fence. Two placement-premise tests (geometry restore, cascade) moved to the `Category=Primary` set with cited pairs instead of fences under the item 7 revision.
 
+## Nightly regression run (D00 T02 §9)
+
+The nightly run is the governed full-suite proof: three legs inside the 02:00-06:50 window, owned by the `\ScratchPad\Nightly UI` scheduled task (daily 02:30 local, `powershell -NoProfile -ExecutionPolicy Bypass -File tools\nightly.ps1`, 4-hour limit, wake-to-run, interactive logon). A manual run (`powershell -ExecutionPolicy Bypass -File tools\nightly.ps1`, `-Force` outside the window for an accepted interruption) is the backup when the trigger is missed. The sibling `\ScratchPad\Nightly Foreground Single` task (daily 02:05, one foreground test) predates this procedure and stays outside it.
+
+Pre-flight reaps orphaned test apps (and test hosts) whose executable lives under this checkout's `Bin/`, logging each pid plus start time; a released ScratchPad anywhere else is never touched. Leftovers from a dead run hold Bin locks (MSB3027 on the next build) and their stale windows contaminate window-enumerating tests, so the reap precedes every leg.
+
+Run A (default leg): `dotnet test src/ScratchPad.slnx --filter Category!=Interactive -e SCRATCHPAD_BACKGROUND=1` with `ForegroundLog 1800 <gate-default.log>` alongside (built first from `tools/ForegroundLog/ForegroundLog.csproj`, which no solution includes). Green needs the suite passed with zero failures AND the gate exit 0 (zero foreground holds, zero resting primary windows). The gate window intentionally overruns the suite (~13 min) so the whole run stays covered; the idle tail is designed waste, and a suite that overruns its window fails the leg (partial proof is no proof).
+
+Run B (primary leg): `dotnet test tests/UI --filter Category=Primary -e SCRATCHPAD_BACKGROUND=1` with `ForegroundLog 300 <gate-primary.log> --expect-primary` alongside. Green needs the suite passed AND the gate exit 0 (zero holds, at least one window resting on primary).
+
+Interactive leg (collection): `dotnet test tests/UI --filter Category=Interactive` with no `-e` flag, owning the foreground. Green needs every collected test passed; the only excused skips are quarantine skips (T02 §5 procedure), and quiet-hours skips fail the leg (the run owns the window, so none are excused).
+
+Logs land under `build/nightly/` (ignored scratch, never committed): per-leg transcripts `YYYY-MM-DD-default.log`, `YYYY-MM-DD-primary.log`, `YYYY-MM-DD-full.log` (the full log carries the Interactive collection), trx plus gate logs under `build/nightly/YYYY-MM-DD/`, each leg transcript recording the suite scope plus HEAD at the top. A red leg never blocks the later legs: each leg runs, the report carries every red, and only the run's exit code is red. The task appends the §5 soak loop (UI plus Protocol x5) after the legs unless `-SkipSoak` is passed; the soak is flake hunting, the legs are the regression proof.
+
+The morning report lands at `build/nightly/morning-YYYY-MM-DD.md`: date, HEAD, trigger, a per-leg table (passed, failed, skipped-with-reason, gate verdict, log path), every failure with its filed finding ref (triage appends refs after filing each failure in the owning file, before the next section starts), and uncollected debt as information with its cause. The current report is the worked example of the format.
+
+Abort rules: a leg that overruns its gate window fails the leg and the run continues; a dead run is resurrected by the guard cron at its next in-window fire, never re-driven by hand inside the window; past the window, morning triage re-drives what the window allows (Run A plus Run B; the Interactive collection waits for the next window). A locked box skips the Interactive leg with the skip logged (the box never locks per the §10 box facts, so a lock is an incident, not a debt cause).
+
 ## Golden captures
 
 `resources/baseline/` holds stock Notepad reference captures plus goldens of our own surfaces at canonical size; `tests/UI` compares fresh captures against them under the committed `tolerance.json` policy. Captures come from `tools/CaptureBaseline`; the refresh procedure in `resources/baseline/README.md` governs re-capturing after intentional changes.
