@@ -1614,16 +1614,30 @@ def superseded_acceptances(
     return {_sup for _t, _a, _o, _e, _r, _v, _i, _sup, _t2, _k, _id, _g, _oc, _ac in accs if _sup}
 
 
-def provenance_candidate(text: str) -> str | None:
+def provenance_candidate(text: str, run: str | None = None) -> str | None:
     """The reviewed candidate of a findings text (D00 T01 §51 item
-    2): the first Provenance line's candidate, or None when the
-    record predates the mandate (those skip the lineage leg like
-    §22's candidate-less records)."""
+    2): the candidate of the first Provenance line whose run
+    matches `run` (both sides normalized, so the -r1 synonym
+    reads through), or of the first Provenance line when `run`
+    is None or matches nothing; None when the record predates
+    the mandate (those skip the lineage leg like §22's
+    candidate-less records). Run-target waivers pass their
+    target run (D00 T01 §51 review R2-F2), so a waiver for a
+    rerun binds the rerun's candidate instead of the file's
+    first; finding and outage targets name no run and keep
+    first-wins. No live file carries two distinct candidates,
+    so the fallback is unobservable there by construction."""
+    first: str | None = None
+    want = normalize_run_id(run) if run is not None else None
     for ln in text.splitlines():
         pm = PROVENANCE_RE.match(ln)
-        if pm is not None:
+        if pm is None:
+            continue
+        if first is None:
+            first = pm.group(1)
+        if want is not None and normalize_run_id(pm.group(7)) == want:
             return pm.group(1)
-    return None
+    return first
 
 
 def evidence_lineage(evi: str, candidate: str | None) -> str:
@@ -4020,23 +4034,27 @@ def cmd_query(args) -> int:
                         acc_cache[path] = []
             return acc_cache[path]
 
-        _cand_cache: dict[str, str | None] = {}
+        _cand_cache: dict[tuple[str, str | None], str | None] = {}
 
-        def file_candidate(path: str) -> str | None:
+        def file_candidate(path: str, run: str | None = None) -> str | None:
             # Reviewed candidate per findings file (D00 T01 §51
             # item 2), cached beside the acceptances with the same
-            # validated-file and readability discipline.
-            if path not in _cand_cache:
+            # validated-file and readability discipline. The run
+            # joins the key (D00 T01 §51 review R2-F2): run-target
+            # waivers bind their run's candidate, not the file's
+            # first.
+            key = (path, run)
+            if key not in _cand_cache:
                 if path not in validated_files:
-                    _cand_cache[path] = None
+                    _cand_cache[key] = None
                 else:
                     try:
-                        _cand_cache[path] = provenance_candidate(
-                            (TODO_DIR.parent / path).read_text(encoding="utf-8")
+                        _cand_cache[key] = provenance_candidate(
+                            (TODO_DIR.parent / path).read_text(encoding="utf-8"), run
                         )
                     except OSError:
-                        _cand_cache[path] = None
-            return _cand_cache[path]
+                        _cand_cache[key] = None
+            return _cand_cache[key]
 
         def _join_debt(body: str, states: list) -> tuple:
             # Marker debt by target (D00 T01 §29 item 2, panel R1):
@@ -4185,7 +4203,7 @@ def cmd_query(args) -> int:
                                         today,
                                         kind,
                                         tgt,
-                                        file_candidate(fm.group(1)),
+                                        file_candidate(fm.group(1), tgt if kind == "run" else None),
                                         recgen,
                                         s.stamp_generation,
                                     )
@@ -4431,7 +4449,7 @@ def cmd_query(args) -> int:
                                 today,
                                 kind,
                                 tgt,
-                                provenance_candidate(raw_text),
+                                provenance_candidate(raw_text, tgt if kind == "run" else None),
                                 recgen,
                                 s.stamp_generation,
                             )
@@ -4927,7 +4945,7 @@ def cmd_query(args) -> int:
                     # _ptext is TODO bytes for run/outage kinds, which carry no
                     # Provenance line, so the old read always deferred and foreign
                     # evidence could list here while covering nothing.
-                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today, kind, tgt, provenance_candidate(_praw), recgen, _ps.stamp_generation) != "cover":
+                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today, kind, tgt, provenance_candidate(_praw, tgt if kind == "run" else None), recgen, _ps.stamp_generation) != "cover":
                         continue
                     if rvw < today:
                         _rstate = "review-overdue"
@@ -16853,6 +16871,20 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool t 1; digest d; path p; run r\n"
                 "Provenance: candidate bbb2222000000000000000000000000000000000; command true; exit 0; tool t 1; digest d; path p; run r\n"
             ),
+            "aaa1111000000000000000000000000000000000",
+        )
+        _two_runs = (
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool t 1; digest d; path p; run 20260920-D90-T01-S1-gpt\n"
+            "Provenance: candidate bbb2222000000000000000000000000000000000; command true; exit 0; tool t 1; digest d; path p; run 20260920-D90-T01-S1-gpt-r2\n"
+        )
+        check(
+            "run-target lineage binds the matching run's candidate",
+            provenance_candidate(_two_runs, "20260920-D90-T01-S1-gpt-r2"),
+            "bbb2222000000000000000000000000000000000",
+        )
+        check(
+            "run-target lineage falls back to first on no match",
+            provenance_candidate(_two_runs, "20260920-D90-T01-S9-gpt"),
             "aaa1111000000000000000000000000000000000",
         )
         check(

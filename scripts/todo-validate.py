@@ -1744,24 +1744,32 @@ def validate(graph, _args) -> int:
             # silent git skip without a sound (the query fails
             # closed at consult time), so this leg never fires on
             # unprovable inputs.
-            _cand = graph.provenance_candidate(ftext)
-            if _cand is not None:
-                _cfull = graph.git_full_sha(_cand)
-                if _cfull is not None:
-                    for _ln in ftext.splitlines():
-                        if not _ln.startswith("Risk accepted:"):
-                            continue
-                        _am = graph.RISK_ACCEPTED_RE.match(_ln)
-                        if _am is None or graph.risk_target_kind(_am.group(1)) is None:
-                            continue
-                        _efull = graph.git_full_sha(_am.group(8))
-                        if _efull is None or _efull == _cfull:
-                            continue
-                        if graph.git_is_ancestor(_cfull, _efull) is False:
-                            flag(
-                                "risk-acceptance-foreign-evidence",
-                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_am.group(1)} A{_am.group(2)} evidence does not descend from the reviewed candidate",
-                            )
+            # Per-acceptance candidates (D00 T01 §51 review R2-F2):
+            # run-target waivers bind their run's candidate, not the
+            # file's first; peels cache per distinct candidate so one
+            # file costs one peel per candidate, never per record.
+            _cfulls: dict[str | None, str | None] = {}
+            for _ln in ftext.splitlines():
+                if not _ln.startswith("Risk accepted:"):
+                    continue
+                _am = graph.RISK_ACCEPTED_RE.match(_ln)
+                if _am is None or graph.risk_target_kind(_am.group(1)) is None:
+                    continue
+                _arun = _am.group(1) if graph.risk_target_kind(_am.group(1)) == "run" else None
+                if _arun not in _cfulls:
+                    _acand = graph.provenance_candidate(ftext, _arun)
+                    _cfulls[_arun] = graph.git_full_sha(_acand) if _acand is not None else None
+                _cfull = _cfulls[_arun]
+                if _cfull is None:
+                    continue
+                _efull = graph.git_full_sha(_am.group(8))
+                if _efull is None or _efull == _cfull:
+                    continue
+                if graph.git_is_ancestor(_cfull, _efull) is False:
+                    flag(
+                        "risk-acceptance-foreign-evidence",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_am.group(1)} A{_am.group(2)} evidence does not descend from the reviewed candidate",
+                    )
             for _key in sorted(k for k, n in _key_count.items() if n > 1):
                 flag(
                     "risk-acceptance-chain-broken",
