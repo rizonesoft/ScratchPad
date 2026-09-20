@@ -88,6 +88,7 @@ track: N1
 |  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [x]   |
 |  32   |   §33   | F1 context help | D07 T01 §11 |  [ ]   |
 |  33   |   §34   | Pinned-tab close regressions | §13 |  [ ]   |
+|  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9 |  [ ]   |
 
 ---
 
@@ -1035,6 +1036,31 @@ Why this section exists: two §13 drives fail deterministically in the night run
 - [ ] Commit: `"notepad-core: fix the pinned-tab close regressions"`
 
 **Test checkpoint:** Both tests pass in the room and in a full UI run with the causes quoted; no Skip carries them. Cheaper substitute that fails: green by quarantine.
+
+## 35. Fix-or-Remove the Night-Triage Quarantines
+
+Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (red-green flakes, Skip plus quarantine-list rows, all due 2026-09-27), but their owning behavior sections (D01 T01 §4, §6, §7, §21, §30) are all stamped and cannot absorb the fix-or-remove work. Without a tree owner for the windows, seven UI behaviors run nowhere with no tracked reinstatement. This section owns all seven windows. -> SOURCE: night-triage-quarantines-2026-09-20 (the 7 red-then-green pairs quoted in `docs/reviews/00-workspace/D00-T02-s9.md`, rows in `docs/soak-and-quarantine.md`, all due 2026-09-27).
+
+**Job:** Every quarantined behavior is fixed (un-skipped with proof) or removed (with its decision recorded) inside its window. Consumer: the UI suite, which runs the behaviors again.
+
+**Treatment:** Per-test fix-or-remove by the D00 T02 §5 procedure: fix in app or test with a passing soak behind the un-skip, or remove with the decision row. No re-quarantine without new flake proof. Cheaper substitute that fails the checkpoint: letting the window lapse into overdue-removal.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §9 -- filed from its R3 review; the triage quarantined these 7.
+- -> XREF: D00 T02 §5 -- the procedure this section executes per test.
+
+- [ ] `MultiWindowSessionRestoresBothWindows` (D01 T01 §6, `multiwindow-single-empty`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] `DirtyReloadDiscardsEdits` (D01 T01 §21, `dirty-reload-zero-tabs`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] `LockedFileReportsLocked` (D01 T01 §4, `locked-file-null`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] `DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost` (D01 T01 §30, `locked-ghost-zero-tabs`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] `DirtyKeepPreservesEdits` (D01 T01 §21, `dirty-keep-null`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] `WindowCloseWithDirtyTabsIsSilentAndRestores` (D01 T01 §7, `dirty-close-com-timeout`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] `QuitAndRelaunchRestoresTabsContentsAndCarets` (D01 T01 §6, `quit-relaunch-mismatch`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
+- [ ] A full UI run is green with every window closed by fix or removal decision. Done when: the run plus each decision is quoted.
+- [ ] Commit: `"notepad-core: fix-or-remove the night-triage quarantines"`
+
+**Test checkpoint:** All seven windows closed by fix (un-skipped, soak-green) or removal (decision row); full UI run green. Cheaper substitute that fails: removals without rows, or fixes without soak proof.
 
 ## Verification
 

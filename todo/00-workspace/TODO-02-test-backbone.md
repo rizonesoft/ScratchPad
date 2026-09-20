@@ -156,6 +156,7 @@ Why this section exists: protocol tests must run with no network, no API keys, a
 Why this section exists: UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks.
 
 - -> XREF: D00 T02 §9 -- flakes the nightly run surfaces quarantine by this procedure; soak stays the flake-hunting repeat loop, the nightly run stays the regression proof.
+- -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for the 7 09-20 night-triage quarantines (due 09-27).
 
 - [x] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
 - [x] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
@@ -274,6 +275,7 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 - -> XREF: D01 T01 §34 -- filed from this section's night triage (pinned-tab close regressions, red both runs).
 - -> XREF: D01 T02 §16 -- two flakes filed into its list from this section's night triage (FileOpen plus LiveItems).
 - -> XREF: D00 T02 §13 -- backgrounding leak filed from this section's task-run triage (gate exit 1, primary=1).
+- -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for this section's 7 night-triage quarantines (due 09-27).
 
 - [x] `docs/testing.md` carries the nightly procedure: trigger (nightly cron inside 02:00-06:50; operator bedtime call stays as manual backup), the three legs (Run A background-safe default with foreground-plus-census proof, Run B Primary with `--expect-primary`, then the Interactive collection run), and the pass/fail bar for each leg. Done when: a second operator can run it or read the cron without asking. **Corrected 2026-09-19 (§8 plan review):** was two halves. Done: "Nightly regression run" section (trigger task plus manual backup, three legs with commands, bars, log convention, report format, abort rules, pre-flight reap).
 - [x] Nightly logs land under `build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log` (ignored scratch, never committed) with the run's section range and HEAD recorded at the top. Done when: the convention is written and the first logs follow it. **Corrected 2026-09-19 (§8 plan review):** was `{default,full}`; Run B owns the primary log. **Corrected 2026-09-20 (R1):** was day-scoped; same-day runs overwrote and merged (report HEAD `a8127c7` against Run A log `7ec7495`), so each invocation owns its stamp directory. Done: convention in testing.md; first stamped logs from the FL2 proofs (`2026-09-20-054411-smoke.log`, dirs `2026-09-20-054325/` and `2026-09-20-054451/`).

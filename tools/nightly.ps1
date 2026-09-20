@@ -12,7 +12,9 @@
   logs under build/nightly/YYYY-MM-DD-HHmmss/; the morning report lands at
   build/nightly/morning-YYYY-MM-DD.md. A red leg never blocks the
   later legs; only the exit code is red. -SkipSoak drops the §5 repeat loop
-  that otherwise follows the legs. -Force runs the Interactive leg outside
+  that otherwise follows the legs. -SkipDefault, -SkipPrimary, and -SkipFenced
+  drop their legs (morning triage re-drives Run A plus Run B with -SkipFenced
+  -SkipSoak). -Force runs the Interactive leg outside
   the window for an explicitly accepted interruption. Uses the repo-local SDK
   only. Procedure: docs/testing.md "Nightly regression run".
 #>
@@ -95,6 +97,37 @@ function Invoke-OrphanReap([datetime]$OlderThan) {
     Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
   }
   return $notes
+}
+
+function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepArgs, [string]$CodeFile) {
+  # Bounded step for legs without a gate window (Interactive, soak): the
+  # command runs in a job, killed at the cap so a hung drive cannot eat
+  # the window and strand the report. Same sidecar discipline as
+  # Invoke-GatedLeg (Receive-Job mixes output with the code, and a killed
+  # job never emits its code). Returns Code plus Killed.
+  if (Test-Path $CodeFile) { Remove-Item $CodeFile -Force }
+  $stepJob = Start-Job -ScriptBlock {
+    param($exe, $argList, $dir, $codeOut)
+    Set-Location $dir
+    & $exe @argList
+    $LASTEXITCODE | Set-Content -Path $codeOut
+  } -ArgumentList @($Dotnet, $StepArgs, $Root, $CodeFile)
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $doneSignal = Wait-Job -Job $stepJob -Timeout $TimeoutSeconds
+  $killed = ($null -eq $doneSignal)
+  if ($killed -and ($stepJob.State -eq 'Running')) { Stop-Job -Job $stepJob }
+  Receive-Job -Job $stepJob | Write-Host
+  Remove-Job -Job $stepJob -Force
+  $sw.Stop()
+  $code = 1
+  if (Test-Path $codeFile) { $code = [int](Get-Content $codeFile -Raw).Trim() }
+  if ($killed) {
+    $code = 1
+    Write-Host "--- $Name killed at the $TimeoutSeconds s cap; reaping its tree ---"
+    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
+  }
+  Write-Host "--- $Name exit: $code killed: $killed test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
+  return [pscustomobject]@{ Code = $code; Killed = $killed }
 }
 
 function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [string]$GateLog, [string]$VerdictFile, [string[]]$TestArgs) {
@@ -383,9 +416,11 @@ try {
     if ($Force) {
       Start-LegLog $log 'tests/UI, Category=Interactive, foreground, forced'
       try {
-        $code = Invoke-Step 'interactive' { & $Dotnet test tests/UI/UI.csproj --no-build --nologo --filter 'Category=Interactive' -e SCRATCHPAD_INTERACTIVE_FORCE=1 --logger 'trx;LogFileName=interactive.trx' --results-directory $trxDir }
-        if ($code -ne 0) { $failed = $true }
-        $leaked = @(Get-NonQuarantineSkips (Join-Path $trxDir 'interactive.trx'))
+        $trx = Join-Path $trxDir 'interactive.trx'
+        $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Interactive', '-e', 'SCRATCHPAD_INTERACTIVE_FORCE=1', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
+        $r = Invoke-TimedStep 'interactive' 1800 $stepArgs "$trx.testcode"
+        if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
+        $leaked = @(Get-NonQuarantineSkips $trx)
         if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
@@ -399,9 +434,11 @@ try {
     } else {
       Start-LegLog $log 'tests/UI, Category=Interactive, foreground'
       try {
-        $code = Invoke-Step 'interactive' { & $Dotnet test tests/UI/UI.csproj --no-build --nologo --filter 'Category=Interactive' --logger 'trx;LogFileName=interactive.trx' --results-directory $trxDir }
-        if ($code -ne 0) { $failed = $true }
-        $leaked = @(Get-NonQuarantineSkips (Join-Path $trxDir 'interactive.trx'))
+        $trx = Join-Path $trxDir 'interactive.trx'
+        $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Interactive', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
+        $r = Invoke-TimedStep 'interactive' 1800 $stepArgs "$trx.testcode"
+        if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
+        $leaked = @(Get-NonQuarantineSkips $trx)
         if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
@@ -411,12 +448,14 @@ try {
 
   if (-not $SkipSoak) {
     for ($i = 1; $i -le 5; $i++) {
-      $code = Invoke-Step "soak-ui-$i" { & $Dotnet test tests/UI/UI.csproj --no-build --nologo --filter 'Category!=Interactive' -e SCRATCHPAD_BACKGROUND=1 --logger "trx;LogFileName=ui-soak-$i.trx" --results-directory $trxDir }
-      if ($code -ne 0) { $failed = $true }
+      $soakArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category!=Interactive', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=ui-soak-$i.trx", '--results-directory', $trxDir)
+      $r = Invoke-TimedStep "soak-ui-$i" 1800 $soakArgs (Join-Path $trxDir "ui-soak-$i.testcode")
+      if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
     }
     for ($i = 1; $i -le 5; $i++) {
-      $code = Invoke-Step "soak-protocol-$i" { & $Dotnet test tests/Protocol/Protocol.csproj --no-build --nologo -e SCRATCHPAD_BACKGROUND=1 --logger "trx;LogFileName=protocol-soak-$i.trx" --results-directory $trxDir }
-      if ($code -ne 0) { $failed = $true }
+      $soakArgs = @('test', 'tests/Protocol/Protocol.csproj', '--no-build', '--nologo', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=protocol-soak-$i.trx", '--results-directory', $trxDir)
+      $r = Invoke-TimedStep "soak-protocol-$i" 1800 $soakArgs (Join-Path $trxDir "protocol-soak-$i.testcode")
+      if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
     }
   }
 } finally {
@@ -435,6 +474,7 @@ try {
   $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
   $pname = (Get-CimInstance Win32_Process -Filter "ProcessId=$parent").Name
   if ($pname -eq 'taskeng.exe') { $trigger = 'cron \ScratchPad\Nightly UI (daily 02:30)' }
+  elseif ($pname -eq 'svchost.exe') { $trigger = 'task \ScratchPad\Nightly UI (timer or demand; svchost.exe hosts the scheduler on Win8+, an interactive shell never parents to it)' }
   else { $trigger = "manual (parent $pname)" }
 } catch { }
 $sumA = Get-LegSummary (Join-Path $trxDir 'run-a.trx') (Join-Path $nightDir "$stamp-default.log")
