@@ -11,7 +11,10 @@ namespace UI;
 // D00 T02 §12 item 2: restored physical-chord coverage for the six
 // enabled bindings the §8 conversion left at zero suite presses.
 // Each test presses the chord and asserts the dispatch; shortcut
-// dispatch IS the point, so all six are fenced Interactive.
+// dispatch IS the point, so all six are fenced Interactive. Each
+// test ships in the shape its Fenced quotes were taken in (the N
+// test unfunnelled, the dialog tests funnel-first); Press focuses
+// either way, so the split is cosmetic.
 [Collection("UI tests")]
 public sealed class AcceleratorTests
 {
@@ -20,7 +23,9 @@ public sealed class AcceleratorTests
     public void ChordCtrlShiftNOpensSecondWindow()
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Pair: backgrounded+forced fails (1 window, chord never dispatches off-screen);
+        // Pair: backgrounded+forced fails (1 window, chord never dispatches
+        // off-screen); foreground-forced passes (2 windows, 2 s). Collector
+        // confirmation Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
@@ -44,7 +49,10 @@ public sealed class AcceleratorTests
     public void ChordCtrlShiftGOpensStats()
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Backgrounded+forced passes (StatsDialog opens in 1 s), so this fence rests on
+        // Backgrounded+forced passes (StatsDialog opens in 1 s), so this
+        // fence rests on interruption (Press steals the operator
+        // foreground), not on background failure. Foreground confirmation
+        // Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
@@ -68,7 +76,10 @@ public sealed class AcceleratorTests
     public void ChordCtrlShiftHOpensSnapshots()
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Backgrounded+forced passes (SnapshotsDialog opens), so this fence rests on
+        // Backgrounded+forced passes (SnapshotsDialog opens), so this
+        // fence rests on interruption (Press steals the operator
+        // foreground), not on background failure. Foreground confirmation
+        // Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
@@ -92,7 +103,10 @@ public sealed class AcceleratorTests
     public void ChordCtrlShiftEOpensTemplates()
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Pair half: backgrounded+forced fails (TemplatesDialog null). Foreground
+        // Pair half: backgrounded+forced fails (TemplatesDialog null).
+        // Foreground confirmation Night-owed D00-T02-S12-N1 (daytime
+        // forced attempts void: a TickTick setup window held OS
+        // foreground through the probe series).
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
@@ -116,7 +130,10 @@ public sealed class AcceleratorTests
     public void ChordCtrlShiftXOpensExport()
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Backgrounded+forced passes (ExportDialog opens), so this fence rests on
+        // Backgrounded+forced passes (ExportDialog opens), so this
+        // fence rests on interruption (Press steals the operator
+        // foreground), not on background failure. Foreground confirmation
+        // Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
@@ -140,7 +157,10 @@ public sealed class AcceleratorTests
     public void ChordCtrlShiftLOpensLock()
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Pair half: backgrounded+forced fails (LockDialog null). Foreground
+        // Pair half: backgrounded+forced fails (LockDialog null).
+        // Foreground confirmation Night-owed D00-T02-S12-N1 (daytime
+        // forced attempts void: a TickTick setup window held OS
+        // foreground through the probe series).
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
