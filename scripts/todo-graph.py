@@ -1264,7 +1264,10 @@ def outage_key(target: str) -> tuple[str, str] | None:
     return (om.group(1).strip().lower(), om.group(2))
 
 
-EVENT_RE = re.compile(r"\bevent\s+(\S+)")
+# Strict left boundary (D00 T01 §50 review R1: `\b` also splits on
+# hyphens, so `no-event <date>` prose would satisfy the leg): the
+# token must not follow a word char or a hyphen.
+EVENT_RE = re.compile(r"(?<![\w-])event\s+(\S+)")
 
 
 def marker_event_day(body: str) -> str:
@@ -9447,6 +9450,7 @@ track: Z1
 |  100  |   §100  | Outage missing event date fires | - |  [x]   |
 |  101  |   §101  | Unreal outage event date fires | - |  [x]   |
 |  102  |   §102  | Misshapen outage event date fires | - |  [x]   |
+|  103  |   §103  | Hyphen-joined event prose never satisfies | - |  [x]   |
 
 ---
 
@@ -10663,6 +10667,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §102 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-9-5
+
+## 103. Hyphen-joined event prose never satisfies
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §103 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 amid no-event 2026-09-19 triage
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13023,6 +13038,19 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "§102 fires exactly once (event only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§102 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "hyphen-joined event prose never satisfies the leg",
+            any(
+                "TODO-07-marker.md" in ln and "§103 " in ln and "names no outage-event date" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§103 fires exactly once (event only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§103 " in ln and "FATAL" in ln),
             1,
         )
         gbuf = _mio.StringIO()
