@@ -106,7 +106,7 @@ track: W0
 |  48   |   §48   | Migration completion assurance | §26 |  [x]   |
 |  49   |   §49   | Multi-citer review evaluation | §27 |  [x]   |
 |  50   |   §50   | Outage instance dating | §27 |  [x]   |
-|  51   |   §51   | Acceptance record follow-ups | §27 |  [ ]   |
+|  51   |   §51   | Acceptance record follow-ups | §27 |  [x]   |
 |  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [ ]   |
 |  53   |   §53   | Unattended notification and register follow-ups | §29 |  [ ]   |
 |  54   |   §54   | Clearance fixture follow-ups | §30 |  [ ]   |
@@ -1310,6 +1310,12 @@ Why this section exists: the §27 plan review (`gpt-5.6-sol` high over §27 plus
 - [x] Commit: `"workspace: tighten acceptance records per §27 plan review"`
 
 **Test checkpoint:** ordering resolves within the day, evidence binds lineage, freshness targets precisely, reopens never revive except through the recorded hand-strip gap, outcomes report, and same-day chains hold. Falsifiable by any same-day cover, foreign evidence, unrelated-edit void, modeled-path revival, unstructured outcome, or ID collision.
+
+> **Verified:** 2026-09-20 | §51 | self-test 1245/1245 (9 new: 2 generation-seeding, 3 prose-decoy plus shape, 1 reviews-agreement, 1 first-candidate, 2 run-matching); live validate 0 fatal 0 warnings; Full panel (Sol R1-R2, Sol sign-off R3 after the Opus rung timed out) over candidates 2e294ff ae427e8 0b04c75, sign-off 2 filed at D00 T04 §6, 1 rejected as factually wrong; plan review 17 findings, 8 filed, 2 duplicates, 7 rejected
+> **Review:** round 3 (FINAL), candidates 2e294ff ae427e8 0b04c75 -- `adversarial` needs-attention (filed) · `consistency` needs-attention (rejected, factually wrong) · `integration` needs-attention (filed) · `record` approve; R1 six findings fix-looped, R2 three re-reports (run-matching fixed, two held), R3 Sol sign-off after the Opus timeout. Raw findings: docs/reviews/00-workspace/D00-T01-s51.md
+> **Plan review:** GPT high, filed D00 T04 §6, D00 T04 §5, D00 T02 §11 (run 20260920-D00-T01-S51-gpt-r4)
+> **CRUD:** applicable | self-test wrote fixture files under temp roots (unlinked after, read back via per-case assertions); implementation edited the query, validator, fixtures, skill, README, and ticks (read back via self-test 1245/1245, live validate 0 fatal, plan --check current); filings opened T04 §5, T04 §6, the T02 §11 edge, and plan-review joiners (read back via plan --check current)
+> **Duration:** 2026-09-20T09:33:07Z to 2026-09-20T11:10:16Z
 
 ## 52. Partial-Record and Quorum Follow-Ups
 
