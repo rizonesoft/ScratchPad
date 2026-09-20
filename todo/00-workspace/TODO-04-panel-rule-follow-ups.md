@@ -41,6 +41,7 @@ track: W0
 |   3   |   §3    | Migration-assurance follow-ups | D00 T01 §48 |  [ ]   |
 |   4   |   §4    | Review-evaluation follow-ups | D00 T01 §49 |  [ ]   |
 |   5   |   §5    | Windows console and prompt follow-ups | D00 T01 §34 |  [ ]   |
+|   6   |   §6    | Acceptance-record sign-off residuals | D00 T01 §51 |  [ ]   |
 
 ---
 
@@ -125,6 +126,16 @@ Why this section exists: the §51 round-1 panel assembly exposed two Windows-onl
 - [ ] Commit: `"workspace: harden review runner for Windows consoles"`
 
 **Test checkpoint:** non-ASCII output survives a cp1252 console, one subcommand assembles every review prompt to a file, and the skill blocks run it on Windows. Falsifiable by any console crash, hand-assembled prompt, or bash-only block.
+
+## 6. Acceptance-Record Sign-Off Residuals
+
+Why this section exists: the §51 sign-off round (Sol, after the Opus rung timed out) left two below-bar needs-attention findings: a real latent tuple-order swap in the accepted/deferred critical append, and a genuine contract dispute over tag-object evidence that three rounds could not settle by fiat. Both file here instead of re-rounding, per the sign-off rule. -> XREF: D00 T01 §51 (filed from its sign-off round); -> SOURCE: GPT-panel-D00-T01-s51-round-3 (candidates `2e294ff` `ae427e8` `0b04c75`, round-3 adversarial 1 plus integration 1; transcribed in `docs/reviews/00-workspace/D00-T01-s51.md`).
+
+- [ ] Accepted/deferred criticals report outcome and failure code in order: the append puts the empty `failure_code` before `aout` to match every consumer's `fc, aout` unpack, so a superseding acceptance on an accepted or deferred critical stops reporting its outcome as a clearance failure. First live trigger: the §11 superseding record on D00-T02-S10-PR1; this fix must land before that record does. Done when: the order plus fixtures ship (an accepted critical with a superseding acceptance asserting empty `failure_code` with its outcome reported).
+- [ ] Evidence commit-identity decides: either the lineage legs require the recorded 40-hex evidence value to be the commit itself (peel-identity, mirroring the §33 provenance rule), or the peel-and-compare reading stands as the recorded contract. The §51 review held the latter three rounds running (item 2 says 40-hex full ids, the README says peel-to-commit normalization, tag ids are immutable and deterministic through every leg); the implementer re-evaluates with fresh eyes against the full rejection record in `docs/reviews/00-workspace/D00-T01-s51.md` and implements or re-rejects with reason. Done when: the decision reads in code plus skill plus README with fixtures, or the re-rejection reads with its reason.
+- [ ] Commit: `"workspace: follow up acceptance records per §51 sign-off"`
+
+**Test checkpoint:** accepted/deferred criticals unpack in order and the evidence-identity question reads decided. Falsifiable by any swapped report or undecided contract.
 
 ## Verification
 
