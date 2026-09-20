@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **94 of 254 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **95 of 254 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -136,7 +136,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §8`  | Focus-free UI suite conversion                  |   6   |
 | [x] | `D00 T02 §9`  | Nightly full-suite regression run               |   5   |
 | [x] | `D00 T02 §10` | Completion-first night-debt system              |  11   |
-| [ ] | `D00 T02 §11` | Central launch helper with off-screen birth     |   5   |
+| [x] | `D00 T02 §11` | Central launch helper with off-screen birth     |   5   |
 | [ ] | `D00 T02 §12` | Accelerator binding coverage sweep              |   3   |
 | [ ] | `D00 T02 §13` | Backgrounding leak on the default leg           |   3   |
 | [ ] | `D00 T02 §14` | Run-level deadline for the governed run         |   2   |
