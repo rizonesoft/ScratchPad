@@ -567,6 +567,15 @@ def parse_todo(path: Path) -> Todo:
                     for target in stamp_targets:
                         target.stamped_on = day
                         target.stamp_generation = _sgen
+                        # Seed the running generation from the persisted
+                        # stamp (D00 T01 §51 review R1-F1): without this a
+                        # fresh parse after the Reopened line lifts resets
+                        # the base to 0, so the next reopen restarts at
+                        # generation 1 and old waivers revive. Max, never
+                        # last-wins: generations only increase, and a
+                        # hand-stripped stamp must not lower the base (the
+                        # strip itself stays the recorded gap).
+                        _gen_state[target.num] = max(_gen_state.get(target.num, 0), _sgen)
             elif kind == "Duration" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     # Last marker governs: each Duration line resets
@@ -1414,23 +1423,28 @@ def target_digest(kind: str, tgt: str, text: str) -> str | None:
         return _canon(rows) if rows else None
     if kind == "run":
         want = normalize_run_id(tgt)
-        marks = [
-            ln
-            for ln in text.splitlines()
-            if "Plan review" in ln
-            and (rm := RUN_ID_RE.search(ln)) is not None
-            and normalize_run_id(rm.group(1)) == want
-        ]
+        marks: list[str] = []
+        for ln in text.splitlines():
+            sm = STAMP_RE.match(ln)
+            if sm is None or sm.group("kind") != "Plan review":
+                continue  # prose never passes as a marker (D00 T01 §51 review R1-F2)
+            rm = RUN_ID_RE.search(sm.group("body"))
+            if rm is not None and normalize_run_id(rm.group(1)) == want:
+                marks.append(ln)
         return _canon(marks) if marks else None
     okey = outage_key(tgt)
     if okey is None:
         return None
     outs: list[str] = []
     for ln in text.splitlines():
-        if "Plan review" not in ln or not is_outage_marker(ln):
+        sm = STAMP_RE.match(ln)
+        if sm is None or sm.group("kind") != "Plan review":
+            continue  # prose never passes as a marker (D00 T01 §51 review R1-F2)
+        body = sm.group("body")
+        if not is_outage_marker(body):
             continue
-        omt = re.search(r"outage:\s*([^\(;]+)", ln.lower())
-        if omt is not None and (omt.group(1).strip(), marker_event_day(ln)) == okey:
+        omt = re.search(r"outage:\s*([^\(;]+)", body.lower())
+        if omt is not None and (omt.group(1).strip(), marker_event_day(body)) == okey:
             outs.append(ln)
     return _canon(outs) if outs else None
 
@@ -4909,7 +4923,11 @@ def cmd_query(args) -> int:
                         )
                         _ptday = _pev
                         _ppath, _ptext = _pt.path, todo_text(_pt.path)
-                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today, kind, tgt, provenance_candidate(_ptext), recgen, _ps.stamp_generation) != "cover":
+                    # Lineage binds the findings file (D00 T01 §51 review R1-F5):
+                    # _ptext is TODO bytes for run/outage kinds, which carry no
+                    # Provenance line, so the old read always deferred and foreign
+                    # evidence could list here while covering nothing.
+                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today, kind, tgt, provenance_candidate(_praw), recgen, _ps.stamp_generation) != "cover":
                         continue
                     if rvw < today:
                         _rstate = "review-overdue"
@@ -9765,6 +9783,7 @@ track: Z1
 |  108  |   §108  | Edited marker fails against history | - |  [x]   |
 |  109  |   §109  | Deleted marker fails against history | - |  [x]   |
 |  110  |   §110  | Added marker stays silent against history | - |  [x]   |
+|  111  |   §111  | Persisted generation seeds the reopen base | - |  [ ]   |
 
 ---
 
@@ -11072,6 +11091,18 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §110 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-histq110.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S110-gpt)
+
+## 111. Persisted generation seeds the reopen base
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §111 | generation 1 | fixture re-stamp
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept6.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S111-gpt)
+> **Reopened:** 2026-09-20 | generation 1 | §14 | fixture second reopen
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13078,6 +13109,19 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "§107 fires exactly once (the refused re-stamp)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§107 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "a second reopen increments past the persisted generation",
+            any(
+                "TODO-07-marker.md" in ln and "§111 " in ln and "is not previous-plus-one of stamp generation 1" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§111 fires exactly once (the increment)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§111 " in ln and "FATAL" in ln),
             1,
         )
         check(
@@ -15912,7 +15956,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _acc_head
             + "Manifest: sections [D90 T01 §19]; dependents [none]; bytes 100\n\n"
             "Ledger:\n- [D90-T01-S19-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence f19f190000000000000000000000000000000000; rationale foreign-branch evidence, never covers\n"
+            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_over}; evidence f19f190000000000000000000000000000000000; rationale foreign-branch evidence, never covers and never lists\n"
             + "Provenance: candidate c19c190000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-acc21.md; run 20260919-D90-T01-S19-gpt\n",
             encoding="utf-8",
@@ -15963,9 +16007,12 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         canned_git[("beef18e000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
         )
-        canned_git[("f19f190000000000000000000000000000000000", _clean_todo)] = (
-            "foreign bytes carrying the §19 marker\n"
-            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n"
+        # Same tree bytes on a foreign branch (D00 T01 §51 review
+        # R1-F5): the bytes contain the marker, so freshness passes
+        # and lineage alone decides (foreign here, agreed by the
+        # marker loop and the reviews leg).
+        canned_git[("f19f190000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+            encoding="utf-8"
         )
         canned_git[("1209200000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
@@ -16637,6 +16684,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             (not any(e["target"] == "D90-T01-S6-PR5" for e in _revs)),
             True,
         )
+        check(
+            "foreign evidence lists no review obligation (reviews agree with the marker loop)",
+            (not any(e["target"] == "outage cron rung 2026-09-18" for e in _revs)),
+            True,
+        )
         # --- multi-citer review evaluation (D00 T01 §49): the reviews
         # leg runs the hold predicate under every citing section's
         # marker, and one obligation lists once however many citers
@@ -16779,6 +16831,29 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "CRLF live bytes still read fresh against LF evidence",
             evidence_state("acc7070", "docs/reviews/90-health-accept.md", _acc1_now.replace("\n", "\r\n"), "finding", "D90-T07-S4-PR2"),
             "fresh",
+        )
+        check(
+            "run presence ignores prose carrying a run token",
+            target_digest("run", "20260919-D90-T01-S3-gpt", "the Plan review run 20260919-D90-T01-S3-gpt covered it\n"),
+            None,
+        )
+        check(
+            "outage presence ignores prose carrying an outage shape",
+            target_digest("outage", "outage cron rung 2026-09-18", "Plan review note outage: cron rung; event 2026-09-18 stands\n"),
+            None,
+        )
+        check(
+            "shaped marker lines still digest",
+            target_digest("run", "20260919-D90-T01-S3-gpt", "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S3-gpt)\n") is not None,
+            True,
+        )
+        check(
+            "lineage reads the first provenance candidate",
+            provenance_candidate(
+                "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool t 1; digest d; path p; run r\n"
+                "Provenance: candidate bbb2222000000000000000000000000000000000; command true; exit 0; tool t 1; digest d; path p; run r\n"
+            ),
+            "aaa1111000000000000000000000000000000000",
         )
         check(
             "unmatched record reads no-match without consulting legs",
