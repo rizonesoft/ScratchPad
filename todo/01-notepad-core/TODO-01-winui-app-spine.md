@@ -88,7 +88,7 @@ track: N1
 |  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [x]   |
 |  32   |   §33   | F1 context help | D07 T01 §11 |  [ ]   |
 |  33   |   §34   | Pinned-tab close regressions | §13 |  [ ]   |
-|  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9 |  [ ]   |
+|  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9, D01 T01 §34, D01 T02 §16 |  [ ]   |
 
 ---
 
@@ -1029,17 +1029,17 @@ Why this section exists: two §13 drives fail deterministically in the night run
 
 - -> XREF: D01 T01 §13 -- owns the pinned close path this section repairs; its drives red-flagged.
 - -> XREF: D00 T02 §9 -- filed from its night triage; both runs' evidence quoted there.
-- -> SOURCE: night-triage-2026-09-20 (`UI.PinnedTabsTests.SingleCloseStillClosesPinned`: `Assert.NotNull` (`PinnedTabsTests.cs:213`); `UI.PinnedTabsTests.CloseRightSkipsPinned`: `Assert.NotNull` in `WaitForPin` (`PinnedTabsTests.cs:339`); both red in the 02:30 `ui-interactive.trx` (24 passed, 3 failed, 1 skipped) and red again in the re-run `interactive.trx` (24 passed, 3 failed, 1 skipped); counts quoted in `docs/reviews/00-workspace/D00-T02-s9.md`).
+- -> SOURCE: night-triage-2026-09-20 (`UI.PinnedTabsTests.SingleCloseStillClosesPinned`: `Assert.NotNull` (`PinnedTabsTests.cs:213`); `UI.PinnedTabsTests.CloseRightSkipsPinned`: `Assert.NotNull` in `WaitForPin` (`PinnedTabsTests.cs:339`); both red in the 02:30 `ui-interactive.trx` (24 passed, 3 failed, 1 skipped) and red again in the re-run `interactive.trx` (24 passed, 3 failed, 1 skipped); counts quoted in `docs/reviews/00-workspace/D00-T02-s9.md`). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s34 D00-T02-S9-PR28 D00-T02-S9-PR29 (visible-oracle plus leg corrections from the §9 plan review).
 
-- [ ] `SingleCloseStillClosesPinned` passes: the NotNull cause is quoted and fixed in app or test. Done when: the test passes in the room and in a full run.
-- [ ] `CloseRightSkipsPinned` passes: the NotNull cause is quoted and fixed in app or test. Done when: the test passes in the room and in a full run.
+- [ ] `SingleCloseStillClosesPinned` passes: the NotNull cause is quoted and fixed in app or test, and single-close closes exactly the pinned tab it was invoked on (PR28). Done when: the test passes in the room and in a full default run with the visible outcome asserted (PR29: default leg — the failures reproduced backgrounded, so no Interactive leg is owed).
+- [ ] `CloseRightSkipsPinned` passes: the NotNull cause is quoted and fixed in app or test, and close-right skips every pinned tab (PR28). Done when: the test passes in the room and in a full default run with the visible outcome asserted (PR29: default leg — the failures reproduced backgrounded, so no Interactive leg is owed).
 - [ ] Commit: `"notepad-core: fix the pinned-tab close regressions"`
 
-**Test checkpoint:** Both tests pass in the room and in a full UI run with the causes quoted; no Skip carries them. Cheaper substitute that fails: green by quarantine.
+**Test checkpoint:** Both tests pass in the room and in a full default UI run with the causes quoted plus the visible outcomes asserted (PR28, PR29); no Skip carries them. Cheaper substitute that fails: green by quarantine.
 
 ## 35. Fix-or-Remove the Night-Triage Quarantines
 
-Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (red-green flakes, Skip plus quarantine-list rows, all due 2026-09-27), but their owning behavior sections (D01 T01 §4, §6, §7, §21, §30) are all stamped and cannot absorb the fix-or-remove work. Without a tree owner for the windows, seven UI behaviors run nowhere with no tracked reinstatement. This section owns all seven windows. -> SOURCE: night-triage-quarantines-2026-09-20 (the 7 red-then-green pairs quoted in `docs/reviews/00-workspace/D00-T02-s9.md`, rows in `docs/soak-and-quarantine.md`, all due 2026-09-27).
+Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (red-green flakes, Skip plus quarantine-list rows, all due 2026-09-27), but their owning behavior sections (D01 T01 §4, §6, §7, §21, §30) are all stamped and cannot absorb the fix-or-remove work. Without a tree owner for the windows, seven UI behaviors run nowhere with no tracked reinstatement. This section owns all seven windows. -> SOURCE: night-triage-quarantines-2026-09-20 (the 7 red-then-green pairs quoted in `docs/reviews/00-workspace/D00-T02-s9.md`, rows in `docs/soak-and-quarantine.md`, all due 2026-09-27). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s35 D00-T02-S9-PR26 D00-T02-S9-PR27 (removal bar plus dependencies from the §9 plan review).
 
 **Job:** Every quarantined behavior is fixed (un-skipped with proof) or removed (with its decision recorded) inside its window. Consumer: the UI suite, which runs the behaviors again.
 
@@ -1060,7 +1060,7 @@ Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (re
 - [ ] A full UI run is green with every window closed by fix or removal decision. Done when: the run plus each decision is quoted.
 - [ ] Commit: `"notepad-core: fix-or-remove the night-triage quarantines"`
 
-**Test checkpoint:** All seven windows closed by fix (un-skipped, soak-green) or removal (decision row); full UI run green. Cheaper substitute that fails: removals without rows, or fixes without soak proof.
+**Test checkpoint:** All seven windows closed by fix (un-skipped, soak-green) or removal (decision row with replacement coverage or accepted risk) (PR26); full UI run green. Cheaper substitute that fails: removals without rows, or fixes without soak proof.
 
 ## Verification
 

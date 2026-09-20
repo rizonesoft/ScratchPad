@@ -47,13 +47,15 @@ track: W0
 |   6   |   §6    | Golden comparison deterministic on CI | §3 |  [x]   |
 |   7   |   §7    | CI evidence capture pipeline | D01 T02 §14 |  [x]   |
 |   8   |   §8    | Focus-free UI suite conversion | §2 |  [x]   |
-|   9   |   §9    | Nightly full-suite regression run | §8 |  [ ]   |
+|   9   |   §9    | Nightly full-suite regression run | §8 |  [x]   |
 |   10  |   §10   | Completion-first night-debt system | §8 |  [ ]   |
 |   11  |   §11   | Central launch helper with off-screen birth | §8 |  [ ]   |
 |   12  |   §12   | Accelerator binding coverage sweep | §8 |  [ ]   |
 |   13  |   §13   | Backgrounding leak on the default leg | §8 |  [ ]   |
 |   14  |   §14   | Run-level deadline for the governed run | §9 |  [ ]   |
 |   15  |   §15   | Nightly enforcement and count hardening | §9 |  [ ]   |
+|   16  |   §16   | Verify timer-fired completion and green | §9 |  [ ]   |
+|   17  |   §17   | Nightly notify plus trend surface | §9 |  [ ]   |
 
 ---
 
@@ -235,7 +237,7 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 
 **Needs:** Windows host (build/test)
 
-- -> XREF: D00 T02 §9 -- the nightly run executes this fence; the two tiers (default plus fenced) are that run's two halves.
+- -> XREF: D00 T02 §9 -- the nightly run executes this fence; the three tiers (Run A default, Run B Primary, Interactive collection) are that run's three legs. **Corrected 2026-09-20 (§9 plan review PR1):** was two tiers/halves.
 - -> XREF: D00 T02 §10 -- completion-first hardening plus the collector that collects this section's Interactive debt.
 - -> XREF: D00 T02 §11 -- central-launch plus off-screen-birth hardening filed from this section's Sol panel round 2.
 - -> XREF: D00 T02 §12 -- accelerator binding coverage sweep filed from this section's Opus panel round 5.
@@ -261,7 +263,7 @@ Why this section exists: the UI suite cannot run while the operator works. Measu
 > **Review:** rounds 1-5 (FINAL), candidates dc2dbc7 6d1a8be 67f2f21 0242f52 14ccfb0 04a5a6a 67b88bc 3d7f658 -- `adversarial` approve (R1 steal, R2 flashes, R3 vacuity-claim, R4 Primary gate fixed; R5 approve) · `consistency` needs-attention (R5 accelerator filed D00 T02 §12; R1/R3/R4 docs fixed) · `integration` approve (R1 style, R3/R4 bypasses fixed; R5 approve) · `record` needs-attention (R5 tally plus quote typos corrected in this commit; R1/R2/R3/R4 record fixed). Raw findings: docs/reviews/00-workspace/D00-T02-s8.md
 > **Plan review:** Sol high, 11 targets, 3 corrected in place (D00 T02 §9, D06 T01 §3, D06 T01 §4), 8 rejected with reasons, 0 filed (run 20260919-D00-T02-S8-gpt)
 > **CRUD:** applicable | review read candidate diff plus contract plus corpus (no writes outside the candidate); implementation converted tests plus funnel plus gates (read back via Run A 162/3/0, Run B 2/2, skips, guards); filings opened D00 T02 §10/§11/§12 plus plan rows (read back via plan --check current)
-**Night-owed:** D00-T02-S8-N1 (28 Interactive, collector Nightly UI 02:30, first collection due the coming window).
+**Night-owed:** D00-T02-S8-N1 (28 Interactive, collector Nightly UI 02:30, first collection due the coming window). Collected 27 of 28 2026-09-20 (evidence in §9's review file); closure owned by §10. **Corrected 2026-09-20 (§9 plan review PR2).**
 > **Verified:** 2026-09-19 | §8 | Run A 162/3/0 flagged=0 primary=0 plus Run B 2/2 flagged=0 primary=1 plus skips 28/28 and 2/2 plus guards 22/22 plus slnx 0/0; Full panel (Sol R1-R2, Opus R3-R5) over 8 candidates, R5 below-bar only (accelerator filed §12, 2 typos corrected here); plan review 11 targets, 3 corrected, 8 rejected; Night-owed D00-T02-S8-N1 (28 Interactive, collector Nightly UI 02:30); validate 0 fatal.
 
 ## 9. Nightly Full-Suite Regression Run
@@ -281,6 +283,8 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 - -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for this section's 7 night-triage quarantines (due 09-27).
 - -> XREF: D00 T02 §14 -- run-level deadline filed from this section's R4 review (worst-case legs exceed PT4H).
 - -> XREF: D00 T02 §15 -- enforcement plus count hardening filed from this section's R5 review.
+- -> XREF: D00 T02 §16 -- timer verification filed from this section's plan review (PR3, PR4, PR12).
+- -> XREF: D00 T02 §17 -- notify plus trend surface filed from this section's plan review (PR32).
 
 - [x] `docs/testing.md` carries the nightly procedure: trigger (nightly cron inside 02:00-06:50; operator bedtime call stays as manual backup), the three legs (Run A background-safe default with foreground-plus-census proof, Run B Primary with `--expect-primary`, then the Interactive collection run), and the pass/fail bar for each leg. Done when: a second operator can run it or read the cron without asking. **Corrected 2026-09-19 (§8 plan review):** was two halves. Done: "Nightly regression run" section (trigger task plus manual backup, three legs with commands, bars, log convention, report format, abort rules, pre-flight reap).
 - [x] Nightly logs land under `build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log` (ignored scratch, never committed) with the suite scope and build-time HEAD recorded at the top. Done when: the convention is written and the first logs follow it. **Corrected 2026-09-19 (§8 plan review):** was `{default,full}`; Run B owns the primary log. **Corrected 2026-09-20 (R1):** was day-scoped; same-day runs overwrote and merged (report HEAD `a8127c7` against Run A log `7ec7495`), so each invocation owns its stamp directory. **Corrected 2026-09-20 (FL5):** was "section range"; the header carries the suite scope (a whole-tree run has no section range) — wording only. Done: convention in testing.md; first stamped logs from the FL2 proofs (`2026-09-20-054411-smoke.log`, dirs `2026-09-20-054325/` and `2026-09-20-054451/`). FL5 re-proof: `2026-09-20-061900-smoke.log` carries the scope-plus-HEAD header (smoke branch converted to Start-LegLog).
@@ -289,9 +293,14 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 - [x] The first governed run executes the procedure end to end on the cron (bedtime trigger stays as manual backup) and its evidence (all three logs plus the morning report) is quoted here. Done when: the log paths and the report are cited with their outcomes. **Corrected 2026-09-19 (§8 plan review):** was both logs. **Corrected 2026-09-20 (R1):** both re-run gate codes were blank, not exit 0; the re-run executed all three legs end to end on the manual backup trigger, and cron-path proof rides the demand-fired task run. **Corrected 2026-09-20 (FL2):** Run A restored to 545 passed (Smoke 1, Unit 346, Protocol 35, UI 163) after an FL1 over-correction to the UI-only report row. Done: re-run 03:20 (manual `-SkipSoak`, in-window): Run A 545 passed, 1 failed, 3 skipped, gate blank-code with verdict "flagged=0; census=743 primary=1 expect=secondary", test-seconds 621; Run B 2 passed, gate blank-code with verdict "flagged=0; census=11 primary=1 expect=primary", test-seconds 7; Interactive 24/3/1 of 28; archived at `build/nightly-rerun-2026-09-20/` (`2026-09-20-default.log`, `2026-09-20-primary.log`, `2026-09-20-full.log`, `morning-2026-09-20.md`). Task run 04:13:43 (demand-fired, full legs plus soak): Run A 540/0/9, gate exit 1 (primary=1, filed D00 T02 §13); Run B 2/0/0, gate exit 0; Interactive 24/2/2 (both in §34); soak 10/10 green; Last Result 1; archived at `build/nightly-taskrun-2026-09-20/` (same four names plus `2026-09-20/` trx and gate logs).
 - [x] The nightly cron exists (recurring inside 02:00-06:50, operator-set 2026-09-18): Run A default with foreground-plus-census proof, Run B Primary with `--expect-primary`, then the Interactive collection, with abort and report rules stated. Done when: the cron fired once end to end or a dry run is quoted. **Corrected 2026-09-19 (§8 plan review):** was default-then-fenced. **Corrected 2026-09-20:** trigger boundaries read 2026-09-19, not 2026-09-18 (`\ScratchPad\Nightly UI` daily 02:30 local, action `tools\nightly.ps1`, 4h limit; sibling `\ScratchPad\Nightly Foreground Single` daily 02:05 runs one foreground test and stays out of this section's scope). Done: task verified live 2026-09-20 (absolute-path action, Start In repo root, Run As DerickPayne, daily 02:30, IgnoreNew, PT4H, WakeToRun, InteractiveToken); timer fire 02:30:01 (parent died mid-loop, cause unknown; mutex plus guard cover the class); demand-fired dry run 04:13:43 completed 05:38:07 (all legs plus soak plus report, Last Result 1: gate primary=1 plus 2 known §34 fails; both gate codes captured non-blank, proving the job capture in situ; logs plus report at `build/nightly-taskrun-2026-09-20/` (`2026-09-20-default.log`, `-primary.log`, `-full.log`, `morning-2026-09-20.md`, `2026-09-20/` trx)).
 - [x] The guard cron never injects into a live turn: it skips every fire while a turn holds the token (resurrection of an idle session only, never keepalive of a live one). Done when: the cron is created with the skip-if-active flag and a live-turn fire is observed to skip without touching the turn. -> SOURCE: guard-killed-run-2026-09-18 (03:23 SAST heartbeat fired into a live turn, `inbox_delivery_anomaly deferred_token_held`, turn plus background suite run cancelled; session seq 12350-12372). Done: cron `7e89433d` (`*/10 2-6 * * *`, skip-if-active); no fire across the 04:00-04:30 slots while this turn held the token (`fire_count` frozen at 3, last fire the idle ~03:50 rule-2 exit); zero injections.
-- [ ] Commit: `"workspace: govern the nightly regression run"`
+- [x] Commit: `"workspace: govern the nightly regression run"` (range `2e40b8d`..`cfb18e2` plus stamp; no single commit carries the message verbatim)
 
 **Test checkpoint:** Procedure, log convention, and report format written; first governed run quoted with all three logs; Interactive tier collected in-window. Cheaper substitute that fails: an ad-hoc night run whose evidence lives in chat. **Corrected 2026-09-19 (§8 plan review):** was both logs plus fenced half.
+
+> **Review:** rounds 1-5 (FINAL), candidates `2e40b8d` `7ec7495` `ce19202` `2fd0ea4` `31923a6` `1a6b781` `5a006c9` `2dd6a07` `cfb18e2` -- Sol R1 4x needs-attention over 10 findings (FL1 plus FL2: job timeouts, mutex, failing skips, stamp-scoped evidence, transcript skip merge, live task record, honest ticks, §13 filing); Sol R2 3 needs-attention plus 1 defended (FL3); Opus R3 4x needs-attention (FL4: 1800s caps, switch docs, svchost branch, §35 filing); Opus R4 blocking re-sign-off 3 needs-attention (FL5: F1 defended by experiment, §14 filed, soak doc synced, suite-scope wording); Opus R5 final 2 advisories filed §15 plus arithmetic fixed (FL6, panel closed). Raw findings: docs/reviews/00-workspace/D00-T02-s9.md
+> **Plan review:** Sol tier, 32 targets, 2 corrected in place (D00 T02 §8 XREF, D00 T02 §8 N1), 28 filed (D00 T02 §13, D00 T02 §14, D00 T02 §15, D00 T02 §16, D00 T02 §17, D01 T01 §34, D01 T01 §35), 2 deferred with trigger (PR24, PR25: text lost to compaction, re-derive at next plan review) (run 20260920-D00-T02-S9-plan)
+> **CRUD:** applicable | review read candidate diff plus contract plus corpus (no writes outside the candidate); implementation wrote procedure plus script plus docs plus filings (read back via re-run legs, task-run legs, gates, report, plan --check current); filings opened D00 T02 §13/§14/§15/§16/§17 plus D01 T01 §34/§35 (read back via validate clean)
+> **Verified:** 2026-09-20 | §9 | re-run Run A 545/1/3 plus Run B 2/0/0 plus Interactive 24/3/1, task-run Run A 540/0/9 (gate primary=1 filed §13) plus Run B 2/0/0 plus Interactive 24/2/2 plus soak 10/10; Full panel (Sol R1-R2, Opus R3-R5) over 9 candidates, R5 advisories filed §15; plan review 32 targets, 28 filed, 2 corrected, 2 deferred; N1 27 of 28 collected (§10 owns the close); validate 0 fatal.
 
 ## 10. Completion-First Night-Debt System
 
@@ -355,7 +364,7 @@ Why this section exists: conversion swaps physical key-means for pattern-means, 
 
 ## 13. Backgrounding Leak on the Default Leg
 
-Why this section exists: the Run A gate counted a resting primary window on both governed 09-20 runs (re-run census 743, task-run census 696, both primary=1 with expect=secondary), while the 09-19 §8 proof was primary=0 clean. No commit touched tests/ or src/ between the §8 stamp and the re-run tree, so this is not a code regression: some backgrounded UI test rests a visible window on primary nondeterministically (or the single 09-19 proof was luck). Until the leaking test is identified and fixed or quarantined, the Run A leg stays red and the gate proof means nothing. -> SOURCE: gate-primary-2026-09-20 (re-run Run A gate blank-code with verdict "flagged=0; census=743 primary=1 expect=secondary", test-seconds 621; task-run Run A gate exit 1 with verdict "flagged=0; census=696 primary=1 expect=secondary", test-seconds 578; `git log fa2fc56..a8127c7 -- tests/ src/` empty).
+Why this section exists: the Run A gate counted a resting primary window on both governed 09-20 runs (re-run census 743, task-run census 696, both primary=1 with expect=secondary), while the 09-19 §8 proof was primary=0 clean. No commit touched tests/ or src/ between the §8 stamp and the re-run tree, so the working hypothesis is a nondeterministic leak rather than a code regression (environment, config, binaries, timing, or harness could still differ without a tests/ or src/ commit) (PR14): some backgrounded UI test rests a visible window on primary nondeterministically (or the single 09-19 proof was luck). Until the leaking test is identified and fixed or quarantined, the Run A leg stays red and the gate proof means nothing. -> SOURCE: gate-primary-2026-09-20 (re-run Run A gate blank-code with verdict "flagged=0; census=743 primary=1 expect=secondary", test-seconds 621; task-run Run A gate exit 1 with verdict "flagged=0; census=696 primary=1 expect=secondary", test-seconds 578; `git log fa2fc56..a8127c7 -- tests/ src/` empty). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s13 D00-T02-S9-PR14 D00-T02-S9-PR15 D00-T02-S9-PR16 D00-T02-S9-PR17 (wording, method, checkpoint, and ordering corrections from the §9 plan review).
 
 **Needs:** Windows host (build/test)
 
@@ -363,16 +372,19 @@ Why this section exists: the Run A gate counted a resting primary window on both
 - -> XREF: D00 T02 §9 -- filed from its task-run triage (gate exit 1 on the cron-path run).
 - -> XREF: D00 T02 §11 -- the central-launch funnel may fix the leak as a side effect; this section diagnoses first.
 
+**Treatment:** This section's identification completes before §11's funnel lands; if §11 lands first, this section re-verifies the leak absent with the same census evidence instead of closing by assumption. (PR17.)
+
 - [ ] The leaking test is identified by correlating `run-a.trx` per-test times against the gate census timestamps in `build/nightly-taskrun-2026-09-20/2026-09-20/gate-default.log`, naming the test plus the window it rested. Done when: the test name and its census lines are quoted.
+- [ ] Each created HWND is instrumented with the active test identity so the leak attribution does not rest on approximate timestamps alone (PR15). Done when: the census names the test per window.
 - [ ] The leak is fixed (backgrounded birth or explicit off-screen geometry on the leaking path) or the test is quarantined by the §5 procedure with its row. Done when: the fix commit or the Skip plus row is quoted.
 - [ ] A governed Run A re-proofs the gate clean (exit 0, primary=0) with the verdict quoted. Done when: the gate line reads exit 0 with primary=0.
 - [ ] Commit: `"workspace: plug the backgrounding leak on the default leg"`
 
-**Test checkpoint:** Run A gate exit 0 with primary=0 on a governed run; the leaking test named with its census evidence. Cheaper substitute that fails: re-running until a green gate without identifying the leak.
+**Test checkpoint:** Run A gate exit 0 with primary=0 on three consecutive governed runs; the leaking test named with its census evidence. Cheaper substitute that fails: a single green run, or re-running until green without identifying the leak. (PR16.)
 
 ## 14. Run-Level Deadline for the Governed Run
 
-Why this section exists: every leg now has its own cap, but the run has no global deadline: worst case 1800 (Run A) + 300 (Run B) + 1800 (Interactive) + 10 x 1800 (soak) is 21900 s (about 6.1 hours), past the task PT4H limit and past the 06:50 window end, and the report lands only after the soak loops. One hung leg is affordable (normal full runs take ~85 minutes); eleven simultaneous hangs are absurd; but the catastrophe case currently dies by scheduler kill with no fixed-path record. This section bounds the whole run. -> SOURCE: run-deadline-2026-09-20 (D00 T02 §9 R4 finding: worst-case cap arithmetic vs PT4H plus window end).
+Why this section exists: every leg now has its own cap, but the run has no global deadline: worst case 1800 (Run A) + 300 (Run B) + 1800 (Interactive) + 10 x 1800 (soak) is 21900 s (about 6.1 hours), past the task PT4H limit and past the 06:50 window end, and the report lands only after the soak loops. One hung leg is affordable (normal full runs take ~85 minutes); eleven simultaneous hangs are absurd; but the catastrophe case currently dies by scheduler kill with no fixed-path record. This section bounds the whole run at the earliest of the PT4H limit and the 06:50 quiet-hours boundary, reserving time for cleanup and an atomic report (PR18). -> SOURCE: run-deadline-2026-09-20 (D00 T02 §9 R4 finding: worst-case cap arithmetic vs PT4H plus window end). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s14 D00-T02-S9-PR6 D00-T02-S9-PR11 D00-T02-S9-PR18 D00-T02-S9-PR19 D00-T02-S9-PR20 (deadline, verification, budget, retention, and session corrections from the §9 plan review).
 
 **Needs:** Windows host (build/test)
 
@@ -380,25 +392,67 @@ Why this section exists: every leg now has its own cap, but the run has no globa
 - -> XREF: D00 T02 §5 -- the soak loop this deadline must also bound.
 
 - [ ] A run-level watchdog aborts the legs and lands the report before the PT4H limit in the all-hang catastrophe case. Done when: the mechanism plus its deadline math is written in `docs/testing.md` abort rules.
-- [ ] The watchdog is implemented in `tools/nightly.ps1` (partial legs marked unproven, never green). Done when: a simulated all-hang run lands its report before the deadline.
+- [ ] The watchdog is implemented in `tools/nightly.ps1` (partial legs marked unproven, never green) with injectable short deadlines; the simulation verifies descendant-process termination, orphan-window cleanup, partial-log flushing, and atomic report publication (PR19). Done when: a simulated all-hang run lands its report before the deadline with all four verified.
+- [ ] The three regression-leg verdicts publish before the soak loops, and soak consumes only remaining budget (PR20). Done when: a long night still lands the core verdict on time with soak marked budget-cut.
+- [ ] Run evidence gains retention plus checksum rules outside ignored `build/` scratch (PR6). Done when: the rules are written and the 09-20 archives migrate under them.
+- [ ] Locked-desktop, logged-out, sleeping, missed-start, and reboot behavior is defined for the `InteractiveToken` task (PR11). Done when: the matrix is written in `docs/testing.md`.
 - [ ] Commit: `"workspace: bound the governed run with a deadline"`
 
 **Test checkpoint:** Simulated all-hang run lands its report before the PT4H-equivalent deadline with unproven (never green) legs. Cheaper substitute that fails: per-leg caps alone, which sum past the limit.
 
 ## 15. Nightly Enforcement and Count Hardening
 
-Why this section exists: the D00 T02 §9 R5 review left two advisories on the new enforcement plus report code. First, the Interactive quarantine-only check flags any skip without a QUARANTINED stamp, but capability skips (HookFact tests on hosts without low-level hooks) are legitimate non-quarantine skips that would red the leg with a misleading leak message. Second, the reported skip count comes from the merged name-line list while passed/failed come from the assembly sums, so a dropped line or cross-assembly name collision makes the cell contradict its own per-assembly breakdown (the summed `$s` is computed but never returned). Both are small, co-located, and filed together. -> SOURCE: r5-followups-2026-09-20 (R5-F1: `TabBarTests.cs:435` HookFact capability message vs `nightly.ps1:423,441`; R5-F2: unused `$s` at `nightly.ps1:266` vs count at `nightly.ps1:484`).
+Why this section exists: the D00 T02 §9 R5 review left two advisories on the new enforcement plus report code. First, the Interactive quarantine-only check flags any skip without a QUARANTINED stamp, but capability skips (HookFact tests on hosts without low-level hooks) are legitimate non-quarantine skips that would red the leg with a misleading leak message. Second, the reported skip count comes from the merged name-line list while passed/failed come from the assembly sums, so a dropped line or cross-assembly name collision makes the cell contradict its own per-assembly breakdown (the summed `$s` is computed but never returned). Both are small, co-located, and filed together. -> SOURCE: r5-followups-2026-09-20 (R5-F1: `TabBarTests.cs:435` HookFact capability message vs `nightly.ps1:423,441`; R5-F2: unused `$s` at `nightly.ps1:266` vs count at `nightly.ps1:484`). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s15 D00-T02-S9-PR5 D00-T02-S9-PR7 D00-T02-S9-PR8 D00-T02-S9-PR9 D00-T02-S9-PR10 D00-T02-S9-PR13 D00-T02-S9-PR21 D00-T02-S9-PR22 D00-T02-S9-PR23 D00-T02-S9-PR30 D00-T02-S9-PR31 (report, enforcement, and evidence items from the §9 plan review).
 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §9 -- filed from its R5 review; hardens that candidate.
 
-- [ ] Capability skips are allowlisted in `Get-NonQuarantineSkips` (HookFact message plus any enumerated capability skips) and the Interactive bar in `docs/testing.md` names the allowlist. Done when: the allowlist plus a scratch proof (capability skip passes, bare skip still flags) is quoted.
+- [ ] Capability skips are allowlisted in `Get-NonQuarantineSkips` (HookFact message plus any enumerated capability skips), preferring structured skip classifications or stable reason codes over free-text matching (PR21; free text only as fallback), and the Interactive bar in `docs/testing.md` names the allowlist. Done when: the allowlist plus a scratch proof (capability skip passes, bare skip still flags) is quoted.
 - [ ] The reported skip count is unified with the assembly sums (`$s` threaded through `Get-LegSummary`). Done when: the cell equals its breakdown on the archived task report.
 - [ ] A smoke run is green on the hardened script. Done when: the smoke log plus exit code is quoted.
+- [ ] A `latest` report pointer plus an archive-naming rule disambiguate same-day runs (PR5). Done when: the pointer resolves to the current stamp and the rule is written.
+- [ ] Soak reports as a fourth phase (or gates out of the governed run) so a red soak cannot hide behind green legs (PR7). Done when: the report shows the soak verdict.
+- [ ] Test, gate, enforcement, and infrastructure verdicts report separately (PR8). Done when: no single cell mixes them.
+- [ ] Leg headers carry a build-once snapshot identity (commit, dirty state, binaries, config, tool versions) (PR9). Done when: two legs quote identical snapshots.
+- [ ] Mutual exclusion across scheduled, manual, guard, and retry launches is tested (PR10). Done when: overlap attempts stand down in the matrix.
+- [ ] Leg failures auto-capture screenshots, window metadata, dumps, and the failing test's event slice (PR13). Done when: a forced red shows captures attached.
+- [ ] Parser fixtures cover assemblies, duplicate names, malformed TRX, and every skip class (PR22). Done when: the fixture suite is green.
+- [ ] `passed + failed + skipped = total` is enforced per assembly and globally, failing closed on missing assemblies (PR23). Done when: a corrupted fixture reds.
+- [ ] Overdue quarantine windows auto-fail with notification (PR30). Done when: an expired fixture window reds plus notifies.
+- [ ] Repeated failures deduplicate into stable incident IDs retaining every occurrence (PR31). Done when: the report shows IDs with occurrence counts.
 - [ ] Commit: `"workspace: harden nightly enforcement and counts"`
 
 **Test checkpoint:** Capability skips pass enforcement, bare skips still flag, and the skip cell equals its breakdown. Cheaper substitute that fails: allowlisting by test name instead of skip reason.
+
+## 16. Verify Timer-Fired Completion and Green
+
+Why this section exists: the §9 evidence proves the demand-fired path (04:13:43 dry run, all legs plus soak), but no timer-fired run has completed end to end (the 02:30 parent died mid-loop), and the only completed task returned 1. Until a timer fire completes — and repeats, and runs green after the known reds resolve — scheduler-path reliability and regression-green are both unproven. -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s16 D00-T02-S9-PR3 D00-T02-S9-PR4 D00-T02-S9-PR12 (timer completion, post-fix green, and repeat verification from the §9 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §9 -- verifies that run's scheduler path plus green.
+
+- [ ] A timer-fired run completes end to end (all legs plus soak plus report). Done when: the morning report plus task history is quoted with the timer trigger.
+- [ ] A second timer-fired run completes, proving recurrence rather than luck. Done when: two consecutive timer reports are quoted.
+- [ ] A timer-fired run is green after D00 T02 §13, D01 T01 §34, and D01 T02 §16 resolve the known reds. Done when: the green report is quoted with the three resolutions named.
+- [ ] Commit: `"workspace: verify timer-fired completion and green"`
+
+**Test checkpoint:** Two consecutive timer-fired completions plus one post-fix green, all quoted. Cheaper substitute that fails: demand-fired runs standing in for the timer path.
+
+## 17. Nightly Notify Plus Trend Surface
+
+Why this section exists: the governed run's verdict currently sits in a local Markdown file the operator must remember to inspect, and per-night numbers (pass rates, durations, quarantine age, flake recurrence, gate verdicts) have no trend. A premium regression system notifies the morning and shows the slope. -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s17 D00-T02-S9-PR32 (notify plus dashboard premium win from the §9 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §9 -- surfaces that run's verdict plus history.
+
+- [ ] The morning notification fires after each governed run (pass rates, durations, reds with refs). Done when: a run's notification is quoted with its trigger.
+- [ ] The trend surface tracks pass rates, durations, quarantine age, flake recurrence, and gate verdicts across nights. Done when: two nights render with the five series.
+- [ ] Commit: `"workspace: notify plus trend the nightly run"`
+
+**Test checkpoint:** Notification quoted plus two-night trend rendered. Cheaper substitute that fails: a second local file nobody opens.
 
 ## Verification
 
