@@ -19,8 +19,13 @@
   -SkipSoak). -Force runs the Interactive leg outside
   the window for an explicitly accepted interruption. -CollectDebt <id>
   limits the Interactive leg to one night debt's trait filter (with
-  -CheckOnly it dry-runs the resolution). Uses the repo-local SDK
-  only. Procedure: docs/testing.md "Nightly regression run".
+  -CheckOnly it dry-runs the resolution). A run-level deadline (D00 T02
+  §14) gates every leg start: legs whose caps no longer fit are
+  budget-cut (unproven, never green) and the report still lands; core
+  verdicts publish before soak. SCRATCHPAD_RUN_DEADLINE_SECONDS plus
+  SCRATCHPAD_LEG_CAP_SECONDS inject short deadlines for simulation
+  only. Uses the repo-local SDK only. Procedure: docs/testing.md
+  "Nightly regression run".
 #>
 [CmdletBinding()]
 param(
@@ -122,7 +127,10 @@ function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepAr
   $doneSignal = Wait-Job -Job $stepJob -Timeout $TimeoutSeconds
   $killed = ($null -eq $doneSignal)
   if ($killed -and ($stepJob.State -eq 'Running')) { Stop-Job -Job $stepJob }
-  Receive-Job -Job $stepJob | Write-Host
+  # A killed job's receive can throw a transport error (PSSessionStateBroken,
+  # measured 2026-09-20 on the first kill the script ever performed); the
+  # run must reap and report, never die here, so the receive never throws.
+  try { Receive-Job -Job $stepJob | Write-Host } catch { Write-Host "--- $Name step-job receive failed after kill: $($_.Exception.Message) ---" }
   Remove-Job -Job $stepJob -Force
   $sw.Stop()
   $code = 1
@@ -173,7 +181,9 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   $doneSignal = Wait-Job -Job $testJob -Timeout $GateSeconds
   $killed = ($null -eq $doneSignal)
   if ($killed -and ($testJob.State -eq 'Running')) { Stop-Job -Job $testJob }
-  Receive-Job -Job $testJob | Write-Host
+  # Same no-throw receive as Invoke-TimedStep: a killed test job's
+  # transport can break, and the gate verdict plus report must survive it.
+  try { Receive-Job -Job $testJob | Write-Host } catch { Write-Host "--- $Name test-job receive failed after kill: $($_.Exception.Message) ---" }
   Remove-Job -Job $testJob -Force
   $sw.Stop()
   $testCode = 1
@@ -289,6 +299,26 @@ function Get-LegSummary([string]$TrxPath, [string]$LogPath) {
   return [pscustomobject]@{ Passed = $p; FailedCount = $f; Failed = $failLines; Skipped = $skipLines; Assemblies = $asm }
 }
 
+function Format-LegRow([string]$Leg, $Sum, $Gate, [string]$LogName, [string]$Note = '') {
+  if ($null -eq $Sum) {
+    $cell = if ($Note -ne '') { $Note } else { 'no trx (leg skipped or produced none)' }
+    return "| $Leg | $cell | -- | $($LogName) |"
+  }
+  $skips = $Sum.Skipped.Count
+  $gate = if ($null -eq $Gate) { 'n/a (owns the foreground)' } else { "exit $($Gate.GateCode) $($Gate.Verdict)" }
+  $counts = "$($Sum.Passed) passed, $($Sum.FailedCount) failed, $skips skipped"
+  if ($Sum.Assemblies) { $counts += " ($($Sum.Assemblies))" }
+  if ($Note -ne '') { $counts += " ($Note)" }
+  return "| $Leg | $counts | $gate | $($LogName) |"
+}
+
+function Get-LegNote([string]$Leg, $Gate, [bool]$Killed) {
+  if ($script:budgetCut -contains $Leg) { return 'budget-cut (unproven)' }
+  if ($Killed) { return 'killed at cap: unproven' }
+  if (($null -ne $Gate) -and $Gate.Overrun) { return 'killed at cap: unproven' }
+  return ''
+}
+
 if (-not (Test-Path $Dotnet)) { throw "nightly: repo-local SDK missing ($Dotnet); provision first: powershell -ExecutionPolicy Bypass -File tools\provision.ps1" }
 $env:DOTNET_ROOT = $SdkDir
 $env:PATH = "$SdkDir;" + $env:PATH
@@ -331,6 +361,51 @@ $lockHeld = $false
 try { $lockHeld = $mutex.WaitOne(0) }
 catch [System.Threading.AbandonedMutexException] { $lockHeld = $true }
 if (-not $lockHeld) { Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'; exit 0 }
+
+# Run-level deadline (D00 T02 §14): the catastrophe bound. Every leg
+# starts only when its full cap fits inside the remaining budget, so the
+# run lands its report before the scheduler kills it. Deadline is the
+# earlier of the task PT4H limit and the 06:50 window end (in-window runs
+# only: a manual daytime backup has no window boundary), minus a 300 s
+# reserve for reaping plus the atomic report. The build and the smoke
+# path run outside the budget: nothing proves without a build, both fail
+# fast, and neither can strand the report. SCRATCHPAD_RUN_DEADLINE_SECONDS
+# overrides the budget for simulation (the all-hang proof) and
+# SCRATCHPAD_LEG_CAP_SECONDS overrides every leg cap; both are
+# simulation-only and warn loudly whenever set. Legs that never start
+# are budget-cut (unproven, never green); §14 abort rules in
+# docs/testing.md carry the deadline math.
+$deadlineReserve = 300
+# Kill slack: a killed leg costs its cap plus job-teardown latency
+# (measured ~120 s per kill on the 2026-09-20 simulation: Stop-Job plus
+# broken-transport teardown), so the budget gate holds 180 s per leg
+# beyond the cap. Without it, teardown leaks past the deadline.
+$killSlack = 180
+$taskLimit = $runStart.AddHours(4)
+$windowEnd = Get-Date -Hour 6 -Minute 50 -Second 0
+$deadline = $taskLimit
+if ($inWindow -and ($windowEnd -lt $taskLimit)) { $deadline = $windowEnd }
+$deadline = $deadline.AddSeconds(-$deadlineReserve)
+$simDeadline = $env:SCRATCHPAD_RUN_DEADLINE_SECONDS
+$simMode = $false
+if (-not [string]::IsNullOrWhiteSpace($simDeadline)) {
+  $deadline = $runStart.AddSeconds([int]$simDeadline)
+  $simMode = $true
+  Write-Warning "nightly: SIMULATION run deadline ${simDeadline}s from start (ends $($deadline.ToString('HH:mm:ss'))); not a governed proof"
+}
+$simCap = $env:SCRATCHPAD_LEG_CAP_SECONDS
+$capA = 1800; $capB = 300; $capI = 1800; $capSoak = 1800
+if (-not [string]::IsNullOrWhiteSpace($simCap)) {
+  $capA = $capB = $capI = $capSoak = [int]$simCap
+  Write-Warning "nightly: SIMULATION leg caps ${simCap}s; not a governed proof"
+}
+if ($simMode) { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (simulation: reserve bypassed)" }
+else { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (reserve ${deadlineReserve}s)" }
+function Test-LegBudget([int]$CapSeconds) {
+  return (($deadline - (Get-Date)).TotalSeconds -ge ($CapSeconds + $killSlack))
+}
+$budgetCut = @()
+$soakKilled = @()
 
 $day = Get-Date -Format 'yyyy-MM-dd'
 $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
@@ -429,6 +504,12 @@ try {
   $script:buildHead = 'unknown'
   try { $script:buildHead = (git -C $Root rev-parse HEAD).Trim() } catch { }
 
+  if ((-not $SkipDefault) -and (-not (Test-LegBudget $capA))) {
+    $SkipDefault = $true
+    $budgetCut += 'Run A (default)'
+    $failed = $true
+    Write-Output 'nightly: Run A budget-cut (unproven): its cap no longer fits inside the run deadline'
+  }
   if (-not $SkipDefault) {
     $log = Join-Path $nightDir "$stamp-default.log"
     Start-LegLog $log 'full tree, Category!=Interactive&Category!=Primary, backgrounded'
@@ -439,7 +520,7 @@ try {
       # -e is load-bearing: shell exports do not reach the app through
       # the test host (measured 2026-09-17); see docs/testing.md.
       $testArgsA = @('test', 'src/ScratchPad.slnx', '--no-build', '--nologo', '--filter', 'Category!=Interactive&Category!=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-a.trx', '--results-directory', $trxDir)
-      $r = Invoke-GatedLeg 'run-a' 1800 '' $gateLog $verdictFile $testArgsA
+      $r = Invoke-GatedLeg 'run-a' $capA '' $gateLog $verdictFile $testArgsA
       $gateA = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
     } finally {
@@ -447,6 +528,12 @@ try {
     }
   }
 
+  if ((-not $SkipPrimary) -and (-not (Test-LegBudget $capB))) {
+    $SkipPrimary = $true
+    $budgetCut += 'Run B (primary)'
+    $failed = $true
+    Write-Output 'nightly: Run B budget-cut (unproven): its cap no longer fits inside the run deadline'
+  }
   if (-not $SkipPrimary) {
     $log = Join-Path $nightDir "$stamp-primary.log"
     Start-LegLog $log 'tests/UI, Category=Primary, backgrounded, expect-primary'
@@ -454,7 +541,7 @@ try {
       $gateLog = Join-Path $trxDir 'gate-primary.log'
       $verdictFile = Join-Path $trxDir 'gate-primary.out'
       $testArgsB = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-b.trx', '--results-directory', $trxDir)
-      $r = Invoke-GatedLeg 'run-b' 300 '--expect-primary' $gateLog $verdictFile $testArgsB
+      $r = Invoke-GatedLeg 'run-b' $capB '--expect-primary' $gateLog $verdictFile $testArgsB
       $gateB = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
     } finally {
@@ -462,6 +549,13 @@ try {
     }
   }
 
+  if ((-not $SkipFenced) -and (-not (Test-LegBudget $capI))) {
+    $SkipFenced = $true
+    $interactiveSkipReason = 'budget-cut (run deadline)'
+    $budgetCut += 'Interactive (collection)'
+    $failed = $true
+    Write-Output 'nightly: Interactive budget-cut (unproven): its cap no longer fits inside the run deadline'
+  }
   if (-not $SkipFenced) {
     $log = Join-Path $nightDir "$stamp-full.log"
     if ($Force) {
@@ -469,7 +563,7 @@ try {
       try {
         $trx = Join-Path $trxDir 'interactive.trx'
         $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', $collectFilter, '-e', 'SCRATCHPAD_INTERACTIVE_FORCE=1', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
-        $r = Invoke-TimedStep 'interactive' 1800 $stepArgs "$trx.testcode"
+        $r = Invoke-TimedStep 'interactive' $capI $stepArgs "$trx.testcode"
         $interactiveRan = $true
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
@@ -492,7 +586,7 @@ try {
       try {
         $trx = Join-Path $trxDir 'interactive.trx'
         $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', $collectFilter, '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
-        $r = Invoke-TimedStep 'interactive' 1800 $stepArgs "$trx.testcode"
+        $r = Invoke-TimedStep 'interactive' $capI $stepArgs "$trx.testcode"
         $interactiveRan = $true
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
@@ -507,15 +601,48 @@ try {
     if ($interactiveSkipReason -eq '') { $interactiveSkipReason = '-SkipFenced' }
   }
 
+  # Core verdicts publish before soak (D00 T02 §14 item 3): the three
+  # regression legs land on the fixed report path now, so a long night
+  # keeps its core proof even if soak eats the remaining budget.
+  $sumA = Get-LegSummary (Join-Path $trxDir 'run-a.trx') (Join-Path $nightDir "$stamp-default.log")
+  $sumB = Get-LegSummary (Join-Path $trxDir 'run-b.trx') (Join-Path $nightDir "$stamp-primary.log")
+  $sumI = Get-LegSummary (Join-Path $trxDir 'interactive.trx') (Join-Path $nightDir "$stamp-full.log")
+  $coreReport = @()
+  $coreReport += "# Morning report: $day (core verdicts, pre-soak)"
+  $coreReport += ''
+  $coreReport += "- HEAD: $script:buildHead"
+  $coreReport += "- Core verdicts published before soak; the final report overwrites after soak (or budget-cut)"
+  $coreReport += ''
+  $coreReport += '| Leg | Counts | Gate | Log |'
+  $coreReport += '| --- | ------ | ---- | --- |'
+  $coreReport += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
+  $coreReport += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
+  $coreReport += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
+  $coreReport -join "`r`n" | Set-Content -Path (Join-Path $nightDir "morning-$day.md") -Encoding UTF8
+  Write-Output "nightly: core verdicts published before soak"
   if (-not $SkipSoak) {
     for ($i = 1; $i -le 5; $i++) {
+      if (-not (Test-LegBudget $capSoak)) {
+        $budgetCut += "ui-soak-$i..5"
+        $failed = $true
+        Write-Output "nightly: soak UI iterations $i..5 budget-cut (unproven)"
+        break
+      }
       $soakArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category!=Interactive', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=ui-soak-$i.trx", '--results-directory', $trxDir)
-      $r = Invoke-TimedStep "soak-ui-$i" 1800 $soakArgs (Join-Path $trxDir "ui-soak-$i.testcode")
+      $r = Invoke-TimedStep "soak-ui-$i" $capSoak $soakArgs (Join-Path $trxDir "ui-soak-$i.testcode")
+      if ($r.Killed) { $soakKilled += "ui-soak-$i" }
       if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
     }
     for ($i = 1; $i -le 5; $i++) {
+      if (-not (Test-LegBudget $capSoak)) {
+        $budgetCut += "protocol-soak-$i..5"
+        $failed = $true
+        Write-Output "nightly: soak protocol iterations $i..5 budget-cut (unproven)"
+        break
+      }
       $soakArgs = @('test', 'tests/Protocol/Protocol.csproj', '--no-build', '--nologo', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=protocol-soak-$i.trx", '--results-directory', $trxDir)
-      $r = Invoke-TimedStep "soak-protocol-$i" 1800 $soakArgs (Join-Path $trxDir "protocol-soak-$i.testcode")
+      $r = Invoke-TimedStep "soak-protocol-$i" $capSoak $soakArgs (Join-Path $trxDir "protocol-soak-$i.testcode")
+      if ($r.Killed) { $soakKilled += "protocol-soak-$i" }
       if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
     }
   }
@@ -538,23 +665,18 @@ try {
   elseif ($pname -eq 'svchost.exe') { $trigger = 'task \ScratchPad\Nightly UI (timer or demand; svchost.exe hosts the scheduler on Win8+, an interactive shell never parents to it)' }
   else { $trigger = "manual (parent $pname)" }
 } catch { }
-$sumA = Get-LegSummary (Join-Path $trxDir 'run-a.trx') (Join-Path $nightDir "$stamp-default.log")
-$sumB = Get-LegSummary (Join-Path $trxDir 'run-b.trx') (Join-Path $nightDir "$stamp-primary.log")
-$sumI = Get-LegSummary (Join-Path $trxDir 'interactive.trx') (Join-Path $nightDir "$stamp-full.log")
-function Format-LegRow([string]$Leg, $Sum, $Gate, [string]$LogName) {
-  if ($null -eq $Sum) { return "| $Leg | no trx (leg skipped or produced none) | -- | $($LogName) |" }
-  $skips = $Sum.Skipped.Count
-  $gate = if ($null -eq $Gate) { 'n/a (owns the foreground)' } else { "exit $($Gate.GateCode) $($Gate.Verdict)" }
-  $counts = "$($Sum.Passed) passed, $($Sum.FailedCount) failed, $skips skipped"
-  if ($Sum.Assemblies) { $counts += " ($($Sum.Assemblies))" }
-  return "| $Leg | $counts | $gate | $($LogName) |"
-}
+# (Format-LegRow plus Get-LegNote live with the helpers above: the core
+# publish calls them before the final report block runs.)
 $report = @()
 $report += "# Morning report: $day"
 $report += ''
 $report += "- HEAD: $head"
 $report += "- Trigger: $trigger"
 $report += "- Window: 02:00-06:50 local (or SCRATCHPAD_INTERACTIVE_WINDOW)"
+$reserveNote = if ($simMode) { 'simulation: reserve bypassed' } else { "reserve ${deadlineReserve}s" }
+$report += "- Deadline: $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) ($reserveNote)"
+$cutLine = if ($budgetCut.Count -eq 0) { 'none' } else { ($budgetCut -join '; ') }
+$report += "- Budget-cut: $cutLine"
 $reapLine = if ($reapNotes.Count -eq 0) { 'none' } else { ($reapNotes -join '; ') }
 $buildLine = if ($buildError -eq '') { 'OK' } else { "FAILED: $buildError" }
 $report += "- Build: $buildLine"
@@ -562,9 +684,9 @@ $report += "- Pre-flight reaped: $reapLine"
 $report += ''
 $report += '| Leg | Counts | Gate | Log |'
 $report += '| --- | ------ | ---- | --- |'
-$report += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log")
-$report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log")
-$report += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log")
+$report += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
+$report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
+$report += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
 $report += ''
 $report += '## Failures (triage appends finding refs)'
 $report += ''
@@ -590,6 +712,29 @@ foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sum
   }
 }
 if (-not $anySkip) { $report += '(none)' ; $report += '' }
+# Soak ledger (D00 T02 §14 item 3): per-iteration counts plus kills plus
+# budget-cuts. Soak runs uncaptured (Invoke-TimedStep output lands on the
+# console only), so the trx files are the record; §15 PR7 owns the full
+# fourth-phase reporting this ledger anticipates.
+$report += '## Soak'
+$report += ''
+$soakNames = @()
+foreach ($i in 1..5) { $soakNames += "ui-soak-$i" }
+foreach ($i in 1..5) { $soakNames += "protocol-soak-$i" }
+$soakAny = $false
+foreach ($n in $soakNames) {
+  $st = Get-TrxSummary (Join-Path $trxDir "$n.trx")
+  if ($null -eq $st) { continue }
+  $soakAny = $true
+  $tag = if ($soakKilled -contains $n) { 'killed at cap: unproven' } else { 'proved' }
+  $report += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped ($tag)"
+}
+foreach ($cut in @($budgetCut | Where-Object { $_ -like '*soak-*' })) {
+  $soakAny = $true
+  $report += "- $cut : budget-cut (unproven)"
+}
+if (-not $soakAny) { $report += '(no soak iterations ran: -SkipSoak or budget-cut before the first)' }
+$report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
 # Interactive collection per open debt, append Night-collected on
 # green, stage finding stubs on red. Triage commits the appends;
