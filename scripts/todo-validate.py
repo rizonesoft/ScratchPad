@@ -799,10 +799,11 @@ def validate(graph, _args) -> int:
             for _line in _dchain:
                 if not is_outage_marker(_line):
                     continue
-                # Strict left boundary like the query's EVENT_RE
-                # (D00 T01 §50 review R1): hyphen-joined `no-event`
-                # prose never satisfies the leg.
-                _em = re.search(r"(?<![\w-])event\s+(\S+)", _line)
+                # Start-or-whitespace boundary like the query's
+                # EVENT_RE (D00 T01 §50 review R1-R2): joined
+                # `no-event` and `no/event` prose never satisfies
+                # the leg.
+                _em = re.search(r"(?<!\S)event\s+(\S+)", _line)
                 _eday = _em.group(1) if _em else ""
                 _ereal = _em is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _eday) is not None
                 if _ereal:
