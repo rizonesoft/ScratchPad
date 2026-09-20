@@ -37,7 +37,7 @@ function Test-OneTask($Spec) {
   $label = "task $($Spec.Path)$($Spec.Name)"
   $t = Get-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name -ErrorAction SilentlyContinue
   if ($null -eq $t) { return @{ Name = $label; Ok = $false; Detail = "missing (repair re-registers from $($Spec.Xml))" } }
-  $tr = @(Get-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name | Select-Object -ExpandProperty Triggers)[0]
+  $tr = @($t.Triggers)[0]
   $tod = ''
   try { $tod = ([datetime]$tr.StartBoundary).ToString('HH:mm') } catch { }
   $faults = @()
@@ -211,8 +211,12 @@ if ($Verify) {
   if ($green) { exit 0 } else { exit 1 }
 }
 if (@($results | Where-Object { -not $_.Ok }).Count -gt 0) {
-  foreach ($n in (Repair-HooksLeg)) { Write-Output "provision: repair hooks: $n" }
-  foreach ($spec in $Tasks) { Write-Output "provision: repair task $($spec.Name): $(Repair-OneTask $spec)" }
+  $hookNotes = try { Repair-HooksLeg } catch { @("repair crashed: $_") }
+  foreach ($n in $hookNotes) { Write-Output "provision: repair hooks: $n" }
+  foreach ($spec in $Tasks) {
+    $tnote = try { Repair-OneTask $spec } catch { "repair crashed: $_" }
+    Write-Output "provision: repair task $($spec.Name): $tnote"
+  }
   Write-Output 'provision: repair workflows: verify-only, nothing repaired'
   if (@($results | Where-Object { (-not $_.Ok) -and ($_.Name -eq 'sdk') }).Count -gt 0) { Install-Sdk }
   $results = @(Test-All)

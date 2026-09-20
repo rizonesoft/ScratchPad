@@ -365,10 +365,22 @@ try { $debtSnapshot = @(Get-OpenNightDebts $Root) } catch { $debtQueryError = "$
 $collectFilter = 'Category=Interactive'
 $collectId = ''
 if ($CollectDebt -ne '') {
+  # Resolution failure skips the leg with the cause instead of
+  # throwing: report-always outranks fail-fast on a real run (the
+  # dry run still exits 2 above, where no report is owed).
   $hit = @($debtSnapshot | Where-Object { $_.Id -eq $CollectDebt })
-  if ($hit.Count -ne 1) { throw "nightly: unknown debt id '$CollectDebt'" }
-  $collectId = $CollectDebt
-  $collectFilter = Get-DebtDotnetFilter $hit[0].Filter
+  if ($hit.Count -ne 1) {
+    $SkipFenced = $true
+    $interactiveSkipReason = "unknown debt id '$CollectDebt'"
+    $failed = $true
+  } else {
+    try { $collectFilter = Get-DebtDotnetFilter $hit[0].Filter; $collectId = $CollectDebt }
+    catch {
+      $SkipFenced = $true
+      $interactiveSkipReason = "unresolvable filter for '$CollectDebt'"
+      $failed = $true
+    }
+  }
 }
 $interactiveScope = "tests/UI, $collectFilter, foreground"
 if ($collectId -ne '') { $interactiveScope += ", debt $collectId" }
@@ -490,7 +502,7 @@ try {
       }
     }
   } else {
-    $interactiveSkipReason = '-SkipFenced'
+    if ($interactiveSkipReason -eq '') { $interactiveSkipReason = '-SkipFenced' }
   }
 
   if (-not $SkipSoak) {
@@ -608,7 +620,8 @@ if ($debtQueryError -ne '') {
       continue
     }
     if (($sumI.FailedCount -gt 0) -or ($interactiveLeaked.Count -gt 0)) {
-      $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); findings staged below; debt stays open"
+      $stageNote = if ($sumI.FailedCount -gt 0) { 'findings staged below' } else { 'non-quarantine skips, no failures' }
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); $stageNote; debt stays open"
       continue
     }
     $logRel = "build/nightly/$stamp/interactive.trx"
