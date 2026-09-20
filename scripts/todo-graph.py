@@ -72,9 +72,25 @@ STAMP_RE = re.compile(
     r"^>\s*\*\*(?P<kind>Verified|Deferred|Resolved|Review|Duration|CRUD|Verification|Implementer|Moved|Plan review|Reopened|Started):\*\*\s*(?P<body>.+?)\s*$"
 )
 # A reopened section names the finding that voided its proof (D00 T01 §17
-# item 12): `<YYYY-MM-DD> | <finding ref> | <reason>`. The validator
-# requires the date, the bar, and a resolvable §ref in the rest.
-REOPENED_BODY_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})\s*\|\s*(?P<rest>.+)$")
+# item 12): `<YYYY-MM-DD> | generation <n> | <finding ref> | <reason>`
+# (D00 T01 §51 item 4: the generation is previous-plus-one, and the
+# re-stamp persists it so no old acceptance revives when the line
+# lifts). The validator requires the date, the generation, the bars,
+# and a resolvable §ref in the rest.
+REOPENED_BODY_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2})\s*\|\s*generation\s+(?P<generation>\d+)\s*\|\s*(?P<rest>.+)$"
+)
+# A re-stamp's persisted generation (D00 T01 §51 item 4): the Verified
+# evidence field may open with `generation <n> | `, stripped before
+# the empty-evidence check. Absent reads 0, the never-reopened
+# generation; clean re-verification keeps the number it found, so no
+# waiver voids on a stamp that changed nothing. Recorded gap: a
+# lifted reopen leaves no trace, so nothing stops a hand edit
+# stripping `generation <n>` off a post-lift stamp (old waivers
+# would revive). Runners copy stamps forward, never by hand, so
+# the gap needs deliberate editing; closing it costs a
+# stamp-history leg against HEAD.
+STAMP_GENERATION_RE = re.compile(r"^\s*generation\s+(\d+)\s*\|")
 # `> **Implementer:** Fable 5.1 (claude-fable-5-1)` or `not recorded (<why>)`.
 # D00 T08 §1: the runner writes it from its own transcript, never by hand.
 IMPLEMENTER_RE = re.compile(
@@ -357,6 +373,8 @@ class Section:
     review_body: str = ""
     plan_review_body: str = ""
     reopened_body: str = ""
+    stamp_generation: int = 0  # last Verified's persisted generation (D00 T01 §51 item 4)
+    reopen_base: int = 0  # stamp generation the latest Reopened increments
     crud_body: str = ""
     verification_body: str = ""
     implementer_body: str = ""
@@ -443,6 +461,7 @@ def parse_todo(path: Path) -> Todo:
     # it (Review, CRUD, Implementer, Duration) are written to each of them.
     stamp_targets: list[Section] = []
     stamp_orphaned = False  # the last stamp was malformed: its fields belong to no section
+    _gen_state: dict[int, int] = {}  # per-section running generation (D00 T01 §51 item 4)
     in_order_table = False
     for lineno, line in enumerate(text.splitlines(), start=1):
         stamp = STAMP_RE.match(line)
@@ -469,13 +488,21 @@ def parse_todo(path: Path) -> Todo:
                 covered: list[int] = []
                 refusal = ""
                 day = ""
+                _sgen = 0
                 shaped = STAMP_BODY_RE.match(body.strip())
                 if not shaped:
                     refusal = "is not '<YYYY-MM-DD> | <sections> | <evidence>'"
-                elif not shaped.group("evidence").strip():
+                elif not (shaped_evidence := shaped.group("evidence")):
                     refusal = "has an empty evidence field"
                 else:
-                    day = shaped.group("date")
+                    _gm = STAMP_GENERATION_RE.match(shaped_evidence)
+                    if _gm is not None:
+                        _sgen = int(_gm.group(1))
+                        shaped_evidence = shaped_evidence[_gm.end():]
+                    if not shaped_evidence.strip():
+                        refusal = "has an empty evidence field"
+                    else:
+                        day = shaped.group("date")
                     try:
                         date(*(int(part) for part in day.split("-")))
                     except ValueError:
@@ -513,6 +540,18 @@ def parse_todo(path: Path) -> Todo:
                             )
                             break
                         covered.extend(range(lo, hi + 1))
+                if not refusal:
+                    for _gnum in covered:
+                        if _gnum not in todo.sections:
+                            continue
+                        if not todo.sections[_gnum].reopened_body.strip():
+                            continue  # no pending reopen: post-lift stamps persist freely
+                        if _sgen != _gen_state.get(_gnum, 0):
+                            refusal = (
+                                f"carries generation {_sgen} for §{_gnum} with a generation "
+                                f"{_gen_state.get(_gnum, 0)} reopen pending (the re-stamp persists it)"
+                            )
+                            break
                 if refusal:
                     todo.malformed_stamps.append((lineno, f"{body} -- {refusal}"))
                     stamp_targets, stamp_orphaned = [], True  # its fields reach no section (INT-0110)
@@ -527,6 +566,7 @@ def parse_todo(path: Path) -> Todo:
                     stamp_orphaned = False
                     for target in stamp_targets:
                         target.stamped_on = day
+                        target.stamp_generation = _sgen
             elif kind == "Duration" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     # Last marker governs: each Duration line resets
@@ -584,8 +624,12 @@ def parse_todo(path: Path) -> Todo:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.plan_review_body = body
             elif kind == "Reopened" and current is not None:
+                _rgm = REOPENED_BODY_RE.match(body.strip())
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.reopened_body = body
+                    target.reopen_base = _gen_state.get(target.num, 0)
+                    if _rgm is not None:
+                        _gen_state[target.num] = int(_rgm.group("generation"))
             elif kind == "CRUD" and current is not None:
                 for target in stamp_targets or ([] if stamp_orphaned else [current]):
                     target.crud_body = body
@@ -932,6 +976,10 @@ SEVERITY_MAP: dict[str, str] = {
     # malformed stamp on a shipped row READS as evidence: it is worse than a
     # missing one, and the fix is to write the line correctly (D00 T01 §39).
     "malformed-stamp": "fatal",
+    # a `Plan review:` marker line edited or deleted against the
+    # committed history (D00 T01 §51 item 8): chains append,
+    # never rewrite, so coverage cannot silently move.
+    "marker-history": "fatal",
     # a `**Needs:**` value outside NEEDS_ALLOWED: the list is closed so a
     # misspelt host cannot silently unmark a section (D00 T07 §28).
     "needs-unknown": "fatal",
@@ -1006,6 +1054,7 @@ SEVERITY_MAP: dict[str, str] = {
     "risk-acceptance-malformed": "fatal",
     "risk-acceptance-silent-edit": "fatal",
     "risk-acceptance-chain-broken": "fatal",
+    "risk-acceptance-foreign-evidence": "fatal",
     # a Duration range on a post-cutoff stamp that names no checkable
     # span (unshaped, calendar-invalid, or inverted), or whose ends
     # float free of the record's own anchors (start off the Started
@@ -1173,7 +1222,10 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # New keys since /5 (D00 T01 §32): criticals carry `failure_code`
 # (the failed clearance leg as `leg:site`, "" when the row never
 # ran clearance: accepted and deferred rows surface unproven).
-PLAN_HEALTH_SCHEMA = "plan-health/6"
+# New keys since /6 (D00 T01 §51 item 5): degraded, criticals,
+# and majors carry `accepted_outcome` ("" when the covering
+# record stands alone: outcomes ride superseding records only).
+PLAN_HEALTH_SCHEMA = "plan-health/7"
 TELEMETRY_SCHEMA = "telemetry/1"
 RISK_REGISTER_SCHEMA = "risk-register/1"
 RUN_SCHEMA = "run/1"
@@ -1214,10 +1266,21 @@ FINDINGS_RE = re.compile(r"Raw findings:\s*(\S+\.md)")
 # and a free-text rationale tail. Semicolon-separated like
 # provenance; the rationale rides last so it may itself contain
 # semicolons.
+# Record grammar (D00 T01 §51 items 4-6): `id A<n>` names every
+# record (file-scoped serial, the supersession identity, so
+# same-day same-target decisions chain instead of colliding);
+# `generation <n>` is optional (absent reads 0); `supersedes`
+# names the predecessor ID and arrives paired with `outcome`
+# (one optional group, so the pair is atomic: supersedes
+# without outcome, or outcome without supersedes, matches
+# nothing and the validator flags it precisely); `action` is
+# optional and semicolon-free, beside the human rationale.
 RISK_ACCEPTED_RE = re.compile(
-    r"^Risk accepted:\s*(.+?);\s*approver\s+([A-Za-z0-9_.-]+);\s*owner\s+([A-Za-z0-9_.-]+);\s*"
+    r"^Risk accepted:\s*(.+?);\s*id\s+A(\d+);\s*approver\s+([A-Za-z0-9_.-]+);\s*owner\s+([A-Za-z0-9_.-]+);\s*"
     r"date\s+(\d{4}-\d{2}-\d{2});\s*expires\s+(\d{4}-\d{2}-\d{2});\s*review\s+(\d{4}-\d{2}-\d{2});\s*"
-    r"evidence\s+([0-9a-f]{7,40});\s*(?:supersedes\s+(\d{4}-\d{2}-\d{2});\s*)?rationale\s+(.+?)\s*$"
+    r"evidence\s+([0-9a-f]{40});\s*(?:generation\s+(\d+);\s*)?"
+    r"(?:supersedes\s+A(\d+);\s*outcome\s+(renewed|remediated|rejected|closed);\s*)?"
+    r"(?:action\s+([^;]+?);\s*)?rationale\s+(.+?)\s*$"
 )
 RISK_TARGET_RE = re.compile(r"(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+$", re.IGNORECASE)
 # An outage target binds its instance (D00 T01 §27 item 1): the rung
@@ -1293,14 +1356,107 @@ def marker_event_day(body: str) -> str:
     return day
 
 
-def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
+def ledger_row_ids(text: str) -> set[str]:
+    """Finding-row IDs in a findings text, lowercased (D00 T01 §51
+    item 1: commit-ancestry presence needs the evidence row set).
+
+    Block-scoped like the query: only LEDGER_ROW_RE-shaped lines
+    between `Ledger:` and `End of ledger` count, so prose never
+    passes as a row. Case folds like the match rule.
+    """
+    ids: set[str] = set()
+    in_block = False
+    for ln in text.splitlines():
+        if LEDGER_OPEN_RE.match(ln):
+            in_block = True
+            continue
+        if LEDGER_CLOSE_RE.match(ln):
+            in_block = False
+            continue
+        if not in_block:
+            continue
+        rm = LEDGER_ROW_RE.match(ln)
+        if rm is not None:
+            ids.add(rm.group(1).lower())
+    return ids
+
+
+def target_digest(kind: str, tgt: str, text: str) -> str | None:
+    """Canonical target lines for presence plus freshness (D00 T01 §51
+    item 3): the target's own lines only (finding rows by ID in the
+    ledger block, runs by normalized run token on a marker line,
+    outages by rung plus event day on a true outage-marker line),
+    LF-joined, trailing-whitespace-stripped, acceptance lines
+    excluded. None when the target reads absent. Both evidence and
+    live sides canonicalize, so a CRLF checkout still reads fresh
+    against LF evidence (the whole-file path's latent mismatch
+    retires with it)."""
+
+    def _canon(lines: list[str]) -> str:
+        return "\n".join(ln.rstrip() for ln in lines if not ln.startswith("Risk accepted:"))
+
+    if kind == "finding":
+        want = tgt.lower()
+        rows: list[str] = []
+        in_block = False
+        for ln in text.splitlines():
+            if LEDGER_OPEN_RE.match(ln):
+                in_block = True
+                continue
+            if LEDGER_CLOSE_RE.match(ln):
+                in_block = False
+                continue
+            if not in_block:
+                continue
+            rm = LEDGER_ROW_RE.match(ln)
+            if rm is not None and rm.group(1).lower() == want:
+                rows.append(ln)
+        return _canon(rows) if rows else None
+    if kind == "run":
+        want = normalize_run_id(tgt)
+        marks = [
+            ln
+            for ln in text.splitlines()
+            if "Plan review" in ln
+            and (rm := RUN_ID_RE.search(ln)) is not None
+            and normalize_run_id(rm.group(1)) == want
+        ]
+        return _canon(marks) if marks else None
+    okey = outage_key(tgt)
+    if okey is None:
+        return None
+    outs: list[str] = []
+    for ln in text.splitlines():
+        if "Plan review" not in ln or not is_outage_marker(ln):
+            continue
+        omt = re.search(r"outage:\s*([^\(;]+)", ln.lower())
+        if omt is not None and (omt.group(1).strip(), marker_event_day(ln)) == okey:
+            outs.append(ln)
+    return _canon(outs) if outs else None
+
+
+def target_present_at(was: str, kind: str, tgt: str) -> bool:
+    """Whether the target exists in evidence-commit bytes (D00 T01 §51
+    item 1): finding rows by ID in the ledger block, runs by
+    normalized run token on a marker line (the -r1 synonym reads
+    through), outages by rung plus event day on a true outage-marker
+    line (the shared predicate, so prose mentions never pass).
+
+    Presence is `target_digest(...) is not None` (D00 T01 §51 item
+    3): one scan serves presence and freshness, never twins."""
+    return target_digest(kind, tgt, was) is not None
+
+
+def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str, str, int, str, str]]:
     """Parse live `Risk accepted:` lines from fence-stripped findings text.
 
     Returns (target, approver, owner, expires, recorded, review,
-    evidence, supersedes, rationale, kind) per well-formed line, in
-    file order (supersedes is "" when the record stands alone).
-    Malformed or uncoverable lines are skipped, never fatal: they are
-    the validator's to flag (rule 24); the query only consults
+    evidence, supersedes, rationale, kind, rec_id, generation,
+    outcome, action) per well-formed line, in file order
+    (supersedes, outcome, and action are "" when absent;
+    generation reads 0 when the leg is absent). Malformed or
+    uncoverable lines are skipped, never fatal: they are the
+    validator's to flag (rule 24); the query only consults
     acceptances for live escalations, so a bad line fails loud as a
     persisting escalation, never as a query crash.
     """
@@ -1317,21 +1473,25 @@ def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, 
         out.append(
             (
                 am.group(1),
-                am.group(2),
                 am.group(3),
-                am.group(5),
                 am.group(4),
                 am.group(6),
+                am.group(5),
                 am.group(7),
-                am.group(8) or "",
-                am.group(9),
+                am.group(8),
+                ("A" + am.group(10)) if am.group(10) else "",
+                am.group(13),
                 kind,
+                "A" + am.group(2),
+                int(am.group(9)) if am.group(9) else 0,
+                am.group(11) or "",
+                (am.group(12) or "").strip(),
             )
         )
     return out
 
 
-def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
+def acceptances_in(ftext: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str, str, int, str, str]]:
     """Parse `Risk accepted:` lines from raw findings text (fences strip first)."""
     stripped, _u = strip_fenced_code(ftext)
     return acceptance_lines(stripped)
@@ -1427,13 +1587,52 @@ def run_day(run_id: str) -> str:
 
 
 def superseded_acceptances(
-    accs: list[tuple[str, str, str, str, str, str, str, str, str, str]],
-) -> set[tuple[str, str]]:
+    accs: list[tuple[str, str, str, str, str, str, str, str, str, str, str, int, str, str]],
+) -> set[str]:
     """Acceptance records a later line supersedes (D00 T01 §27 item
-    4): (target, record date) pairs named by a `supersedes <date>`
-    link on the same target. The chain head governs covering and the
-    review leg; superseded records are history, never current."""
-    return {(tgt.lower(), sup) for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k in accs if sup}
+    4, re-keyed to record IDs by D00 T01 §51 item 6): the
+    predecessor IDs named by `supersedes A<n>` links. The record
+    date stays ordering metadata, never identity, so two
+    legitimate same-target decisions on one day chain instead
+    of colliding; same-target succession is the validator's to
+    enforce. The chain head governs covering and the review
+    leg; superseded records are history, never current."""
+    return {_sup for _t, _a, _o, _e, _r, _v, _i, _sup, _t2, _k, _id, _g, _oc, _ac in accs if _sup}
+
+
+def provenance_candidate(text: str) -> str | None:
+    """The reviewed candidate of a findings text (D00 T01 §51 item
+    2): the first Provenance line's candidate, or None when the
+    record predates the mandate (those skip the lineage leg like
+    §22's candidate-less records)."""
+    for ln in text.splitlines():
+        pm = PROVENANCE_RE.match(ln)
+        if pm is not None:
+            return pm.group(1)
+    return None
+
+
+def evidence_lineage(evi: str, candidate: str | None) -> str:
+    """`ok`/`foreign`/`unknown` for one evidence commit (D00 T01 §51
+    item 2): the reviewed candidate must be ancestor-or-equal of
+    the evidence (both peeled to full commits first), so waivers
+    attest the reviewed state or its descendants, never an
+    unrelated branch or foreign history. Unprovable anything
+    (candidate-less record, unpeelable ID, silent git) reads
+    `unknown` and defers to the other legs, so lineage only ever
+    reports proven foreignness."""
+    if candidate is None:
+        return "unknown"
+    efull = git_full_sha(evi)
+    cfull = git_full_sha(candidate)
+    if efull is None or cfull is None:
+        return "unknown"
+    if efull == cfull:
+        return "ok"
+    anc = git_is_ancestor(cfull, efull)
+    if anc is None:
+        return "unknown"
+    return "ok" if anc else "foreign"
 
 
 def acceptance_hold(
@@ -1445,6 +1644,11 @@ def acceptance_hold(
     owning_path: str,
     owning_text: str,
     today: str,
+    kind: str,
+    tgt: str,
+    cand: str | None,
+    recgen: int,
+    secgen: int,
 ) -> str:
     """The verdict on one consulted acceptance (D00 T01 §27, cause
     codes since D00 T01 §29 item 7): `cover` when it terminates its
@@ -1454,6 +1658,12 @@ def acceptance_hold(
     or the void cause when a matched record holds nothing:
     `missing-target` (no target day to order against),
     `predated-target` (item 2: the record predates its target),
+    `predated-evidence` (D00 T01 §51 item 1: the target is absent
+    from the evidence commit, so the attestation predates it),
+    `foreign-evidence` (D00 T01 §51 item 2: the evidence commit
+    does not descend from the reviewed candidate),
+    `stale-generation` (D00 T01 §51 item 4: the record's
+    generation trails the section's re-stamp),
     `post-dated` (a future record dangles to the operator),
     `stale-evidence`, `git-unresolvable` (item 8: the commit cannot
     be read, an infrastructure fault, not silent noncoverage).
@@ -1462,8 +1672,12 @@ def acceptance_hold(
     it cannot back, which would double-count the
     already-persisting escalation; the leg reads `!= "cover"`, so
     every code stays excluded). Order is load-bearing: match, then
-    target day, then target-before-record, then liveness, then
-    evidence freshness. Supersession skips before this runs (the
+    generation, then target day, then target-before-record, then evidence ancestry,
+    then liveness, then evidence lineage, then target freshness.
+    Unprovable ancestry defers to the evidence leg (the same fetch
+    feeds both), so an unresolvable commit still reports
+    `git-unresolvable`, never a false order verdict; unprovable
+    lineage likewise defers, so only proven foreignness reports. Supersession skips before this runs (the
     caller holds the file's records); skips stay silent because
     succession is same-target, so the head always speaks and a
     `superseded` cause is unreachable (panel R1). The chain-shape
@@ -1471,14 +1685,23 @@ def acceptance_hold(
     """
     if not match:
         return "no-match"
+    if recgen != secgen:
+        return "stale-generation"
     if not tday:
         return "missing-target"
     if tday > rec:
         return "predated-target"
+    _was = git_file_at(evi, owning_path)
+    if _was is not None and not target_present_at(_was, kind, tgt):
+        return "predated-evidence"
     if not acceptance_live(rec, exp, today):
         return "expired" if exp < today else "post-dated"
-    return {"fresh": "cover", "stale": "stale-evidence", "unresolvable": "git-unresolvable"}[
-        evidence_state(evi, owning_path, owning_text)
+    if evidence_lineage(evi, cand) == "foreign":
+        return "foreign-evidence"
+    if _was is None:
+        return "git-unresolvable"
+    return {"fresh": "cover", "stale": "stale-evidence"}[
+        evidence_state_from_bytes(_was, owning_text, kind, tgt)
     ]
 
 
@@ -1490,6 +1713,9 @@ def acceptance_hold(
 NONCOVER_FIX = {
     "expired": "renew the acceptance with a new expiry",
     "predated-target": "re-record the acceptance after its target date",
+    "predated-evidence": "re-record the acceptance over evidence containing its target",
+    "foreign-evidence": "re-point the acceptance at evidence descending from the reviewed candidate",
+    "stale-generation": "re-record the acceptance at the section's current generation",
     "missing-target": "name a resolvable target: finding ID, run ID, or outage rung plus date",
     "post-dated": "correct the record date: a future-dated waiver covers nothing",
     "stale-evidence": "renew the acceptance over the current record bytes",
@@ -1497,12 +1723,13 @@ NONCOVER_FIX = {
 }
 
 
-def evidence_state(sha: str, repo_path: str, current_text: str) -> str:
+def evidence_state(sha: str, repo_path: str, current_text: str, kind: str, tgt: str) -> str:
     """The evidence verdict on one acceptance (D00 T01 §27 item 3,
     tri-state since D00 T01 §29 item 8): `fresh` when the owning
-    record still reads as the evidence commit saw it (file bytes
-    equal, acceptance lines excluded on both sides), `stale` when
-    any other change voids (fail-closed materiality: renewal rides
+    target lines still read as the evidence commit saw them
+    (target digest equal: LF, trailing-whitespace-stripped,
+    acceptance lines excluded), `stale` when any target-line change
+    voids (fail-closed materiality: renewal rides
     a superseding record), `unresolvable` when the commit itself
     cannot be read (shallow clone, collection, rewritten history:
     unprovable fails closed, the clearance precedent, and the
@@ -1511,7 +1738,8 @@ def evidence_state(sha: str, repo_path: str, current_text: str) -> str:
     R1): the record cannot cite a commit that already contains it,
     so the cited ancestor never carries the new line and a
     whole-file compare would void every finding acceptance on its
-    first day. The evidence binds the target's record (ledger rows,
+    first day; item 3 narrows the compare to the target's own
+    lines, so unrelated edits stop voiding waivers. The evidence binds the target's record (ledger rows,
     manifest, marker); the acceptance lines themselves are item 4's
     to guard. The self-test patches `git_file_at`, never a repo.
     """
@@ -1522,7 +1750,21 @@ def evidence_state(sha: str, repo_path: str, current_text: str) -> str:
     was = git_file_at(sha, repo_path)
     if was is None:
         return "unresolvable"
-    return "fresh" if _sans_acceptances(was) == _sans_acceptances(current_text) else "stale"
+    return evidence_state_from_bytes(was, current_text, kind, tgt)
+
+
+def evidence_state_from_bytes(was: str, current_text: str, kind: str, tgt: str) -> str:
+    """`fresh`/`stale` over already-fetched evidence bytes (D00 T01 §51
+    item 1): `acceptance_hold` fetches once and shares the bytes
+    between the ancestry leg and this compare, so one evidence commit
+    costs one read. The compare is the target digest on both sides
+    (D00 T01 §51 item 3): only the target's own lines void, never an
+    unrelated edit; an undigestible evidence side reads stale
+    (fail-closed, unreachable via `acceptance_hold`, whose ancestry
+    leg already proved presence)."""
+
+    dig = target_digest(kind, tgt, was)
+    return "fresh" if dig is not None and dig == target_digest(kind, tgt, current_text) else "stale"
 
 
 def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
@@ -1789,6 +2031,27 @@ def span_marker_bodies(todo_lines: dict[str, list[str]], todo: Todo, num: int) -
         sm = STAMP_RE.match(ln)
         if sm and sm.group("kind") == "Plan review":
             out.append(sm.group("body"))
+    return out
+
+
+def marker_bodies_by_section(text: str) -> dict[int | None, list[str]]:
+    """`Plan review:` bodies per section span, file order (D00 T01 §51
+
+    item 8: the marker-history diff). Span-literal like the parser:
+    headings are `## <n>.`, bodies match STAMP_RE, markers above
+    the first heading attach to None. Range-fanout plays no role
+    here: history diffs physical lines, never coverage reads.
+    """
+    out: dict[int | None, list[str]] = {}
+    num: int | None = None
+    for ln in text.splitlines():
+        hm = re.match(r"^## (\d{1,9})\.", ln)
+        if hm is not None:
+            num = int(hm.group(1))
+            continue
+        sm = STAMP_RE.match(ln)
+        if sm is not None and sm.group("kind") == "Plan review":
+            out.setdefault(num, []).append(sm.group("body"))
     return out
 
 
@@ -3743,6 +4006,24 @@ def cmd_query(args) -> int:
                         acc_cache[path] = []
             return acc_cache[path]
 
+        _cand_cache: dict[str, str | None] = {}
+
+        def file_candidate(path: str) -> str | None:
+            # Reviewed candidate per findings file (D00 T01 §51
+            # item 2), cached beside the acceptances with the same
+            # validated-file and readability discipline.
+            if path not in _cand_cache:
+                if path not in validated_files:
+                    _cand_cache[path] = None
+                else:
+                    try:
+                        _cand_cache[path] = provenance_candidate(
+                            (TODO_DIR.parent / path).read_text(encoding="utf-8")
+                        )
+                    except OSError:
+                        _cand_cache[path] = None
+            return _cand_cache[path]
+
         def _join_debt(body: str, states: list) -> tuple:
             # Marker debt by target (D00 T01 §29 item 2, panel R1):
             # the risk register reads a run/outage waiver's residual
@@ -3834,7 +4115,7 @@ def cmd_query(args) -> int:
                         # and finding targets never cover markers. Bare
                         # partials carry no escalation, so nothing
                         # consults for them.
-                        ab, ae, ar, at, ao = "", "", "", "", ""
+                        ab, ae, ar, at, ao, aout = "", "", "", "", "", ""
                         esc_owner = ""
                         # First void verdict in file order (D00 T01 §29
                         # item 7): the cause rides the record beside
@@ -3849,7 +4130,7 @@ def cmd_query(args) -> int:
                             if fm:
                                 accs = file_acceptances(fm.group(1))
                                 supd = superseded_acceptances(accs)
-                                for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind in accs:
+                                for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind, rec_id, recgen, outcome, _action in accs:
                                     okey = outage_key(tgt) if kind == "outage" else None
                                     match = (
                                         kind == "run"
@@ -3868,7 +4149,7 @@ def cmd_query(args) -> int:
                                     # same-target successor in the
                                     # file, and the head's verdict
                                     # governs. History never lists.
-                                    if (tgt.lower(), rec) in supd:
+                                    if rec_id in supd:
                                         continue
                                     # The TODO file owns run and outage
                                     # records (item 3). A reopen needs no
@@ -3888,9 +4169,14 @@ def cmd_query(args) -> int:
                                         t.path,
                                         todo_text(t.path),
                                         today,
+                                        kind,
+                                        tgt,
+                                        file_candidate(fm.group(1)),
+                                        recgen,
+                                        s.stamp_generation,
                                     )
                                     if hold == "cover":
-                                        ab, ae, ar, at, ao = appr, exp, rvw, rat, own
+                                        ab, ae, ar, at, ao, aout = appr, exp, rvw, rat, own, outcome
                                         _cause = ""
                                         break
                                     if hold == "expired" and not esc_owner:
@@ -3935,6 +4221,7 @@ def cmd_query(args) -> int:
                                 "accepted_expires": ae,
                                 "accepted_review": ar,
                                 "accepted_rationale": at,
+                                "accepted_outcome": aout,
                                 "noncover_cause": _cause,
                                 "noncover_fix": _fix,
                             }
@@ -4097,7 +4384,7 @@ def cmd_query(args) -> int:
                         # stay distinct IDs per that same rule, and a
                         # padded target dangles loud as a persisting
                         # escalation.
-                        ab, ae, ar, at, ao = "", "", "", "", ""
+                        ab, ae, ar, at, ao, aout = "", "", "", "", "", ""
                         esc_owner = ""
                         _cause = ""
                         _accs = file_acceptances(m.group(1))
@@ -4107,13 +4394,13 @@ def cmd_query(args) -> int:
                         # exists because this loop holds it.
                         _rm = RUN_ID_RE.search(s.plan_review_body or "")
                         _tday = run_day(_rm.group(1)) if _rm else (s.stamped_on or "")
-                        for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind in _accs:
+                        for tgt, appr, own, exp, rec, rvw, evi, sup, rat, kind, rec_id, recgen, outcome, _action in _accs:
                             _match = kind == "finding" and tgt.lower() == lr.group(1).lower()
                             # Superseded records skip silently (panel
                             # R1): succession is same-target, so the
                             # head's verdict governs. History never
                             # lists.
-                            if (tgt.lower(), rec) in _supd:
+                            if rec_id in _supd:
                                 continue
                             # The findings file owns finding records
                             # (item 3). Reopen voids by construction
@@ -4128,9 +4415,14 @@ def cmd_query(args) -> int:
                                 m.group(1),
                                 raw_text,
                                 today,
+                                kind,
+                                tgt,
+                                provenance_candidate(raw_text),
+                                recgen,
+                                s.stamp_generation,
                             )
                             if hold == "cover":
-                                ab, ae, ar, at, ao = appr, exp, rvw, rat, own
+                                ab, ae, ar, at, ao, aout = appr, exp, rvw, rat, own, outcome
                                 _cause = ""
                                 break
                             if hold == "expired" and not esc_owner:
@@ -4190,6 +4482,7 @@ def cmd_query(args) -> int:
                                     at,
                                     _cause,
                                     _fix,
+                                    aout,
                                 )
                             )
                             continue
@@ -4222,6 +4515,7 @@ def cmd_query(args) -> int:
                                     at,
                                     _cause,
                                     _fix,
+                                    aout,
                                     # Accepted/deferred rows never ran
                                     # clearance: no leg failed (D00 T01 §32).
                                     "",
@@ -4529,6 +4823,7 @@ def cmd_query(args) -> int:
                                         _cause,
                                         _fix,
                                         fail_code,
+                                        aout,
                                     )
                                 )
         for path in sorted(unshaped):
@@ -4583,8 +4878,8 @@ def cmd_query(args) -> int:
                 _porung = _pomt.group(1).strip() if _pomt else None
                 _pday = _ps.stamped_on or ""
                 _pev = marker_event_day(_pbody)
-                for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind in _paccs:
-                    if (tgt.lower(), rec) in _psupd:
+                for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind, rec_id, recgen, _outcome, _action in _paccs:
+                    if rec_id in _psupd:
                         continue
                     if rvw < rec or rvw > exp:
                         # A review date outside its own record-expiry
@@ -4614,7 +4909,7 @@ def cmd_query(args) -> int:
                         )
                         _ptday = _pev
                         _ppath, _ptext = _pt.path, todo_text(_pt.path)
-                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today) != "cover":
+                    if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today, kind, tgt, provenance_candidate(_ptext), recgen, _ps.stamp_generation) != "cover":
                         continue
                     if rvw < today:
                         _rstate = "review-overdue"
@@ -4650,8 +4945,8 @@ def cmd_query(args) -> int:
             if not _iaccs:
                 continue
             _isupd = superseded_acceptances(_iaccs)
-            for tgt, _appr, own, exp, rec, rvw, _evi, _sup, _rat, _kind in _iaccs:
-                if (tgt.lower(), rec) in _isupd:
+            for tgt, _appr, own, exp, rec, rvw, _evi, _sup, _rat, _kind, rec_id, _recgen, _outcome, _action in _iaccs:
+                if rec_id in _isupd:
                     continue
                 if rvw < rec or rvw > exp:
                     continue
@@ -4674,6 +4969,7 @@ def cmd_query(args) -> int:
                 d["accepted_expires"],
                 d["accepted_review"],
                 d["accepted_rationale"],
+                d["accepted_outcome"],
                 d["noncover_cause"],
                 d["noncover_fix"],
             ),
@@ -4695,6 +4991,7 @@ def cmd_query(args) -> int:
                 m[11],
                 m[12],
                 m[13],
+                m[14],
             ),
         )
         criticals_sorted = sorted(
@@ -4714,6 +5011,7 @@ def cmd_query(args) -> int:
                 c[11],
                 c[12],
                 c[13],
+                c[14],
             ),
         )
         stale_sorted = sorted(stale, key=lambda e: (e[0], e[1]))
@@ -4738,8 +5036,8 @@ def cmd_query(args) -> int:
             if not _eaccs:
                 continue
             _esupd = superseded_acceptances(_eaccs)
-            for tgt, _appr, own, exp, rec, _rvw, _evi, _sup, _rat, _kind in _eaccs:
-                if (tgt.lower(), rec) in _esupd:
+            for tgt, _appr, own, exp, rec, _rvw, _evi, _sup, _rat, _kind, rec_id, _recgen, _outcome, _action in _eaccs:
+                if rec_id in _esupd:
                     continue
                 if rec <= today <= exp <= _exp_line:
                     expiring.append((exp, tgt, path, own))
@@ -4773,11 +5071,12 @@ def cmd_query(args) -> int:
                     "accepted_expires": ae,
                     "accepted_review": ar,
                     "accepted_rationale": at,
+                    "accepted_outcome": aout,
                     "noncover_cause": ncc,
                     "noncover_fix": ncf,
                     "failure_code": fc,
                 }
-                for f, pr, own, due, od, esc, ab, ao, ae, ar, at, ncc, ncf, fc in criticals_sorted
+                for f, pr, own, due, od, esc, ab, ao, ae, ar, at, ncc, ncf, fc, aout in criticals_sorted
             ],
             "majors": [
                 {
@@ -4793,10 +5092,11 @@ def cmd_query(args) -> int:
                     "accepted_expires": ae,
                     "accepted_review": ar,
                     "accepted_rationale": at,
+                    "accepted_outcome": aout,
                     "noncover_cause": ncc,
                     "noncover_fix": ncf,
                 }
-                for f, pr, day, own, due, od, esc, ab, ao, ae, ar, at, ncc, ncf in majors_sorted
+                for f, pr, day, own, due, od, esc, ab, ao, ae, ar, at, ncc, ncf, aout in majors_sorted
             ],
             "grandfathered": [
                 {"ref": label, "stamped": day, "overdue": od}
@@ -4904,10 +5204,10 @@ def cmd_query(args) -> int:
             for d in degraded_sorted:
                 if d["overdue"]:
                     od_by_owner.setdefault(d["owner"] or "?", []).append(d["due"])
-            for _f, _pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf, _fc in criticals_sorted:
+            for _f, _pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf, _fc, _aout in criticals_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
-            for _f, _pr, _day, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf in majors_sorted:
+            for _f, _pr, _day, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, _ncc, _ncf, _aout in majors_sorted:
                 if od:
                     od_by_owner.setdefault(own or "?", []).append(due)
             # Review-overdue owners tally alongside the escalation
@@ -4924,7 +5224,7 @@ def cmd_query(args) -> int:
                     + (f"  cause {d['noncover_cause']}; fix: {d['noncover_fix']}" if d["noncover_cause"] else "")
                 )
             print(f"blocked clearances  {len(blocked)}")
-            for f, pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, ncc, ncf, fc in blocked:
+            for f, pr, own, due, od, _esc, _ab, _ao, _ae, _ar, _at, ncc, ncf, fc, _aout in blocked:
                 print(
                     f"    {pr}  in {f}  owner {own or '?'}  due {due or '?'}"
                     + ("  OVERDUE" if od else "")
@@ -5039,8 +5339,8 @@ def cmd_query(args) -> int:
                 if not _raccs:
                     continue
                 _rsupd = superseded_acceptances(_raccs)
-                for tgt, appr, own, exp, rec, rvw, _evi, _sup, rat, kind in _raccs:
-                    if (tgt.lower(), rec) in _rsupd:
+                for tgt, appr, own, exp, rec, rvw, _evi, _sup, rat, kind, rec_id, _recgen, _outcome, _action in _raccs:
+                    if rec_id in _rsupd:
                         continue
                     if kind == "finding":
                         sev = row_sev.get((path, tgt.lower()), "dangling")
@@ -5170,11 +5470,11 @@ def cmd_query(args) -> int:
                 if d["accepted_by"] or not d["due"] or d["due"] > _horizon:
                     continue
                 _pay.append((d["owner"] or "?", d["due"], f"degraded {d['ref']} {d['state']}"))
-            for f, pr, own, due, _od, _esc, ab, _ao, _ae, _ar, _at, _ncc, _ncf, _fc in criticals_sorted:
+            for f, pr, own, due, _od, _esc, ab, _ao, _ae, _ar, _at, _ncc, _ncf, _fc, _aout in criticals_sorted:
                 if ab or not due or due > _horizon:
                     continue
                 _pay.append((own or "?", due, f"critical {pr} in {f}"))
-            for f, pr, _day, own, due, _od, _esc, ab, _ao, _ae, _ar, _at, _ncc, _ncf in majors_sorted:
+            for f, pr, _day, own, due, _od, _esc, ab, _ao, _ae, _ar, _at, _ncc, _ncf, _aout in majors_sorted:
                 if ab or not due or due > _horizon:
                     continue
                 _pay.append((own or "?", due, f"major {pr} in {f}"))
@@ -5205,6 +5505,7 @@ def cmd_query(args) -> int:
                     f"  accepted by {d['accepted_by']} owner {d['accepted_owner']}"
                     f" expires {d['accepted_expires']}"
                     f" review {d['accepted_review']} rationale {d['accepted_rationale']}"
+                    + (f" outcome {d['accepted_outcome']}" if d["accepted_outcome"] else "")
                 )
             # UNACCOUNTABLE pairs with the owed predicate at collection:
             # a bare partial carries no fields because none are owed.
@@ -5230,12 +5531,12 @@ def cmd_query(args) -> int:
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
-        for f, pr, own, due, od, esc, ab, ao, ae, ar, at, _ncc, _ncf, fc in criticals_sorted:
+        for f, pr, own, due, od, esc, ab, ao, ae, ar, at, _ncc, _ncf, fc, aout in criticals_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += f"  OVERDUE  escalate {esc.split(':', 1)[0] if esc else 'operator'}"
             if ab:
-                acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}"
+                acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}" + (f" outcome {aout}" if aout else "")
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             if fc:
@@ -5245,12 +5546,12 @@ def cmd_query(args) -> int:
             f"open majors         {len(majors_sorted)} "
             f"({sum(1 for m in majors_sorted if m[5])} overdue)"
         )
-        for f, pr, day, own, due, od, esc, ab, ao, ae, ar, at, _ncc, _ncf in majors_sorted:
+        for f, pr, day, own, due, od, esc, ab, ao, ae, ar, at, _ncc, _ncf, aout in majors_sorted:
             acct = f"owner {own or '?'}  due {due or '?'}"
             if od:
                 acct += f"  OVERDUE  escalate {esc.split(':', 1)[0] if esc else 'operator'}"
             if ab:
-                acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}"
+                acct += f"  accepted by {ab} owner {ao} expires {ae} review {ar} rationale {at}" + (f" outcome {aout}" if aout else "")
             if not own or not due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {pr}  in {f}  since {day}  {acct}")
@@ -8040,6 +8341,11 @@ track: Z1
             "fatal",
         )
         check(
+            "marker-history is a FATAL class",
+            SEVERITY_MAP.get("marker-history"),
+            "fatal",
+        )
+        check(
             "validate names the offending line",
             "refused '> **Verified:** nonsense" in malformed_out,
             True,
@@ -8949,7 +9255,7 @@ track: Z1
             _ppt = _ppf.read_text(encoding="utf-8")
             _pfirst, _pnl, _prest = _ppt.partition("\n")
             _pline = (
-                "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+                "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
                 "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; "
                 f"path docs/reviews/{_ppf.name}; run 20260920-D90-T06-S5-gpt\n"
             )
@@ -8991,10 +9297,10 @@ track: Z1
         # read 100644, everything else delegates to real git.
         _real_resolves_panel = git_resolves
         _real_treemode_panel = git_tree_mode
-        globals()["git_resolves"] = lambda sha: True if sha == "aaa1111" else None
+        globals()["git_resolves"] = lambda sha: True if sha == "aaa1111000000000000000000000000000000000" else None
         globals()["git_tree_mode"] = lambda ref, p: (
             "100644"
-            if ref == "aaa1111" and p.startswith("docs/reviews/90-panel-")
+            if ref == "aaa1111000000000000000000000000000000000" and p.startswith("docs/reviews/90-panel-")
             else _real_treemode_panel(ref, p)
         )
         pbuf = _mio.StringIO()
@@ -9452,6 +9758,13 @@ track: Z1
 |  101  |   §101  | Unreal outage event date fires | - |  [x]   |
 |  102  |   §102  | Misshapen outage event date fires | - |  [x]   |
 |  103  |   §103  | Joined event prose never satisfies | - |  [x]   |
+|  104  |   §104  | Short plus foreign evidence fire | - |  [x]   |
+|  105  |   §105  | Record identity and outcome probes fire | - |  [x]   |
+|  106  |   §106  | Reopen generation must increment by one | - |  [ ]   |
+|  107  |   §107  | Re-stamp must persist the reopen generation | - |  [ ]   |
+|  108  |   §108  | Edited marker fails against history | - |  [x]   |
+|  109  |   §109  | Deleted marker fails against history | - |  [x]   |
+|  110  |   §110  | Added marker stays silent against history | - |  [x]   |
 
 ---
 
@@ -9596,7 +9909,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §12 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Reopened:** 2026-09-20 | §14 | audit-stance reopen, filed critical lacks back-link
+> **Reopened:** 2026-09-20 | generation 1 | §14 | audit-stance reopen, filed critical lacks back-link
 
 ## 13. Parked reopen silent
 
@@ -9607,7 +9920,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §13 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Reopened:** 2026-09-20 | §14 | audit-stance reopen, filed critical lacks back-link
+> **Reopened:** 2026-09-20 | generation 1 | §14 | audit-stance reopen, filed critical lacks back-link
 
 ## 14. Stamped dependent of reopen
 
@@ -10371,7 +10684,7 @@ proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
 
 **Test checkpoint:** `true`
 
--> SOURCE: fixtureself D90-T07-S4-PR73 fix aaa1111
+-> SOURCE: fixtureself D90-T07-S4-PR73 fix aaa1111000000000000000000000000000000000
 
 proof D90-T07-S4-PR73 tests/fix-proof.py::test_clearance
 
@@ -10679,6 +10992,86 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §103 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 amid no-event 2026-09-19 plus no/event 2026-09-18 triage
+
+## 104. Short plus foreign evidence fire
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §104 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept6.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S104-gpt)
+
+## 105. Record identity and outcome probes fire
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §105 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept7.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S105-gpt)
+
+## 106. Reopen generation must increment by one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §106 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept6.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S106-gpt)
+> **Reopened:** 2026-09-20 | generation 5 | §14 | fixture skip
+
+## 107. Re-stamp must persist the reopen generation
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §107 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept6.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S107-gpt)
+> **Reopened:** 2026-09-20 | generation 1 | §14 | fixture reopen
+> **Verified:** 2026-09-20 | §107 | fixture re-stamp without the generation
+
+## 108. Edited marker fails against history
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §108 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-histq108.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S108-gpt)
+
+## 109. Deleted marker fails against history
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §109 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-histq109.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S109-gpt)
+
+## 110. Added marker stays silent against history
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §110 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-histq110.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S110-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -10845,7 +11238,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "Ledger:\n"
             "- [PR30] [major] Lingering old worry -> accepted\n"
             "End of ledger\n"
-            "Risk accepted: PR30; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; evidence fff3030; rationale old waiver, never validated\n",
+            "Risk accepted: PR30; id A1; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-10-01; evidence fff3030000000000000000000000000000000000; rationale old waiver, never validated\n",
             encoding="utf-8",
         )
         # §19 lineage and history probes: a partial-outage record, a rerun
@@ -11006,7 +11399,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "Ledger:\n"
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
             "End of ledger\n"
-            + "Risk accepted: 20260919-D90-T07-S42-gpt; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence aaa4242; rationale rerun pointless, survivor findings stand\n",
+            + "Risk accepted: 20260919-D90-T07-S42-gpt; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence aaa4242000000000000000000000000000000000; rationale rerun pointless, survivor findings stand\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept2.md").write_text(
@@ -11015,7 +11408,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "Ledger:\n"
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
             "End of ledger\n"
-            + "Risk accepted: 20260920-D90-T07-S43-gpt; approver bob; owner bob; date 2020-01-05; expires 2020-06-01; review 2020-02-01; evidence bbb4343; rationale lapsed waiver\n",
+            + "Risk accepted: 20260920-D90-T07-S43-gpt; id A1; approver bob; owner bob; date 2020-01-05; expires 2020-06-01; review 2020-02-01; evidence bbb4343000000000000000000000000000000000; rationale lapsed waiver\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept3.md").write_text(
@@ -11025,10 +11418,10 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 "- [D90-T07-S4-PR2] [major] Re-cited accept finding -> filed §2\n"
 "- [D90-T07-S4-PR53] [major] Post-dated waiver target -> accepted owner ann due 2099-01-01\n"
             "End of ledger\n"
-            + "Risk accepted: 20260920-D90-T07-S44-gpt; approver bob; owner bob; date 2026-09-01; review 2026-10-01; evidence ccc4444; rationale missing expires\n"
-            + "Risk accepted: D90-T07-S4-PR1; approver bob; owner bob; date 2026-09-02; expires 2026-01-01; review 2026-10-01; evidence ccc4445; rationale inverted dates\n"
-            + "Risk accepted: D90-T07-S4-PR2; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446; rationale review before record\n"
-            + "Risk accepted: D90-T07-S4-PR53; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447; rationale typo'd year\n",
+            + "Risk accepted: 20260920-D90-T07-S44-gpt; id A1; approver bob; owner bob; date 2026-09-01; review 2026-10-01; evidence ccc4444000000000000000000000000000000000; rationale missing expires\n"
+            + "Risk accepted: D90-T07-S4-PR1; id A2; approver bob; owner bob; date 2026-09-02; expires 2026-01-01; review 2026-10-01; evidence ccc4445000000000000000000000000000000000; rationale inverted dates\n"
+            + "Risk accepted: D90-T07-S4-PR2; id A3; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446000000000000000000000000000000000; rationale review before record\n"
+            + "Risk accepted: D90-T07-S4-PR53; id A4; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447000000000000000000000000000000000; rationale typo'd year\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept4.md").write_text(
@@ -11039,8 +11432,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 "- [D90-T07-S4-PR50] [major] Accepted overdue major -> accepted owner ann due 2020-01-01\n"
 "- [D90-T07-S4-PR51] [critical] Accepted overdue critical -> accepted owner ann due 2020-01-01\n"
             "End of ledger\n"
-            + "Risk accepted: d90-t07-s4-pr50; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence ddd4545; rationale major stands, ship anyway\n"
-            + "Risk accepted: D90-T07-S4-PR51; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence ddd4545; rationale critical stands, ship anyway\n",
+            + "Risk accepted: d90-t07-s4-pr50; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence ddd4545000000000000000000000000000000000; rationale major stands, ship anyway\n"
+            + "Risk accepted: D90-T07-S4-PR51; id A2; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence ddd4545000000000000000000000000000000000; rationale critical stands, ship anyway\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept5.md").write_text(
@@ -11049,9 +11442,47 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "Ledger:\n"
 "- [D90-T07-S4-PR52] [minor] Accepted outage note -> accepted\n"
             "End of ledger\n"
-            + "Risk accepted: outage both rungs 2026-09-19; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence eee4646; rationale outage stands, no rerun planned\n",
+            + "Risk accepted: outage both rungs 2026-09-19; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence eee4646000000000000000000000000000000000; rationale outage stands, no rerun planned\n",
             encoding="utf-8",
         )
+        (rev_dir / "90-health-accept6.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §104]; dependents [none]; bytes 100; run 20260920-D90-T07-S104-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S104-PR1] [major] Watched row -> accepted owner ann due 2099-01-01\n"
+"- [D90-T07-S104-PR2] [major] Second row -> accepted owner ann due 2099-01-01\n"
+            "End of ledger\n"
+            + "Risk accepted: D90-T07-S104-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence abc1234; rationale short evidence\n"
+            + "Risk accepted: D90-T07-S104-PR1; id A2; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence f041040000000000000000000000000000000000; rationale foreign evidence\n"
+            + "Risk accepted: D90-T07-S104-PR2; id A3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review " + d60 + "; evidence 11c1040000000000000000000000000000000000; rationale descendant evidence, silent\n",
+            # No bespoke Provenance: the migration below supplies the
+            # uniform candidate, which the lineage pairs bind against.
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-accept7.md").write_text(
+            opus_panel
+            + "Manifest: sections [D90 T07 §105]; dependents [none]; bytes 100; run 20260920-D90-T07-S105-gpt\n\n"
+            "Ledger:\n"
+"- [D90-T07-S105-PR0] [minor] quiet row -> accepted\n"
+            "End of ledger\n"
+            + "Risk accepted: D90-T07-S105-PR0; id A0; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review 2026-10-01; evidence aaa1051000000000000000000000000000000000; rationale zero serial\n"
+            + "Risk accepted: D90-T07-S105-PR0; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review 2026-10-01; evidence bbb1052000000000000000000000000000000000; supersedes A9; rationale naked supersedes\n"
+            + "Risk accepted: D90-T07-S105-PR0; id A2; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review 2026-10-01; evidence ccc1053000000000000000000000000000000000; outcome renewed; rationale naked outcome\n",
+            # No bespoke Provenance: the migration below supplies the
+            # uniform candidate, like accept6.
+            encoding="utf-8",
+        )
+        for _hq in ("108", "109", "110"):
+            (rev_dir / f"90-health-histq{_hq}.md").write_text(
+                opus_panel
+                + f"Manifest: sections [D90 T07 §{_hq}]; dependents [none]; bytes 100; run 20260920-D90-T07-S{_hq}-gpt\n\n"
+                "Ledger:\n"
+                f"- [D90-T07-S{_hq}-PR0] [minor] quiet row -> accepted\n"
+                "End of ledger\n",
+                # No bespoke Provenance: the migration below supplies
+                # the uniform candidate at each citer's run.
+                encoding="utf-8",
+            )
         # §23 probe: one amendment chain per supersession shape. PR2
         # validly amends PR1 (the query reads PR2 as current and skips
         # PR1); PR3 names a row that does not exist; PR4 amends another
@@ -11120,7 +11551,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "- [D90-T07-S62-PR2] [major] First amendment -> accepted owner ann due 2099-02-02 supersedes D90-T07-S62-PR1 identity 360709bcdb69 first fix\n"
             "- [D90-T07-S62-PR3] [major] Second amendment -> accepted owner ann due 2099-03-03 supersedes D90-T07-S62-PR1 identity 360709bcdb69 second fix\n"
             "End of ledger\n"
-            "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
+            "Candidate: `aaa1111000000000000000000000000000000000` + `bbb2222` (checked fence pipeline)\n",
             encoding="utf-8",
         )
         # §34 probe: one head per amendment-identity shape, each on its
@@ -11130,7 +11561,10 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         # current while PR7 skips. Every head but PR6 carries a reason
         # (D00 T01 §34 R1 consistency 2 bars mandated-only restatements
         # as rationale). The manifest rides §87's run, so only the
-        # probed shapes can fire on each.
+        # probed shapes can fire on each. PR9/10 pin the multi-word
+        # trigger strip (bare fires, reasoned silent) and PR11/12 pin
+        # the over-long filed-target strip (D00 T01 §51 item 7);
+        # PR13-16 are their silent minor targets.
         (rev_dir / "90-health-amend.md").write_text(
             opus_panel
             + "Manifest: sections [D90 T07 §87]; dependents [none]; bytes 100; run 20260920-D90-T07-S87-gpt\n\n"
@@ -11143,6 +11577,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "- [D90-T07-S87-PR6] [minor] Bare amendment -> accepted supersedes D90-T07-S87-PR5 identity b8b043ddf486\n"
             "- [D90-T07-S87-PR7] [major] Delta worry -> accepted owner ann due 2099-07-07\n"
             "- [D90-T07-S87-PR8] [major] Proven amendment -> accepted owner ann due 2099-08-08 supersedes D90-T07-S87-PR7 identity 8494060112d6 confirmed on retest\n"
+"- [D90-T07-S87-PR9] [minor] Bare multi-word trigger -> deferred owner ann due 2099-09-09 trigger next release supersedes D90-T07-S87-PR13 identity 6592294cfc16\n"
+"- [D90-T07-S87-PR10] [minor] Reasoned multi-word trigger -> deferred owner ann due 2099-10-10 trigger next release supersedes D90-T07-S87-PR14 identity e8470c56e3b1 because the window moved\n"
+"- [D90-T07-S87-PR11] [minor] Bare over-long target -> filed §9999999999 supersedes D90-T07-S87-PR15 identity 1de48c2bbc41\n"
+"- [D90-T07-S87-PR12] [minor] Reasoned over-long target -> filed §9999999999 supersedes D90-T07-S87-PR16 identity 9e00a8548717 confirmed on retest\n"
+"- [D90-T07-S87-PR13] [minor] Trigger target one -> accepted\n"
+"- [D90-T07-S87-PR14] [minor] Trigger target two -> accepted\n"
+"- [D90-T07-S87-PR15] [minor] Filed target one -> accepted\n"
+"- [D90-T07-S87-PR16] [minor] Filed target two -> accepted\n"
             "End of ledger\n",
             encoding="utf-8",
         )
@@ -11194,7 +11636,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "Ledger:\n"
             "- [D90-T07-S4-PR11] [major] Re-cited multirecord rerun finding -> filed §2\n"
             "End of ledger\n"
-            "Candidate: `aaa1111` + `bbb2222` (checked fence pipeline)\n",
+            "Candidate: `aaa1111000000000000000000000000000000000` + `bbb2222` (checked fence pipeline)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-range.md").write_text(
@@ -11274,14 +11716,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _first, _nl, _rest = _pt.partition("\n")
             _prun = _file_runs.get(_pf.name, "20260920-D90-T07-S9-gpt")
             _line = (
-                "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+                "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
                 "digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef; "
                 f"path docs/reviews/{_pf.name}; run {_prun}\n"
             )
             _pf.write_text(_first + _nl + _line + _rest, encoding="utf-8")
         # Canned git bytes (D00 T01 §19 items 3, 8): the clearance proof
         # reads fix commits and the history rule reads HEAD, so the test
-        # patches the readers instead of a repo. `aaa1111` carries the §2
+        # patches the readers instead of a repo. `aaa1111000000000000000000000000000000000` carries the §2
         # filing and touched the file (PR1 clears), `bbb2222` carries
         # nothing (the §21 negative), `ccc3333` carries the §25 filing
         # without touching the file (the §25 negative), and the history
@@ -11304,7 +11746,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             )
         )
         canned_git = {
-            ("aaa1111", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
+            ("aaa1111000000000000000000000000000000000", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
             ("bbb2222", marker_todo.as_posix()): "nothing fixed here\n",
             ("ccc3333", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
             ("HEAD", "docs/reviews/90-health-history.md"): history_was,
@@ -11314,14 +11756,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             # finding records. TODO keys ride t.path (absolute here:
             # the temp tree sits outside REPO, the parse_todo
             # fallback); findings keys ride the review-relative path.
-            ("aaa4242", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
-            ("ddd4545", "docs/reviews/90-health-accept4.md"): (rev_dir / "90-health-accept4.md").read_text(
+            ("aaa4242000000000000000000000000000000000", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
+            ("ddd4545000000000000000000000000000000000", "docs/reviews/90-health-accept4.md"): (rev_dir / "90-health-accept4.md").read_text(
                 encoding="utf-8"
             ),
-            ("eee4646", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
+            ("eee4646000000000000000000000000000000000", marker_todo.as_posix()): marker_todo.read_text(encoding="utf-8"),
         }
         canned_touches = {
-            ("aaa1111", marker_todo.as_posix()): True,
+            ("aaa1111000000000000000000000000000000000", marker_todo.as_posix()): True,
             ("ccc3333", marker_todo.as_posix()): False,
         }
         # §22 clearance profiles: `fff0001` passes every leg but proof
@@ -11356,7 +11798,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         ):
             canned_git[(_sha, marker_todo.as_posix())] = _mtxt
             canned_touches[(_sha, marker_todo.as_posix())] = True
-        canned_git[("aaa1111", "tests/fix-proof.py")] = _proof_ok
+        canned_git[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = _proof_ok
         canned_git[("fff0001", "tests/fix-proof.py")] = _proof_bare
         for _sha in (
             "ddd0001",
@@ -11371,7 +11813,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         ):
             canned_git[(_sha, "tests/fix-proof.py")] = _proof_ok
         canned_ts = {
-            "aaa1111": _tss(d2, "12:00:00"),
+            "aaa1111000000000000000000000000000000000": _tss(d2, "12:00:00"),
             "fff0001": _tss(d5, "12:00:00"),
             "ddd0001": _tss(d4, "11:00:00"),
             "ddd0002": _tss(d1, "12:00:00"),
@@ -11394,29 +11836,42 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ("eee0001", "eee0002"): True,
             ("eee0003", "eee0004"): True,
             ("eee0005", "eee0006"): False,
-            # §23 ancestry leg: the review's recorded candidate is aaa1111
+            # §23 ancestry leg: the review's recorded candidate is aaa1111000000000000000000000000000000000
             # (the migration's uniform candidate), which the clearing fixes
             # descend from; the §56 fix does not, so PR70 stays listed.
-            ("aaa1111", "aaa1111"): True,
-            ("aaa1111", "eee0002"): True,
-            ("aaa1111", "fff0002"): True,
-            ("aaa1111", "b000001"): False,
-            ("aaa1111", "f000001"): True,
+            ("aaa1111000000000000000000000000000000000", "aaa1111000000000000000000000000000000000"): True,
+            ("aaa1111000000000000000000000000000000000", "eee0002"): True,
+            ("aaa1111000000000000000000000000000000000", "fff0002"): True,
+            ("aaa1111000000000000000000000000000000000", "b000001"): False,
+            ("aaa1111000000000000000000000000000000000", "f000001"): True,
+            ("aaa1111000000000000000000000000000000000", "f041040000000000000000000000000000000000"): False,
+            ("aaa1111000000000000000000000000000000000", "11c1040000000000000000000000000000000000"): True,
+            ("c19c190000000000000000000000000000000000", "f19f190000000000000000000000000000000000"): False,
+            ("c20c200000000000000000000000000000000000", "1209200000000000000000000000000000000000"): True,
         }
         # §23 provenance candidates: the migration's uniform candidate
         # resolves, the badprov typo resolves to nothing, and anything
         # uncanned is unprovable (missing key, like every canned map).
-        canned_resolves = {"aaa1111": True, "deadbee": False}
+        # Dual forms (D00 T01 §51 item 2): provenance shorts keep their
+        # original keys while padded forms serve the 40-hex era.
+        canned_resolves = {"aaa1111": True, "deadbee": False, "aaa1111000000000000000000000000000000000": True, "deadbee000000000000000000000000000000000": False}
         canned_range_touches = {
             ("eee0001", "eee0002", marker_todo.as_posix()): True,
             ("eee0003", "eee0004", marker_todo.as_posix()): False,
             ("eee0005", "eee0006", marker_todo.as_posix()): True,
         }
         # §31 legs: every canned sha resolves to a distinct full ID and
-        # is a non-merge (deadbee resolves to nothing); the clearing
+        # is a non-merge (deadbee000000000000000000000000000000000 resolves to nothing); the clearing
         # range's newest touch postdates the finding review.
         _all_shas = (
             "aaa1111",
+            "aaa1111000000000000000000000000000000000",
+            "f041040000000000000000000000000000000000",
+            "11c1040000000000000000000000000000000000",
+            "c19c190000000000000000000000000000000000",
+            "f19f190000000000000000000000000000000000",
+            "c20c200000000000000000000000000000000000",
+            "1209200000000000000000000000000000000000",
             "ccc3333",
             "fff0001",
             "ddd0001",
@@ -11446,7 +11901,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ("e000001", "e000002"): True,
             ("9f00001", "9f00002"): False,
         }
-        # §31 item 6: `c000001` mirrors the `aaa1111` clearing profile
+        # §31 item 6: `c000001` mirrors the `aaa1111000000000000000000000000000000000` clearing profile
         # as a distinct descendant, so basic clearance survives strict
         # ancestry; the clearing range touched its proof file.
         canned_git[("c000001", marker_todo.as_posix())] = _mtxt
@@ -11456,7 +11911,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         canned_ts["c000001"] = _tss(d2, "12:00:00")
         canned_full["c000001"] = "c000001" + "0" * 33
         canned_merges["c000001"] = False
-        canned_ancestors[("aaa1111", "c000001")] = True
+        canned_ancestors[("aaa1111000000000000000000000000000000000", "c000001")] = True
         canned_range_touches[("eee0001", "eee0002", "tests/fix-proof.py")] = True
         # §31 negative probes: full passing profiles except the probed
         # leg. `d000001` sees a fixed tree with the §81 back-link
@@ -11482,7 +11937,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             canned_ts[_sha] = _tss(d5, "12:00:00")
             canned_full[_sha] = _sha + "0" * 33
             canned_merges[_sha] = _sha == "f000002"
-            canned_ancestors[("aaa1111", _sha)] = True
+            canned_ancestors[("aaa1111000000000000000000000000000000000", _sha)] = True
         canned_git[("d000001", marker_todo.as_posix())] = _fixed81
         canned_git[("a000001", "tests/fix-proof.py")] = _proof_comment
         canned_touches[("d000001", "tests/fix-proof.py")] = True
@@ -11508,7 +11963,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         canned_full["9f00002"] = "9f00002" + "0" * 33
         canned_merges["9f00001"] = False
         canned_merges["9f00002"] = False
-        canned_ancestors[("aaa1111", "9f00002")] = True
+        canned_ancestors[("aaa1111000000000000000000000000000000000", "9f00002")] = True
         canned_range_touches[("9f00001", "9f00002", marker_todo.as_posix())] = True
         canned_range_touches[("9f00001", "9f00002", "tests/fix-proof.py")] = True
         canned_range_ts[("9f00001", "9f00002", marker_todo.as_posix())] = _tss(d5, "12:00:00")
@@ -11528,9 +11983,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         canned_ts["b000002"] = _tss(d5, "12:00:00")
         canned_full["b000002"] = "b000002" + "0" * 33
         canned_merges["b000002"] = False
-        canned_ancestors[("aaa1111", "b000002")] = True
+        canned_ancestors[("aaa1111000000000000000000000000000000000", "b000002")] = True
         # §31 item 5: the clearing fixes touched their proof files.
-        canned_touches[("aaa1111", "tests/fix-proof.py")] = True
+        canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
         canned_touches[("fff0002", "tests/fix-proof.py")] = True
         # D00 T01 §32: b000001 touches its proof file too, so PR70
@@ -11561,29 +12016,29 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "**integration: approve**\n**record: approve**\n\n"
             # All-Opus record by construction (D00 T01 §37 item 1).
             "Sol outage: model error (fixture note)\n\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run someday-maybe\n"
-            "Provenance: candidate deadbee; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate deadbee000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S30-gpt\n"
             "Provenance: candidate f00df00d; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S30-gpt\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-gone.md; run 20260920-D90-T07-S30-gpt\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path /tmp/absent-provenance-target.md; run 20260920-D90-T07-S30-gpt\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S9-gpt\n",
             encoding="utf-8",
         )
         # D00 T01 §33 item 4 (round-1 integration): the
         # candidate-tree leg binds the entry mode read from the
         # candidate, so each written review file cans 100644 at
-        # aaa1111 (the gone-path negative stays uncanned: absence
+        # aaa1111000000000000000000000000000000000 (the gone-path negative stays uncanned: absence
         # is its probe).
         for _rev in sorted(rev_dir.glob("90-*.md")):
-            canned_tree_modes[("aaa1111", f"docs/reviews/{_rev.name}")] = "100644"
+            canned_tree_modes[("aaa1111000000000000000000000000000000000", f"docs/reviews/{_rev.name}")] = "100644"
         _real_git_file_at = git_file_at
         _real_git_touches = git_commit_touches
         _real_git_ts = git_commit_ts
@@ -11606,6 +12061,25 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         globals()["git_range_touch_ts"] = lambda a, b, p: canned_range_ts.get((a, b, p))
         globals()["git_on_first_parent_chain"] = lambda a, b: canned_fpchain.get((a, b))
         globals()["git_tree_mode"] = lambda ref, p: canned_tree_modes.get((ref, p))
+        _live_marker = marker_todo.read_text(encoding="utf-8")
+        canned_git[("HEAD", marker_todo.as_posix())] = (
+            _live_marker.replace(
+                "> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S108-gpt)",
+                "> **Plan review:** GPT high, filed §3 (run 20260920-D90-T07-S108-gpt)",
+                1,
+            )
+            .replace(
+                "> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S110-gpt)\n",
+                "",
+                1,
+            )
+            .replace(
+                "> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S109-gpt)\n",
+                "> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S109-gpt)\n"
+                "> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S999-gpt)\n",
+                1,
+            )
+        )
         mbuf = _mio.StringIO()
         with _mctx.redirect_stdout(mbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
@@ -12552,6 +13026,100 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             3,
         )
         check(
+            "zero record id fires",
+            any(
+                "TODO-07-marker.md" in ln and "§105 " in ln and "id A0 is not positive" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "supersedes without outcome fires",
+            any(
+                "TODO-07-marker.md" in ln and "§105 " in ln and "supersedes without its outcome" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "outcome without supersedes fires",
+            any(
+                "TODO-07-marker.md" in ln and "§105 " in ln and "outcome without its supersedes link" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§105 fires exactly three times (identity, naked supersedes, naked outcome)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§105 " in ln and "FATAL" in ln),
+            3,
+        )
+        check(
+            "reopen generation must increment by one",
+            any(
+                "TODO-07-marker.md" in ln and "§106 " in ln and "is not previous-plus-one of stamp generation 0" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§106 fires exactly once (the increment)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§106 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "re-stamp without the generation is refused",
+            any(
+                "TODO-07-marker.md" in ln and "carries generation 0 for §107" in ln and "re-stamp persists it" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§107 fires exactly once (the refused re-stamp)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§107 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "an edited marker fails against history",
+            any(
+                "TODO-07-marker.md" in ln and "§108 " in ln and "marker edited or deleted against history" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "a deleted marker fails against history",
+            any(
+                "TODO-07-marker.md" in ln and "§109 " in ln and "marker edited or deleted against history" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "an added marker stays silent against history",
+            not any(
+                "TODO-07-marker.md" in ln and "§110 " in ln and "marker edited or deleted against history" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§108 fires exactly once (the edited marker)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§108 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "§109 fires exactly once (the deleted marker)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§109 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "§110 fires exactly zero (the added marker silent)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§110 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
             "finding acceptances stay validator-silent",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§45 " in ln and "FATAL" in ln),
             0,
@@ -12594,7 +13162,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "unresolving provenance candidate fires",
             any(
-                "TODO-07-marker.md" in ln and "§30 " in ln and "candidate deadbee resolves to nothing" in ln
+                "TODO-07-marker.md" in ln and "§30 " in ln and "candidate deadbee000000000000000000000000000000000 resolves to nothing" in ln
                 for ln in marker_out
             ),
             True,
@@ -12766,9 +13334,36 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "§87 fires exactly three times (missing, mismatch, bare rationale; the proven chain silent)",
+            "a multi-word-trigger bare head fires",
+            any(
+                "TODO-07-marker.md" in ln and "§87 " in ln and "d90-t07-s87-pr9 supersedes D90-T07-S87-PR13 with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "an over-long-target bare head fires",
+            any(
+                "TODO-07-marker.md" in ln and "§87 " in ln and "d90-t07-s87-pr11 supersedes D90-T07-S87-PR15 with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "reasoned residue-gap controls stay rationale-silent",
+            not any(
+                "TODO-07-marker.md" in ln
+                and "§87 " in ln
+                and ("d90-t07-s87-pr10 " in ln or "d90-t07-s87-pr12 " in ln)
+                and "with no rationale" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§87 fires exactly seven times (identity x2, rationale x3, over-long x2)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§87 " in ln and "FATAL" in ln),
-            3,
+            7,
         )
         check(
             "a deferred head with only the mandated triple fires for no rationale",
@@ -12849,7 +13444,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         )
         check(
             "query run shows the bound provenance",
-            any("90-health-mfork.md" in ln and "aaa1111" in ln for ln in run_lines),
+            any("90-health-mfork.md" in ln and "aaa1111000000000000000000000000000000000" in ln for ln in run_lines),
             True,
         )
         cbuf = _mio.StringIO()
@@ -12861,7 +13456,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check("query run exits 0 on the candidate run", cand_code, 0)
         check(
             "query run resolves the review candidate",
-            any("90-health-rowfork.md" in ln and "aaa1111" in ln and "bbb2222" in ln for ln in cand_lines),
+            any("90-health-rowfork.md" in ln and "aaa1111000000000000000000000000000000000" in ln and "bbb2222" in ln for ln in cand_lines),
             True,
         )
         obuf = _mio.StringIO()
@@ -12914,7 +13509,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "query run prints artifact exit plus digest",
             any(
-                "candidate aaa1111 exit 0 digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" in ln
+                "candidate aaa1111000000000000000000000000000000000 exit 0 digest 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" in ln
                 for ln in run_lines
             ),
             True,
@@ -13053,6 +13648,27 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "§103 fires exactly once (event only)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§103 " in ln and "FATAL" in ln),
             1,
+        )
+        check(
+            "short evidence fires malformed",
+            any(
+                "TODO-07-marker.md" in ln and "§104 " in ln and "malformed Risk accepted line" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "foreign evidence fires",
+            any(
+                "TODO-07-marker.md" in ln and "§104 " in ln and "does not descend from the reviewed candidate" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§104 fires exactly twice (shape plus lineage)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§104 " in ln and "FATAL" in ln),
+            2,
         )
         gbuf = _mio.StringIO()
         with _mctx.redirect_stdout(gbuf), _mctx.redirect_stderr(_mio.StringIO()):
@@ -13383,7 +13999,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "**integration: approve**\n**record: approve**\n\n"
             # All-Opus record by construction (D00 T01 §37 item 1).
             "Sol outage: model error (fixture note)\n\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-dur26.md; run 20260920-D90-T32-S1-gpt\n\n"
             + "\n".join(_d26_recs),
             encoding="utf-8",
@@ -13391,7 +14007,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         # D00 T01 §33 item 4 (round-1 integration): the
         # candidate-tree leg cans the fixture's mode at its candidate
         # (regular file, so silent).
-        canned_tree_modes[("aaa1111", "docs/reviews/90-dur26.md")] = "100644"
+        canned_tree_modes[("aaa1111000000000000000000000000000000000", "docs/reviews/90-dur26.md")] = "100644"
         saved_tree, TODO_DIR = TODO_DIR, dur26 / "todo"
         try:
             v26 = _mio.StringIO()
@@ -13499,14 +14115,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
             "Sol outage: model error (fixture note)\n\n"
-            "Provenance: candidate aaa1111; command true; exit 0; tool fixture 1; "
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
             "digest 0123456789abcdef; path docs/reviews/90-bd27.md; run 20260920-D90-T48-S1-gpt\n\n"
             "## Plan review\n\nManifest: sections [D90 T01 §1]; dependents [none]; "
             "bytes 100; run 20260920-D90-T48-S1-gpt\n\nLedger:\n"
             "- [D90-T48-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n",
             encoding="utf-8",
         )
-        canned_tree_modes[("aaa1111", "docs/reviews/90-bd27.md")] = "100644"
+        canned_tree_modes[("aaa1111000000000000000000000000000000000", "docs/reviews/90-bd27.md")] = "100644"
         saved_tree, TODO_DIR = TODO_DIR, bd27 / "todo"
         try:
             v27 = _mio.StringIO()
@@ -14264,7 +14880,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "plan-health fallback membership is GPT-last: only records whose last panel "
             "section is GPT count as fallback (planned GPT-early rounds under an Opus "
             "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/6 shape stable."
+            "holding the plan-health/7 shape stable."
         )
         _ph_buf = _mio.StringIO()
         _ph_argv = sys.argv
@@ -14429,7 +15045,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "plan-health --json carries the schema version",
             jdata.get("schema"),
-            "plan-health/6",
+            "plan-health/7",
         )
         # --- clearance failure codes (D00 T01 §32 item 4) ---
         # Every leg the S4 probes isolate already pins its row's
@@ -14662,6 +15278,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 and "accepted_expires" in e
                 and "accepted_review" in e
                 and "accepted_rationale" in e
+                and "accepted_outcome" in e
                 for e in jdata["criticals"] + jdata["majors"] + jdata["degraded"]
             ),
             True,
@@ -14681,6 +15298,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     and isinstance(e["accepted_expires"], str)
                     and isinstance(e["accepted_review"], str)
                     and isinstance(e["accepted_rationale"], str)
+                    and isinstance(e["accepted_outcome"], str)
                     for e in jdata["criticals"]
                 )
                 and all(
@@ -14692,6 +15310,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     and isinstance(e["accepted_expires"], str)
                     and isinstance(e["accepted_review"], str)
                     and isinstance(e["accepted_rationale"], str)
+                    and isinstance(e["accepted_outcome"], str)
                     for e in jdata["majors"]
                 )
                 and all(
@@ -14706,6 +15325,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     and isinstance(e["accepted_expires"], str)
                     and isinstance(e["accepted_review"], str)
                     and isinstance(e["accepted_rationale"], str)
+                    and isinstance(e["accepted_outcome"], str)
                     for e in jdata["degraded"]
                 )
                 and all(
@@ -15041,7 +15661,16 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "|   11  |   §11   | Pre-cutoff run waiver | -- |  [x]   |\n"
             "|   12  |   §12   | Stamp-day waiver misses moved event | -- |  [x]   |\n"
             "|   13  |   §13   | Last-event waiver binds moved event | -- |  [x]   |\n"
-            "|   14  |   §14   | Outage waiver predating the event | -- |  [x]   |\n\n---\n\n"
+            "|   14  |   §14   | Outage waiver predating the event | -- |  [x]   |\n"
+            "|   15  |   §15   | Same-day outage waiver attesting pre-target bytes | -- |  [x]   |\n"
+            "|   16  |   §16   | Same-day finding waiver attesting pre-target bytes | -- |  [x]   |\n"
+            "|   17  |   §17   | Same-day run waiver attesting pre-target bytes | -- |  [x]   |\n"
+            "|   18  |   §18   | Same-day outage waiver over containing evidence | -- |  [x]   |\n"
+            "|   19  |   §19   | Foreign-branch evidence never covers | -- |  [x]   |\n"
+            "|   20  |   §20   | Descendant evidence proceeds | -- |  [x]   |\n"
+            "|   21  |   §21   | Re-stamp voids the old waiver | -- |  [x]   |\n"
+            "|   22  |   §22   | Renewed waiver covers the marker | -- |  [x]   |\n"
+            "\n---\n\n"
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
@@ -15058,7 +15687,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §4 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc4.md\n"
             "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S4-gpt)\n"
-            "> **Reopened:** 2026-09-19 | D90-T01-S4-PR1 | fixture reopen\n\n"
+            "> **Reopened:** 2026-09-19 | generation 1 | D90-T01-S4-PR1 | fixture reopen\n\n"
             "## 5. Expired owner\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §5 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc5.md\n"
@@ -15102,7 +15731,39 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "## 14. Outage waiver predating the event\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §14 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc16.md\n"
-            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n",
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n\n"
+            "## 15. Same-day outage waiver attesting pre-target bytes\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §15 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc17.md\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n\n"
+            "## 16. Same-day finding waiver attesting pre-target bytes\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §16 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc18.md\n"
+            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S16-gpt)\n\n"
+            "## 17. Same-day run waiver attesting pre-target bytes\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §17 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc19.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S17-gpt)\n\n"
+            "## 18. Same-day outage waiver over containing evidence\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §18 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc20.md\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n\n"
+            "## 19. Foreign-branch evidence never covers\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §19 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc21.md\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n\n"
+            "## 20. Descendant evidence proceeds\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §20 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc22.md\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n\n"
+            "## 21. Re-stamp voids the old waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §21 | generation 1 | fixture re-stamp\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc23.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2099-01-01 class timeout attempts 2 (run 20260919-D90-T01-S21-gpt)\n\n"
+            "## 22. Renewed waiver covers the marker\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §22 | generation 1 | fixture re-stamp\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc24.md\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 2 (run 20260919-D90-T01-S22-gpt)\n",
             encoding="utf-8",
         )
         _acc_head = (
@@ -15114,58 +15775,58 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _acc_head
             + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100\n\n"
             "Ledger:\n- [D90-T01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            "Risk accepted: outage gpt rung 2026-09-18; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            "Risk accepted: outage gpt rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale wrong instance, never covers\n",
+            + "; evidence aaa1111000000000000000000000000000000000; rationale wrong instance, never covers\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc2.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §2]; dependents [none]; bytes 100; run 20260919-D90-T01-S2-gpt\n\n"
             "Ledger:\n- [D90-T01-S2-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            "Risk accepted: 20260919-D90-T01-S2-gpt; approver bob; owner bob; date 2026-09-18; expires 2099-01-01; review "
+            "Risk accepted: 20260919-D90-T01-S2-gpt; id A1; approver bob; owner bob; date 2026-09-18; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale prewritten waiver, never covers\n",
+            + "; evidence aaa1111000000000000000000000000000000000; rationale prewritten waiver, never covers\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc3.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §3]; dependents [none]; bytes 100; run 20260919-D90-T01-S3-gpt\n\n"
             "Ledger:\n- [D90-T01-S3-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            "Risk accepted: 20260919-D90-T01-S3-gpt; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            "Risk accepted: 20260919-D90-T01-S3-gpt; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence deadbee; rationale stale evidence, never covers\n",
+            + "; evidence deadbee000000000000000000000000000000000; rationale stale evidence, never covers\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc4.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §4]; dependents [none]; bytes 100; run 20260919-D90-T01-S4-gpt\n\n"
             "Ledger:\n- [D90-T01-S4-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            "Risk accepted: 20260919-D90-T01-S4-gpt; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            "Risk accepted: 20260919-D90-T01-S4-gpt; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence cafe444; rationale reopened section, never consulted\n",
+            + "; evidence cafe444000000000000000000000000000000000; rationale reopened section, never consulted\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc5.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §5]; dependents [none]; bytes 100; run 20260918-D90-T01-S5-gpt\n\n"
             "Ledger:\n- [D90-T01-S5-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            "Risk accepted: 20260918-D90-T01-S5-gpt; approver bob; owner bob; date 2026-09-18; expires 2026-09-18; review 2026-09-18; evidence aaa1111; rationale lapsed match, owner escalates\n",
+            "Risk accepted: 20260918-D90-T01-S5-gpt; id A1; approver bob; owner bob; date 2026-09-18; expires 2026-09-18; review 2026-09-18; evidence aaa1111000000000000000000000000000000000; rationale lapsed match, owner escalates\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc6.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §6]; dependents [none]; bytes 100; run 20260918-D90-T01-S6-gpt\n\n"
             "Ledger:\n- [D90-T01-S6-PR1] [major] watched row -> accepted\n- [D90-T01-S6-PR2] [major] watched row -> accepted\n- [D90-T01-S6-PR3] [major] watched row -> accepted\n- [D90-T01-S6-PR4] [major] watched row -> accepted\n- [D90-T01-S6-PR5] [minor] quiet row -> accepted\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S6-PR1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale overdue review\n"
-            f"Risk accepted: D90-T01-S6-PR2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc6e66; rationale due review\n"
-            f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale superseded review\n"
-            f"Risk accepted: D90-T01-S6-PR3; approver bob; owner bob; date {_r0}; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; supersedes 2026-09-18; rationale successor review\n"
-            f"Risk accepted: D90-T01-S6-PR4; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence dead666; rationale stale review, never lists\n"
-            f"Risk accepted: D90-T01-S6-PR99; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale dangling review, never lists\n"
-            f"Risk accepted: D90-T01-S6-PR5; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66; rationale minor review, never lists\n"
-            f"Risk accepted: 20260918-D90-T01-S6-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; rationale healthy marker waiver\n"
-            f"Risk accepted: 20260918-D90-T01-S11-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66; rationale pre-cutoff run waiver reads none\n",
+            f"Risk accepted: D90-T01-S6-PR1; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66000000000000000000000000000000000; rationale overdue review\n"
+            f"Risk accepted: D90-T01-S6-PR2; id A2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc6e66000000000000000000000000000000000; rationale due review\n"
+            f"Risk accepted: D90-T01-S6-PR3; id A3; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66000000000000000000000000000000000; rationale superseded review\n"
+            f"Risk accepted: D90-T01-S6-PR3; id A4; approver bob; owner bob; date {_r0}; expires {_exp_far}; review {_rvw_far}; evidence acc6e66000000000000000000000000000000000; supersedes A3; outcome renewed; rationale successor review\n"
+            f"Risk accepted: D90-T01-S6-PR4; id A5; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence dead666000000000000000000000000000000000; rationale stale review, never lists\n"
+            f"Risk accepted: D90-T01-S6-PR99; id A6; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66000000000000000000000000000000000; rationale dangling review, never lists\n"
+            f"Risk accepted: D90-T01-S6-PR5; id A7; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc6e66000000000000000000000000000000000; rationale minor review, never lists\n"
+            f"Risk accepted: 20260918-D90-T01-S6-gpt; id A8; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66000000000000000000000000000000000; rationale healthy marker waiver\n"
+            f"Risk accepted: 20260918-D90-T01-S11-gpt; id A9; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence acc6e66000000000000000000000000000000000; rationale pre-cutoff run waiver reads none\n",
             encoding="utf-8",
         )
         _r30f = (date.today() + timedelta(days=30)).isoformat()
@@ -15173,64 +15834,154 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _acc_head
             + "Manifest: sections [D90 T01 §7]; dependents [none]; bytes 100; run 20260919-D90-T01-S7-gpt\n\n"
             "Ledger:\n- [D90-T01-S7-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: 20260919-D90-T01-S7-gpt; approver bob; owner bob; date {_r30f}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; rationale postdated waiver, operator escalates\n",
+            f"Risk accepted: 20260919-D90-T01-S7-gpt; id A1; approver bob; owner bob; date {_r30f}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111000000000000000000000000000000000; rationale postdated waiver, operator escalates\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc11.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §8]; dependents [none]; bytes 100; run 20260919-D90-T01-S8-gpt\n\n"
             "Ledger:\n- [D90-T01-S8-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: 20260919-D90-T01-S8-gpt; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; rationale superseded waiver\n"
-            f"Risk accepted: 20260919-D90-T01-S8-gpt; approver bob; owner bob; date {_r30f}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111; supersedes 2026-09-18; rationale postdated successor\n",
+            f"Risk accepted: 20260919-D90-T01-S8-gpt; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence aaa1111000000000000000000000000000000000; rationale superseded waiver\n"
+            f"Risk accepted: 20260919-D90-T01-S8-gpt; id A2; approver bob; owner bob; date {_r30f}; expires {_exp_far}; review {_rvw_far}; evidence aaa1111000000000000000000000000000000000; supersedes A1; outcome renewed; rationale postdated successor\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc12.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §9]; dependents [none]; bytes 100; run 20260919-D90-T01-S9-gpt\n\n"
             "Ledger:\n- [D90-T01-S9-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: 20260919-D90-T01-S9-gpt; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale unresolvable evidence\n",
+            f"Risk accepted: 20260919-D90-T01-S9-gpt; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef00000000000000000000000000000000; rationale unresolvable evidence\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc13.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §10]; dependents [none]; bytes 100\n\n"
             "Ledger:\n- [D90-T01-S10-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: outage cron rung 2026-09-19; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale matched outage, unresolvable evidence\n",
+            f"Risk accepted: outage cron rung 2026-09-19; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef00000000000000000000000000000000; rationale matched outage, unresolvable evidence\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc14.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §12]; dependents [none]; bytes 100; run 20260919-D90-T01-S12-gpt\n\n"
             "Ledger:\n- [D90-T01-S12-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: outage opus rung 2026-09-19; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale stamp-day waiver, never covers the moved event\n",
+            f"Risk accepted: outage opus rung 2026-09-19; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef00000000000000000000000000000000; rationale stamp-day waiver, never covers the moved event\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc15.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §13]; dependents [none]; bytes 100; run 20260919-D90-T01-S13-gpt\n\n"
             "Ledger:\n- [D90-T01-S13-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: outage opus rung 2026-09-18; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_over}; evidence acc50d0; rationale last-event waiver, covers and lists overdue\n",
+            f"Risk accepted: outage opus rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_over}; evidence acc50d0000000000000000000000000000000000; rationale last-event waiver, covers and lists overdue\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc16.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §14]; dependents [none]; bytes 100\n\n"
             "Ledger:\n- [D90-T01-S14-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            f"Risk accepted: outage cron rung 2026-09-18; approver bob; owner bob; date 2026-09-17; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale predated waiver, never covers\n",
+            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-17; expires {_exp_far}; review {_rvw_far}; evidence deadbeef00000000000000000000000000000000; rationale predated waiver, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc17.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §15]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S15-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence beef15e000000000000000000000000000000000; rationale same-day waiver over pre-target bytes, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc18.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §16]; dependents [none]; bytes 100; run 20260919-D90-T01-S16-gpt\n\n"
+            "Ledger:\n- [D90-T01-S16-PR1] [major] watched row -> accepted owner bob due 2099-01-01\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S16-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence beef16e000000000000000000000000000000000; rationale same-day waiver over pre-target bytes, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc19.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §17]; dependents [none]; bytes 100; run 20260919-D90-T01-S17-gpt\n\n"
+            "Ledger:\n- [D90-T01-S17-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: 20260919-D90-T01-S17-gpt; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence beef17e000000000000000000000000000000000; rationale same-day waiver over pre-target bytes, never covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc20.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §18]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S18-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_far}; evidence beef18e000000000000000000000000000000000; rationale same-day waiver over containing evidence, covers\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc21.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §19]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S19-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence f19f190000000000000000000000000000000000; rationale foreign-branch evidence, never covers\n"
+            + "Provenance: candidate c19c190000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-acc21.md; run 20260919-D90-T01-S19-gpt\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc22.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §20]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S20-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage cron rung 2026-09-18; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence 1209200000000000000000000000000000000000; rationale descendant evidence, proceeds\n"
+            + "Provenance: candidate c20c200000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
+            "digest 0123456789abcdef; path docs/reviews/90-acc22.md; run 20260919-D90-T01-S20-gpt\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc23.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §21]; dependents [none]; bytes 100; run 20260919-D90-T01-S21-gpt\n\n"
+"Ledger:\n- [D90-T01-S21-PR1] [major] old waiver trails the re-stamp -> accepted\n- [D90-T01-S21-PR2] [major] renewed at the re-stamp -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S21-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence acc21a1000000000000000000000000000000000; rationale old waiver, generation trails\n"
+            f"Risk accepted: D90-T01-S21-PR2; id A2; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence acc21a1000000000000000000000000000000000; rationale old waiver, superseded\n"
+            f"Risk accepted: D90-T01-S21-PR2; id A3; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence acc21a1000000000000000000000000000000000; generation 1; supersedes A2; outcome renewed; rationale renewed at the re-stamp\n"
+            f"Risk accepted: 20260919-D90-T01-S21-gpt; id A4; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence acc22b2000000000000000000000000000000000; rationale old marker waiver, generation trails\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc24.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §22]; dependents [none]; bytes 100; run 20260919-D90-T01-S22-gpt\n\n"
+"Ledger:\n- [D90-T01-S22-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: 20260919-D90-T01-S22-gpt; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence acc22b2000000000000000000000000000000000; rationale old waiver, superseded\n"
+            f"Risk accepted: 20260919-D90-T01-S22-gpt; id A2; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence acc22b2000000000000000000000000000000000; generation 1; supersedes A1; outcome remediated; rationale renewed waiver, marker covers\n",
             encoding="utf-8",
         )
         _clean_todo = (clean / "todo" / "90-clean" / "TODO-01-clean.md").as_posix()
-        canned_git[("deadbee", _clean_todo)] = "stale bytes, never the live record\n"
-        canned_git[("cafe444", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+        canned_git[("deadbee000000000000000000000000000000000", _clean_todo)] = (
+            "stale bytes, never the live record\n"
+            "> **Plan review:** GPT high, filed §6, retry-owed owner ann due 2020-01-01 class timeout attempts 1 (run 20260919-D90-T01-S3-gpt)\n"
+        )
+        canned_git[("cafe444000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
         )
-        canned_git[("acc50d0", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+        canned_git[("acc50d0000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
         )
-        canned_git[("acc6e66", "docs/reviews/90-acc6.md")] = (clean / "docs" / "reviews" / "90-acc6.md").read_text(
+        canned_git[("beef15e000000000000000000000000000000000", _clean_todo)] = "bytes predating the §15 marker\n"
+        canned_git[("beef16e000000000000000000000000000000000", "docs/reviews/90-acc18.md")] = (
+            "Ledger:\n- [D90-T01-S16-PR0] [minor] other row -> accepted\nEnd of ledger\n"
+        )
+        canned_git[("beef17e000000000000000000000000000000000", _clean_todo)] = "bytes predating the §17 marker\n"
+        canned_git[("beef18e000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
         )
-        canned_git[("dead666", "docs/reviews/90-acc6.md")] = "stale bytes, never the live record\n"
+        canned_git[("f19f190000000000000000000000000000000000", _clean_todo)] = (
+            "foreign bytes carrying the §19 marker\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n"
+        )
+        canned_git[("1209200000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+            encoding="utf-8"
+        )
+        canned_git[("acc6e66000000000000000000000000000000000", "docs/reviews/90-acc6.md")] = (clean / "docs" / "reviews" / "90-acc6.md").read_text(
+            encoding="utf-8"
+        )
+        canned_git[("dead666000000000000000000000000000000000", "docs/reviews/90-acc6.md")] = (
+            "Ledger:\n- [D90-T01-S6-PR4] [major] changed row -> accepted\nEnd of ledger\n"
+        )
+        canned_git[("acc21a1000000000000000000000000000000000", "docs/reviews/90-acc23.md")] = (clean / "docs" / "reviews" / "90-acc23.md").read_text(
+            encoding="utf-8"
+        )
+        canned_git[("acc22b2000000000000000000000000000000000", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+            encoding="utf-8"
+        )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
         try:
             _acc_buf = _mio.StringIO()
@@ -15416,6 +16167,144 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
+        _deg15 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§15")]
+        _deg17 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§17")]
+        _deg18 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§18")]
+        _maj16 = [e for e in _acc_json["majors"] if e["id"] == "D90-T01-S16-PR1"]
+        check(
+            "same-day outage waiver over pre-target bytes diagnoses predated-evidence",
+            (
+                len(_deg15) == 1
+                and _deg15[0]["accepted_by"] == ""
+                and _deg15[0]["noncover_cause"] == "predated-evidence"
+                and _deg15[0]["noncover_fix"] == "re-record the acceptance over evidence containing its target"
+            ),
+            True,
+        )
+        check(
+            "same-day finding waiver over pre-target bytes diagnoses predated-evidence",
+            (
+                len(_maj16) == 1
+                and _maj16[0]["accepted_by"] == ""
+                and _maj16[0]["noncover_cause"] == "predated-evidence"
+            ),
+            True,
+        )
+        check(
+            "same-day run waiver over pre-target bytes diagnoses predated-evidence",
+            (
+                len(_deg17) == 1
+                and _deg17[0]["accepted_by"] == ""
+                and _deg17[0]["noncover_cause"] == "predated-evidence"
+            ),
+            True,
+        )
+        check(
+            "same-day outage waiver over containing evidence covers",
+            (len(_deg18) == 1 and _deg18[0]["accepted_by"] == "bob" and not _deg18[0]["overdue"]),
+            True,
+        )
+        check(
+            "summary names the predated-evidence causes",
+            (
+                any("§15" in ln and "cause predated-evidence" in ln for ln in _acc_sum)
+                and any("§17" in ln and "cause predated-evidence" in ln for ln in _acc_sum)
+            ),
+            True,
+        )
+        _deg19 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§19")]
+        _deg20 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§20")]
+        check(
+            "foreign-branch evidence diagnoses foreign-evidence",
+            (
+                len(_deg19) == 1
+                and _deg19[0]["accepted_by"] == ""
+                and _deg19[0]["noncover_cause"] == "foreign-evidence"
+                and _deg19[0]["noncover_fix"]
+                == "re-point the acceptance at evidence descending from the reviewed candidate"
+            ),
+            True,
+        )
+        check(
+            "descendant evidence proceeds to cover",
+            (len(_deg20) == 1 and _deg20[0]["accepted_by"] == "bob" and not _deg20[0]["overdue"]),
+            True,
+        )
+        check(
+            "summary names the foreign-evidence cause",
+            any("§19" in ln and "cause foreign-evidence" in ln for ln in _acc_sum),
+            True,
+        )
+        _maj21 = [e for e in _acc_json["majors"] if e["id"] == "D90-T01-S21-PR1"]
+        _maj21b = [e for e in _acc_json["majors"] if e["id"] == "D90-T01-S21-PR2"]
+        _deg22 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§22")]
+        _deg21 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§21")]
+        check(
+            "the re-stamp voids the trailing waiver",
+            (
+                len(_maj21) == 1
+                and _maj21[0]["accepted_by"] == ""
+                and _maj21[0]["noncover_cause"] == "stale-generation"
+                and _maj21[0]["noncover_fix"]
+                == "re-record the acceptance at the section's current generation"
+            ),
+            True,
+        )
+        check(
+            "the re-stamp voids the trailing marker waiver",
+            (
+                len(_deg21) == 1
+                and _deg21[0]["accepted_by"] == ""
+                and _deg21[0]["noncover_cause"] == "stale-generation"
+            ),
+            True,
+        )
+        check(
+            "the renewed waiver covers and reports its outcome",
+            (
+                len(_maj21b) == 1
+                and _maj21b[0]["accepted_by"] == "bob"
+                and _maj21b[0]["accepted_outcome"] == "renewed"
+            ),
+            True,
+        )
+        check(
+            "the renewed marker waiver covers and reports its outcome",
+            (
+                len(_deg22) == 1
+                and _deg22[0]["accepted_by"] == "bob"
+                and not _deg22[0]["overdue"]
+                and _deg22[0]["accepted_outcome"] == "remediated"
+            ),
+            True,
+        )
+        check(
+            "summary names the stale-generation cause",
+            any("§21" in ln and "cause stale-generation" in ln for ln in _acc_sum),
+            True,
+        )
+        check(
+            "plan-health text names covering outcomes",
+            (
+                any("S21-PR2" in ln and "outcome renewed" in ln for ln in _acc_lines)
+                and any("§22" in ln and "outcome remediated" in ln for ln in _acc_lines)
+            ),
+            True,
+        )
+        check(
+            "the generation predicate holds uniformly across kinds",
+            (
+                acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "finding", "TGT", None, 0, 1)
+                == "stale-generation"
+                and acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "run", "TGT", None, 0, 1)
+                == "stale-generation"
+                and acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "outage", "TGT", None, 0, 1)
+                == "stale-generation"
+                and acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "finding", "TGT", None, 1, 1)
+                == "missing-target"
+            ),
+            True,
+        )
         check(
             "summary names each noncoverage cause with its fix",
             (
@@ -15516,7 +16405,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "register lists every un-superseded instrument once",
             (
                 _reg["schema"] == "risk-register/1"
-                and len(_rent) == 19
+                and len(_rent) == 29
                 and not any(e["rationale"] in ("superseded waiver", "superseded review") for e in _rent)
                 and not any("S4-PR1" in e["target"] for e in _rent)
             ),
@@ -15533,6 +16422,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 and any(e["target"] == "outage opus rung 2026-09-19" and e["residual"] == "unmatched" for e in _rent)
                 and any(e["target"] == "outage opus rung 2026-09-18" and e["residual"] == "outage" for e in _rent)
                 and any(e["target"] == "outage cron rung 2026-09-18" and e["residual"] == "outage" for e in _rent)
+                and any(e["target"] == "D90-T01-S16-PR1" and e["residual"] == "major" for e in _rent)
+                and any(e["target"].endswith("S17-gpt") and e["residual"] == "retry-owed" for e in _rent)
                 and any(e["target"].endswith("S6-gpt") and e["residual"] == "none" for e in _rent)
                 and any(e["target"].endswith("S5-gpt") and e["state"] == "expired" for e in _rent)
                 and any(e["target"].endswith("S7-gpt") and e["state"] == "post-dated" for e in _rent)
@@ -15549,9 +16440,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             (
                 any(ln == "Reviews: 3 due or overdue (2 overdue)" for ln in _dash)
                 and any(ln == "Expiries: 0 within 30 days" for ln in _dash)
-                and any(ln == "Partials and outages: 10 owed" for ln in _dash)
+                and any(ln == "Partials and outages: 14 owed" for ln in _dash)
                 and any(ln.startswith("Migration: 0 leftovers") for ln in _dash)
-                and any(ln == "Open findings: 0 criticals, 1 majors (0 overdue)" for ln in _dash)
+                and any(ln == "Open findings: 0 criticals, 3 majors (0 overdue)" for ln in _dash)
             ),
             True,
         )
@@ -15559,15 +16450,18 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "notify emits flat owner payloads and exits 0",
             (
                 rc_not == 0
-                and any(ln.startswith("notify: 13 payloads within 7 days") for ln in _not)
+                and any(ln.startswith("notify: 16 payloads within 7 days") for ln in _not)
                 and any(ln.strip().startswith("ann | 2020-01-01 | degraded") for ln in _not)
                 and any("bob |" in ln and "review-overdue" in ln for ln in _not)
             ),
             True,
         )
+        # The §22 marker waiver post-dates under the freeze (recorded
+        # 2026-09-19, frozen today 2020-01-02), freeing one more due
+        # into the window.
         check(
             "frozen --today moves the notify window",
-            any(ln.startswith("notify: 11 payloads within 7 days (today 2020-01-02") for ln in _not_f),
+            any(ln.startswith("notify: 17 payloads within 7 days (today 2020-01-02") for ln in _not_f),
             True,
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
@@ -15715,11 +16609,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _acc_head
             + "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260918-D90-T01-S1-gpt\n\n"
             "Ledger:\n- [D90-T01-S1-PR0] [major] clean round -> accepted\n- [D90-T01-S9-PR9] [major] foreign row -> accepted\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S1-PR0; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc8e88; rationale due review sorts first\n"
-            f"Risk accepted: D90-T01-S9-PR9; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc8e88; rationale overdue review\n",
+            f"Risk accepted: D90-T01-S1-PR0; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_due}; evidence acc8e88000000000000000000000000000000000; rationale due review sorts first\n"
+            f"Risk accepted: D90-T01-S9-PR9; id A2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence acc8e88000000000000000000000000000000000; rationale overdue review\n",
             encoding="utf-8",
         )
-        canned_git[("acc8e88", "docs/reviews/90-acc8.md")] = (clean / "docs" / "reviews" / "90-acc8.md").read_text(
+        canned_git[("acc8e88000000000000000000000000000000000", "docs/reviews/90-acc8.md")] = (clean / "docs" / "reviews" / "90-acc8.md").read_text(
             encoding="utf-8"
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
@@ -15783,20 +16677,20 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _acc_head
             + "Manifest: sections [D90 T01 §1, D90 T01 §2]; dependents [none]; bytes 100; run 20260918-D90-T01-S9-gpt\n\n"
             "Ledger:\n- [D90-T01-S9-PR1] [major] watched row -> accepted\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S9-PR1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence ac1e111; rationale second-citer cover\n",
+            f"Risk accepted: D90-T01-S9-PR1; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence ac1e111000000000000000000000000000000000; rationale second-citer cover\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-mc2.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §3, D90 T01 §4]; dependents [none]; bytes 100; run 20260918-D90-T01-S9-gpt\n\n"
             "Ledger:\n- [D90-T01-S9-PR2] [major] watched row -> accepted\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S9-PR2; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence ac2e222; rationale both-citer cover\n",
+            f"Risk accepted: D90-T01-S9-PR2; id A1; approver bob; owner bob; date 2026-09-18; expires {_exp_far}; review {_rvw_over}; evidence ac2e222000000000000000000000000000000000; rationale both-citer cover\n",
             encoding="utf-8",
         )
-        canned_git[("ac1e111", "docs/reviews/90-mc1.md")] = (clean / "docs" / "reviews" / "90-mc1.md").read_text(
+        canned_git[("ac1e111000000000000000000000000000000000", "docs/reviews/90-mc1.md")] = (clean / "docs" / "reviews" / "90-mc1.md").read_text(
             encoding="utf-8"
         )
-        canned_git[("ac2e222", "docs/reviews/90-mc2.md")] = (clean / "docs" / "reviews" / "90-mc2.md").read_text(
+        canned_git[("ac2e222000000000000000000000000000000000", "docs/reviews/90-mc2.md")] = (clean / "docs" / "reviews" / "90-mc2.md").read_text(
             encoding="utf-8"
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
@@ -15842,18 +16736,18 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ("2026-09-19", "", ""),
         )
         check(
-            "superseded acceptances resolve by target plus record date",
+            "superseded acceptances resolve by record id, same-day succession chains",
             superseded_acceptances(
                 [
-                    ("TGT", "a", "o", "e", "2026-09-01", "v", "i", "", "r", "run"),
-                    ("tgt", "a", "o", "e", "2026-09-19", "v", "i", "2026-09-01", "r", "run"),
+                    ("TGT", "a", "o", "e", "2026-09-01", "v", "i", "", "r", "run", "A1", 0, "", ""),
+                    ("tgt", "a", "o", "e", "2026-09-01", "v", "i", "A1", "r", "run", "A2", 0, "renewed", ""),
                 ]
             ),
-            {("tgt", "2026-09-01")},
+            {"A1"},
         )
         check(
             "evidence with no resolvable commit reads unresolvable",
-            evidence_state("0000000", "docs/reviews/90-acc1.md", "anything"),
+            evidence_state("0000000", "docs/reviews/90-acc1.md", "anything", "finding", "D90-T07-S4-PR2"),
             "unresolvable",
         )
         _acc1_now = (rev_dir / "90-health-accept.md").read_text(encoding="utf-8")
@@ -15861,28 +16755,44 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ln for ln in _acc1_now.split("\n") if not ln.startswith("Risk accepted:")
         )
         check(
-            "evidence ignores the acceptance lines themselves",
-            evidence_state("acc7070", "docs/reviews/90-health-accept.md", _acc1_now),
+            "evidence compares the target row, not the acceptance lines",
+            evidence_state("acc7070", "docs/reviews/90-health-accept.md", _acc1_now, "finding", "D90-T07-S4-PR2"),
             "fresh",
         )
         check(
-            "changed record bytes read stale",
-            evidence_state("acc7070", "docs/reviews/90-health-accept.md", _acc1_now + "\nlate line\n"),
+            "unrelated edits preserve cover",
+            evidence_state("acc7070", "docs/reviews/90-health-accept.md", _acc1_now + "\nlate line\n", "finding", "D90-T07-S4-PR2"),
+            "fresh",
+        )
+        check(
+            "target-row edits void",
+            evidence_state(
+                "acc7070",
+                "docs/reviews/90-health-accept.md",
+                _acc1_now.replace("Re-cited accept finding", "Re-cited accept finding EDITED"),
+                "finding",
+                "D90-T07-S4-PR2",
+            ),
             "stale",
         )
         check(
+            "CRLF live bytes still read fresh against LF evidence",
+            evidence_state("acc7070", "docs/reviews/90-health-accept.md", _acc1_now.replace("\n", "\r\n"), "finding", "D90-T07-S4-PR2"),
+            "fresh",
+        )
+        check(
             "unmatched record reads no-match without consulting legs",
-            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", False, "p", "t", "2026-09-20"),
+            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", False, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0),
             "no-match",
         )
         check(
             "matched record with no target day reads missing-target",
-            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20"),
+            acceptance_hold("2026-09-19", "2099-01-01", "evi", "", True, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0),
             "missing-target",
         )
         check(
             "record predating its target reads predated-target",
-            acceptance_hold("2026-09-18", "2099-01-01", "evi", "2026-09-19", True, "p", "t", "2026-09-20"),
+            acceptance_hold("2026-09-18", "2099-01-01", "evi", "2026-09-19", True, "p", "t", "2026-09-20", "finding", "D90-T01-S1-PR0", None, 0, 0),
             "predated-target",
         )
         # Item 4 history legs (D00 T01 §27): silent edits, chained
@@ -15896,12 +16806,12 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         )
         _acc7_was = (
             _acc7_head
-            + "Risk accepted: D90-T01-S1-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "Risk accepted: D90-T01-S1-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale original rationale\n"
-            + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale original rationale\n"
+            + "Risk accepted: D90-T01-S1-PR2; id A2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale superseded record\n"
+            + "; evidence aaa1111000000000000000000000000000000000; rationale superseded record\n"
         )
         (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
             "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
@@ -15925,54 +16835,63 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         )
         (clean / "docs" / "reviews" / "90-acc7.md").write_text(
             _acc7_head
-            + "Risk accepted: D90-T01-S1-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "Risk accepted: D90-T01-S1-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale EDITED rationale\n"
-            + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale EDITED rationale\n"
+            + "Risk accepted: D90-T01-S1-PR2; id A2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale superseded record\n"
-            + "Risk accepted: D90-T01-S1-PR2; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale superseded record\n"
+            + "Risk accepted: D90-T01-S1-PR2; id A3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-10; rationale successor record\n"
-            + "Risk accepted: D90-T01-S1-PR3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A2; outcome remediated; rationale successor record\n"
+            + "Risk accepted: D90-T01-S1-PR3; id A4; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-01-01; rationale dangling link\n",
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A99; outcome renewed; rationale dangling link\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc9.md").write_text(
             _acc_head
             + "Manifest: sections [D90 T01 §2]; dependents [none]; bytes 100; run 20260919-D90-T01-S2-gpt\n\n"
             "Ledger:\n- [D90-T01-S2-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
-            + "Risk accepted: D90-T01-S2-PR1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "Risk accepted: D90-T01-S2-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-19; rationale self link\n"
-            + "Risk accepted: D90-T01-S2-PR2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A1; outcome renewed; rationale self link\n"
+            + "Risk accepted: D90-T01-S2-PR2; id A2; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-11; rationale cycle member a\n"
-            + "Risk accepted: D90-T01-S2-PR2; approver bob; owner bob; date 2026-09-11; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A3; outcome renewed; rationale cycle member a\n"
+            + "Risk accepted: D90-T01-S2-PR2; id A3; approver bob; owner bob; date 2026-09-11; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-10; rationale cycle member b\n"
-            + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A2; outcome remediated; rationale cycle member b\n"
+            + "Risk accepted: D90-T01-S2-PR3; id A4; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale forked predecessor\n"
-            + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-18; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale forked predecessor\n"
+            + "Risk accepted: D90-T01-S2-PR3; id A5; approver bob; owner bob; date 2026-09-18; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-10; rationale first successor\n"
-            + "Risk accepted: D90-T01-S2-PR3; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A4; outcome rejected; rationale first successor\n"
+            + "Risk accepted: D90-T01-S2-PR3; id A6; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; supersedes 2026-09-10; rationale second successor\n"
-            + "Risk accepted: D90-T01-S2-PR4; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; supersedes A4; outcome closed; rationale second successor\n"
+            + "Risk accepted: D90-T01-S2-PR4; id A7; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale twin a\n"
-            + "Risk accepted: D90-T01-S2-PR4; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale twin a\n"
+            + "Risk accepted: D90-T01-S2-PR4; id A7; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale twin b\n"
-            + "Risk accepted: D90-T01-S2-PR5; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale twin b\n"
+            + "Risk accepted: D90-T01-S2-PR5; id A8; approver bob; owner bob; date 2026-09-10; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale first head\n"
-            + "Risk accepted: D90-T01-S2-PR5; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + "; evidence aaa1111000000000000000000000000000000000; rationale first head\n"
+            + "Risk accepted: D90-T01-S2-PR5; id A9; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
             + d60
-            + "; evidence aaa1111; rationale second head\n",
+            + "; evidence aaa1111000000000000000000000000000000000; rationale second head\n"
+            + "Risk accepted: D90-T01-S2-PR6; id A10; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
++ "; evidence aaa1111000000000000000000000000000000000; supersedes A1; outcome renewed; rationale cross-target link\n"
+            + "Risk accepted: D90-T01-S2-PR7; id A11; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
++ "; evidence aaa1111000000000000000000000000000000000; rationale same-day predecessor\n"
+            + "Risk accepted: D90-T01-S2-PR7; id A12; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+            + d60
++ "; evidence aaa1111000000000000000000000000000000000; supersedes A11; outcome renewed; rationale same-day successor\n",
             encoding="utf-8",
         )
         canned_git[("HEAD", "docs/reviews/90-acc7.md")] = _acc7_was
@@ -15993,8 +16912,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "silent acceptance edits and dangling links fire",
             (
                 len(_silent) == 2
-                and any("d90-t01-s1-pr1 2026-09-19 edited" in ln for ln in _silent)
-                and any("d90-t01-s1-pr3 2026-01-01 names no record" in ln for ln in _silent)
+                and any("d90-t01-s1-pr1 A1 edited" in ln for ln in _silent)
+                and any("d90-t01-s1-pr3 A4 supersedes A99 names no record" in ln for ln in _silent)
             ),
             True,
         )
@@ -16007,19 +16926,25 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ln
             for ln in _acc7_buf.getvalue().splitlines()
             if "acceptance " in ln
-            and ("sits in a supersedes cycle" in ln or "re-supersedes" in ln or "recorded twice" in ln or "forks " in ln)
+            and ("sits in a supersedes cycle" in ln or "re-supersedes" in ln or "recorded twice" in ln or "forks " in ln or "across targets" in ln)
         ]
         check(
-            "self links, cycles, double successors, twins, and forks fire",
+            "self links, cycles, double successors, twins, forks, and cross-target links fire",
             (
-                len(_chain) == 6
-                and any("d90-t01-s2-pr1 2026-09-19 sits in a supersedes cycle" in ln for ln in _chain)
-                and any("d90-t01-s2-pr2 2026-09-10 sits in a supersedes cycle" in ln for ln in _chain)
-                and any("d90-t01-s2-pr2 2026-09-11 sits in a supersedes cycle" in ln for ln in _chain)
-                and any("d90-t01-s2-pr3 2026-09-19 re-supersedes d90-t01-s2-pr3 2026-09-10" in ln for ln in _chain)
-                and any("d90-t01-s2-pr4 2026-09-19 recorded twice" in ln for ln in _chain)
-                and any("d90-t01-s2-pr5 2026-09-19 forks d90-t01-s2-pr5" in ln for ln in _chain)
+                len(_chain) == 7
+                and any("d90-t01-s2-pr1 A1 sits in a supersedes cycle" in ln for ln in _chain)
+                and any("d90-t01-s2-pr2 A2 sits in a supersedes cycle" in ln for ln in _chain)
+                and any("d90-t01-s2-pr2 A3 sits in a supersedes cycle" in ln for ln in _chain)
+                and any("d90-t01-s2-pr3 A6 re-supersedes d90-t01-s2-pr3 A4" in ln for ln in _chain)
+                and any("d90-t01-s2-pr4 A7 recorded twice" in ln for ln in _chain)
+                and any("d90-t01-s2-pr5 A9 forks d90-t01-s2-pr5" in ln for ln in _chain)
+                and any("d90-t01-s2-pr6 A10 supersedes d90-t01-s2-pr1 A1 across targets" in ln for ln in _chain)
             ),
+            True,
+        )
+        check(
+            "same-day succession chains silent",
+            (not any("pr7" in ln.lower() for ln in _chain)),
             True,
         )
         globals()["git_file_at"] = _real_git_file_at
@@ -16127,11 +17052,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     )
                     check("real git reads file bytes at a ref", git_file_at(_gc2, "proof.txt"), "v2\n")
                     check("real git reads older bytes at an older ref", git_file_at(_gc1, "proof.txt"), "v1\n")
-                    check("real git misses a bad ref", git_file_at("deadbee", "proof.txt"), None)
+                    check("real git misses a bad ref", git_file_at("deadbee000000000000000000000000000000000", "proof.txt"), None)
                     check("real git misses a missing path", git_file_at(_gc2, "missing.txt"), None)
                     check("real git sees a commit touch", git_commit_touches(_gc2, "proof.txt"), True)
                     check("real git sees a commit miss", git_commit_touches(_gc2, "side.txt"), False)
-                    check("real git touch on a bad ref is unprovable", git_commit_touches("deadbee", "proof.txt"), None)
+                    check("real git touch on a bad ref is unprovable", git_commit_touches("deadbee000000000000000000000000000000000", "proof.txt"), None)
                     # Merge visibility, characterized live (git 2.43.0): a
                     # clean merge lists no files, but a conflict-resolution
                     # merge lists its resolved files. D00 T01 §31 excludes
@@ -16141,44 +17066,44 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     check("real git reports a touch on a conflict merge", git_commit_touches(_gr1, "proof.txt"), True)
                     check("real git reads conflict-merge content", git_file_at(_gr1, "proof.txt"), "cr\n")
                     check("real git reads committer epoch", git_commit_ts(_gc2), _gts)
-                    check("real git ts on a bad ref is unprovable", git_commit_ts("deadbee"), None)
+                    check("real git ts on a bad ref is unprovable", git_commit_ts("deadbee000000000000000000000000000000000"), None)
                     check("real git proves ancestry", git_is_ancestor(_gc1, _gm1), True)
                     check("real git refuses reversed ancestry", git_is_ancestor(_gm1, _gc1), False)
                     check("real git proves self-ancestry", git_is_ancestor(_gc2, _gc2), True)
-                    check("real git ancestry on a bad ref is unprovable", git_is_ancestor("deadbee", _gm1), None)
+                    check("real git ancestry on a bad ref is unprovable", git_is_ancestor("deadbee000000000000000000000000000000000", _gm1), None)
                     # Linear restatement (D00 T01 §31 item 4): the side-branch
                     # touch no longer satisfies a range; first-parent does.
                     check("real git refuses a side-branch range touch", git_range_touches(_gc1, _gm1, "side.txt"), False)
                     check("real git proves a first-parent range touch", git_range_touches(_gc1, _gc2, "proof.txt"), True)
                     check("real git refuses an out-of-range touch", git_range_touches(_gc1, _gc2, "side.txt"), False)
                     check("real git resolves a commit", git_resolves(_gc1), True)
-                    check("real git refuses a bad short", git_resolves("deadbee"), False)
+                    check("real git refuses a bad short", git_resolves("deadbee000000000000000000000000000000000"), False)
                     check("real git refuses an absent full hex", git_resolves("f" * 40), False)
                     check("real git refuses a blob ID", git_resolves(_blob), False)
                     check("real git refuses a tree ID", git_resolves(_tree), False)
                     check("real git peels a tag name to its commit", git_resolves("vone"), True)
                     check("real git resolves a short commit", git_resolves(_gc1[:7]), True)
                     check("real git spells a full sha", git_full_sha(_gc2), _gc2)
-                    check("real git full-sha on a bad ref is unprovable", git_full_sha("deadbee"), None)
+                    check("real git full-sha on a bad ref is unprovable", git_full_sha("deadbee000000000000000000000000000000000"), None)
                     check("real git full-sha on a blob is unprovable", git_full_sha(_blob), None)
                     check("real git full-sha on a tree is unprovable", git_full_sha(_tree), None)
                     check("real git full-sha peels a tag to its commit", git_full_sha("vone"), _gc1)
                     check("real git full-sha spells a short commit", git_full_sha(_gc1[:7]), _gc1)
                     check("real git tree mode reads a file", git_tree_mode(_gc2, "proof.txt"), "100644")
                     check("real git tree mode misses a missing path", git_tree_mode(_gc2, "missing.txt"), None)
-                    check("real git tree mode on a bad ref is unprovable", git_tree_mode("deadbee", "proof.txt"), None)
+                    check("real git tree mode on a bad ref is unprovable", git_tree_mode("deadbee000000000000000000000000000000000", "proof.txt"), None)
                     if _have_link:
                         check("real git tree mode reads a symlink", git_tree_mode(_gc4, "plink"), "120000")
                     else:
                         check("real git tree mode symlink untestable: links unsupported", True, True)
                     check("real git spots a merge", git_is_merge(_gm1), True)
                     check("real git clears a non-merge", git_is_merge(_gc2), False)
-                    check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee"), None)
+                    check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee000000000000000000000000000000000"), None)
                     check("real git dates a range touch", git_range_touch_ts(_gc1, _gc2, "proof.txt"), _gts)
                     check("real git range touch ts misses off-branch", git_range_touch_ts(_gc1, _gm1, "side.txt"), None)
                     check("real git proves first-parent membership", git_on_first_parent_chain(_gc1, _gm1), True)
                     check("real git refuses a side-branch base", git_on_first_parent_chain(_gc3, _gm1), False)
-                    check("real git chain probe on a bad ref is unprovable", git_on_first_parent_chain("deadbee", _gm1), None)
+                    check("real git chain probe on a bad ref is unprovable", git_on_first_parent_chain("deadbee000000000000000000000000000000000", _gm1), None)
                 finally:
                     globals()["REPO"] = _saved_repo
             finally:
@@ -16989,7 +17914,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "--store",
                 str(_rstore),
                 "--candidate",
-                "aaa1111",
+                "aaa1111000000000000000000000000000000000",
                 "--",
                 sys.executable,
                 "-c",
@@ -17044,7 +17969,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "--store",
                 str(_rstore),
                 "--candidate",
-                "aaa1111",
+                "aaa1111000000000000000000000000000000000",
                 str(root / "run-absent.txt"),
                 "--",
                 sys.executable,
@@ -17091,7 +18016,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "--store",
             str(_rstore),
             "--candidate",
-            "aaa1111",
+            "aaa1111000000000000000000000000000000000",
         ]
         _rinf = _sp.run(
             _rtimeout_argv + ["--timeout", "1e309", "--", sys.executable, "-c", "print('hi')"],
@@ -17179,7 +18104,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "--store",
             str(_rrace),
             "--candidate",
-            "aaa1111",
+            "aaa1111000000000000000000000000000000000",
             "--",
             sys.executable,
             "-c",
@@ -17329,6 +18254,10 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         (rev_dir / "90-health-accept3.md").unlink()
         (rev_dir / "90-health-accept4.md").unlink()
         (rev_dir / "90-health-accept5.md").unlink()
+        (rev_dir / "90-health-accept6.md").unlink()
+        (rev_dir / "90-health-accept7.md").unlink()
+        for _hq in ("108", "109", "110"):
+            (rev_dir / f"90-health-histq{_hq}.md").unlink()
         (rev_dir / "90-health-rerun.md").unlink()
         (rev_dir / "90-health-orphan.md").unlink()
         (rev_dir / "90-health-history.md").unlink()
@@ -17918,7 +18847,7 @@ An oversized section: the clean single-WARN shape (over-30-items).
 
         _TEL_MD = """# Review: D90 T09 §1 -- Telemetry fixture
 
-Candidate: `aaa1111` plus `bbb2222`.
+Candidate: `aaa1111000000000000000000000000000000000` plus `bbb2222`.
 
 ## GPT panel (round 1)
 
@@ -18291,13 +19220,13 @@ def main() -> int:
         help="ask the graph a question",
         # The fallback definition rides the command help, not a
         # per-choice string (argparse has no per-choice help): GPT-last
-        # membership is the compat guarantee holding the plan-health/6
+        # membership is the compat guarantee holding the plan-health/7
         # shape stable (D00 T01 §37 item 5). Pinned verbatim by probe.
         description=(
             "plan-health fallback membership is GPT-last: only records whose last panel "
             "section is GPT count as fallback (planned GPT-early rounds under an Opus "
             "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/6 shape stable."
+            "holding the plan-health/7 shape stable."
         ),
     )
     q.add_argument(

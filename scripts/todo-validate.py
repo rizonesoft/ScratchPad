@@ -5,6 +5,7 @@ warning accounting use the same state as query/resolve. No copied constants.
 """
 from __future__ import annotations
 
+from collections import Counter
 import importlib.util
 import os
 from pathlib import Path
@@ -1284,7 +1285,13 @@ def validate(graph, _args) -> int:
             if not m or not ref_ok:
                 flag(
                     "stamp-reopened",
-                    f"{t.path}:{s.line}: §{num} Reopened line outside `<date> | <finding ref> | <reason>` with a resolvable ref",
+                    f"{t.path}:{s.line}: §{num} Reopened line outside `<date> | generation <n> | <finding ref> | <reason>` with a resolvable ref",
+                )
+            _rgen = m.group("generation") if m else ""
+            if m and int(_rgen) != (getattr(s, "reopen_base", 0) or 0) + 1:
+                flag(
+                    "stamp-reopened",
+                    f"{t.path}:{s.line}: §{num} Reopened generation {_rgen} is not previous-plus-one of stamp generation {getattr(s, 'reopen_base', 0) or 0}",
                 )
             if s.status == "x":
                 flag(
@@ -1598,16 +1605,21 @@ def validate(graph, _args) -> int:
                     )
 
     # 24. risk acceptances terminate escalations in a checkable shape
-    # (D00 T01 §21 item 2, hardened §27): every live `Risk accepted:`
-    # line carries target, approver, action owner, record date,
-    # expiry, review date, evidence commit, an optional supersedes
-    # link, and rationale; the target names a finding ID, a run ID,
-    # or `outage <rung> <date>`; expiry never predates the record;
-    # and the review date sits inside record..expiry, bounds
-    # inclusive (§21 review R4, named here D00 T01 §25). Date-scoped
-    # and fence-stripped like rule 23; first reporter wins per file.
-    # Dangling targets (well-formed but covering nothing) stay
-    # silent here: the query only consults acceptances for live
+    # (D00 T01 §21 item 2, hardened §27, re-keyed §51 items 4-6):
+    # every live `Risk accepted:` line carries target, record id,
+    # approver, action owner, record date, expiry, review date,
+    # evidence commit, an optional generation, an optional
+    # supersedes link paired with its outcome, an optional
+    # action, and rationale; the target names a finding ID, a run
+    # ID, or `outage <rung> <date>`; the id is a positive
+    # file-scoped serial and the supersession identity (the
+    # record date stays ordering metadata, never identity);
+    # expiry never predates the record; and the review date sits
+    # inside record..expiry, bounds inclusive (§21 review R4,
+    # named here D00 T01 §25). Date-scoped and fence-stripped
+    # like rule 23; first reporter wins per file. Dangling
+    # targets (well-formed but covering nothing) stay silent
+    # here: the query only consults acceptances for live
     # escalations, so a typo'd target fails loud as a persisting
     # escalation, not here. Amendments ride superseding records
     # only (D00 T01 §27 item 4): a record whose fields changed
@@ -1636,35 +1648,55 @@ def validate(graph, _args) -> int:
                     continue
                 am = graph.RISK_ACCEPTED_RE.match(ln)
                 if am is None:
-                    flag(
-                        "risk-acceptance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Risk accepted line: {ln.strip()[:80]}",
-                    )
+                    if re.search(r"supersedes\s+A\d+\s*;", ln) and not re.search(
+                        r"supersedes\s+A\d+\s*;\s*outcome\s+(?:renewed|remediated|rejected|closed)\s*;", ln
+                    ):
+                        flag(
+                            "risk-acceptance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance supersedes without its outcome <enum>: {ln.strip()[:80]}",
+                        )
+                    elif re.search(r"outcome\s+(?:renewed|remediated|rejected|closed)\s*;", ln):
+                        flag(
+                            "risk-acceptance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance outcome without its supersedes link: {ln.strip()[:80]}",
+                        )
+                    else:
+                        flag(
+                            "risk-acceptance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Risk accepted line: {ln.strip()[:80]}",
+                        )
                 elif graph.risk_target_kind(am.group(1)) is None:
                     flag(
                         "risk-acceptance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance names no coverable target: {am.group(1)}",
                     )
-                elif am.group(5) < am.group(4):
+                elif int(am.group(2)) < 1:
                     flag(
                         "risk-acceptance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(5)} < {am.group(4)}",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance id A{am.group(2)} is not positive (serials start at A1)",
                     )
-                elif am.group(6) < am.group(4) or am.group(6) > am.group(5):
+                elif am.group(6) < am.group(5):
+                    flag(
+                        "risk-acceptance-malformed",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(6)} < {am.group(5)}",
+                    )
+                elif am.group(7) < am.group(5) or am.group(7) > am.group(6):
                     # Review-window order (D00 T01 §21 review R4): the
                     # review date sits inside record..expiry, bounds
                     # inclusive like the expiry leg. In-file dates
                     # only, so the rule stays wall-clock-free.
                     flag(
                         "risk-acceptance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(6)} not in {am.group(4)}..{am.group(5)}",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(7)} not in {am.group(5)}..{am.group(6)}",
                     )
 
-            def _acceptance_records(text: str) -> dict[tuple[str, str], tuple[str, str]]:
-                # Key (target, record date) to (full line, supersedes
-                # date or ""); malformed and uncoverable lines skip
-                # (rule 24's shape leg already flags the current ones).
-                recs: dict[tuple[str, str], tuple[str, str]] = {}
+            def _acceptance_records(text: str) -> dict[str, tuple[str, str, str, str]]:
+                # Key record ID to (full line, supersedes ID or "",
+                # target, record date); malformed and uncoverable
+                # lines skip (rule 24's shape leg already flags the
+                # current ones). Duplicate IDs collapse here, which
+                # is why the identity leg counts first (panel R2).
+                recs: dict[str, tuple[str, str, str, str]] = {}
                 stripped, _u = graph.strip_fenced_code(text)
                 for rln in stripped.splitlines():
                     if not rln.startswith("Risk accepted:"):
@@ -1672,7 +1704,12 @@ def validate(graph, _args) -> int:
                     ram = graph.RISK_ACCEPTED_RE.match(rln)
                     if ram is None or graph.risk_target_kind(ram.group(1)) is None:
                         continue
-                    recs[(ram.group(1).lower(), ram.group(4))] = (rln.strip(), ram.group(8) or "")
+                    recs["A" + ram.group(2)] = (
+                        rln.strip(),
+                        ("A" + ram.group(10)) if ram.group(10) else "",
+                        ram.group(1).lower(),
+                        ram.group(5),
+                    )
                 return recs
 
             # Chain shape (D00 T01 §27 item 4, panel R1, mirroring rule
@@ -1684,59 +1721,97 @@ def validate(graph, _args) -> int:
             # identity (one record per target and date: a dict would
             # silently collapse twins) and one head per target (two
             # unlinked records fork the read the query must follow).
-            _now_edges: dict[tuple[str, str], tuple[str, str]] = {}
-            _key_count: dict[tuple[str, str], int] = {}
+            _now_edges: dict[str, str] = {}
+            _id_target: dict[str, str] = {}
+            _key_count: dict[str, int] = {}
             for _ln in ftext.splitlines():
                 if not _ln.startswith("Risk accepted:"):
                     continue
                 _am = graph.RISK_ACCEPTED_RE.match(_ln)
                 if _am is None or graph.risk_target_kind(_am.group(1)) is None:
                     continue
-                _akey = (_am.group(1).lower(), _am.group(4))
+                _akey = "A" + _am.group(2)
+                _id_target.setdefault(_akey, _am.group(1).lower())
                 _key_count[_akey] = _key_count.get(_akey, 0) + 1
-                if not _am.group(8):
+                if not _am.group(10):
                     continue
-                _now_edges[_akey] = (_am.group(1).lower(), _am.group(8))
+                _now_edges[_akey] = "A" + _am.group(10)
+            # Evidence lineage (D00 T01 §51 item 2): the reviewed
+            # candidate must be ancestor-or-equal of each record's
+            # evidence commit (both peeled first), so waivers attest
+            # the reviewed state or its descendants. Proven foreign
+            # only: candidate-less records, unpeelable IDs, and
+            # silent git skip without a sound (the query fails
+            # closed at consult time), so this leg never fires on
+            # unprovable inputs.
+            _cand = graph.provenance_candidate(ftext)
+            if _cand is not None:
+                _cfull = graph.git_full_sha(_cand)
+                if _cfull is not None:
+                    for _ln in ftext.splitlines():
+                        if not _ln.startswith("Risk accepted:"):
+                            continue
+                        _am = graph.RISK_ACCEPTED_RE.match(_ln)
+                        if _am is None or graph.risk_target_kind(_am.group(1)) is None:
+                            continue
+                        _efull = graph.git_full_sha(_am.group(8))
+                        if _efull is None or _efull == _cfull:
+                            continue
+                        if graph.git_is_ancestor(_cfull, _efull) is False:
+                            flag(
+                                "risk-acceptance-foreign-evidence",
+                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_am.group(1)} A{_am.group(2)} evidence does not descend from the reviewed candidate",
+                            )
             for _key in sorted(k for k, n in _key_count.items() if n > 1):
                 flag(
                     "risk-acceptance-chain-broken",
-                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_key[0]} {_key[1]} recorded twice (one record per target and date)",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_id_target[_key]} {_key} recorded twice (one record per id)",
                 )
-            _cyclic: set[tuple[str, str]] = set()
+            _cyclic: set[str] = set()
             for _start in _now_edges:
-                _seen: set[tuple[str, str]] = set()
-                _walk: tuple[str, str] | None = _start
+                _seen: set[str] = set()
+                _walk: str | None = _start
                 while _walk is not None and _walk not in _seen:
                     _seen.add(_walk)
                     _walk = _now_edges.get(_walk)
                 if _walk is not None:
-                    _cyc: tuple[str, str] | None = _walk
+                    _cyc: str | None = _walk
                     while _cyc is not None and _cyc not in _cyclic:
                         _cyclic.add(_cyc)
                         _cyc = _now_edges.get(_cyc)
             for _key in sorted(_cyclic):
                 flag(
                     "risk-acceptance-chain-broken",
-                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_key[0]} {_key[1]} sits in a supersedes cycle",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_id_target[_key]} {_key} sits in a supersedes cycle",
                 )
-            _claimants: dict[tuple[str, str], list[tuple[str, str]]] = {}
+            _claimants: dict[str, list[str]] = {}
             for _succ, _pred in _now_edges.items():
+                if _pred in _id_target and _id_target[_pred] != _id_target[_succ]:
+                    continue  # cross-target claims read once, under the same-target leg
                 _claimants.setdefault(_pred, []).append(_succ)
-            _forked: set[tuple[str, str]] = set()
+            _forked: set[str] = set()
             for _pred in sorted(_claimants):
                 if len(_claimants[_pred]) < 2:
                     continue
                 for _dup in _claimants[_pred][1:]:
                     _forked.add(_dup)
+                    _pname = _id_target.get(_pred, "?")
                     flag(
                         "risk-acceptance-chain-broken",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_dup[0]} {_dup[1]} re-supersedes {_pred[0]} {_pred[1]} (one target, one successor)",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_id_target[_dup]} {_dup} re-supersedes {_pname} {_pred} (one target, one successor)",
+                    )
+            for _succ in sorted(_now_edges):
+                _pred = _now_edges[_succ]
+                if _pred in _id_target and _id_target[_pred] != _id_target[_succ]:
+                    flag(
+                        "risk-acceptance-chain-broken",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_id_target[_succ]} {_succ} supersedes {_id_target[_pred]} {_pred} across targets (succession stays same-target)",
                     )
             _named_preds = set(_now_edges.values())
-            _heads: dict[str, list[tuple[str, str]]] = {}
+            _heads: dict[str, list[str]] = {}
             for _key in _key_count:
                 if _key not in _named_preds:
-                    _heads.setdefault(_key[0], []).append(_key)
+                    _heads.setdefault(_id_target[_key], []).append(_key)
             for _tgt in sorted(_heads):
                 _extra = sorted(_heads[_tgt])
                 if len(_extra) < 2:
@@ -1749,7 +1824,7 @@ def validate(graph, _args) -> int:
                         continue
                     flag(
                         "risk-acceptance-chain-broken",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_x[0]} {_x[1]} forks {_x[0]} (one head per target: supersede or withdraw the twin)",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_tgt} {_x} forks {_tgt} (one head per target: supersede or withdraw the twin)",
                     )
 
             committed = graph.git_file_at("HEAD", fm.group(1))
@@ -1757,8 +1832,8 @@ def validate(graph, _args) -> int:
                 now_recs = _acceptance_records(ftext)
                 was_recs = _acceptance_records(committed)
                 chained = {
-                    (tgt.lower(), sup)
-                    for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k in graph.acceptance_lines(ftext)
+                    (tgt.lower(), rid, sup)
+                    for tgt, _a, _o, _e, _r, _v, _i, sup, _t, _k, rid, _g, _oc, _ac in graph.acceptance_lines(ftext)
                     if sup
                 }
                 # Append-only is absolute (panel R2, the ledger
@@ -1767,19 +1842,19 @@ def validate(graph, _args) -> int:
                 for key in sorted(set(was_recs) - set(now_recs)):
                     flag(
                         "risk-acceptance-silent-edit",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} vanished (supersession adds, never removes)",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {was_recs[key][2]} {key} vanished (supersession adds, never removes)",
                     )
                 for key in sorted(set(was_recs) & set(now_recs)):
                     if now_recs[key][0] != was_recs[key][0]:
                         flag(
                             "risk-acceptance-silent-edit",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {key[0]} {key[1]} edited (supersession adds, never rewrites)",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {now_recs[key][2]} {key} edited (supersession adds, never rewrites)",
                         )
-                for tgt, sup in sorted(chained):
-                    if (tgt, sup) not in was_recs and (tgt, sup) not in now_recs:
+                for tgt, rid, sup in sorted(chained):
+                    if sup not in was_recs and sup not in now_recs:
                         flag(
                             "risk-acceptance-silent-edit",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance supersedes {tgt} {sup} names no record",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {tgt} {rid} supersedes {sup} names no record",
                         )
 
     # 25. ledger amendments link or fail (D00 T01 §23): a row carrying
@@ -1861,6 +1936,20 @@ def validate(graph, _args) -> int:
                                 f"{t.path}:{s.line}: §{num} findings {fm.group(1)} ledger row {_rid} supersedes {_tgt} with identity {_tok}, want {_want} (fingerprint over the target subject, severity, disposition)",
                             )
                         _rrest = hblock[lr.end():].split("\n", 1)[0]
+                        _hdisp = lr.group(3).lower()
+                        _hsev = lr.group(2).lower()
+                        if _hdisp == "deferred":
+                            # The trigger value runs to the amendment
+                            # link (D00 T01 §51 item 7): `trigger <t>`
+                            # is unbounded prose, so a one-token strip
+                            # leaves multi-word values posing as
+                            # rationale. Rationale always trails the
+                            # identity token, never the trigger, so
+                            # the link bounds the value; count 1 keeps
+                            # a rationale-side `trigger` intact. This
+                            # strip runs before the link strips below,
+                            # whose words are its terminator.
+                            _rrest = re.sub(r"\btrigger\s+.*?(?=\bsupersedes\b|\bidentity\b)", "", _rrest, count=1)
                         _rrest = graph.SUPERSEDES_RE.sub("", _rrest)
                         _rrest = graph.IDENTITY_RE.sub("", _rrest)
                         # Mandatory restatements are not rationale (D00
@@ -1868,15 +1957,12 @@ def validate(graph, _args) -> int:
                         # head's disposition mandates before the
                         # emptiness test, so accountability-bearing
                         # heads with no actual reason still fire.
-                        _hdisp = lr.group(3).lower()
-                        _hsev = lr.group(2).lower()
                         if _hdisp == "deferred" or (_hdisp == "accepted" and _hsev in ("critical", "major")):
                             _rrest = graph.OWNER_RE.sub("", _rrest)
                             _rrest = graph.DUE_RE.sub("", _rrest)
-                        if _hdisp == "deferred":
-                            _rrest = re.sub(r"\btrigger\s+\S+", "", _rrest)
                         if _hdisp == "filed":
                             _rrest = graph.XREF_RE.sub("", _rrest)
+                            _rrest = graph.OVERLONG_REF_RE.sub("", _rrest)
                         if not _rrest.strip(",; \t"):
                             flag(
                                 "ledger-supersession-broken",
@@ -2058,6 +2144,48 @@ def validate(graph, _args) -> int:
                     f"{t.path}:{s.line}: §{num} pre-cutoff stamp outside the frozen migration membership "
                     "(backdated: post-inventory stamps read as post-cutoff and must mark)",
                 )
+
+    # 28. markers amend append-only (D00 T01 §51 item 8): a `Plan
+    # review:` marker line edited or deleted against the committed
+    # history fails like a ledger row (rule 22) and an acceptance
+    # record (rule 24), so a retargeted event key, rung, or run
+    # cannot silently move coverage or corrupt the audit trail.
+    # Marker chains grow by appending new lines; history never
+    # changes. Per-section body multisets: every HEAD body must
+    # survive in the live span (reordered lines stay silent, added
+    # lines are new attempts, always silent); a body that moved
+    # sections reads as deleted from its HEAD span. Uncommitted
+    # TODO files skip (rule-22 precedent: without history nothing
+    # is provable). No date scope: the diff is inherently scoped
+    # to uncommitted edits.
+    for t in todos:
+        committed = graph.git_file_at("HEAD", t.path)
+        if committed is None:
+            continue
+        try:
+            live_text = (graph.TODO_DIR.parent / t.path).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        was = graph.marker_bodies_by_section(committed)
+        now = graph.marker_bodies_by_section(live_text)
+        for num in sorted(was, key=lambda n: (n is None, n or 0)):
+            _w = Counter(was[num])
+            _n = Counter(now.get(num, []))
+            for body in sorted(_w):
+                if _w[body] > _n.get(body, 0):
+                    sec = t.sections.get(num)
+                    where = f"{t.path}:{sec.line}: §{num} " if sec is not None else f"{t.path}: "
+                    _rm = graph.RUN_ID_RE.search(body)
+                    # Quote the run, never the raw body: bodies carry
+                    # `filed §N` targets, and a quoted §ref would trip
+                    # section-scoped probes for a different section.
+                    # Run-less bodies fall back to the body with §
+                    # neutralized.
+                    _detail = _rm.group(1) if _rm is not None else body[:80].replace("§", "#")
+                    flag(
+                        "marker-history",
+                        f"{where}marker edited or deleted against history (chains append, never rewrite): {_detail}",
+                    )
 
     # Internal self-tests deliberately point TODO_DIR at a standalone fixture.
     # Normal checkout validation always inspects its actual platform sources.
