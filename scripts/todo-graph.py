@@ -6332,7 +6332,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
         return 0
 
     text = _align_tables(text)
-    PLAN.write_text(text, encoding="utf-8")
+    # LF by pin: .gitattributes pins *.md to LF, and the default text-mode
+    # write emits CRLF on Windows, which dirties this tracked file and fails
+    # the plan-gates projection step (same hygiene as the risk-register sync).
+    PLAN.write_text(text, encoding="utf-8", newline="\n")
     write_progress_json(todos)
     write_operator_json(todos)
     for r in dupes:
