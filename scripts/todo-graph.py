@@ -2147,16 +2147,16 @@ def stamp_generations_by_section(text: str) -> dict[int, int]:
     history leg compares these against HEAD, so a hand edit
     stripping `generation <n>` off a post-lift stamp (or a
     re-verification forgetting it) fails instead of silently
-    reviving old waivers. Last stamp wins per section, mirroring
-    the parser; sections without stamps read absent, never 0
-    (absence is not a regression baseline)."""
+    reviving old waivers. Coverage reads off the stamp's cover
+    field through COVER_ITEM_RE per comma element, exactly like
+    the parser (review fix: the first version scanned the whole
+    body for `§N` mentions, missing `§1-64` ranges without a
+    second sigil plus spaced ranges, and letting evidence prose
+    name sections the stamp never covered). Last stamp wins per
+    section, mirroring the parser; sections without stamps read
+    absent, never 0 (absence is not a regression baseline)."""
     out: dict[int, int] = {}
-    current: int | None = None
     for ln in text.splitlines():
-        hm = re.match(r"^## (\d+)\.\s", ln)
-        if hm is not None:
-            current = int(hm.group(1))
-            continue
         sm = STAMP_RE.match(ln)
         if sm is None or sm.group("kind") != "Verified":
             continue
@@ -2165,9 +2165,14 @@ def stamp_generations_by_section(text: str) -> dict[int, int]:
             continue
         gm = STAMP_GENERATION_RE.match(shaped.group("evidence"))
         gen = int(gm.group(1)) if gm is not None else 0
-        for tm in re.finditer(r"§(\d+)(?:-§(\d+))?", sm.group("body")):
-            lo = int(tm.group(1))
-            hi = int(tm.group(2)) if tm.group(2) is not None else lo
+        for element in shaped.group("cover").split(","):
+            item = COVER_ITEM_RE.match(element.strip())
+            if item is None:
+                continue
+            lo = int(item.group("lo"))
+            hi = int(item.group("hi")) if item.group("hi") else lo
+            if lo < 1 or hi < lo:
+                continue
             for num in range(lo, hi + 1):
                 out[num] = gen
     return out
@@ -13277,6 +13282,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "a kept generation stays silent against history",
             any("TODO-07-marker.md" in ln and "§113 " in ln and "FATAL" in ln for ln in marker_out),
             False,
+        )
+        # The generation map reads coverage like the parser
+        # (review fix: the first version scanned the body for
+        # `§N`, missing sigil-less and spaced ranges and reading
+        # evidence prose as coverage).
+        check(
+            "generation map expands parser-shaped ranges only",
+            stamp_generations_by_section(
+                "> **Verified:** 2026-09-20 | §40-41, §42 - §43 | generation 2 | unlike §44\n"
+            ),
+            {40: 2, 41: 2, 42: 2, 43: 2},
         )
         check(
             "an edited marker fails against history",
