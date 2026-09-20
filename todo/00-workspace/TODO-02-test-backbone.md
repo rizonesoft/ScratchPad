@@ -56,6 +56,8 @@ track: W0
 |   15  |   §15   | Nightly enforcement and count hardening | §9 |  [ ]   |
 |   16  |   §16   | Verify timer-fired completion and green | §9 |  [ ]   |
 |   17  |   §17   | Nightly notify plus trend surface | §9 |  [ ]   |
+|   18  |   §18   | Central launch hardening and evidence | §11 |  [ ]   |
+|   19  |   §19   | Night-debt due dates and escalation | §10 |  [ ]   |
 
 ---
 
@@ -384,12 +386,17 @@ Why this section exists: the Run A gate counted a resting primary window on both
 - -> XREF: D00 T02 §9 -- filed from its task-run triage (gate exit 1 on the cron-path run).
 - -> XREF: D00 T02 §11 -- the central-launch funnel may fix the leak as a side effect; this section diagnoses first.
 
-**Treatment:** This section's identification completes before §11's funnel lands; if §11 lands first, this section re-verifies the leak absent with the same census evidence instead of closing by assumption. (PR17.)
+**Treatment:** This section's identification completes before §11's funnel lands; if §11 lands first, this section re-verifies the leak absent with the same census evidence instead of closing by assumption. (PR17.) -> SOURCE: plan-review-D00-T02-s11-2026-09-20-s13 D00-T02-S11-PR7 D00-T02-S11-PR8 D00-T02-S11-PR9 D00-T02-S11-PR11 D00-T02-S11-PR12 (treatment, acceptance, ownership, manifest, and token corrections from the §11 plan review).
 
 - [ ] The leaking test is identified by correlating `run-a.trx` per-test times against the gate census timestamps in `build/nightly-taskrun-2026-09-20/2026-09-20/gate-default.log`, naming the test plus the window it rested. Done when: the test name and its census lines are quoted.
 - [ ] Each created HWND is instrumented with the active test identity so the leak attribution does not rest on approximate timestamps alone (PR15). Done when: the census names the test per window.
 - [ ] The leak is fixed (backgrounded birth or explicit off-screen geometry on the leaking path) or the test is quarantined by the §5 procedure with its row. Done when: the fix commit or the Skip plus row is quoted.
 - [ ] A governed Run A re-proofs the gate clean (exit 0, primary=0) with the verdict quoted. Done when: the gate line reads exit 0 with primary=0.
+- [ ] Treatment follows the post-§11 path: §11 has landed, so the identify-before-§11-lands ordering is restated as re-verification with the same census evidence per the Treatment paragraph. Done when: the treatment names the re-verification branch with its evidence. (D00-T02-S11-PR7.)
+- [ ] Acceptance splits into reproduced-leak and no-longer-reproducible branches: the checkpoint names the leaking test only when the leak reproduces, else it quotes the clean re-verification runs. Done when: both branches read with their evidence. (D00-T02-S11-PR8.)
+- [ ] Three consecutive governed Run A greens are owned with evidence rows, not just checkpoint prose: each run quotes its gate line plus trx path. Done when: three quoted gate lines read in the section. (D00-T02-S11-PR9.)
+- [ ] Each governed run captures a manifest (build identity, settings snapshot, monitor topology, DPI, session, harness version) so nondeterminism compares instead of guesses. Done when: a manifest is quoted beside its gate line. (D00-T02-S11-PR11.)
+- [ ] HWND attribution propagates a per-test correlation token through `UiLaunch` to redirect-created windows, second windows, and system dialogs, with inheritance plus cleanup defined. Done when: the token names the test on every window-producing path. (D00-T02-S11-PR12.)
 - [ ] Commit: `"workspace: plug the backgrounding leak on the default leg"`
 
 **Test checkpoint:** Run A gate exit 0 with primary=0 on three consecutive governed runs; the leaking test named with its census evidence. Cheaper substitute that fails: a single green run, or re-running until green without identifying the leak. (PR16.)
@@ -465,6 +472,33 @@ Why this section exists: the governed run's verdict currently sits in a local Ma
 - [ ] Commit: `"workspace: notify plus trend the nightly run"`
 
 **Test checkpoint:** Notification quoted plus two-night trend rendered. Cheaper substitute that fails: a second local file nobody opens.
+
+## 18. Central Launch Hardening and Evidence
+
+Why this section exists: §11 landed the central helper with off-screen birth, but its plan review found the landing soft in seven places: the Run A suite-mix delta against the §8 baseline is unreconciled, the zero-flash claim rests on a polling census that can miss sub-poll flashes, the 10000 birth point is not proven off-screen on every topology, the explicit-geometry win has no precedence fixtures, the LaunchDrops opt-in paths are asserted only by migration review, nothing stops a future test from adding a bypassing helper, and launch failures carry no diagnostics. -> SOURCE: plan-review-D00-T02-s11-2026-09-20-s18 D00-T02-S11-PR1 D00-T02-S11-PR2 D00-T02-S11-PR3 D00-T02-S11-PR4 D00-T02-S11-PR5 D00-T02-S11-PR6 D00-T02-S11-PR21 (suite-mix, census, birth-point, precedence, drain, guard, and diagnostics findings from the §11 plan review).
+
+**Needs:** Windows host (build/test)
+
+- [ ] Every Run A suite-mix delta against the §8 162/3/0 baseline is reconciled test by test in this section, naming the filter or quarantine behind each delta. Done when: no delta lacks a cause. (D00-T02-S11-PR1.)
+- [ ] Initial window placement is proven by event, not just by polling census: a placement-event log quotes per-window initial bounds on a full run. Done when: the event log plus the census agree with zero primary births. (D00-T02-S11-PR2.)
+- [ ] The off-screen birth point derives outside the virtual screen (SM_X/Y/CX/CYVIRTUALSCREEN) instead of the fixed 10000, with negative-origin, stacked, and very-wide layouts tested. Done when: fixtures pin the derivation on all three topologies. (D00-T02-S11-PR3.)
+- [ ] Explicit-geometry precedence carries fixtures for full, partial, malformed, and string-seeded geometry. Done when: all four pin the win. (D00-T02-S11-PR4.)
+- [ ] LaunchDrops behavior is tested: the default preserves drops and the opt-in drains exactly once. Done when: both pins pass. (D00-T02-S11-PR5.)
+- [ ] A repository guard rejects per-file launch helpers and direct Process.Start bypasses. Done when: a planted bypass fails the guard. (D00-T02-S11-PR6.)
+- [ ] Launch diagnostics record test ID, redacted arguments, PID, HWND lineage, initial bounds, selected monitor, and move result on every UI launch. Done when: a real flake quotes all seven fields. (D00-T02-S11-PR21.)
+- [ ] Commit: `"workspace: harden the central launch plus its evidence"`
+
+**Test checkpoint:** Reconciliation complete, event log plus census agree, derivation pinned on three topologies, precedence plus drain fixtures green, guard rejects the planted bypass, diagnostics quoted on a real flake. Cheaper substitute that fails: trusting the §11 census alone.
+
+## 19. Night-Debt Due Dates and Escalation
+
+Why this section exists: open night debt carries age but no absolute due date and no escalation rule, so a debt like D00-T02-S8-N1 can sit past its window with neither a rerun nor a risk acceptance owed. -> SOURCE: plan-review-D00-T02-s11-2026-09-20-s19 D00-T02-S11-PR17 (debt due-date finding from the §11 plan review).
+
+- [ ] Every open debt carries an absolute due date plus an escalation (rerun the review or record risk acceptance), readable where the debt lists. Done when: N1 quotes its due plus escalation. (D00-T02-S11-PR17.)
+- [ ] `query night-debt` (or `query summary`) surfaces overdue debt with its escalation. Done when: a fixture pins the overdue line. (D00-T02-S11-PR17.)
+- [ ] Commit: `"workspace: give night debt due dates"`
+
+**Test checkpoint:** N1 quotes due plus escalation, and the overdue fixture pins the line. Cheaper substitute that fails: age alone with no date anyone owes.
 
 ## Verification
 
