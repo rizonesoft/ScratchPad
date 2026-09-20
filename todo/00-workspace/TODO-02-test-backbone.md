@@ -53,6 +53,7 @@ track: W0
 |   12  |   §12   | Accelerator binding coverage sweep | §8 |  [ ]   |
 |   13  |   §13   | Backgrounding leak on the default leg | §8 |  [ ]   |
 |   14  |   §14   | Run-level deadline for the governed run | §9 |  [ ]   |
+|   15  |   §15   | Nightly enforcement and count hardening | §9 |  [ ]   |
 
 ---
 
@@ -279,6 +280,7 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 - -> XREF: D00 T02 §13 -- backgrounding leak filed from this section's task-run triage (gate exit 1, primary=1).
 - -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for this section's 7 night-triage quarantines (due 09-27).
 - -> XREF: D00 T02 §14 -- run-level deadline filed from this section's R4 review (worst-case legs exceed PT4H).
+- -> XREF: D00 T02 §15 -- enforcement plus count hardening filed from this section's R5 review.
 
 - [x] `docs/testing.md` carries the nightly procedure: trigger (nightly cron inside 02:00-06:50; operator bedtime call stays as manual backup), the three legs (Run A background-safe default with foreground-plus-census proof, Run B Primary with `--expect-primary`, then the Interactive collection run), and the pass/fail bar for each leg. Done when: a second operator can run it or read the cron without asking. **Corrected 2026-09-19 (§8 plan review):** was two halves. Done: "Nightly regression run" section (trigger task plus manual backup, three legs with commands, bars, log convention, report format, abort rules, pre-flight reap).
 - [x] Nightly logs land under `build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log` (ignored scratch, never committed) with the suite scope and build-time HEAD recorded at the top. Done when: the convention is written and the first logs follow it. **Corrected 2026-09-19 (§8 plan review):** was `{default,full}`; Run B owns the primary log. **Corrected 2026-09-20 (R1):** was day-scoped; same-day runs overwrote and merged (report HEAD `a8127c7` against Run A log `7ec7495`), so each invocation owns its stamp directory. **Corrected 2026-09-20 (FL5):** was "section range"; the header carries the suite scope (a whole-tree run has no section range) — wording only. Done: convention in testing.md; first stamped logs from the FL2 proofs (`2026-09-20-054411-smoke.log`, dirs `2026-09-20-054325/` and `2026-09-20-054451/`). FL5 re-proof: `2026-09-20-061900-smoke.log` carries the scope-plus-HEAD header (smoke branch converted to Start-LegLog).
@@ -370,7 +372,7 @@ Why this section exists: the Run A gate counted a resting primary window on both
 
 ## 14. Run-Level Deadline for the Governed Run
 
-Why this section exists: every leg now has its own cap, but the run has no global deadline: worst case 1800 (Run A) + 300 (Run B) + 1800 (Interactive) + 10 x 1800 (soak) is about 5.6 hours, past the task PT4H limit and past the 06:50 window end, and the report lands only after the soak loops. One hung leg is affordable (normal full runs take ~85 minutes); eleven simultaneous hangs are absurd; but the catastrophe case currently dies by scheduler kill with no fixed-path record. This section bounds the whole run. -> SOURCE: run-deadline-2026-09-20 (D00 T02 §9 R4 finding: worst-case cap arithmetic vs PT4H plus window end).
+Why this section exists: every leg now has its own cap, but the run has no global deadline: worst case 1800 (Run A) + 300 (Run B) + 1800 (Interactive) + 10 x 1800 (soak) is 21900 s (about 6.1 hours), past the task PT4H limit and past the 06:50 window end, and the report lands only after the soak loops. One hung leg is affordable (normal full runs take ~85 minutes); eleven simultaneous hangs are absurd; but the catastrophe case currently dies by scheduler kill with no fixed-path record. This section bounds the whole run. -> SOURCE: run-deadline-2026-09-20 (D00 T02 §9 R4 finding: worst-case cap arithmetic vs PT4H plus window end).
 
 **Needs:** Windows host (build/test)
 
@@ -382,6 +384,21 @@ Why this section exists: every leg now has its own cap, but the run has no globa
 - [ ] Commit: `"workspace: bound the governed run with a deadline"`
 
 **Test checkpoint:** Simulated all-hang run lands its report before the PT4H-equivalent deadline with unproven (never green) legs. Cheaper substitute that fails: per-leg caps alone, which sum past the limit.
+
+## 15. Nightly Enforcement and Count Hardening
+
+Why this section exists: the D00 T02 §9 R5 review left two advisories on the new enforcement plus report code. First, the Interactive quarantine-only check flags any skip without a QUARANTINED stamp, but capability skips (HookFact tests on hosts without low-level hooks) are legitimate non-quarantine skips that would red the leg with a misleading leak message. Second, the reported skip count comes from the merged name-line list while passed/failed come from the assembly sums, so a dropped line or cross-assembly name collision makes the cell contradict its own per-assembly breakdown (the summed `$s` is computed but never returned). Both are small, co-located, and filed together. -> SOURCE: r5-followups-2026-09-20 (R5-F1: `TabBarTests.cs:435` HookFact capability message vs `nightly.ps1:423,441`; R5-F2: unused `$s` at `nightly.ps1:266` vs count at `nightly.ps1:484`).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §9 -- filed from its R5 review; hardens that candidate.
+
+- [ ] Capability skips are allowlisted in `Get-NonQuarantineSkips` (HookFact message plus any enumerated capability skips) and the Interactive bar in `docs/testing.md` names the allowlist. Done when: the allowlist plus a scratch proof (capability skip passes, bare skip still flags) is quoted.
+- [ ] The reported skip count is unified with the assembly sums (`$s` threaded through `Get-LegSummary`). Done when: the cell equals its breakdown on the archived task report.
+- [ ] A smoke run is green on the hardened script. Done when: the smoke log plus exit code is quoted.
+- [ ] Commit: `"workspace: harden nightly enforcement and counts"`
+
+**Test checkpoint:** Capability skips pass enforcement, bare skips still flag, and the skip cell equals its breakdown. Cheaper substitute that fails: allowlisting by test name instead of skip reason.
 
 ## Verification
 
