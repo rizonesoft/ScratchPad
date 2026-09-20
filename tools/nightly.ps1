@@ -663,7 +663,7 @@ try {
       $r = Invoke-GatedLeg 'run-a' $capA '' $gateLog $verdictFile $stepsA (Join-Path $trxDir 'captures-run-a')
       $gateA = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
-      if (($r.TestCode -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'run-a' (Join-Path $trxDir 'captures-run-a') $r.Killed) }
+      if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $captureNotes += @(Invoke-FailureCapture 'run-a' (Join-Path $trxDir 'captures-run-a') $r.Killed) }
     } finally {
       Stop-LegLog
     }
@@ -686,7 +686,7 @@ try {
       $r = Invoke-GatedLeg 'run-b' $capB '--expect-primary' $gateLog $verdictFile $stepsB (Join-Path $trxDir 'captures-run-b')
       $gateB = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
-      if (($r.TestCode -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'run-b' (Join-Path $trxDir 'captures-run-b') $r.Killed) }
+      if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $captureNotes += @(Invoke-FailureCapture 'run-b' (Join-Path $trxDir 'captures-run-b') $r.Killed) }
     } finally {
       Stop-LegLog
     }
@@ -820,11 +820,16 @@ try {
   $coreReport += "- Population: $populationLine"
   $coreReport += "- Core verdicts published before soak; the final report overwrites after soak (or budget-cut)"
   $coreReport += ''
+  # Log cells name every evidence file (D00 T02 §15 panel R1-F2): suite
+  # stdout lives in the .out.log siblings, not the wrapper transcript.
+  $logCellA = "$stamp-default.log; " + (($runAProjects | ForEach-Object { "$stamp-default-$_.out.log" }) -join '; ')
+  $logCellB = "$stamp-primary.log; $stamp-primary.out.log"
+  $logCellI = "$stamp-full.log; $stamp-full.out.log"
   $coreReport += '| Leg | Counts | Gate | Infra | Log |'
   $coreReport += '| --- | ------ | ---- | ----- | --- |'
-  $coreReport += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
-  $coreReport += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
-  $coreReport += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
+  $coreReport += (Format-LegRow 'Run A (default)' $sumA $gateA $logCellA (Get-LegNote 'Run A (default)' $gateA $false))
+  $coreReport += (Format-LegRow 'Run B (primary)' $sumB $gateB $logCellB (Get-LegNote 'Run B (primary)' $gateB $false))
+  $coreReport += (Format-LegRow 'Interactive (collection)' $sumI $null $logCellI (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
   if ($conservationNotes.Count -gt 0) { $coreReport += ''; $coreReport += $conservationNotes }
   $coreReport += ''
   $coreReport += '## Quarantine'
@@ -914,9 +919,9 @@ $report += "- Pre-flight reaped: $reapLine"
 $report += ''
 $report += '| Leg | Counts | Gate | Infra | Log |'
 $report += '| --- | ------ | ---- | ----- | --- |'
-$report += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
-$report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
-$report += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
+$report += (Format-LegRow 'Run A (default)' $sumA $gateA $logCellA (Get-LegNote 'Run A (default)' $gateA $false))
+$report += (Format-LegRow 'Run B (primary)' $sumB $gateB $logCellB (Get-LegNote 'Run B (primary)' $gateB $false))
+$report += (Format-LegRow 'Interactive (collection)' $sumI $null $logCellI (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
 if ($conservationNotes.Count -gt 0) { $report += ''; $report += $conservationNotes }
 $report += ''
 $report += '## Quarantine'
