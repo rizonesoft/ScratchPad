@@ -4,8 +4,8 @@
   Nightly governed regression run for ScratchPad (D00 T02 §9).
 .DESCRIPTION
   Three legs inside the 02:00-06:50 window, owned by the \ScratchPad\Nightly UI
-  scheduled task (daily 02:30 local). Run A: full solution default filter with
-  ForegroundLog census proof. Run B: Category=Primary with --expect-primary.
+  scheduled task (daily 02:30 local). Run A: full solution default filter
+  (Category!=Interactive&Category!=Primary; the Primary set rests on primary by design and rides Run B) with ForegroundLog census proof. Run B: Category=Primary with --expect-primary.
   Interactive: the fenced collection, owning the foreground. Each invocation
   owns a stamp-scoped directory: leg transcripts land under
   build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log, trx plus gate
@@ -429,14 +429,14 @@ try {
 
   if (-not $SkipDefault) {
     $log = Join-Path $nightDir "$stamp-default.log"
-    Start-LegLog $log 'full tree, Category!=Interactive, backgrounded'
+    Start-LegLog $log 'full tree, Category!=Interactive&Category!=Primary, backgrounded'
     try {
       $trx = Join-Path $trxDir 'run-a.trx'
       $gateLog = Join-Path $trxDir 'gate-default.log'
       $verdictFile = Join-Path $trxDir 'gate-default.out'
       # -e is load-bearing: shell exports do not reach the app through
       # the test host (measured 2026-09-17); see docs/testing.md.
-      $testArgsA = @('test', 'src/ScratchPad.slnx', '--no-build', '--nologo', '--filter', 'Category!=Interactive', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-a.trx', '--results-directory', $trxDir)
+      $testArgsA = @('test', 'src/ScratchPad.slnx', '--no-build', '--nologo', '--filter', 'Category!=Interactive&Category!=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-a.trx', '--results-directory', $trxDir)
       $r = Invoke-GatedLeg 'run-a' 1800 '' $gateLog $verdictFile $testArgsA
       $gateA = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
