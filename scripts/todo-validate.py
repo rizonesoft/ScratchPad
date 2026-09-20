@@ -788,6 +788,30 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
                     )
+            # D00 T01 §50 item 1: outage lines date their event. Every
+            # outage line in the chain names `event <YYYY-MM-DD>`, the
+            # calendar day the outage happened, so two outages of one
+            # rung under one stamp key differently. Chain-wide like the
+            # detail fields above, prose-outage excluded via the shared
+            # predicate; retry-owed and partial lines owe none (run
+            # targets bind runs, and a pure retry-owed marker never
+            # matches an outage target).
+            for _line in _dchain:
+                if not is_outage_marker(_line):
+                    continue
+                _em = re.search(r"\bevent\s+(\S+)", _line)
+                _eday = _em.group(1) if _em else ""
+                _ereal = _em is not None and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _eday) is not None
+                if _ereal:
+                    try:
+                        graph.datetime.strptime(_eday, "%Y-%m-%d")
+                    except ValueError:
+                        _ereal = False
+                if not _ereal:
+                    flag(
+                        "stamp-no-plan-review",
+                        f"{t.path}:{s.line}: §{num} outage marker line names no outage-event date (event <YYYY-MM-DD>)",
+                    )
             if has_outage:
                 continue
             for xm in graph.XREF_RE.finditer(marker):

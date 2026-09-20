@@ -1221,9 +1221,11 @@ RISK_ACCEPTED_RE = re.compile(
 )
 RISK_TARGET_RE = re.compile(r"(?:[A-Z0-9]+-T[0-9]+-S[0-9]+-)?PR[0-9]+$", re.IGNORECASE)
 # An outage target binds its instance (D00 T01 §27 item 1): the rung
-# plus the outage marker's stamp date, date last so multi-word rungs
-# still parse. A true both-rung outage carries no run, so no compound
-# can name one; the rung-plus-date key is the instance.
+# plus the outage marker's event day (D00 T01 §50 item 2: the stamp
+# day keyed every outage under one stamp alike), date last so
+# multi-word rungs still parse. A true both-rung outage carries no
+# run, so no compound can name one; the rung-plus-event-day key is
+# the instance.
 RISK_OUTAGE_RE = re.compile(r"^outage\s+(.+?)\s+(\d{4}-\d{2}-\d{2})$", re.IGNORECASE)
 
 
@@ -1253,12 +1255,38 @@ def risk_target_kind(target: str) -> str | None:
 
 def outage_key(target: str) -> tuple[str, str] | None:
     """The (rung, date) instance key of an outage target (D00 T01 §27
-    item 1), or None when the target is not a shaped outage (the
-    classifier already failed it; this never disagrees)."""
+    item 1, re-keyed to the event day by D00 T01 §50 item 2), or None
+    when the target is not a shaped outage (the classifier already
+    failed it; this never disagrees)."""
     om = RISK_OUTAGE_RE.match(target.strip())
     if om is None:
         return None
     return (om.group(1).strip().lower(), om.group(2))
+
+
+EVENT_RE = re.compile(r"\bevent\s+(\S+)")
+
+
+def marker_event_day(body: str) -> str:
+    """The outage-event day of a marker body (D00 T01 §50 item 1).
+
+    Reads `event <YYYY-MM-DD>` off an outage marker line; "" when the
+    leg is missing, misshapen, or an unreal date. Fail-closed: no
+    shaped waiver target can match "", so an undated outage stays
+    uncovered and loud (the validator FATALs the missing leg; the
+    query never crashes on it).
+    """
+    em = EVENT_RE.search(body)
+    if em is None:
+        return ""
+    day = em.group(1)
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", day) is None:
+        return ""
+    try:
+        datetime.strptime(day, "%Y-%m-%d")
+    except ValueError:
+        return ""
+    return day
 
 
 def acceptance_lines(stripped_text: str) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
@@ -3711,13 +3739,15 @@ def cmd_query(args) -> int:
                         acc_cache[path] = []
             return acc_cache[path]
 
-        def _join_debt(body: str, stamp_day: str, states: list) -> tuple:
+        def _join_debt(body: str, states: list) -> tuple:
             # Marker debt by target (D00 T01 §29 item 2, panel R1):
             # the risk register reads a run/outage waiver's residual
             # off the owed states of the markers carrying its target.
             # Every marked marker joins (healthy ones contribute
             # nothing, so their waivers read `none`); sets because
-            # one (rung, day) can owe on several markers.
+            # one (rung, day) can owe on several markers. The outage
+            # day is the marker's event day (D00 T01 §50 item 2),
+            # never the stamp day.
             # Grandfathered markers join too (D00 T01 §34 item 8):
             # they predate the accountability grammar, so they
             # contribute no states and their waivers read `none`,
@@ -3729,7 +3759,7 @@ def cmd_query(args) -> int:
             if mrun is not None:
                 run_debt.setdefault(mrun, set()).update(states)
             if orung is not None:
-                outage_debt.setdefault((orung, stamp_day), set()).update(states)
+                outage_debt.setdefault((orung, marker_event_day(body)), set()).update(states)
             return mrun, orung
 
         for t in todos:
@@ -3756,7 +3786,7 @@ def cmd_query(args) -> int:
                             )
                     else:
                         marked[(t.id, num)] = s.stamped_on or "undated"
-                        _join_debt(body, s.stamped_on or "", [])
+                        _join_debt(body, [])
                     continue
                 if body:
                     marked[(t.id, num)] = s.stamped_on or "undated"
@@ -3784,7 +3814,8 @@ def cmd_query(args) -> int:
                         state = f"{state}+partial" if state else "partial"
                     stamp_day = s.stamped_on or ""
                     _dstates = [s for s in ("outage", "retry-owed", "partial") if s in state.split("+")]
-                    mrun, orung = _join_debt(body, stamp_day, _dstates)
+                    mrun, orung = _join_debt(body, _dstates)
+                    evday = marker_event_day(body)
                     if state:
                         om = OWNER_RE.search(body)
                         dm = DUE_RE.search(body)
@@ -3795,9 +3826,10 @@ def cmd_query(args) -> int:
                         # (D00 T01 §21 item 2, hardened §27): run targets
                         # match the marker's run through the -r1 synonym,
                         # outage targets match the marker's rung plus
-                        # stamp date (item 1: instance key), and finding
-                        # targets never cover markers. Bare partials carry
-                        # no escalation, so nothing consults for them.
+                        # event day (item 1: instance key, §50 item 2),
+                        # and finding targets never cover markers. Bare
+                        # partials carry no escalation, so nothing
+                        # consults for them.
                         ab, ae, ar, at, ao = "", "", "", "", ""
                         esc_owner = ""
                         # First void verdict in file order (D00 T01 §29
@@ -3823,7 +3855,7 @@ def cmd_query(args) -> int:
                                         kind == "outage"
                                         and okey is not None
                                         and orung is not None
-                                        and okey == (orung, stamp_day)
+                                        and okey == (orung, evday)
                                     )
                                     # Superseded records skip silently
                                     # (panel R1): succession is
@@ -3845,7 +3877,9 @@ def cmd_query(args) -> int:
                                         rec,
                                         exp,
                                         evi,
-                                        run_day(tgt) if kind == "run" else stamp_day,
+                                        run_day(tgt)
+                                        if kind == "run"
+                                        else (evday if kind == "outage" else stamp_day),
                                         match,
                                         t.path,
                                         todo_text(t.path),
@@ -4544,6 +4578,7 @@ def cmd_query(args) -> int:
                 _pomt = re.search(r"outage:\s*([^\(;]+)", _pbody.lower())
                 _porung = _pomt.group(1).strip() if _pomt else None
                 _pday = _ps.stamped_on or ""
+                _pev = marker_event_day(_pbody)
                 for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind in _paccs:
                     if (tgt.lower(), rec) in _psupd:
                         continue
@@ -4571,9 +4606,9 @@ def cmd_query(args) -> int:
                             _consulted
                             and _okey is not None
                             and _porung is not None
-                            and _okey == (_porung, _pday)
+                            and _okey == (_porung, _pev)
                         )
-                        _ptday = _pday
+                        _ptday = _pev
                         _ppath, _ptext = _pt.path, todo_text(_pt.path)
                     if acceptance_hold(rec, exp, evi, _ptday, _pmatch, _ppath, _ptext, today) != "cover":
                         continue
@@ -9409,6 +9444,9 @@ track: Z1
 |  96   |   §96   | Range follows pair one | - |  [x]   |
 |  97   |   §97   | Range follows pair two | - |  [x]   |
 |  98   |   §98   | Manifest-only run host | - |  [x]   |
+|  100  |   §100  | Outage missing event date fires | - |  [x]   |
+|  101  |   §101  | Unreal outage event date fires | - |  [x]   |
+|  102  |   §102  | Misshapen outage event date fires | - |  [x]   |
 
 ---
 
@@ -9495,7 +9533,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §7 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs; attempted §99 class timeout attempts 3
+> **Plan review:** GPT 400 then Opus auth failure, outage: both rungs; attempted §99 class timeout attempts 3 event 2026-09-20
 
 ## 8. Malformed ledger row
 
@@ -9713,7 +9751,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §26 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-09-20
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2, follows-outage)
 
 ## 27. Outage rerun unchained
@@ -9725,7 +9763,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §27 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-09-20
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S26-gpt-r2)
 
 ## 28. Dangling follows-outage
@@ -9782,7 +9820,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §32 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-outage2.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-09-20
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S32-gpt, follows-outage)
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S32-gpt-r2, follows-outage)
 
@@ -9929,7 +9967,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-19 | §46 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-accept5.md
-> **Plan review:** outage: both rungs (owner ann, due 2020-01-01) class auth attempts 1
+> **Plan review:** outage: both rungs (owner ann, due 2020-01-01) class auth attempts 1 event 2026-09-19
 
 ## 47. Grandfathered unmarked stamp
 
@@ -10235,7 +10273,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §70 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) attempts 2
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) attempts 2 event 2026-09-20
 
 ## 71. Retry missing attempt count
 
@@ -10257,7 +10295,7 @@ proof D90-T07-S4-PR70 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §72 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
-> **Plan review:** GPT timeout then Opus timeout, outage: both rungs (owner ann, due 2099-01-01) class timeout attempts 0
+> **Plan review:** GPT timeout then Opus timeout, outage: both rungs (owner ann, due 2099-01-01) class timeout attempts 0 event 2026-09-20
 
 ## 73. Malformed attempt count fires
 
@@ -10572,7 +10610,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 
 > **Verified:** 2026-09-20 | §96-§97 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-rangefollows.md
-> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-09-20
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S96-gpt-r2, follows-outage)
 
 ## 97. Range follows pair two
@@ -10592,6 +10630,39 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §98 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-manifestonly.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S98-gpt)
+
+## 100. Outage missing event date fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §100 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2
+
+## 101. Unreal outage event date fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §101 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-02-30
+
+## 102. Misshapen outage event date fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §102 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-9-5
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12915,6 +12986,45 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§98 " in ln and "FATAL" in ln),
             0,
         )
+        check(
+            "outage without an event date fires",
+            any(
+                "TODO-07-marker.md" in ln and "§100 " in ln and "names no outage-event date" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§100 fires exactly once (event only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§100 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "unreal outage event date fires",
+            any(
+                "TODO-07-marker.md" in ln and "§101 " in ln and "names no outage-event date" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§101 fires exactly once (event only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§101 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "misshapen outage event date fires",
+            any(
+                "TODO-07-marker.md" in ln and "§102 " in ln and "names no outage-event date" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§102 fires exactly once (event only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§102 " in ln and "FATAL" in ln),
+            1,
+        )
         gbuf = _mio.StringIO()
         with _mctx.redirect_stdout(gbuf), _mctx.redirect_stderr(_mio.StringIO()):
             range_code = cmd_query(
@@ -14899,11 +15009,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "|   8   |   §8    | Superseded predecessor defers to head | -- |  [x]   |\n"
             "|   9   |   §9    | Unresolvable evidence | -- |  [x]   |\n"
             "|   10  |   §10   | Matched outage residual | -- |  [x]   |\n"
-            "|   11  |   §11   | Pre-cutoff run waiver | -- |  [x]   |\n\n---\n\n"
+            "|   11  |   §11   | Pre-cutoff run waiver | -- |  [x]   |\n"
+            "|   12  |   §12   | Stamp-day waiver misses moved event | -- |  [x]   |\n"
+            "|   13  |   §13   | Last-event waiver binds moved event | -- |  [x]   |\n"
+            "|   14  |   §14   | Outage waiver predating the event | -- |  [x]   |\n\n---\n\n"
             "## 1. Wrong instance\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc1.md\n"
-            "> **Plan review:** outage: gpt rung (owner ann, due 2020-01-01) class auth attempts 1\n\n"
+            "> **Plan review:** outage: gpt rung (owner ann, due 2020-01-01) class auth attempts 1 event 2026-09-19\n\n"
             "## 2. Prewritten waiver\n\n- [x] Did the thing\n- [x] Commit: `\\\"selftest: clean\\\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §2 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc2.md\n"
@@ -14940,11 +15053,27 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "## 10. Matched outage residual\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §10 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc13.md\n"
-            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1\n\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-19\n\n"
             "## 11. Pre-cutoff run waiver\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-18 | §11 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc6.md\n"
-            "> **Plan review:** GPT high, no findings (run 20260918-D90-T01-S11-gpt)\n",
+            "> **Plan review:** GPT high, no findings (run 20260918-D90-T01-S11-gpt)\n\n"
+            "## 12. Stamp-day waiver misses moved event\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §12 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc14.md\n"
+            "> **Plan review:** Opus outage then all failed, outage: opus rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-17\n"
+            "> **Plan review:** GPT high, no findings (run 20260919-D90-T01-S12-gpt, follows-outage)\n"
+            "> **Plan review:** Opus outage again, outage: opus rung (owner ann, due 2020-01-01) class infra attempts 2 event 2026-09-18 supersedes 20260919-D90-T01-S12-gpt\n\n"
+            "## 13. Last-event waiver binds moved event\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §13 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc15.md\n"
+            "> **Plan review:** Opus outage then all failed, outage: opus rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-17\n"
+            "> **Plan review:** GPT high, no findings (run 20260919-D90-T01-S13-gpt, follows-outage)\n"
+            "> **Plan review:** Opus outage again, outage: opus rung (owner ann, due 2020-01-01) class infra attempts 2 event 2026-09-18 supersedes 20260919-D90-T01-S13-gpt\n\n"
+            "## 14. Outage waiver predating the event\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §14 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc16.md\n"
+            "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n",
             encoding="utf-8",
         )
         _acc_head = (
@@ -15040,9 +15169,33 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             f"Risk accepted: outage cron rung 2026-09-19; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale matched outage, unresolvable evidence\n",
             encoding="utf-8",
         )
+        (clean / "docs" / "reviews" / "90-acc14.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §12]; dependents [none]; bytes 100; run 20260919-D90-T01-S12-gpt\n\n"
+            "Ledger:\n- [D90-T01-S12-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage opus rung 2026-09-19; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale stamp-day waiver, never covers the moved event\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc15.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §13]; dependents [none]; bytes 100; run 20260919-D90-T01-S13-gpt\n\n"
+            "Ledger:\n- [D90-T01-S13-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage opus rung 2026-09-18; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_over}; evidence acc50d0; rationale last-event waiver, covers and lists overdue\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-acc16.md").write_text(
+            _acc_head
+            + "Manifest: sections [D90 T01 §14]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n- [D90-T01-S14-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            f"Risk accepted: outage cron rung 2026-09-18; approver bob; owner bob; date 2026-09-17; expires {_exp_far}; review {_rvw_far}; evidence deadbeef; rationale predated waiver, never covers\n",
+            encoding="utf-8",
+        )
         _clean_todo = (clean / "todo" / "90-clean" / "TODO-01-clean.md").as_posix()
         canned_git[("deadbee", _clean_todo)] = "stale bytes, never the live record\n"
         canned_git[("cafe444", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
+            encoding="utf-8"
+        )
+        canned_git[("acc50d0", _clean_todo)] = (clean / "todo" / "90-clean" / "TODO-01-clean.md").read_text(
             encoding="utf-8"
         )
         canned_git[("acc6e66", "docs/reviews/90-acc6.md")] = (clean / "docs" / "reviews" / "90-acc6.md").read_text(
@@ -15192,6 +15345,48 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
+        _deg12 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§12")]
+        _deg13 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§13")]
+        _deg14 = [e for e in _acc_json["degraded"] if e["ref"].endswith("§14")]
+        check(
+            "stamp-day waiver misses the moved event",
+            (
+                len(_deg12) == 1
+                and _deg12[0]["accepted_by"] == ""
+                and _deg12[0]["noncover_cause"] == "no-waiver"
+            ),
+            True,
+        )
+        check(
+            "last-event waiver covers the moved event",
+            (len(_deg13) == 1 and _deg13[0]["accepted_by"] == "bob" and not _deg13[0]["overdue"]),
+            True,
+        )
+        check(
+            "covering last-event waiver lists its overdue review",
+            any(
+                e["target"] == "outage opus rung 2026-09-18" and e["state"] == "review-overdue"
+                for e in _acc_json["reviews"]
+            ),
+            True,
+        )
+        check(
+            "outage waiver predating the event diagnoses predated-target",
+            (
+                len(_deg14) == 1
+                and _deg14[0]["accepted_by"] == ""
+                and _deg14[0]["noncover_cause"] == "predated-target"
+            ),
+            True,
+        )
+        check(
+            "summary names the moved-event causes with their fixes",
+            (
+                any("§12" in ln and "cause no-waiver" in ln and "rerun the review" in ln for ln in _acc_sum)
+                and any("§14" in ln and "cause predated-target" in ln for ln in _acc_sum)
+            ),
+            True,
+        )
         check(
             "summary names each noncoverage cause with its fix",
             (
@@ -15235,15 +15430,16 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "summary lists acceptance reviews due and overdue",
             (
-                any("acceptance reviews" in ln and " 2 " in ln for ln in _acc_sum)
+                any("acceptance reviews" in ln and " 3 " in ln for ln in _acc_sum)
                 and any("S6-PR1" in ln and "review-overdue" in ln for ln in _acc_sum)
                 and any("S6-PR2" in ln and "review-due" in ln for ln in _acc_sum)
+                and any("opus rung 2026-09-18" in ln and "review-overdue" in ln for ln in _acc_sum)
             ),
             True,
         )
         check(
             "review-overdue owners join the digest tally dateless",
-            "    bob: 1 overdue" in _acc_sum,
+            "    bob: 2 overdue" in _acc_sum,
             True,
         )
         check(
@@ -15291,7 +15487,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "register lists every un-superseded instrument once",
             (
                 _reg["schema"] == "risk-register/1"
-                and len(_rent) == 16
+                and len(_rent) == 19
                 and not any(e["rationale"] in ("superseded waiver", "superseded review") for e in _rent)
                 and not any("S4-PR1" in e["target"] for e in _rent)
             ),
@@ -15305,6 +15501,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 and any(e["target"].endswith("S2-gpt") and e["residual"] == "retry-owed" for e in _rent)
                 and any(e["target"] == "outage gpt rung 2026-09-18" and e["residual"] == "unmatched" for e in _rent)
                 and any(e["target"] == "outage cron rung 2026-09-19" and e["residual"] == "outage" for e in _rent)
+                and any(e["target"] == "outage opus rung 2026-09-19" and e["residual"] == "unmatched" for e in _rent)
+                and any(e["target"] == "outage opus rung 2026-09-18" and e["residual"] == "outage" for e in _rent)
+                and any(e["target"] == "outage cron rung 2026-09-18" and e["residual"] == "outage" for e in _rent)
                 and any(e["target"].endswith("S6-gpt") and e["residual"] == "none" for e in _rent)
                 and any(e["target"].endswith("S5-gpt") and e["state"] == "expired" for e in _rent)
                 and any(e["target"].endswith("S7-gpt") and e["state"] == "post-dated" for e in _rent)
@@ -15319,9 +15518,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "dashboard rolls up reviews, expiries, partials, migration, findings",
             (
-                any(ln == "Reviews: 2 due or overdue (1 overdue)" for ln in _dash)
+                any(ln == "Reviews: 3 due or overdue (2 overdue)" for ln in _dash)
                 and any(ln == "Expiries: 0 within 30 days" for ln in _dash)
-                and any(ln == "Partials and outages: 8 owed" for ln in _dash)
+                and any(ln == "Partials and outages: 10 owed" for ln in _dash)
                 and any(ln.startswith("Migration: 0 leftovers") for ln in _dash)
                 and any(ln == "Open findings: 0 criticals, 1 majors (0 overdue)" for ln in _dash)
             ),
@@ -15331,7 +15530,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "notify emits flat owner payloads and exits 0",
             (
                 rc_not == 0
-                and any(ln.startswith("notify: 10 payloads within 7 days") for ln in _not)
+                and any(ln.startswith("notify: 13 payloads within 7 days") for ln in _not)
                 and any(ln.strip().startswith("ann | 2020-01-01 | degraded") for ln in _not)
                 and any("bob |" in ln and "review-overdue" in ln for ln in _not)
             ),
@@ -15339,7 +15538,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         )
         check(
             "frozen --today moves the notify window",
-            any(ln.startswith("notify: 8 payloads within 7 days (today 2020-01-02") for ln in _not_f),
+            any(ln.startswith("notify: 11 payloads within 7 days (today 2020-01-02") for ln in _not_f),
             True,
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
@@ -15455,7 +15654,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "reviews list due and overdue acceptances, never the superseded",
             (
                 sorted((e["target"], e["state"]) for e in _revs)
-                == [("D90-T01-S6-PR1", "review-overdue"), ("D90-T01-S6-PR2", "review-due")]
+                == [
+                    ("D90-T01-S6-PR1", "review-overdue"),
+                    ("D90-T01-S6-PR2", "review-due"),
+                    ("outage opus rung 2026-09-18", "review-overdue"),
+                ]
                 and [e for e in _revs if e["state"] == "review-overdue"][0]["escalation"]
                 == "bob: record the review outcome in a superseding acceptance"
                 and [e for e in _revs if e["state"] == "review-due"][0]["escalation"] == ""
