@@ -199,6 +199,21 @@ function Get-TranscriptFailures([string]$LogPath) {
   return $names
 }
 
+function Get-NonQuarantineSkips([string]$TrxPath) {
+  # The Interactive bar excuses quarantine skips only (docs/testing.md):
+  # any skip without a QUARANTINED stamp reds the leg. xUnit's exit code
+  # stays zero under skips, so the trx is the enforcement point.
+  $names = @()
+  if (-not (Test-Path $TrxPath)) { return $names }
+  $t = [xml](Get-Content $TrxPath -Raw)
+  foreach ($r in @($t.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'NotExecuted' })) {
+    $msg = ''
+    if ($r.Output -and $r.Output.ErrorInfo -and $r.Output.ErrorInfo.Message) { $msg = $r.Output.ErrorInfo.Message }
+    if ($msg -notlike '*QUARANTINED*') { $names += $r.testName }
+  }
+  return $names
+}
+
 function Get-TranscriptSkips([string]$LogPath) {
   $names = @()
   if (-not (Test-Path $LogPath)) { return $names }
@@ -283,6 +298,7 @@ New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
 # contaminate window-enumerating tests, so the reap precedes every leg.
 $reapNotes = @(Invoke-OrphanReap $runStart)
 $failed = $false
+$buildError = ''
 $gateA = $null
 $gateB = $null
 
@@ -310,10 +326,22 @@ Push-Location $Root
 try {
   # One build up front: every leg then runs --no-build, so a leg never
   # rebuilds mid-proof. ForegroundLog rides no solution; build it here.
-  $code = Invoke-Step 'build' { & $Dotnet build src/ScratchPad.slnx --nologo }
-  if ($code -ne 0) { throw "nightly: solution build failed ($code); no leg runs on a broken build" }
-  $code = Invoke-Step 'build-gate' { & $Dotnet build tools/ForegroundLog/ForegroundLog.csproj --nologo }
-  if (($code -ne 0) -or (-not (Test-Path $GateExe))) { throw "nightly: gate build failed ($code); Run A and B need the gate binary" }
+  # A red build skips every leg but still writes the report: a scheduled
+  # run with no fixed-path record reads as completed to the guard.
+  try {
+    $code = Invoke-Step 'build' { & $Dotnet build src/ScratchPad.slnx --nologo }
+    if ($code -ne 0) { throw "solution build failed ($code)" }
+    $code = Invoke-Step 'build-gate' { & $Dotnet build tools/ForegroundLog/ForegroundLog.csproj --nologo }
+    if (($code -ne 0) -or (-not (Test-Path $GateExe))) { throw "gate build failed ($code)" }
+  } catch {
+    $buildError = "$_"
+    $failed = $true
+    Write-Output "nightly: $buildError; no leg runs on a broken build, report still lands"
+    $SkipDefault = $true
+    $SkipPrimary = $true
+    $SkipFenced = $true
+    $SkipSoak = $true
+  }
   $script:buildHead = 'unknown'
   try { $script:buildHead = (git -C $Root rev-parse HEAD).Trim() } catch { }
 
@@ -357,6 +385,8 @@ try {
       try {
         $code = Invoke-Step 'interactive' { & $Dotnet test tests/UI/UI.csproj --no-build --nologo --filter 'Category=Interactive' -e SCRATCHPAD_INTERACTIVE_FORCE=1 --logger 'trx;LogFileName=interactive.trx' --results-directory $trxDir }
         if ($code -ne 0) { $failed = $true }
+        $leaked = @(Get-NonQuarantineSkips (Join-Path $trxDir 'interactive.trx'))
+        if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
       }
@@ -371,6 +401,8 @@ try {
       try {
         $code = Invoke-Step 'interactive' { & $Dotnet test tests/UI/UI.csproj --no-build --nologo --filter 'Category=Interactive' --logger 'trx;LogFileName=interactive.trx' --results-directory $trxDir }
         if ($code -ne 0) { $failed = $true }
+        $leaked = @(Get-NonQuarantineSkips (Join-Path $trxDir 'interactive.trx'))
+        if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
       }
@@ -423,6 +455,8 @@ $report += "- HEAD: $head"
 $report += "- Trigger: $trigger"
 $report += "- Window: 02:00-06:50 local (or SCRATCHPAD_INTERACTIVE_WINDOW)"
 $reapLine = if ($reapNotes.Count -eq 0) { 'none' } else { ($reapNotes -join '; ') }
+$buildLine = if ($buildError -eq '') { 'OK' } else { "FAILED: $buildError" }
+$report += "- Build: $buildLine"
 $report += "- Pre-flight reaped: $reapLine"
 $report += ''
 $report += '| Leg | Counts | Gate | Log |'
