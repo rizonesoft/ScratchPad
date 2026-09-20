@@ -523,7 +523,23 @@ try {
   # rebuilds mid-proof. ForegroundLog rides no solution; build it here.
   # A red build skips every leg but still writes the report: a scheduled
   # run with no fixed-path record reads as completed to the guard.
+  # Fail fast past the deadline (D00 T02 §14 R4-F2): a late in-window
+  # start (or a recovered miss) can arrive with zero budget left; running
+  # the builds anyway would land the report past the boundary for no
+  # provable leg. Reuse the red-build path: nothing runs, the report
+  # still lands. Threshold is zero, not the reserve: a small positive
+  # remainder still fits the fast builds, and short-budget simulations
+  # need their legs to exercise kills plus cuts.
+  $budgetAtStart = ($deadline - (Get-Date)).TotalSeconds
+  if ($budgetAtStart -le 0) {
+    $buildError = 'run started past its deadline: nothing fits inside the remaining budget (unproven)'
+    $failed = $true
+    $SkipDefault = $true; $SkipPrimary = $true; $SkipFenced = $true; $SkipSoak = $true
+    $budgetCut += 'entire run (deadline passed at start)'
+    Write-Output 'nightly: deadline already passed at start; skipping builds and legs, landing the report'
+  }
   try {
+    if ($buildError -ne '') { throw $buildError }
     # Bounded builds (D00 T02 §14 R2-F1): a hung toolchain must strand
     # nothing, so the builds ride the same timed step as the legs (600 s
     # against ~10 s normal). A killed build reds exactly like a red one:
