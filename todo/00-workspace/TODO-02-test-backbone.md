@@ -49,7 +49,7 @@ track: W0
 |   8   |   §8    | Focus-free UI suite conversion | §2 |  [x]   |
 |   9   |   §9    | Nightly full-suite regression run | §8 |  [x]   |
 |   10  |   §10   | Completion-first night-debt system | §8 |  [x]   |
-|   11  |   §11   | Central launch helper with off-screen birth | §8 |  [ ]   |
+|   11  |   §11   | Central launch helper with off-screen birth | §8, D00 T04 §6 |  [ ]   |
 |   12  |   §12   | Accelerator binding coverage sweep | §8 |  [ ]   |
 |   13  |   §13   | Backgrounding leak on the default leg | §8 |  [ ]   |
 |   14  |   §14   | Run-level deadline for the governed run | §9 |  [ ]   |
@@ -341,7 +341,7 @@ Why this section exists: sections stall waiting for the 02:00-06:50 quiet window
 
 ## 11. Central Launch Helper With Off-Screen Birth
 
-Why this section exists: every UI test file carries its own LaunchApp plus SeedSettings copies (21 plus 23 and counting), so background birth behavior cannot be set in one place, and §8 R2 measured 61 visible birth flashes on the primary per full run (250 ms dwell each, census-caught) because first windows restore at the 50,50 cascade before the funnel moves them. Centralizing the helpers lets background launches birth off-screen, which removes the flashes at the source instead of shrinking them. -> SOURCE: Sol-panel-D00-T02-s8-round-2 (R2 birth-flash family: 61 census-caught visible primary flashes per Run A; per-file helpers block central birth control).
+Why this section exists: every UI test file carries its own LaunchApp plus SeedSettings copies (21 plus 23 and counting), so background birth behavior cannot be set in one place, and §8 R2 measured 61 visible birth flashes on the primary per full run (250 ms dwell each, census-caught) because first windows restore at the 50,50 cascade before the funnel moves them. Centralizing the helpers lets background launches birth off-screen, which removes the flashes at the source instead of shrinking them. -> SOURCE: Sol-panel-D00-T02-s8-round-2 (R2 birth-flash family: 61 census-caught visible primary flashes per Run A; per-file helpers block central birth control). -> SOURCE: plan-review-D00-T01-s51-2026-09-20-t02 D00-T01-S51-PR11 (the §11 landing writes the PR1 superseding record, whose report needs the T04 §6 tuple fix first; edge encodes the order).
 
 **Needs:** Windows host (build/test)
 

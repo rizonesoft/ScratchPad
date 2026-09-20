@@ -165,7 +165,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T04 §3`  | Migration-assurance follow-ups                  |   5   |
 | [ ] | `D00 T04 §4`  | Review-evaluation follow-ups                    |   4   |
 | [ ] | `D00 T04 §5`  | Windows console and prompt follow-ups           |   4   |
-| [ ] | `D00 T04 §6`  | Acceptance-record sign-off residuals            |   3   |
+| [ ] | `D00 T04 §6`  | Acceptance-record sign-off residuals            |   6   |
 | [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
