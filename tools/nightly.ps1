@@ -121,19 +121,28 @@ function Invoke-OrphanReap([datetime]$OlderThan) {
   return $notes
 }
 
-function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepArgs, [string]$CodeFile) {
+function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepArgs, [string]$CodeFile, [switch]$NoStub) {
   # Bounded step for legs without a gate window (Interactive, soak): the
   # command runs in a job, killed at the cap so a hung drive cannot eat
   # the window and strand the report. Same sidecar discipline as
   # Invoke-GatedLeg (Receive-Job mixes output with the code, and a killed
   # job never emits its code). Returns Code plus Killed.
   if (Test-Path $CodeFile) { Remove-Item $CodeFile -Force }
+  # Stub legs (D00 T02 §14 PR4): SCRATCHPAD_STUB_LEGS replaces the suite
+  # with a sleeper that always overruns, so the all-hang catastrophe is
+  # reproducible without waiting for real tests. Simulation-only.
+  $stubSecs = 0
+  if ((-not $NoStub) -and (-not [string]::IsNullOrWhiteSpace($env:SCRATCHPAD_STUB_LEGS))) {
+    $stubSecs = $TimeoutSeconds + 30
+    Write-Warning "nightly: STUBBED leg $Name (sleeps past its cap); not a governed proof"
+  }
   $stepJob = Start-Job -ScriptBlock {
-    param($exe, $argList, $dir, $codeOut)
+    param($exe, $argList, $dir, $codeOut, $sleepSecs)
+    if ($sleepSecs -gt 0) { Start-Sleep -Seconds $sleepSecs; 0 | Set-Content -Path $codeOut; return }
     Set-Location $dir
     & $exe @argList
     $LASTEXITCODE | Set-Content -Path $codeOut
-  } -ArgumentList @($Dotnet, $StepArgs, $Root, $CodeFile)
+  } -ArgumentList @($Dotnet, $StepArgs, $Root, $CodeFile, $stubSecs)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $doneSignal = Wait-Job -Job $stepJob -Timeout $TimeoutSeconds
   $killed = ($null -eq $doneSignal)
@@ -187,12 +196,20 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   } -ArgumentList @($GateExe, $gateArgsArray, $VerdictFile)
   $codeFile = "$VerdictFile.testcode"
   if (Test-Path $codeFile) { Remove-Item $codeFile -Force }
+  # Stub legs, same knob as Invoke-TimedStep (D00 T02 §14 PR4). The gate
+  # stays real: it watches an idle box and exits clean at its bell.
+  $stubSecs = 0
+  if (-not [string]::IsNullOrWhiteSpace($env:SCRATCHPAD_STUB_LEGS)) {
+    $stubSecs = $GateSeconds + 30
+    Write-Warning "nightly: STUBBED leg $Name (sleeps past its bell); not a governed proof"
+  }
   $testJob = Start-Job -ScriptBlock {
-    param($exe, $argList, $dir, $codeOut)
+    param($exe, $argList, $dir, $codeOut, $sleepSecs)
+    if ($sleepSecs -gt 0) { Start-Sleep -Seconds $sleepSecs; 0 | Set-Content -Path $codeOut; return }
     Set-Location $dir
     & $exe @argList
     $LASTEXITCODE | Set-Content -Path $codeOut
-  } -ArgumentList @($Dotnet, $TestArgs, $Root, $codeFile)
+  } -ArgumentList @($Dotnet, $TestArgs, $Root, $codeFile, $stubSecs)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $doneSignal = Wait-Job -Job $testJob -Timeout $GateSeconds
   $killed = ($null -eq $doneSignal)
@@ -406,25 +423,45 @@ if ($CheckOnly) { Write-Output 'nightly: environment OK'; exit 0 }
 # holder owns the proof. The OS releases the mutex at process exit; an
 # abandoned hold from a dead run reads as acquired.
 $runStart = Get-Date
+# Monotonic run clock starts with the run itself (D00 T02 §14 PR18), so
+# elapsed budgets never see time-sync or timezone jumps.
+$runClock = [System.Diagnostics.Stopwatch]::StartNew()
 $mutex = New-Object System.Threading.Mutex($false, 'Global\ScratchPadNightlyRun')
 $lockHeld = $false
 try { $lockHeld = $mutex.WaitOne(0) }
 catch [System.Threading.AbandonedMutexException] { $lockHeld = $true }
 if (-not $lockHeld) { Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'; exit 0 }
 
+trap {
+  # Cancellation record (D00 T02 §14 PR23): Ctrl+C, operator cancel, and
+  # service shutdown land an atomic RED cancelled record instead of
+  # silence, distinguishable from a crash by its Status line. The guard
+  # only fires once the evidence dir exists; helper functions are
+  # defined by then (they live above the leg block).
+  if ((-not [string]::IsNullOrWhiteSpace($nightDir)) -and (-not [string]::IsNullOrWhiteSpace($day)) -and (Test-Path $nightDir)) {
+    Write-AtomicReport @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)') (Join-Path $nightDir "morning-$day.md")
+    Write-Output 'nightly: RED (cancelled; record landed)'
+  }
+  if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
+  exit 1
+}
+
 # Run-level deadline (D00 T02 §14): the catastrophe bound. Every leg
 # starts only when its full cap fits inside the remaining budget, so the
 # run lands its report before the scheduler kills it. Deadline is the
-# earlier of the task PT4H limit and the 06:50 window end (in-window runs
-# only: a manual daytime backup has no window boundary), minus a 300 s
-# reserve for reaping plus the atomic report. The build and the smoke
-# path run outside the budget: nothing proves without a build, both fail
-# fast, and neither can strand the report. SCRATCHPAD_RUN_DEADLINE_SECONDS
-# overrides the budget for simulation (the all-hang proof) and
-# SCRATCHPAD_LEG_CAP_SECONDS overrides every leg cap; both are
-# simulation-only and warn loudly whenever set. Legs that never start
-# are budget-cut (unproven, never green); §14 abort rules in
-# docs/testing.md carry the deadline math.
+# earlier of the task PT4H limit and the resolved window end (in-window
+# runs only: a manual daytime backup has no window boundary), minus a
+# 300 s reserve for reaping plus the atomic report. The builds ride 600 s
+# timed steps; only the smoke path runs outside the budget (a manual
+# diagnostic, never proof). SCRATCHPAD_RUN_DEADLINE_SECONDS overrides
+# the budget for simulation (the budget-exhaustion proof),
+# SCRATCHPAD_LEG_CAP_SECONDS overrides every leg cap, and
+# SCRATCHPAD_STUB_LEGS replaces suites with overrunning sleepers; all
+# three are simulation-only and warn loudly whenever set. Elapsed
+# budgets tick on the monotonic run clock; civil time serves only the
+# window-end boundary plus display. Legs that never start are
+# budget-cut (unproven, never green); §14 abort rules in docs/testing.md
+# carry the deadline math.
 $deadlineReserve = 300
 # Kill slack: a killed leg costs its cap plus job-teardown latency
 # (measured ~120 s per kill on the 2026-09-20 simulation: Stop-Job plus
@@ -460,10 +497,14 @@ if (-not [string]::IsNullOrWhiteSpace($simCap)) {
   $simMode = $true
   Write-Warning "nightly: SIMULATION leg caps ${simCap}s; not a governed proof"
 }
+if (-not [string]::IsNullOrWhiteSpace($env:SCRATCHPAD_STUB_LEGS)) { $simMode = $true }
 if ($reserveBypassed) { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (simulation: reserve bypassed)" }
 else { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (reserve ${deadlineReserve}s)" }
+# Elapsed budgets tick on the monotonic run clock; civil time serves
+# only the window-end boundary plus display (D00 T02 §14 PR18).
+$budgetTotalSeconds = ($deadline - $runStart).TotalSeconds
 function Test-LegBudget([int]$CapSeconds) {
-  return (($deadline - (Get-Date)).TotalSeconds -ge ($CapSeconds + $killSlack))
+  return (($budgetTotalSeconds - $runClock.Elapsed.TotalSeconds) -ge ($CapSeconds + $killSlack))
 }
 $budgetCut = @()
 $soakKilled = @()
@@ -555,7 +596,7 @@ try {
   # still lands. Threshold is zero, not the reserve: a small positive
   # remainder still fits the fast builds, and short-budget simulations
   # need their legs to exercise kills plus cuts.
-  $budgetAtStart = ($deadline - (Get-Date)).TotalSeconds
+  $budgetAtStart = $budgetTotalSeconds - $runClock.Elapsed.TotalSeconds
   if ($budgetAtStart -le 0) {
     $buildError = 'run started past its deadline: nothing fits inside the remaining budget (unproven)'
     $failed = $true
@@ -569,9 +610,9 @@ try {
     # nothing, so the builds ride the same timed step as the legs (600 s
     # against ~10 s normal). A killed build reds exactly like a red one:
     # no leg runs, the report still lands.
-    $r = Invoke-TimedStep 'build' 600 @('build', 'src/ScratchPad.slnx', '--nologo') (Join-Path $trxDir 'build.testcode')
+    $r = Invoke-TimedStep 'build' 600 @('build', 'src/ScratchPad.slnx', '--nologo') (Join-Path $trxDir 'build.testcode') -NoStub
     if (($r.Code -ne 0) -or $r.Killed) { throw "solution build failed (code $($r.Code), killed $($r.Killed))" }
-    $r = Invoke-TimedStep 'build-gate' 600 @('build', 'tools/ForegroundLog/ForegroundLog.csproj', '--nologo') (Join-Path $trxDir 'build-gate.testcode')
+    $r = Invoke-TimedStep 'build-gate' 600 @('build', 'tools/ForegroundLog/ForegroundLog.csproj', '--nologo') (Join-Path $trxDir 'build-gate.testcode') -NoStub
     if (($r.Code -ne 0) -or $r.Killed -or (-not (Test-Path $GateExe))) { throw "gate build failed (code $($r.Code), killed $($r.Killed))" }
   } catch {
     $buildError = "$_"
