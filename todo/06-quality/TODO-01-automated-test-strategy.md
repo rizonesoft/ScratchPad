@@ -74,11 +74,11 @@ Why this section exists: the clone claim is proven surface by surface, automatic
 
 - [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
 - [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
-- [ ] The suites run in CI on a Windows runner. Done when: the CI log shows them green.
+- [ ] The suites classify into the D00 T02 §8 tiers: background-safe assertions run in the default set, placement premises in `Category=Primary`, physical-input flows in fenced `Category=Interactive` with quiet-hours collection. Done when: every suite names its tier and the default/Primary gates prove the runnable tiers. **Corrected 2026-09-19 (§8 plan review):** was "run in CI on a Windows runner"; CI is build-plus-launch-smoke only since c2c2362, UI proof is local tiers.
 - [ ] Found 2026-09-14: `tests/UI/MainWindowTests.cs` `PollThemeSide` captures without `UiDpi.Enter`, so at 150 percent session DPI the reads virtualize to black; on Conclave-PC `ThemesRenderWithMica` light fails while dark and system pass vacuously. Harden the capture path (PMV2-aware captures or a non-black guard) and re-prove the matrix. Done when: `dotnet test tests/UI --filter ThemesRenderWithMica` passes on the dev box with center pixels verified non-black in all three themes. **Corrected 2026-09-17 (groom):** was "passes on Conclave-PC"; the Conclave-PC VM retired 2026-09-14, so the matrix re-proves on the dev box at 150 percent.
 - [ ] Commit: `"quality: drive Notepad parity in UI suites"`
 
-**Test checkpoint:** Suites green in CI; deliberate deviations fail; coverage table fully mapped. Cheaper substitute that fails: parity checked by hand before release.
+**Test checkpoint:** Suites green in their D00 T02 §8 tiers; deliberate deviations fail; coverage table fully mapped. Cheaper substitute that fails: parity checked by hand before release.
 
 ## 4. AI Surface UI Suites
 
@@ -86,10 +86,10 @@ Why this section exists: the AI panel, prompts, diffs, and elicitations are driv
 
 - [ ] `tests/UI/AiPanel/` drives the panel, prompts, tool display, diff review, apply, and elicitation against the loopback. Done when: each flow passes.
 - [ ] Consent and denial paths are driven, not just the allow path. Done when: the denial matrix passes.
-- [ ] The suites run in CI on a Windows runner. Done when: the CI log shows them green.
+- [ ] The suites classify into the D00 T02 §8 tiers: background-safe assertions run in the default set, placement premises in `Category=Primary`, physical-input flows in fenced `Category=Interactive` with quiet-hours collection. Done when: every suite names its tier and the default/Primary gates prove the runnable tiers. **Corrected 2026-09-19 (§8 plan review):** was "run in CI on a Windows runner"; CI is build-plus-launch-smoke only since c2c2362, UI proof is local tiers.
 - [ ] Commit: `"quality: drive AI surfaces in UI suites"`
 
-**Test checkpoint:** Suites green in CI with denial paths proven. Cheaper substitute that fails: AI flows tested by hand because "scripting agents is hard".
+**Test checkpoint:** Suites green in their D00 T02 §8 tiers with denial paths proven. Cheaper substitute that fails: AI flows tested by hand because "scripting agents is hard".
 
 ## 5. Perf Budgets Enforced in CI
 

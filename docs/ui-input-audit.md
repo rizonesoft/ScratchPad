@@ -1,6 +1,6 @@
 # UI Input Audit (D00 T02 §8 item 1)
 
-Measured 2026-09-17: 112 focus-dependent input calls across tests/UI: 88 convert, 24 fence, 0 keep after migration corrections (5 provisional converts proved fence-or-misattributed; plus 22 click sites: 1 convert, 17 fence, 4 keep; plus 51 Focus sites by rule; plus 2 raw-input sites, both fence). Every call is either convertible or genuinely physical; nothing keeps focus input by inertia.
+Measured 2026-09-17: 112 focus-dependent input calls across tests/UI: 87 convert, 25 fence, 0 keep after migration corrections (5 provisional converts proved fence-or-misattributed; plus 22 click sites: 1 convert, 17 fence, 4 keep; plus 51 Focus sites by rule; plus 2 raw-input sites, both fence). **Corrected 2026-09-19 (§8 R5):** was 88/24; recount 87 convert plus 25 fence (whole file 88/44/4, totals 112 and 187 intact). Every call is either convertible or genuinely physical; nothing keeps focus input by inertia.
 
 | Site | Enclosing method | Call | Disposition | Rationale |
 | ---- | ---------------- | ---- | ----------- | --------- |
