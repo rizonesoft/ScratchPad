@@ -215,7 +215,7 @@ Element `.Click()`/`.DoubleClick()`/`.RightClick()` move the real cursor, so the
 
 ## Accelerator binding sweep (D00 T02 §12 item 1)
 
-Swept 2026-09-20: every `KeyboardAccelerator` declared in `src/ScratchPad/MenuBar.xaml` (31 declarations, no other key handling in `src/`: no `KeyDown`/`PreviewKeyDown` handlers, no other XAML accelerators) against physical-press coverage in `tests/UI` (`UiInput.Press` plus `Keyboard.Press` call sites). A binding is covered only by a test pressing the physical chord; menu-Invoke tests assert the command, not the binding.
+Swept 2026-09-20: every `KeyboardAccelerator` declared in `src/ScratchPad/MenuBar.xaml` (31 declarations) plus the 13 programmatic tab accelerators in `src/ScratchPad/MainWindow.xaml.cs` `AddTabAccelerators` (no other key handling in `src/`: no `KeyDown`/`PreviewKeyDown` handlers, no other XAML accelerators) against physical-press coverage in `tests/UI` (`UiInput.Press` plus `Keyboard.Press` call sites). **Corrected 2026-09-20 (§12 review R1):** was 31 XAML only; the sweep missed the 13 programmatic tab bindings. A binding is covered only by a test pressing the physical chord; menu-Invoke tests assert the command, not the binding.
 
 | Binding | Command | Covering test or none |
 | ------- | ------- | --------------------- |
@@ -250,5 +250,18 @@ Swept 2026-09-20: every `KeyboardAccelerator` declared in `src/ScratchPad/MenuBa
 | Ctrl+Shift+E | Tools: Templates | none (restored by §12 item 2) |
 | Ctrl+Shift+X | Tools: Export | none (restored by §12 item 2) |
 | Ctrl+Shift+L | Tools: Lock file | none (restored by §12 item 2) |
+| Ctrl+T | Tabs: new tab (programmatic) | `TabBarTests`, `PinnedTabsTests` |
+| Ctrl+Tab | Tabs: cycle next (programmatic) | `TabBarTests.ThreeTabsSwitchAndClose` |
+| Ctrl+Shift+Tab | Tabs: cycle previous (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
+| Ctrl+Shift+T | Tabs: reopen last (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
+| Ctrl+1 | Tabs: goto 1 (programmatic) | `TabBarTests.ThreeTabsSwitchAndClose` |
+| Ctrl+2 | Tabs: goto 2 (programmatic) | none (restored by §12 item 2) |
+| Ctrl+3 | Tabs: goto 3 (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
+| Ctrl+4 | Tabs: goto 4 (programmatic) | none (restored by §12 item 2) |
+| Ctrl+5 | Tabs: goto 5 (programmatic) | none (restored by §12 item 2) |
+| Ctrl+6 | Tabs: goto 6 (programmatic) | none (restored by §12 item 2) |
+| Ctrl+7 | Tabs: goto 7 (programmatic) | none (restored by §12 item 2) |
+| Ctrl+8 | Tabs: goto 8 (programmatic) | none (restored by §12 item 2) |
+| Ctrl+9 | Tabs: goto last (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
 
-Pressed but not app-declared (framework or control behavior, outside the sweep; covering tests named so a future declaration does not double-cover): Ctrl+T (`TabBarTests`, `PinnedTabsTests`), Ctrl+Tab and Ctrl+Shift+Tab (`TabBarTests`), Ctrl+1/3/9 (`TabBarTests.NumberShortcutsAndReopenMatchNotepad`), Ctrl+Shift+T (`TabBarTests`), Ctrl+Home/Ctrl+End (caret moves in `StatusBarTests`/`SessionRestoreTests`), Alt+letter access keys (`MenuBarTests.AccessKeysOpenEachMenu`).
+Pressed but not app-declared (framework or control behavior, outside the sweep; covering tests named so a future declaration does not double-cover): Ctrl+Home/Ctrl+End (caret moves in `StatusBarTests`/`SessionRestoreTests`), Alt+letter access keys (`MenuBarTests.AccessKeysOpenEachMenu`). **Corrected 2026-09-20 (§12 review R1):** was including tab chords as framework; Ctrl+T, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+Shift+T, and Ctrl+1..9 are app-declared in `AddTabAccelerators` and now ride the table above.

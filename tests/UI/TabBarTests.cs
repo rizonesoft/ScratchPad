@@ -193,6 +193,61 @@ public sealed class TabBarTests
 
     [InteractiveFact]
     [Trait("Category", "Interactive")]
+    public void NumberShortcutsCoverMiddlePositions()
+    {
+        // Fenced: physical chord dispatch IS the point (D00 T02 §12).
+        // Covers Ctrl+2/4/5/6/7/8; Ctrl+1/3/9 ride
+        // NumberShortcutsAndReopenMatchNotepad. Foreground confirmation
+        // Night-owed D00-T02-S12-N1.
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            window.Focus();
+            Thread.Sleep(300);
+            var add = FindButton(window, "Add New Tab");
+            Assert.NotNull(add);
+            for (int i = 1; i < 8; i++)
+            {
+                add.Invoke();
+            }
+
+            Assert.Equal(8, WaitForTabCount(window, 8));
+            for (int i = 0; i < 8; i++)
+            {
+                SelectTab(window, i);
+                ContentBox(window).Text = $"POS{i}";
+            }
+
+            for (int i = 0; i < 8; i++)
+            {
+                WaitForTabName(window, i, TabAccessibilityName.For($"POS{i}", isDirty: true));
+            }
+
+            UiInput.Press(window, VirtualKeyShort.KEY_2, withControl: true);
+            Assert.Equal("POS1", WaitForContent(window, "POS1"));
+            UiInput.Press(window, VirtualKeyShort.KEY_4, withControl: true);
+            Assert.Equal("POS3", WaitForContent(window, "POS3"));
+            UiInput.Press(window, VirtualKeyShort.KEY_5, withControl: true);
+            Assert.Equal("POS4", WaitForContent(window, "POS4"));
+            UiInput.Press(window, VirtualKeyShort.KEY_6, withControl: true);
+            Assert.Equal("POS5", WaitForContent(window, "POS5"));
+            UiInput.Press(window, VirtualKeyShort.KEY_7, withControl: true);
+            Assert.Equal("POS6", WaitForContent(window, "POS6"));
+            UiInput.Press(window, VirtualKeyShort.KEY_8, withControl: true);
+            Assert.Equal("POS7", WaitForContent(window, "POS7"));
+        }
+        finally
+        {
+            CloseApp(app, window);
+        }
+    }
+
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
     public void DragAttemptLeavesOrderUnchanged()
     {
         // Fenced (grandfather §8): drag physics IS the point (audit mouse).
