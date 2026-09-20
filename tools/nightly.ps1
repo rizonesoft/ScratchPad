@@ -127,19 +127,24 @@ function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepAr
   $doneSignal = Wait-Job -Job $stepJob -Timeout $TimeoutSeconds
   $killed = ($null -eq $doneSignal)
   if ($killed -and ($stepJob.State -eq 'Running')) { Stop-Job -Job $stepJob }
-  # A killed job's receive can throw a transport error (PSSessionStateBroken,
-  # measured 2026-09-20 on the first kill the script ever performed); the
-  # run must reap and report, never die here, so the receive never throws.
+  if ($killed) {
+    # Reap first: killing the test processes unblocks stuck job teardown
+    # in the common case, and the reap notes land however teardown ends.
+    Write-Host "--- $Name killed at the $TimeoutSeconds s cap; reaping its tree ---"
+    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
+  }
+  # Bounded teardown (D00 T02 §14 R2-F2): a pathologically stuck job
+  # object must not hang the run past its deadline. Wait out the stop
+  # briefly, drain what the transport still offers (a killed job's
+  # receive can throw PSSessionStateBroken, so it never throws), then
+  # drop the object; the reap above already got the processes.
+  $null = Wait-Job -Job $stepJob -Timeout 60
   try { Receive-Job -Job $stepJob | Write-Host } catch { Write-Host "--- $Name step-job receive failed after kill: $($_.Exception.Message) ---" }
   Remove-Job -Job $stepJob -Force
   $sw.Stop()
   $code = 1
   if (Test-Path $codeFile) { $code = [int](Get-Content $codeFile -Raw).Trim() }
-  if ($killed) {
-    $code = 1
-    Write-Host "--- $Name killed at the $TimeoutSeconds s cap; reaping its tree ---"
-    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
-  }
+  if ($killed) { $code = 1 }
   Write-Host "--- $Name exit: $code killed: $killed test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
   return [pscustomobject]@{ Code = $code; Killed = $killed }
 }
@@ -181,21 +186,34 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   $doneSignal = Wait-Job -Job $testJob -Timeout $GateSeconds
   $killed = ($null -eq $doneSignal)
   if ($killed -and ($testJob.State -eq 'Running')) { Stop-Job -Job $testJob }
-  # Same no-throw receive as Invoke-TimedStep: a killed test job's
-  # transport can break, and the gate verdict plus report must survive it.
+  if ($killed) {
+    # Reap first: same unblocking rationale as Invoke-TimedStep.
+    Write-Host "--- $Name suite killed at the $GateSeconds s bell; reaping its tree ---"
+    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
+  }
+  # Bounded teardown, same shape as Invoke-TimedStep (D00 T02 §14 R2-F2).
+  $null = Wait-Job -Job $testJob -Timeout 60
   try { Receive-Job -Job $testJob | Write-Host } catch { Write-Host "--- $Name test-job receive failed after kill: $($_.Exception.Message) ---" }
   Remove-Job -Job $testJob -Force
   $sw.Stop()
   $testCode = 1
   if (Test-Path $codeFile) { $testCode = [int](Get-Content $codeFile -Raw).Trim() }
-  if ($killed) {
-    $testCode = 1
-    Write-Host "--- $Name suite killed at the $GateSeconds s bell; reaping its tree ---"
-    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
+  if ($killed) { $testCode = 1 }
+  # Bounded gate wait (D00 T02 §14 R2-F1): the gate self-exits at its
+  # bell, but a hung gate binary must not strand the report past PT4H.
+  $gateHung = $false
+  $gateDone = Wait-Job -Job $job -Timeout ($GateSeconds + 120)
+  if ($null -eq $gateDone) {
+    $gateHung = $true
+    if ($job.State -eq 'Running') { Stop-Job -Job $job }
+    try { Receive-Job -Job $job | Out-Null } catch { }
+    Remove-Job -Job $job -Force
+  } else {
+    $gateCode = Receive-Job -Job $job -Wait -AutoRemoveJob
   }
-  $gateCode = Receive-Job -Job $job -Wait -AutoRemoveJob
   $verdict = ''
   if (Test-Path $VerdictFile) { $verdict = (Get-Content $VerdictFile -Raw).Trim() }
+  if ($gateHung) { $gateCode = 1; $verdict = 'gate hung past its bell plus grace (unproven)' }
   $overrun = $killed -or ($sw.Elapsed.TotalSeconds -gt $GateSeconds)
   Write-Host "--- $Name gate exit: $gateCode verdict: $verdict overrun: $overrun test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
   return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun }
@@ -410,6 +428,7 @@ $simCap = $env:SCRATCHPAD_LEG_CAP_SECONDS
 $capA = 1800; $capB = 300; $capI = 1800; $capSoak = 1800
 if (-not [string]::IsNullOrWhiteSpace($simCap)) {
   $capA = $capB = $capI = $capSoak = [int]$simCap
+  $simMode = $true
   Write-Warning "nightly: SIMULATION leg caps ${simCap}s; not a governed proof"
 }
 if ($simMode) { Write-Output "nightly: run deadline $($deadline.ToString('yyyy-MM-dd HH:mm:ss')) (simulation: reserve bypassed)" }
@@ -501,10 +520,14 @@ try {
   # A red build skips every leg but still writes the report: a scheduled
   # run with no fixed-path record reads as completed to the guard.
   try {
-    $code = Invoke-Step 'build' { & $Dotnet build src/ScratchPad.slnx --nologo }
-    if ($code -ne 0) { throw "solution build failed ($code)" }
-    $code = Invoke-Step 'build-gate' { & $Dotnet build tools/ForegroundLog/ForegroundLog.csproj --nologo }
-    if (($code -ne 0) -or (-not (Test-Path $GateExe))) { throw "gate build failed ($code)" }
+    # Bounded builds (D00 T02 §14 R2-F1): a hung toolchain must strand
+    # nothing, so the builds ride the same timed step as the legs (600 s
+    # against ~10 s normal). A killed build reds exactly like a red one:
+    # no leg runs, the report still lands.
+    $r = Invoke-TimedStep 'build' 600 @('build', 'src/ScratchPad.slnx', '--nologo') (Join-Path $trxDir 'build.testcode')
+    if (($r.Code -ne 0) -or $r.Killed) { throw "solution build failed (code $($r.Code), killed $($r.Killed))" }
+    $r = Invoke-TimedStep 'build-gate' 600 @('build', 'tools/ForegroundLog/ForegroundLog.csproj', '--nologo') (Join-Path $trxDir 'build-gate.testcode')
+    if (($r.Code -ne 0) -or $r.Killed -or (-not (Test-Path $GateExe))) { throw "gate build failed (code $($r.Code), killed $($r.Killed))" }
   } catch {
     $buildError = "$_"
     $failed = $true
@@ -621,7 +644,9 @@ try {
   $sumB = Get-LegSummary (Join-Path $trxDir 'run-b.trx') (Join-Path $nightDir "$stamp-primary.log")
   $sumI = Get-LegSummary (Join-Path $trxDir 'interactive.trx') (Join-Path $nightDir "$stamp-full.log")
   $coreReport = @()
-  $coreReport += "# Morning report: $day (core verdicts, pre-soak)"
+  $coreTitle = "# Morning report: $day (core verdicts, pre-soak)"
+  if ($simMode) { $coreTitle += ' (SIMULATION: not a governed proof)' }
+  $coreReport += $coreTitle
   $coreReport += ''
   $coreReport += "- HEAD: $script:buildHead"
   $coreReport += "- Core verdicts published before soak; the final report overwrites after soak (or budget-cut)"
@@ -681,7 +706,9 @@ try {
 # (Format-LegRow plus Get-LegNote live with the helpers above: the core
 # publish calls them before the final report block runs.)
 $report = @()
-$report += "# Morning report: $day"
+$reportTitle = "# Morning report: $day"
+if ($simMode) { $reportTitle += ' (SIMULATION: not a governed proof)' }
+$report += $reportTitle
 $report += ''
 $report += "- HEAD: $head"
 $report += "- Trigger: $trigger"
@@ -851,6 +878,10 @@ $reportPath = Join-Path $nightDir "morning-$day.md"
 Write-AtomicReport $report $reportPath
 Write-Output "nightly: report at $reportPath"
 
+# A simulation run never exits 0 (D00 T02 §14 R2-F3): short deadlines
+# prove the watchdog, never the suite, so no sim report reads as
+# governed green proof however its legs land.
+if ($simMode -and (-not $failed)) { Write-Output 'nightly: simulation run forced RED (not a governed proof)'; $failed = $true }
 if ($failed) { Write-Output 'nightly: RED (see above)'; exit 1 }
 Write-Output 'nightly: GREEN'
 exit 0
