@@ -196,7 +196,16 @@ function Install-Sdk {
 
 function Test-All {
   $res = @()
-  foreach ($spec in $Tasks) { $res += Test-OneTask $spec }
+  # Scheduled tasks are dev-box-only (dev SID plus dev workdir baked
+  # into the definitions): ephemeral CI runners can never satisfy
+  # them, so a cache-miss provision failed deterministically there.
+  # GitHub sets CI=true on every runner; skip the legs (verify and
+  # repair alike) instead of failing what cannot pass.
+  if ($env:CI -ne 'true') {
+    foreach ($spec in $Tasks) { $res += Test-OneTask $spec }
+  } else {
+    Write-Host 'provision: tasks skipped on CI (dev-box only)'
+  }
   $res += Test-HooksLeg
   $res += Test-WorkflowsLeg
   $res += Test-SdkLeg
@@ -223,9 +232,11 @@ if ($Verify) {
 if (@($results | Where-Object { -not $_.Ok }).Count -gt 0) {
   $hookNotes = try { Repair-HooksLeg } catch { @("repair crashed: $_") }
   foreach ($n in $hookNotes) { Write-Output "provision: repair hooks: $n" }
-  foreach ($spec in $Tasks) {
-    $tnote = try { Repair-OneTask $spec } catch { "repair crashed: $_" }
-    Write-Output "provision: repair task $($spec.Name): $tnote"
+  if ($env:CI -ne 'true') {
+    foreach ($spec in $Tasks) {
+      $tnote = try { Repair-OneTask $spec } catch { "repair crashed: $_" }
+      Write-Output "provision: repair task $($spec.Name): $tnote"
+    }
   }
   Write-Output 'provision: repair workflows: verify-only, nothing repaired'
   if (@($results | Where-Object { (-not $_.Ok) -and ($_.Name -eq 'sdk') }).Count -gt 0) { Install-Sdk }
