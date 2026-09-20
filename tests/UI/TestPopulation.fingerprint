@@ -1,0 +1,52 @@
+﻿# Nightly UI test population fingerprint (D00 T02 Â§15, D00-T02-S13-PR13).
+# One --list-tests discovery per leg filter; member FQNs sorted unique.
+# Regen: tools/Update-TestFingerprint.ps1 (build first). Review the diff:
+# every membership change stales prior proofs until re-accepted here.
+run-a-filter: Category!=Interactive&Category!=Primary
+run-b-filter: Category=Primary
+interactive-filter: Category=Interactive
+run-a-methods: 150
+run-a-cases: 167
+run-b:
+  UI.MainWindowTests.GeometryRestoresAcrossLaunches
+  UI.MultiWindowTests.MenuNewWindowOpensSecondWindowAtCascade
+run-b-methods: 2
+run-b-cases: 2
+interactive:
+  UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
+  UI.AcceleratorTests.ChordCtrlShiftGOpensStats
+  UI.AcceleratorTests.ChordCtrlShiftHOpensSnapshots
+  UI.AcceleratorTests.ChordCtrlShiftLOpensLock
+  UI.AcceleratorTests.ChordCtrlShiftNOpensSecondWindow
+  UI.AcceleratorTests.ChordCtrlShiftXOpensExport
+  UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
+  UI.LaunchTests.MissingFileOfferEnterAcceptsAsYes
+  UI.MenuBarTests.AccessKeysOpenEachMenu
+  UI.MenuBarTests.FileMenuLiveAcceleratorsWork
+  UI.MenuBarTests.FileOpenLoadsFileWithForcedEncoding
+  UI.MenuBarTests.FileOpenMissingNameOffersCreate
+  UI.MenuBarTests.FileOpenOpensExactlyOneFile
+  UI.MenuBarTests.FileOpenShowsPickerWithEncodingList
+  UI.MenuBarTests.FileSaveAllWalksDirtyTabs
+  UI.MenuBarTests.FileSaveAsPrefillsEncodingAndEol
+  UI.MenuBarTests.FileSaveAsWritesChosenPathAndEncoding
+  UI.MenuBarTests.FileSaveOnUntitledOpensSaveAs
+  UI.MultiWindowTests.TabDragOutsideStripDetachesNothing
+  UI.PinnedTabsTests.CloseOthersSkipsPinned
+  UI.PinnedTabsTests.CloseRightSkipsPinned
+  UI.PinnedTabsTests.DoubleClickTogglesPinGlyph
+  UI.PinnedTabsTests.PinsSurviveRelaunch
+  UI.PinnedTabsTests.SingleCloseStillClosesPinned
+  UI.SessionRestoreTests.QuitAndRelaunchRestoresTabsContentsAndCarets
+  UI.StatusBarTests.KeystrokesAndCaretMovesUpdateStrip
+  UI.StatusBarTests.StatusSegmentsHaveNoClickPath
+  UI.TabBarTests.ContextMenuMatchesNotepad
+  UI.TabBarTests.DontSaveClosesAndNeverReopens
+  UI.TabBarTests.DragAttemptLeavesOrderUnchanged
+  UI.TabBarTests.MiddleClickClosesTheTabUnderTheCursor
+  UI.TabBarTests.NumberShortcutsAndReopenMatchNotepad
+  UI.TabBarTests.NumberShortcutsCoverMiddlePositions
+  UI.TabBarTests.ThreeTabsSwitchAndClose
+  UI.TitleBarIconTests.AddButtonRealClickOpensTab
+interactive-methods: 35
+interactive-cases: 35

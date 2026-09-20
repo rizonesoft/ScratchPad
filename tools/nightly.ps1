@@ -44,8 +44,14 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $SdkDir = Join-Path $Root '.tools\dotnet-win-x64'
 $Dotnet = Join-Path $SdkDir 'dotnet.exe'
 $GateExe = Join-Path $Root 'Bin\ForegroundLog\Debug\ForegroundLog.exe'
+$JobCtl = Join-Path $Root 'Bin\JobControl\Debug\JobControl.exe'
 . (Join-Path $PSScriptRoot 'NightDebt.ps1')
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+# Run A test projects (D00 T02 §15, D00-T02-S13-R2-F2): the leg runs one
+# contained step per project (each keeps its own trx), and the summary
+# plus conservation merge the same set. One list feeds both, so the
+# steps and the merge cannot drift apart.
+$runAProjects = @('Smoke', 'Unit', 'Protocol', 'UI')
 
 function Get-InInteractiveWindow {
   $spec = $env:SCRATCHPAD_INTERACTIVE_WINDOW
@@ -108,12 +114,12 @@ function Stop-LegLog {
 }
 
 function Invoke-OrphanReap([datetime]$OlderThan) {
-  # Reap test apps/hosts under this checkout's Bin. Pre-flight passes the
-  # run start so only true orphans (dead-run leftovers) die; a live
-  # concurrent run's children are younger and survive. Post-kill passes
-  # MaxValue: the mutex guarantees no other governed run, so everything
-  # matching is the killed leg's tree. Write-Host, not Write-Output: the
-  # caller captures this function's return (note lines for the report).
+  # Transitional pre-flight reap (D00 T02 §15 PR21): test apps/hosts
+  # under this checkout's Bin older than the run start die. Live-leg
+  # kills moved to job objects (exact trees, no name matching); this
+  # matcher survives only for pre-§15 leftovers, which age out after
+  # one governed run. Write-Host, not Write-Output: the caller captures
+  # this function's return (note lines for the report).
   $notes = @()
   foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='ScratchPad.exe' OR Name='testhost.exe'" -ErrorAction SilentlyContinue | Where-Object { ($_.ExecutablePath -like "$Root\Bin\*") -and ($_.CreationDate -lt $OlderThan) })) {
     $note = "$($p.Name) pid=$($p.ProcessId) started=$($p.CreationDate)"
@@ -124,43 +130,22 @@ function Invoke-OrphanReap([datetime]$OlderThan) {
   return $notes
 }
 
-function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepArgs, [string]$CodeFile, [switch]$NoStub) {
-  # Bounded step for legs without a gate window (Interactive, soak): the
-  # command runs in a job, killed at the cap so a hung drive cannot eat
-  # the window and strand the report. Same sidecar discipline as
-  # Invoke-GatedLeg (Receive-Job mixes output with the code, and a killed
-  # job never emits its code). Returns Code plus Killed.
+function Invoke-BootstrapStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepArgs, [string]$CodeFile) {
+  # Bounded pre-containment step (D00 T02 §15 PR21): builds the
+  # contained runner plus its siblings, so no JobControl exists yet.
+  # Plain job plus bound; orphans on timeout are unobserved and age to
+  # the next pre-flight. Returns Code plus Killed.
   if (Test-Path $CodeFile) { Remove-Item $CodeFile -Force }
-  # Stub legs (D00 T02 §14 PR4): SCRATCHPAD_STUB_LEGS replaces the suite
-  # with a sleeper that always overruns, so the all-hang catastrophe is
-  # reproducible without waiting for real tests. Simulation-only.
-  $stubSecs = 0
-  if ((-not $NoStub) -and (-not [string]::IsNullOrWhiteSpace($env:SCRATCHPAD_STUB_LEGS))) {
-    $stubSecs = $TimeoutSeconds + 30
-    Write-Warning "nightly: STUBBED leg $Name (sleeps past its cap); not a governed proof"
-  }
   $stepJob = Start-Job -ScriptBlock {
-    param($exe, $argList, $dir, $codeOut, $sleepSecs)
-    if ($sleepSecs -gt 0) { Start-Sleep -Seconds $sleepSecs; 0 | Set-Content -Path $codeOut; return }
+    param($exe, $argList, $dir, $codeOut)
     Set-Location $dir
     & $exe @argList
     $LASTEXITCODE | Set-Content -Path $codeOut
-  } -ArgumentList @($Dotnet, $StepArgs, $Root, $CodeFile, $stubSecs)
+  } -ArgumentList @($Dotnet, $StepArgs, $Root, $CodeFile)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $doneSignal = Wait-Job -Job $stepJob -Timeout $TimeoutSeconds
   $killed = ($null -eq $doneSignal)
   if ($killed -and ($stepJob.State -eq 'Running')) { Stop-Job -Job $stepJob }
-  if ($killed) {
-    # Reap first: killing the test processes unblocks stuck job teardown
-    # in the common case, and the reap notes land however teardown ends.
-    Write-Host "--- $Name killed at the $TimeoutSeconds s cap; reaping its tree ---"
-    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
-  }
-  # Bounded teardown (D00 T02 §14 R2-F2): a pathologically stuck job
-  # object must not hang the run past its deadline. Wait out the stop
-  # briefly, drain what the transport still offers (a killed job's
-  # receive can throw PSSessionStateBroken, so it never throws), then
-  # drop the object; the reap above already got the processes.
   $null = Wait-Job -Job $stepJob -Timeout 60
   try { Receive-Job -Job $stepJob | Write-Host } catch { Write-Host "--- $Name step-job receive failed after kill: $($_.Exception.Message) ---" }
   Remove-Job -Job $stepJob -Force
@@ -172,23 +157,91 @@ function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepAr
   return [pscustomobject]@{ Code = $code; Killed = $killed }
 }
 
-function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [string]$GateLog, [string]$VerdictFile, [string[]]$TestArgs) {
+$script:legSeq = 0
+function Invoke-ContainedSuite([string]$Name, [int]$CapSeconds, [string]$Exe, [string[]]$ExeArgs, [string]$OutLog, [string]$DumpDir, [int]$StubSecs, [string]$StubUnit) {
+  # Out-of-process contained leg (D00 T02 §15 PR21/R3-F2): the suite runs
+  # under JobControl inside a named job object, so kills reap exactly
+  # the leg's tree, pre-kill dumps land per PID, and abandoned handles
+  # still kill at close. The supervisor self-bounds at the cap; the PS
+  # bound (cap plus kill slack) backstops a stuck supervisor with a
+  # named kill (one syscall, no runspace involved) plus abandon-when-hung
+  # teardown, so a wedged runspace strands no report. Returns Code,
+  # Killed, Dumped. Never throws for a red or killed leg (a missing
+  # JobControl binary throws: broken run, not a red leg).
+  if (-not (Test-Path $JobCtl)) { throw "nightly: job-control binary missing ($JobCtl); build tools/JobControl first" }
+  $script:legSeq++
+  $jobName = "Global\ScratchPadLeg-$PID-$script:stamp-$Name-$script:legSeq"
+  $runExe = $Exe
+  $runArgs = $ExeArgs
+  if ($StubSecs -gt 0) {
+    $runExe = Join-Path $PSHOME 'powershell.exe'
+    $runArgs = @('-NoProfile', '-Command', "Start-Sleep -Seconds $StubSecs")
+    Write-Warning "nightly: STUBBED leg $Name (sleeps past its $StubUnit); not a governed proof"
+  }
+  if (Test-Path $OutLog) { Remove-Item $OutLog -Force }
+  $sup = Start-Job -ScriptBlock {
+    param($jc, $job, $out, $cap, $dump, $exe, $argList)
+    & $jc 'run' '--job' $job '--out' $out '--timeout' "$cap" '--dump' $dump '--' $exe @argList 2>&1
+  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, $DumpDir, $runExe, $runArgs)
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  $doneSignal = Wait-Job -Job $sup -Timeout ($CapSeconds + $script:killSlack)
+  $expired = ($null -eq $doneSignal)
+  $jobLine = ''
+  if (-not $expired) {
+    try { $jobLine = @(Receive-Job -Job $sup) -join "`n" } catch { $jobLine = '' }
+  }
+  $m = [regex]::Match($jobLine, 'JOBCTL code=(\S+) timeout=(\d+) pid=(\d+) dumped=(\d+)')
+  $killed = $expired
+  $code = 1
+  $dumped = 0
+  if ($m.Success) {
+    $dumped = [int]$m.Groups[4].Value
+    if ($m.Groups[2].Value -eq '1') { $killed = $true }
+    elseif ($m.Groups[1].Value -ne 'TIMEOUT') { $code = [int]$m.Groups[1].Value }
+  } elseif (-not $expired) {
+    throw "nightly: $Name leg runner failed (no JOBCTL line: $jobLine)"
+  }
+  if ($killed) {
+    Write-Host "--- $Name killed at the $CapSeconds s cap; job kill is exact, dumped $dumped ---"
+    try { & $JobCtl kill --job $jobName | Out-Null } catch { }
+  }
+  $null = Invoke-BoundedTeardown $sup 60 "$Name supervisor"
+  $sw.Stop()
+  if ($killed) { $code = 1 }
+  Write-Host "--- $Name exit: $code killed: $killed dumped: $dumped test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
+  return [pscustomobject]@{ Code = $code; Killed = $killed; Dumped = $dumped }
+}
+
+function Invoke-TimedStep([string]$Name, [int]$TimeoutSeconds, [string[]]$StepArgs, [string]$OutLog, [string]$DumpDir, [switch]$NoStub) {
+  # Bounded step for legs without a gate window (Interactive, soak):
+  # contained suite (D00 T02 §15 PR21), killed exactly at the cap.
+  # Stub legs (D00 T02 §14 PR4): SCRATCHPAD_STUB_LEGS replaces the suite
+  # with a sleeper that always overruns. Simulation-only.
+  $stubSecs = 0
+  if ((-not $NoStub) -and (-not [string]::IsNullOrWhiteSpace($env:SCRATCHPAD_STUB_LEGS))) {
+    $stubSecs = $TimeoutSeconds + 30
+  }
+  return Invoke-ContainedSuite $Name $TimeoutSeconds $Dotnet $StepArgs $OutLog $DumpDir $stubSecs 'cap'
+}
+
+function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [string]$GateLog, [string]$VerdictFile, [object[]]$SuiteSteps, [string]$DumpDir) {
   # Gate and suite run together: the gate polls the whole window while the
   # tests drive. The suite must finish inside the window; overrun fails the
-  # leg (partial proof is no proof). Both sides run in background jobs: the
-  # gate job because the Start-Process object's ExitCode reads back empty in
+  # leg (partial proof is no proof). The gate runs in a background job
+  # because the Start-Process object's ExitCode reads back empty in
   # Windows PowerShell 5.1 (measured 2026-09-20 with and without
-  # redirection), while the job's $LASTEXITCODE reads back the true verdict;
-  # the test job because the window is an enforced timeout, not a
-  # stopwatch: a hung suite is killed at the bell so the later legs still
-  # run (pre-fix the run hung until the task's 4-hour limit). The test
-  # command arrives as an exe-plus-args array (a scriptblock would lose its
-  # variables across the job boundary); its output lands in the transcript
-  # at completion, not live. The job's exit code lands in a sidecar file:
-  # Receive-Job returns output plus code as one flat array, and a killed
-  # job never emits its code. Returns a result object, never throws for a
-  # red leg (missing gate binary throws: that is a broken run, not a red
-  # leg).
+  # redirection), while the job's $LASTEXITCODE reads back the true
+  # verdict; each suite step runs out of process under JobControl (D00 T02
+  # §15 PR21), killed exactly at its cap with pre-kill dumps. Multi-step
+  # legs (D00 T02 §15, D00-T02-S13-R2-F2) run one step per test project
+  # under the same gate window, so each project keeps its own trx; every
+  # step's kill cap is the REMAINING leg budget, a killed step ends the
+  # loop (its cap was the remainder), and TestCode keeps the first
+  # nonzero suite code. Stub legs (D00 T02 §14 PR4): every suite step
+  # becomes a sleeper, the gate stays real (it watches an idle box and
+  # exits clean at its bell). Each step carries Label, Args, OutLog.
+  # Returns a result object, never throws for a red leg (a missing gate
+  # or job-control binary throws: broken run, not a red leg).
   if (-not (Test-Path $GateExe)) { throw "nightly: gate binary missing ($GateExe); build tools/ForegroundLog first" }
   $gateArgsArray = @("$GateSeconds", $GateLog)
   if ($GateArgs -ne '') { $gateArgsArray += $GateArgs }
@@ -197,39 +250,26 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
     & $exe @argList > $verdict
     $LASTEXITCODE
   } -ArgumentList @($GateExe, $gateArgsArray, $VerdictFile)
-  $codeFile = "$VerdictFile.testcode"
-  if (Test-Path $codeFile) { Remove-Item $codeFile -Force }
-  # Stub legs, same knob as Invoke-TimedStep (D00 T02 §14 PR4). The gate
-  # stays real: it watches an idle box and exits clean at its bell.
   $stubSecs = 0
   if (-not [string]::IsNullOrWhiteSpace($env:SCRATCHPAD_STUB_LEGS)) {
     $stubSecs = $GateSeconds + 30
-    Write-Warning "nightly: STUBBED leg $Name (sleeps past its bell); not a governed proof"
   }
-  $testJob = Start-Job -ScriptBlock {
-    param($exe, $argList, $dir, $codeOut, $sleepSecs)
-    if ($sleepSecs -gt 0) { Start-Sleep -Seconds $sleepSecs; 0 | Set-Content -Path $codeOut; return }
-    Set-Location $dir
-    & $exe @argList
-    $LASTEXITCODE | Set-Content -Path $codeOut
-  } -ArgumentList @($Dotnet, $TestArgs, $Root, $codeFile, $stubSecs)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
-  $doneSignal = Wait-Job -Job $testJob -Timeout $GateSeconds
-  $killed = ($null -eq $doneSignal)
-  if ($killed -and ($testJob.State -eq 'Running')) { Stop-Job -Job $testJob }
-  if ($killed) {
-    # Reap first: same unblocking rationale as Invoke-TimedStep.
-    Write-Host "--- $Name suite killed at the $GateSeconds s bell; reaping its tree ---"
-    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
+  $testCode = 0
+  $killed = $false
+  foreach ($step in $SuiteSteps) {
+    $remaining = $GateSeconds - [int]$sw.Elapsed.TotalSeconds
+    if ($remaining -le 0) {
+      $killed = $true
+      Write-Host "--- $Name-$($step.Label) stood down (leg budget exhausted: unproven) ---"
+      break
+    }
+    $suite = Invoke-ContainedSuite "$Name-$($step.Label)" $remaining $Dotnet $step.Args $step.OutLog $DumpDir $stubSecs 'bell'
+    if ($suite.Killed) { $killed = $true }
+    if (($testCode -eq 0) -and ($suite.Code -ne 0)) { $testCode = $suite.Code }
+    if ($suite.Killed) { break }
   }
-  # Bounded teardown, same shape as Invoke-TimedStep (D00 T02 §14 R2-F2).
-  $null = Wait-Job -Job $testJob -Timeout 60
-  try { Receive-Job -Job $testJob | Write-Host } catch { Write-Host "--- $Name test-job receive failed after kill: $($_.Exception.Message) ---" }
-  Remove-Job -Job $testJob -Force
   $sw.Stop()
-  $testCode = 1
-  if (Test-Path $codeFile) { $testCode = [int](Get-Content $codeFile -Raw).Trim() }
-  if ($killed) { $testCode = 1 }
   # Bounded gate wait (D00 T02 §14 R2-F1, R3-F1): the gate legitimately
   # runs to its bell (the window IS the proof), so the wait lasts until
   # bell-plus-grace measured from GATE START, never a fresh cap from here:
@@ -255,19 +295,11 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   if ($gateHung) { $gateCode = 1; $verdict = 'gate hung past its bell plus grace (unproven)' }
   $overrun = $killed -or ($sw.Elapsed.TotalSeconds -gt $GateSeconds)
   Write-Host "--- $Name gate exit: $gateCode verdict: $verdict overrun: $overrun test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
-  return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun }
+  return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun; Killed = $killed }
 }
 
 # Result parsing plus report formatting live in tools/NightlyParse.ps1
 # (D00 T02 §15: shared with the parser fixture suite); dot-sourced below.
-
-function Write-AtomicReport([string[]]$Lines, [string]$Path) {
-  # Same-volume rename is atomic on NTFS: a kill between the write and
-  # the rename leaves the previous report, never a truncation.
-  $tmp = "$Path.tmp"
-  $Lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
-  Move-Item -Path $tmp -Destination $Path -Force
-}
 
 function Publish-NightlyReport([string[]]$Lines, [string]$ArchiveSuffix) {
   # Fixed path plus stamp-scoped archive plus latest pointer (D00 T02
@@ -450,7 +482,25 @@ New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
 # locks, which reds the build (MSB3027) until reaped; stale windows also
 # contaminate window-enumerating tests, so the reap precedes every leg.
 $reapNotes = @(Invoke-OrphanReap $runStart)
+$captureNotes = @()
 $failed = $false
+# Suite-wide Primary guard (D00 T02 §15, D00-T02-S13-R3-F1): a Primary
+# trait outside tests/UI runs in no governed leg, so the run reds
+# before building with the strays named. Same shape as the red-build
+# path: nothing runs, the report still lands.
+$placement = Test-PrimaryPlacement (Join-Path $Root 'tests')
+$placementError = ''
+if (-not $placement.Ok) {
+  $placementError = "Primary trait outside tests/UI: $($placement.Strays -join ', ')"
+  $failed = $true
+  $SkipDefault = $true
+  $SkipPrimary = $true
+  $SkipFenced = $true
+  $SkipSoak = $true
+  Write-Output "nightly: $placementError; no leg runs on a misplaced trait, report still lands"
+}
+$placementLine = if ($placementError -eq '') { "OK ($($placement.UiCount) Primary traits in tests/UI, none elsewhere)" } else { "VIOLATION: $placementError" }
+$populationLine = 'not verified (check skipped)'
 $buildError = ''
 $gateA = $null
 $gateB = $null
@@ -458,6 +508,7 @@ $interactiveRan = $false
 $interactiveKilled = $false
 $interactiveLeaked = @()
 $interactiveSkipReason = ''
+$nightOwedRows = @()
 # Collector snapshot (D00 T02 §10 items 4-6): open debts before the
 # legs, so the report attributes per-debt entries against this run's
 # start state, never a mid-run re-read. A failed query reds the run
@@ -531,13 +582,15 @@ try {
   try {
     if ($buildError -ne '') { throw $buildError }
     # Bounded builds (D00 T02 §14 R2-F1): a hung toolchain must strand
-    # nothing, so the builds ride the same timed step as the legs (600 s
-    # against ~10 s normal). A killed build reds exactly like a red one:
-    # no leg runs, the report still lands.
-    $r = Invoke-TimedStep 'build' 600 @('build', 'src/ScratchPad.slnx', '--nologo') (Join-Path $trxDir 'build.testcode') -NoStub
+    # nothing, so the builds ride a bounded bootstrap step (600 s against
+    # ~10 s normal); the contained runner cannot build itself. A killed
+    # build reds exactly like a red one: no leg runs, the report lands.
+    $r = Invoke-BootstrapStep 'build' 600 @('build', 'src/ScratchPad.slnx', '--nologo') (Join-Path $trxDir 'build.testcode')
     if (($r.Code -ne 0) -or $r.Killed) { throw "solution build failed (code $($r.Code), killed $($r.Killed))" }
-    $r = Invoke-TimedStep 'build-gate' 600 @('build', 'tools/ForegroundLog/ForegroundLog.csproj', '--nologo') (Join-Path $trxDir 'build-gate.testcode') -NoStub
+    $r = Invoke-BootstrapStep 'build-gate' 600 @('build', 'tools/ForegroundLog/ForegroundLog.csproj', '--nologo') (Join-Path $trxDir 'build-gate.testcode')
     if (($r.Code -ne 0) -or $r.Killed -or (-not (Test-Path $GateExe))) { throw "gate build failed (code $($r.Code), killed $($r.Killed))" }
+    $r = Invoke-BootstrapStep 'build-jobcontrol' 600 @('build', 'tools/JobControl/JobControl.csproj', '--nologo') (Join-Path $trxDir 'build-jobcontrol.testcode')
+    if (($r.Code -ne 0) -or $r.Killed -or (-not (Test-Path $JobCtl))) { throw "job-control build failed (code $($r.Code), killed $($r.Killed))" }
   } catch {
     $buildError = "$_"
     $failed = $true
@@ -556,7 +609,34 @@ try {
   try { $dirtyCount = @((git -C $Root status --porcelain)).Count; if ($dirtyCount -gt 0) { $dirtyState = "dirty:$dirtyCount" } } catch { $dirtyState = 'unknown' }
   $sdkVersion = 'unknown'
   try { $sdkVersion = (& $Dotnet --version).Trim() } catch { }
-  $script:snapshot = "HEAD $($script:buildHead) $dirtyState; config Debug; dotnet $sdkVersion; UI $(Get-ShortHash (Join-Path $Root 'Bin\UI\Debug\UI.dll')); Protocol $(Get-ShortHash (Join-Path $Root 'Bin\Protocol\Debug\Protocol.dll')); gate $(Get-ShortHash $GateExe)"
+  $script:snapshot = "HEAD $($script:buildHead) $dirtyState; config Debug; dotnet $sdkVersion; UI $(Get-ShortHash (Join-Path $Root 'Bin\UI\Debug\UI.dll')); Protocol $(Get-ShortHash (Join-Path $Root 'Bin\Protocol\Debug\Protocol.dll')); gate $(Get-ShortHash $GateExe); jobctl $(Get-ShortHash $JobCtl)"
+  # Population fingerprint (D00 T02 §15, D00-T02-S13-PR13): the tree's
+  # leg populations must match the accepted fingerprint, or prior
+  # proofs stand stale. Discovery runs against the just-built UI
+  # binaries. Same shape as the red-build path: nothing runs, the
+  # report still lands with the drift named.
+  if ($buildError -eq '') {
+    try {
+      $fpPath = Join-Path $Root 'tests\UI\TestPopulation.fingerprint'
+      $fpRead = Read-TestPopulationFile $fpPath
+      if (-not $fpRead.Ok) { throw $fpRead.Error }
+      $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fpRead.RunAFilter $fpRead.RunBFilter $fpRead.InteractiveFilter
+      $pop = Compare-TestPopulation $fpPath (Join-Path $PSScriptRoot 'nightly.ps1') $disc
+      if (-not $pop.Ok) { throw ("population drift: " + ($pop.Drifts -join '; ')) }
+      $populationLine = "OK (run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases))"
+      Write-Output "nightly: population fingerprint matches ($populationLine)"
+    } catch {
+      $populationLine = "DRIFT: $_"
+      $failed = $true
+      $SkipDefault = $true
+      $SkipPrimary = $true
+      $SkipFenced = $true
+      $SkipSoak = $true
+      Write-Output "nightly: $populationLine; no leg runs on a drifted population, report still lands"
+    }
+  } else {
+    $populationLine = 'not verified (build failed)'
+  }
 
   if ((-not $SkipDefault) -and (-not (Test-LegBudget $capA))) {
     $SkipDefault = $true
@@ -568,15 +648,22 @@ try {
     $log = Join-Path $nightDir "$stamp-default.log"
     Start-LegLog $log 'full tree, Category!=Interactive&Category!=Primary, backgrounded'
     try {
-      $trx = Join-Path $trxDir 'run-a.trx'
       $gateLog = Join-Path $trxDir 'gate-default.log'
       $verdictFile = Join-Path $trxDir 'gate-default.out'
+      # One step per test project (D00 T02 §15, D00-T02-S13-R2-F2): a
+      # single solution run shares one LogFileName across projects, so
+      # each project overwrote the last one's trx. Per-project runs
+      # keep per-project trx files under the same gate window.
       # -e is load-bearing: shell exports do not reach the app through
       # the test host (measured 2026-09-17); see docs/testing.md.
-      $testArgsA = @('test', 'src/ScratchPad.slnx', '--no-build', '--nologo', '--filter', 'Category!=Interactive&Category!=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-a.trx', '--results-directory', $trxDir)
-      $r = Invoke-GatedLeg 'run-a' $capA '' $gateLog $verdictFile $testArgsA
+      $stepsA = @()
+      foreach ($proj in $runAProjects) {
+        $stepsA += [pscustomobject]@{ Label = $proj; Args = @('test', "tests/$proj/$proj.csproj", '--no-build', '--nologo', '--filter', 'Category!=Interactive&Category!=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=run-a-$proj.trx", '--results-directory', $trxDir); OutLog = (Join-Path $nightDir "$stamp-default-$proj.out.log") }
+      }
+      $r = Invoke-GatedLeg 'run-a' $capA '' $gateLog $verdictFile $stepsA (Join-Path $trxDir 'captures-run-a')
       $gateA = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
+      if (($r.TestCode -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'run-a' (Join-Path $trxDir 'captures-run-a') $r.Killed) }
     } finally {
       Stop-LegLog
     }
@@ -595,9 +682,11 @@ try {
       $gateLog = Join-Path $trxDir 'gate-primary.log'
       $verdictFile = Join-Path $trxDir 'gate-primary.out'
       $testArgsB = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-b.trx', '--results-directory', $trxDir)
-      $r = Invoke-GatedLeg 'run-b' $capB '--expect-primary' $gateLog $verdictFile $testArgsB
+      $stepsB = @([pscustomobject]@{ Label = 'UI'; Args = $testArgsB; OutLog = ([System.IO.Path]::ChangeExtension($log, '.out.log')) })
+      $r = Invoke-GatedLeg 'run-b' $capB '--expect-primary' $gateLog $verdictFile $stepsB (Join-Path $trxDir 'captures-run-b')
       $gateB = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
+      if (($r.TestCode -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'run-b' (Join-Path $trxDir 'captures-run-b') $r.Killed) }
     } finally {
       Stop-LegLog
     }
@@ -609,6 +698,20 @@ try {
     $budgetCut += 'Interactive (collection)'
     $failed = $true
     Write-Output 'nightly: Interactive budget-cut (unproven): its cap no longer fits inside the run deadline'
+    # Cut-work handoff (D00 T02 §15, D00-T02-S14-PR10): every unexecuted
+    # case becomes a staged Night-owed row for triage to file via
+    # add-todo, so the cut never silently reduces coverage. Runs stage
+    # text; triage files. Discovery failure re-owes the whole
+    # collection filter instead of dropping the debt.
+    try {
+      $owed = Get-ListTestsCases $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $collectFilter 'cut-interactive'
+      $nightOwedRows += "- $($owed.MethodCount) methods, $($owed.CaseCount) cases unexecuted (interactive budget-cut $stamp; collector runs each method filter)"
+      foreach ($fq in $owed.Methods) { $nightOwedRows += "- Night-owed: $fq | collector filter: FullyQualifiedName=$fq" }
+      Write-Output "nightly: interactive cut stages $($owed.MethodCount) Night-owed rows"
+    } catch {
+      $nightOwedRows += "- Night-owed: collection unverifiable ($_) | collector filter: $collectFilter (full collection re-owed)"
+      Write-Output 'nightly: interactive cut discovery failed; full collection re-owed'
+    }
   }
   if (-not $SkipFenced) {
     $log = Join-Path $nightDir "$stamp-full.log"
@@ -617,10 +720,11 @@ try {
       try {
         $trx = Join-Path $trxDir 'interactive.trx'
         $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', $collectFilter, '-e', 'SCRATCHPAD_INTERACTIVE_FORCE=1', '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
-        $r = Invoke-TimedStep 'interactive' $capI $stepArgs "$trx.testcode"
+        $r = Invoke-TimedStep 'interactive' $capI $stepArgs ([System.IO.Path]::ChangeExtension($log, '.out.log')) (Join-Path $trxDir 'captures-interactive')
         $interactiveRan = $true
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
+        if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
         $leaked = @(Get-NonQuarantineSkips $trx)
         $interactiveLeaked = $leaked
         if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
@@ -640,10 +744,11 @@ try {
       try {
         $trx = Join-Path $trxDir 'interactive.trx'
         $stepArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', $collectFilter, '--logger', 'trx;LogFileName=interactive.trx', '--results-directory', $trxDir)
-        $r = Invoke-TimedStep 'interactive' $capI $stepArgs "$trx.testcode"
+        $r = Invoke-TimedStep 'interactive' $capI $stepArgs ([System.IO.Path]::ChangeExtension($log, '.out.log')) (Join-Path $trxDir 'captures-interactive')
         $interactiveRan = $true
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
+        if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
         $leaked = @(Get-NonQuarantineSkips $trx)
         $interactiveLeaked = $leaked
         if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
@@ -658,9 +763,48 @@ try {
   # Core verdicts publish before soak (D00 T02 §14 item 3): the three
   # regression legs land on the fixed report path now, so a long night
   # keeps its core proof even if soak eats the remaining budget.
-  $sumA = Get-LegSummary (Join-Path $trxDir 'run-a.trx') (Join-Path $nightDir "$stamp-default.log")
-  $sumB = Get-LegSummary (Join-Path $trxDir 'run-b.trx') (Join-Path $nightDir "$stamp-primary.log")
-  $sumI = Get-LegSummary (Join-Path $trxDir 'interactive.trx') (Join-Path $nightDir "$stamp-full.log")
+  $runATrx = @()
+  $runALogs = @((Join-Path $nightDir "$stamp-default.log"))
+  foreach ($proj in $runAProjects) {
+    $runATrx += (Join-Path $trxDir "run-a-$proj.trx")
+    $runALogs += (Join-Path $nightDir "$stamp-default-$proj.out.log")
+  }
+  $sumA = Get-LegSummary $runATrx $runALogs
+  $sumB = Get-LegSummary @((Join-Path $trxDir 'run-b.trx')) @((Join-Path $nightDir "$stamp-primary.log"))
+  $sumI = Get-LegSummary @((Join-Path $trxDir 'interactive.trx')) @((Join-Path $nightDir "$stamp-full.log"))
+  # Count conservation (D00 T02 §15 PR23): any break reds the run with
+  # the numbers named; a silent new outcome class fails closed. The
+  # expected-assembly set enforces only on completed legs (a null gate
+  # covers skip plus cut; killed legs are already unproven).
+  $conservationNotes = @()
+  $completedA = ($null -ne $gateA) -and (-not $gateA.Killed)
+  $completedB = ($null -ne $gateB) -and (-not $gateB.Killed)
+  $completedI = $interactiveRan -and (-not $interactiveKilled)
+  $conLegs = @(
+    [pscustomobject]@{ Leg = 'Run A'; Trx = $runATrx; Logs = $runALogs; Enforce = $completedA },
+    [pscustomobject]@{ Leg = 'Run B'; Trx = @((Join-Path $trxDir 'run-b.trx')); Logs = @((Join-Path $nightDir "$stamp-primary.log")); Enforce = $completedB },
+    [pscustomobject]@{ Leg = 'Interactive'; Trx = @((Join-Path $trxDir 'interactive.trx')); Logs = @((Join-Path $nightDir "$stamp-full.log")); Enforce = $completedI }
+  )
+  foreach ($leg in $conLegs) {
+    $con = Test-CountConservation $leg.Leg $leg.Trx $leg.Logs $leg.Enforce
+    if (-not $con.Ok) {
+      $failed = $true
+      $conservationNotes += @($con.Breaks | ForEach-Object { "- Conservation RED: $_" })
+    }
+  }
+  # Quarantine windows (D00 T02 §15 PR30): an overdue window auto-fails
+  # the run with notification (this section, until §17 carries it).
+  $quar = Test-QuarantineWindows (Join-Path $Root 'docs/soak-and-quarantine.md') (Get-Date)
+  $quarantineNotes = @()
+  if ($quar.Overdue.Count -gt 0) {
+    $failed = $true
+    foreach ($o in $quar.Overdue) {
+      if ($o.Malformed) { $quarantineNotes += "- OVERDUE (malformed due '$($o.Due)'): $($o.Test) (owner $($o.Owner))" }
+      else { $quarantineNotes += "- OVERDUE: $($o.Test) (due $($o.Due), owner $($o.Owner))" }
+    }
+  } else {
+    $quarantineNotes += "- Windows current ($($quar.Open) open, earliest due $($quar.EarliestDue))"
+  }
   $coreReport = @()
   $coreTitle = "# Morning report: $day (core verdicts, pre-soak)"
   if ($simMode) { $coreTitle += ' (SIMULATION: not a governed proof)' }
@@ -672,6 +816,8 @@ try {
   $coreReport += ''
   $coreReport += "- HEAD: $script:buildHead"
   $coreReport += "- Run identity: $stamp-pid$PID"
+  $coreReport += "- Placement: $placementLine"
+  $coreReport += "- Population: $populationLine"
   $coreReport += "- Core verdicts published before soak; the final report overwrites after soak (or budget-cut)"
   $coreReport += ''
   $coreReport += '| Leg | Counts | Gate | Infra | Log |'
@@ -679,6 +825,11 @@ try {
   $coreReport += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
   $coreReport += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
   $coreReport += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
+  if ($conservationNotes.Count -gt 0) { $coreReport += ''; $coreReport += $conservationNotes }
+  $coreReport += ''
+  $coreReport += '## Quarantine'
+  $coreReport += ''
+  $coreReport += $quarantineNotes
   Publish-NightlyReport $coreReport '-core'
   Write-Output "nightly: core verdicts published before soak"
   if (-not $SkipSoak) {
@@ -690,9 +841,10 @@ try {
         break
       }
       $soakArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category!=Interactive', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=ui-soak-$i.trx", '--results-directory', $trxDir)
-      $r = Invoke-TimedStep "soak-ui-$i" $capSoak $soakArgs (Join-Path $trxDir "ui-soak-$i.testcode")
+      $r = Invoke-TimedStep "soak-ui-$i" $capSoak $soakArgs (Join-Path $trxDir "soak-ui-$i.out.log") (Join-Path $trxDir "captures-soak-ui-$i")
       if ($r.Killed) { $soakKilled += "ui-soak-$i" }
       if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
+      if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture "soak-ui-$i" (Join-Path $trxDir "captures-soak-ui-$i") $r.Killed) }
     }
     for ($i = 1; $i -le 5; $i++) {
       if (-not (Test-LegBudget $capSoak)) {
@@ -702,9 +854,10 @@ try {
         break
       }
       $soakArgs = @('test', 'tests/Protocol/Protocol.csproj', '--no-build', '--nologo', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=protocol-soak-$i.trx", '--results-directory', $trxDir)
-      $r = Invoke-TimedStep "soak-protocol-$i" $capSoak $soakArgs (Join-Path $trxDir "protocol-soak-$i.testcode")
+      $r = Invoke-TimedStep "soak-protocol-$i" $capSoak $soakArgs (Join-Path $trxDir "soak-protocol-$i.out.log") (Join-Path $trxDir "captures-soak-protocol-$i")
       if ($r.Killed) { $soakKilled += "protocol-soak-$i" }
       if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
+      if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture "soak-protocol-$i" (Join-Path $trxDir "captures-soak-protocol-$i") $r.Killed) }
     }
   }
 } finally {
@@ -722,8 +875,18 @@ $trigger = 'manual (see transcript head)'
 try {
   $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
   $pname = (Get-CimInstance Win32_Process -Filter "ProcessId=$parent").Name
-  if ($pname -eq 'taskeng.exe') { $trigger = 'cron \ScratchPad\Nightly UI (daily 02:30)' }
-  elseif ($pname -eq 'svchost.exe') { $trigger = 'task \ScratchPad\Nightly UI (timer or demand; svchost.exe hosts the scheduler on Win8+, an interactive shell never parents to it)' }
+  # The supervisor (D00 T02 §15 PR1) interposes one powershell level on
+  # the scheduled path, so scheduler labels match the grandparent when
+  # the parent is a plain shell; parent-first order keeps the direct
+  # (unsupervised) readings identical.
+  $gpname = ''
+  if ($pname -eq 'powershell.exe') {
+    $grandparent = (Get-CimInstance Win32_Process -Filter "ProcessId=$parent").ParentProcessId
+    $gpname = (Get-CimInstance Win32_Process -Filter "ProcessId=$grandparent").Name
+  }
+  $sched = if (($pname -eq 'taskeng.exe') -or ($pname -eq 'svchost.exe')) { $pname } else { $gpname }
+  if ($sched -eq 'taskeng.exe') { $trigger = 'cron \ScratchPad\Nightly UI (daily 02:30)' }
+  elseif ($sched -eq 'svchost.exe') { $trigger = 'task \ScratchPad\Nightly UI (timer or demand; svchost.exe hosts the scheduler on Win8+, an interactive shell never parents to it)' }
   else { $trigger = "manual (parent $pname)" }
 } catch { }
 # (Format-LegRow plus Get-LegNote live with the helpers above: the core
@@ -745,6 +908,8 @@ $report += "- Budget-cut: $cutLine"
 $reapLine = if ($reapNotes.Count -eq 0) { 'none' } else { ($reapNotes -join '; ') }
 $buildLine = if ($buildError -eq '') { 'OK' } else { "FAILED: $buildError" }
 $report += "- Build: $buildLine"
+$report += "- Placement: $placementLine"
+$report += "- Population: $populationLine"
 $report += "- Pre-flight reaped: $reapLine"
 $report += ''
 $report += '| Leg | Counts | Gate | Infra | Log |'
@@ -752,6 +917,11 @@ $report += '| --- | ------ | ---- | ----- | --- |'
 $report += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
 $report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
 $report += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
+if ($conservationNotes.Count -gt 0) { $report += ''; $report += $conservationNotes }
+$report += ''
+$report += '## Quarantine'
+$report += ''
+$report += $quarantineNotes
 $report += ''
 $report += '## Enforcement'
 $report += ''
@@ -781,16 +951,35 @@ foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sum
   }
 }
 if (-not $anySkip) { $report += '(none)' ; $report += '' }
+$report += '## Captures'
+$report += ''
+if ($captureNotes.Count -eq 0) { $report += '(none: green night)' } else { $report += $captureNotes }
+$report += ''
 # Soak fourth phase (D00 T02 §15 PR7): the ledger gains a FAILED mark
 # plus an aggregate verdict, so a red soak cannot hide behind green
-# legs; the phase verdict fails the run like a leg. Soak runs
-# uncaptured (Invoke-TimedStep output lands on the console only), so
-# the trx files are the record.
+# legs; the phase verdict fails the run like a leg. Suite output lands
+# in per-iteration `.out.log` files; the trx files stay the count
+# record.
 $report += '## Soak'
 $report += ''
 $soakLedger = Format-SoakLedger $trxDir $soakKilled $budgetCut
 if ($soakLedger.Failed) { $failed = $true }
 $report += $soakLedger.Rows
+$report += ''
+$report += '## Incidents'
+$report += ''
+$incidentInputs = @()
+foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sumI) )) {
+  if (($null -ne $pair[1]) -and ($pair[1].FailedCount -gt 0)) {
+    foreach ($fl in $pair[1].Failed) {
+      $fm = [regex]::Match($fl, '^\s*-\s*([^:]+):\s*(.*)$')
+      if ($fm.Success) { $incidentInputs += [pscustomobject]@{ Test = $fm.Groups[1].Value.Trim(); Message = $fm.Groups[2].Value.Trim(); Where = $pair[0] } }
+    }
+  }
+}
+$incidentInputs += @($soakLedger.Failures)
+$incidentLines = @(Format-Incidents $incidentInputs)
+if ($incidentLines.Count -eq 0) { $report += '(none)' } else { $report += $incidentLines }
 $report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
 # Interactive collection per open debt, append Night-collected on
@@ -886,6 +1075,11 @@ $report += ''
 if ($stagedStubs.Count -gt 0) {
   $report += '### Nightly collector (staged; triage files via add-todo)'
   $report += $stagedStubs
+  $report += ''
+}
+if ($nightOwedRows.Count -gt 0) {
+  $report += '### Night-owed (staged; triage files via add-todo)'
+  $report += $nightOwedRows
   $report += ''
 }
 $reportPath = Join-Path $nightDir "morning-$day.md"

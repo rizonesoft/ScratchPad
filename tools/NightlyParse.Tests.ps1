@@ -97,6 +97,81 @@ Assert ((Format-EnforcementVerdict $false @()) -eq '- Interactive (collection): 
 Assert ((Get-ShortHash (Join-Path $dir 'hash.txt')) -eq 'ba7816bf') 'short-hash-known' (Get-ShortHash (Join-Path $dir 'hash.txt'))
 Assert ((Get-ShortHash (Join-Path $dir 'nope.dll')) -eq 'missing') 'short-hash-missing'
 
+# Split output: transcript plus .out.log sibling merge into one summary.
+$splitLog = Join-Path $dir 'split.log'
+@('nightly: scope=fixture', 'Passed!  - Failed:     0, Passed:     7, Skipped:     0, Total:     7, Duration: 1 s - First.dll (net10.0)') | Set-Content -Path $splitLog -Encoding UTF8
+@('Passed!  - Failed:     1, Passed:     3, Skipped:     2, Total:     6, Duration: 1 s - Second.dll (net10.0)', '  Failed UI.SplitFail [1 ms]') | Set-Content -Path ([System.IO.Path]::ChangeExtension($splitLog, '.out.log')) -Encoding UTF8
+$split = Get-LegSummary (Join-Path $dir 'missing.trx') $splitLog
+Assert (($split.Passed -eq 10) -and ($split.FailedCount -eq 1) -and ($split.SkippedCount -eq 2)) 'split-merge-sums' ("p=$($split.Passed) f=$($split.FailedCount) s=$($split.SkippedCount)")
+Assert ((($split.Failed -join "`n") -like '*UI.SplitFail*') -and ($split.Assemblies -like '*First.dll 7/0/0, Second.dll 3/1/2*')) 'split-merge-names' ($split.Assemblies)
+
+# Bounded teardown: completed jobs reap, live jobs abandon fast.
+$quick = Start-Job -ScriptBlock { 'done' }
+Wait-Job -Job $quick -Timeout 30 | Out-Null
+Assert ((Invoke-BoundedTeardown $quick 5 'fixture-quick') -eq $true) 'teardown-reaps'
+$stuck = Start-Job -ScriptBlock { Start-Sleep -Seconds 300 }
+$abandonWatch = [System.Diagnostics.Stopwatch]::StartNew()
+$abandoned = Invoke-BoundedTeardown $stuck 1 'fixture-stuck'
+$abandonWatch.Stop()
+Assert (($abandoned -eq $false) -and ($abandonWatch.Elapsed.TotalSeconds -lt 30)) 'teardown-abandons' ("result=$abandoned secs=$([int]$abandonWatch.Elapsed.TotalSeconds)")
+Stop-Job -Job $stuck
+Remove-Job -Job $stuck -Force
+
+# Conservation: green, exotic-outcome break, row-total break, cross break.
+# (Fixture names avoid reserved device prefixes: `con.*` fails Test-Path.)
+$conTrx = '<TestRun><Results><UnitTestResult testName="UI.A" outcome="Passed" /><UnitTestResult testName="UI.B" outcome="Failed" /><UnitTestResult testName="UI.C" outcome="NotExecuted" /></Results></TestRun>'
+$conTrx | Set-Content -Path (Join-Path $dir 'ok.trx') -Encoding UTF8
+@('Passed!  - Failed:     1, Passed:     1, Skipped:     1, Total:     3, Duration: 1 s - UI.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'ok.log') -Encoding UTF8
+$conGreen = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $false
+Assert ($conGreen.Ok -eq $true) 'conservation-green' ($conGreen.Breaks -join '|')
+$exoticTrx = '<TestRun><Results><UnitTestResult testName="UI.A" outcome="Passed" /><UnitTestResult testName="UI.B" outcome="Inconclusive" /></Results></TestRun>'
+$exoticTrx | Set-Content -Path (Join-Path $dir 'exotic.trx') -Encoding UTF8
+$conExotic = Test-CountConservation 'Fix' (Join-Path $dir 'exotic.trx') (Join-Path $dir 'missing.log') $false
+Assert (($conExotic.Ok -eq $false) -and (($conExotic.Breaks -join '') -like '*exotic outcomes (Inconclusive)*')) 'conservation-exotic' ($conExotic.Breaks -join '|')
+@('Passed!  - Failed:     1, Passed:     1, Skipped:     1, Total:     9, Duration: 1 s - UI.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'badrow.log') -Encoding UTF8
+$conRow = Test-CountConservation 'Fix' (Join-Path $dir 'missing.trx') (Join-Path $dir 'badrow.log') $false
+Assert (($conRow.Ok -eq $false) -and (($conRow.Breaks -join '') -like '*1+1+1 != Total 9*')) 'conservation-row' ($conRow.Breaks -join '|')
+@('Passed!  - Failed:     0, Passed:     2, Skipped:     1, Total:     3, Duration: 1 s - UI.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'cross.log') -Encoding UTF8
+$conCross = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'cross.log') $false
+Assert (($conCross.Ok -eq $false) -and (($conCross.Breaks -join '') -like '*cross-level*')) 'conservation-cross' ($conCross.Breaks -join '|')
+$conVacuous = Test-CountConservation 'Fix' (Join-Path $dir 'missing.trx') (Join-Path $dir 'missing.log') $false
+Assert ($conVacuous.Ok -eq $true) 'conservation-vacuous'
+$conMulti = Test-CountConservation 'Fix' $trx $log $false
+Assert ($conMulti.Ok -eq $true) 'conservation-multi' ($conMulti.Breaks -join '|')
+$conExpected = Test-CountConservation 'Run B' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $true
+Assert ($conExpected.Ok -eq $true) 'conservation-expected-green' ($conExpected.Breaks -join '|')
+@('Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - Smoke.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'partial.log') -Encoding UTF8
+$conMissing = Test-CountConservation 'Run A' (Join-Path $dir 'missing.trx') (Join-Path $dir 'partial.log') $true
+Assert (($conMissing.Ok -eq $false) -and (($conMissing.Breaks -join '') -like '*UI.dll missing*')) 'conservation-missing' ($conMissing.Breaks -join '|')
+$conUnknown = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $true
+Assert (($conUnknown.Ok -eq $false) -and (($conUnknown.Breaks -join '') -like '*unknown leg*')) 'conservation-unknown-leg' ($conUnknown.Breaks -join '|')
+
+# Quarantine windows: overdue, current, malformed, and clean ledgers.
+$ledgerLines = @(
+  '# Fixture ledger',
+  '',
+  '## Quarantine list',
+  '',
+  '| Test | Failure signature | First seen | Owner | Quarantined | Due |',
+  '| ---- | ----------------- | ---------- | ----- | ----------- | --- |',
+  '| `UI.Old` (`old-flake`) | boom | 2026-09-01 | D01 T01 §1 | 2026-09-01 | 2026-09-08 |',
+  '| `UI.New` (`new-flake`) | boom | 2026-09-19 | D01 T01 §2 | 2026-09-19 | 2026-09-26 |',
+  '| `UI.Bad` (`bad-flake`) | boom | 2026-09-19 | D01 T01 §3 | 2026-09-19 | someday |',
+  '',
+  '## Something else',
+  '',
+  '| Test | Failure signature | First seen | Owner | Quarantined | Due |',
+  '| `UI.Elsewhere` (`x`) | boom | 2026-09-01 | D01 T01 §9 | 2026-09-01 | 2020-01-01 |'
+)
+$ledgerLines | Set-Content -Path (Join-Path $dir 'ledger.md') -Encoding UTF8
+$quar = Test-QuarantineWindows (Join-Path $dir 'ledger.md') ([datetime]'2026-09-20')
+Assert ($quar.Overdue.Count -eq 2) 'quarantine-overdue-count' ($quar.Overdue.Count)
+Assert ((($quar.Overdue | Where-Object { -not $_.Malformed }).Test -join '') -like '*UI.Old*') 'quarantine-overdue-which' (($quar.Overdue | ForEach-Object { $_.Test }) -join '|')
+Assert ((($quar.Overdue | Where-Object { $_.Malformed }).Test -join '') -like '*UI.Bad*') 'quarantine-malformed' (($quar.Overdue | ForEach-Object { $_.Test }) -join '|')
+Assert (($quar.Open -eq 3) -and ($quar.EarliestDue -eq '2026-09-08')) 'quarantine-open-line' ("open=$($quar.Open) earliest=$($quar.EarliestDue)")
+$quarClean = Test-QuarantineWindows (Join-Path $dir 'ledger.md') ([datetime]'2026-09-01')
+Assert (($quarClean.Overdue.Count -eq 1) -and ($quarClean.Open -eq 3)) 'quarantine-clean-except-malformed' ($quarClean.Overdue.Count)
+
 # Soak fourth phase: green, red-with-names, killed, and cut verdicts.
 $soakDir = Join-Path $dir 'soakgreen'
 $null = New-Item -ItemType Directory -Force -Path $soakDir
@@ -115,13 +190,144 @@ $red = Format-SoakLedger $redDir @('ui-soak-5') @('protocol-soak-1..5')
 Assert ($red.Failed -eq $true) 'soak-red-flag'
 Assert ($red.Rows[0] -like '- Verdict: RED (FAILED: ui-soak-3; unproven: ui-soak-5, protocol-soak-1..5*') 'soak-red-verdict' $red.Rows[0]
 Assert (($red.Rows -join "`n") -like '*UI.Flaky*flake*') 'soak-red-names' ($red.Rows -join '|')
-Assert (($red.Rows -join "`n") -like '*- ui-soak-5 : no trx (killed at cap: unproven)*') 'soak-killed-row' ($red.Rows -join '|')
-Assert (($red.Rows -join "`n") -like '*- protocol-soak-1..5 : budget-cut (unproven)*') 'soak-cut-row' ($red.Rows -join '|')
+Assert (($red.Rows -join "`n") -like '*- ui-soak-5 : no trx (killed at cap: unproven; owes triage: re-drive or carry)*') 'soak-killed-row' ($red.Rows -join '|')
+Assert (($red.Rows -join "`n") -like '*- protocol-soak-1..5 : budget-cut (unproven; owes triage: re-drive or carry)*') 'soak-cut-row' ($red.Rows -join '|')
 
 $emptyDir = Join-Path $dir 'soakempty'
 $null = New-Item -ItemType Directory -Force -Path $emptyDir
 $empty = Format-SoakLedger $emptyDir @() @()
 Assert (($empty.Failed -eq $false) -and (($empty.Rows -join '') -like '*no soak iterations ran*')) 'soak-empty' ($empty.Rows -join '|')
+
+# Truncation grades: minimum met degrades, minimum missed voids, and
+# every cut range owes triage its re-drive (D00-T02-S14-PR12).
+$degDir = Join-Path $dir 'soakdegraded'
+$null = New-Item -ItemType Directory -Force -Path $degDir
+foreach ($n in @('ui-soak-1', 'ui-soak-2', 'ui-soak-3', 'protocol-soak-1', 'protocol-soak-2', 'protocol-soak-3')) {
+  $greenTrx | Set-Content -Path (Join-Path $degDir "$n.trx") -Encoding UTF8
+}
+$degraded = Format-SoakLedger $degDir @() @('ui-soak-4..5', 'protocol-soak-4..5')
+Assert (($degraded.Failed -eq $true) -and ($degraded.Rows[0] -like '*degraded (minimum 3+3 met: ui=3 protocol=3)*')) 'soak-degraded' $degraded.Rows[0]
+Assert ((($degraded.Rows -join "`n") -like '*owes triage: re-drive or carry*')) 'soak-owed' ($degraded.Rows -join '|')
+$voidDir = Join-Path $dir 'soakvoid'
+$null = New-Item -ItemType Directory -Force -Path $voidDir
+foreach ($n in @('ui-soak-1', 'protocol-soak-1', 'protocol-soak-2')) {
+  $greenTrx | Set-Content -Path (Join-Path $voidDir "$n.trx") -Encoding UTF8
+}
+$voided = Format-SoakLedger $voidDir @() @('ui-soak-2..5', 'protocol-soak-3..5')
+Assert (($voided.Failed -eq $true) -and ($voided.Rows[0] -like '*minimum MISSED (ui=1/3 protocol=2/3; hunt void, full re-drive owed)*')) 'soak-void' $voided.Rows[0]
+
+# Incidents: digit-shape dedupe keeps every occurrence under a stable ID.
+$incIn = @(
+  [pscustomobject]@{ Test = 'UI.Flaky'; Message = 'flake attempt 3 of 10'; Where = 'ui-soak-3' },
+  [pscustomobject]@{ Test = 'UI.Flaky'; Message = 'flake attempt 5 of 10'; Where = 'protocol-soak-1' },
+  [pscustomobject]@{ Test = 'UI.Other'; Message = 'boom'; Where = 'Run A' }
+)
+$inc = @(Format-Incidents $incIn)
+Assert ($inc.Count -eq 2) 'incident-group-count' ($inc -join '|')
+Assert ($inc[0] -eq '- INC-02f59b86 `UI.Flaky` x2 (ui-soak-3, protocol-soak-1): flake attempt 3 of 10') 'incident-dedupe-line' $inc[0]
+Assert ($inc[1] -eq '- INC-493b0a11 `UI.Other` x1 (Run A): boom') 'incident-single-line' $inc[1]
+$incAgain = @(Format-Incidents $incIn)
+Assert (($incAgain -join "`n") -eq ($inc -join "`n")) 'incident-stable-id' ($incAgain -join '|')
+Assert (@(Format-Incidents @()).Count -eq 0) 'incident-empty'
+$longMsg = 'x' * 200
+$incLong = @(Format-Incidents @([pscustomobject]@{ Test = 'UI.Long'; Message = $longMsg; Where = 'Run B' }))
+Assert (($incLong.Count -eq 1) -and ($incLong[0].Length -lt 200)) 'incident-truncates' $incLong[0]
+
+# Per-project merge: two trx plus two out.logs merge into one summary
+# with the grand sums cross-checked (D00-T02-S13-R2-F2).
+$mergeA = '<TestRun><Results><UnitTestResult testName="Smoke.S1" outcome="Passed" /><UnitTestResult testName="Smoke.S2" outcome="Failed"><Output><ErrorInfo><Message>smoke boom</Message></ErrorInfo></Output></UnitTestResult></Results></TestRun>'
+$mergeA | Set-Content -Path (Join-Path $dir 'run-a-Smoke.trx') -Encoding UTF8
+$mergeB = '<TestRun><Results><UnitTestResult testName="Unit.U1" outcome="Passed" /><UnitTestResult testName="Unit.U2" outcome="NotExecuted"><Output><ErrorInfo><Message>QUARANTINED 2026-09-20 D00-T02-S9 probe</Message></ErrorInfo></Output></UnitTestResult></Results></TestRun>'
+$mergeB | Set-Content -Path (Join-Path $dir 'run-a-Unit.trx') -Encoding UTF8
+@('Passed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 1 s - Smoke.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'merge-Smoke.out.log') -Encoding UTF8
+@('Passed!  - Failed:     0, Passed:     1, Skipped:     1, Total:     2, Duration: 1 s - Unit.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'merge-Unit.out.log') -Encoding UTF8
+$merged = Get-LegSummary @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log'))
+Assert (($merged.Passed -eq 2) -and ($merged.FailedCount -eq 1) -and ($merged.SkippedCount -eq 1)) 'merge-sums' ("p=$($merged.Passed) f=$($merged.FailedCount) s=$($merged.SkippedCount)")
+Assert ((($merged.Failed -join "`n") -like '*Smoke.S2*smoke boom*') -and (($merged.Skipped -join "`n") -like '*Unit.U2*QUARANTINED*')) 'merge-lines' (($merged.Failed + $merged.Skipped) -join '|')
+Assert ($merged.Assemblies -eq 'Smoke.dll 1/1/0, Unit.dll 1/0/1') 'merge-assemblies' $merged.Assemblies
+$mergeCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log')) $false
+Assert ($mergeCon.Ok -eq $true) 'merge-conservation-green' ($mergeCon.Breaks -join '|')
+@('Passed!  - Failed:     0, Passed:     9, Skipped:     1, Total:     10, Duration: 1 s - Unit.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'merge-skew.out.log') -Encoding UTF8
+$skewCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-skew.out.log')) $false
+Assert (($skewCon.Ok -eq $false) -and (($skewCon.Breaks -join '') -like '*cross-level-aggregate*')) 'merge-conservation-skew' ($skewCon.Breaks -join '|')
+$killedCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'missing-step.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log')) $false
+Assert (($killedCon.Ok -eq $true) -and ((($killedCon.Breaks -join '') -notlike '*cross-level-aggregate*'))) 'merge-conservation-killed-skips' ($killedCon.Breaks -join '|')
+
+# Suite-wide Primary guard: strays outside tests/UI fail closed with
+# path:line, UI traits count, line comments do not count.
+$placeRoot = Join-Path $dir 'placetree'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $placeRoot 'UI'), (Join-Path $placeRoot 'Unit')
+@('public class A {', '    [Trait("Category", "Primary")]', '    public void P1() {}', '    // [Trait("Category", "Primary")] commented out', '}') | Set-Content -Path (Join-Path $placeRoot 'UI\A.cs') -Encoding UTF8
+@('public class B {', '    [Trait( "Category" , "Primary" )]', '}') | Set-Content -Path (Join-Path $placeRoot 'Unit\B.cs') -Encoding UTF8
+$place = Test-PrimaryPlacement $placeRoot
+Assert (($place.Ok -eq $false) -and ($place.UiCount -eq 1)) 'placement-stray-red' ("ok=$($place.Ok) ui=$($place.UiCount) strays=$(($place.Strays -join '|'))")
+Assert ((@($place.Strays).Count -eq 1) -and ($place.Strays[0] -like 'Unit\B.cs:2')) 'placement-stray-where' ($place.Strays -join '|')
+Remove-Item (Join-Path $placeRoot 'Unit\B.cs') -Force
+$placeClean = Test-PrimaryPlacement $placeRoot
+Assert (($placeClean.Ok -eq $true) -and ($placeClean.UiCount -eq 1)) 'placement-clean-green' ("ok=$($placeClean.Ok) ui=$($placeClean.UiCount)")
+$placeMissing = Test-PrimaryPlacement (Join-Path $dir 'no-such-tree')
+Assert ($placeMissing.Ok -eq $false) 'placement-missing-root-red'
+
+# Fingerprint: round-trip, clean compare, member plus case plus filter
+# drifts, malformed shapes, literal extraction (D00-T02-S13-PR13).
+$fpDisc = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1 }
+$fpFile = Join-Path $dir 'pop.fingerprint'
+Write-TestPopulationFile $fpFile 'Category!=Interactive&Category!=Primary' 'Category=Primary' 'Category=Interactive' $fpDisc
+$fpRead = Read-TestPopulationFile $fpFile
+Assert (($fpRead.Ok -eq $true) -and ($fpRead.RunB.Count -eq 1) -and ($fpRead.Interactive.Count -eq 1) -and ($fpRead.RunACases -eq 3) -and ($fpRead.RunAFilter -eq 'Category!=Interactive&Category!=Primary')) 'fingerprint-roundtrip'
+$fakeNightly = Join-Path $dir 'nightly-fake.ps1'
+@(
+  '# (Category!=Interactive&Category!=Primary; prose must not match)',
+  "  `$collectFilter = 'Category=Interactive'",
+  "  `$stepArgs = @('test', '--filter', 'Category!=Interactive&Category!=Primary')",
+  "  `$stepArgs = @('test', '--filter', 'Category=Primary')"
+) | Set-Content -Path $fakeNightly -Encoding UTF8
+$lits = Get-NightlyFilterLiterals $fakeNightly
+Assert ((($lits.Literals -join '|') -eq 'Category!=Interactive&Category!=Primary|Category=Primary') -and ($lits.CollectDefault -eq 'Category=Interactive')) 'fingerprint-literals' (($lits.Literals -join '|') + ' / ' + $lits.CollectDefault)
+$popClean = Compare-TestPopulation $fpFile $fakeNightly $fpDisc
+Assert ($popClean.Ok -eq $true) 'fingerprint-clean' ($popClean.Drifts -join '|')
+$driftDisc = [pscustomobject]@{ RunA = @('UI.A.T1'); RunB = @('UI.B.P1', 'UI.B.P2'); Interactive = @(); RunAMethods = 1; RunACases = 1; RunBMethods = 2; RunBCases = 2; InteractiveMethods = 0; InteractiveCases = 0 }
+$popDrift = Compare-TestPopulation $fpFile $fakeNightly $driftDisc
+Assert (($popDrift.Ok -eq $false) -and (($popDrift.Drifts -join '') -like '*run-b added: UI.B.P2*') -and (($popDrift.Drifts -join '') -like '*interactive removed: UI.C.I1*') -and (($popDrift.Drifts -join '') -like '*run-a-methods: fingerprinted 2 vs discovered 1*')) 'fingerprint-drift' ($popDrift.Drifts -join '|')
+$skewDisc = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 9; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1 }
+$popSkew = Compare-TestPopulation $fpFile $fakeNightly $skewDisc
+Assert (($popSkew.Ok -eq $false) -and (($popSkew.Drifts -join '') -like '*run-a-cases: fingerprinted 3 vs discovered 9*')) 'fingerprint-case-skew' ($popSkew.Drifts -join '|')
+$fakeNightly2 = Join-Path $dir 'nightly-fake2.ps1'
+@(
+  "  `$collectFilter = 'Category=Interactive'",
+  "  `$stepArgs = @('test', '--filter', 'Category!=Interactive')",
+  "  `$stepArgs = @('test', '--filter', 'Category=Primary')"
+) | Set-Content -Path $fakeNightly2 -Encoding UTF8
+$popFilter = Compare-TestPopulation $fpFile $fakeNightly2 $fpDisc
+Assert (($popFilter.Ok -eq $false) -and (($popFilter.Drifts -join '') -like "*appears 0 times*")) 'fingerprint-filter-drift' ($popFilter.Drifts -join '|')
+@('run-a-filter: Category!=Interactive&Category!=Primary') | Set-Content -Path (Join-Path $dir 'pop-bad.fingerprint') -Encoding UTF8
+$popBad = Compare-TestPopulation (Join-Path $dir 'pop-bad.fingerprint') $fakeNightly $fpDisc
+Assert (($popBad.Ok -eq $false) -and (($popBad.Drifts -join '') -like '*missing run-b-filter*')) 'fingerprint-malformed' ($popBad.Drifts -join '|')
+
+# Filter partition: the fingerprinted Run A plus Run B filters select
+# the synthetic population soundly, and edits breaking the partition
+# surface as violations (D00-T02-S13-PR17).
+$liveFp = Read-TestPopulationFile (Join-Path $PSScriptRoot '..\tests\UI\TestPopulation.fingerprint')
+Assert ($liveFp.Ok -eq $true) 'filter-live-fingerprint' $liveFp.Error
+$partMembers = @(
+  [pscustomobject]@{ Name = 'UI.A.Default'; Categories = @() },
+  [pscustomobject]@{ Name = 'UI.B.Place'; Categories = @('Primary') },
+  [pscustomobject]@{ Name = 'UI.C.Fence'; Categories = @('Interactive') },
+  [pscustomobject]@{ Name = 'UI.D.Both'; Categories = @('Primary', 'Interactive') }
+)
+$partGreen = @(Test-FilterPartition $liveFp.RunAFilter $liveFp.RunBFilter $partMembers)
+Assert ($partGreen.Count -eq 0) 'filter-partition-green' ($partGreen -join '|')
+$partMutA = @(Test-FilterPartition 'Category!=Interactive' $liveFp.RunBFilter $partMembers)
+Assert ((($partMutA -join '') -like '*run-a selects primary: UI.B.Place*')) 'filter-mutation-runa' ($partMutA -join '|')
+$partMutB = @(Test-FilterPartition $liveFp.RunAFilter 'Category=Interactive' $partMembers)
+Assert ((($partMutB -join '') -like '*run-b misses primary: UI.B.Place*')) 'filter-mutation-runb' ($partMutB -join '|')
+$partOr = @(Test-FilterPartition 'Category=Primary|Category=Interactive' $liveFp.RunBFilter $partMembers)
+Assert ((($partOr -join '') -like '*unsupported clause in run-a*') -and (@($partOr).Count -eq 1)) 'filter-unsupported' ($partOr -join '|')
+
+# Atomic reports: content lands intact with no .tmp residue.
+Write-AtomicReport @('line-a', 'line-b') (Join-Path $dir 'atomic.md')
+Assert (((Get-Content (Join-Path $dir 'atomic.md') -Raw) -replace "`r`n", '|') -eq 'line-a|line-b|') 'atomic-content'
+Assert (-not (Test-Path (Join-Path $dir 'atomic.md.tmp'))) 'atomic-no-residue'
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }

@@ -10,6 +10,10 @@ Soak runs locally, usually as an unattended bedtime run: five extra repetitions 
 
 Results stay under `build/nightly/<stamp>/` (gitignored): the per-leg transcripts plus the trx files, with golden-failure captures kept alongside on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.
 
+## Truncated soak (D00 T02 §15, D00-T02-S14-PR12, agreed with §5)
+
+§5 plans five repetitions per flake-prone suite but names no floor, so this rule sets one by default: minimum useful coverage is 3 proved iterations per suite (6 of 10), a majority of each suite's planned hunt. Default status: revisit when flake-catch statistics exist to size the floor empirically; changing it edits this rule plus the ledger's verdict clause and re-quotes a cut night. The verdict never softens: any failed or unproven iteration reds the run exactly as before (D00 T02 §15 PR7); the minimum only grades the red. Full proof (10/10 proved) reads GREEN; minimum met with gaps reads RED `degraded`, and each cut or killed range owes triage a re-drive (ad-hoc soak) or an explicit carry to the next night, quoted on its ledger row; minimum missed reads RED `minimum MISSED` naming the per-suite shortfall, the night's hunt proves nothing, and triage owes a full re-drive. Caught failures are findings at any coverage (a flake caught is caught) and quarantine by the procedure below; cut or killed iterations are infrastructure verdicts and never quarantine inputs.
+
 ## Soak log
 
 | Date | Run | Result |
@@ -25,7 +29,7 @@ A test that fails nondeterministically (red in one run, green in another, with n
 2. Skip the test with xUnit `Skip` carrying the quarantine stamp: `[Fact(Skip = "QUARANTINED <date> <owner> <signature-id>")]`. The test stays compiled; the suite stays green; the skip reason names this doc entry.
 3. Add the row to the quarantine list below. The failure signature is the stable part of the failure (exception type plus message shape, never timestamps or line heat).
 
-A quarantined test keeps running nowhere until it is fixed (un-skipped with a passing soak behind it) or removed (with its decision recorded below).
+A quarantined test keeps running nowhere until it is fixed (un-skipped with a passing soak behind it) or removed (with its decision recorded below). Due defaults to quarantined-plus-7-days; past Due without reinstatement or a recorded removal decision, the governed run auto-fails RED with a `## Quarantine` notice naming the test, its due date, and its owner, until morning triage acts (D00 T02 §15 PR30).
 
 ## Quarantine list
 

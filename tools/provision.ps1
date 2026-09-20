@@ -29,7 +29,7 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $Rid = 'win-x64'
 $Tasks = @(
-  @{ Name = 'Nightly UI'; Path = '\ScratchPad\'; Time = '02:30'; ArgMatch = 'nightly.ps1'; Xml = 'tools/tasks/nightly-ui.xml';
+  @{ Name = 'Nightly UI'; Path = '\ScratchPad\'; Time = '02:30'; ArgMatch = 'NightlySupervisor.ps1'; Xml = 'tools/tasks/nightly-ui.xml';
      Extra = @{ MultipleInstances = 'IgnoreNew'; ExecutionTimeLimit = 'PT4H'; WakeToRun = 'True' } },
   @{ Name = 'Nightly Foreground Single'; Path = '\ScratchPad\'; Time = '02:05'; ArgMatch = 'OpenInNewWindowModeOpensSecondWindow'; Xml = 'tools/tasks/nightly-foreground-single.xml';
      Extra = @{} }
