@@ -5,7 +5,9 @@
 .DESCRIPTION
   Three legs inside the 02:00-06:50 window, owned by the \ScratchPad\Nightly UI
   scheduled task (daily 02:30 local). Run A: full solution default filter
-  (Category!=Interactive&Category!=Primary; the Primary set rests on primary by design and rides Run B) with ForegroundLog census proof. Run B: Category=Primary with --expect-primary.
+  (Category!=Interactive&Category!=Primary; the Primary set rests on
+  primary by design and rides Run B) with ForegroundLog census proof.
+  Run B: Category=Primary with --expect-primary.
   Interactive: the fenced collection, owning the foreground. Each invocation
   owns a stamp-scoped directory: leg transcripts land under
   build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log, trx plus gate
