@@ -40,6 +40,7 @@ track: W0
 |   2   |   §2    | Rule-24 probe follow-ups | D00 T01 §46 |  [ ]   |
 |   3   |   §3    | Migration-assurance follow-ups | D00 T01 §48 |  [ ]   |
 |   4   |   §4    | Review-evaluation follow-ups | D00 T01 §49 |  [ ]   |
+|   5   |   §5    | Windows console and prompt follow-ups | D00 T01 §34 |  [ ]   |
 
 ---
 
@@ -113,6 +114,17 @@ Why this section exists: the §49 plan review (`gpt-5.6-sol` high over §49 plus
 - [ ] Commit: `"workspace: follow up review evaluation per §49 plan review"`
 
 **Test checkpoint:** evidence binds citer state, every consumer renders second-citer obligations, and single rows carry their citer sets; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
+
+## 5. Windows Console and Prompt Follow-Ups
+
+Why this section exists: the §51 round-1 panel assembly exposed two Windows-only failure modes in the review-runner tooling. First, `review_prompt.py fence` crashed printing fenced TODO bytes to a cp1252 console, because no repo script pins UTF-8 stdio and any non-cp1252 prose byte is therefore fatal on Windows. Second, the skill's panel, plan-review, and architecture prompt blocks are bash-only (`timeout`, `sed`, pipes, stdin redirects), so every Windows session hand-translates them and hand-assembles tags plus instruction headers around the checked fencer. -> XREF: D00 T01 §51 (surfaced during its round-1 panel assembly); -> SOURCE: s51-panel-assembly-2026-09-20 (operator-filed from the §51 review session: `UnicodeEncodeError: 'charmap' codec can't encode character '\ufeff'` from `fence` under PowerShell, plus the hand-built prompt file `R:\tmp\s51-r1.prompt.md` the skill blocks cannot produce on Windows).
+
+- [ ] Scripts pin UTF-8 stdio: `todo-graph.py`, `todo-validate.py`, and `review_prompt.py` reconfigure stdin, stdout, and stderr to UTF-8 at startup (guarded where streams are closed or unsupported), so non-cp1252 TODO bytes never crash console output on Windows. Done when: the pins ship with probes proving non-ASCII output survives a cp1252-forced console.
+- [ ] `review_prompt.py` gains a `prompt` subcommand: it assembles the panel or plan prompt (instruction header plus checked-fencer chunks) and writes it to a file, so no session hand-assembles tags or headers in shell. Done when: the subcommand ships with fixtures locking the header plus fence shape and byte-identity with the current shell assembly.
+- [ ] Skill prompt blocks go Windows-clean: the panel, plan-review, and architecture command blocks route through the `prompt` subcommand plus `run` with PowerShell-correct invocation, so a Windows session assembles every review prompt without bash. Done when: all three blocks read with the Windows path and one live round runs through it, quoted.
+- [ ] Commit: `"workspace: harden review runner for Windows consoles"`
+
+**Test checkpoint:** non-ASCII output survives a cp1252 console, one subcommand assembles every review prompt to a file, and the skill blocks run it on Windows. Falsifiable by any console crash, hand-assembled prompt, or bash-only block.
 
 ## Verification
 
