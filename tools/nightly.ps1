@@ -199,10 +199,14 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   $testCode = 1
   if (Test-Path $codeFile) { $testCode = [int](Get-Content $codeFile -Raw).Trim() }
   if ($killed) { $testCode = 1 }
-  # Bounded gate wait (D00 T02 §14 R2-F1): the gate self-exits at its
-  # bell, but a hung gate binary must not strand the report past PT4H.
+  # Bounded gate wait (D00 T02 §14 R2-F1, R3-F1): the gate legitimately
+  # runs to its bell (the window IS the proof), so the wait lasts until
+  # bell-plus-grace measured from GATE START, never a fresh cap from here:
+  # a fresh cap would let one hung gate cost 2 x cap and strand the report.
   $gateHung = $false
-  $gateDone = Wait-Job -Job $job -Timeout ($GateSeconds + 120)
+  $gateTimeout = [int](($GateSeconds + 120) - ((Get-Date) - $job.PSBeginTime).TotalSeconds)
+  $gateDone = $null
+  if ($gateTimeout -gt 0) { $gateDone = Wait-Job -Job $job -Timeout $gateTimeout }
   if ($null -eq $gateDone) {
     $gateHung = $true
     if ($job.State -eq 'Running') { Stop-Job -Job $job }
