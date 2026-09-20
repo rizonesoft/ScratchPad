@@ -6,10 +6,11 @@
   Three legs inside the 02:00-06:50 window, owned by the \ScratchPad\Nightly UI
   scheduled task (daily 02:30 local). Run A: full solution default filter with
   ForegroundLog census proof. Run B: Category=Primary with --expect-primary.
-  Interactive: the fenced collection, owning the foreground. Each leg gets its
-  own transcript under build/nightly/YYYY-MM-DD-{default,primary,full}.log;
-  trx plus gate logs land under build/nightly/YYYY-MM-DD/; the morning report
-  lands at build/nightly/morning-YYYY-MM-DD.md. A red leg never blocks the
+  Interactive: the fenced collection, owning the foreground. Each invocation
+  owns a stamp-scoped directory: leg transcripts land under
+  build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log, trx plus gate
+  logs under build/nightly/YYYY-MM-DD-HHmmss/; the morning report lands at
+  build/nightly/morning-YYYY-MM-DD.md. A red leg never blocks the
   later legs; only the exit code is red. -SkipSoak drops the §5 repeat loop
   that otherwise follows the legs. -Force runs the Interactive leg outside
   the window for an explicitly accepted interruption. Uses the repo-local SDK
@@ -73,15 +74,40 @@ function Stop-LegLog {
   Stop-Transcript | Out-Null
 }
 
-function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [string]$GateLog, [string]$VerdictFile, [scriptblock]$TestCmd) {
+function Invoke-OrphanReap([datetime]$OlderThan) {
+  # Reap test apps/hosts under this checkout's Bin. Pre-flight passes the
+  # run start so only true orphans (dead-run leftovers) die; a live
+  # concurrent run's children are younger and survive. Post-kill passes
+  # MaxValue: the mutex guarantees no other governed run, so everything
+  # matching is the killed leg's tree. Write-Host, not Write-Output: the
+  # caller captures this function's return (note lines for the report).
+  $notes = @()
+  foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='ScratchPad.exe' OR Name='testhost.exe'" -ErrorAction SilentlyContinue | Where-Object { ($_.ExecutablePath -like "$Root\Bin\*") -and ($_.CreationDate -lt $OlderThan) })) {
+    $note = "$($p.Name) pid=$($p.ProcessId) started=$($p.CreationDate)"
+    Write-Host "nightly: reaping orphan $note"
+    $notes += $note
+    Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+  return $notes
+}
+
+function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [string]$GateLog, [string]$VerdictFile, [string[]]$TestArgs) {
   # Gate and suite run together: the gate polls the whole window while the
   # tests drive. The suite must finish inside the window; overrun fails the
-  # leg (partial proof is no proof). Returns a result object, never throws
-  # for a red leg (missing gate binary throws: that is a broken run, not a
-  # red leg). The gate runs in a background job: the Start-Process object's
-  # ExitCode reads back empty in Windows PowerShell 5.1 (measured 2026-09-20
-  # with and without redirection), while the job's $LASTEXITCODE reads back
-  # the true verdict.
+  # leg (partial proof is no proof). Both sides run in background jobs: the
+  # gate job because the Start-Process object's ExitCode reads back empty in
+  # Windows PowerShell 5.1 (measured 2026-09-20 with and without
+  # redirection), while the job's $LASTEXITCODE reads back the true verdict;
+  # the test job because the window is an enforced timeout, not a
+  # stopwatch: a hung suite is killed at the bell so the later legs still
+  # run (pre-fix the run hung until the task's 4-hour limit). The test
+  # command arrives as an exe-plus-args array (a scriptblock would lose its
+  # variables across the job boundary); its output lands in the transcript
+  # at completion, not live. The job's exit code lands in a sidecar file:
+  # Receive-Job returns output plus code as one flat array, and a killed
+  # job never emits its code. Returns a result object, never throws for a
+  # red leg (missing gate binary throws: that is a broken run, not a red
+  # leg).
   if (-not (Test-Path $GateExe)) { throw "nightly: gate binary missing ($GateExe); build tools/ForegroundLog first" }
   $gateArgsArray = @("$GateSeconds", $GateLog)
   if ($GateArgs -ne '') { $gateArgsArray += $GateArgs }
@@ -90,14 +116,32 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
     & $exe @argList > $verdict
     $LASTEXITCODE
   } -ArgumentList @($GateExe, $gateArgsArray, $VerdictFile)
+  $codeFile = "$VerdictFile.testcode"
+  if (Test-Path $codeFile) { Remove-Item $codeFile -Force }
+  $testJob = Start-Job -ScriptBlock {
+    param($exe, $argList, $dir, $codeOut)
+    Set-Location $dir
+    & $exe @argList
+    $LASTEXITCODE | Set-Content -Path $codeOut
+  } -ArgumentList @($Dotnet, $TestArgs, $Root, $codeFile)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
-  & $TestCmd | Write-Host
-  $testCode = $LASTEXITCODE
+  $doneSignal = Wait-Job -Job $testJob -Timeout $GateSeconds
+  $killed = ($null -eq $doneSignal)
+  if ($killed -and ($testJob.State -eq 'Running')) { Stop-Job -Job $testJob }
+  Receive-Job -Job $testJob | Write-Host
+  Remove-Job -Job $testJob -Force
   $sw.Stop()
+  $testCode = 1
+  if (Test-Path $codeFile) { $testCode = [int](Get-Content $codeFile -Raw).Trim() }
+  if ($killed) {
+    $testCode = 1
+    Write-Host "--- $Name suite killed at the $GateSeconds s bell; reaping its tree ---"
+    $script:reapNotes += @(Invoke-OrphanReap ([datetime]::MaxValue))
+  }
   $gateCode = Receive-Job -Job $job -Wait -AutoRemoveJob
   $verdict = ''
   if (Test-Path $VerdictFile) { $verdict = (Get-Content $VerdictFile -Raw).Trim() }
-  $overrun = $sw.Elapsed.TotalSeconds -gt $GateSeconds
+  $overrun = $killed -or ($sw.Elapsed.TotalSeconds -gt $GateSeconds)
   Write-Host "--- $Name gate exit: $gateCode verdict: $verdict overrun: $overrun test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
   return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun }
 }
@@ -149,6 +193,16 @@ function Get-TranscriptFailures([string]$LogPath) {
   return $names
 }
 
+function Get-TranscriptSkips([string]$LogPath) {
+  $names = @()
+  if (-not (Test-Path $LogPath)) { return $names }
+  foreach ($ln in (Get-Content $LogPath)) {
+    $m = [regex]::Match($ln, '^\s*Skipped (\S+) \[')
+    if ($m.Success -and ($names -notcontains $m.Groups[1].Value)) { $names += $m.Groups[1].Value }
+  }
+  return $names
+}
+
 function Get-LegSummary([string]$TrxPath, [string]$LogPath) {
   $trx = Get-TrxSummary $TrxPath
   $rows = Get-TranscriptRows $LogPath
@@ -166,7 +220,11 @@ function Get-LegSummary([string]$TrxPath, [string]$LogPath) {
     if ($trxNames -notcontains $n) { $failLines += "  - $n : see transcript" }
   }
   $skipLines = @()
-  if ($null -ne $trx) { $skipLines = $trx.Skipped }
+  if ($null -ne $trx) { $skipLines += $trx.Skipped }
+  $trxSkipNames = @($skipLines | ForEach-Object { ($_ -replace '^  - ([^:]+):.*$', '$1') })
+  foreach ($n in (Get-TranscriptSkips $LogPath)) {
+    if ($trxSkipNames -notcontains $n) { $skipLines += "  - $n : see transcript" }
+  }
   $asm = ($rows | ForEach-Object { "$($_.Assembly) $($_.Passed)/$($_.Failed)/$($_.Skipped)" }) -join ', '
   return [pscustomobject]@{ Passed = $p; FailedCount = $f; Failed = $failLines; Skipped = $skipLines; Assemblies = $asm }
 }
@@ -189,29 +247,41 @@ Write-Output "nightly: window=$inWindow locked=$locked force=$($Force.IsPresent)
 
 if ($CheckOnly) { Write-Output 'nightly: environment OK'; exit 0 }
 
+# Single-writer: the mutex serializes governed runs, so a manual backup
+# never overlaps the scheduled fire (overlap used to mean mutual
+# orphan-reaping). A stood-down invocation exits 0: nothing failed, the
+# holder owns the proof. The OS releases the mutex at process exit; an
+# abandoned hold from a dead run reads as acquired.
+$runStart = Get-Date
+$mutex = New-Object System.Threading.Mutex($false, 'Global\ScratchPadNightlyRun')
+$lockHeld = $false
+try { $lockHeld = $mutex.WaitOne(0) }
+catch [System.Threading.AbandonedMutexException] { $lockHeld = $true }
+if (-not $lockHeld) { Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'; exit 0 }
+
 $day = Get-Date -Format 'yyyy-MM-dd'
+$stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
 $nightDir = Join-Path $Root 'build\nightly'
 New-Item -ItemType Directory -Path $nightDir -Force | Out-Null
-$trxDir = Join-Path $nightDir $day
+# Invocation-scoped: every run owns its stamp directory plus its stamped
+# transcripts, so a second same-day run never overwrites (or gets merged
+# into) the first run's evidence. The morning report keeps its day-scoped
+# name: the guard plus the operator check one fixed path.
+$trxDir = Join-Path $nightDir $stamp
 New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
 # Pre-flight: reap orphaned test apps from a dead run. Path-scoped to this
-# checkout's Bin, so a released ScratchPad anywhere else is never touched.
-# The 02:30 run's parent died mid-loop and left three holding Bin locks,
-# which reds the build (MSB3027) until reaped; stale windows also
+# checkout's Bin, so a released ScratchPad anywhere else is never touched;
+# age-scoped to before this run's start, so a concurrent run's children
+# survive. The 02:30 run's parent died mid-loop and left three holding Bin
+# locks, which reds the build (MSB3027) until reaped; stale windows also
 # contaminate window-enumerating tests, so the reap precedes every leg.
-$reapNotes = @()
-foreach ($p in @(Get-CimInstance Win32_Process -Filter "Name='ScratchPad.exe' OR Name='testhost.exe'" -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -like "$Root\Bin\*" })) {
-  $note = "$($p.Name) pid=$($p.ProcessId) started=$($p.CreationDate)"
-  Write-Output "nightly: reaping orphan $note"
-  $reapNotes += $note
-  Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
-}
+$reapNotes = @(Invoke-OrphanReap $runStart)
 $failed = $false
 $gateA = $null
 $gateB = $null
 
 if ($Smoke) {
-  $log = Join-Path $nightDir "$day-smoke.log"
+  $log = Join-Path $nightDir "$stamp-smoke.log"
   if (Test-Path $log) { Remove-Item $log -Force }
   Start-Transcript -Path $log | Out-Null
   try {
@@ -240,7 +310,7 @@ try {
   if (($code -ne 0) -or (-not (Test-Path $GateExe))) { throw "nightly: gate build failed ($code); Run A and B need the gate binary" }
 
   if (-not $SkipDefault) {
-    $log = Join-Path $nightDir "$day-default.log"
+    $log = Join-Path $nightDir "$stamp-default.log"
     Start-LegLog $log 'full tree, Category!=Interactive, backgrounded'
     try {
       $trx = Join-Path $trxDir 'run-a.trx'
@@ -248,7 +318,8 @@ try {
       $verdictFile = Join-Path $trxDir 'gate-default.out'
       # -e is load-bearing: shell exports do not reach the app through
       # the test host (measured 2026-09-17); see docs/testing.md.
-      $r = Invoke-GatedLeg 'run-a' 1800 '' $gateLog $verdictFile { & $Dotnet test src/ScratchPad.slnx --no-build --nologo --filter 'Category!=Interactive' -e SCRATCHPAD_BACKGROUND=1 --logger 'trx;LogFileName=run-a.trx' --results-directory $trxDir }
+      $testArgsA = @('test', 'src/ScratchPad.slnx', '--no-build', '--nologo', '--filter', 'Category!=Interactive', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-a.trx', '--results-directory', $trxDir)
+      $r = Invoke-GatedLeg 'run-a' 1800 '' $gateLog $verdictFile $testArgsA
       $gateA = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
     } finally {
@@ -257,12 +328,13 @@ try {
   }
 
   if (-not $SkipPrimary) {
-    $log = Join-Path $nightDir "$day-primary.log"
+    $log = Join-Path $nightDir "$stamp-primary.log"
     Start-LegLog $log 'tests/UI, Category=Primary, backgrounded, expect-primary'
     try {
       $gateLog = Join-Path $trxDir 'gate-primary.log'
       $verdictFile = Join-Path $trxDir 'gate-primary.out'
-      $r = Invoke-GatedLeg 'run-b' 300 '--expect-primary' $gateLog $verdictFile { & $Dotnet test tests/UI/UI.csproj --no-build --nologo --filter 'Category=Primary' -e SCRATCHPAD_BACKGROUND=1 --logger 'trx;LogFileName=run-b.trx' --results-directory $trxDir }
+      $testArgsB = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category=Primary', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', 'trx;LogFileName=run-b.trx', '--results-directory', $trxDir)
+      $r = Invoke-GatedLeg 'run-b' 300 '--expect-primary' $gateLog $verdictFile $testArgsB
       $gateB = $r
       if (($r.TestCode -ne 0) -or ($r.GateCode -ne 0) -or $r.Overrun) { $failed = $true }
     } finally {
@@ -271,7 +343,7 @@ try {
   }
 
   if (-not $SkipFenced) {
-    $log = Join-Path $nightDir "$day-full.log"
+    $log = Join-Path $nightDir "$stamp-full.log"
     if ($Force) {
       Start-LegLog $log 'tests/UI, Category=Interactive, foreground, forced'
       try {
@@ -281,9 +353,11 @@ try {
         Stop-LegLog
       }
     } elseif (-not $inWindow) {
-      Write-Output 'nightly: interactive leg skipped (outside the quiet-hours window)'
+      Write-Output 'nightly: interactive leg skipped (outside the quiet-hours window); the bar fails the run (see docs/testing.md)'
+      $failed = $true
     } elseif ($locked) {
-      Write-Output 'nightly: interactive leg skipped (workstation locked; UI cannot be driven)'
+      Write-Output 'nightly: interactive leg skipped (workstation locked; UI cannot be driven); the bar fails the run (see docs/testing.md)'
+      $failed = $true
     } else {
       Start-LegLog $log 'tests/UI, Category=Interactive, foreground'
       try {
@@ -320,9 +394,9 @@ try {
   if ($pname -eq 'taskeng.exe') { $trigger = 'cron \ScratchPad\Nightly UI (daily 02:30)' }
   else { $trigger = "manual (parent $pname)" }
 } catch { }
-$sumA = Get-LegSummary (Join-Path $trxDir 'run-a.trx') (Join-Path $nightDir "$day-default.log")
-$sumB = Get-LegSummary (Join-Path $trxDir 'run-b.trx') (Join-Path $nightDir "$day-primary.log")
-$sumI = Get-LegSummary (Join-Path $trxDir 'interactive.trx') (Join-Path $nightDir "$day-full.log")
+$sumA = Get-LegSummary (Join-Path $trxDir 'run-a.trx') (Join-Path $nightDir "$stamp-default.log")
+$sumB = Get-LegSummary (Join-Path $trxDir 'run-b.trx') (Join-Path $nightDir "$stamp-primary.log")
+$sumI = Get-LegSummary (Join-Path $trxDir 'interactive.trx') (Join-Path $nightDir "$stamp-full.log")
 function Format-LegRow([string]$Leg, $Sum, $Gate, [string]$LogName) {
   if ($null -eq $Sum) { return "| $Leg | no trx (leg skipped or produced none) | -- | $($LogName) |" }
   $skips = $Sum.Skipped.Count
@@ -342,9 +416,9 @@ $report += "- Pre-flight reaped: $reapLine"
 $report += ''
 $report += '| Leg | Counts | Gate | Log |'
 $report += '| --- | ------ | ---- | --- |'
-$report += (Format-LegRow 'Run A (default)' $sumA $gateA "$day-default.log")
-$report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$day-primary.log")
-$report += (Format-LegRow 'Interactive (collection)' $sumI $null "$day-full.log")
+$report += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log")
+$report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log")
+$report += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log")
 $report += ''
 $report += '## Failures (triage appends finding refs)'
 $report += ''
