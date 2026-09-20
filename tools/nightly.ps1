@@ -45,6 +45,7 @@ $SdkDir = Join-Path $Root '.tools\dotnet-win-x64'
 $Dotnet = Join-Path $SdkDir 'dotnet.exe'
 $GateExe = Join-Path $Root 'Bin\ForegroundLog\Debug\ForegroundLog.exe'
 . (Join-Path $PSScriptRoot 'NightDebt.ps1')
+. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 
 function Get-InInteractiveWindow {
   $spec = $env:SCRATCHPAD_INTERACTIVE_WINDOW
@@ -97,7 +98,9 @@ function Start-LegLog([string]$Path, [string]$Scope) {
     $head = 'unknown'
     try { $head = (git -C $Root rev-parse HEAD).Trim() } catch { }
   }
-  Write-Output "nightly: scope=$Scope head=$head day=$(Get-Date -Format 'yyyy-MM-dd') leg=$(Split-Path -Leaf $Path)"
+  $snap = $script:snapshot
+  if ([string]::IsNullOrWhiteSpace($snap)) { $snap = 'unknown (pre-build log)' }
+  Write-Output "nightly: scope=$Scope head=$head day=$(Get-Date -Format 'yyyy-MM-dd') leg=$(Split-Path -Leaf $Path) snapshot=$snap"
 }
 
 function Stop-LegLog {
@@ -255,121 +258,8 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun }
 }
 
-function Get-TrxSummary([string]$TrxPath) {
-  if (-not (Test-Path $TrxPath)) { return $null }
-  # A killed leg can leave truncated XML; a throw here would kill the
-  # report under $ErrorActionPreference = 'Stop', so malformed trx reads
-  # as absent (the transcript still carries the counts).
-  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $null }
-  $results = @($t.TestRun.Results.UnitTestResult)
-  $passed = @($results | Where-Object { $_.outcome -eq 'Passed' }).Count
-  $failed = @($results | Where-Object { $_.outcome -eq 'Failed' })
-  $skipped = @($results | Where-Object { $_.outcome -eq 'NotExecuted' })
-  $failLines = @($failed | ForEach-Object {
-    $msg = ''
-    if ($_.Output -and $_.Output.ErrorInfo -and $_.Output.ErrorInfo.Message) { $msg = $_.Output.ErrorInfo.Message }
-    $msg = ($msg -split "`r?`n")[0]
-    if ($msg.Length -gt 160) { $msg = $msg.Substring(0, 160) }
-    '  - ' + $_.testName + ': ' + $msg
-  })
-  $skipLines = @($skipped | ForEach-Object {
-    $reason = 'triage annotates'
-    if ($_.Output -and $_.Output.ErrorInfo -and $_.Output.ErrorInfo.Message) { $reason = (($_.Output.ErrorInfo.Message -split "`r?`n")[0]) }
-    '  - ' + $_.testName + ': ' + $reason
-  })
-  return [pscustomobject]@{ Passed = $passed; FailedCount = $failed.Count; Failed = $failLines; Skipped = $skipLines }
-}
-
-function Get-TranscriptRows([string]$LogPath) {
-  # VSTest assembly summary lines. A solution-level trx keeps only the last
-  # assembly (each project overwrites LogFileName), so the transcript is the
-  # authoritative per-leg count; the trx carries failure messages.
-  $rows = @()
-  if (-not (Test-Path $LogPath)) { return $rows }
-  foreach ($ln in (Get-Content $LogPath)) {
-    $m = [regex]::Match($ln, '(Passed!|Failed!)\s+-\s+Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),.*-\s*(\S+)\s*\(net')
-    if ($m.Success) {
-      $rows += [pscustomobject]@{ Assembly = $m.Groups[5].Value; Passed = [int]$m.Groups[3].Value; Failed = [int]$m.Groups[2].Value; Skipped = [int]$m.Groups[4].Value }
-    }
-  }
-  return $rows
-}
-
-function Get-TranscriptFailures([string]$LogPath) {
-  $names = @()
-  if (-not (Test-Path $LogPath)) { return $names }
-  foreach ($ln in (Get-Content $LogPath)) {
-    $m = [regex]::Match($ln, '^\s*Failed (\S+) \[')
-    if ($m.Success -and ($names -notcontains $m.Groups[1].Value)) { $names += $m.Groups[1].Value }
-  }
-  return $names
-}
-
-function Get-NonQuarantineSkips([string]$TrxPath) {
-  # The Interactive bar excuses quarantine skips only (docs/testing.md):
-  # any skip without a QUARANTINED stamp reds the leg. xUnit's exit code
-  # stays zero under skips, so the trx is the enforcement point.
-  $names = @()
-  if (-not (Test-Path $TrxPath)) { return $names }
-  # Same truncated-XML guard as Get-TrxSummary: malformed trx reads as
-  # no skips (the transcript skip merge still reports the names).
-  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $names }
-  foreach ($r in @($t.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'NotExecuted' })) {
-    $msg = ''
-    if ($r.Output -and $r.Output.ErrorInfo -and $r.Output.ErrorInfo.Message) { $msg = $r.Output.ErrorInfo.Message }
-    if ($msg -notlike '*QUARANTINED*') { $names += $r.testName }
-  }
-  return $names
-}
-
-function Get-TranscriptSkips([string]$LogPath) {
-  $names = @()
-  if (-not (Test-Path $LogPath)) { return $names }
-  foreach ($ln in (Get-Content $LogPath)) {
-    $m = [regex]::Match($ln, '^\s*Skipped (\S+) \[')
-    if ($m.Success -and ($names -notcontains $m.Groups[1].Value)) { $names += $m.Groups[1].Value }
-  }
-  return $names
-}
-
-function Get-LegSummary([string]$TrxPath, [string]$LogPath) {
-  $trx = Get-TrxSummary $TrxPath
-  $rows = Get-TranscriptRows $LogPath
-  if ($rows.Count -eq 0) { return $trx }
-  $p = ($rows | Measure-Object Passed -Sum).Sum
-  $f = ($rows | Measure-Object Failed -Sum).Sum
-  $s = ($rows | Measure-Object Skipped -Sum).Sum
-  $failLines = @()
-  $trxNames = @()
-  if ($null -ne $trx) {
-    $failLines += $trx.Failed
-    $trxNames = @($trx.Failed | ForEach-Object { ($_ -replace '^  - ([^:]+):.*$', '$1') })
-  }
-  foreach ($n in (Get-TranscriptFailures $LogPath)) {
-    if ($trxNames -notcontains $n) { $failLines += "  - $n : see transcript" }
-  }
-  $skipLines = @()
-  if ($null -ne $trx) { $skipLines += $trx.Skipped }
-  $trxSkipNames = @($skipLines | ForEach-Object { ($_ -replace '^  - ([^:]+):.*$', '$1') })
-  foreach ($n in (Get-TranscriptSkips $LogPath)) {
-    if ($trxSkipNames -notcontains $n) { $skipLines += "  - $n : see transcript" }
-  }
-  $asm = ($rows | ForEach-Object { "$($_.Assembly) $($_.Passed)/$($_.Failed)/$($_.Skipped)" }) -join ', '
-  return [pscustomobject]@{ Passed = $p; FailedCount = $f; Failed = $failLines; Skipped = $skipLines; Assemblies = $asm }
-}
-
-function Format-LegRow([string]$Leg, $Sum, $Gate, [string]$LogName, [string]$Note = '') {
-  if ($null -eq $Sum) {
-    $cell = if ($Note -ne '') { $Note } else { 'no trx (leg skipped or produced none)' }
-    return "| $Leg | $cell | -- | $($LogName) |"
-  }
-  $skips = $Sum.Skipped.Count
-  $gate = if ($null -eq $Gate) { 'n/a (owns the foreground)' } else { "exit $($Gate.GateCode) $($Gate.Verdict)" }
-  $counts = "$($Sum.Passed) passed, $($Sum.FailedCount) failed, $skips skipped"
-  if ($Sum.Assemblies) { $counts += " ($($Sum.Assemblies))" }
-  if ($Note -ne '') { $counts += " ($Note)" }
-  return "| $Leg | $counts | $gate | $($LogName) |"
-}
+# Result parsing plus report formatting live in tools/NightlyParse.ps1
+# (D00 T02 §15: shared with the parser fixture suite); dot-sourced below.
 
 function Write-AtomicReport([string[]]$Lines, [string]$Path) {
   # Same-volume rename is atomic on NTFS: a kill between the write and
@@ -377,6 +267,16 @@ function Write-AtomicReport([string[]]$Lines, [string]$Path) {
   $tmp = "$Path.tmp"
   $Lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
   Move-Item -Path $tmp -Destination $Path -Force
+}
+
+function Publish-NightlyReport([string[]]$Lines, [string]$ArchiveSuffix) {
+  # Fixed path plus stamp-scoped archive plus latest pointer (D00 T02
+  # §15 PR5): every publication lands all three atomically, so same-day
+  # runs never overwrite each other's reports and triage resolves the
+  # current stamp from latest.txt instead of globbing stamp dirs.
+  Write-AtomicReport $Lines (Join-Path $script:nightDir "morning-$($script:day).md")
+  Write-AtomicReport $Lines (Join-Path $script:nightDir "morning-$($script:stamp)$ArchiveSuffix.md")
+  Write-AtomicReport @($script:stamp) (Join-Path $script:nightDir 'latest.txt')
 }
 
 function Get-LegNote([string]$Leg, $Gate, [bool]$Killed) {
@@ -430,7 +330,31 @@ $mutex = New-Object System.Threading.Mutex($false, 'Global\ScratchPadNightlyRun'
 $lockHeld = $false
 try { $lockHeld = $mutex.WaitOne(0) }
 catch [System.Threading.AbandonedMutexException] { $lockHeld = $true }
-if (-not $lockHeld) { Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'; exit 0 }
+if (-not $lockHeld) {
+  # Explicit loser report (D00 T02 §15 PR20): the stand-down lands a
+  # uniquely-named record instead of console-only silence, without
+  # touching the holder's evidence (only the shared night dir, which
+  # must exist anyway, plus the loser's own file). Same-second
+  # sequential stamp reuse is unreachable (every invocation outlives
+  # its second), so the mutex plus the unique loser name close the
+  # overlap class.
+  $loserStamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
+  $loserId = "$loserStamp-pid$PID"
+  $loserDir = Join-Path $Root 'build\nightly'
+  New-Item -ItemType Directory -Path $loserDir -Force | Out-Null
+  $kindBits = @()
+  if ($Force) { $kindBits += '-Force' }
+  if ($SkipDefault) { $kindBits += '-SkipDefault' }
+  if ($SkipPrimary) { $kindBits += '-SkipPrimary' }
+  if ($SkipFenced) { $kindBits += '-SkipFenced' }
+  if ($SkipSoak) { $kindBits += '-SkipSoak' }
+  if ($Smoke) { $kindBits += '-Smoke' }
+  if ($CollectDebt -ne '') { $kindBits += "-CollectDebt $CollectDebt" }
+  $kind = if ($kindBits.Count -eq 0) { 'full (scheduled/manual shape)' } else { ($kindBits -join ' ') }
+  Write-AtomicReport @("# Stood-down run: $loserId", 'Status: stood-down', '', "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", "- Kind: $kind", '- Holder: another governed run holds Global\ScratchPadNightlyRun', '- Verdict: STOOD DOWN (not run; the holder owns the proof)') (Join-Path $loserDir "loser-$loserId.md")
+  Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'
+  exit 0
+}
 
 trap {
   # Cancellation record (D00 T02 §14 PR23): Ctrl+C, operator cancel, and
@@ -625,6 +549,14 @@ try {
   }
   $script:buildHead = 'unknown'
   try { $script:buildHead = (git -C $Root rev-parse HEAD).Trim() } catch { }
+  # Build-once snapshot identity (D00 T02 §15 PR9): commit, dirty
+  # state, binaries, config, and tool versions, captured once so every
+  # leg header quotes the identical line.
+  $dirtyState = 'clean'
+  try { $dirtyCount = @((git -C $Root status --porcelain)).Count; if ($dirtyCount -gt 0) { $dirtyState = "dirty:$dirtyCount" } } catch { $dirtyState = 'unknown' }
+  $sdkVersion = 'unknown'
+  try { $sdkVersion = (& $Dotnet --version).Trim() } catch { }
+  $script:snapshot = "HEAD $($script:buildHead) $dirtyState; config Debug; dotnet $sdkVersion; UI $(Get-ShortHash (Join-Path $Root 'Bin\UI\Debug\UI.dll')); Protocol $(Get-ShortHash (Join-Path $Root 'Bin\Protocol\Debug\Protocol.dll')); gate $(Get-ShortHash $GateExe)"
 
   if ((-not $SkipDefault) -and (-not (Test-LegBudget $capA))) {
     $SkipDefault = $true
@@ -739,14 +671,15 @@ try {
   $coreReport += 'Status: pre-soak core verdicts (final report overwrites after soak)'
   $coreReport += ''
   $coreReport += "- HEAD: $script:buildHead"
+  $coreReport += "- Run identity: $stamp-pid$PID"
   $coreReport += "- Core verdicts published before soak; the final report overwrites after soak (or budget-cut)"
   $coreReport += ''
-  $coreReport += '| Leg | Counts | Gate | Log |'
-  $coreReport += '| --- | ------ | ---- | --- |'
+  $coreReport += '| Leg | Counts | Gate | Infra | Log |'
+  $coreReport += '| --- | ------ | ---- | ----- | --- |'
   $coreReport += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
   $coreReport += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
   $coreReport += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
-  Write-AtomicReport $coreReport (Join-Path $nightDir "morning-$day.md")
+  Publish-NightlyReport $coreReport '-core'
   Write-Output "nightly: core verdicts published before soak"
   if (-not $SkipSoak) {
     for ($i = 1; $i -le 5; $i++) {
@@ -802,6 +735,7 @@ $report += $reportTitle
 $report += 'Status: final'
 $report += ''
 $report += "- HEAD: $head"
+$report += "- Run identity: $stamp-pid$PID"
 $report += "- Trigger: $trigger"
 $report += "- Window: 02:00-06:50 local (or SCRATCHPAD_INTERACTIVE_WINDOW)"
 $reserveNote = if ($reserveBypassed) { 'simulation: reserve bypassed' } else { "reserve ${deadlineReserve}s" }
@@ -813,11 +747,15 @@ $buildLine = if ($buildError -eq '') { 'OK' } else { "FAILED: $buildError" }
 $report += "- Build: $buildLine"
 $report += "- Pre-flight reaped: $reapLine"
 $report += ''
-$report += '| Leg | Counts | Gate | Log |'
-$report += '| --- | ------ | ---- | --- |'
+$report += '| Leg | Counts | Gate | Infra | Log |'
+$report += '| --- | ------ | ---- | ----- | --- |'
 $report += (Format-LegRow 'Run A (default)' $sumA $gateA "$stamp-default.log" (Get-LegNote 'Run A (default)' $gateA $false))
 $report += (Format-LegRow 'Run B (primary)' $sumB $gateB "$stamp-primary.log" (Get-LegNote 'Run B (primary)' $gateB $false))
 $report += (Format-LegRow 'Interactive (collection)' $sumI $null "$stamp-full.log" (Get-LegNote 'Interactive (collection)' $null $interactiveKilled))
+$report += ''
+$report += '## Enforcement'
+$report += ''
+$report += (Format-EnforcementVerdict $interactiveRan $interactiveLeaked)
 $report += ''
 $report += '## Failures (triage appends finding refs)'
 $report += ''
@@ -843,31 +781,16 @@ foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sum
   }
 }
 if (-not $anySkip) { $report += '(none)' ; $report += '' }
-# Soak ledger (D00 T02 §14 item 3): per-iteration counts plus kills plus
-# budget-cuts. Soak runs uncaptured (Invoke-TimedStep output lands on the
-# console only), so the trx files are the record; §15 PR7 owns the full
-# fourth-phase reporting this ledger anticipates.
+# Soak fourth phase (D00 T02 §15 PR7): the ledger gains a FAILED mark
+# plus an aggregate verdict, so a red soak cannot hide behind green
+# legs; the phase verdict fails the run like a leg. Soak runs
+# uncaptured (Invoke-TimedStep output lands on the console only), so
+# the trx files are the record.
 $report += '## Soak'
 $report += ''
-$soakNames = @()
-foreach ($i in 1..5) { $soakNames += "ui-soak-$i" }
-foreach ($i in 1..5) { $soakNames += "protocol-soak-$i" }
-$soakAny = $false
-foreach ($n in $soakNames) {
-  $st = Get-TrxSummary (Join-Path $trxDir "$n.trx")
-  if ($null -eq $st) {
-    if ($soakKilled -contains $n) { $soakAny = $true; $report += "- $n : no trx (killed at cap: unproven)" }
-    continue
-  }
-  $soakAny = $true
-  $tag = if ($soakKilled -contains $n) { 'killed at cap: unproven' } else { 'proved' }
-  $report += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped ($tag)"
-}
-foreach ($cut in @($budgetCut | Where-Object { $_ -like '*soak-*' })) {
-  $soakAny = $true
-  $report += "- $cut : budget-cut (unproven)"
-}
-if (-not $soakAny) { $report += '(no soak iterations ran: -SkipSoak or budget-cut before the first)' }
+$soakLedger = Format-SoakLedger $trxDir $soakKilled $budgetCut
+if ($soakLedger.Failed) { $failed = $true }
+$report += $soakLedger.Rows
 $report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
 # Interactive collection per open debt, append Night-collected on
@@ -966,7 +889,7 @@ if ($stagedStubs.Count -gt 0) {
   $report += ''
 }
 $reportPath = Join-Path $nightDir "morning-$day.md"
-Write-AtomicReport $report $reportPath
+Publish-NightlyReport $report ''
 Write-Output "nightly: report at $reportPath"
 
 # A simulation run never exits 0 (D00 T02 §14 R2-F3): short deadlines

@@ -15,7 +15,7 @@ sealed class HookFactAttribute : FactAttribute
         Skip = UiQuietHours.SkipOutsideWindow(DateTime.Now);
         if (Skip is null && !UiHooks.AreAvailable(out int error))
         {
-            Skip = $"Low-level mouse hooks are unavailable on this host (Win32 error {error}).";
+            Skip = $"CAPABILITY: Low-level mouse hooks are unavailable on this host (Win32 error {error}).";
         }
     }
 }

@@ -17,14 +17,14 @@ sealed class PrinterFactAttribute : FactAttribute
     {
         if (PrinterSettings.InstalledPrinters.Count == 0)
         {
-            Skip = "No printers enumerated in this context (agent context is printer-blind); run where the spooler is visible.";
+            Skip = "CAPABILITY: No printers enumerated in this context (agent context is printer-blind); run where the spooler is visible.";
         }
         else
         {
             string def = new PrinterSettings().PrinterName;
             if (!string.IsNullOrEmpty(def) && !IsVirtualPrinter(def))
             {
-                Skip = $"Default printer is hardware ({def}); real-print tests run only against virtual (PDF/XPS) printers.";
+                Skip = $"CAPABILITY: Default printer is hardware ({def}); real-print tests run only against virtual (PDF/XPS) printers.";
             }
         }
     }
