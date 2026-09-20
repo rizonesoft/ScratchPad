@@ -23,7 +23,7 @@ public sealed class DirtyPromptTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "save7.txt");
         File.WriteAllText(file, "base seven");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "edited séven", Caret = 12 }] }],
@@ -31,7 +31,7 @@ public sealed class DirtyPromptTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -75,7 +75,7 @@ public sealed class DirtyPromptTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "drop7.txt");
         File.WriteAllText(file, "base drop");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "edited drop", Caret = 5 }] }],
@@ -83,7 +83,7 @@ public sealed class DirtyPromptTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -125,7 +125,7 @@ public sealed class DirtyPromptTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "keep7.txt");
         File.WriteAllText(file, "base keep");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "edited keep", Caret = 4 }] }],
@@ -133,7 +133,7 @@ public sealed class DirtyPromptTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -181,7 +181,7 @@ public sealed class DirtyPromptTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "win7.txt");
         File.WriteAllText(file, "base win");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows =
@@ -200,7 +200,7 @@ public sealed class DirtyPromptTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -231,7 +231,7 @@ public sealed class DirtyPromptTests
 
             Assert.Equal("base win", File.ReadAllText(file));
             nint fgBefore2 = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -279,7 +279,7 @@ public sealed class DirtyPromptTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "crash7.txt");
         File.WriteAllText(file, "base crash");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 0 }] }],
@@ -287,7 +287,7 @@ public sealed class DirtyPromptTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -317,7 +317,7 @@ public sealed class DirtyPromptTests
 
             Assert.Equal("base crash", File.ReadAllText(file));
             nint fgBefore2 = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -362,7 +362,7 @@ public sealed class DirtyPromptTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "stale7.txt");
         File.WriteAllText(file, "base stale");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Content = "STALE7", Caret = 3 }] }],
@@ -370,7 +370,7 @@ public sealed class DirtyPromptTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -414,14 +414,14 @@ public sealed class DirtyPromptTests
     public void UntitledSaveKeepsTabDirtyWithNothingWritten()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Content = "unsaved seven", Caret = 3 }] }],
         }.Save();
         try
         {
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -580,24 +580,6 @@ public sealed class DirtyPromptTests
         string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
 

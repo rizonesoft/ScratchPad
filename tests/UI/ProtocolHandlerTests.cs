@@ -53,7 +53,7 @@ public sealed class ProtocolHandlerTests
         {
             string url = ProtocolAssociation.Scheme + "://" + Uri.EscapeDataString(file);
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{url}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{url}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -83,7 +83,7 @@ public sealed class ProtocolHandlerTests
     {
         SeedFresh();
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchAppWithArgs($"\"{link}\"");
+        using var app = UiLaunch.LaunchAppWithArgs($"\"{link}\"", drainLaunchDrops: true);
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -156,40 +156,15 @@ public sealed class ProtocolHandlerTests
         return key is not null;
     }
 
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchAppWithArgs(string args)
-    {
-        LaunchDrops.Drain();
-        return Application.Launch(AppExePath(), args);
-    }
-
     static int RunHeadless(string args, TimeSpan timeout)
     {
-        using var process = Process.Start(new ProcessStartInfo(AppExePath(), args) { UseShellExecute = false });
+        using var process = Process.Start(new ProcessStartInfo(UiLaunch.AppExePath(), args) { UseShellExecute = false });
         Assert.NotNull(process);
         Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
         return process.ExitCode;
     }
 
-    static void SeedFresh() => SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
-        LaunchDrops.Drain();
-    }
+    static void SeedFresh() => UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh }, drainLaunchDrops: true);
 
     static string NewTempDir()
     {

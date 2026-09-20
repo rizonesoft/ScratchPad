@@ -24,9 +24,9 @@ public sealed class MainWindowTests
     [Fact]
     public void ShellRegionsExistAndTitleFollowsConvention()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
         UiForeground.Background(window, fgBefore);
@@ -74,9 +74,9 @@ public sealed class MainWindowTests
         // the seeded primary rect to assert); shown in place on the primary
         // it passes. Focus-free: InPlace shows no-activate and restores
         // the foreground.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 120, Y = 130, Width = 800, Height = 600 });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 120, Y = 130, Width = 800, Height = 600 });
         nint fgBefore = UiForeground.Capture();
-        using (var app = LaunchApp())
+        using (var app = UiLaunch.LaunchApp())
         {
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
@@ -111,9 +111,9 @@ public sealed class MainWindowTests
     [InlineData("system", 100)]
     public void ThemesRenderWithMica(string theme, int brightnessBound)
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, Theme = theme });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, Theme = theme });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
         UiForeground.Background(window, fgBefore);
@@ -180,7 +180,7 @@ public sealed class MainWindowTests
 
         SessionData.Delete();
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(15));
         UiForeground.Background(window, fgBefore);
@@ -204,26 +204,6 @@ public sealed class MainWindowTests
         {
             CloseApp(app, window);
         }
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        // Every close snapshots the session, so a seeded launch also starts
-        // session-clean; otherwise the previous test's tabs would restore.
-        SessionData.Delete();
     }
 
     static AutomationElement? FindById(AutomationElement window, string id)

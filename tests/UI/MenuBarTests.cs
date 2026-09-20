@@ -51,11 +51,11 @@ public sealed class MenuBarTests
     [Fact]
     public void MenuStructureMatchesStockCaptures()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -105,11 +105,11 @@ public sealed class MenuBarTests
             ),
             ("MenuView", ["MenuViewWordWrap"] /* StatusBar enabled by D01 T02 §4, asserted below */),
         ];
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -200,11 +200,11 @@ public sealed class MenuBarTests
             "MenuToolsStats", "MenuToolsSnapshots", "MenuToolsTemplates",
             "MenuToolsExport", "MenuToolsLock",
         ];
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -240,10 +240,10 @@ public sealed class MenuBarTests
             (VirtualKeyShort.KEY_V, "MenuView", "MenuViewZoom"),
             (VirtualKeyShort.KEY_T, "MenuTools", "MenuToolsStats"),
         ];
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -284,10 +284,10 @@ public sealed class MenuBarTests
     public void FileMenuLiveAcceleratorsWork()
     {
         // Fenced (grandfather §8): live Ctrl accelerators via UiInput.Press; shortcut dispatch IS the point.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -319,8 +319,8 @@ public sealed class MenuBarTests
                 }
             }
 
-            SeedSettings(new ShellSettings { WhatsNewSeen = true });
-            using (var app = LaunchApp())
+            UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -338,7 +338,7 @@ public sealed class MenuBarTests
                 }
             }
 
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window2 = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -403,11 +403,11 @@ public sealed class MenuBarTests
     [Fact]
     public void FileNewTabOpensAndFocusesTab()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -432,11 +432,11 @@ public sealed class MenuBarTests
     [Fact]
     public void FileNewWindowOpensSecondWindow()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -477,10 +477,10 @@ public sealed class MenuBarTests
     public void FileOpenShowsPickerWithEncodingList()
     {
         // Fenced (grandfather §8): native picker needs real clicks; Invoke blocks on the synchronous dialog (audit clicks).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -523,14 +523,14 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): native picker dialog flow (same family as FileOpenShowsPickerWithEncodingList).
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = Path.Combine(dir, "forced1252.txt");
             // Lone 0xE9: invalid UTF-8, so forced UTF-8 must decode it to
             // U+FFFD (a u8 literal would emit the two-byte form C3 A9).
             File.WriteAllBytes(file, [0x63, 0x61, 0x66, 0xE9, 0x20, 0x74, 0x75, 0x6C, 0x69, 0x70, 0x73]);
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -564,12 +564,12 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): dialog needs real clicks; stays physical (audit keyboard).
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SeedFile(dir, "single-a.txt", "alpha");
             SeedFile(dir, "single-b.txt", "beta");
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -638,11 +638,11 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): native picker dialog flow (same family as FileOpenShowsPickerWithEncodingList).
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string missing = Path.Combine(dir, "missing.txt");
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -687,12 +687,12 @@ public sealed class MenuBarTests
     public void FileSaveWritesPathedTabInPlace()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "saveme.txt", "original");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -727,10 +727,10 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): native Save As dialog flow.
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -769,10 +769,10 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): native Save As dialog flow.
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -821,7 +821,7 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): native Save As dialog flow.
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = Path.Combine(dir, "prefill.txt");
@@ -829,7 +829,7 @@ public sealed class MenuBarTests
                 file,
                 "crlf one\r\ncrlf two\r\n",
                 new System.Text.UnicodeEncoding(bigEndian: false, byteOrderMark: false));
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -882,11 +882,11 @@ public sealed class MenuBarTests
     {
         // Fenced (grandfather §8): multi-dialog dirty walk via physical keys.
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "first.txt", "one");
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -940,12 +940,12 @@ public sealed class MenuBarTests
     public void FileRecentRendersListClearAndReopen()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "recent.txt", "remember me");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -996,12 +996,12 @@ public sealed class MenuBarTests
     public void FileRecentMissingReportsNotFound()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "gone.txt", "here then gone");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -1047,11 +1047,11 @@ public sealed class MenuBarTests
     public void FileCloseTabFollowsPrompt()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -1086,11 +1086,11 @@ public sealed class MenuBarTests
     public void FileCloseWindowPreservesSilently()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -1102,7 +1102,7 @@ public sealed class MenuBarTests
             }
 
             nint fgBefore2 = UiForeground.Capture();
-            using var app2 = LaunchApp();
+            using var app2 = UiLaunch.LaunchApp();
             using var automation2 = new UIA3Automation();
             var window2 = UiApp.Attach(app2, automation2, TimeSpan.FromSeconds(30));
             UiForeground.Background(window2, fgBefore2);
@@ -1127,11 +1127,11 @@ public sealed class MenuBarTests
     [Fact]
     public void FileExitClosesApp()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -1149,11 +1149,11 @@ public sealed class MenuBarTests
     [Fact]
     public void EditBingItemsPresentEnabledAndUnclicked()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -1199,12 +1199,12 @@ public sealed class MenuBarTests
     static void OpenToolsDialog(string itemId, string dialogId)
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "tools.txt", "tool body here");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -1795,29 +1795,6 @@ public sealed class MenuBarTests
             TimeSpan.FromMilliseconds(250),
             lastValueOnTimeout: true);
         return result.Result;
-    }
-
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static Application LaunchAppWithArgs(string args) => Application.Launch(AppExePath(), args);
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static string NewTempDir()

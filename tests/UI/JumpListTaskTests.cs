@@ -27,11 +27,11 @@ public sealed class JumpListTaskTests
         var seeded = new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh };
         seeded.PinnedFiles.Add(pin);
         seeded.RecentFiles.Add(rec);
-        SeedSettings(seeded);
+        UiLaunch.SeedSettings(seeded, drainLaunchDrops: true);
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs(string.Empty);
+            using var app = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -91,7 +91,7 @@ public sealed class JumpListTaskTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var first = LaunchAppWithArgs($"\"{file}\"");
+            using var first = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -103,7 +103,7 @@ public sealed class JumpListTaskTests
                 // note: the redirect must open one.
                 SelectTab(window, 0);
                 ContentBox(window).Text = "x";
-                using var second = LaunchAppWithArgs(LaunchArgs.NewNoteFlag);
+                using var second = UiLaunch.LaunchAppWithArgs(LaunchArgs.NewNoteFlag, drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Assert.Equal(3, WaitForTabCount(window, 3));
                 WaitForTabName(window, 2, TabAccessibilityName.For("Untitled", isDirty: false));
@@ -132,7 +132,7 @@ public sealed class JumpListTaskTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\" {LaunchArgs.NewNoteFlag}");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\" {LaunchArgs.NewNoteFlag}", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -167,7 +167,7 @@ public sealed class JumpListTaskTests
             // Verbatim feed arguments: this is the task-to-launch contract.
             string args = JumpListFeed.Build([pin], null).Single().Arguments;
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs(args);
+            using var app = UiLaunch.LaunchAppWithArgs(args, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -200,7 +200,7 @@ public sealed class JumpListTaskTests
         {
             string args = JumpListFeed.Build(null, [rec]).Single().Arguments;
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs(args);
+            using var app = UiLaunch.LaunchAppWithArgs(args, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -228,24 +228,6 @@ public sealed class JumpListTaskTests
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
 
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchAppWithArgs(string args)
-    {
-        LaunchDrops.Drain();
-        return Application.Launch(AppExePath(), args);
-    }
-
     static bool WaitForExit(Application app, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -257,14 +239,7 @@ public sealed class JumpListTaskTests
         return app.HasExited;
     }
 
-    static void SeedFresh() => SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
-        LaunchDrops.Drain();
-    }
+    static void SeedFresh() => UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh }, drainLaunchDrops: true);
 
     static string NewTempDir()
     {

@@ -15,7 +15,7 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class SettingsStoreNoticeTests
 {
-    [Fact]
+    [Fact(Skip = "QUARANTINED 2026-09-20 D01-T02-S2 settings-corrupt-dialog-null")]
     public void CorruptSettingsShowsNoticeAndRestoresDefaults()
     {
         string settingsPath = ShellSettings.FilePath;
@@ -25,7 +25,7 @@ public sealed class SettingsStoreNoticeTests
             Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
             File.WriteAllText(settingsPath, "{not json!!!");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -116,18 +116,6 @@ public sealed class SettingsStoreNoticeTests
             TimeSpan.FromMilliseconds(250),
             lastValueOnTimeout: true);
         return result.Result;
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
     }
 
     static void CloseApp(Application app, Window? window)

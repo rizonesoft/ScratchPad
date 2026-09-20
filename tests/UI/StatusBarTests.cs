@@ -21,13 +21,13 @@ public sealed class StatusBarTests
     [Fact]
     public void SegmentsShowLiveTruthForLoadedFile()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
         {
             string file = SeedFile(dir, "counts.txt", "a\tb\r\ncde\r\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -57,8 +57,8 @@ public sealed class StatusBarTests
     public void KeystrokesAndCaretMovesUpdateStrip()
     {
         // Fenced (grandfather §8): keystroke handling IS the point (audit keyboard).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -84,13 +84,13 @@ public sealed class StatusBarTests
     [Fact]
     public void TabSwitchUpdatesStrip()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
         {
             string file = SeedFile(dir, "first.txt", "a\tb\r\ncde\r\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -127,9 +127,9 @@ public sealed class StatusBarTests
     [Fact]
     public void ToggleHidesBarAndPersistsAcrossRelaunch()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -150,7 +150,7 @@ public sealed class StatusBarTests
         }
 
         nint fgBefore2 = UiForeground.Capture();
-        using var relaunch = LaunchApp();
+        using var relaunch = UiLaunch.LaunchApp();
         using var automation2 = new UIA3Automation();
         var window2 = UiApp.Attach(relaunch, automation2, TimeSpan.FromSeconds(30));
         UiForeground.Background(window2, fgBefore2);
@@ -172,12 +172,12 @@ public sealed class StatusBarTests
     public void StatusSegmentsHaveNoClickPath()
     {
         // Fenced (grandfather §8): the click IS the point; proves no-op (audit clicks).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
         {
             string file = SeedFile(dir, "clicks.txt", "a\tb\r\ncde\r\n");
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -212,13 +212,13 @@ public sealed class StatusBarTests
     [Fact]
     public void MarkdownTabShowsDisabledFormattedSwitch()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
         {
             string file = SeedFile(dir, "doc.md", "# T\r\n\r\nbody\r\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -252,13 +252,13 @@ public sealed class StatusBarTests
     [Fact]
     public void CrFileShowsMacintoshSegment()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
         {
             string file = SeedFile(dir, "classic.txt", "aa\rbb\r");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -282,14 +282,14 @@ public sealed class StatusBarTests
     [Fact]
     public void Utf16FileShowsEncodingSegment()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         string dir = NewTempDir();
         try
         {
             string file = Path.Combine(dir, "wide.txt");
             File.WriteAllText(file, "hi", System.Text.Encoding.Unicode);
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -307,28 +307,6 @@ public sealed class StatusBarTests
         {
             DeleteDir(dir);
         }
-    }
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static Application LaunchAppWithArgs(string args) => Application.Launch(AppExePath(), args);
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static string NewTempDir()

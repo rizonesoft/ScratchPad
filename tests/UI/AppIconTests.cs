@@ -23,7 +23,7 @@ public sealed class AppIconTests
     [Fact]
     public void ExeIconMatchesAsset()
     {
-        string exe = AppExePath();
+        string exe = UiLaunch.AppExePath();
         string asset = ShippedAssetPath(exe);
         using Icon extracted = Icon.ExtractAssociatedIcon(exe)!;
         using Bitmap got = extracted.ToBitmap();
@@ -36,7 +36,7 @@ public sealed class AppIconTests
     public void WindowChromeIconMatchesAsset()
     {
         nint fgBefore = UiForeground.Capture();
-        using var app = Application.Launch(AppExePath(), string.Empty);
+        using var app = Application.Launch(UiLaunch.AppExePath(), string.Empty);
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -68,7 +68,7 @@ public sealed class AppIconTests
             Assert.NotEqual(nint.Zero, hicon);
             using Icon handle = Icon.FromHandle(hicon);
             using Bitmap got = handle.ToBitmap();
-            using Icon wantIcon = new Icon(ShippedAssetPath(AppExePath()), got.Size);
+            using Icon wantIcon = new Icon(ShippedAssetPath(UiLaunch.AppExePath()), got.Size);
             using Bitmap want = wantIcon.ToBitmap();
             Assert.Equal(0, DiffPixels(got, want));
         }
@@ -105,18 +105,6 @@ public sealed class AppIconTests
         }
 
         Assert.True(app.HasExited, "app did not exit after Close");
-    }
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
     }
 
     // The asset as shipped next to the exe (Content copy). The Content

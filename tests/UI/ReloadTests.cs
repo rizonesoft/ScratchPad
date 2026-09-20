@@ -20,12 +20,12 @@ public sealed class ReloadTests
     public void CleanChangePromptsAndReloadRefreshes()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -57,12 +57,12 @@ public sealed class ReloadTests
     public void KeepHoldsBufferAndDirties()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -103,12 +103,12 @@ public sealed class ReloadTests
     public void CancelKeepsLikeKeep()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -143,12 +143,12 @@ public sealed class ReloadTests
     public void DirtyReloadDiscardsEdits()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -180,12 +180,12 @@ public sealed class ReloadTests
     public void DirtyKeepPreservesEdits()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -216,12 +216,12 @@ public sealed class ReloadTests
     public void UntitledAndIdenticalWritesNeverPrompt()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -252,12 +252,12 @@ public sealed class ReloadTests
     public void DeletedFileReloadFailsLoud()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -289,13 +289,13 @@ public sealed class ReloadTests
     public void LockedReloadRoutesThroughUnlock()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "reload21.txt", "original\n");
             File.WriteAllBytes(file, NoteCrypto.Lock(File.ReadAllBytes(file), "reload-21"));
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -477,29 +477,6 @@ public sealed class ReloadTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250));
         return result.Result;
-    }
-
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static Application LaunchAppWithArgs(string args) => Application.Launch(AppExePath(), args);
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static string NewTempDir()

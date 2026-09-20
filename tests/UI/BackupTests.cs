@@ -20,12 +20,12 @@ public sealed class BackupTests
     public void SaveWritesSiblingWithPreSaveBytes()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "bak20.txt", "original\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -58,7 +58,7 @@ public sealed class BackupTests
     public void RotationEvictsOldestSeededSibling()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "bak20.txt", "current\n");
@@ -74,7 +74,7 @@ public sealed class BackupTests
             string foreign = Path.Combine(dir, "bak20.txt.old.bak");
             File.WriteAllText(foreign, "mine\n");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -110,7 +110,7 @@ public sealed class BackupTests
     public void FailedSaveStillWritesSibling()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "bak20.txt", "original\n");
@@ -118,7 +118,7 @@ public sealed class BackupTests
             try
             {
                 nint fgBefore = UiForeground.Capture();
-                using var app = LaunchAppWithArgs($"\"{file}\"");
+                using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
                 UiForeground.Background(window, fgBefore);
@@ -236,28 +236,6 @@ public sealed class BackupTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250));
         return result.Result;
-    }
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static Application LaunchAppWithArgs(string args) => Application.Launch(AppExePath(), args);
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static string NewTempDir()

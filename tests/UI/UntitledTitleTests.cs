@@ -17,9 +17,9 @@ public sealed class UntitledTitleTests
     [Fact]
     public void TypingFirstLineRenamesTab()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -41,9 +41,9 @@ public sealed class UntitledTitleTests
     [Fact]
     public void FirstLineTrimsAndTruncates()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -87,24 +87,6 @@ public sealed class UntitledTitleTests
             TimeSpan.FromMilliseconds(250),
             lastValueOnTimeout: true).Result;
         Assert.Equal(expected, result);
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static AutomationElement? FindById(AutomationElement window, string id)

@@ -21,8 +21,8 @@ public sealed class PinnedTabsTests
     public void DoubleClickTogglesPinGlyph()
     {
         // Fenced (grandfather §8): double-click IS the point; no pattern path pins a tab (audit clicks).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -50,10 +50,10 @@ public sealed class PinnedTabsTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "persist13.txt");
         File.WriteAllText(file, "pin me");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         try
         {
-            using (var app = LaunchAppWithArgs($"\"{file}\""))
+            using (var app = UiLaunch.LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -72,7 +72,7 @@ public sealed class PinnedTabsTests
                 }
             }
 
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -105,13 +105,13 @@ public sealed class PinnedTabsTests
     {
         // Fenced (grandfather §8): pin setup plus context menu need the cursor (audit clicks).
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string a = SeedFile(dir, "a13.txt");
             string b = SeedFile(dir, "b13.txt");
             string c = SeedFile(dir, "c13.txt");
-            using var app = LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -150,13 +150,13 @@ public sealed class PinnedTabsTests
     {
         // Fenced (grandfather §8): pin setup plus context menu need the cursor (audit clicks).
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string a = SeedFile(dir, "a13.txt");
             string b = SeedFile(dir, "b13.txt");
             string c = SeedFile(dir, "c13.txt");
-            using var app = LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -196,13 +196,13 @@ public sealed class PinnedTabsTests
     {
         // Fenced (grandfather §8): pin setup needs the cursor (audit clicks).
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string a = SeedFile(dir, "a13.txt");
             string b = SeedFile(dir, "b13.txt");
             string c = SeedFile(dir, "c13.txt");
-            using var app = LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{a}\" \"{b}\" \"{c}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -363,29 +363,6 @@ public sealed class PinnedTabsTests
             () => window.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)).FirstOrDefault(item => item.Name == name)?.AsMenuItem(),
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250)).Result;
-
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static Application LaunchAppWithArgs(string args) => Application.Launch(AppExePath(), args);
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
-    }
 
     static string NewTempDir()
     {

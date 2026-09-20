@@ -24,7 +24,7 @@ public sealed class TabAccessibilityTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -57,7 +57,7 @@ public sealed class TabAccessibilityTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -83,7 +83,7 @@ public sealed class TabAccessibilityTests
                     lastValueOnTimeout: true).Result;
                 Assert.Equal("edited", landed);
                 Assert.Equal(1, WaitForTabCount(window, 1));
-                using var second = LaunchAppWithArgs($"\"{file}\"");
+                using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Assert.Equal(2, WaitForTabCount(window, 2));
                 WaitForTabName(window, 1, "flip28.txt. Unmodified.");
@@ -185,27 +185,7 @@ public sealed class TabAccessibilityTests
         return result.Result;
     }
 
-    static Application LaunchAppWithArgs(string args)
-    {
-        LaunchDrops.Drain();
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath, args);
-    }
-
-    static void SeedFresh() => SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
-        LaunchDrops.Drain();
-    }
+    static void SeedFresh() => UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh }, drainLaunchDrops: true);
 
     static string NewTempDir()
     {

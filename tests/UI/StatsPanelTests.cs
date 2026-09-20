@@ -21,9 +21,9 @@ public sealed class StatsPanelTests
     [Fact]
     public void PanelListsFixtureExactStats()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -57,9 +57,9 @@ public sealed class StatsPanelTests
     [Fact]
     public void RefreshAndReopenRecompute()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -92,9 +92,9 @@ public sealed class StatsPanelTests
     [Fact]
     public void LongRepetitionListTruncatesWithTrailer()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -122,9 +122,9 @@ public sealed class StatsPanelTests
     [Fact]
     public void EmptyTabsShowZeros()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -157,9 +157,9 @@ public sealed class StatsPanelTests
     [Fact]
     public void ValuesAlignToDialogRightEdge()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -328,27 +328,6 @@ public sealed class StatsPanelTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250));
         return result.Result;
-    }
-
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static void CloseApp(Application app, Window? window)

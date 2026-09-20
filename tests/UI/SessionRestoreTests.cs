@@ -26,7 +26,7 @@ public sealed class SessionRestoreTests
         string fileB = Path.Combine(dir, "bravo.txt");
         File.WriteAllText(fileA, "alpha one\ntwo\nthree");
         File.WriteAllText(fileB, "bravo base");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows =
@@ -48,7 +48,7 @@ public sealed class SessionRestoreTests
             int wantA;
             int wantU;
             int wantB;
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -99,7 +99,7 @@ public sealed class SessionRestoreTests
             Assert.Equal(wantB, snapWindow.Tabs[2].Caret);
 
             // Round-trip: typing after relaunch lands at the snapshotted caret.
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -137,7 +137,7 @@ public sealed class SessionRestoreTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "fresh.txt");
         File.WriteAllText(file, "fresh");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 1 }] }],
@@ -145,7 +145,7 @@ public sealed class SessionRestoreTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -205,7 +205,7 @@ public sealed class SessionRestoreTests
                 Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 2 }] }],
             }.Save();
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -226,7 +226,7 @@ public sealed class SessionRestoreTests
         finally
         {
             SessionData.Delete();
-            SeedSettings(new ShellSettings { WhatsNewSeen = true });
+            UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
             try
             {
                 Directory.Delete(dir, recursive: true);
@@ -245,7 +245,7 @@ public sealed class SessionRestoreTests
         string good = Path.Combine(dir, "good.txt");
         string missing = Path.Combine(dir, "missing.txt");
         File.WriteAllText(good, "good");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows =
@@ -264,7 +264,7 @@ public sealed class SessionRestoreTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -322,7 +322,7 @@ public sealed class SessionRestoreTests
             Assert.Equal(good, kept.Path);
 
             nint fgBefore2 = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -361,7 +361,7 @@ public sealed class SessionRestoreTests
         string fileB = Path.Combine(dir, "winb.txt");
         File.WriteAllText(fileA, "window one file");
         File.WriteAllText(fileB, "window two file");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             ActiveWindow = 1,
@@ -385,7 +385,7 @@ public sealed class SessionRestoreTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -441,7 +441,7 @@ public sealed class SessionRestoreTests
             Assert.Equal(2, Assert.Single(snap.Windows).Tabs.Count);
 
             nint fgBefore2 = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -485,7 +485,7 @@ public sealed class SessionRestoreTests
             files.Add(file);
         }
 
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows =
@@ -499,7 +499,7 @@ public sealed class SessionRestoreTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -547,7 +547,7 @@ public sealed class SessionRestoreTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "zulu.txt");
         File.WriteAllText(file, "zulu");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         new SessionData
         {
             Windows = [new SessionWindow { Tabs = [new SessionTab { Path = file, Caret = 1 }] }],
@@ -555,7 +555,7 @@ public sealed class SessionRestoreTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -634,26 +634,6 @@ public sealed class SessionRestoreTests
         string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        // Session seeds land after this call; the delete keeps cases that
-        // assert absence (fresh mode, clean profile) honest.
-        SessionData.Delete();
     }
 
 

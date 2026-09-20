@@ -24,12 +24,12 @@ public sealed class LockedResidueTests
     public void LockedTabRefusesTakesWithInlineNote()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "residue30.txt", "seed");
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -73,12 +73,12 @@ public sealed class LockedResidueTests
     public void DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost()
     {
         string dir = NewTempDir();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             string file = SeedFile(dir, "ghost30.txt", "seed");
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchAppWithArgs($"\"{file}\""))
+            using (var app = UiLaunch.LaunchAppWithArgs($"\"{file}\""))
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -121,7 +121,7 @@ public sealed class LockedResidueTests
             }
 
             nint fgBefore2 = UiForeground.Capture();
-            using var app2 = LaunchApp();
+            using var app2 = UiLaunch.LaunchApp();
             using var automation2 = new UIA3Automation();
             var window2 = UiApp.Attach(app2, automation2, TimeSpan.FromSeconds(30));
             UiForeground.Background(window2, fgBefore2);
@@ -286,29 +286,6 @@ public sealed class LockedResidueTests
             TimeSpan.FromSeconds(10),
             TimeSpan.FromMilliseconds(250));
         return result.Result;
-    }
-
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static Application LaunchAppWithArgs(string args) => Application.Launch(AppExePath(), args);
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static string NewTempDir()

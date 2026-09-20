@@ -21,11 +21,11 @@ public sealed class TemplateTests
     public void PickerListsBuiltInsAndUsesMeetingNotes()
     {
         CleanTemplates();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -61,11 +61,11 @@ public sealed class TemplateTests
     public void DailyJournalOpensExpanded()
     {
         CleanTemplates();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -99,11 +99,11 @@ public sealed class TemplateTests
     public void BlankNoteOpensCleanEmptyTab()
     {
         CleanTemplates();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -132,11 +132,11 @@ public sealed class TemplateTests
     public void SaveCurrentPersistsAcrossRelaunch()
     {
         CleanTemplates();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -158,7 +158,7 @@ public sealed class TemplateTests
             }
 
             nint fgBefore2 = UiForeground.Capture();
-            using (var app = LaunchApp())
+            using (var app = UiLaunch.LaunchApp())
             {
                 using var automation = new UIA3Automation();
                 var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
@@ -190,11 +190,11 @@ public sealed class TemplateTests
     public void UnknownBracesStayLiteralInRoom()
     {
         CleanTemplates();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -225,11 +225,11 @@ public sealed class TemplateTests
     public void EmptyTitleDisablesSave()
     {
         CleanTemplates();
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -404,26 +404,6 @@ public sealed class TemplateTests
         {
             // Best-effort cleanup; the test result does not depend on it.
         }
-    }
-
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchApp() => Application.Launch(AppExePath());
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
     }
 
     static void CloseApp(Application app, Window? window)

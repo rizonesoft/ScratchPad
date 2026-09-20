@@ -24,9 +24,9 @@ public sealed class MultiWindowTests
         // secondary the cascade premise is destroyed (no app-chosen offset
         // to assert); shown in place on the primary it passes. Focus-free:
         // InPlace shows no-activate and restores the foreground.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 100, Y = 100, Width = 900, Height = 650 });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, X = 100, Y = 100, Width = 900, Height = 650 });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.InPlace(first, fgBefore);
@@ -57,9 +57,9 @@ public sealed class MultiWindowTests
     [Fact]
     public void WindowsKeepIndependentTabs()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(first, fgBefore);
@@ -94,8 +94,8 @@ public sealed class MultiWindowTests
     public void TabDragOutsideStripDetachesNothing()
     {
         // Fenced (grandfather §8): drag physics IS the point (audit mouse).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -154,9 +154,9 @@ public sealed class MultiWindowTests
         // first window's first-run dismiss). Staged externally instead of via
         // the dialog because the open first-run dialog swallows Ctrl+Shift+N
         // (standard ContentDialog modality); the mechanism is direction-free.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(first, fgBefore);
@@ -181,26 +181,6 @@ public sealed class MultiWindowTests
         {
             CloseAll(app, automation);
         }
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        // Every close snapshots the session, so a seeded launch also starts
-        // session-clean; otherwise the previous test's tabs would restore.
-        SessionData.Delete();
     }
 
 

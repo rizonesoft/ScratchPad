@@ -30,9 +30,9 @@ public sealed class TabBarTests
     [Fact]
     public void InitialTabRendersFromModel()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -64,8 +64,8 @@ public sealed class TabBarTests
     public void ThreeTabsSwitchAndClose()
     {
         // Fenced (grandfather §8): Ctrl+Tab/Ctrl+W shortcuts via UiInput.Press; shortcut dispatch IS the point.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -138,8 +138,8 @@ public sealed class TabBarTests
     public void NumberShortcutsAndReopenMatchNotepad()
     {
         // Fenced (grandfather §8): number shortcuts via UiInput.Press.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -196,8 +196,8 @@ public sealed class TabBarTests
     public void DragAttemptLeavesOrderUnchanged()
     {
         // Fenced (grandfather §8): drag physics IS the point (audit mouse).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -269,9 +269,9 @@ public sealed class TabBarTests
     [Fact]
     public void DirtyClosePromptsAndCancelKeepsTheTab()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -309,8 +309,8 @@ public sealed class TabBarTests
     public void DontSaveClosesAndNeverReopens()
     {
         // Fenced (grandfather §8): Ctrl+W plus dirty-prompt dialog flow via UiInput.Press.
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -344,8 +344,8 @@ public sealed class TabBarTests
     public void ContextMenuMatchesNotepad()
     {
         // Fenced (grandfather §8): context menu needs the cursor (audit clicks; quarantined ctxmenu-name-race).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -437,8 +437,8 @@ public sealed class TabBarTests
     public void MiddleClickClosesTheTabUnderTheCursor()
     {
         // Fenced (grandfather §8): middle-click IS the point; raw mouse_event (audit raw input).
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        using var app = LaunchApp();
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         Assert.NotNull(window);
@@ -486,9 +486,9 @@ public sealed class TabBarTests
     [Fact]
     public void OverflowShrinksTabsWithoutScrollChrome()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -711,26 +711,6 @@ public sealed class TabBarTests
         }
 
         return false;
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        // Every close snapshots the session, so a seeded launch also starts
-        // session-clean; otherwise the previous test's tabs would restore.
-        SessionData.Delete();
     }
 
     static AutomationElement? FindById(AutomationElement window, string id)

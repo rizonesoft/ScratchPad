@@ -30,12 +30,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void GearOpensSettingsAndBackReturns()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -70,12 +70,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void ThemeEachOptionAppliesLive()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -113,12 +113,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void FontEachChoiceWritesStore()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -158,12 +158,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void WordWrapToggleWritesStore()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true, WordWrap = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, WordWrap = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -190,12 +190,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void OpeningEachOptionWritesStore()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -222,12 +222,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void WhenStartsEachOptionWritesStore()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -255,12 +255,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void DisabledCardsStayDisabled()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -299,12 +299,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void SettingsPageHasNoReset()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -350,12 +350,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void EditFontMenuJumpsToSettings()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -422,12 +422,12 @@ public sealed class SettingsPageTests
     [Fact]
     public void AboutShowsNameAndVersion()
     {
-        string settingsPath = SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string settingsPath = SeedSettingsFile(new ShellSettings { WhatsNewSeen = true });
         try
         {
             SessionData.Delete();
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchApp();
+            using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -484,7 +484,7 @@ public sealed class SettingsPageTests
         Assert.True(result.Match, $"golden mismatch: {result.DifferentFraction:P3} different ({result.DifferentPixels}/{result.TotalPixels})");
     }
 
-    static string SeedSettings(ShellSettings settings)
+    static string SeedSettingsFile(ShellSettings settings)
     {
         string path = ShellSettings.FilePath;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -700,18 +700,6 @@ public sealed class SettingsPageTests
         {
             item.Click();
         }
-    }
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
     }
 
     static void CloseApp(Application app, Window? window)

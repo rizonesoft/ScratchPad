@@ -74,6 +74,10 @@ internal static class UiForeground
         // between show and move before R2 and dwelled 61 visible flashes
         // on the primary per full run (census-caught); sub-poll
         // transients are what the seen-twice rule exists to exclude.
+        // Stays as the safety net under D00 T02 §11: seeded first
+        // windows birth off-screen and never reach the cascade, but
+        // redirect-created windows and direct launches still do, so
+        // show-then-move with sleep-after-move keeps covering them.
         // Thread awareness (UiDpi pattern): testhost is DPI-unaware, so
         // coordinates go through physical pixels explicitly.
         nint previous = UiDpi.Enter();

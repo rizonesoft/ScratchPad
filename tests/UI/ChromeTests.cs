@@ -20,7 +20,7 @@ public sealed class ChromeTests
     [Fact]
     public void FullStripParksAddButtonLeftOfCaption()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Continue });
         var tabs = new List<SessionTab>();
         for (int i = 0; i < 12; i++)
         {
@@ -29,7 +29,7 @@ public sealed class ChromeTests
 
         new SessionData { Windows = [new SessionWindow { Tabs = tabs }] }.Save();
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -67,9 +67,9 @@ public sealed class ChromeTests
     [Fact]
     public void ZeroTabsCentersAddButton()
     {
-        SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = LaunchApp();
+        using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
@@ -116,25 +116,6 @@ public sealed class ChromeTests
 
     static List<AutomationElement> TabItems(Window window) =>
         window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
-
-
-    static Application LaunchApp()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return Application.Launch(appPath);
-    }
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
-    }
 
     static AutomationElement? FindById(AutomationElement window, string id)
     {

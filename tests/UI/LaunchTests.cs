@@ -32,7 +32,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -68,7 +68,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{first}\" \"{second}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{first}\" \"{second}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -102,7 +102,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var first = LaunchAppWithArgs(string.Empty);
+            using var first = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -110,7 +110,7 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(1, WaitForTabCount(window, 1));
-                using var second = LaunchAppWithArgs($"\"{file}\"");
+                using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Assert.Single(first.GetAllTopLevelWindows(automation));
                 Assert.Equal(2, WaitForTabCount(window, 2));
@@ -136,7 +136,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var first = LaunchAppWithArgs(string.Empty);
+            using var first = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -144,7 +144,7 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(1, WaitForTabCount(window, 1));
-                using var second = LaunchAppWithArgs(string.Empty);
+                using var second = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected bare launch did not exit");
                 var windows = Retry.While(
                     () => first.GetAllTopLevelWindows(automation).ToList(),
@@ -177,7 +177,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{missing}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{missing}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -213,7 +213,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{missing}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{missing}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -255,7 +255,7 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
-            using var app = LaunchAppWithArgs($"\"{missing}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{missing}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             Assert.NotNull(window);
@@ -302,7 +302,7 @@ public sealed class LaunchTests
         {
             using var hold = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -337,7 +337,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -372,7 +372,7 @@ public sealed class LaunchTests
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{file}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -402,11 +402,11 @@ public sealed class LaunchTests
         string dir = NewTempDir();
         string file = Path.Combine(dir, "w8.txt");
         File.WriteAllText(file, "two");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow }, drainLaunchDrops: true);
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var first = LaunchAppWithArgs(string.Empty);
+            using var first = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -414,7 +414,7 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(1, WaitForTabCount(window, 1));
-                using var second = LaunchAppWithArgs($"\"{file}\"");
+                using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 var windows = Retry.While(
                     () => first.GetAllTopLevelWindows(automation).ToList(),
@@ -459,11 +459,11 @@ public sealed class LaunchTests
         string second = Path.Combine(dir, "w82.txt");
         File.WriteAllText(first, "one");
         File.WriteAllText(second, "two");
-        SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow });
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow }, drainLaunchDrops: true);
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs($"\"{first}\" \"{second}\"");
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{first}\" \"{second}\"", drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -499,11 +499,11 @@ public sealed class LaunchTests
         seeded.PinnedFiles.Add(pin);
         seeded.RecentFiles.Add(rec);
         seeded.RecentFiles.Add(pin);
-        SeedSettings(seeded);
+        UiLaunch.SeedSettings(seeded, drainLaunchDrops: true);
         try
         {
             nint fgBefore = UiForeground.Capture();
-            using var app = LaunchAppWithArgs(string.Empty);
+            using var app = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -627,7 +627,7 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
-            string command = FileAssociation.OpenCommand(AppExePath());
+            string command = FileAssociation.OpenCommand(UiLaunch.AppExePath());
             int firstSpace = command.IndexOf(' ', StringComparison.Ordinal);
             string exe = command[..firstSpace].Trim('"');
             string args = command[(firstSpace + 1)..].Replace("%1", file, StringComparison.Ordinal);
@@ -689,27 +689,9 @@ public sealed class LaunchTests
     [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
     static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
 
-    static string AppExePath()
-    {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        Assert.True(File.Exists(appPath), $"app missing at {appPath}");
-        return appPath;
-    }
-
-    static Application LaunchAppWithArgs(string args)
-    {
-        LaunchDrops.Drain();
-        return Application.Launch(AppExePath(), args);
-    }
-
     static int RunHeadless(string args, TimeSpan timeout)
     {
-        using var process = Process.Start(new ProcessStartInfo(AppExePath(), args) { UseShellExecute = false });
+        using var process = Process.Start(new ProcessStartInfo(UiLaunch.AppExePath(), args) { UseShellExecute = false });
         Assert.NotNull(process);
         Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
         return process.ExitCode;
@@ -717,7 +699,7 @@ public sealed class LaunchTests
 
     static (int Exit, string Stderr) RunHeadlessCapture(string args, TimeSpan timeout)
     {
-        using var process = Process.Start(new ProcessStartInfo(AppExePath(), args)
+        using var process = Process.Start(new ProcessStartInfo(UiLaunch.AppExePath(), args)
         {
             UseShellExecute = false,
             RedirectStandardError = true,
@@ -734,7 +716,7 @@ public sealed class LaunchTests
     }
 
     static List<Process> RunningAppProcesses() =>
-        Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppExePath())).ToList();
+        Process.GetProcessesByName(Path.GetFileNameWithoutExtension(UiLaunch.AppExePath())).ToList();
 
     static bool WaitForExit(Application app, TimeSpan timeout)
     {
@@ -747,14 +729,7 @@ public sealed class LaunchTests
         return app.HasExited;
     }
 
-    static void SeedFresh() => SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh });
-
-    static void SeedSettings(ShellSettings settings)
-    {
-        settings.Save();
-        SessionData.Delete();
-        LaunchDrops.Drain();
-    }
+    static void SeedFresh() => UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh }, drainLaunchDrops: true);
 
     static string NewTempDir()
     {
