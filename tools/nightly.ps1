@@ -627,7 +627,25 @@ if ($debtQueryError -ne '') {
     }
     $logRel = "build/nightly/$stamp/interactive.trx"
     if ($coverage -eq 'superset') {
-      $debtEntries += "- $($debt.Id) ($($debt.Section)): covered by superset collection ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); triage appends Night-collected with subset counts; log $logRel"
+      # FQN-attributable subsets close with their own counts (R2-F4);
+      # anything else stages for triage (R1-F4).
+      $sub = Get-TrxSubsetCounts (Join-Path $trxDir 'interactive.trx') $debtFilter
+      if (($null -ne $sub) -and ($sub.Failed -eq 0) -and (($sub.Passed + $sub.Failed + $sub.Skipped) -gt 0) -and (Test-DebtCensus $debt.Count $sub.Passed $sub.Failed $sub.Skipped)) {
+        $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel
+        $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
+        Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
+        $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sub.Passed $sub.Failed $sub.Skipped $logRel $note
+        $debtEntries += $pair[0]
+        if ($pair[1]) { $failed = $true }
+      } elseif (($null -ne $sub) -and ($sub.Failed -gt 0)) {
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open"
+      } elseif ($null -ne $sub) {
+        $got = $sub.Passed + $sub.Failed + $sub.Skipped
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: subset census mismatch (owed $($debt.Count), collected $got): debt stays open"
+        $failed = $true
+      } else {
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): covered by superset collection ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); not FQN-attributable, triage appends Night-collected with subset counts; log $logRel"
+      }
       continue
     }
     $got = $sumI.Passed + $sumI.FailedCount + $sumI.Skipped.Count
@@ -639,7 +657,9 @@ if ($debtQueryError -ne '') {
     $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel
     $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
     Write-Output "nightly: night-debt $($debt.Id): $note"
-    $debtEntries += "- $($debt.Id) ($($debt.Section)): collected $($sumI.Passed) passed, $($sumI.FailedCount) failed, $($sumI.Skipped.Count) skipped; log $logRel"
+    $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $note
+    $debtEntries += $pair[0]
+    if ($pair[1]) { $failed = $true }
   }
 }
 if ($interactiveRan -and ($null -ne $sumI) -and ($sumI.FailedCount -gt 0)) {

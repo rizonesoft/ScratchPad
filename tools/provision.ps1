@@ -8,15 +8,17 @@
   -Verify runs the verify half only (session-start surface: the
   process-plan audit step invokes it); exit 0 when every leg quotes
   green, exit 1 naming each fault. Without -Verify, repairs run first
-  (hooks re-wire plus missing-file restore, tasks re-enable plus
+  (hooks re-wire on unambiguous breakage only, tasks re-enable plus
   re-register when missing from tools/tasks/, SDK re-provision when its
   verify faults), then a final verify quotes the end state. CI
   workflows are verify-only: content intent lives in git, so drift
   reports as a fault, never auto-edits. Task field drift (a retuned
   trigger or action) likewise reports; only a missing task
-  re-registers, and a modified hook file is left alone. A modified
-  worktree file is never overwritten by repair. Re-export the
-  tools/tasks/ XMLs after any operator retuning of the live tasks.
+  re-registers. A missing or modified hook file reports the exact
+  restore instead of running it, and a hooks path pointing at an
+  existing other dir is left alone: both may be deliberate user
+  intent. Re-export the tools/tasks/ XMLs (UTF-16, matching the
+  declaration) after any operator retuning of the live tasks.
   Run from any directory: powershell -ExecutionPolicy Bypass -File tools\provision.ps1 [-Verify]
 #>
 [CmdletBinding()]
@@ -100,16 +102,24 @@ function Test-HooksLeg {
 }
 
 function Repair-HooksLeg {
+  # Split repair (R2-F1): re-wire only unambiguous breakage, and a
+  # missing file reports the exact restore instead of running it --
+  # a deletion may be deliberate user intent, and no repair
+  # overwrites user-owned state without an explicit invocation
+  # asking for that exact cleanup.
   $notes = @()
-  & git -C $Root config core.hooksPath 'tools/githooks'
-  if ($LASTEXITCODE -eq 0) { $notes += 'hooks path re-wired' } else { $notes += "hooks path re-wire failed ($LASTEXITCODE)" }
+  $cfg = ''
+  try { $cfg = ((& git -C $Root config core.hooksPath 2>$null) -join "`n").Trim() } catch { }
+  $cfgTarget = if ($cfg -eq '') { '' } elseif ([IO.Path]::IsPathRooted($cfg)) { $cfg } else { Join-Path $Root $cfg }
+  if (($cfg -eq '') -or (-not (Test-Path $cfgTarget))) {
+    & git -C $Root config core.hooksPath 'tools/githooks'
+    if ($LASTEXITCODE -eq 0) { $notes += 'hooks path re-wired' } else { $notes += "hooks path re-wire failed ($LASTEXITCODE)" }
+  } else {
+    $notes += "hooks path points at existing '$cfg': left alone (verify still faults)"
+  }
   $pre = Join-Path $Root 'tools/githooks/pre-commit'
   if (-not (Test-Path $pre)) {
-    $tracked = ((& git -C $Root ls-files -- 'tools/githooks/pre-commit') -join "`n").Trim()
-    if ($tracked -ne '') {
-      & git -C $Root checkout -- 'tools/githooks/pre-commit'
-      if ($LASTEXITCODE -eq 0) { $notes += 'pre-commit restored from HEAD' } else { $notes += "pre-commit restore failed ($LASTEXITCODE)" }
-    } else { $notes += 'pre-commit missing and untracked: left alone' }
+    $notes += "pre-commit missing: restore with git -C $Root checkout -- tools/githooks/pre-commit"
   } else {
     $dirty = ((& git -C $Root status --porcelain -- 'tools/githooks/pre-commit') -join "`n").Trim()
     if ($dirty -ne '') { $notes += 'pre-commit modified in worktree: left alone' }

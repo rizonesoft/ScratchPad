@@ -57,8 +57,11 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
   # readback verifying exactly one copy. An existing collected line
   # for the id, or a missing owed line: skip with a report line --
   # never duplicate, never drop silently. The write re-reads before
-  # replacing (R1 A2): a concurrent edit retries once from current
-  # content, then skips loud for triage to append.
+  # replacing (R1-F2): a concurrent edit retries once from current
+  # content, then skips loud for triage to append. Residual (R2-F2):
+  # a microsecond check-act window no user-space scheme closes
+  # (repo precedent: plan --sync); single-writer plus the run mutex
+  # bound it, and the readback still guards the copy count.
   for ($attempt = 0; $attempt -lt 2; $attempt++) {
     $text = Get-Content $TodoPath -Raw -Encoding UTF8
     if ($text -match ('\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b')) {
@@ -89,18 +92,83 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
 
 function Test-DebtCoverage([string]$DebtFilter, [string]$CollectFilter, [string]$CollectId) {
   # exact: this run's filter is the debt's own (closeable with the
-  # leg's counts). superset (R1 I2): an un-narrowed full-Interactive
-  # run covering an Interactive-scoped &-only debt -- the leg's
-  # totals are superset counts, so triage closes with subset counts.
-  # uncovered: anything else. `|`/`!` filters are exact-only:
-  # subsumption is undecidable for strings.
+  # leg's counts). superset (R1-F4): an un-narrowed full-Interactive
+  # run covering an Interactive-scoped &-only debt. uncovered:
+  # anything else. `|`/`!` filters are exact-only, and the
+  # Interactive clause matches per &-clause, never substring (R2-F5):
+  # `FullyQualifiedName~Category=Interactive` is not a subset.
   if (($DebtFilter -ne '') -and ($DebtFilter -eq $CollectFilter)) { return 'exact' }
-  if (($CollectId -eq '') -and ($CollectFilter -eq 'Category=Interactive') -and ($DebtFilter -ne '') -and ($DebtFilter -match '(?i)^Interactive$|Category\s*=\s*Interactive') -and ($DebtFilter -notmatch '[|!]')) { return 'superset' }
+  if (($CollectId -eq '') -and ($CollectFilter -eq 'Category=Interactive') -and ($DebtFilter -ne '') -and ($DebtFilter -notmatch '[|!]')) {
+    foreach ($cl in @($DebtFilter -split '&')) {
+      $t = $cl.Trim().Trim('(', ')', ' ', "`t").Trim()
+      if ($t -match '^(?i)Category\s*=\s*Interactive$') { return 'superset' }
+    }
+  }
   return 'uncovered'
 }
 
+function Get-TrxSubsetCounts([string]$TrxPath, [string]$DebtFilter) {
+  # Subset counts for a superset run (R2-F4): AND-only
+  # FullyQualifiedName/Name constraints matched against trx test
+  # names. Returns $null when the filter is not FQN-attributable
+  # (Category-only refinements, `|`, `!`, parens) or the trx is
+  # unreadable -- the caller stages those for triage. Sound within
+  # a superset run's trx: every row already matched
+  # Category=Interactive, so FQN constraints alone pick the subset.
+  # `=` compares against the full name and, for Name=, the last
+  # dotted segment (vstest Name is the method name).
+  if ($DebtFilter -match '[|!()]') { return $null }
+  $clauses = @($DebtFilter -split '&' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+  $constraints = @()
+  foreach ($c in $clauses) {
+    if ($c -match '^(?i)Category\s*=\s*Interactive$') { continue }
+    $m = [regex]::Match($c, '^(?i)(FullyQualifiedName|Name)\s*(~|=)\s*(.+)$')
+    if (-not $m.Success) { return $null }
+    $constraints += @{ Field = $m.Groups[1].Value; Op = $m.Groups[2].Value; Value = $m.Groups[3].Value.Trim() }
+  }
+  if ($constraints.Count -eq 0) { return $null }
+  try { [xml]$x = Get-Content $TrxPath -Raw } catch { return $null }
+  $rows = @(Select-Xml -Xml $x -XPath '//*[local-name()="UnitTestResult"]' | ForEach-Object { $_.Node })
+  $p = 0; $f = 0; $s = 0
+  foreach ($r in $rows) {
+    $name = "$($r.testName)"
+    $hit = $true
+    foreach ($k in $constraints) {
+      if ($k.Op -eq '~') {
+        if ($name -notlike ('*' + $k.Value + '*')) { $hit = $false; break }
+      } elseif ($k.Field -match '^(?i)Name$') {
+        $last = ($name -split '\.')[-1]
+        if (($name -cne $k.Value) -and ($last -cne $k.Value)) { $hit = $false; break }
+      } else {
+        if ($name -cne $k.Value) { $hit = $false; break }
+      }
+    }
+    if (-not $hit) { continue }
+    switch ("$($r.outcome)") {
+      'Passed' { $p++ }
+      'Failed' { $f++ }
+      default { $s++ }
+    }
+  }
+  return @{ Passed = $p; Failed = $f; Skipped = $s }
+}
+
+function Format-DebtGreenEntry([string]$Id, [string]$Section, [int]$P, [int]$F, [int]$S, [string]$LogRel, [string]$Note) {
+  # Green-leg entry honors the close-loop outcome (R2-F2): only an
+  # `appended` note claims collected; an already-closed debt says
+  # so; any other skip reds for triage. Returns @(entry, red).
+  $counts = "$P/$F/$S"
+  if ($Note -like 'appended*') {
+    return @("- $Id ($Section): collected $P passed, $F failed, $S skipped; log $LogRel", $false)
+  }
+  if ($Note -like '*already carries*') {
+    return @("- $Id ($Section): collection green ($counts); already closed (Night-collected present)", $false)
+  }
+  return @("- $Id ($Section): collection green ($counts); close-loop skipped ($Note)", $true)
+}
+
 function Test-DebtCensus([string]$OwedCount, [int]$Passed, [int]$Failed, [int]$Skipped) {
-  # Collected totals must equal the owed count (R1 I3); anything
+  # Collected totals must equal the owed count (R1-F5); anything
   # else (drift, partial run, unparseable count) fails closed.
   $n = 0
   return ([int]::TryParse($OwedCount, [ref]$n) -and (($Passed + $Failed + $Skipped) -eq $n))
