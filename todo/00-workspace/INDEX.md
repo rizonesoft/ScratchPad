@@ -24,7 +24,7 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 ## In scope
 
 - Repo layout, pinned .NET SDK, one-command build
-- CI on Linux and Windows runners with warning and analysis gates
+- CI on Windows runners with warning and analysis gates
 - This TODO system's own CI checks (`validate`, `plan --check`)
 - Unit-test project, UI automation driver, golden captures, ACP loopback fixture
 

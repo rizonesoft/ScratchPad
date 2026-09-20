@@ -1,26 +1,26 @@
 # Build
 
-One command per OS, no IDE required. CI runs the same commands (§3).
+One command, no IDE required. CI runs the same commands (§3).
 
 ## CI workflows
 
-Two workflows run on pushes to `main`: `build` compiles and tests on Linux and Windows, while `plan-gates` runs the TODO graph self-test, tree validation, and plan-projection check only when the push touches `scripts/`, `todo/`, or the workflow itself, so documentation-only edits skip the graph checks (§7).
+Two workflows run on pushes to `main`: `build` compiles the solution and smoke-launches the app on a Windows runner, while `plan-gates` runs the TODO graph self-test, tree validation, and plan-projection check only when the push touches `scripts/`, `todo/`, or the workflow itself, so documentation-only edits skip the graph checks (§7).
 
 ## Prerequisites
 
-Provision the pinned SDK first: `./tools/provision.sh` on Linux, `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` on Windows. Then put it on the path: `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0` (Windows: `.tools\dotnet-win-x64`). Launching the stub additionally needs the WindowsAppRuntime 2.x framework package on the machine; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from `https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe` (matching SDK 2.4.0) if it is missing. CI installs it via the `Install WindowsAppRuntime` step.
+Provision the pinned SDK first: `powershell -ExecutionPolicy Bypass -File tools\provision.ps1`. Then put it on the path: `$env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"; $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH; $env:DOTNET_MULTILEVEL_LOOKUP = "0"`. Launching the stub additionally needs the WindowsAppRuntime 2.x framework package on the machine; check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from `https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe` (matching SDK 2.4.0) if it is missing. CI installs it via the `Install WindowsAppRuntime` step.
 
 ## Build commands
 
-Linux builds the neutral scope (the WinUI XAML compiler is Windows-only, so the app project is excluded by filter): `dotnet build src/Notepad.Neutral.slnf`. Windows builds everything: `dotnet build src/ScratchPad.slnx`. Both exit 0 on a clean tree and leave `git status` clean: outputs land under root `Bin/` per project (`Bin/<Project>/`), intermediates under per-project `obj/`, publish output under `dist/`, all gitignored.
+`dotnet build src/ScratchPad.slnx` builds everything; `dotnet build src/Notepad.Neutral.slnf` builds the neutral scope only (the app excluded by filter). Both exit 0 on a clean tree and leave `git status` clean: outputs land under root `Bin/` per project (`Bin/<Project>/`), intermediates under per-project `obj/`, publish output under `dist/`, all gitignored.
 
 ## Cleaning build outputs
 
-Full clean is `rm -rf Bin` (use `Remove-Item -Recurse Bin` on Windows): outputs regenerate on the next build. To clear only stale project dirs (leftovers of renamed or removed projects) without wiping everything, run `python3 tools/clean-bin.py` on Linux (`py tools/clean-bin.py` on Windows) (`--dry-run` lists without removing). CI runners check out clean every run, so they never need either.
+Full clean is `Remove-Item -Recurse Bin`: outputs regenerate on the next build. To clear only stale project dirs (leftovers of renamed or removed projects) without wiping everything, run `py tools/clean-bin.py` (`--dry-run` lists without removing). CI runners check out clean every run, so they never need either.
 
 ## Test
 
-Linux runs the neutral scope including smoke: `dotnet test src/Notepad.Neutral.slnf`. Windows runs the same tests through the full solution: `dotnet test src/ScratchPad.slnx`. Run only the smoke test with `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
+`dotnet test src/ScratchPad.slnx` runs every suite; `dotnet test src/Notepad.Neutral.slnf` runs the neutral scope only. Run only the smoke test with `dotnet test <solution> --filter Smoke`. Test output uses the default console logger; anything written under `TestResults/` is gitignored.
 
 ## Warnings and analysis
 

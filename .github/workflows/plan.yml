@@ -1,5 +1,8 @@
 name: plan-gates
 
+# Windows-only CI (operator decision 2026-09-19: ubuntu legs removed).
+# Bash steps run under the runner's Git Bash; python3 is the image Python.
+
 on:
   push:
     branches: [main]
@@ -18,7 +21,10 @@ on:
 
 jobs:
   plan-gates:
-    runs-on: ubuntu-24.04
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -40,7 +46,10 @@ jobs:
           if grep -q $'\r' /tmp/hook-blob; then echo "hook blob carries CR"; exit 1; fi
           git check-attr eol -- tools/githooks/pre-commit | grep -q ': eol: lf$' || { echo "hook eol pin missing"; exit 1; }
   unattended:
-    runs-on: ubuntu-24.04
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: bash
     permissions:
       contents: read
       issues: write

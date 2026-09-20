@@ -37,13 +37,13 @@ Exact versions, verified 2026-09-13 against the .NET release metadata and NuGet.
 
 | Component | Version | Pinned in |
 | --------- | ------- | --------- |
-| .NET SDK | 10.0.401 (runtime 10.0.12, released 2026-09-08) | `global.json` (`rollForward: disable`) |
+| .NET SDK | 10.0.400 (runtime 10.0.11; SDK row re-verified 2026-09-19) | `global.json` (`rollForward: disable`) |
 | Windows App SDK | 2.4.0 | this file until §2's lockfile |
 | xunit | 2.9.3 | `tests/Smoke/packages.lock.json` |
 | xunit.runner.visualstudio | 2.8.2 | `tests/Smoke/packages.lock.json` |
 | Microsoft.NET.Test.Sdk | 17.14.1 | `tests/Smoke/packages.lock.json` |
 
-`tools/provision.sh` (Linux) and `tools/provision.ps1` (Windows) read the SDK version from `global.json`, download that exact build from `builds.dotnet.microsoft.com`, verify its published SHA512 (linux-x64 `51c8b999…ce25b`, win-x64 `24b670ad…79430`; full hashes in the [release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)), and extract into repo-local `.tools/dotnet-<rid>/` (one SDK per OS so both coexist in one checkout). No machine-wide install, no build step reads outside the repo. Run `./tools/provision.sh` (or `powershell -ExecutionPolicy Bypass -File tools\provision.ps1`), then prefix SDK commands with `export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64" PATH="$PWD/.tools/dotnet-linux-x64:$PATH" DOTNET_MULTILEVEL_LOOKUP=0` (Windows: `.tools\dotnet-win-x64`).
+`tools/provision.ps1` reads the SDK version from `global.json`, downloads that exact build from `builds.dotnet.microsoft.com`, verifies its published SHA512 (win-x64 `9b8b8859…8c366`; full hashes in the [release metadata](https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json)), and extracts into repo-local `.tools/dotnet-win-x64/`. No machine-wide install, no build step reads outside the repo. Run `powershell -ExecutionPolicy Bypass -File tools\provision.ps1`, then prefix SDK commands with `$env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"; $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH; $env:DOTNET_MULTILEVEL_LOOKUP = "0"`.
 
 The xunit v2 line is pinned, reversing the §1 v3 default: v3 on MTP (`xunit.v3.mtp-v2` 4.0.1 + MTP 2.4.0 + SDK 10.0.401) discovers zero tests under `dotnet test`, proven on our project and on xunit's own official template alike, while the v2 VSTest stack passes first try. T02 §1 re-evaluates v3/MTP when the ecosystem heals; swapping majors costs a `PackageReference` edit plus lockfile regeneration until suites exist.
 
@@ -63,7 +63,7 @@ python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # any section reference ->
 
 ## The build
 
-.NET and WinUI 3 on Windows 11. One-command build and one-command test, pinned SDK, CI on Linux and Windows runners: all owned by `D00 T01`. Testing is automatic and complete per the bar `D06 T01` writes; no feature is done until its automated proof is green, because "works on my machine" is a confession, not a test result.
+.NET and WinUI 3 on Windows 11. One-command build and one-command test, pinned SDK, Windows-only CI: all owned by `D00 T01`. Testing is automatic and complete per the bar `D06 T01` writes; no feature is done until its automated proof is green, because "works on my machine" is a confession, not a test result.
 
 Only the ACP client talks to agents, over JSON-RPC 2.0 on stdio: the client launches the agent subprocess (Codex via `codex-acp`, Claude via `claude-agent-acp`), negotiates versions, and drives sessions. Every agent action is consent-gated (`D03 T02`, `D05 T02`); every agent edit is reviewed as a diff and applied through undo (`D05 T02 §3-§4`). The agent can suggest; only you can commit. Literally: one section, one commit, and the row flips only when review says so.
 

@@ -6,6 +6,7 @@ warning accounting use the same state as query/resolve. No copied constants.
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 import re
 import sys
@@ -1481,8 +1482,11 @@ def validate(graph, _args) -> int:
                 _new_scope = pm.group(7)[:8] > "20260919"
                 # Pure-string gates (both scopes, no filesystem
                 # touch): absolute paths and NUL bytes fail here, git
-                # or no git.
-                if "\0" in _pp or Path(_pp).is_absolute():
+                # or no git. A leading slash is absolute on every OS:
+                # Path("/x").is_absolute() is False on Windows
+                # (drive-relative), so the startswith carries the
+                # POSIX-form fixture there and is a no-op on POSIX.
+                if "\0" in _pp or Path(_pp).is_absolute() or _pp.startswith("/"):
                     flag(
                         "provenance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
@@ -1524,6 +1528,25 @@ def validate(graph, _args) -> int:
                         _pfile = (graph.TODO_DIR.parent / _pp).resolve()
                         _proot = graph.TODO_DIR.parent.resolve()
                         _contained = _pfile.is_relative_to(_proot)
+                        if _contained:
+                            # A symlink loop names no file anywhere, so it
+                            # fails containment. POSIX resolve() raises
+                            # RuntimeError for loops (caught below) but
+                            # Windows resolve() returns the loop path, so
+                            # walk the link chain for a cycle explicitly.
+                            # Dangling links walk to an end and keep the
+                            # existence leg on both OSes.
+                            _walk = graph.TODO_DIR.parent / _pp
+                            _seen = set()
+                            _hops = 0
+                            while _hops < 40 and _walk.is_symlink():
+                                _key = os.path.normcase(os.path.abspath(_walk))
+                                if _key in _seen:
+                                    _contained = False
+                                    break
+                                _seen.add(_key)
+                                _walk = _walk.parent / os.readlink(_walk)
+                                _hops += 1
                     except (OSError, RuntimeError, ValueError):
                         _contained = False
                     if not _contained:

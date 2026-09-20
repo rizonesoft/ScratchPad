@@ -17,7 +17,7 @@ Agent instructions for this repository. Human orientation lives in `README.md`. 
 | `docs/` | User guide, review records, phase runs, plans |
 | `build/` | Ignored derived output, never an authoritative record |
 
-The app runs on Windows only; neutral libraries build and test anywhere with the repo-local .NET SDK. The TODO tooling (`scripts/`, plan checks) runs anywhere with Python 3.
+The app runs on Windows only; neutral libraries build and test on Windows with the repo-local .NET SDK. The TODO tooling (`scripts/`, plan checks) runs on Windows with Python 3. CI and dev are Windows-only since the 2026-09-19 operator decision.
 
 ## The TODO system
 
@@ -52,7 +52,7 @@ Answer from source first (captures, protocol docs, code). When an unanswered que
 ## Validation
 
 ```bash
-python3 scripts/todo-graph.py self-test      # 1140 cases, must stay green
+python3 scripts/todo-graph.py self-test      # 1176 cases, must stay green
 python3 scripts/todo-graph.py validate       # FATAL blocks; new WARN* blocks until fixed or accepted
 python3 scripts/todo-graph.py query ready    # dependency-safe work right now
 python3 scripts/todo-graph.py query blocked  # sections waiting on something

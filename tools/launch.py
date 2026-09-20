@@ -4,8 +4,8 @@
 The stable pointer over the deep tree: computes
 Bin/ScratchPad/<Config>[/<RID>]/ScratchPad.exe and execs it, so operators
 never spell the layout. `--print-path` resolves without launching (CI smoke
-resolves through it; Linux asserts the resolved path against the evaluated
-`OutputPath`, since the binary itself is Windows-only). RID defaults to
+resolves through it and asserts the resolved path against the evaluated
+`OutputPath`). RID defaults to
 win-<arch> on every OS, mirroring the csproj unconditional default; `--rid ''`
 empties the leg for explicit-RID-empty builds. Extra arguments forward to the app.
 """

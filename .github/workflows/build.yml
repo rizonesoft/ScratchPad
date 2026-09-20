@@ -5,69 +5,15 @@ name: build
 # on the dev box; release tests run manually on a clean system.
 # (Operator decision 2026-09-17: narrowed from full test CI after
 # repeated runner flakes. D00 T02 §7 evidence pipeline retired.)
+# (Operator decision 2026-09-19: Windows-only CI. The Linux job is removed
+# and the portable D00 T01 §41 gates moved into build-windows. D00 T01 §3
+# runners superseded.)
 
 on:
   push:
     branches: [main]
 
 jobs:
-  build-linux:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - name: Cache provisioned SDK
-        id: sdk-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .tools/dotnet-linux-x64
-          key: sdk-v1-${{ runner.os }}-${{ hashFiles('global.json', 'tools/provision.sh') }}
-          save-always: true
-      - name: Cache NuGet packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-v1-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
-          restore-keys: nuget-v1-${{ runner.os }}-
-          save-always: true
-      - name: Provision SDK
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        run: ./tools/provision.sh
-      - name: Build neutral scope
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          dotnet build src/Notepad.Neutral.slnf --nologo
-      # Bin layout guards (D00 T01 §41 items 2, 5, 8): green legs on the
-      # tree plus red legs on the fixtures, so both directions run maintained.
-      - name: Guard project-name uniqueness
-        run: |
-          python3 tools/check-bin-layout.py stems
-          if python3 tools/check-bin-layout.py stems --root tests/Fixtures/dup-stems; then echo "stems guard did not fire on the fixture"; exit 1; fi
-      - name: Prove clean-bin fixture
-        run: |
-          rm -rf /tmp/clean-proof && cp -r tests/Fixtures/clean-bin/Bin /tmp/clean-proof
-          python3 tools/clean-bin.py --bin-dir /tmp/clean-proof
-          test ! -e /tmp/clean-proof/DefunctProject || { echo "stale dir survived"; exit 1; }
-          test -e /tmp/clean-proof/AcpLoopback/Debug/keep.dll || { echo "live dir pruned"; exit 1; }
-      - name: Probe Bin layout conformance
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          python3 tools/check-bin-layout.py conformance
-          if python3 tools/check-bin-layout.py conformance --root tests/Fixtures/bad-output; then echo "conformance probe did not fire on the bad-output fixture"; exit 1; fi
-          rm -rf /tmp/nobin-proof && mkdir -p /tmp/nobin-proof/src/x/bin
-          if python3 tools/check-bin-layout.py conformance --root /tmp/nobin-proof --skip-eval; then echo "conformance probe did not fire on the stray bin/"; exit 1; fi
-      - name: Assert launcher resolution
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          test "$(python3 tools/launch.py --print-path 2>/dev/null)" = "$(dotnet msbuild src/ScratchPad/ScratchPad.csproj -getProperty:OutputPath -v:q -nologo)ScratchPad.exe"
-
   build-windows:
     runs-on: windows-2025
     steps:
@@ -97,6 +43,42 @@ jobs:
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
           dotnet build src/ScratchPad.slnx --nologo
+      # Bin layout guards (D00 T01 §41 items 2, 5, 8): green legs on the
+      # tree plus red legs on the fixtures, so both directions run maintained.
+      # Moved from the retired Linux job 2026-09-19 (Windows-only CI); bash
+      # steps run under the runner's Git Bash.
+      - name: Guard project-name uniqueness
+        shell: bash
+        run: |
+          python3 tools/check-bin-layout.py stems
+          if python3 tools/check-bin-layout.py stems --root tests/Fixtures/dup-stems; then echo "stems guard did not fire on the fixture"; exit 1; fi
+      - name: Prove clean-bin fixture
+        shell: bash
+        run: |
+          rm -rf /tmp/clean-proof && cp -r tests/Fixtures/clean-bin/Bin /tmp/clean-proof
+          python3 tools/clean-bin.py --bin-dir /tmp/clean-proof
+          test ! -e /tmp/clean-proof/DefunctProject || { echo "stale dir survived"; exit 1; }
+          test -e /tmp/clean-proof/AcpLoopback/Debug/keep.dll || { echo "live dir pruned"; exit 1; }
+      - name: Probe Bin layout conformance
+        shell: bash
+        run: |
+          export DOTNET_ROOT="$PWD/.tools/dotnet-win-x64"
+          export PATH="$PWD/.tools/dotnet-win-x64:$PATH"
+          export DOTNET_MULTILEVEL_LOOKUP=0
+          python3 tools/check-bin-layout.py conformance
+          if python3 tools/check-bin-layout.py conformance --root tests/Fixtures/bad-output; then echo "conformance probe did not fire on the bad-output fixture"; exit 1; fi
+          rm -rf /tmp/nobin-proof && mkdir -p /tmp/nobin-proof/src/x/bin
+          if python3 tools/check-bin-layout.py conformance --root /tmp/nobin-proof --skip-eval; then echo "conformance probe did not fire on the stray bin/"; exit 1; fi
+      # Launcher resolution (D00 T01 §41 item 7): launch.py must name the
+      # evaluated OutputPath. Separators normalize first: MSBuild mixes
+      # slashes on Windows while launch.py spells native backslashes.
+      - name: Assert launcher resolution
+        shell: bash
+        run: |
+          export DOTNET_ROOT="$PWD/.tools/dotnet-win-x64"
+          export PATH="$PWD/.tools/dotnet-win-x64:$PATH"
+          export DOTNET_MULTILEVEL_LOOKUP=0
+          test "$(python3 tools/launch.py --print-path 2>/dev/null | tr '\\' '/')" = "$(dotnet msbuild src/ScratchPad/ScratchPad.csproj -getProperty:OutputPath -v:q -nologo | tr '\\' '/')ScratchPad.exe"
       - name: Install WindowsAppRuntime
         run: |
           Invoke-WebRequest -Uri https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe -OutFile $env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe

@@ -9,12 +9,12 @@ track: W0
 
 # TODO-01 -- Repo and Toolchain
 
-> **Goal:** A clean checkout builds the app and runs the tests with one command each, on a pinned .NET toolchain, with CI proving the build plus launch smoke on Linux and Windows runners on every push. **Corrected 2026-09-17 (groom):** was "CI proving the same"; since 2026-09-17 CI proves build plus launch smoke only and the suites run locally on the dev box.
+> **Goal:** A clean checkout builds the app and runs the tests with one command each, on a pinned .NET toolchain, with CI proving the build plus launch smoke on Linux and Windows runners on every push. **Corrected 2026-09-17 (groom):** was "CI proving the same"; since 2026-09-17 CI proves build plus launch smoke only and the suites run locally on the dev box. **Corrected 2026-09-19:** CI is Windows-only (operator decision 2026-09-19: Linux legs removed, plan-gates on `windows-2025`); the Linux/Windows history below stays as the stamped record.
 
 ## Current state
 
 > [!IMPORTANT]
-> **Current state:** The repo holds `todo/`, `scripts/`, `docs/`, root docs, plus the .NET solution, `src/`, `tests/`, and CI on Linux and Windows runners. **Corrected 2026-09-19 (§26):** was "only `todo/`, `scripts/`, `docs/`, and root docs. No source tree, no solution, no CI" (true 2026-09-14, false since §§1-2 shipped); the SDK layout below is decided and built.
+> **Current state:** The repo holds `todo/`, `scripts/`, `docs/`, root docs, plus the .NET solution, `src/`, `tests/`, and CI on Linux and Windows runners. **Corrected 2026-09-19 (§26):** was "only `todo/`, `scripts/`, `docs/`, and root docs. No source tree, no solution, no CI" (true 2026-09-14, false since §§1-2 shipped); the SDK layout below is decided and built. **Corrected 2026-09-19:** CI is Windows-only (operator decision 2026-09-19: Linux legs removed, plan-gates on `windows-2025`).
 >
 > **Corrected 2026-09-17 (groom):** §§1-7 and §§9-11 have shipped since (layout and SDK pin, scaffold, CI, warning gates, test wiring, bootstrap doc, graph checks, panel enforcement plus follow-ups, lookahead removal); §8 moved to `docs/testing.md` 2026-09-14. Open: §12 only.
 >
@@ -45,8 +45,8 @@ track: W0
 
 ## Outcome
 
-- A clean checkout builds with one command and tests with one command, on Linux or Windows.
-- CI on Linux and Windows runners builds every push to `main` and smoke-launches the app; the unit, UI, and protocol suites run locally on the dev box. **Corrected 2026-09-17 (groom):** was "builds and tests every push"; CI narrowed to build plus launch smoke 2026-09-17.
+- A clean checkout builds with one command and tests with one command, on Linux or Windows. **Corrected 2026-09-19:** on Windows (operator decision 2026-09-19: Windows-only CI and dev); the neutral filter still builds anywhere but nothing proves it outside Windows.
+- CI on Linux and Windows runners builds every push to `main` and smoke-launches the app; the unit, UI, and protocol suites run locally on the dev box. **Corrected 2026-09-17 (groom):** was "builds and tests every push"; CI narrowed to build plus launch smoke 2026-09-17. **Corrected 2026-09-19:** CI is Windows-only (operator decision 2026-09-19: Linux legs removed, plan-gates on `windows-2025`); the suites still run locally on the dev box.
 - Compiler warnings and static analysis gate the build, not a wiki page.
 - The TODO graph's own checks run in CI so a broken plan fails the build.
 
@@ -177,7 +177,7 @@ Why this section exists: the scaffold is the first thing that compiles. One comm
 
 Why this section exists: without CI the toolchain pin rots and "works on my machine" becomes the build system.
 
-**Decided 2026-09-13:** GitHub Actions (repo-native; public repo, free minutes both OSes). Runners `ubuntu-24.04` + `windows-2025`; actions pinned to SHAs. No `setup-dotnet`: jobs run the §1 provisioners so `global.json` governs the SDK. Cost of changing CI: rewrite the workflow and re-probe green/red.
+**Decided 2026-09-13:** GitHub Actions (repo-native; public repo, free minutes both OSes). Runners `ubuntu-24.04` + `windows-2025`; actions pinned to SHAs. No `setup-dotnet`: jobs run the §1 provisioners so `global.json` governs the SDK. Cost of changing CI: rewrite the workflow and re-probe green/red. **Superseded 2026-09-19:** operator decision moves CI to Windows-only (Linux jobs removed, plan-gates on `windows-2025`, portable §41 gates into `build-windows`); this line stays as the 2026-09-13 record.
 
 - [x] `.github/workflows/build.yml` runs the §2 neutral-filter build on a Linux runner and the full §2 solution build on a Windows runner, for every push to `main`. Done when: a push shows green runs on both. **Corrected 2026-09-13:** was "§2 build plus the neutral test suites" and "full build plus UI suites"; neither suite exists (§5 and T02 §2 are open and §3 depends only on §2), so this workflow runs the builds now and §5/T02 §2 extend it with their own probe evidence.
 - [x] CI uploads the built stub as an artifact. Done when: the binary is downloadable from the run.

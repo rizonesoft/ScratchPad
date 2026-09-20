@@ -4,12 +4,9 @@ UI and protocol tests flake. Without a procedure, flakes get deleted and coverag
 
 ## Nightly soak
 
-Soak runs locally, usually as an unattended bedtime run: the full suite for the host OS plus five extra repetitions of the flake-prone suites (UI and Protocol), all with `trx` loggers. The CI `soak` workflow was retired on 2026-09-14; the table below shows the local command shape per OS.
+Soak runs locally, usually as an unattended bedtime run: the full Windows suite plus five extra repetitions of the flake-prone suites (UI and Protocol), all with `trx` loggers; the CI `soak` workflow repeats the same shape nightly. The command below shows the local shape.
 
-| Host | Command |
-| --- | ----- |
-| Windows | `.tools\dotnet-win-x64\dotnet.exe test src/ScratchPad.slnx --logger trx`, then the UI and Protocol suites x5 |
-| Linux | `.tools/dotnet-linux-x64/dotnet test src/Notepad.Neutral.slnf --logger trx`, then the Protocol suite x5 |
+`.tools\dotnet-win-x64\dotnet.exe test src/ScratchPad.slnx --logger trx`, then the UI and Protocol suites x5.
 
 Results stay under `TestResults/` (gitignored): the per-run console log plus the trx files, with golden-failure captures kept alongside on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.
 

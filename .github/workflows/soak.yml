@@ -1,7 +1,8 @@
 name: soak
 
-# Nightly flake hunter. Full suite on both OSes plus repeats of the flake-prone
+# Nightly flake hunter. Full Windows suite plus repeats of the flake-prone
 # suites (UI, Protocol). Procedure: docs/soak-and-quarantine.md.
+# (Operator decision 2026-09-19: Windows-only CI; the Linux soak leg is removed.)
 
 on:
   schedule:
@@ -9,55 +10,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  soak-linux:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          fetch-depth: 0
-      - name: Cache provisioned SDK
-        id: sdk-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: .tools/dotnet-linux-x64
-          key: sdk-v1-${{ runner.os }}-${{ hashFiles('global.json', 'tools/provision.sh') }}
-          save-always: true
-      - name: Cache NuGet packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-v1-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
-          restore-keys: nuget-v1-${{ runner.os }}-
-          save-always: true
-      - name: Provision SDK
-        if: steps.sdk-cache.outputs.cache-hit != 'true'
-        run: ./tools/provision.sh
-      - name: Build neutral scope
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          dotnet build src/Notepad.Neutral.slnf --nologo
-      - name: Test neutral scope
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          dotnet test src/Notepad.Neutral.slnf --nologo --logger "trx;LogFileName=soak-linux.trx" --results-directory TestResults
-      - name: Repeat Protocol suite
-        run: |
-          export DOTNET_ROOT="$PWD/.tools/dotnet-linux-x64"
-          export PATH="$PWD/.tools/dotnet-linux-x64:$PATH"
-          export DOTNET_MULTILEVEL_LOOKUP=0
-          for i in 1 2 3 4 5; do dotnet test tests/Protocol/Protocol.csproj --no-build --nologo --logger "trx;LogFileName=protocol-linux-$i.trx" --results-directory TestResults || exit 1; done
-      - name: Upload soak results
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: soak-results-linux
-          path: TestResults/
-
   soak-windows:
     runs-on: windows-2025
     timeout-minutes: 60

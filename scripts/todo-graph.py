@@ -15124,7 +15124,13 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _dash = _dash_buf.getvalue().splitlines()
             _not_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_not_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_not = cmd_query(argparse.Namespace(what="notify", today="2026-09-19", within_days="7"))
+                # Live-date freeze: the acc6 fixtures float with the real
+                # clock (_rvw_over is today-minus-1), so a fixed freeze
+                # rots -- 2026-09-19 read PR1 overdue only on 2026-09-19
+                # itself, review-due ever after.
+                rc_not = cmd_query(
+                    argparse.Namespace(what="notify", today=date.today().isoformat(), within_days="7")
+                )
             _not = _not_buf.getvalue().splitlines()
             _not_f_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_not_f_buf), _mctx.redirect_stderr(_mio.StringIO()):
@@ -15196,7 +15202,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 rc_rcheck = cmd_query(argparse.Namespace(what="risk-register", check=True))
             _rfile = clean / "docs" / "risk-register.md"
             _rsynced = _rfile.exists()
-            _rfile.write_text(_rfile.read_text(encoding="utf-8") + "\ncorruption\n", encoding="utf-8")
+            _rfile.write_text(_rfile.read_text(encoding="utf-8") + "\ncorruption\n", encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rstale = cmd_query(argparse.Namespace(what="risk-register", check=True))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
@@ -15206,11 +15212,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             # change; the gate must pass. Then flip one residual
             # cell: real drift must still fail.
             _rcrossed = re.sub(r"\| (live|post-dated|expired) \|", "| crossed |", _rfile.read_text(encoding="utf-8"))
-            _rfile.write_text(_rcrossed, encoding="utf-8")
+            _rfile.write_text(_rcrossed, encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rcross = cmd_query(argparse.Namespace(what="risk-register", check=True))
             _rdrift = _rcrossed.replace("| none |", "| outage |", 1)
-            _rfile.write_text(_rdrift, encoding="utf-8")
+            _rfile.write_text(_rdrift, encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rdrift = cmd_query(argparse.Namespace(what="risk-register", check=True))
             # Newline drift is real drift (D00 T01 §34 R1 record 2):
@@ -15218,7 +15224,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             # the gate even with a blanked State column.
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 cmd_query(argparse.Namespace(what="risk-register", sync=True))
-            _rfile.write_text(_rfile.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8")
+            _rfile.write_text(_rfile.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 rc_rnoeol = cmd_query(argparse.Namespace(what="risk-register", check=True))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
@@ -15686,15 +15692,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 
                 _git("init", "-q", ".")
                 _gbranch = _git("symbolic-ref", "--short", "HEAD")
-                (_grepo / "proof.txt").write_text("v1\n", encoding="utf-8")
+                (_grepo / "proof.txt").write_text("v1\n", encoding="utf-8", newline="\n")
                 _git("add", "proof.txt")
                 _git("commit", "-qm", "one")
                 _gc1 = _git("rev-parse", "HEAD")
-                (_grepo / "proof.txt").write_text("v2\n", encoding="utf-8")
+                (_grepo / "proof.txt").write_text("v2\n", encoding="utf-8", newline="\n")
                 _git("commit", "-qam", "two")
                 _gc2 = _git("rev-parse", "HEAD")
                 _git("checkout", "-qb", "side")
-                (_grepo / "side.txt").write_text("s\n", encoding="utf-8")
+                (_grepo / "side.txt").write_text("s\n", encoding="utf-8", newline="\n")
                 _git("add", "side.txt")
                 _git("commit", "-qm", "side")
                 _gc3 = _git("rev-parse", "HEAD")
@@ -15702,15 +15708,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 _git("merge", "--no-ff", "-qm", "merge", "side")
                 _gm1 = _git("rev-parse", "HEAD")
                 _git("checkout", "-qb", "cside")
-                (_grepo / "proof.txt").write_text("cs\n", encoding="utf-8")
+                (_grepo / "proof.txt").write_text("cs\n", encoding="utf-8", newline="\n")
                 _git("commit", "-qam", "confs side")
                 _git("checkout", "-q", _gbranch)
-                (_grepo / "proof.txt").write_text("cm\n", encoding="utf-8")
+                (_grepo / "proof.txt").write_text("cm\n", encoding="utf-8", newline="\n")
                 _git("commit", "-qam", "confs main")
                 try:
                     _git("merge", "--no-ff", "-m", "confs merge", "cside")
                 except RuntimeError:
-                    (_grepo / "proof.txt").write_text("cr\n", encoding="utf-8")
+                    (_grepo / "proof.txt").write_text("cr\n", encoding="utf-8", newline="\n")
                     _git("add", "proof.txt")
                     _git("commit", "-qm", "confs resolved")
                 _gr1 = _git("rev-parse", "HEAD")
@@ -16413,7 +16419,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         # producers prove each gate kills with a naming diagnostic;
         # no live model runs in the suite.
         _PY = sys.executable
-        _ok, _text, _info = rp.collect_producer([_PY, "-c", "print('hi')"], b"prompt\n", 30)
+        _ok, _text, _info = rp.collect_producer([_PY, "-c", "import sys; sys.stdout.buffer.write(b'hi\\n')"], b"prompt\n", 30)
         check("collector passes clean output through exactly", (_ok, _text, _info["returncode"]), (True, "hi\n", 0))
         _ok, _why, _ = rp.collect_producer(
             [_PY, "-c", "import sys; sys.stdout.write(('z' * 3000 + '\\n') * 400)"], b"", 30
@@ -16480,23 +16486,23 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             (False, "producer exited 3: boom"),
         )
         _ok, _text, _ = rp.collect_producer(
-            [_PY, "-c", "import sys; sys.stdout.write(sys.stdin.read())"], b"feed me\n", 30
+            [_PY, "-c", "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"], b"feed me\n", 30
         )
         check("collector feeds the prompt on stdin", (_ok, _text), (True, "feed me\n"))
         # Runner-boundary residuals (D00 T01 §34 R1): char tokens,
         # drained stderr, logical lines, failing-chunk evidence.
-        _ok, _text, _ = rp.collect_producer([_PY, "-c", "print('é' * 4096)"], b"", 30)
+        _ok, _text, _ = rp.collect_producer([_PY, "-c", "import sys; sys.stdout.buffer.write(('é' * 4096 + '\\n').encode('utf-8'))"], b"", 30)
         check("collector measures a 4096-char non-ASCII token in chars", (_ok, len(_text.strip())), (True, 4096))
-        _ok, _why, _ = rp.collect_producer([_PY, "-c", "print('é' * 4097)"], b"", 30)
+        _ok, _why, _ = rp.collect_producer([_PY, "-c", "import sys; sys.stdout.buffer.write(('é' * 4097 + '\\n').encode('utf-8'))"], b"", 30)
         check(
             "collector kills a 4097-char non-ASCII token",
             (_ok, _why),
             (False, f"token exceeds {rp.TOKEN_MAX_CHARS} chars"),
         )
-        _ok, _text, _ = rp.collect_producer([_PY, "-c", "print('x' * 4096 + '\\xa0' + 'y' * 4096)"], b"", 30)
+        _ok, _text, _ = rp.collect_producer([_PY, "-c", "import sys; sys.stdout.buffer.write(('x' * 4096 + '\\xa0' + 'y' * 4096 + '\\n').encode('utf-8'))"], b"", 30)
         check("collector delimits tokens on Unicode whitespace", (_ok, len(_text.strip())), (True, 8193))
         _ok, _text, _ = rp.collect_producer(
-            [_PY, "-c", "import sys; sys.stderr.write('e' * 200000); print('done')"], b"", 30
+            [_PY, "-c", "import sys; sys.stderr.write('e' * 200000); sys.stdout.buffer.write(b'done\\n')"], b"", 30
         )
         check("collector drains stderr past the capture cap", (_ok, _text), (True, "done\n"))
         _ok, _why, _ = rp.collect_producer(
@@ -16514,7 +16520,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             (_ok, _why),
             (False, f"output exceeds {rp.OUTPUT_MAX_LINES} lines"),
         )
-        _ok, _why, _info = rp.collect_producer([_PY, "-c", "print('ok'); print('x' * 5000)"], b"", 30)
+        _ok, _why, _info = rp.collect_producer([_PY, "-c", "import sys; sys.stdout.buffer.write(b'ok\\n' + b'x' * 5000 + b'\\n')"], b"", 30)
         check(
             "collector keeps the failing chunk in the raw evidence",
             (_ok, _why, _info["raw"]),
@@ -16607,7 +16613,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "--",
                 sys.executable,
                 "-c",
-                "print('**adversarial: approve**\\n\\n**consistency: approve**\\n\\n**integration: approve**\\n\\n**record: approve**')",
+                "import sys; sys.stdout.buffer.write(b'**adversarial: approve**\\n\\n**consistency: approve**\\n\\n**integration: approve**\\n\\n**record: approve**\\n')",
             ],
             capture_output=True,
             text=True,

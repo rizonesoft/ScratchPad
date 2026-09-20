@@ -106,7 +106,7 @@ Why this section exists: the best README test is a stranger following it in a cl
 
 **Manual:** operator-only -- needs human taste and a human-owned clean machine; an agent grading its own README proves nothing.
 
-- [ ] The README quick start runs on a clean machine, exactly as written. Done when: you reach a running app (Windows lane) or a green neutral lane (Linux lane) with a written list of every surprise.
+- [ ] The README quick start runs on a clean machine, exactly as written. Done when: you reach a running app (Windows lane) or a green neutral lane (Linux lane) with a written list of every surprise. **Corrected 2026-09-19:** Windows lane only (operator decision 2026-09-19: Windows-only CI and dev); the Linux lane is retired.
   1. Pick a machine or folder the project has never touched.
   2. Open the README on `main` and follow the quick start top to bottom: no skipping, no fixing from memory, no peeking at other docs.
   3. Write down every step that fails, confuses, or needs something the README never said, in a plain text file.
