@@ -78,15 +78,23 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   # tests drive. The suite must finish inside the window; overrun fails the
   # leg (partial proof is no proof). Returns a result object, never throws
   # for a red leg (missing gate binary throws: that is a broken run, not a
-  # red leg).
+  # red leg). The gate runs in a background job: the Start-Process object's
+  # ExitCode reads back empty in Windows PowerShell 5.1 (measured 2026-09-20
+  # with and without redirection), while the job's $LASTEXITCODE reads back
+  # the true verdict.
   if (-not (Test-Path $GateExe)) { throw "nightly: gate binary missing ($GateExe); build tools/ForegroundLog first" }
-  $gate = Start-Process -FilePath $GateExe -ArgumentList "$GateSeconds $GateLog $GateArgs" -NoNewWindow -PassThru -RedirectStandardOutput $VerdictFile
+  $gateArgsArray = @("$GateSeconds", $GateLog)
+  if ($GateArgs -ne '') { $gateArgsArray += $GateArgs }
+  $job = Start-Job -ScriptBlock {
+    param($exe, $argList, $verdict)
+    & $exe @argList > $verdict
+    $LASTEXITCODE
+  } -ArgumentList @($GateExe, $gateArgsArray, $VerdictFile)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   & $TestCmd | Write-Host
   $testCode = $LASTEXITCODE
   $sw.Stop()
-  $gate.WaitForExit()
-  $gateCode = $gate.ExitCode
+  $gateCode = Receive-Job -Job $job -Wait -AutoRemoveJob
   $verdict = ''
   if (Test-Path $VerdictFile) { $verdict = (Get-Content $VerdictFile -Raw).Trim() }
   $overrun = $sw.Elapsed.TotalSeconds -gt $GateSeconds
