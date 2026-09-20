@@ -45,34 +45,65 @@ function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Fa
   return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log)"
 }
 
+function Find-OwedLineIndex([string[]]$Lines, [string]$DebtId) {
+  for ($i = 0; $i -lt $Lines.Count; $i++) {
+    if ($Lines[$i] -match ('\*\*Night-owed:\*\*\s+' + [regex]::Escape($DebtId) + '\b')) { return $i }
+  }
+  return -1
+}
+
 function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
   # Atomic append after the Night-owed line naming this id, with
   # readback verifying exactly one copy. An existing collected line
   # for the id, or a missing owed line: skip with a report line --
-  # never duplicate, never drop silently.
-  $text = Get-Content $TodoPath -Raw -Encoding UTF8
-  if ($text -match ('\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b')) {
-    return "skip: $DebtId already carries a collected line"
+  # never duplicate, never drop silently. The write re-reads before
+  # replacing (R1 A2): a concurrent edit retries once from current
+  # content, then skips loud for triage to append.
+  for ($attempt = 0; $attempt -lt 2; $attempt++) {
+    $text = Get-Content $TodoPath -Raw -Encoding UTF8
+    if ($text -match ('\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b')) {
+      return "skip: $DebtId already carries a collected line"
+    }
+    $lines = @($text -split "`r?`n")
+    $idx = Find-OwedLineIndex $lines $DebtId
+    if ($idx -lt 0) { return "skip: no Night-owed line for $DebtId" }
+    $new = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -le $idx; $i++) { $new.Add($lines[$i]) }
+    $new.Add($Line)
+    for ($i = $idx + 1; $i -lt $lines.Count; $i++) { $new.Add($lines[$i]) }
+    $now = Get-Content $TodoPath -Raw -Encoding UTF8
+    if ($now -ceq $text) {
+      $tmp = "$TodoPath.tmp-$PID"
+      $nl = "`n"
+      if ($text.Contains("`r`n")) { $nl = "`r`n" }
+      $new -join $nl | Set-Content -Path $tmp -Encoding UTF8 -NoNewline
+      Move-Item -Path $tmp -Destination $TodoPath -Force
+      $back = Get-Content $TodoPath -Raw -Encoding UTF8
+      $hits = ([regex]::Matches($back, [regex]::Escape($Line))).Count
+      if ($hits -ne 1) { throw "night-debt: readback found $hits copies, want exactly 1" }
+      return "appended: $DebtId"
+    }
   }
-  $lines = @($text -split "`r?`n")
-  $idx = -1
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -match ('\*\*Night-owed:\*\*\s+' + [regex]::Escape($DebtId) + '\b')) { $idx = $i; break }
-  }
-  if ($idx -lt 0) { return "skip: no Night-owed line for $DebtId" }
-  $new = New-Object System.Collections.Generic.List[string]
-  for ($i = 0; $i -le $idx; $i++) { $new.Add($lines[$i]) }
-  $new.Add($Line)
-  for ($i = $idx + 1; $i -lt $lines.Count; $i++) { $new.Add($lines[$i]) }
-  $tmp = "$TodoPath.tmp-$PID"
-  $nl = "`n"
-  if ($text.Contains("`r`n")) { $nl = "`r`n" }
-  $new -join $nl | Set-Content -Path $tmp -Encoding UTF8 -NoNewline
-  Move-Item -Path $tmp -Destination $TodoPath -Force
-  $back = Get-Content $TodoPath -Raw -Encoding UTF8
-  $hits = ([regex]::Matches($back, [regex]::Escape($Line))).Count
-  if ($hits -ne 1) { throw "night-debt: readback found $hits copies, want exactly 1" }
-  return "appended: $DebtId"
+  return "skip: file changed under write, triage appends"
+}
+
+function Test-DebtCoverage([string]$DebtFilter, [string]$CollectFilter, [string]$CollectId) {
+  # exact: this run's filter is the debt's own (closeable with the
+  # leg's counts). superset (R1 I2): an un-narrowed full-Interactive
+  # run covering an Interactive-scoped &-only debt -- the leg's
+  # totals are superset counts, so triage closes with subset counts.
+  # uncovered: anything else. `|`/`!` filters are exact-only:
+  # subsumption is undecidable for strings.
+  if (($DebtFilter -ne '') -and ($DebtFilter -eq $CollectFilter)) { return 'exact' }
+  if (($CollectId -eq '') -and ($CollectFilter -eq 'Category=Interactive') -and ($DebtFilter -ne '') -and ($DebtFilter -match '(?i)^Interactive$|Category\s*=\s*Interactive') -and ($DebtFilter -notmatch '[|!]')) { return 'superset' }
+  return 'uncovered'
+}
+
+function Test-DebtCensus([string]$OwedCount, [int]$Passed, [int]$Failed, [int]$Skipped) {
+  # Collected totals must equal the owed count (R1 I3); anything
+  # else (drift, partial run, unparseable count) fails closed.
+  $n = 0
+  return ([int]::TryParse($OwedCount, [ref]$n) -and (($Passed + $Failed + $Skipped) -eq $n))
 }
 
 function Format-FindingStubs([string[]]$FailedLines, [string]$Root) {

@@ -601,7 +601,8 @@ if ($debtQueryError -ne '') {
   foreach ($debt in $debtSnapshot) {
     $debtFilter = ''
     try { $debtFilter = Get-DebtDotnetFilter $debt.Filter } catch { $debtFilter = '' }
-    $covered = $interactiveRan -and ($debtFilter -ne '') -and ($debtFilter -eq $collectFilter)
+    $coverage = Test-DebtCoverage $debtFilter $collectFilter $collectId
+    $covered = $interactiveRan -and ($coverage -ne 'uncovered')
     if (-not $covered) {
       if ($interactiveSkipReason -ne '') { $cause = "interactive leg skipped ($interactiveSkipReason)" }
       else { $cause = "filter $debtFilter not covered this run (leg ran $collectFilter)" }
@@ -625,6 +626,16 @@ if ($debtQueryError -ne '') {
       continue
     }
     $logRel = "build/nightly/$stamp/interactive.trx"
+    if ($coverage -eq 'superset') {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): covered by superset collection ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); triage appends Night-collected with subset counts; log $logRel"
+      continue
+    }
+    $got = $sumI.Passed + $sumI.FailedCount + $sumI.Skipped.Count
+    if (-not (Test-DebtCensus $debt.Count $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count)) {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: census mismatch (owed $($debt.Count), collected $got): debt stays open"
+      $failed = $true
+      continue
+    }
     $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel
     $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
     Write-Output "nightly: night-debt $($debt.Id): $note"

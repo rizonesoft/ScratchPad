@@ -54,6 +54,8 @@ The morning report lands at `build/nightly/morning-YYYY-MM-DD.md`: date, HEAD, t
 
 The Interactive leg is the night-debt collector (D00 T02 §10): at run start it snapshots open debt via `query night-debt`, resolves each debt id to its trait filter (a bare value means `Category=<value>`), and attributes the collection per debt; `-CollectDebt <id>` narrows the leg to one debt's filter, and with `-CheckOnly` it dry-runs the resolution with no side effects. Green collection appends `Night-collected:` (date, id, passed/failed/skipped, trx log path) after the debt's `Night-owed:` line for triage to commit, red collection stages finding stubs (test, first message line, test-file hint) under Filings and the debt stays open, and a zero-executed collection never closes debt (filter matched nothing: collector bug, run red). Stubs on safety or data-integrity shaped failures (data loss, corruption, integrity, disk, unauthorized, access denied, IO error) carry `REOPEN-CANDIDATE` for the agent to reopen through audit stance; the marker is a triage hint, never a decision.
 
+Superset and census rules: only an exact-filter green run auto-appends `Night-collected:`; a full-Interactive green run covering a narrower `&`-only Interactive debt stages the evidence for triage to close with subset counts (leg totals are superset counts), `|`/`!` filters close on exact runs only, and collected totals must equal the debt's owed count (census mismatch reds as a collector bug and the debt stays open).
+
 Worked example, from a `-CollectDebt D00-T02-S8-N1` night (second debt hypothetical):
 
 ```md
