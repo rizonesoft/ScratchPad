@@ -50,7 +50,7 @@ track: W0
 |   9   |   §9    | Nightly full-suite regression run | §8 |  [x]   |
 |   10  |   §10   | Completion-first night-debt system | §8 |  [x]   |
 |   11  |   §11   | Central launch helper with off-screen birth | §8, D00 T04 §6 |  [x]   |
-|   12  |   §12   | Accelerator binding coverage sweep | §8 |  [ ]   |
+|   12  |   §12   | Accelerator binding coverage sweep | §8 |  [x]   |
 |   13  |   §13   | Backgrounding leak on the default leg | §8 |  [ ]   |
 |   14  |   §14   | Run-level deadline for the governed run | §9 |  [ ]   |
 |   15  |   §15   | Nightly enforcement and count hardening | §9 |  [ ]   |
@@ -382,11 +382,17 @@ Why this section exists: conversion swaps physical key-means for pattern-means, 
 - [x] Sweep every accelerator binding the app declares (menu shortcuts, tab-bar number shortcuts, any Ctrl/Alt chords) against suite coverage and record the binding-to-test table in `docs/ui-input-audit.md`. Done when: each binding names its covering test or none, and Ctrl+Shift+N is listed as none. Done: 44 declarations swept (31 `MenuBar.xaml` plus 13 programmatic tab bindings in `AddTabAccelerators`; no other key handling in `src/`); 14 covered by physical presses, Ctrl+Shift+N listed as none at sweep, 12 restored by item 2 (6 chords plus 6 numbers), 18 reasoned (16 disabled commands, 2 browser-launch escapes); pressed-but-undeclared framework chords noted. **Corrected 2026-09-20 (§12 review R1):** was 31 XAML only; the sweep missed the programmatic bindings.
 - [x] Each uncovered binding gains a fenced `Category=Interactive` test pressing the physical chord (or a written reason it cannot be physical), following the §8 fence rule with proof citations. Done when: the restored set passes in the collector window and daytime skips quote the window. Done: 7 fenced tests (6 chords in `tests/UI/AcceleratorTests.cs` plus `TabBarTests.NumberShortcutsCoverMiddlePositions` for Ctrl+2/4/5/6/7/8); daytime 7/7 skip quoting `02:00-06:50`; N pair quoted (backgrounded-fail 1 window, foreground-pass 2 windows); G/H/X backgrounded-pass (interruption fences); E/L backgrounded-fail; foreground confirmation Night-owed D00-T02-S12-N1 (daytime forced attempts for E/L/G/H/X void: TickTick held OS foreground). **Corrected 2026-09-20 (§12 review R1):** was 6 tests; the numbers test closes the programmatic gap.
 - [x] Rename `CtrlShiftNOpensSecondWindowAtCascade` to what it asserts (menu-driven cascade placement, no keys) and update its pair comment; §8's stamped record keeps the old name as reviewed. Done when: no test name asserts keys it does not press (grep `Ctrl|Shift|Alt` in test names vs `UiInput.Press` call sites). Done: renamed `MenuNewWindowOpensSecondWindowAtCascade` with the pair comment noting the rename plus the chord home; name-vs-press grep clean (6 `Chord*` all press; 3 substring false positives); stamped records (D00-T02-s8, D01-T01-s7/s9, D01 T01 §9 item) keep the old name as history. Re-proof: Run B `build/s11-runb-20260920-172225` gate exit 0 `primary=1 expect=primary` with the renamed test passed 2/2.
-- [ ] Commit: `"workspace: sweep accelerator binding coverage"`
+- [x] Commit: `"workspace: sweep accelerator binding coverage"` (Done: `ae8b8c1` carries the message with a section-ref suffix; fix loops `4fe8166` `0b38dd2` append)
 
 **Test checkpoint:** The sweep table is complete, the restored chord tests pass in-window, and the name-vs-press grep is clean. Cheaper substitute that fails: renaming the test without restoring the coverage.
 
 **Night-owed:** D00-T02-S12-N1 (7 Interactive, collector Nightly UI 02:30, first collection due the coming window).
+
+> **Verified:** 2026-09-20 | §12 | sweep 44 bindings (14 covered, 12 restored, 18 reasoned); 7 fenced tests daytime 7/7 skip; trait guards 22/22; Run B 2/2 with rename; N1 collector-owed; self-test 1267/1267; validate 0 fatal; Full panel (Sol R1-R2, Opus R3 sign-off) over 3 candidates; plan review 22 findings, 11 filed, 10 rejected, 1 duplicate.
+> **Review:** round 3 (FINAL), candidates ae8b8c1 4fe8166 0b38dd2 -- `adversarial` approve · `consistency` advisory (filed at D00 T02 §20) · `integration` approve · `record` advisory (filed at D00 T02 §20); R1 one family (programmatic bindings) fixed in 0b38dd2, R2 4x approve, R3 Opus sign-off. Raw findings: docs/reviews/00-workspace/D00-T02-s12.md
+> **Plan review:** GPT high, filed D00 T02 §21 (run 20260920-D00-T02-S12-gpt-r3)
+> **CRUD:** applicable | review read candidate diff plus contract plus corpus (no writes outside the candidate); implementation swept 44 bindings plus 7 fenced tests plus rename (read back via skip runs, guards, Run B, collector dry-run, list-tests); filings opened §§20-21 (read back via plan --check current)
+> **Duration:** 2026-09-20T15:01:24Z to 2026-09-20T15:42:27Z
 
 ## 13. Backgrounding Leak on the Default Leg
 
