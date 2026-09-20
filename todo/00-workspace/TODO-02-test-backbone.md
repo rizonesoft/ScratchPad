@@ -52,6 +52,7 @@ track: W0
 |   11  |   §11   | Central launch helper with off-screen birth | §8 |  [ ]   |
 |   12  |   §12   | Accelerator binding coverage sweep | §8 |  [ ]   |
 |   13  |   §13   | Backgrounding leak on the default leg | §8 |  [ ]   |
+|   14  |   §14   | Run-level deadline for the governed run | §9 |  [ ]   |
 
 ---
 
@@ -157,6 +158,7 @@ Why this section exists: UI and protocol tests flake. Without a procedure, flake
 
 - -> XREF: D00 T02 §9 -- flakes the nightly run surfaces quarantine by this procedure; soak stays the flake-hunting repeat loop, the nightly run stays the regression proof.
 - -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for the 7 09-20 night-triage quarantines (due 09-27).
+- -> XREF: D00 T02 §14 -- run-level deadline this procedure's soak loop must respect.
 
 - [x] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
 - [x] Quarantine moves a flaky test to a named list with its failure signature and owner, and the suite stays green without it. Done when: the list exists with its fields, even if empty.
@@ -276,9 +278,10 @@ Why this section exists: the fenced Interactive set has no owner, no schedule, a
 - -> XREF: D01 T02 §16 -- two flakes filed into its list from this section's night triage (FileOpen plus LiveItems).
 - -> XREF: D00 T02 §13 -- backgrounding leak filed from this section's task-run triage (gate exit 1, primary=1).
 - -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for this section's 7 night-triage quarantines (due 09-27).
+- -> XREF: D00 T02 §14 -- run-level deadline filed from this section's R4 review (worst-case legs exceed PT4H).
 
 - [x] `docs/testing.md` carries the nightly procedure: trigger (nightly cron inside 02:00-06:50; operator bedtime call stays as manual backup), the three legs (Run A background-safe default with foreground-plus-census proof, Run B Primary with `--expect-primary`, then the Interactive collection run), and the pass/fail bar for each leg. Done when: a second operator can run it or read the cron without asking. **Corrected 2026-09-19 (§8 plan review):** was two halves. Done: "Nightly regression run" section (trigger task plus manual backup, three legs with commands, bars, log convention, report format, abort rules, pre-flight reap).
-- [x] Nightly logs land under `build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log` (ignored scratch, never committed) with the run's section range and HEAD recorded at the top. Done when: the convention is written and the first logs follow it. **Corrected 2026-09-19 (§8 plan review):** was `{default,full}`; Run B owns the primary log. **Corrected 2026-09-20 (R1):** was day-scoped; same-day runs overwrote and merged (report HEAD `a8127c7` against Run A log `7ec7495`), so each invocation owns its stamp directory. Done: convention in testing.md; first stamped logs from the FL2 proofs (`2026-09-20-054411-smoke.log`, dirs `2026-09-20-054325/` and `2026-09-20-054451/`).
+- [x] Nightly logs land under `build/nightly/YYYY-MM-DD-HHmmss-{default,primary,full}.log` (ignored scratch, never committed) with the suite scope and build-time HEAD recorded at the top. Done when: the convention is written and the first logs follow it. **Corrected 2026-09-19 (§8 plan review):** was `{default,full}`; Run B owns the primary log. **Corrected 2026-09-20 (R1):** was day-scoped; same-day runs overwrote and merged (report HEAD `a8127c7` against Run A log `7ec7495`), so each invocation owns its stamp directory. **Corrected 2026-09-20 (FL5):** was "section range"; the header carries the suite scope (a whole-tree run has no section range) — wording only. Done: convention in testing.md; first stamped logs from the FL2 proofs (`2026-09-20-054411-smoke.log`, dirs `2026-09-20-054325/` and `2026-09-20-054451/`). FL5 re-proof: `2026-09-20-061900-smoke.log` carries the scope-plus-HEAD header (smoke branch converted to Start-LegLog).
 - [x] The morning report names per-tier counts (default, primary, interactive: passed, failed, skipped-with-reason) and files every failure as a finding in the owning file before the next section starts. Done when: the report format is written with one worked example, and the report lands at a fixed path the operator checks first. **Corrected 2026-09-19 (§8 plan review):** was per-half. Done: format in testing.md; `build/nightly/morning-2026-09-20.md` landed with per-leg counts; triage appended filings for all 11 failures (2 to D01 T01 §34, 2 to D01 T02 §16, 7 quarantine rows).
 - [x] The Interactive tier collects inside the quiet-hours window with zero quiet-hours skips (citing the §8 gate proof, not re-owning it), closing open `Night-owed` debt per D00 T02 §10. Done when: the full log shows the interactive count executed. **Corrected 2026-09-19 (§8 plan review):** was "fenced half"; collection and debt named. Done: `interactive.trx` 28 total, 27 executed, 1 quarantine skip, zero quiet-hours skips; N1 27 of 28 collected (§10 owns the close).
 - [x] The first governed run executes the procedure end to end on the cron (bedtime trigger stays as manual backup) and its evidence (all three logs plus the morning report) is quoted here. Done when: the log paths and the report are cited with their outcomes. **Corrected 2026-09-19 (§8 plan review):** was both logs. **Corrected 2026-09-20 (R1):** both re-run gate codes were blank, not exit 0; the re-run executed all three legs end to end on the manual backup trigger, and cron-path proof rides the demand-fired task run. **Corrected 2026-09-20 (FL2):** Run A restored to 545 passed (Smoke 1, Unit 346, Protocol 35, UI 163) after an FL1 over-correction to the UI-only report row. Done: re-run 03:20 (manual `-SkipSoak`, in-window): Run A 545 passed, 1 failed, 3 skipped, gate blank-code with verdict "flagged=0; census=743 primary=1 expect=secondary", test-seconds 621; Run B 2 passed, gate blank-code with verdict "flagged=0; census=11 primary=1 expect=primary", test-seconds 7; Interactive 24/3/1 of 28; archived at `build/nightly-rerun-2026-09-20/` (`2026-09-20-default.log`, `2026-09-20-primary.log`, `2026-09-20-full.log`, `morning-2026-09-20.md`). Task run 04:13:43 (demand-fired, full legs plus soak): Run A 540/0/9, gate exit 1 (primary=1, filed D00 T02 §13); Run B 2/0/0, gate exit 0; Interactive 24/2/2 (both in §34); soak 10/10 green; Last Result 1; archived at `build/nightly-taskrun-2026-09-20/` (same four names plus `2026-09-20/` trx and gate logs).
@@ -364,6 +367,21 @@ Why this section exists: the Run A gate counted a resting primary window on both
 - [ ] Commit: `"workspace: plug the backgrounding leak on the default leg"`
 
 **Test checkpoint:** Run A gate exit 0 with primary=0 on a governed run; the leaking test named with its census evidence. Cheaper substitute that fails: re-running until a green gate without identifying the leak.
+
+## 14. Run-Level Deadline for the Governed Run
+
+Why this section exists: every leg now has its own cap, but the run has no global deadline: worst case 1800 (Run A) + 300 (Run B) + 1800 (Interactive) + 10 x 1800 (soak) is about 5.6 hours, past the task PT4H limit and past the 06:50 window end, and the report lands only after the soak loops. One hung leg is affordable (normal full runs take ~85 minutes); eleven simultaneous hangs are absurd; but the catastrophe case currently dies by scheduler kill with no fixed-path record. This section bounds the whole run. -> SOURCE: run-deadline-2026-09-20 (D00 T02 §9 R4 finding: worst-case cap arithmetic vs PT4H plus window end).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §9 -- filed from its R4 review; this section hardens that run.
+- -> XREF: D00 T02 §5 -- the soak loop this deadline must also bound.
+
+- [ ] A run-level watchdog aborts the legs and lands the report before the PT4H limit in the all-hang catastrophe case. Done when: the mechanism plus its deadline math is written in `docs/testing.md` abort rules.
+- [ ] The watchdog is implemented in `tools/nightly.ps1` (partial legs marked unproven, never green). Done when: a simulated all-hang run lands its report before the deadline.
+- [ ] Commit: `"workspace: bound the governed run with a deadline"`
+
+**Test checkpoint:** Simulated all-hang run lands its report before the PT4H-equivalent deadline with unproven (never green) legs. Cheaper substitute that fails: per-leg caps alone, which sum past the limit.
 
 ## Verification
 

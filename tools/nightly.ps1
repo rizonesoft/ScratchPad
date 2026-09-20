@@ -337,8 +337,7 @@ $gateB = $null
 
 if ($Smoke) {
   $log = Join-Path $nightDir "$stamp-smoke.log"
-  if (Test-Path $log) { Remove-Item $log -Force }
-  Start-Transcript -Path $log | Out-Null
+  Start-LegLog $log 'tests/Smoke, launch smoke'
   try {
     Push-Location $Root
     try {
@@ -348,7 +347,7 @@ if ($Smoke) {
       Pop-Location
     }
   } finally {
-    Stop-Transcript | Out-Null
+    Stop-LegLog
   }
   if ($failed) { Write-Output 'nightly: RED (see above)'; exit 1 }
   Write-Output 'nightly: GREEN'
