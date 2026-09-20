@@ -627,19 +627,20 @@ if ($debtQueryError -ne '') {
     }
     $logRel = "build/nightly/$stamp/interactive.trx"
     if ($coverage -eq 'superset') {
-      # FQN-attributable subsets close with their own counts (R2-F4);
-      # anything else stages for triage (R1-F4).
       $sub = Get-TrxSubsetCounts (Join-Path $trxDir 'interactive.trx') $debtFilter
-      if (($null -ne $sub) -and ($sub.Failed -eq 0) -and (($sub.Passed + $sub.Failed + $sub.Skipped) -gt 0) -and (Test-DebtCensus $debt.Count $sub.Passed $sub.Failed $sub.Skipped)) {
+      $decision = Test-SubsetClose $sub $debt.Count
+      if ($decision -eq 'close') {
         $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel
         $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
         Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
         $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sub.Passed $sub.Failed $sub.Skipped $logRel $note
         $debtEntries += $pair[0]
         if ($pair[1]) { $failed = $true }
-      } elseif (($null -ne $sub) -and ($sub.Failed -gt 0)) {
+      } elseif ($decision -eq 'red') {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open"
-      } elseif ($null -ne $sub) {
+      } elseif ($decision -eq 'skipped-stage') {
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): subset has $($sub.Skipped) skips without reasons; triage closes with attribution; log $logRel"
+      } elseif ($decision -eq 'mismatch') {
         $got = $sub.Passed + $sub.Failed + $sub.Skipped
         $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: subset census mismatch (owed $($debt.Count), collected $got): debt stays open"
         $failed = $true
@@ -648,8 +649,13 @@ if ($debtQueryError -ne '') {
       }
       continue
     }
-    $got = $sumI.Passed + $sumI.FailedCount + $sumI.Skipped.Count
-    if (-not (Test-DebtCensus $debt.Count $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count)) {
+    $split = Split-DebtSkips $sumI.Skipped
+    if (($split.Capability -gt 0) -or ($split.Other -gt 0)) {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: $($split.Capability) capability plus $($split.Other) other skips never executed: debt stays open"
+      continue
+    }
+    $got = $sumI.Passed + $sumI.FailedCount + $split.Quarantine
+    if (-not (Test-DebtCensus $debt.Count $sumI.Passed $sumI.FailedCount $split.Quarantine)) {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: census mismatch (owed $($debt.Count), collected $got): debt stays open"
       $failed = $true
       continue

@@ -167,6 +167,35 @@ function Format-DebtGreenEntry([string]$Id, [string]$Section, [int]$P, [int]$F, 
   return @("- $Id ($Section): collection green ($counts); close-loop skipped ($Note)", $true)
 }
 
+function Split-DebtSkips([string[]]$SkipLines) {
+  # Closure-safe split (plan PR4): quarantine-declared skips
+  # transfer their proof to the quarantine window and may close
+  # with the collection; capability and other skips never executed,
+  # so they hold the debt open. Returns
+  # @{Quarantine; Capability; Other}.
+  $q = 0; $c = 0; $o = 0
+  foreach ($ln in $SkipLines) {
+    if ($ln -match 'QUARANTINED') { $q++ }
+    elseif ($ln -match 'unavailable on this host') { $c++ }
+    else { $o++ }
+  }
+  return @{ Quarantine = $q; Capability = $c; Other = $o }
+}
+
+function Test-SubsetClose($Sub, [string]$OwedCount) {
+  # Subset close decision (plan PR4): close only fully executed
+  # with matching census (trx skips carry no reason, so any skip
+  # stages); red, mismatch, and unattributable route triage-side.
+  # $Sub is $null when the filter is not FQN-attributable or the
+  # trx is unreadable.
+  if ($null -eq $Sub) { return 'unattributable' }
+  if ($Sub.Failed -gt 0) { return 'red' }
+  if ($Sub.Skipped -gt 0) { return 'skipped-stage' }
+  $total = $Sub.Passed + $Sub.Failed + $Sub.Skipped
+  if (($total -le 0) -or (-not (Test-DebtCensus $OwedCount $Sub.Passed $Sub.Failed $Sub.Skipped))) { return 'mismatch' }
+  return 'close'
+}
+
 function Test-DebtCensus([string]$OwedCount, [int]$Passed, [int]$Failed, [int]$Skipped) {
   # Collected totals must equal the owed count (R1-F5); anything
   # else (drift, partial run, unparseable count) fails closed.

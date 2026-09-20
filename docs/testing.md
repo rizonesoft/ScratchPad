@@ -56,6 +56,8 @@ The Interactive leg is the night-debt collector (D00 T02 §10): at run start it 
 
 Superset and census rules: only an exact-filter green run auto-appends `Night-collected:` with leg counts; a full-Interactive green run covering a narrower `&`-only Interactive debt closes with per-test subset counts from the trx when the filter is `FullyQualifiedName`/`Name`-attributable, else stages the evidence for triage to close with subset counts, `|`/`!` filters close on exact runs only, and collected totals must equal the debt's owed count (census mismatch reds as a collector bug and the debt stays open).
 
+Closure-safe skips are quarantine-declared only: their proof transfers to the quarantine window, while capability or other skips hold the debt open with cause (no red: the leg stays green, the debt entry plus summary carry the cause); trx subsets close only fully executed (their skips carry no reason), and exact runs census passed plus failed plus quarantine skips against owed.
+
 Worked example, from a `-CollectDebt D00-T02-S8-N1` night (second debt hypothetical):
 
 ```md
