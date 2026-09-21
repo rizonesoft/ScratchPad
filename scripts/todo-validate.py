@@ -2153,7 +2153,7 @@ def validate(graph, _args) -> int:
             if s.duration_malformed:
                 flag(
                     "duration-range-uncheckable",
-                    f"{t.path}:{s.line}: §{num} Duration parses to no span "
+                    f"{t.path}:{s.line}: §{num} Duration: {s.duration_raw!r} parses to no span "
                     "(shape the range or drop the line; the silent fallback covers pre-cutoff records only)",
                 )
                 continue

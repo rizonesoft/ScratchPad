@@ -370,6 +370,7 @@ class Section:
     duration_start: str | None = None  # `Duration:` range start instant, Zulu shaped or None
     duration_seconds: int | None = None  # exact span; minute forms scale (D00 T01 §32)
     duration_malformed: bool = False  # a Duration line parsed to nothing (rule 26 reads this)
+    duration_raw: str = ""  # the Duration body as written, for the malformed diagnostic
     started_at: str = ""  # `> **Started:**` body as written; the range-start anchor
     stamped_on: str | None = None
     review_body: str = ""
@@ -594,6 +595,7 @@ def parse_todo(path: Path) -> Todo:
                     target.duration_start = None
                     target.duration_seconds = None
                     target.duration_malformed = False
+                    target.duration_raw = body.strip()
                     m = DURATION_BODY_RE.fullmatch(body.strip())
                     if m is not None:
                         _mins = int(m.group("minutes"))
@@ -16155,6 +16157,11 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check(
             "an unshaped Duration on a post-cutoff stamp fires",
             any("§2 " in ln and "parses to no span" in ln for ln in v26_out),
+            True,
+        )
+        check(
+            "a malformed Duration quotes its raw line and section",
+            any("§2 " in ln and "Duration: 'unclear'" in ln for ln in v26_out),
             True,
         )
         check(
