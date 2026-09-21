@@ -107,7 +107,7 @@ track: W0
 |  49   |   §49   | Multi-citer review evaluation | §27 |  [x]   |
 |  50   |   §50   | Outage instance dating | §27 |  [x]   |
 |  51   |   §51   | Acceptance record follow-ups | §27 |  [x]   |
-|  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [ ]   |
+|  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [x]   |
 |  53   |   §53   | Unattended notification and register follow-ups | §29 |  [ ]   |
 |  54   |   §54   | Clearance fixture follow-ups | §30 |  [ ]   |
 |  55   |   §55   | Clearance causality follow-ups | §31 |  [ ]   |
@@ -1327,11 +1327,16 @@ Why this section exists: the §28 plan review (`gpt-5.6-sol` high over §28 plus
 - [x] Bare partials bound accumulation: a recurrence or age threshold escalates persistent one-rung loss, so the surviving rung cannot become the only rung unnoticed (PR6 D00-T01-S28-PR6). Done when: the threshold gates with fixtures. Done: one failed rung across 3 bare partials gates lenient --check with a re-probe escalation; degraded entries carry `rung` (schema plan-health/8); 8 self-test cases (2 isolated roots plus 3 gate units); suite 1295/1295. R1 shares the persistence read (`persistent_rungs` for builder, gate, and summary), names the true recovery in the escalation (a clean rerun supersedes; rung-level risk acceptance is not yet a register target), and aims the summary next action at the tripped partials.
 - [x] Legacy date fallback retires: the grandfathered `date` spelling gains a removal date and its compatibility checks retire, so the dual schema ends (PR9 D00-T01-S28-PR9). Done when: removal lands with the retirement quoted. Done: fallback deleted from `ledger_row_due` (removal date 2026-09-21 met); validator rule 31 fires `date`-spelled deferred rows on pre-cutoff stamps (rule 18 covers post-cutoff); README retirement note; retired-spelling unit converted plus 3 isolated fixtures (fire-once plus silent); zero live `date` rows surveyed; suite 1298/1298. R1 extends rule 31 to dual-spelled rows on every stamp (rule 18's `due` leg is satisfied there).
 - [x] Composite residual states pin the sort-plus-join: the §29 sign-off adversarial advisory requires a fixture target resolving to the reachable composite marker state `partial: <rung>` plus `retry-owed` (grammar-legal per the README) and to the `partial` state itself, so dropping the sort or the `"+".join(...)` keeps no suite green. -> SOURCE: Opus-panel-D00-T01-s29-round-3-s52 (sign-off adversarial advisory, candidate `dadc2dd`). This item is a joiner from §29 review. Done when: the composite fixtures ship and dropping the sort or the join fails the suite, quoted by hash. Done: composite (run plus partial plus retry-owed) plus singleton-partial fixtures in an isolated risk-register root; residuals `partial+retry-owed` and `partial` pinned; reverse-sort and first-only mutations both fail `composite run residual joins sorted states` (sha256 3e8906ebc39e6139d5b957b1fb3ee34f3bfafc54a64d752ac6559793a62f0425 of the FAIL line), then restored; suite 1300/1300.
-- [ ] Commit: `"workspace: follow up partial records and quorum per §28 plan review"`
+- [x] Commit: `"workspace: follow up partial records and quorum per §28 plan review"`
 
 **Test checkpoint:** outage notes link from markers, attempt counts mean one thing, quorum reads as one rule, stale partials escalate, and one deferred spelling (`due`) remains. Falsifiable by any dangling note, ambiguous count, asymmetric quorum, silent accumulation, or dual spelling.
 
 > **Started:** 2026-09-21T01:42:10Z
+> **Verified:** 2026-09-21 | §52 | self-test 1321/1321 (21 review-added: FL1 7, FL2 14; base 1300); live validate 0 fatal 0 warnings; 3 headless panel rounds over candidates 42d7f68 28d93bb 8d753ee, R1 6 fixed, R2 5 fixed, R3 sign-off 5 filed at D00 T04 §10; plan review 24 findings, 3 filed at D00 T04 §11, 1 reworded in place, 3 duplicates, 17 rejected
+> **Review:** rounds 1-2 Sol, round-3 Opus sign-off, candidates 42d7f68 28d93bb 8d753ee -- `adversarial` needs-attention (R1-F1 F2 fixed, R2-F1 F2 fixed, R3-F1 F2 filed D00 T04 §10) · `consistency` needs-attention (R1-F3 F4 fixed, R2-F3 fixed, R3-F3 F4 filed D00 T04 §10) · `integration` needs-attention (R1-F5 F6 fixed, R2-F4 fixed, R3-F5 filed D00 T04 §10) · `record` needs-attention (R2-F5 fixed; R1 and R3 approve). Raw findings: docs/reviews/00-workspace/D00-T01-s52.md
+> **Plan review:** GPT high, filed D00 T04 §11 (run 20260921-D00-T01-S52-gpt-r3)
+> **CRUD:** applicable | self-test wrote fixture files under temp roots (unlinked after, read back via per-case assertions); implementation edited the validator, graph, fixtures, skill, README, and ticks (read back via self-test 1321/1321, live validate 0 fatal, plan --check current); filings opened D00 T04 §10 plus §11 with plan rows (read back via plan --check current)
+> **Duration:** 2026-09-21T01:42:10Z to 2026-09-21T03:53:25Z
 
 ## 53. Unattended Notification and Register Follow-Ups
 
