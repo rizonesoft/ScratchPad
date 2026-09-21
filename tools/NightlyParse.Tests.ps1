@@ -229,6 +229,12 @@ $fail = Format-SoakLedger $failDir @() @() @('ui-soak-2') $true
 Assert (($fail.Failed -eq $true) -and ((($fail.Rows -join "`n") -like '*ui-soak-2 : no trx (failed without trx*'))) 'soak-failed-no-trx' ($fail.Rows -join '|')
 Assert ((($fail.Rows -join "`n") -like '*ui-soak-1 : no trx despite exit 0*')) 'soak-exit0-no-trx' ($fail.Rows -join '|')
 Assert ((($fail.Rows -join "`n") -notlike '*no soak iterations ran*')) 'soak-failed-never-empty' ($fail.Rows -join '|')
+$abortTrx = '<TestRun><Results><UnitTestResult testName="UI.Aborted" outcome="Aborted" /></Results></TestRun>'
+$abortTrx | Set-Content -Path (Join-Path $failDir 'ui-soak-4.trx') -Encoding UTF8
+$failAbort = Format-SoakLedger $failDir @() @() @('ui-soak-2', 'ui-soak-4') $true
+Assert ((($failAbort.Rows -join "`n") -like '*ui-soak-4 : nonzero exit, trx carries no Failed outcomes*')) 'soak-failed-aborted-trx' ($failAbort.Rows -join '|')
+$redFailed = Format-SoakLedger $redDir @('ui-soak-5') @('protocol-soak-1..5') @('ui-soak-3') $true
+Assert ((($redFailed.Rows -join "`n") -like '*ui-soak-3 : 0 passed, 1 failed, 0 skipped (FAILED)*') -and ((($redFailed.Rows -join "`n") -like '*UI.Flaky*flake*'))) 'soak-failed-keeps-names' ($redFailed.Rows -join '|')
 
 # Truncation grades: minimum met degrades, minimum missed voids, and
 # every cut range owes triage its re-drive (D00-T02-S14-PR12).
@@ -315,6 +321,24 @@ Assert ((Test-SupervisorUnderLimit (Join-Path $PSScriptRoot 'NightlySupervisor.p
 $supEqual = Join-Path $dir 'sup-equal.ps1'
 '[int]$TimeoutSeconds = 14400,' | Set-Content -Path $supEqual -Encoding UTF8
 Assert ((Test-SupervisorUnderLimit $supEqual 'PT4H').Ok -eq $false) 'supervisor-equal-red'
+
+# Bounded discovery: fast producers relay output plus exit code, hangs
+# die at the cap, and the list-tests parse rides the bounded path.
+$capFast = Invoke-BoundedCapture 'powershell.exe' @('-NoProfile', '-Command', 'Write-Output line-a; Write-Output line-b') $dir 30
+Assert ((($capFast.Text -join '') -like '*line-a*line-b*') -and ($capFast.Code -eq 0) -and ($capFast.Killed -eq $false)) 'bounded-fast-relays' $capFast.Text
+$capHang = Invoke-BoundedCapture 'powershell.exe' @('-NoProfile', '-Command', 'Start-Sleep 30') $dir 2
+Assert (($capHang.Killed -eq $true) -and ($capHang.Code -eq 1)) 'bounded-hang-kills'
+$capCode = Invoke-BoundedCapture 'powershell.exe' @('-NoProfile', '-Command', 'exit 3') $dir 30
+Assert (($capCode.Code -eq 3) -and ($capCode.Killed -eq $false)) 'bounded-exit-relays' $capCode.Code
+$stubDotnet = Join-Path $dir 'stub-dotnet.ps1'
+@('param([Parameter(ValueFromRemainingArguments = $true)]$rest)', "'    UI.Fake.T1'", "'    UI.Fake.T2 (case 1)'") | Set-Content -Path $stubDotnet -Encoding UTF8
+$stubList = Get-ListTestsCases $stubDotnet (Join-Path $dir 'UI.csproj') 'anything' 'stub'
+Assert (($stubList.MethodCount -eq 2) -and ($stubList.CaseCount -eq 2) -and ($stubList.Methods -contains 'UI.Fake.T2')) 'bounded-discovery-parses' ($stubList.Methods -join '|')
+$stubHang = Join-Path $dir 'stub-hang.ps1'
+@('param([Parameter(ValueFromRemainingArguments = $true)]$rest)', 'Start-Sleep 30') | Set-Content -Path $stubHang -Encoding UTF8
+$stubTimedOut = $false
+try { $null = Get-ListTestsCases $stubHang (Join-Path $dir 'UI.csproj') 'anything' 'stubhang' 2 } catch { $stubTimedOut = ($_.Exception.Message -like '*timed out*') }
+Assert ($stubTimedOut -eq $true) 'bounded-discovery-hang-throws'
 
 # Fingerprint: round-trip, clean compare, member plus case plus filter
 # drifts, malformed shapes, literal extraction (D00-T02-S13-PR13).

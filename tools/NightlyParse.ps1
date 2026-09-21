@@ -299,6 +299,7 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [
       continue
     }
     if ($Killed -contains $n) { $unproven += $n; $rows += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped (killed at cap: unproven; owes triage: re-drive or carry)" }
+    elseif (($Failed -contains $n) -and ($st.FailedCount -eq 0)) { $unproven += $n; $rows += "- $n : nonzero exit, trx carries no Failed outcomes (aborted host suspected: unproven; owes triage: re-drive or carry)" }
     elseif ($st.FailedCount -gt 0) {
       $failedNames += $n; $rows += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped (FAILED)"; $rows += $st.Failed
       foreach ($fl in $st.Failed) {
@@ -622,14 +623,49 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
   return [pscustomobject]@{ Ok = ($drifts.Count -eq 0); Drifts = $drifts }
 }
 
-function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [string]$What) {
+function Invoke-BoundedCapture([string]$Exe, [string[]]$ArgList, [string]$WorkDir, [int]$TimeoutSeconds) {
+  # Bounded toolchain capture (D00 T02 §15 R3-F3): runs $Exe with a
+  # wall cap and returns its stdout plus exit code; a hang kills the
+  # job and reports Killed, so no toolchain invocation strands the run
+  # past its deadline. Same job shape as Invoke-BootstrapStep, plus
+  # captured output and a code file for the exit relay.
+  $codeFile = Join-Path ([System.IO.Path]::GetTempPath()) ("bounded-$([Guid]::NewGuid().ToString('N')).code")
+  $capJob = Start-Job -ScriptBlock {
+    param($exe, $argList, $dir, $codeOut)
+    Set-Location $dir
+    $out = & $exe @argList 2>&1 | Out-String
+    $LASTEXITCODE | Set-Content -Path $codeOut
+    $out
+  } -ArgumentList @($Exe, $ArgList, $WorkDir, $codeFile)
+  $doneSignal = Wait-Job -Job $capJob -Timeout $TimeoutSeconds
+  $killed = ($null -eq $doneSignal)
+  if ($killed -and ($capJob.State -eq 'Running')) { Stop-Job -Job $capJob }
+  $null = Wait-Job -Job $capJob -Timeout 60
+  $text = ''
+  try { $text = Receive-Job -Job $capJob | Out-String } catch { $text = "bounded capture receive failed: $($_.Exception.Message)" }
+  Remove-Job -Job $capJob -Force
+  $code = 1
+  if (Test-Path $codeFile) {
+    $rawCode = Get-Content $codeFile -Raw
+    if (($null -eq $rawCode) -or ($rawCode.Trim() -eq '')) { $code = 0 } else { $code = [int]$rawCode.Trim() }
+    Remove-Item $codeFile -Force
+  }
+  if ($killed) { $code = 1 }
+  return [pscustomobject]@{ Text = $text; Code = $code; Killed = $killed }
+}
+
+function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [string]$What, [int]$TimeoutSeconds = 180) {
   # One --list-tests run against built binaries, parsed to sorted
   # unique method FQNs (theory case suffixes cut at the first paren)
   # with method plus case counts. Shared by population discovery
-  # (PR13) and cut-work handoff (PR10). Failure throws with $What
-  # naming the caller; callers report on their red path.
-  $text = & $Dotnet test $Csproj --no-build --nologo --filter $Filter --list-tests 2>&1 | Out-String
-  if ($LASTEXITCODE -ne 0) { throw "discovery failed for $What filter '$Filter': $text" }
+  # (PR13) and cut-work handoff (PR10). Bounded (D00 T02 §15 R3-F3): a
+  # hang throws like a failure, so hung discovery cannot strand the run
+  # past its deadline. Failure throws with $What naming the caller;
+  # callers report on their red path.
+  $cap = Invoke-BoundedCapture $Dotnet @('test', $Csproj, '--no-build', '--nologo', '--filter', $Filter, '--list-tests') (Split-Path -Parent $Csproj) $TimeoutSeconds
+  if ($cap.Killed) { throw "discovery timed out for $What filter '$Filter' after ${TimeoutSeconds}s" }
+  $text = $cap.Text
+  if ($cap.Code -ne 0) { throw "discovery failed for $What filter '$Filter': $text" }
   $methods = @()
   $cases = 0
   foreach ($ln in ($text -split "`r?`n")) {
