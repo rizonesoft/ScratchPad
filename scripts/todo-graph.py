@@ -1014,11 +1014,11 @@ SEVERITY_MAP: dict[str, str] = {
     # evidence reads as recorded while supporting nothing (D00 T01
     # §52 item 1).
     "outage-note-unlinked": "fatal",
-    # a clean or bare-partial primary review whose sign-off panel is
-    # the same family (GPT panel plus GPT review): quorum is one
-    # independent second-family pass, so the review met no quorum
-    # and owes retry-owed like any fallback survivor (D00 T01 §52
-    # item 3, R1-F3).
+    # a clean review whose sign-off panel is the same family (GPT
+    # panel plus GPT review): quorum is one independent second-family
+    # pass, so the review met no quorum and owes retry-owed like any
+    # same-family survivor (D00 T01 §52 item 3, R1-F3; partials stay
+    # out per R2-F3, rule 21 owns their debt).
     "quorum-same-family": "fatal",
     # a `**Requires:**` value outside REQUIRES_ALLOWED: the list is closed
     # so a misspelt capability cannot silently unmark a section (D00 T01 §13).
@@ -10049,6 +10049,12 @@ track: Z1
 |  113  |   §113  | Kept generation stays silent against history | - |  [x]   |
 |  114  |   §114  | One-count composite fires | - |  [x]   |
 |  115  |   §115  | Two-count composite stays silent | - |  [x]   |
+|  116  |   §116  | Malformed extra count fires | - |  [x]   |
+|  117  |   §117  | Out-of-order counts fire | - |  [x]   |
+|  118  |   §118  | Flipped same-family retry missing fires | - |  [x]   |
+|  119  |   §119  | Flipped cross-family retry carried fires | - |  [x]   |
+|  120  |   §120  | Flipped cross-family bare stays silent | - |  [x]   |
+|  121  |   §121  | Flipped same-family retry carried stays silent | - |  [x]   |
 
 ---
 
@@ -11412,6 +11418,72 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §115 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-comp2.md
 > **Plan review:** Opus fallback (GPT unreachable), retry-owed (owner ann, due 2099-01-01) class infra attempts 2 and partial: gpt rung attempts 1 (run 20260920-D90-T07-S115-opus)
+
+## 116. Malformed extra count fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §116 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-comp3.md
+> **Plan review:** Opus fallback (GPT unreachable), retry-owed (owner ann, due 2099-01-01) class infra attempts 2 and partial: gpt rung attempts 1 attempts 2x (run 20260920-D90-T07-S116-opus)
+
+## 117. Out-of-order counts fire
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §117 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-comp4.md
+> **Plan review:** Opus fallback (GPT unreachable), partial: gpt rung attempts 1 and retry-owed (owner ann, due 2099-01-01) class infra attempts 2 (run 20260920-D90-T07-S117-opus)
+
+## 118. Flipped same-family retry missing fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §118 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-flip1.md
+> **Plan review:** GPT high, filed §2, partial: opus rung class infra attempts 1 (run 20260920-D90-T07-S118-gpt)
+
+## 119. Flipped cross-family retry carried fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §119 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-flip2.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2099-01-01 class infra attempts 2 and partial: gpt rung attempts 1 (run 20260920-D90-T07-S119-gpt)
+
+## 120. Flipped cross-family bare stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §120 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-flip3.md
+> **Plan review:** GPT high, filed §2, partial: gpt rung class infra attempts 1 (run 20260920-D90-T07-S120-gpt)
+
+## 121. Flipped same-family retry carried stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §121 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-flip4.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2099-01-01 class infra attempts 2 and partial: opus rung attempts 1 (run 20260920-D90-T07-S121-gpt)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -11442,6 +11514,34 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "End of ledger\n",
             encoding="utf-8",
         )
+        for _cn in (116, 117):
+            (rev_dir / f"90-health-comp{_cn - 113}.md").write_text(
+                "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                "Sol outage: model error (fixture note)\n\n"
+                "## Plan review\n\n"
+                f"Manifest: sections [D90 T07 §{_cn}]; dependents [none]; bytes 100; run 20260920-D90-T07-S{_cn}-opus\n\n"
+                "Ledger:\n"
+                f"- [D90-T07-S{_cn}-PR1] [minor] Composite probe -> accepted\n"
+                "End of ledger\n",
+                encoding="utf-8",
+            )
+        # Flipped-quorum probes (D00 T01 §52 review R2-F3): GPT
+        # sign-off panels, so the survivor families read flipped.
+        for _fn in (118, 119, 120, 121):
+            (rev_dir / f"90-health-flip{_fn - 117}.md").write_text(
+                "# Review: fixture\n\n## GPT panel (round 1)\n\n"
+                "Opus outage: CLI unreachable (fixture fallback).\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                "## Plan review\n\n"
+                f"Manifest: sections [D90 T07 §{_fn}]; dependents [none]; bytes 100; run 20260920-D90-T07-S{_fn}-gpt\n\n"
+                "Ledger:\n"
+                f"- [D90-T07-S{_fn}-PR1] [minor] Flipped probe -> accepted\n"
+                "End of ledger\n",
+                encoding="utf-8",
+            )
         (rev_dir / "90-health.md").write_text(
             "# Review: fixture\n\n## GPT panel (round 1)\n\n"
             "Opus outage: CLI auth failure (exit 3).\n\n"
@@ -12533,6 +12633,68 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "composite line with two counts stays silent",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§115 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "composite line with a malformed extra count fires",
+            any(
+                "TODO-07-marker.md" in ln and "§116 " in ln and "carries 3 attempt" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§116 fires exactly once (extra count only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§116 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "composite out-of-order counts fire",
+            any(
+                "TODO-07-marker.md" in ln and "§117 " in ln and "against its outcomes" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§117 fires exactly once (order only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§117 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "flipped same-family partial missing retry fires",
+            any(
+                "TODO-07-marker.md" in ln and "§118 " in ln and "owes a retry" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§118 fires exactly once (missing retry only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§118 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "flipped cross-family partial with retry fires",
+            any(
+                "TODO-07-marker.md" in ln and "§119 " in ln and "owes no retry" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§119 fires exactly once (unowed retry only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§119 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "flipped cross-family bare partial stays silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§120 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "flipped same-family partial with retry stays silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§121 " in ln and "FATAL" in ln),
             0,
         )
         check(
@@ -14555,6 +14717,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "2026-09-21",
             ),
             11: (_on30_marker, "2026-09-21"),
+            12: (
+                "outage: opus rung (owner ann, due 2099-01-01) class infra attempts 1 event 2026-09-19",
+                "2026-09-20",
+            ),
+            13: (_on30_marker, "2026-09-21"),
         }
         _on30_notes = {
             1: "Outage note: gpt rung 2026-09-20\nOwner ann, due 2099-01-01: both runners timed out.\n",
@@ -14566,13 +14733,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             7: "```text\nOutage note: gpt rung 2026-09-20\nFenced.\n```\n",
             8: "No note here.\n",
             11: "Outage note: gpt rung 2026-09-20",
+            13: "Outage note: gpt rung 2026-09-20\nLedger:\n",
         }
-        # Sections 9 and 10 share one findings file (R1-F5); the rest
-        # keep their own.
-        _on30_findings = {n: f"docs/reviews/90-on30-{n}.md" for n in (1, 2, 3, 4, 5, 6, 7, 8, 11)}
+        # Sections 9, 10, and 12 share one findings file (R1-F5, R2-F4);
+        # the rest keep their own.
+        _on30_findings = {n: f"docs/reviews/90-on30-{n}.md" for n in (1, 2, 3, 4, 5, 6, 7, 8, 11, 13)}
         _on30_findings[9] = "docs/reviews/90-on30-shared.md"
         _on30_findings[10] = "docs/reviews/90-on30-shared.md"
-        for _n in range(1, 12):
+        _on30_findings[12] = "docs/reviews/90-on30-shared.md"
+        for _n in range(1, 14):
             _omarker, _ostamp = _on30_cases[_n]
             _on30_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
             _on30_secs.append(
@@ -14614,12 +14783,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 ("aaa1111000000000000000000000000000000000", f"docs/reviews/{fname}")
             ] = "100644"
 
-        for _n in (1, 2, 3, 4, 5, 6, 7, 8, 11):
+        for _n in (1, 2, 3, 4, 5, 6, 7, 8, 11, 13):
             _on30_dress(f"90-on30-{_n}.md", f"20260921-D90-T10-S{_n}-gpt", _on30_notes[_n])
         _on30_dress(
             "90-on30-shared.md",
             "20260921-D90-T10-S9-gpt",
-            "Outage note: gpt rung 2026-09-20\nShared gpt outage.\n\nOutage note: opus rung 2026-09-21\nShared opus outage.\n",
+            "Outage note: gpt rung 2026-09-20\nShared gpt outage.\n\n"
+            "Outage note: opus rung 2026-09-21\nShared opus outage.\n\n"
+            "Outage note: opus rung 2026-09-19\nShared old opus outage.\n",
         )
         saved_tree, TODO_DIR = TODO_DIR, on30 / "todo"
         try:
@@ -14727,6 +14898,26 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "a key-only note fires exactly once",
             sum(1 for ln in v30_out if "§11 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "a grandfathered sharer stays silent",
+            sum(1 for ln in v30_out if "§12 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "a grandfathered sharer's note never false-orphans",
+            sum(1 for ln in v30_out if "opus rung 2026-09-19" in ln and "keyed by no outage marker" in ln),
+            0,
+        )
+        check(
+            "a note terminated by a structural line fires the empty placeholder",
+            sum(1 for ln in v30_out if "§13 " in ln and "carries no evidence" in ln),
+            1,
+        )
+        check(
+            "a structurally terminated note fires exactly once",
+            sum(1 for ln in v30_out if "§13 " in ln and "FATAL" in ln),
             1,
         )
         check(
@@ -14931,7 +15122,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         (cx31 / "todo" / "90-cx31").mkdir(parents=True)
         (cx31 / "docs" / "reviews").mkdir(parents=True)
         _cx31_markers = {
-            1: "GPT high, filed §1, retry-owed owner ann due 2099-01-01 class timeout attempts 2, partial: opus rung class infra attempts 1 (run 20260921-D90-T99-S1-gpt)",
+            1: "GPT high, filed §1, retry-owed owner ann due 2099-01-01 class timeout attempts 2 and partial: opus rung class infra attempts 1 (run 20260921-D90-T99-S1-gpt)",
             2: "GPT high, no findings, partial: opus rung class infra attempts 1 (run 20260921-D90-T99-S2-gpt)",
         }
         _cx31_rows = []

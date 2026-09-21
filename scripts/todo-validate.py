@@ -643,6 +643,27 @@ def validate(graph, _args) -> int:
     def is_outage_marker(body: str) -> bool:
         return graph.is_outage_marker(body)
 
+    def signoff_family(sec) -> str | None:
+        # The sign-off family is the LAST panel section (D00 T01 §52
+        # review R2-F3): one reader for rule 21's family-relative
+        # composition and rule 32's same-family debt, so the two can
+        # never disagree on which family signed off. Fences strip
+        # first; missing, panel-less, or unreadable findings read
+        # None and stay earlier rules' to report.
+        fm = graph.FINDINGS_RE.search(getattr(sec, "review_body", None) or "")
+        if not fm:
+            return None
+        try:
+            ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+        except OSError:
+            return None
+        ftext, _u = graph.strip_fenced_code(ftext)
+        panels = [(m.start(), "opus") for m in PANEL_HEADING_RE.finditer(ftext)]
+        panels += [(m.start(), "gpt") for m in GPT_PANEL_HEADING_RE.finditer(ftext)]
+        if not panels:
+            return None
+        return sorted(panels)[-1][1]
+
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -713,15 +734,18 @@ def validate(graph, _args) -> int:
                     "stamp-no-plan-review",
                     f"{t.path}:{s.line}: §{num} outage marker carries `partial:` (an outage produced no findings)",
                 )
-            # D00 T01 §21 item 1: partial-owed-rerun coherence. `partial:`
-            # names the FAILED rung (`gpt rung`, the primary, or `opus
-            # rung`, the fallback); the survivor is the other family. A
-            # fallback survivor is a same-family run and owes a
-            # second-family rerun, so it carries `retry-owed`; a primary
-            # survivor is a complete second-family review and carries
-            # neither `retry-owed` nor accountability fields (there is
-            # nothing to own). Unknown rungs fail: positional names
-            # cannot say which family survived.
+            # D00 T01 §21 item 1, family-relative (D00 T01 §52 review
+            # R2-F3): `partial:` names the FAILED rung and the survivor
+            # is the other family; the survivor owes `retry-owed`
+            # exactly when it is the same family as the sign-off panel
+            # (quorum is one independent second-family pass). Normally
+            # the sign-off is Opus, so the fallback (opus) survivor
+            # owes the rerun and the primary (gpt) survivor is
+            # complete; under a GPT sign-off panel the families flip.
+            # Family-opaque findings (missing, panel-less, unreadable)
+            # read as the normal Opus case; their own rules report the
+            # opacity. Unknown rungs fail: positional names cannot say
+            # which family survived.
             if has_partial and not has_outage:
                 prm = re.search(
                     r"\bpartial\s*:\s*([a-z][a-z0-9]*(?:\s+[a-z][a-z0-9]*)?)",
@@ -733,22 +757,25 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} partial names no known rung (gpt rung or opus rung)",
                     )
-                elif rung == "opus rung":
-                    if has_retry:
-                        flag(
-                            "stamp-no-plan-review",
-                            f"{t.path}:{s.line}: §{num} complete partial run owes no retry (drop retry-owed)",
-                        )
-                    elif graph.OWNER_RE.search(marker) or graph.DUE_RE.search(marker):
-                        flag(
-                            "stamp-no-plan-review",
-                            f"{t.path}:{s.line}: §{num} complete partial run carries accountability fields with nothing owed",
-                        )
-                elif not has_retry:
-                    flag(
-                        "stamp-no-plan-review",
-                        f"{t.path}:{s.line}: §{num} partial run with a fallback survivor owes a retry (retry-owed (owner, due))",
-                    )
+                else:
+                    _survivor = "opus" if rung == "gpt rung" else "gpt"
+                    if _survivor == (signoff_family(s) or "opus"):
+                        if not has_retry:
+                            flag(
+                                "stamp-no-plan-review",
+                                f"{t.path}:{s.line}: §{num} partial run with a same-family survivor owes a retry (retry-owed (owner, due))",
+                            )
+                    else:
+                        if has_retry:
+                            flag(
+                                "stamp-no-plan-review",
+                                f"{t.path}:{s.line}: §{num} complete partial run owes no retry (drop retry-owed)",
+                            )
+                        elif graph.OWNER_RE.search(marker) or graph.DUE_RE.search(marker):
+                            flag(
+                                "stamp-no-plan-review",
+                                f"{t.path}:{s.line}: §{num} complete partial run carries accountability fields with nothing owed",
+                            )
             # D00 T01 §28 item 2: degraded lines carry failure detail.
             # Every outage, retry-owed, or partial line in the chain
             # names its failure class (`class <class>`, open
@@ -790,25 +817,37 @@ def validate(graph, _args) -> int:
                         f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
                     )
                 # Composite lines carry one attempt count per outcome
-                # (D00 T01 §52 review R1-F4): retry-owed plus partial
-                # is two outcomes, so exactly two well-formed
-                # `attempts <n>` tokens, in outcome order. The class
-                # stays line-level (one failure class names the whole
-                # line). Pair count is shape, checkable without run
-                # receipts; per-outcome truth stays author-asserted
-                # like every other count.
+                # (D00 T01 §52 review R1-F4, hardened R2-F1): retry-owed
+                # plus partial is two outcomes, so exactly two
+                # `attempts <n>` tokens, both well-formed (a third
+                # malformed count never rides along silently) and in
+                # outcome order (the retry-owed count precedes
+                # `partial:`, the partial count follows it). The class
+                # rides line-level or per outcome. Count shape is
+                # checkable without run receipts; per-outcome truth
+                # stays author-asserted like every other count.
                 if _lst["retry"] and _lst["partial"] and not _lst["outage"]:
-                    _pairs = [
-                        tok
-                        for tok in re.findall(r"\battempts\s+(\S+)", _line)
-                        if re.fullmatch(r"[0-9]{1,9}", tok) is not None and int(tok) >= 1
+                    _toks = list(re.finditer(r"\battempts\s+(\S+)", _line))
+                    _good = [
+                        m
+                        for m in _toks
+                        if re.fullmatch(r"[0-9]{1,9}", m.group(1)) is not None and int(m.group(1)) >= 1
                     ]
-                    if len(_pairs) != 2:
+                    if len(_toks) != 2 or len(_good) != 2:
                         flag(
                             "stamp-no-plan-review",
-                            f"{t.path}:{s.line}: §{num} composite marker line carries {len(_pairs)} "
-                            "attempt counts, want one per outcome (retry-owed plus partial)",
+                            f"{t.path}:{s.line}: §{num} composite marker line carries {len(_toks)} "
+                            "attempt counts, want exactly two well-formed counts, one per outcome "
+                            "(retry-owed plus partial)",
                         )
+                    else:
+                        _ppos = re.search(r"\bpartial\s*:", _line.lower())
+                        if _ppos is None or not (_good[0].start() < _ppos.start() < _good[1].start()):
+                            flag(
+                                "stamp-no-plan-review",
+                                f"{t.path}:{s.line}: §{num} composite marker line orders its attempt counts "
+                                "against its outcomes (retry-owed count first, partial count second)",
+                            )
             # D00 T01 §50 item 1: outage lines date their event. Every
             # outage line in the chain names `event <YYYY-MM-DD>`, the
             # calendar day the outage happened, so two outages of one
@@ -2260,28 +2299,37 @@ def validate(graph, _args) -> int:
     # matching is file-wide (R1-F5: sections sharing one findings
     # file pool their marker keys, so cross-section notes never
     # read as orphans and one note may serve one outage instance
-    # named twice). A note key with no following content fires
-    # (R1-F1: a key-only placeholder satisfies no evidence rule).
-    # Missing refs or unreadable findings stay rule 16's to
-    # report. Stamps on or before OUTAGE_NOTE_CUTOFF predate the
-    # rule and stay silent (grandfathered fixtures plus shipped
-    # records never carried shaped notes); files without markers
-    # and notes pass vacuously past the cutoff, and no live file
-    # carries either yet.
+    # named twice). Grandfathered sections pool too (R2-F4: a
+    # pre-cutoff marker's keys count toward membership, so its
+    # note never false-orphans in a shared file), but only
+    # post-cutoff reporters fire: a file with no live reporter
+    # stays fully silent. A note key with no following content
+    # fires (R1-F1: a key-only placeholder satisfies no evidence
+    # rule); ledger-structural lines (R2-F2: Ledger, End of
+    # ledger, Manifest, Provenance) terminate the note like a
+    # heading, so they never read as evidence. Missing refs or
+    # unreadable findings stay rule 16's to report. Stamps on or
+    # before OUTAGE_NOTE_CUTOFF predate the rule and stay silent
+    # (grandfathered fixtures plus shipped records never carried
+    # shaped notes); files without markers and notes pass
+    # vacuously past the cutoff, and no live file carries either
+    # yet.
     _on30_reporters: dict[str, list] = {}
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
                 continue
-            if s.stamped_on is not None and s.stamped_on <= graph.OUTAGE_NOTE_CUTOFF:
-                continue
+            postcut = s.stamped_on is None or s.stamped_on > graph.OUTAGE_NOTE_CUTOFF
             chain = section_markers(t, num) or []
             mkeys = [k for k in (graph.marker_outage_key(b) for b in chain) if k is not None]
             fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm:
                 continue
-            _on30_reporters.setdefault(fm.group(1), []).append((t.path, s.line, num, mkeys))
+            _on30_reporters.setdefault(fm.group(1), []).append((t.path, s.line, num, mkeys, postcut))
     for fpath, reporters in sorted(_on30_reporters.items()):
+        live = [r for r in reporters if r[4]]
+        if not live:
+            continue
         try:
             ftext = (graph.TODO_DIR.parent / fpath).read_text(encoding="utf-8")
         except OSError:
@@ -2289,7 +2337,7 @@ def validate(graph, _args) -> int:
         ftext, _u = graph.strip_fenced_code(ftext)
         flines = ftext.splitlines()
         nkeys, bad = graph.outage_note_keys(ftext)
-        first = reporters[0]
+        first = live[0]
         for ln in bad:
             flag(
                 "outage-note-unlinked",
@@ -2316,13 +2364,14 @@ def validate(graph, _args) -> int:
                 nxt >= len(flines)
                 or re.match(r"^#{1,6}\s+", flines[nxt])
                 or flines[nxt].startswith("Outage note:")
+                or re.match(r"^(Ledger|End of ledger|Manifest|Provenance)\s*:", flines[nxt])
             ):
                 flag(
                     "outage-note-unlinked",
                     f"{first[0]}:{first[1]}: §{first[2]} findings {fpath}:{ln} outage note "
                     f"{rung} {day} carries no evidence (a key-only placeholder satisfies no integrity rule)",
                 )
-        for tpath, sline, num, mkeys in reporters:
+        for tpath, sline, num, mkeys, _pc in live:
             for rung, day in mkeys:
                 if (rung, day) not in seen:
                     flag(
@@ -2331,7 +2380,7 @@ def validate(graph, _args) -> int:
                         f"in {fpath}",
                     )
         mset: set[tuple[str, str]] = set()
-        for _tp, _sl, _nm, mkeys in reporters:
+        for _tp, _sl, _nm, mkeys, _pc in reporters:
             mset.update(mkeys)
         for rung, day, ln in nkeys:
             if (rung, day) not in mset:
@@ -2395,20 +2444,18 @@ def validate(graph, _args) -> int:
                         )
 
     # 32. same-family sign-off owes retry-owed (D00 T01 §52 item 3,
-    # R1-F3): quorum is one independent second-family pass, and the
-    # panel is not always Opus (an unreachable Opus signs off on
-    # Sol under a GPT panel heading). The sign-off family is the
-    # LAST panel section; the review family reads from the last
-    # marker (run suffix, else the surviving rung of a bare
-    # partial). A clean or bare-partial primary review in the same
-    # family as its sign-off panel met no independent pass, so it
-    # owes retry-owed like any fallback survivor. Outage markers,
-    # retry-owed markers, and family-opaque markers (run-less,
-    # unknown rung) stay silent: their own accountability or
-    # lineage owns them. Stamps on or before QUORUM_FAMILY_CUTOFF
-    # predate the rule and are grandfathered. Fences strip first;
-    # missing, panel-less, or unreadable findings stay earlier
-    # rules' to report.
+    # R1-F3, narrowed R2-F3): quorum is one independent second-family
+    # pass, and the panel is not always Opus (an unreachable Opus
+    # signs off on Sol under a GPT panel heading). A clean review in
+    # the same family as its sign-off panel met no independent
+    # pass, so it owes retry-owed like any same-family survivor.
+    # Partial markers stay out: rule 21's family-relative composition
+    # owns their retry debt, so this rule never contradicts it.
+    # Outage markers, retry-owed markers, and family-opaque markers
+    # (run-less) stay silent: their own accountability or lineage
+    # owns them. Stamps on or before QUORUM_FAMILY_CUTOFF predate
+    # the rule and are grandfathered. Missing, panel-less, or
+    # unreadable findings stay earlier rules' to report.
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -2420,7 +2467,7 @@ def validate(graph, _args) -> int:
                 continue
             body = chain[-1]
             states = graph.marker_states(body)
-            if states["outage"] or states["retry"]:
+            if states["outage"] or states["retry"] or states["partial"]:
                 continue
             revfam = None
             rm = graph.RUN_ID_RE.search(body)
@@ -2428,25 +2475,11 @@ def validate(graph, _args) -> int:
                 fsuf = re.search(r"-(gpt|opus)(-r\d+)?$", rm.group(1).lower())
                 if fsuf:
                     revfam = fsuf.group(1)
-            if revfam is None and states["partial"]:
-                pm = re.search(r"\bpartial\s*:\s*(gpt|opus)\s+rung\b", body.lower())
-                if pm:
-                    revfam = "opus" if pm.group(1) == "gpt" else "gpt"
             if revfam is None:
                 continue
-            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
-            if not fm:
+            panfam = signoff_family(s)
+            if panfam is None:
                 continue
-            try:
-                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
-            except OSError:
-                continue
-            ftext, _u = graph.strip_fenced_code(ftext)
-            panels = [(m.start(), "opus") for m in PANEL_HEADING_RE.finditer(ftext)]
-            panels += [(m.start(), "gpt") for m in GPT_PANEL_HEADING_RE.finditer(ftext)]
-            if not panels:
-                continue
-            panfam = sorted(panels)[-1][1]
             if panfam == revfam:
                 flag(
                     "quorum-same-family",
