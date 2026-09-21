@@ -47,6 +47,7 @@ track: W0
 |   9   |   §9    | Acceptance semantic version binding | D00 T04 §6 |  [ ]   |
 |  10   |  §10    | Section-52 sign-off residuals | D00 T01 §52 |  [ ]   |
 |  11   |  §11    | Section-52 plan-review residuals | D00 T01 §52 |  [ ]   |
+|  12   |  §12    | Section-54 sign-off residuals | D00 T01 §54 |  [ ]   |
 
 ---
 
@@ -222,3 +223,17 @@ Why this section exists: the §52 plan review (`gpt-5.6-sol` high over §52 plus
 - [ ] Commit: `"workspace: follow up section-52 plan-review residuals"`
 
 **Test checkpoint:** retry-owed counts follow the owed rung, §28 carries its supersession note, and dual-spelled rows fire exactly once. Falsifiable by any family-absolute count, unnoted §28 prose, or double-fired dual row.
+
+---
+
+## 12. Section-54 Sign-Off Residuals
+
+Why this section exists: the §54 Opus sign-off returned 3 below-bar needs-attention findings on the shipped canonical identity (stable repository identity, cross-run persistence with SHA-256 operation, plus identity reporting), and the repo-and-toolchain file sits at its 55-section cap, so they home here as the file's twelfth subject section. -> XREF: D00 T01 §54 (review findings filed here); -> SOURCE: panel-D00-T01-s54-2026-09-21-R3 D00-T01-S54-R3-F1 D00-T01-S54-R3-F2 D00-T01-S54-R3-F5 (Opus round-3 sign-off identity family, merging Sol R1-F1 R1-F2 R1-F3 R1-F4 R1-F5 plus R2-F1 R2-F2 R2-F3 R2-F4 R2-F5 same-family; transcribed in docs/reviews/00-workspace/D00-T01-s54.md).
+
+- [ ] Repository identity survives migration: the identity names the repository by a migration-stable scheme instead of the checkout top-level path, so moving or re-cloning the repo cannot change what the evidence names (R3-F1 D00-T01-S54-R3-F1). Done when: the scheme ships with fixtures.
+- [ ] Resolved IDs persist across runs: canonicalized fix identities persist (store or write-back) instead of re-resolving short tokens on every run, so a short SHA that later turns ambiguous cannot flip a previously clearing row to unclearable (R3-F2 D00-T01-S54-R3-F2). Done when: the persistence ships with fixtures.
+- [ ] SHA-256 operates end to end: 64-hex token shapes parse, canonicalize, clear, and fail closed across every clearance leg with real-git proof, so hash adoption is an operating mode rather than a refusal (R3-F1 D00-T01-S54-R3-F1, 64-hex half). Done when: the shapes plus end-to-end proof ship with fixtures.
+- [ ] Identity persists and reports: the canonical (repo, algo, type, full-sha) evidence persists onto clearance output in machine-readable form with the schema contract bumped as its rule requires, so operators and tools read what cleared without re-deriving it (R3-F5 D00-T01-S54-R3-F5). Done when: the reported identity ships with fixtures.
+- [ ] Commit: `"workspace: follow up section-54 sign-off residuals"`
+
+**Test checkpoint:** Repository identity survives a move, resolved IDs persist across runs, SHA-256 clears end to end, and clearance output carries the canonical identity. Falsifiable by any path-named identity, re-resolved short, unparsed 64-hex token, or identity-less report.
