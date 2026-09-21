@@ -7721,13 +7721,15 @@ Prose after the table.
 
 
 def cmd_self_test(args) -> int:
-    """Prove the graph's own contract against synthetic fixtures, in under a second.
+    """Prove the graph's own contract against synthetic fixtures, in a few minutes.
 
     This exists so a run may edit this file as planned section work: the ban in
     `process-phase` is verify-then-adopt, and this is the verify. Before this
     existed the only coverage was `PlanGateTest` inside the Pest suite, which
-    runs eight minutes into pre-push -- exactly the wrong place for a check
-    whose whole value is being fast enough to run after every edit.
+    runs eight minutes into pre-push -- exactly the wrong place for the check
+    that gates every edit (D00 T01 S54, review R3: the nested CLI-lane
+    children plus real-git repositories retired the "under a second" claim;
+    measured ~3 minutes on Windows, still well before the pre-push suite).
 
     Fixtures, never the live tree: a self-test that reads `todo/` passes or
     fails for reasons that have nothing to do with this file, and `validate`
@@ -19668,6 +19670,22 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
                         _lockf = open(_grepo / "Case.TXT", "r+b")
                         try:
                             msvcrt.locking(_lockf.fileno(), msvcrt.LK_NBLCK, 1)
+                            # Control first (D00 T01 S54 item 7, review
+                            # R3): a conflicting lock from a second
+                            # handle must fail, proving the lock is
+                            # held; only then do the git reads prove
+                            # object-store bypass. Without the control
+                            # the git pins could not fail.
+                            _lockf2 = open(_grepo / "Case.TXT", "r+b")
+                            try:
+                                try:
+                                    msvcrt.locking(_lockf2.fileno(), msvcrt.LK_NBLCK, 1)
+                                    _conflict = False
+                                except OSError:
+                                    _conflict = True
+                            finally:
+                                _lockf2.close()
+                            check("working-tree lock actually held (conflict fails)", _conflict, True)
                             check("real git reads file bytes under a working-tree lock", git_file_at(_gwin, "Case.TXT"), "case\n")
                             check("real git proves touches under a working-tree lock", git_commit_touches(_gwin, "Case.TXT"), True)
                         finally:
@@ -22786,7 +22804,7 @@ def main() -> int:
     wa.set_defaults(fn=cmd_warnings)
     st = sub.add_parser(
         "self-test",
-        help="prove this script's own contract against fixtures (fast; run it after editing this file)",
+        help="prove this script's own contract against fixtures (run it after editing this file)",
     )
     st.add_argument(
         "--require-git",
