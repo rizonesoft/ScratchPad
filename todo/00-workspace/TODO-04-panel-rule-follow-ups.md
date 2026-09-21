@@ -45,6 +45,7 @@ track: W0
 |   7   |   §7    | Generation-map refusal parity | D00 T04 §6 |  [ ]   |
 |   8   |   §8    | Position-proof health results | D00 T04 §6 |  [ ]   |
 |   9   |   §9    | Acceptance semantic version binding | D00 T04 §6 |  [ ]   |
+|  10   |  §10    | Section-52 sign-off residuals | D00 T01 §52 |  [ ]   |
 
 ---
 
@@ -192,3 +193,18 @@ Why this section exists: the §6 plan review (PR10) found acceptances unbound to
 - [ ] Commit: `"workspace: bind acceptances to semantic versions"`
 
 **Test checkpoint:** no record outlives its semantics silently. Falsifiable by any stale-semantics record that still covers.
+
+---
+
+## 10. Section-52 Sign-Off Residuals
+
+Why this section exists: the §52 Opus sign-off returned 5 below-bar needs-attention findings on the shipped rules 30 through 32 plus their docs, and §1 would pass 30 items, so they home here as the file's tenth subject section. -> XREF: D00 T01 §52 (review findings filed here); -> SOURCE: Opus-panel-D00-T01-s52-round-3 (candidate 8d753ee, round-3 sign-off needs-attention below bar; transcribed in docs/reviews/00-workspace/D00-T01-s52.md).
+
+- [ ] Rule-30 diagnostics report raw-file line numbers: the note-side legs map fence-stripped offsets back to file locations (or blank fences instead of deleting), so a fenced runner output ahead of a note stops shifting every reported location (R3-F1, record in the §52 findings file). This item is a joiner from the §52 review. Done when: the mapping plus a fence-ahead-of-note fixture ships.
+- [ ] Malformed extra counts fire on single-outcome lines: the first-token-only attempts check extends to every attempts token (outage, bare retry-owed, bare partial), so the malformed-extra shape the composite leg rejects stops riding along silently elsewhere (R3-F2, record in the §52 findings file). This item is a joiner from the §52 review. Done when: the extended check plus per-shape fixtures ship.
+- [ ] README partial legs go family-relative: the `stamp-no-plan-review` row's fallback/primary survivor legs match rule 21 plus the marker-vocabulary bullet plus the skill, so the row stops inverting against the validator under a GPT sign-off panel (R3-F3, record in the §52 findings file). This item is a joiner from the §52 review. Done when: the row reads family-relative.
+- [ ] Key-only leg reaches the docs: the README rule row plus the marker-vocabulary sentence plus the skill authoring instruction name the key-only fire and the structural-terminator boundary, so an author following the skill never hits an undocumented FATAL (R3-F4, record in the §52 findings file). This item is a joiner from the §52 review. Done when: all three sites name the leg and the boundary.
+- [ ] Note-side legs skip grandfathered sharers: malformed, duplicate, key-only, and orphan legs fire only on live reporters' records in shared files, so a pre-cutoff note never fails FATAL through a post-cutoff sibling (R3-F5, record in the §52 findings file). This item is a joiner from the §52 review. Done when: the scoping plus per-leg grandfathered fixtures ship.
+- [ ] Commit: `"workspace: follow up section-52 sign-off residuals"`
+
+**Test checkpoint:** rule-30 locations read raw, every attempts token validates, the README legs read family-relative, the key-only boundary reads documented, and grandfathered notes never fire through siblings. Falsifiable by any shifted location, silent malformed token, absolute leg, undocumented FATAL, or sibling-fired grandfathered note.
