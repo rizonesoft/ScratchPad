@@ -165,9 +165,11 @@ function Invoke-ContainedSuite([string]$Name, [int]$CapSeconds, [string]$Exe, [s
   # still kill at close. The supervisor self-bounds at the cap; the PS
   # bound (cap plus kill slack) backstops a stuck supervisor with a
   # named kill (one syscall, no runspace involved) plus abandon-when-hung
-  # teardown, so a wedged runspace strands no report. Returns Code,
-  # Killed, Dumped. Never throws for a red or killed leg (a missing
-  # JobControl binary throws: broken run, not a red leg).
+  # teardown, so a wedged runspace strands no report. The job sets
+  # its own location (D00 T02 §15 FL5-F1): Start-Job lands in
+  # Documents, not the caller, so relative test paths fail without it.
+  # Returns Code, Killed, Dumped. Never throws for a red or killed leg
+  # (a missing JobControl binary throws: broken run, not a red leg).
   if (-not (Test-Path $JobCtl)) { throw "nightly: job-control binary missing ($JobCtl); build tools/JobControl first" }
   $script:legSeq++
   $jobName = "Global\ScratchPadLeg-$PID-$script:stamp-$Name-$script:legSeq"
@@ -180,9 +182,10 @@ function Invoke-ContainedSuite([string]$Name, [int]$CapSeconds, [string]$Exe, [s
   }
   if (Test-Path $OutLog) { Remove-Item $OutLog -Force }
   $sup = Start-Job -ScriptBlock {
-    param($jc, $job, $out, $cap, $dump, $exe, $argList)
+    param($jc, $job, $out, $cap, $dump, $exe, $argList, $dir)
+    Set-Location $dir
     & $jc 'run' '--job' $job '--out' $out '--timeout' "$cap" '--dump' $dump '--' $exe @argList 2>&1
-  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, $DumpDir, $runExe, $runArgs)
+  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, $DumpDir, $runExe, $runArgs, $Root)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $doneSignal = Wait-Job -Job $sup -Timeout ($CapSeconds + $script:killSlack)
   $expired = ($null -eq $doneSignal)
