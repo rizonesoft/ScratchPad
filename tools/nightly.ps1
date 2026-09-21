@@ -1313,16 +1313,21 @@ $result = [pscustomobject]@{
   timings = $phaseTimes; reserve = $reserveLeft; consumed = $consumedSecs
   env = Get-EnvironmentBlock "$env:SCRATCHPAD_INTERACTIVE_WINDOW"
   report = "build/nightly/morning-$stamp.md"
+  note = ''
 }
 $resultPath = Join-Path $nightDir "morning-$stamp.result.json"
 Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
 $selfCheck = Test-ResultFile $resultPath
+$failClosedNote = ''
 if (-not $selfCheck.Ok) {
   $failed = $true
   $result.verdict = 'red'; $result.exit = 1
+  $failClosedNote = "own result invalid, failing closed ($($selfCheck.Error))"
+  $result.note += "; $failClosedNote"
   Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
   $selfCheck = Test-ResultFile $resultPath
   Write-Output "nightly: own result file invalid, failing closed ($($selfCheck.Error))"
+  $report += "- Result invalid: $($selfCheck.Error) (failing closed)"
 }
 $exitCode = if ($failed) { 1 } else { 0 }
 $redDays = @()
@@ -1349,6 +1354,7 @@ if ((-not $Smoke) -and (-not $simMode)) {
   if (@($odLines).Count -gt 0) { $tLines += ("Overdue quarantine: " + ($odLines -join '; ')) }
   if (-not $ackCheck.Ok) { $tLines += ("Unacked REDs: " + ($ackCheck.Unacked -join ', ')) }
   $tLines += "Report: build/nightly/morning-$day.md"
+  if ($failClosedNote -ne '') { $tLines += "Result invalid: $failClosedNote" }
   $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }
   $clsOut = 'green'
   try { $clsOut = (Classify-NightlyOutcome $result).Class } catch { }

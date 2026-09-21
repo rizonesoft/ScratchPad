@@ -613,8 +613,8 @@ $null = New-Item -ItemType Directory -Force -Path $s17
 # Format-ToastXml: escaping plus shape.
 $tx = Format-ToastXml 'Nightly <2026>&' @('a<b', 'c&d')
 Assert (($tx -like '*&lt;2026&gt;&amp;*') -and ($tx -like '*ToastGeneric*')) 'toast-escape'
-$tx2 = Format-ToastXml 't' @('1', '2', '3', '4', '5', '6', '7', '8')
-Assert ((@($tx2 -split '<text>').Count) -eq 8) 'toast-truncate'
+$tx2 = Format-ToastXml 't' @('1', '2', '3', '4', '5', '6', '7', '8', '9')
+Assert ((@($tx2 -split '<text>').Count) -eq 9) 'toast-truncate'
 
 # Test-ResultFile: versioned shapes.
 $goodResult = '{"version":1,"stamp":"2026-09-21-105146","day":"2026-09-21","identity":"2026-09-21-105146-pid1","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{"os":"10.0"},"timings":{}}'
@@ -674,6 +674,7 @@ Assert ((Classify-NightlyOutcome $rk2).Class -eq 'green') 'class-skipped-leg'
 $ts = [pscustomobject]@{ day = '2026-09-21'; stamp = 'x'; verdict = 'green'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $false } }; soak = [pscustomobject]@{ verdict = 'skipped' }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
 $tsTrend = Format-TrendTable @($ts) @{ Overdue = @(); DueSoon = @() }
 Assert ((($tsTrend -join "`n") -like '*no legs ran*')) 'trend-skipped'
+Assert ((($tsTrend -join "`n") -like '*| skip/- |*')) 'trend-gatesskip'
 $tu = [pscustomobject]@{ day = '2026-09-21'; stamp = 'y'; verdict = 'red'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = $false } }; soak = [pscustomobject]@{ verdict = 'skipped' }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
 $tuTrend = Format-TrendTable @($tu) @{ Overdue = @(); DueSoon = @() }
 Assert ((($tuTrend -join "`n") -like '*| unproven |*')) 'trend-unproven'

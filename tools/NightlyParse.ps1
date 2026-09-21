@@ -1163,12 +1163,14 @@ function Test-PhaseDurations([string]$BaselinePath, [hashtable]$Actual) {
 
 function Format-ToastXml([string]$Title, [string[]]$Lines) {
   # Builds the toast payload (D00 T02 §17 item 1): title plus body
-  # lines, XML-escaped, capped at six (counts, trigger, top incident,
-  # overdue, unacked, report: the emitter's full line set). Pure:
-  # fixtures pin the escaping plus shape; Send-NightlyToast delivers it.
+  # lines, XML-escaped, capped at seven (counts, trigger, top
+  # incident, overdue, unacked, report, fail-closed reason: the
+  # emitter's full line set; the seventh only exists when the own
+  # result failed validation). Pure: fixtures pin the escaping plus
+  # shape; Send-NightlyToast delivers it.
   $parts = @('<toast><visual><binding template="ToastGeneric">')
   $parts += '  <text>' + [System.Security.SecurityElement]::Escape($Title) + '</text>'
-  foreach ($ln in @($Lines | Select-Object -First 6)) { $parts += '  <text>' + [System.Security.SecurityElement]::Escape($ln) + '</text>' }
+  foreach ($ln in @($Lines | Select-Object -First 7)) { $parts += '  <text>' + [System.Security.SecurityElement]::Escape($ln) + '</text>' }
   $parts += '</binding></visual></toast>'
   return ($parts -join "`n")
 }
@@ -1417,8 +1419,8 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     $gates = '-'
     try {
       $ga = '-'; $gb = '-'
-      try { if ($null -ne $r.legs.'run-a') { $ga = if ($null -eq $r.legs.'run-a'.gate) { 'null' } else { "$($r.legs.'run-a'.gate)" } } } catch { }
-      try { if ($null -ne $r.legs.'run-b') { $gb = if ($null -eq $r.legs.'run-b'.gate) { 'null' } else { "$($r.legs.'run-b'.gate)" } } } catch { }
+      try { if ($null -ne $r.legs.'run-a') { $la = $r.legs.'run-a'; $ga = if ((($null -ne $la.ran) -and (-not [bool]$la.ran))) { 'skip' } elseif ($null -eq $la.gate) { 'null' } else { "$($la.gate)" } } } catch { }
+      try { if ($null -ne $r.legs.'run-b') { $lb = $r.legs.'run-b'; $gb = if ((($null -ne $lb.ran) -and (-not [bool]$lb.ran))) { 'skip' } elseif ($null -eq $lb.gate) { 'null' } else { "$($lb.gate)" } } } catch { }
       $gates = "$ga/$gb"
     } catch { }
     $res = '-'
