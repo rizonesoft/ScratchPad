@@ -1375,7 +1375,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # as marks, never numbers. Percentiles are median/max (tiny-n
   # honest). $Today anchors the oldest-overdue age; fixtures pin it.
   $rows = @($Results | Sort-Object { "$($_.day)-$($_.stamp)" })
-  $lines = @('# Nightly trend', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | Flakes | Env |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+  $lines = @('# Nightly trend', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | SoakFail | Env |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   $allA = @()
   $incNights = @{}
   foreach ($r in $rows) {
@@ -1415,7 +1415,12 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
       if ($scn -gt 0) { $soak += " cut=$scn" }
     } catch { }
     $gates = '-'
-    try { $gates = "$($r.legs.'run-a'.gate)/$($r.legs.'run-b'.gate)" } catch { }
+    try {
+      $ga = '-'; $gb = '-'
+      try { if ($null -ne $r.legs.'run-a') { $ga = if ($null -eq $r.legs.'run-a'.gate) { 'null' } else { "$($r.legs.'run-a'.gate)" } } } catch { }
+      try { if ($null -ne $r.legs.'run-b') { $gb = if ($null -eq $r.legs.'run-b'.gate) { 'null' } else { "$($r.legs.'run-b'.gate)" } } } catch { }
+      $gates = "$ga/$gb"
+    } catch { }
     $res = '-'
     try { if ($null -ne $r.reserve) { $res = "$($r.reserve)s" } } catch { }
     $od = 0; $ds = 0
@@ -1520,7 +1525,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
         foreach ($v in $ranked) { if ([int]$v -lt $mine) { $pos++ } else { break } }
         $n = $ranked.Count
         $pct = 'n/a'
-        if ($n -gt 1) { $pct = [string][int][math]::Round((100 * ($n - $pos)) / ($n - 1)) }
+        if ($n -gt 1) { $pct = [string][int][math]::Round((100 * ($pos - 1)) / ($n - 1)) }
         $rk = "RunA ${mine}s rank $pos/$n pct $pct"
       }
     } catch { }

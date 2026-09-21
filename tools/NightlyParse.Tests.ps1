@@ -677,6 +677,7 @@ Assert ((($tsTrend -join "`n") -like '*no legs ran*')) 'trend-skipped'
 $tu = [pscustomobject]@{ day = '2026-09-21'; stamp = 'y'; verdict = 'red'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = $false } }; soak = [pscustomobject]@{ verdict = 'skipped' }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
 $tuTrend = Format-TrendTable @($tu) @{ Overdue = @(); DueSoon = @() }
 Assert ((($tuTrend -join "`n") -like '*| unproven |*')) 'trend-unproven'
+Assert ((($tuTrend -join "`n") -like '*| null/- |*')) 'trend-gatesnull'
 $tf = [pscustomobject]@{ day = '2026-09-21'; stamp = 'z'; verdict = 'red'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; passed = 1; failed = 0; skipped = 0; gate = 0; killed = $false; cut = $false } }; soak = [pscustomobject]@{ verdict = 'red'; failed = @('ui-soak-3', 'protocol-soak-3'); killed = @(); cut = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
 $tfTrend = Format-TrendTable @($tf) @{ Overdue = @(); DueSoon = @() }
 Assert ((($tfTrend -join "`n") -like '*| 2026-09-21 | red | degraded-soak |*') -and ((($tfTrend -join "`n") -split "`n" | Where-Object { $_ -like '| 2026-09-21 |*' } | Select-Object -First 1) -like '*| 2 |*')) 'trend-flakes-array'
@@ -696,8 +697,8 @@ Assert ($tj -like '*Quarantine now: 1 overdue*') 'trend-quar'
 Assert ($tj -like '*| 1/0 (oldest 2d) |*') 'trend-qage'
 Assert (($tj -like '*| green |*') -and ($tj -like '*| red ui-soak-3 cut=1 |*')) 'trend-soakcell'
 Assert ($tj -like '*542/0/9 (98.4%)*') 'trend-rate'
-Assert ($tj -like '*phases build=2s run-a=600s run-b=7s; used 700s / left 9000s (span 9700s); RunA 600s rank 1/2 pct 100*') 'trend-budget'
-Assert ($tj -like '*2026-09-21-023001: phases no timings; used unknown / left 12000s; RunA 700s rank 2/2 pct 0*') 'trend-budget-partial'
+Assert ($tj -like '*phases build=2s run-a=600s run-b=7s; used 700s / left 9000s (span 9700s); RunA 600s rank 1/2 pct 0*') 'trend-budget'
+Assert ($tj -like '*2026-09-21-023001: phases no timings; used unknown / left 12000s; RunA 700s rank 2/2 pct 100*') 'trend-budget-partial'
 $taTrend = Format-TrendTable @($t1) @{ Overdue = @([pscustomobject]@{ Test = 'UI.Old'; Due = '2026-09-17' }); DueSoon = @() } ([datetime]'2026-09-21')
 Assert ((($taTrend -join "`n") -like '*Quarantine now: 1 overdue, oldest 4d: UI.Old, 0 due within 3 days*')) 'trend-oldest'
 

@@ -90,6 +90,18 @@ try {
   }
   $cause = if ($timedOut) { "child hung past ${TimeoutSeconds}s (pid $($child.Id) killed)" } else { "child exited $code without publishing" }
   Write-AtomicReport @("# Morning report: $day", 'Status: supervisor tombstone', '', "- Supervisor: NightlySupervisor pid $PID (timeout ${TimeoutSeconds}s)", "- Cause: $cause", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (supervised run produced no report; investigate the stamp dir, if any)') $fixedReport
+  $tombStamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
+  $tombId = "$tombStamp-pid$PID"
+  $tombHead = ''
+  try { $tombHead = (git -C $Root rev-parse HEAD 2>$null | Select-Object -First 1).Trim() } catch { }
+  $tombLeg = [pscustomobject]@{ ran = $false; passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = $false; testSeconds = $null }
+  $tombI = [pscustomobject]@{ ran = $false; passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = $false; testSeconds = $null; enforcementRed = $false }
+  $tombResult = [pscustomobject]@{ version = 1; stamp = $tombStamp; day = $day; identity = $tombId; verdict = 'red'; exit = 1; trigger = 'supervisor tombstone (hang/no-publish)'; launch = 'unknown'; commit = "$tombHead"; buildError = ''; legs = [pscustomobject]@{ 'run-a' = $tombLeg; 'run-b' = $tombLeg; interactive = $tombI }; soak = [pscustomobject]@{ ran = $false; verdict = 'skipped'; failed = @(); killed = @(); cut = @(); failures = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @(); overdueDetail = @() }; incidents = @(); scheduler = [pscustomobject]@{ voted = $false; faults = @(); enabled = $null; lastRun = ''; lastResult = '' }; tree = [pscustomobject]@{ start = 'unknown (tombstone)'; end = 'unknown (tombstone)'; stable = $null }; recovered = 'none'; omissionOk = $false; timings = @{}; reserve = $null; consumed = $null; env = Get-EnvironmentBlock ''; report = "build/nightly/morning-$day.md"; note = "tombstone: $cause; legs unproven by construction" }
+  Write-AtomicReport @((ConvertTo-Json $tombResult -Depth 8)) (Join-Path $nightDir "morning-$tombStamp.result.json")
+  $tombClass = 'infrastructure'
+  try { $tombClass = (Classify-NightlyOutcome $tombResult).Class } catch { }
+  try { Send-NightlyToast "Nightly $day : RED ($tombClass)" @("Supervised run produced no report: $cause", "Report: build/nightly/morning-$day.md") | Out-Null } catch { }
+  try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
   Write-Output "supervisor: tombstone landed ($cause)"
   exit 1
 } finally {
