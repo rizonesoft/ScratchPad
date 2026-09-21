@@ -22235,6 +22235,16 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "unicode not NFC",
         )
         check("an NFC path is canonical", provenance_path_issue(unicodedata.normalize("NFC", _nfc)), None)
+        _agents_line = next(
+            ln
+            for ln in (WORKSPACE / "AGENTS.md").read_text(encoding="utf-8").splitlines()
+            if "todo-graph.py self-test" in ln
+        )
+        check(
+            "AGENTS self-test line quotes no case count",
+            re.search(r"\d+\s+cases", _agents_line) is None,
+            True,
+        )
         check(
             "live exemptions match the inventory",
             exemption_problems(WORKSPACE, "2026-09-22"),
