@@ -2228,6 +2228,115 @@ def validate(graph, _args) -> int:
                     f"{where}stamp generation {now[num]} regresses {was[num]} committed at HEAD",
                 )
 
+    # 30. outage markers link to outage notes (D00 T01 §52 item 1):
+    # every pure `outage:` line in a section's marker chain keys
+    # exactly one `Outage note: <rung> <event-day>` block in the
+    # section's findings file, and every note key is keyed by a
+    # marker. `class` plus `attempts` describe the failure; only
+    # the note carries the evidence, so an unlinked marker reads
+    # as recorded while supporting nothing. Chain-wide like the
+    # detail fields (a superseded outage is still history with
+    # evidence); fences strip first (raw outputs quote notes).
+    # Missing refs or unreadable findings stay rule 16's to
+    # report. Stamps on or before OUTAGE_NOTE_CUTOFF predate the
+    # rule and stay silent (grandfathered fixtures plus shipped
+    # records never carried shaped notes); files without markers
+    # and notes pass vacuously past the cutoff, and no live file
+    # carries either yet.
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.OUTAGE_NOTE_CUTOFF:
+                continue
+            chain = section_markers(t, num) or []
+            mkeys = [k for k in (graph.marker_outage_key(b) for b in chain) if k is not None]
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            ftext, _u = graph.strip_fenced_code(ftext)
+            nkeys, bad = graph.outage_note_keys(ftext)
+            for ln in bad:
+                flag(
+                    "outage-note-unlinked",
+                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)}:{ln} malformed outage-note key "
+                    "(shape `Outage note: <rung> <YYYY-MM-DD>`)",
+                )
+            seen: dict[tuple[str, str], int] = {}
+            for rung, day, ln in nkeys:
+                if (rung, day) in seen:
+                    flag(
+                        "outage-note-unlinked",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)}:{ln} duplicates outage note "
+                        f"{rung} {day} (first at line {seen[(rung, day)]})",
+                    )
+                else:
+                    seen[(rung, day)] = ln
+            for rung, day in mkeys:
+                if (rung, day) not in seen:
+                    flag(
+                        "outage-note-unlinked",
+                        f"{t.path}:{s.line}: §{num} outage marker {rung} {day} names no outage note "
+                        f"in {fm.group(1)}",
+                    )
+            mset = set(mkeys)
+            for rung, day, ln in nkeys:
+                if (rung, day) not in mset:
+                    flag(
+                        "outage-note-unlinked",
+                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)}:{ln} outage note "
+                        f"{rung} {day} is keyed by no outage marker",
+                    )
+
+    # 31. the retired `date` spelling fires on pre-cutoff records too
+    # (D00 T01 §52 item 5): rule 18 covers post-cutoff stamps, but
+    # pre-cutoff ledgers skip that rule by date scope, so without
+    # this loop a `date`-spelled deferred row would parse nothing
+    # (the query fallback retired with it) yet stay silent. Any
+    # deferred row carrying `date <YYYY-MM-DD>` instead of `due`
+    # fires here on stamps on or before PLAN_REVIEW_CUTOFF; the
+    # spelling retired 2026-09-21, so one deferred spelling
+    # remains. Fences strip first; missing or unreadable findings
+    # stay rule 16's to report.
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on > graph.PLAN_REVIEW_CUTOFF:
+                continue
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            ftext, _u = graph.strip_fenced_code(ftext)
+            for h in graph.PLAN_REVIEW_HEADING_RE.finditer(ftext):
+                sec = ftext[h.end():]
+                nxt = re.search(r"^#{1,6}\s+", sec, re.MULTILINE)
+                if nxt:
+                    sec = sec[:nxt.start()]
+                block, _problem = graph.ledger_block(sec)
+                if block is None:
+                    continue
+                for lr in graph.LEDGER_ROW_RE.finditer(block):
+                    if lr.group(3).lower() != "deferred":
+                        continue
+                    rest = block[lr.end():].split("\n", 1)[0]
+                    if graph.DUE_RE.search(rest):
+                        continue
+                    if re.search(r"\bdate\s+\d{4}-\d{2}-\d{2}", rest):
+                        flag(
+                            "plan-review-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} deferred row "
+                            f"uses the retired `date` spelling (removed 2026-09-21; spell `due`): {lr.group(1)}",
+                        )
+
     # Internal self-tests deliberately point TODO_DIR at a standalone fixture.
     # Normal checkout validation always inspects its actual platform sources.
     # Intelligent Notepad day-1 port: the coming-soon inspector is not ported

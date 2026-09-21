@@ -1008,6 +1008,12 @@ SEVERITY_MAP: dict[str, str] = {
     # ran: skipped rounds cannot pass silently, so the note (or the
     # Sol run) is mechanical (D00 T01 §37).
     "panel-sol-outage-missing": "fatal",
+    # an outage marker whose (rung, event-day) key resolves to no
+    # findings-file outage note, an outage note no marker keys, or a
+    # duplicated or malformed note key: unattributed failure
+    # evidence reads as recorded while supporting nothing (D00 T01
+    # §52 item 1).
+    "outage-note-unlinked": "fatal",
     # a `**Requires:**` value outside REQUIRES_ALLOWED: the list is closed
     # so a misspelt capability cannot silently unmark a section (D00 T01 §13).
     "requires-unknown": "fatal",
@@ -1126,6 +1132,11 @@ def rule24_comment_legs(block: str) -> frozenset:
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
 PLAN_REVIEW_CUTOFF = "2026-09-18"
+# Stamps on or before this date predate the outage-note link rule and are
+# grandfathered (D00 T01 §52 item 1): outage markers without shaped
+# notes stay silent, so pre-rule records (including every fixture
+# stamped 2026-09-20 and earlier) never fire.
+OUTAGE_NOTE_CUTOFF = "2026-09-20"
 
 
 # Frozen grandfathered-migration membership (D00 T01 §48 item 6):
@@ -1237,7 +1248,17 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # New keys since /6 (D00 T01 §51 item 5): degraded, criticals,
 # and majors carry `accepted_outcome` ("" when the covering
 # record stands alone: outcomes ride superseding records only).
-PLAN_HEALTH_SCHEMA = "plan-health/7"
+# New keys since /7 (D00 T01 §52 item 4): degraded entries carry
+# `rung` (the failed rung of a bare partial, "" otherwise: one
+# rung failing across reviews is the persistence signal).
+PLAN_HEALTH_SCHEMA = "plan-health/8"
+# Bare-partial persistence (D00 T01 §52 item 4): one failed rung
+# recurring across this many stamped reviews means the spare
+# failed repeatedly while the survivor reviewed alone, so the
+# surviving rung is becoming the only rung unnoticed. One or two
+# shared losses read as isolated outages; the third is the
+# pattern, and it gates lenient `--check` like any owed action.
+BARE_PARTIAL_RUNG_THRESHOLD = 3
 TELEMETRY_SCHEMA = "telemetry/1"
 RISK_REGISTER_SCHEMA = "risk-register/1"
 RUN_SCHEMA = "run/1"
@@ -1366,6 +1387,65 @@ def marker_event_day(body: str) -> str:
     except ValueError:
         return ""
     return day
+
+
+# A findings-file outage note opens with its instance key (D00 T01
+# §52 item 1): the failed rung plus the outage-event day, the same
+# pair the marker carries (`outage: <rung>` plus `event
+# <YYYY-MM-DD>`). Rungs read case-insensitively; the date must be
+# real (an unreal date parses as no note, so the marker dangles).
+OUTAGE_NOTE_RE = re.compile(r"^Outage note:\s*(.+?)\s+(\d{4}-\d{2}-\d{2})\s*$")
+
+
+def marker_outage_key(body: str) -> tuple[str, str] | None:
+    """The (rung, event-day) key of an outage marker body (D00 T01 §52
+    item 1), or None when the body is not a pure outage marker or
+    either leg is missing. Rung compares lowercased with internal
+    whitespace collapsed, so `GPT   Rung` keys the same note as
+    `gpt rung`; the day reads through marker_event_day, so a
+    misshapen or unreal date keys nothing and the marker dangles."""
+    if not is_outage_marker(body):
+        return None
+    rm = re.search(
+        r"\boutage\s*:\s*([a-z][a-z0-9]*(?:\s+[a-z][a-z0-9]*)?)",
+        body.lower(),
+    )
+    day = marker_event_day(body)
+    if rm is None or not day:
+        return None
+    rung = re.sub(r"\s+", " ", rm.group(1)).strip()
+    if not rung:
+        return None
+    return (rung, day)
+
+
+def outage_note_keys(text: str) -> tuple[list[tuple[str, str, int]], list[int]]:
+    """Outage-note keys in a fence-stripped findings text (D00 T01 §52
+    item 1): (rung, date, lineno) per well-formed `Outage note:`
+    line, plus the linenos of malformed ones (a line opening with
+    the `Outage note:` prefix that carries no shaped key). Rung
+    normalizes like the marker side; unreal dates count malformed,
+    never silent."""
+    keys: list[tuple[str, str, int]] = []
+    bad: list[int] = []
+    for i, ln in enumerate(text.splitlines(), start=1):
+        if not ln.startswith("Outage note:"):
+            continue
+        m = OUTAGE_NOTE_RE.match(ln)
+        if m is None:
+            bad.append(i)
+            continue
+        rung = re.sub(r"\s+", " ", m.group(1)).strip().lower()
+        try:
+            datetime.strptime(m.group(2), "%Y-%m-%d")
+        except ValueError:
+            bad.append(i)
+            continue
+        if not rung:
+            bad.append(i)
+            continue
+        keys.append((rung, m.group(2), i))
+    return keys, bad
 
 
 def ledger_row_ids(text: str) -> set[str]:
@@ -1895,11 +1975,22 @@ def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
     if strict:
         return bool(entries)
     if name == "degraded":
-        return any(
+        if any(
             ("outage" in e.get("state", "") or "retry-owed" in e.get("state", ""))
             and not e.get("accepted_by")
             for e in entries
-        )
+        ):
+            return True
+        # Persistent one-rung loss (D00 T01 §52 item 4): bare
+        # partials naming one failed rung across the threshold
+        # gate, so the surviving rung cannot become the only
+        # rung unnoticed. Fewer shared losses read as isolated
+        # outages and stay silent.
+        bare: dict[str, int] = {}
+        for e in entries:
+            if e.get("state", "") == "partial" and e.get("rung", ""):
+                bare[e["rung"]] = bare.get(e["rung"], 0) + 1
+        return any(n >= BARE_PARTIAL_RUNG_THRESHOLD for n in bare.values())
     if name in ("criticals", "majors"):
         return any(not e.get("accepted_by") for e in entries)
     if name == "reviews":
@@ -2092,17 +2183,16 @@ def correction_trails(row_ids: list[str], blocks: list[str]) -> list[dict]:
 def ledger_row_due(disp: str, rest: str) -> str:
     # A deferred row spells `due` under the deferred vocabulary
     # (owner/due/trigger, renamed from `date` by D00 T01 §28 item 4 so
-    # `review` belongs to risk acceptances alone). Pre-cutoff
-    # `date`-spelled rows stay validator-silent by date scope and keep
-    # parsing through the fallback below, so grandfathered deferrals
-    # still report. A helper (not inline) so the self-test pins the
-    # grandfather spelling directly: no live fixture row may carry it.
+    # `review` belongs to risk acceptances alone). The legacy `date`
+    # spelling retired 2026-09-21 (D00 T01 §52 item 5: removal date
+    # met, fallback deleted): a `date`-spelled row parses no due
+    # date and fires plan-review-malformed on every stamp (rule 18
+    # post-cutoff, rule 31 pre-cutoff), so one deferred spelling
+    # remains. A helper (not inline) so the self-test pins the
+    # retired spelling directly: it parses nothing, ever.
     dm = DUE_RE.search(rest)
     if dm:
         return dm.group(1)
-    if disp == "deferred":
-        dd = re.search(r"\d{4}-\d{2}-\d{2}", rest)
-        return dd.group(0) if dd else ""
     return ""
 
 
@@ -4262,6 +4352,14 @@ def cmd_query(args) -> int:
                         state = f"{state}+retry-owed" if state else "retry-owed"
                     if re.search(r"\bpartial\s*:", body.lower()):
                         state = f"{state}+partial" if state else "partial"
+                    _rung = ""
+                    if state == "partial":
+                        _prm = re.search(
+                            r"\bpartial\s*:\s*([a-z][a-z0-9]*(?:\s+[a-z][a-z0-9]*)?)",
+                            body.lower(),
+                        )
+                        if _prm:
+                            _rung = re.sub(r"\s+", " ", _prm.group(1)).strip()
                     stamp_day = s.stamped_on or ""
                     _dstates = [s for s in ("outage", "retry-owed", "partial") if s in state.split("+")]
                     mrun, orung = _join_debt(body, _dstates)
@@ -4370,6 +4468,7 @@ def cmd_query(args) -> int:
                             {
                                 "ref": f"{t.path} §{num}",
                                 "state": state,
+                                "rung": _rung,
                                 "owner": owner,
                                 "due": due,
                                 "overdue": overdue,
@@ -5123,6 +5222,21 @@ def cmd_query(args) -> int:
                     continue
                 if rec > today:
                     inert.append((path, tgt, rec, exp, own))
+        # Persistent one-rung loss (D00 T01 §52 item 4): bare
+        # partials naming one failed rung across the threshold
+        # carry the re-probe escalation, so the gate names its
+        # next action instead of failing bare.
+        _rung_counts: dict[str, int] = {}
+        for _d in degraded:
+            if _d["state"] == "partial" and _d["rung"]:
+                _rung_counts[_d["rung"]] = _rung_counts.get(_d["rung"], 0) + 1
+        _tripped = {r for r, n in _rung_counts.items() if n >= BARE_PARTIAL_RUNG_THRESHOLD}
+        for _d in degraded:
+            if _d["state"] == "partial" and _d["rung"] in _tripped and not _d["escalation"]:
+                _d["escalation"] = (
+                    f"operator: re-probe {_d['rung']} or record risk acceptance "
+                    "(persistent one-rung loss)"
+                )
         # Total sort keys (D00 T01 §19 item 13): the tuple of every
         # scalar field, so no two entries tie and text and JSON share
         # one order each.
@@ -5131,6 +5245,7 @@ def cmd_query(args) -> int:
             key=lambda d: (
                 d["ref"],
                 d["state"],
+                d["rung"],
                 d["owner"],
                 d["due"],
                 d["overdue"],
@@ -14306,6 +14421,439 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 sum(1 for ln in v26_out if f"§{_n} " in ln and "FATAL" in ln),
                 0,
             )
+        # --- rule 30: outage markers link to outage notes (D00 T01 §52 item 1)
+        # Isolated root, exact counts: every section is fully dressed
+        # (Commit, checkpoint, panel-backed Review, grammar-clean marker),
+        # so only rule 30 can fire and silence is rule-30 silence.
+        on30 = root / "on30"
+        (on30 / "todo" / "90-on30").mkdir(parents=True)
+        (on30 / "docs" / "reviews").mkdir(parents=True)
+        _on30_rows = []
+        _on30_secs = []
+        _on30_marker = (
+            "outage: gpt rung (owner ann, due 2099-01-01) "
+            "class timeout attempts 2 event 2026-09-20"
+        )
+        # (marker body, stamp)
+        _on30_cases = {
+            1: (_on30_marker, "2026-09-21"),
+            2: (_on30_marker, "2026-09-21"),
+            3: ("GPT high, no findings", "2026-09-21"),
+            4: (_on30_marker, "2026-09-21"),
+            5: (_on30_marker, "2026-09-21"),
+            6: (_on30_marker, "2026-09-21"),
+            7: (_on30_marker, "2026-09-21"),
+            8: (_on30_marker, "2026-09-20"),
+        }
+        _on30_notes = {
+            1: "Outage note: gpt rung 2026-09-20\nOwner ann, due 2099-01-01: both runners timed out.\n",
+            2: "No note here.\n",
+            3: "Outage note: gpt rung 2026-09-20\nOrphan.\n",
+            4: "Outage note: gpt rung 2026-09-20\nFirst.\n\nOutage note: gpt rung 2026-09-20\nSecond.\n",
+            5: "Outage note: opus rung 2026-09-20\nWrong rung.\n",
+            6: "Outage note: someday\nMalformed.\n",
+            7: "```text\nOutage note: gpt rung 2026-09-20\nFenced.\n```\n",
+            8: "No note here.\n",
+        }
+        for _n in range(1, 9):
+            _omarker, _ostamp = _on30_cases[_n]
+            _on30_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
+            _on30_secs.append(
+                f"## {_n}. Span {_n}\n\n"
+                '- [x] Did the thing\n- [x] Commit: `"selftest: on30"`\n\n'
+                "**Test checkpoint:** `true`\n\n"
+                f"> **Verified:** {_ostamp} | §{_n} | fixture\n"
+                f"> **Review:** round 1 -- Raw findings: docs/reviews/90-on30-{_n}.md\n"
+                f"> **Plan review:** {_omarker}\n"
+            )
+        (on30 / "todo" / "90-on30" / "TODO-10-outagenote.md").write_text(
+            "---\nschema_version: 1\nid: on30\ndomain: 90-on30\nstatus: active\n"
+            'title: "TODO-10 -- Outagenote"\ntrack: Z1\n---\n\n# TODO-10 -- Outagenote\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            + "\n".join(_on30_rows)
+            + "\n\n"
+            + "\n".join(_on30_secs),
+            encoding="utf-8",
+        )
+        (on30 / "todo" / "90-on30" / "INDEX.md").write_text(
+            "# 90 On30\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-10](./TODO-10-outagenote.md) | Outagenote | active |\n",
+            encoding="utf-8",
+        )
+        for _n in range(1, 9):
+            (on30 / "docs" / "reviews" / f"90-on30-{_n}.md").write_text(
+                "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                "Sol outage: model error (fixture note)\n\n"
+                "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
+                f"digest 0123456789abcdef; path docs/reviews/90-on30-{_n}.md; run 20260921-D90-T10-S{_n}-gpt\n\n"
+                + _on30_notes[_n],
+                encoding="utf-8",
+            )
+            canned_tree_modes[
+                ("aaa1111000000000000000000000000000000000", f"docs/reviews/90-on30-{_n}.md")
+            ] = "100644"
+        saved_tree, TODO_DIR = TODO_DIR, on30 / "todo"
+        try:
+            v30 = _mio.StringIO()
+            with _mctx.redirect_stdout(v30), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_validate(None)
+            v30_out = v30.getvalue().splitlines()
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "outage-note-unlinked is a FATAL class",
+            SEVERITY_MAP.get("outage-note-unlinked"),
+            "fatal",
+        )
+        check(
+            "a linked marker plus note stays silent",
+            sum(1 for ln in v30_out if "§1 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "a dangling marker names its missing note",
+            sum(1 for ln in v30_out if "§2 " in ln and "names no outage note" in ln),
+            1,
+        )
+        check(
+            "a dangling marker fires exactly once",
+            sum(1 for ln in v30_out if "§2 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "an orphan note names its missing marker",
+            sum(1 for ln in v30_out if "§3 " in ln and "keyed by no outage marker" in ln),
+            1,
+        )
+        check(
+            "an orphan note fires exactly once",
+            sum(1 for ln in v30_out if "§3 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "a duplicated note names the first line",
+            sum(1 for ln in v30_out if "§4 " in ln and "duplicates outage note" in ln),
+            1,
+        )
+        check(
+            "a duplicated note fires exactly once",
+            sum(1 for ln in v30_out if "§4 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "a rung mismatch dangles the marker",
+            sum(1 for ln in v30_out if "§5 " in ln and "names no outage note" in ln),
+            1,
+        )
+        check(
+            "a rung mismatch orphans the note",
+            sum(1 for ln in v30_out if "§5 " in ln and "keyed by no outage marker" in ln),
+            1,
+        )
+        check(
+            "a rung mismatch fires exactly twice",
+            sum(1 for ln in v30_out if "§5 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "a malformed note key names its line",
+            sum(1 for ln in v30_out if "§6 " in ln and "malformed outage-note key" in ln),
+            1,
+        )
+        check(
+            "a malformed note dangles the marker",
+            sum(1 for ln in v30_out if "§6 " in ln and "names no outage note" in ln),
+            1,
+        )
+        check(
+            "a malformed note fires exactly twice",
+            sum(1 for ln in v30_out if "§6 " in ln and "FATAL" in ln),
+            2,
+        )
+        check(
+            "a fenced note stays invisible to the link",
+            sum(1 for ln in v30_out if "§7 " in ln and "names no outage note" in ln),
+            1,
+        )
+        check(
+            "a fenced note fires exactly once",
+            sum(1 for ln in v30_out if "§7 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "a pre-cutoff dangling marker stays silent",
+            sum(1 for ln in v30_out if "§8 " in ln and "FATAL" in ln),
+            0,
+        )
+        check(
+            "marker outage keys normalize rung case and spacing",
+            marker_outage_key("outage: GPT   Rung (owner a, due 2099-01-01) class x attempts 1 event 2026-09-20"),
+            ("gpt rung", "2026-09-20"),
+        )
+        check(
+            "prose mentioning an outage beside filings keys nothing",
+            marker_outage_key("outage: gpt rung, filed D00 T01 §1"),
+            None,
+        )
+        check(
+            "an unreal note date counts malformed",
+            outage_note_keys("Outage note: opus rung 2026-02-30\n"),
+            ([], [1]),
+        )
+        # --- persistent one-rung loss gates --check (D00 T01 §52 item 4)
+        # Two isolated roots: ph30 trips (3 bare opus partials plus 1
+        # bare gpt), ph30b stays silent (2 plus 1). Bare means the
+        # primary survived with no findings while the spare failed.
+        def _ph30_tree(root, name, bodies):
+            troot = root / name
+            (troot / "todo" / f"90-{name}").mkdir(parents=True)
+            rows = []
+            secs = []
+            for i, body in enumerate(bodies, start=1):
+                rows.append(f"|   {i}   |   §{i}    | Span {i} | -- |  [x]   |")
+                secs.append(
+                    f"## {i}. Span {i}\n\n"
+                    '- [x] Did the thing\n- [x] Commit: `"selftest: ph30"`\n\n'
+                    "**Test checkpoint:** `true`\n\n"
+                    f"> **Verified:** 2026-09-21 | §{i} | fixture\n"
+                    f"> **Plan review:** {body}\n"
+                )
+            (troot / "todo" / f"90-{name}" / "TODO-11-persist.md").write_text(
+                "---\nschema_version: 1\nid: ph30\ndomain: 90-ph30\nstatus: active\n"
+                'title: "TODO-11 -- Persist"\ntrack: Z1\n---\n\n# TODO-11 -- Persist\n\n'
+                "## Implementation Order\n\n"
+                "| Order | Section | Deliverable | Depends On | Status |\n"
+                "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+                + "\n".join(rows)
+                + "\n\n"
+                + "\n".join(secs),
+                encoding="utf-8",
+            )
+            (troot / "todo" / f"90-{name}" / "INDEX.md").write_text(
+                "# 90 Ph30\n\n## TODOs\n\n| TODO | Title | Status |\n"
+                "| ---- | ----- | :----: |\n"
+                "| [TODO-11](./TODO-11-persist.md) | Persist | active |\n",
+                encoding="utf-8",
+            )
+            return troot
+
+        _bare_opus = "GPT high, no findings, partial: opus rung class timeout attempts 1"
+        _bare_gpt = "Opus fallback (GPT unreachable), no findings, partial: gpt rung class auth attempts 1"
+        _ph30 = _ph30_tree(root, "ph30", [_bare_opus, _bare_opus, _bare_opus, _bare_gpt])
+        _ph30b = _ph30_tree(root, "ph30b", [_bare_opus, _bare_opus, _bare_gpt])
+        saved_tree, TODO_DIR = TODO_DIR, _ph30 / "todo"
+        try:
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                ph30_gate = cmd_query(argparse.Namespace(what="plan-health", check=True))
+            pjbuf = _mio.StringIO()
+            with _mctx.redirect_stdout(pjbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=True))
+            ph30_json = json.loads(pjbuf.getvalue())
+        finally:
+            TODO_DIR = saved_tree
+        saved_tree, TODO_DIR = TODO_DIR, _ph30b / "todo"
+        try:
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                ph30b_gate = cmd_query(argparse.Namespace(what="plan-health", check=True))
+        finally:
+            TODO_DIR = saved_tree
+        check("three same-rung bare partials gate --check", ph30_gate, 1)
+        check(
+            "tripped entries carry the re-probe escalation",
+            sum(
+                1
+                for d in ph30_json["degraded"]
+                if d["rung"] == "opus rung" and "re-probe opus rung" in d["escalation"]
+            ),
+            3,
+        )
+        check(
+            "the unshared rung stays unescalated",
+            [d["escalation"] for d in ph30_json["degraded"] if d["rung"] == "gpt rung"],
+            [""],
+        )
+        check(
+            "degraded entries carry the failed rung",
+            sorted(d["rung"] for d in ph30_json["degraded"]),
+            ["gpt rung", "opus rung", "opus rung", "opus rung"],
+        )
+        check("two shared bare partials stay silent", ph30b_gate, 0)
+        check(
+            "dim_failing trips on three shared bare rungs",
+            dim_failing(
+                "degraded",
+                [{"state": "partial", "rung": "opus rung"} for _ in range(3)],
+                strict=False,
+            ),
+            True,
+        )
+        check(
+            "dim_failing stays silent below the threshold",
+            dim_failing(
+                "degraded",
+                [
+                    {"state": "partial", "rung": "opus rung"},
+                    {"state": "partial", "rung": "opus rung"},
+                    {"state": "partial", "rung": "gpt rung"},
+                ],
+                strict=False,
+            ),
+            False,
+        )
+        check(
+            "dim_failing still gates an unaccepted owed state",
+            dim_failing(
+                "degraded",
+                [{"state": "retry-owed", "rung": "", "accepted_by": ""}],
+                strict=False,
+            ),
+            True,
+        )
+        # --- rule 31: retired date spelling fires pre-cutoff too (D00 T01 §52 item 5)
+        # Isolated root: §1 carries a date-spelled deferred row on a
+        # 2026-09-14 stamp (rule 18 skips it by date scope, so only
+        # rule 31 can fire); §2 carries the due spelling and stays
+        # silent. Both stamps predate every panel/provenance/marker
+        # mandate, so no other rule reads them.
+        rd31 = root / "rd31"
+        (rd31 / "todo" / "90-rd31").mkdir(parents=True)
+        (rd31 / "docs" / "reviews").mkdir(parents=True)
+        _rd31_rows = []
+        _rd31_secs = []
+        for _n, _spell in ((1, "date 2026-10-01"), (2, "due 2026-10-01")):
+            _rd31_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
+            _rd31_secs.append(
+                f"## {_n}. Span {_n}\n\n"
+                '- [x] Did the thing\n- [x] Commit: `"selftest: rd31"`\n\n'
+                "**Test checkpoint:** `true`\n\n"
+                f"> **Verified:** 2026-09-14 | §{_n} | fixture\n"
+                f"> **Review:** round 1 -- Raw findings: docs/reviews/90-rd31-{_n}.md\n"
+                "> **Plan review:** GPT high, no findings\n"
+            )
+            (rd31 / "docs" / "reviews" / f"90-rd31-{_n}.md").write_text(
+                "# Review: fixture\n\n## Plan review\n\nLedger:\n\n"
+                f"- [D90-T99-S{_n}-PR1] [minor] Some gap -> deferred owner ann {_spell} trigger review-lands\n"
+                "End of ledger\n",
+                encoding="utf-8",
+            )
+        (rd31 / "todo" / "90-rd31" / "TODO-12-retiredate.md").write_text(
+            "---\nschema_version: 1\nid: rd31\ndomain: 90-rd31\nstatus: active\n"
+            'title: "TODO-12 -- Retiredate"\ntrack: Z1\n---\n\n# TODO-12 -- Retiredate\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            + "\n".join(_rd31_rows)
+            + "\n\n"
+            + "\n".join(_rd31_secs),
+            encoding="utf-8",
+        )
+        (rd31 / "todo" / "90-rd31" / "INDEX.md").write_text(
+            "# 90 Rd31\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-12](./TODO-12-retiredate.md) | Retiredate | active |\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, rd31 / "todo"
+        try:
+            r31buf = _mio.StringIO()
+            with _mctx.redirect_stdout(r31buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_validate(None)
+            r31_out = r31buf.getvalue().splitlines()
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "a pre-cutoff date-spelled deferred row fires the retirement",
+            sum(1 for ln in r31_out if "§1 " in ln and "retired `date` spelling" in ln),
+            1,
+        )
+        check(
+            "a pre-cutoff date-spelled deferred row fires exactly once",
+            sum(1 for ln in r31_out if "§1 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "a pre-cutoff due-spelled deferred row stays silent",
+            sum(1 for ln in r31_out if "§2 " in ln and "FATAL" in ln),
+            0,
+        )
+        # --- composite residual states pin the sort-plus-join (D00 T01 §52 item 6)
+        # Isolated root: §1's marker carries a run plus partial plus
+        # retry-owed (grammar-legal composite), §2's a run plus a
+        # bare partial; acceptances target both runs. The register
+        # must read the sorted join and the singleton, so dropping
+        # the sort or the join fails the suite (mutation-quoted in
+        # the §52 Done line, then restored).
+        cx31 = root / "cx31"
+        (cx31 / "todo" / "90-cx31").mkdir(parents=True)
+        (cx31 / "docs" / "reviews").mkdir(parents=True)
+        _cx31_markers = {
+            1: "GPT high, filed §1, retry-owed owner ann due 2099-01-01 class timeout attempts 2, partial: opus rung class infra attempts 1 (run 20260921-D90-T99-S1-gpt)",
+            2: "GPT high, no findings, partial: opus rung class infra attempts 1 (run 20260921-D90-T99-S2-gpt)",
+        }
+        _cx31_rows = []
+        _cx31_secs = []
+        for _n in (1, 2):
+            _cx31_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
+            _cx31_secs.append(
+                f"## {_n}. Span {_n}\n\n"
+                '- [x] Did the thing\n- [x] Commit: `"selftest: cx31"`\n\n'
+                "**Test checkpoint:** `true`\n\n"
+                f"> **Verified:** 2026-09-21 | §{_n} | fixture\n"
+                f"> **Review:** round 1 -- Raw findings: docs/reviews/90-cx31-{_n}.md\n"
+                f"> **Plan review:** {_cx31_markers[_n]}\n"
+            )
+            (cx31 / "docs" / "reviews" / f"90-cx31-{_n}.md").write_text(
+                "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n## Plan review\n\n"
+                f"Manifest: sections [D90 T99 §{_n}]; dependents [none]; bytes 100; run 20260921-D90-T99-S{_n}-gpt\n\n"
+                f"Ledger:\n- [D90-T99-S{_n}-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+                f"Risk accepted: 20260921-D90-T99-S{_n}-gpt; id A{_n}; approver bob; owner bob; date 2026-09-19; expires 2099-01-01; review "
+                + d60
+                + "; evidence aaa1111000000000000000000000000000000000; rationale composite residual fixture\n",
+                encoding="utf-8",
+            )
+        (cx31 / "todo" / "90-cx31" / "TODO-13-composite.md").write_text(
+            "---\nschema_version: 1\nid: cx31\ndomain: 90-cx31\nstatus: active\n"
+            'title: "TODO-13 -- Composite"\ntrack: Z1\n---\n\n# TODO-13 -- Composite\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            + "\n".join(_cx31_rows)
+            + "\n\n"
+            + "\n".join(_cx31_secs),
+            encoding="utf-8",
+        )
+        (cx31 / "todo" / "90-cx31" / "INDEX.md").write_text(
+            "# 90 Cx31\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-13](./TODO-13-composite.md) | Composite | active |\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, cx31 / "todo"
+        try:
+            cxbuf = _mio.StringIO()
+            with _mctx.redirect_stdout(cxbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="risk-register", json=True))
+            cxreg = json.loads(cxbuf.getvalue())
+        finally:
+            TODO_DIR = saved_tree
+        _cxent = cxreg["entries"]
+        check(
+            "composite run residual joins sorted states",
+            any(e["target"].endswith("S1-gpt") and e["residual"] == "partial+retry-owed" for e in _cxent),
+            True,
+        )
+        check(
+            "singleton partial residual reads bare",
+            any(e["target"].endswith("S2-gpt") and e["residual"] == "partial" for e in _cxent),
+            True,
+        )
         # --- rule 27: backdated stamps fail (D00 T01 §48 item 6)
         bd27 = root / "bd27"
         (bd27 / "todo" / "90-bd27").mkdir(parents=True)
@@ -15118,7 +15666,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "plan-health fallback membership is GPT-last: only records whose last panel "
             "section is GPT count as fallback (planned GPT-early rounds under an Opus "
             "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/7 shape stable."
+            "holding the plan-health/8 shape stable."
         )
         _ph_buf = _mio.StringIO()
         _ph_argv = sys.argv
@@ -15246,9 +15794,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "2099-04-04",
         )
         check(
-            "grandfathered date spelling still parses as the due date",
+            "retired date spelling parses no due date",
             ledger_row_due("deferred", "owner ann date 2026-10-01 trigger review-lands"),
-            "2026-10-01",
+            "",
         )
         check(
             "dateless deferred row parses no due date",
@@ -15283,7 +15831,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "plan-health --json carries the schema version",
             jdata.get("schema"),
-            "plan-health/7",
+            "plan-health/8",
         )
         # --- clearance failure codes (D00 T01 §32 item 4) ---
         # Every leg the S4 probes isolate already pins its row's
@@ -19724,13 +20272,13 @@ def main() -> int:
         help="ask the graph a question",
         # The fallback definition rides the command help, not a
         # per-choice string (argparse has no per-choice help): GPT-last
-        # membership is the compat guarantee holding the plan-health/7
+        # membership is the compat guarantee holding the plan-health/8
         # shape stable (D00 T01 §37 item 5). Pinned verbatim by probe.
         description=(
             "plan-health fallback membership is GPT-last: only records whose last panel "
             "section is GPT count as fallback (planned GPT-early rounds under an Opus "
             "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/7 shape stable."
+            "holding the plan-health/8 shape stable."
         ),
     )
     q.add_argument(
