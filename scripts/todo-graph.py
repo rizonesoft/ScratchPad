@@ -2491,7 +2491,9 @@ FOLLOWS_OUTAGE_RE = re.compile(r"\bfollows-outage\b")
 # A provenance line binds one live quote to its run (D00 T01 §19 item 12,
 # §20 item 2): candidate, command, exit, tool, digest, path, and run, in
 # that order, semicolon-separated. The run is mandatory: run-less
-# provenance fails the shape.
+# provenance fails the shape. One line attests one path (D00 T01 §55
+# item 15). A review that spans files repeats the line, once per file,
+# each with its own digest. A second path token does not match.
 PROVENANCE_RE = re.compile(
     r"^Provenance:\s*candidate\s+(\S+);\s*command\s+(.+?);\s*exit\s+(\d+);\s*tool\s+(.+?);\s*digest\s+([0-9a-fA-F]+);\s*path\s+(\S+?);\s*run\s+(\S+?)\s*$"
 )
@@ -22074,6 +22076,33 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
                 ("20260920-D90-T07-S4-gpt", "panel", "sha256:" + _rdigest, True),
                 True,
             ),
+        )
+        _part_a = (
+            "Provenance: candidate aaa1111000000000000000000000000000000000; "
+            "command true; exit 0; tool fixture 1; digest " + ("ab" * 32) + "; "
+            "path docs/reviews/a.md; run 20260920-D90-T07-S4-gpt"
+        )
+        _part_b = _part_a.replace("docs/reviews/a.md", "docs/reviews/b.md").replace("ab" * 32, "cd" * 32)
+        _part_glued = _part_a.replace(
+            "path docs/reviews/a.md;",
+            "path docs/reviews/a.md docs/reviews/b.md;",
+        )
+        _ma = PROVENANCE_RE.match(_part_a)
+        _mb = PROVENANCE_RE.match(_part_b)
+        check(
+            "one provenance line attests one path",
+            _ma is not None and _ma.group(6) == "docs/reviews/a.md",
+            True,
+        )
+        check(
+            "a repeated line is a second artifact",
+            _mb is not None and _mb.group(6) == "docs/reviews/b.md" and _mb.group(5) != _ma.group(5),
+            True,
+        )
+        check(
+            "a second path token is not one line",
+            PROVENANCE_RE.match(_part_glued) is None,
+            True,
         )
         _rfail = _sp.run(
             [
