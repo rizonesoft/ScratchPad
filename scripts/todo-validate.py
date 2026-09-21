@@ -2196,7 +2196,10 @@ def validate(graph, _args) -> int:
                 if num not in t.verified_sections:
                     continue
                 chain = section_markers(t, num) or []
-                for b in chain:
+                # Governing last marker only (fix-loop R4): notify
+                # reads plan_review_body, so a superseded marker's
+                # owner never appears in a payload and must not warn.
+                for b in chain[-1:]:
                     for o in graph.OWNER_RE.findall(b):
                         if o != "?" and o not in _seen_owners:
                             _seen_owners[o] = f"{t.path}:{s.line} §{num}"

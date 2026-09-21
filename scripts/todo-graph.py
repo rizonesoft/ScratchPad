@@ -15444,6 +15444,50 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
+        # Governing marker only (fix-loop R4): quinn names the
+        # superseded marker, ann the governing one; quinn stays
+        # unmapped yet must never warn.
+        ol33b = root / "ol33b"
+        (ol33b / "todo" / "90-ol33b").mkdir(parents=True)
+        (ol33b / ".github").mkdir(parents=True)
+        (ol33b / "todo" / "90-ol33b" / "TODO-13-ownermap.md").write_text(
+            "---\nschema_version: 1\nid: ol33b\ndomain: 90-ol33b\nstatus: active\n"
+            'title: "TODO-13 -- Ownermap"\ntrack: Z1\n---\n\n# TODO-13 -- Ownermap\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Map one | -- |  [x]   |\n\n"
+            "---\n\n## 1. Map one\n\n"
+            '- [x] Did the thing\n- [x] Commit: `"selftest: ol33b"`\n\n'
+            "**Test checkpoint:** `true`\n\n"
+            "> **Verified:** 2026-09-14 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-ol33b-1.md\n"
+            "> **Plan review:** GPT high, retry-owed (owner quinn, due 2099-01-01) class infra attempts 1\n"
+            "> **Plan review:** GPT high, retry-owed (owner ann, due 2099-01-01) class infra attempts 1\n",
+            encoding="utf-8",
+        )
+        (ol33b / "todo" / "90-ol33b" / "INDEX.md").write_text(
+            "# 90 Ol33b\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-13](./TODO-13-ownermap.md) | Ownermap | active |\n",
+            encoding="utf-8",
+        )
+        _ol33b_map = ol33b / ".github" / "owner-logins.json"
+        _ol33b_map.write_text('{"ann": "anngh"}', encoding="utf-8")
+        saved_ol33b, TODO_DIR = TODO_DIR, ol33b / "todo"
+        try:
+            _ol33b_rc, _ol33b_out = _ol33_run()
+        finally:
+            TODO_DIR = saved_ol33b
+        check(
+            "a superseded marker owner stays silent",
+            (
+                _ol33b_rc == 0
+                and sum(1 for ln in _ol33b_out if "owner quinn has no GitHub login mapping" in ln)
+                == 0
+            ),
+            True,
+        )
         # --- composite residual states pin the sort-plus-join (D00 T01 §52 item 6)
         # Isolated root: §1's marker carries a run plus partial plus
         # retry-owed (grammar-legal composite), §2's a run plus a
@@ -18334,6 +18378,32 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
+        # Producer/consumer contract (fix-loop R4): the real notify
+        # text parses in the poster and every degraded ref keys to
+        # path plus section, never a bare path.
+        _np_spec = importlib.util.spec_from_file_location(
+            "notify_poster_e2e", Path(__file__).parent.parent / "tools" / "notify_poster.py"
+        )
+        _np = importlib.util.module_from_spec(_np_spec)
+        _np_spec.loader.exec_module(_np)
+        _not_text = _not_buf.getvalue()
+        _np_parsed = _np.parse_payload(_not_text)
+        check(
+            "real notify output parses in the poster",
+            isinstance(_np_parsed, tuple),
+            True,
+        )
+        _not_deg = [p[2] for p in _not_pay if p[2].startswith("degraded ")]
+        check(
+            "poster keys real degraded refs per section",
+            (
+                len(_not_deg) >= 1
+                and all(
+                    len((_np.key_of(r) or "").split()) == 3 for r in _not_deg
+                )
+            ),
+            True,
+        )
         # Straddle coverage (D00 T01 §53 item 17): the same legs run
         # at _rvw_over (the UTC-yesterday side of the straddle) and
         # _r0 (the local-today side); review states flip across the
@@ -21197,6 +21267,8 @@ track: Z1
             _fake = _pdir / "fake_gh.py"
             _fake.write_text(
                 "import json, os, sys\n"
+                "sys.stdin.reconfigure(encoding='utf-8')\n"
+                "sys.stdout.reconfigure(encoding='utf-8')\n"
                 "argv = sys.argv[1:]\n"
                 "db_path = os.environ['FAKEGH_DB']\n"
                 "with open(db_path, encoding='utf-8') as _f:\n"
@@ -21316,7 +21388,7 @@ track: Z1
                 final = json.loads((_pdir / "db.json").read_text(encoding="utf-8"))
                 return p, calls, final
 
-            _l1 = "    bob | 2026-09-22 | degraded D00-T02-S15 retry-owed"
+            _l1 = "    bob | 2026-09-22 | degraded todo/00-workspace/TODO-02-test-backbone.md §15 retry-owed"
             _l2 = "    ann | 2026-09-23 | critical D00-T01-S4-PR1 in docs/reviews/r.md"
             _p2 = f"notify: 2 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_l1}\n{_l2}\n"
             _p0 = "notify: 0 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n"
@@ -21328,7 +21400,7 @@ track: Z1
                 "poster create titles key on obligations",
                 sorted(i["title"] for i in _db["issues"].values())
                 == ["Risk watch: critical D00-T01-S4-PR1 in docs/reviews/r.md",
-                    "Risk watch: degraded D00-T02-S15"],
+                    "Risk watch: degraded todo/00-workspace/TODO-02-test-backbone.md §15"],
                 True,
             )
             check(
@@ -21341,8 +21413,33 @@ track: Z1
             check(
                 "poster create body names assignees plus unmapped",
                 _db["issues"]["10"]["body"]
-                == f"watch obligation: degraded D00-T02-S15\nassignees: bobgh\n{_l1}\n"
+                == f"watch obligation: degraded todo/00-workspace/TODO-02-test-backbone.md §15\nassignees: bobgh\n{_l1}\n"
                 and _db["issues"]["9"]["body"].splitlines()[1].startswith("unmapped owners: ann "),
+                True,
+            )
+            # Degraded keys keep path plus section (fix-loop R4): two
+            # sections of one file key apart, and a stateless ref
+            # (trailing space) keys whole.
+            _la = "    bob | 2026-09-22 | degraded todo/00-workspace/TODO-01-repo-and-toolchain.md §29 outage"
+            _lb = "    bob | 2026-09-22 | degraded todo/00-workspace/TODO-01-repo-and-toolchain.md §44 retry-owed"
+            _pab = f"notify: 2 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_la}\n{_lb}\n"
+            _prc, _calls, _db = _post(_pab, _empty, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster keys same-file degraded sections apart",
+                _prc.returncode == 0
+                and sorted(i["title"] for i in _db["issues"].values())
+                == ["Risk watch: degraded todo/00-workspace/TODO-01-repo-and-toolchain.md §29",
+                    "Risk watch: degraded todo/00-workspace/TODO-01-repo-and-toolchain.md §44"],
+                True,
+            )
+            _le2 = "    bob | 2026-09-22 | degraded todo/00-workspace/TODO-02-test-backbone.md §15 "
+            _pe2 = f"notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_le2}\n"
+            _prc, _calls, _db = _post(_pe2, _empty, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster keys a stateless degraded ref whole",
+                _prc.returncode == 0
+                and sorted(i["title"] for i in _db["issues"].values())
+                == ["Risk watch: degraded todo/00-workspace/TODO-02-test-backbone.md §15"],
                 True,
             )
             # Overdue escalation (D00 T01 §53 item 5): the suffix never
@@ -21399,8 +21496,8 @@ track: Z1
                 True,
             )
             _same = {
-                "issues": {"7": {"title": "Risk watch: degraded D00-T02-S15", "state": "open",
-                                 "body": f"watch obligation: degraded D00-T02-S15\nassignees: bobgh\n{_l1}\n",
+                "issues": {"7": {"title": "Risk watch: degraded todo/00-workspace/TODO-02-test-backbone.md §15", "state": "open",
+                                 "body": f"watch obligation: degraded todo/00-workspace/TODO-02-test-backbone.md §15\nassignees: bobgh\n{_l1}\n",
                                  "comments": []}},
                 "next": 10,
             }
@@ -21417,8 +21514,8 @@ track: Z1
                 True,
             )
             _stale = {
-                "issues": {"7": {"title": "Risk watch: degraded D00-T02-S15", "state": "open",
-                                 "body": "watch obligation: degraded D00-T02-S15\nold\n",
+                "issues": {"7": {"title": "Risk watch: degraded todo/00-workspace/TODO-02-test-backbone.md §15", "state": "open",
+                                 "body": "watch obligation: degraded todo/00-workspace/TODO-02-test-backbone.md §15\nold\n",
                                  "comments": []}},
                 "next": 10,
             }
@@ -21430,7 +21527,7 @@ track: Z1
                     and [c["argv"][1] for c in _calls]
                     == ["list", "list", "view", "edit", "comment", "list"]
                     and _db["issues"]["7"]["body"]
-                    == f"watch obligation: degraded D00-T02-S15\nassignees: bobgh\n{_l1}\n"
+                    == f"watch obligation: degraded todo/00-workspace/TODO-02-test-backbone.md §15\nassignees: bobgh\n{_l1}\n"
                     and _db["issues"]["7"]["comments"]
                     == [f"update as of 2026-09-20:\n{_l1}"]
                     and "--add-assignee" in _calls[3]["argv"]
@@ -21438,8 +21535,8 @@ track: Z1
                 True,
             )
             _shut = {
-                "issues": {"7": {"title": "Risk watch: degraded D00-T02-S15", "state": "closed",
-                                 "body": "watch obligation: degraded D00-T02-S15\nold\n",
+                "issues": {"7": {"title": "Risk watch: degraded todo/00-workspace/TODO-02-test-backbone.md §15", "state": "closed",
+                                 "body": "watch obligation: degraded todo/00-workspace/TODO-02-test-backbone.md §15\nold\n",
                                  "comments": []}},
                 "next": 10,
             }
@@ -21529,7 +21626,7 @@ track: Z1
                 and sum(1 for c in _calls if c["argv"][1] == "create") == 3
                 and "retry 2/2" in _prc.stderr
                 and sorted(i["title"] for i in _db["issues"].values())
-                == ["Risk watch: degraded D00-T02-S15"],
+                == ["Risk watch: degraded todo/00-workspace/TODO-02-test-backbone.md §15"],
                 True,
             )
             _prc, _calls, _db = _post(

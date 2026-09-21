@@ -12,7 +12,7 @@ retries gh calls boundedly before failing loud.
 
 Obligation identity is the stable part of a payload line
 (`    <owner> | <day> | <ref>`): review lines normalize the
-due/overdue transition, degraded lines drop the evolving state, finding
+due/overdue transition, degraded lines drop the evolving state but keep path plus section, finding
 and expiry lines key whole. Titles read `<prefix><key>` (default prefix
 `Risk watch: `). Per wave each live obligation resolves its issue by
 exact title: missing creates it, open diffs its body and comments plus
@@ -89,8 +89,8 @@ def key_of(ref: str) -> str | None:
     # The overdue escalation suffix never keys: refs are constructed
     # without " escalate " anywhere else, so the first one opens the
     # suffix the poster strips before matching.
-    ref = ref.split(" escalate ", 1)[0]
-    m = re.fullmatch(r"degraded (\S+)( .*)?", ref)
+    ref = ref.split(" escalate ", 1)[0].strip()
+    m = re.fullmatch(r"degraded (\S+ \S+)( \S+)?", ref)
     if m:
         return f"degraded {m.group(1)}"
     m = re.fullmatch(r"(critical|major) (\S+) in (\S.*)", ref)
@@ -160,6 +160,13 @@ def load_mapping(path: str) -> dict[str, str] | str:
 
 
 def main(argv: list | None = None) -> int:
+    # Keys and titles carry § plus file paths (fix-loop R4): stdio
+    # stays UTF-8 so a locale-encoded pipe never crashes the post.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass
     ap = argparse.ArgumentParser(description="post notify payloads as one issue per obligation")
     ap.add_argument("payloads", help="file holding `query notify` output")
     ap.add_argument("--prefix", default=PREFIX, help="per-obligation title prefix")
