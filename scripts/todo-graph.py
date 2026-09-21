@@ -1014,6 +1014,12 @@ SEVERITY_MAP: dict[str, str] = {
     # evidence reads as recorded while supporting nothing (D00 T01
     # §52 item 1).
     "outage-note-unlinked": "fatal",
+    # a clean or bare-partial primary review whose sign-off panel is
+    # the same family (GPT panel plus GPT review): quorum is one
+    # independent second-family pass, so the review met no quorum
+    # and owes retry-owed like any fallback survivor (D00 T01 §52
+    # item 3, R1-F3).
+    "quorum-same-family": "fatal",
     # a `**Requires:**` value outside REQUIRES_ALLOWED: the list is closed
     # so a misspelt capability cannot silently unmark a section (D00 T01 §13).
     "requires-unknown": "fatal",
@@ -1137,6 +1143,11 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 # notes stay silent, so pre-rule records (including every fixture
 # stamped 2026-09-20 and earlier) never fire.
 OUTAGE_NOTE_CUTOFF = "2026-09-20"
+# Stamps on or before this date predate the quorum-family rule and are
+# grandfathered (D00 T01 §52 item 3, R1-F3): same-family sign-offs
+# stay silent, so the one live GPT/GPT record (D00-T01-s51.md,
+# stamped 2026-09-20) never fires.
+QUORUM_FAMILY_CUTOFF = "2026-09-20"
 
 
 # Frozen grandfathered-migration membership (D00 T01 §48 item 6):
@@ -1986,11 +1997,7 @@ def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
         # gate, so the surviving rung cannot become the only
         # rung unnoticed. Fewer shared losses read as isolated
         # outages and stay silent.
-        bare: dict[str, int] = {}
-        for e in entries:
-            if e.get("state", "") == "partial" and e.get("rung", ""):
-                bare[e["rung"]] = bare.get(e["rung"], 0) + 1
-        return any(n >= BARE_PARTIAL_RUNG_THRESHOLD for n in bare.values())
+        return bool(persistent_rungs(entries))
     if name in ("criticals", "majors"):
         return any(not e.get("accepted_by") for e in entries)
     if name == "reviews":
@@ -2003,6 +2010,18 @@ def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
         # dimension, so failing here would double-count it.
         return False
     return bool(entries)
+
+
+def persistent_rungs(entries: list) -> set[str]:
+    """Failed rungs recurring across the bare-partial threshold (D00
+    T01 §52 item 4, R1-F6): the shared persistence read for the
+    builder escalation stamp, the lenient gate, and the summary
+    next action, so all three agree on what tripped."""
+    bare: dict[str, int] = {}
+    for e in entries:
+        if e.get("state", "") == "partial" and e.get("rung", ""):
+            bare[e["rung"]] = bare.get(e["rung"], 0) + 1
+    return {r for r, n in bare.items() if n >= BARE_PARTIAL_RUNG_THRESHOLD}
 
 
 # The ledger is a structured block (D00 T01 §19 item 10), not prose the
@@ -5226,16 +5245,12 @@ def cmd_query(args) -> int:
         # partials naming one failed rung across the threshold
         # carry the re-probe escalation, so the gate names its
         # next action instead of failing bare.
-        _rung_counts: dict[str, int] = {}
-        for _d in degraded:
-            if _d["state"] == "partial" and _d["rung"]:
-                _rung_counts[_d["rung"]] = _rung_counts.get(_d["rung"], 0) + 1
-        _tripped = {r for r, n in _rung_counts.items() if n >= BARE_PARTIAL_RUNG_THRESHOLD}
+        _tripped = persistent_rungs(degraded)
         for _d in degraded:
             if _d["state"] == "partial" and _d["rung"] in _tripped and not _d["escalation"]:
                 _d["escalation"] = (
-                    f"operator: re-probe {_d['rung']} or record risk acceptance "
-                    "(persistent one-rung loss)"
+                    f"operator: re-probe {_d['rung']} (a clean rerun supersedes its markers; "
+                    "rung-level risk acceptance is not yet a register target)"
                 )
         # Total sort keys (D00 T01 §19 item 13): the tuple of every
         # scalar field, so no two entries tie and text and JSON share
@@ -5515,6 +5530,16 @@ def cmd_query(args) -> int:
                         if ("outage" in e["state"] or "retry-owed" in e["state"])
                         and not e.get("accepted_by")
                     ]
+                    if not pool:
+                        # Persistent one-rung loss tripped the gate
+                        # (R1-F6): the escalated bare partials are the
+                        # next action, not the total-sort first entry.
+                        _trip = persistent_rungs(dim_lists[dim])
+                        pool = [
+                            e
+                            for e in dim_lists[dim]
+                            if e.get("state") == "partial" and e.get("rung") in _trip
+                        ]
                 elif dim in ("criticals", "majors"):
                     pool = [e for e in pool if not e.get("accepted_by")]
                 elif dim == "reviews":
@@ -5524,7 +5549,10 @@ def cmd_query(args) -> int:
                 # pool falls back to the first entry as named.
                 first = pool[0] if pool else dim_lists[dim][0]
                 if dim == "degraded":
-                    nxt = f"{first['ref']} {first['state']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
+                    if first.get("state") == "partial" and first.get("escalation"):
+                        nxt = f"{first['ref']} {first['state']} ({first['escalation']})"
+                    else:
+                        nxt = f"{first['ref']} {first['state']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
                 elif dim in ("criticals", "majors"):
                     nxt = f"{first['id']} in {first['file']} (owner {first['owner'] or '?'}, due {first['due'] or '?'})"
                 elif dim == "reviews":
@@ -10019,6 +10047,8 @@ track: Z1
 |  111  |   §111  | Persisted generation seeds the reopen base | - |  [ ]   |
 |  112  |   §112  | Stripped generation fails against history | - |  [x]   |
 |  113  |   §113  | Kept generation stays silent against history | - |  [x]   |
+|  114  |   §114  | One-count composite fires | - |  [x]   |
+|  115  |   §115  | Two-count composite stays silent | - |  [x]   |
 
 ---
 
@@ -10440,7 +10470,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §36 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial2.md
-> **Plan review:** GPT high, partial: gpt rung, filed §2, retry-owed owner ann due 2099-01-01 class timeout attempts 2 (run 20260920-D90-T07-S36-gpt)
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2099-01-01 class timeout attempts 2 and partial: gpt rung attempts 1 (run 20260920-D90-T07-S36-gpt)
 
 ## 37. Owed partial retry missing
 
@@ -10462,7 +10492,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** 2026-09-20 | §38 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-partial4.md
-> **Plan review:** GPT high, partial: opus rung, filed §2, retry-owed owner ann due 2099-01-01 class timeout attempts 2 (run 20260920-D90-T07-S38-gpt)
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2099-01-01 class timeout attempts 2 and partial: opus rung attempts 1 (run 20260920-D90-T07-S38-gpt)
 
 ## 39. Unknown partial rung
 
@@ -11360,7 +11390,56 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §113 | generation 1 | fixture kept re-stamp
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-histq113.md
 > **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S113-gpt)
+
+## 114. One-count composite fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §114 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-comp1.md
+> **Plan review:** Opus fallback (GPT unreachable), retry-owed (owner ann, due 2099-01-01) class infra attempts 1 and partial: gpt rung (run 20260920-D90-T07-S114-opus)
+
+## 115. Two-count composite stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §115 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-comp2.md
+> **Plan review:** Opus fallback (GPT unreachable), retry-owed (owner ann, due 2099-01-01) class infra attempts 2 and partial: gpt rung attempts 1 (run 20260920-D90-T07-S115-opus)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
+            encoding="utf-8",
+        )
+        # Composite-arity probes (D00 T01 §52 review R1-F4): one
+        # minimal Plan review record per section, so the marker
+        # grammar legs (not the record legs) decide.
+        (rev_dir / "90-health-comp1.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            "## Plan review\n\n"
+            "Manifest: sections [D90 T07 §114]; dependents [none]; bytes 100; run 20260920-D90-T07-S114-opus\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S114-PR1] [minor] Composite probe -> accepted\n"
+            "End of ledger\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-health-comp2.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            "## Plan review\n\n"
+            "Manifest: sections [D90 T07 §115]; dependents [none]; bytes 100; run 20260920-D90-T07-S115-opus\n\n"
+            "Ledger:\n"
+            "- [D90-T07-S115-PR1] [minor] Composite probe -> accepted\n"
+            "End of ledger\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health.md").write_text(
@@ -12426,9 +12505,35 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "§4 fires exactly five times (17b x2 on §99 targets, 18 lifecycle x1, 19 backlink x1, PR25 hollow trigger x1; 16, 17a, 20 silent)",
+            "same-family sign-off plus review fires quorum",
+            any(
+                "TODO-07-marker.md" in ln and "§4 " in ln and "met no independent pass" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§4 fires exactly six times (17b x2 on §99 targets, 18 lifecycle x1, 19 backlink x1, PR25 hollow trigger x1, quorum-same-family x1; 16, 17a, 20 silent)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§4 " in ln and "FATAL" in ln),
-            5,
+            6,
+        )
+        check(
+            "composite line with one count fires the arity leg",
+            any(
+                "TODO-07-marker.md" in ln and "§114 " in ln and "one per outcome" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§114 fires exactly once (composite arity only)",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§114 " in ln and "FATAL" in ln),
+            1,
+        )
+        check(
+            "composite line with two counts stays silent",
+            sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§115 " in ln and "FATAL" in ln),
+            0,
         )
         check(
             "marker naming an unresolvable filing fires",
@@ -14444,6 +14549,12 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             6: (_on30_marker, "2026-09-21"),
             7: (_on30_marker, "2026-09-21"),
             8: (_on30_marker, "2026-09-20"),
+            9: (_on30_marker, "2026-09-21"),
+            10: (
+                "outage: opus rung (owner ann, due 2099-01-01) class infra attempts 1 event 2026-09-21",
+                "2026-09-21",
+            ),
+            11: (_on30_marker, "2026-09-21"),
         }
         _on30_notes = {
             1: "Outage note: gpt rung 2026-09-20\nOwner ann, due 2099-01-01: both runners timed out.\n",
@@ -14454,8 +14565,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             6: "Outage note: someday\nMalformed.\n",
             7: "```text\nOutage note: gpt rung 2026-09-20\nFenced.\n```\n",
             8: "No note here.\n",
+            11: "Outage note: gpt rung 2026-09-20",
         }
-        for _n in range(1, 9):
+        # Sections 9 and 10 share one findings file (R1-F5); the rest
+        # keep their own.
+        _on30_findings = {n: f"docs/reviews/90-on30-{n}.md" for n in (1, 2, 3, 4, 5, 6, 7, 8, 11)}
+        _on30_findings[9] = "docs/reviews/90-on30-shared.md"
+        _on30_findings[10] = "docs/reviews/90-on30-shared.md"
+        for _n in range(1, 12):
             _omarker, _ostamp = _on30_cases[_n]
             _on30_rows.append(f"|   {_n}   |   §{_n}    | Span {_n} | -- |  [x]   |")
             _on30_secs.append(
@@ -14463,7 +14580,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 '- [x] Did the thing\n- [x] Commit: `"selftest: on30"`\n\n'
                 "**Test checkpoint:** `true`\n\n"
                 f"> **Verified:** {_ostamp} | §{_n} | fixture\n"
-                f"> **Review:** round 1 -- Raw findings: docs/reviews/90-on30-{_n}.md\n"
+                f"> **Review:** round 1 -- Raw findings: {_on30_findings[_n]}\n"
                 f"> **Plan review:** {_omarker}\n"
             )
         (on30 / "todo" / "90-on30" / "TODO-10-outagenote.md").write_text(
@@ -14483,20 +14600,27 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "| [TODO-10](./TODO-10-outagenote.md) | Outagenote | active |\n",
             encoding="utf-8",
         )
-        for _n in range(1, 9):
-            (on30 / "docs" / "reviews" / f"90-on30-{_n}.md").write_text(
+        def _on30_dress(fname, run, note):
+            (on30 / "docs" / "reviews" / fname).write_text(
                 "# Review: fixture\n\n## Opus panel (round 1)\n\n"
                 "**adversarial: approve**\n**consistency: approve**\n"
                 "**integration: approve**\n**record: approve**\n\n"
                 "Sol outage: model error (fixture note)\n\n"
                 "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
-                f"digest 0123456789abcdef; path docs/reviews/90-on30-{_n}.md; run 20260921-D90-T10-S{_n}-gpt\n\n"
-                + _on30_notes[_n],
+                f"digest 0123456789abcdef; path docs/reviews/{fname}; run {run}\n\n" + note,
                 encoding="utf-8",
             )
             canned_tree_modes[
-                ("aaa1111000000000000000000000000000000000", f"docs/reviews/90-on30-{_n}.md")
+                ("aaa1111000000000000000000000000000000000", f"docs/reviews/{fname}")
             ] = "100644"
+
+        for _n in (1, 2, 3, 4, 5, 6, 7, 8, 11):
+            _on30_dress(f"90-on30-{_n}.md", f"20260921-D90-T10-S{_n}-gpt", _on30_notes[_n])
+        _on30_dress(
+            "90-on30-shared.md",
+            "20260921-D90-T10-S9-gpt",
+            "Outage note: gpt rung 2026-09-20\nShared gpt outage.\n\nOutage note: opus rung 2026-09-21\nShared opus outage.\n",
+        )
         saved_tree, TODO_DIR = TODO_DIR, on30 / "todo"
         try:
             v30 = _mio.StringIO()
@@ -14589,6 +14713,21 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "a pre-cutoff dangling marker stays silent",
             sum(1 for ln in v30_out if "§8 " in ln and "FATAL" in ln),
             0,
+        )
+        check(
+            "sections sharing one findings file pool their note keys",
+            sum(1 for ln in v30_out if ("§9 " in ln or "§10 " in ln) and "FATAL" in ln),
+            0,
+        )
+        check(
+            "a key-only note fires the empty placeholder",
+            sum(1 for ln in v30_out if "§11 " in ln and "carries no evidence" in ln),
+            1,
+        )
+        check(
+            "a key-only note fires exactly once",
+            sum(1 for ln in v30_out if "§11 " in ln and "FATAL" in ln),
+            1,
         )
         check(
             "marker outage keys normalize rung case and spacing",

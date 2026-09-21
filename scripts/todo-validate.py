@@ -789,6 +789,26 @@ def validate(graph, _args) -> int:
                         "stamp-no-plan-review",
                         f"{t.path}:{s.line}: §{num} degraded marker line names no positive attempt count (attempts <n>)",
                     )
+                # Composite lines carry one attempt count per outcome
+                # (D00 T01 §52 review R1-F4): retry-owed plus partial
+                # is two outcomes, so exactly two well-formed
+                # `attempts <n>` tokens, in outcome order. The class
+                # stays line-level (one failure class names the whole
+                # line). Pair count is shape, checkable without run
+                # receipts; per-outcome truth stays author-asserted
+                # like every other count.
+                if _lst["retry"] and _lst["partial"] and not _lst["outage"]:
+                    _pairs = [
+                        tok
+                        for tok in re.findall(r"\battempts\s+(\S+)", _line)
+                        if re.fullmatch(r"[0-9]{1,9}", tok) is not None and int(tok) >= 1
+                    ]
+                    if len(_pairs) != 2:
+                        flag(
+                            "stamp-no-plan-review",
+                            f"{t.path}:{s.line}: §{num} composite marker line carries {len(_pairs)} "
+                            "attempt counts, want one per outcome (retry-owed plus partial)",
+                        )
             # D00 T01 §50 item 1: outage lines date their event. Every
             # outage line in the chain names `event <YYYY-MM-DD>`, the
             # calendar day the outage happened, so two outages of one
@@ -2229,20 +2249,26 @@ def validate(graph, _args) -> int:
                 )
 
     # 30. outage markers link to outage notes (D00 T01 §52 item 1):
-    # every pure `outage:` line in a section's marker chain keys
-    # exactly one `Outage note: <rung> <event-day>` block in the
-    # section's findings file, and every note key is keyed by a
-    # marker. `class` plus `attempts` describe the failure; only
-    # the note carries the evidence, so an unlinked marker reads
-    # as recorded while supporting nothing. Chain-wide like the
+    # every pure `outage:` line in a section's marker chain keys an
+    # `Outage note: <rung> <event-day>` block in the section's
+    # findings file, and every note key is keyed by a marker.
+    # `class` plus `attempts` describe the failure; only the note
+    # carries the evidence, so an unlinked marker reads as
+    # recorded while supporting nothing. Chain-wide like the
     # detail fields (a superseded outage is still history with
-    # evidence); fences strip first (raw outputs quote notes).
+    # evidence); fences strip first (raw outputs quote notes);
+    # matching is file-wide (R1-F5: sections sharing one findings
+    # file pool their marker keys, so cross-section notes never
+    # read as orphans and one note may serve one outage instance
+    # named twice). A note key with no following content fires
+    # (R1-F1: a key-only placeholder satisfies no evidence rule).
     # Missing refs or unreadable findings stay rule 16's to
     # report. Stamps on or before OUTAGE_NOTE_CUTOFF predate the
     # rule and stay silent (grandfathered fixtures plus shipped
     # records never carried shaped notes); files without markers
     # and notes pass vacuously past the cutoff, and no live file
     # carries either yet.
+    _on30_reporters: dict[str, list] = {}
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
@@ -2254,59 +2280,84 @@ def validate(graph, _args) -> int:
             fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm:
                 continue
-            try:
-                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
-            except OSError:
-                continue
-            ftext, _u = graph.strip_fenced_code(ftext)
-            nkeys, bad = graph.outage_note_keys(ftext)
-            for ln in bad:
+            _on30_reporters.setdefault(fm.group(1), []).append((t.path, s.line, num, mkeys))
+    for fpath, reporters in sorted(_on30_reporters.items()):
+        try:
+            ftext = (graph.TODO_DIR.parent / fpath).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        ftext, _u = graph.strip_fenced_code(ftext)
+        flines = ftext.splitlines()
+        nkeys, bad = graph.outage_note_keys(ftext)
+        first = reporters[0]
+        for ln in bad:
+            flag(
+                "outage-note-unlinked",
+                f"{first[0]}:{first[1]}: §{first[2]} findings {fpath}:{ln} malformed outage-note key "
+                "(shape `Outage note: <rung> <YYYY-MM-DD>`)",
+            )
+        seen: dict[tuple[str, str], int] = {}
+        for rung, day, ln in nkeys:
+            if (rung, day) in seen:
                 flag(
                     "outage-note-unlinked",
-                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)}:{ln} malformed outage-note key "
-                    "(shape `Outage note: <rung> <YYYY-MM-DD>`)",
+                    f"{first[0]}:{first[1]}: §{first[2]} findings {fpath}:{ln} duplicates outage note "
+                    f"{rung} {day} (first at line {seen[(rung, day)]})",
                 )
-            seen: dict[tuple[str, str], int] = {}
-            for rung, day, ln in nkeys:
-                if (rung, day) in seen:
-                    flag(
-                        "outage-note-unlinked",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)}:{ln} duplicates outage note "
-                        f"{rung} {day} (first at line {seen[(rung, day)]})",
-                    )
-                else:
-                    seen[(rung, day)] = ln
+            else:
+                seen[(rung, day)] = ln
+        for rung, day, ln in nkeys:
+            if (rung, day) not in seen or seen[(rung, day)] != ln:
+                continue
+            nxt = ln
+            while nxt < len(flines) and not flines[nxt].strip():
+                nxt += 1
+            if (
+                nxt >= len(flines)
+                or re.match(r"^#{1,6}\s+", flines[nxt])
+                or flines[nxt].startswith("Outage note:")
+            ):
+                flag(
+                    "outage-note-unlinked",
+                    f"{first[0]}:{first[1]}: §{first[2]} findings {fpath}:{ln} outage note "
+                    f"{rung} {day} carries no evidence (a key-only placeholder satisfies no integrity rule)",
+                )
+        for tpath, sline, num, mkeys in reporters:
             for rung, day in mkeys:
                 if (rung, day) not in seen:
                     flag(
                         "outage-note-unlinked",
-                        f"{t.path}:{s.line}: §{num} outage marker {rung} {day} names no outage note "
-                        f"in {fm.group(1)}",
+                        f"{tpath}:{sline}: §{num} outage marker {rung} {day} names no outage note "
+                        f"in {fpath}",
                     )
-            mset = set(mkeys)
-            for rung, day, ln in nkeys:
-                if (rung, day) not in mset:
-                    flag(
-                        "outage-note-unlinked",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)}:{ln} outage note "
-                        f"{rung} {day} is keyed by no outage marker",
-                    )
+        mset: set[tuple[str, str]] = set()
+        for _tp, _sl, _nm, mkeys in reporters:
+            mset.update(mkeys)
+        for rung, day, ln in nkeys:
+            if (rung, day) not in mset:
+                flag(
+                    "outage-note-unlinked",
+                    f"{first[0]}:{first[1]}: §{first[2]} findings {fpath}:{ln} outage note "
+                    f"{rung} {day} is keyed by no outage marker",
+                )
 
     # 31. the retired `date` spelling fires on pre-cutoff records too
     # (D00 T01 §52 item 5): rule 18 covers post-cutoff stamps, but
     # pre-cutoff ledgers skip that rule by date scope, so without
     # this loop a `date`-spelled deferred row would parse nothing
-    # (the query fallback retired with it) yet stay silent. Any
-    # deferred row carrying `date <YYYY-MM-DD>` instead of `due`
-    # fires here on stamps on or before PLAN_REVIEW_CUTOFF; the
-    # spelling retired 2026-09-21, so one deferred spelling
-    # remains. Fences strip first; missing or unreadable findings
-    # stay rule 16's to report.
+    # (the query fallback retired with it) yet stay silent. A
+    # deferred row carrying `date <YYYY-MM-DD>` without `due`
+    # fires here on stamps on or before PLAN_REVIEW_CUTOFF (rule
+    # 18 owns the same shape post-cutoff, so no row double-fires);
+    # a row carrying BOTH spellings fires here on every stamp
+    # (R1-F2: rule 18's `due` leg is satisfied, so without this
+    # the dual spelling would pass every rule despite the
+    # one-spelling contract). The spelling retired 2026-09-21, so
+    # one deferred spelling remains. Fences strip first; missing
+    # or unreadable findings stay rule 16's to report.
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
-                continue
-            if s.stamped_on is not None and s.stamped_on > graph.PLAN_REVIEW_CUTOFF:
                 continue
             fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
             if not fm:
@@ -2328,14 +2379,80 @@ def validate(graph, _args) -> int:
                     if lr.group(3).lower() != "deferred":
                         continue
                     rest = block[lr.end():].split("\n", 1)[0]
-                    if graph.DUE_RE.search(rest):
+                    if not re.search(r"\bdate\s+\d{4}-\d{2}-\d{2}", rest):
                         continue
-                    if re.search(r"\bdate\s+\d{4}-\d{2}-\d{2}", rest):
+                    if graph.DUE_RE.search(rest):
+                        flag(
+                            "plan-review-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} deferred row "
+                            f"carries both `due` and the retired `date` spelling (removed 2026-09-21; one spelling): {lr.group(1)}",
+                        )
+                    elif s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                         flag(
                             "plan-review-malformed",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} deferred row "
                             f"uses the retired `date` spelling (removed 2026-09-21; spell `due`): {lr.group(1)}",
                         )
+
+    # 32. same-family sign-off owes retry-owed (D00 T01 §52 item 3,
+    # R1-F3): quorum is one independent second-family pass, and the
+    # panel is not always Opus (an unreachable Opus signs off on
+    # Sol under a GPT panel heading). The sign-off family is the
+    # LAST panel section; the review family reads from the last
+    # marker (run suffix, else the surviving rung of a bare
+    # partial). A clean or bare-partial primary review in the same
+    # family as its sign-off panel met no independent pass, so it
+    # owes retry-owed like any fallback survivor. Outage markers,
+    # retry-owed markers, and family-opaque markers (run-less,
+    # unknown rung) stay silent: their own accountability or
+    # lineage owns them. Stamps on or before QUORUM_FAMILY_CUTOFF
+    # predate the rule and are grandfathered. Fences strip first;
+    # missing, panel-less, or unreadable findings stay earlier
+    # rules' to report.
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is not None and s.stamped_on <= graph.QUORUM_FAMILY_CUTOFF:
+                continue
+            chain = section_markers(t, num) or []
+            if not chain:
+                continue
+            body = chain[-1]
+            states = graph.marker_states(body)
+            if states["outage"] or states["retry"]:
+                continue
+            revfam = None
+            rm = graph.RUN_ID_RE.search(body)
+            if rm:
+                fsuf = re.search(r"-(gpt|opus)(-r\d+)?$", rm.group(1).lower())
+                if fsuf:
+                    revfam = fsuf.group(1)
+            if revfam is None and states["partial"]:
+                pm = re.search(r"\bpartial\s*:\s*(gpt|opus)\s+rung\b", body.lower())
+                if pm:
+                    revfam = "opus" if pm.group(1) == "gpt" else "gpt"
+            if revfam is None:
+                continue
+            fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not fm:
+                continue
+            try:
+                ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            ftext, _u = graph.strip_fenced_code(ftext)
+            panels = [(m.start(), "opus") for m in PANEL_HEADING_RE.finditer(ftext)]
+            panels += [(m.start(), "gpt") for m in GPT_PANEL_HEADING_RE.finditer(ftext)]
+            if not panels:
+                continue
+            panfam = sorted(panels)[-1][1]
+            if panfam == revfam:
+                flag(
+                    "quorum-same-family",
+                    f"{t.path}:{s.line}: §{num} {panfam} sign-off panel plus {revfam} review met no independent pass "
+                    "(quorum is one second-family pass; owes retry-owed)",
+                )
 
     # Internal self-tests deliberately point TODO_DIR at a standalone fixture.
     # Normal checkout validation always inspects its actual platform sources.
