@@ -1679,7 +1679,9 @@ def validate(graph, _args) -> int:
     # (§21 review R4, named here D00 T01 §25; the upper strictness
     # is the D00 T01 §53 item 12 lead time: the review precedes
     # expiry by at least a day, so it can never satisfy the
-    # contract only at the instant acceptance expires).
+    # contract only at the instant acceptance expires). Evidence
+    # that resolves to no commit while git answers is fabricated
+    # (fix-loop R2), not unprovable.
     # Date-scoped and fence-stripped
     # like rule 23; first reporter wins per file. Dangling
     # targets (well-formed but covering nothing) stay silent
@@ -1838,10 +1840,24 @@ def validate(graph, _args) -> int:
                     _acand = graph.provenance_candidate(ftext, _arun)
                     _cfulls[_arun] = graph.git_full_sha(_acand) if _acand is not None else None
                 _cfull = _cfulls[_arun]
-                if _cfull is None:
-                    continue
                 _efull = graph.git_full_sha(_am.group(8))
-                if _efull is None or _efull == _cfull:
+                if _efull is None:
+                    # Fabricated evidence (fix-loop R2): a hash that
+                    # resolves to no commit while git answers is not
+                    # unprovable, it is invented, and invented evidence
+                    # must never close a review. git_resolves splits
+                    # the states: False fires here, None (broken git,
+                    # gitless export) keeps the silent degrade. The
+                    # check runs ahead of the candidate gate: fake
+                    # evidence fires even when the candidate itself
+                    # is unpeelable.
+                    if graph.git_resolves(_am.group(8)) is False:
+                        flag(
+                            "risk-acceptance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance {_am.group(1)} A{_am.group(2)} evidence {_am.group(8)} resolves to no commit (fabricated evidence)",
+                        )
+                    continue
+                if _cfull is None or _efull == _cfull:
                     continue
                 if graph.git_is_ancestor(_cfull, _efull) is False:
                     flag(

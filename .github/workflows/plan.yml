@@ -66,11 +66,14 @@ jobs:
         with:
           fetch-depth: 0
       - name: Check schedule heartbeat
-        # Last-success monitor (D00 T01 §53 item 7): fails when the
-        # daily cron has no success in the last 26 hours, so a
-        # delayed or repeatedly failing schedule surfaces here
-        # instead of letting dates expire silently. Runs on pushes
-        # too: any job run can report a stale schedule.
+        # Last-completion monitor (D00 T01 §53 item 7, completion
+        # semantics fix-loop R2): fails when the daily cron has no
+        # completion in the last 26 hours, so a delayed schedule
+        # surfaces here instead of letting dates expire silently.
+        # Conclusions ignored: completions prove liveness (a
+        # success gate would latch red permanently), and failing
+        # schedules surface through their own red jobs. Runs on
+        # pushes too: any job run can report a stale schedule.
         # always() (D00 T01 §53 item 9): every gate step runs even
         # when an earlier gate fails; the verdict step below judges.
         id: heartbeat

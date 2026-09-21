@@ -1081,11 +1081,12 @@ SEVERITY_MAP: dict[str, str] = {
     # contradictory amendment history (D00 T01 §23).
     "ledger-supersession-broken": "fatal",
     # a `Risk accepted:` line outside the record shape, with an
-    # uncoverable target, expiring before it is recorded, or reviewed
+    # uncoverable target, expiring before it is recorded, reviewed
     # outside its record-expiry window or without a day of lead time
-    # before expiry: an unauditable waiver (D00 T01 §21;
+    # before expiry, or citing evidence that resolves to no commit
+    # while git answers: an unauditable waiver (D00 T01 §21;
     # review-window leg §21 review R4, named here D00 T01 §25;
-    # lead time D00 T01 §53 item 12).
+    # lead time D00 T01 §53 item 12; fabricated evidence fix-loop R2).
     "risk-acceptance-malformed": "fatal",
     "risk-acceptance-silent-edit": "fatal",
     "risk-acceptance-chain-broken": "fatal",
@@ -12057,7 +12058,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             + "Risk accepted: D90-T07-S4-PR1; id A2; approver bob; owner bob; date 2026-09-02; expires 2026-01-01; review 2026-10-01; evidence ccc4445000000000000000000000000000000000; rationale inverted dates\n"
             + "Risk accepted: D90-T07-S4-PR2; id A3; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446000000000000000000000000000000000; rationale review before record\n"
             + "Risk accepted: D90-T07-S4-PR53; id A4; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447000000000000000000000000000000000; rationale typo'd year\n"
-            + "Risk accepted: D90-T07-S4-PR54; id A5; approver bob; owner bob; date 2026-09-01; expires 2026-10-01; review 2026-10-01; evidence ccc4448000000000000000000000000000000000; rationale review at expiry\n",
+            + "Risk accepted: D90-T07-S4-PR54; id A5; approver bob; owner bob; date 2026-09-01; expires 2026-10-01; review 2026-10-01; evidence ccc4448000000000000000000000000000000000; rationale review at expiry\n"
+            + "Risk accepted: D90-T07-S4-PR55; id A6; approver bob; owner bob; date 2026-09-01; expires 2026-10-01; review 2026-09-15; evidence deadbee000000000000000000000000000000000; rationale fabricated evidence\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept4.md").write_text(
@@ -13764,9 +13766,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "§44 fires exactly four times (shape, inverted dates, review window, lead time)",
+            "fabricated evidence fires while git answers",
+            any(
+                "TODO-07-marker.md" in ln and "§44 " in ln and "fabricated evidence" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§44 fires exactly five times (shape, inverted dates, review window, lead time, fabricated evidence)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§44 " in ln and "FATAL" in ln),
-            4,
+            5,
         )
         check(
             "zero record id fires",
@@ -21635,34 +21645,56 @@ track: Z1
 
             _now = "2026-09-21T04:30:00Z"
             _fresh_runs = json.dumps([
-                {"databaseId": 3, "conclusion": "success", "createdAt": "2026-09-21T03:00:00Z"},
-                {"databaseId": 2, "conclusion": "failure", "createdAt": "2026-09-20T04:25:00Z"},
+                {"databaseId": 3, "event": "schedule", "createdAt": "2026-09-21T03:00:00Z"},
+                {"databaseId": 2, "event": "schedule", "createdAt": "2026-09-20T04:25:00Z"},
             ])
             _stale_runs = json.dumps([
-                {"databaseId": 2, "conclusion": "success", "createdAt": "2026-09-19T02:00:00Z"},
+                {"databaseId": 2, "event": "schedule", "createdAt": "2026-09-19T02:00:00Z"},
             ])
             _fail_runs = json.dumps([
-                {"databaseId": 4, "conclusion": "failure", "createdAt": "2026-09-21T04:24:00Z"},
-                {"databaseId": 3, "conclusion": "failure", "createdAt": "2026-09-20T04:24:00Z"},
+                {"databaseId": 4, "event": "schedule", "createdAt": "2026-09-21T04:24:00Z"},
+                {"databaseId": 3, "event": "schedule", "createdAt": "2026-09-20T04:24:00Z"},
+            ])
+            _push_runs = json.dumps([
+                {"databaseId": 5, "event": "push", "createdAt": "2026-09-21T04:00:00Z"},
+            ])
+            _stale_push_runs = json.dumps([
+                {"databaseId": 2, "event": "schedule", "createdAt": "2026-09-19T02:00:00Z"},
+                {"databaseId": 5, "event": "push", "createdAt": "2026-09-21T04:00:00Z"},
             ])
             _hb_p = _beat(_fresh_runs, "--now", _now)
             check(
-                "heartbeat fresh success exits 0 with the age",
+                "heartbeat fresh completion exits 0 with the age",
                 _hb_p.returncode == 0 and "1.5h ago" in _hb_p.stdout,
                 True,
             )
             _hb_p = _beat(_stale_runs, "--now", _now)
             check(
-                "heartbeat stale success exits 1 naming the age",
-                _hb_p.returncode == 1 and "older than 26h" in _hb_p.stderr,
+                "heartbeat stale schedule exits 1 naming the age",
+                _hb_p.returncode == 1 and "no schedule completion of plan.yml in 26h" in _hb_p.stderr,
                 True,
             )
             _hb_p = _beat(_stale_runs, "--now", _now, "--max-age-hours", "100")
             check("heartbeat max age flag is honored", _hb_p.returncode, 0)
+            # Conclusions ignored (fix-loop R2): completions prove
+            # liveness, so a failing schedule passes the heartbeat
+            # (its red jobs surface) and the detector never latches.
             _hb_p = _beat(_fail_runs, "--now", _now)
             check(
-                "heartbeat failures-only exits 1 with no success",
-                _hb_p.returncode == 1 and "no successful schedule run" in _hb_p.stderr,
+                "heartbeat failures-only passes on completion",
+                _hb_p.returncode == 0 and "0.1h ago" in _hb_p.stdout,
+                True,
+            )
+            _hb_p = _beat(_push_runs, "--now", _now)
+            check(
+                "heartbeat schedule-never-ran fails with the count",
+                _hb_p.returncode == 1 and "schedule never produced a completed run" in _hb_p.stderr,
+                True,
+            )
+            _hb_p = _beat(_stale_push_runs, "--now", _now)
+            check(
+                "heartbeat stale schedule fails despite fresh pushes",
+                _hb_p.returncode == 1 and "no schedule completion of plan.yml in 26h" in _hb_p.stderr,
                 True,
             )
             _hb_p = _beat("[]", "--now", _now)
