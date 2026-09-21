@@ -36,17 +36,20 @@ unknown, or the mapping file is missing, unparseable, or carries a bad
 login, with the failed call on stderr. Unknown shapes fail closed: the
 poster never silently drops an obligation.
 
-Retry (item 6) is bounded and blind: every gh call runs up to
-1 + --retries attempts (default 2 retries, 3 attempts) with
---retry-sleep seconds between (default 2), each retry noted on stderr,
-and exhaustion raises the last failure with its attempt count. Blind
-because gh exits 1 for flakes, auth loss, and rate limits alike;
-the bound covers transient flakes, while persistent failures
-fail loud here and the next scheduled wave retries the
-obligations. Retrying create can theoretically double-mint when
-success answers lost; the next wave's exact-title lookup then
-updates the first match and the duplicate stays visible for the
-operator rather than silently dropping the obligation.
+Retry (item 6, hardened review R1) is bounded and blind: every gh
+call runs up to 1 + --retries attempts (default 2 retries, 3
+attempts) with --retry-sleep seconds between (default 2), each
+retry noted on stderr, and exhaustion raises the last failure
+with its attempt count. Blind because gh exits 1 for flakes, auth
+loss, and rate limits alike; the bound covers transient flakes,
+while persistent failures fail loud here and the next scheduled
+wave retries the obligations. Create additionally adopts on lost
+responses: after every failed create attempt the poster re-checks
+the exact title and adopts the issue when the create succeeded
+remotely with its answer lost, so retries never double-mint.
+Lookups list with a client-side match (no `--search`): the search
+API indexes with delay, while the adoption re-check must see an
+issue created seconds ago.
 """
 
 import argparse
@@ -119,6 +122,11 @@ def parse_payload(body: str) -> tuple[int, dict[str, list[str]]] | str:
         if key is None:
             return f"unknown obligation shape: {pm.group(3)!r}"
         by_key.setdefault(key, []).append(ln)
+    # The header count binds (review R1): a truncated or padded file
+    # never silently posts a subset.
+    held = sum(len(v) for v in by_key.values())
+    if held != int(m.group(1)):
+        return f"payload count mismatch: header claims {m.group(1)} payloads, body holds {held}"
     return int(m.group(1)), by_key
 
 
@@ -214,6 +222,14 @@ def main(argv: list | None = None) -> int:
         parts.extend(lines)
         return "\n".join(parts) + "\n", logins, unmapped
 
+    def note_retry(args: list, code: int, attempt: int) -> None:
+        print(
+            f"notify_poster: gh {' '.join(args)} failed (exit {code}), "
+            f"retry {attempt}/{retries} in {retry_sleep:g}s",
+            file=sys.stderr,
+        )
+        time.sleep(retry_sleep)
+
     def gh(args: list, stdin_text: str | None = None) -> subprocess.CompletedProcess:
         last: subprocess.CompletedProcess | None = None
         for attempt in range(1, retries + 2):
@@ -222,12 +238,7 @@ def main(argv: list | None = None) -> int:
                 return p
             last = p
             if attempt <= retries:
-                print(
-                    f"notify_poster: gh {' '.join(args)} failed (exit {p.returncode}), "
-                    f"retry {attempt}/{retries} in {retry_sleep:g}s",
-                    file=sys.stderr,
-                )
-                time.sleep(retry_sleep)
+                note_retry(args, p.returncode, attempt)
         assert last is not None
         raise RuntimeError(
             f"gh {' '.join(args)} failed (exit {last.returncode}): "
@@ -235,7 +246,11 @@ def main(argv: list | None = None) -> int:
         )
 
     def find_issue(title: str, state: str) -> str:
-        p = gh(["issue", "list", "--state", state, "--search", f'in:title "{title}"',
+        # Plain list plus client-side match (review R1): `--search`
+        # indexes with delay, so the adoption re-check below must
+        # not depend on it. Limit 1000 bounds the call; obligation
+        # counts stay far below it.
+        p = gh(["issue", "list", "--state", state, "--limit", "1000",
                 "--json", "number,title"])
         try:
             rows = json.loads(p.stdout.strip() or "[]")
@@ -254,6 +269,38 @@ def main(argv: list | None = None) -> int:
 
     def comment(num: str, text: str) -> None:
         gh(["issue", "comment", num, "--body-file", "-"], stdin_text=text)
+
+    def create_adopting(title: str, want: str, logins: list[str], key: str) -> str:
+        """Create the issue, adopting on lost responses (review R1).
+
+        Returns "" after a fresh create (announced inside), else the
+        adopted open number for the update path. Total attempts stay
+        within 1 + --retries; every failed attempt re-checks the
+        exact title first, so a create that succeeded remotely with
+        its answer lost adopts instead of double-minting. The
+        adopted issue runs the normal update path, so a diverged
+        body still mirrors."""
+        create = ["issue", "create", "--title", title, "--body-file", "-"]
+        for login in logins:
+            create += ["--assignee", login]
+        last: subprocess.CompletedProcess | None = None
+        for attempt in range(1, retries + 2):
+            p = run_gh(ns.gh, create, want)
+            if p.returncode == 0:
+                print(f"notify_poster: created {p.stdout.strip() or '(no url)'} for {key}")
+                return ""
+            last = p
+            num = find_issue(title, "open")
+            if num:
+                print(f"notify_poster: adopted issue {num} for {key} after a lost create response")
+                return num
+            if attempt <= retries:
+                note_retry(create, p.returncode, attempt)
+        assert last is not None
+        raise RuntimeError(
+            f"gh {' '.join(create)} failed (exit {last.returncode}): "
+            f"{last.stderr.strip()[-500:]} (after {retries + 1} attempts)"
+        )
 
     try:
         if ns.retire_title:
@@ -277,13 +324,13 @@ def main(argv: list | None = None) -> int:
                     gh(edit, stdin_text=want)
                     comment(closed, f"recurring as of {today}:\n" + "\n".join(live[key]))
                     print(f"notify_poster: reopened issue {closed} for {key}")
+                    continue
                 else:
-                    create = ["issue", "create", "--title", title, "--body-file", "-"]
-                    for login in logins:
-                        create += ["--assignee", login]
-                    created = gh(create, stdin_text=want)
-                    print(f"notify_poster: created {created.stdout.strip() or '(no url)'} for {key}")
-                continue
+                    num = create_adopting(title, want, logins, key)
+                    if not num:
+                        continue
+            # Open issues found up front plus adopted creates converge
+            # here: diff the body and mirror on change.
             have = view_body(num)
             if have != want:
                 new = sorted(set(logins) - have_logins(have))
@@ -295,7 +342,7 @@ def main(argv: list | None = None) -> int:
                 print(f"notify_poster: updated issue {num} for {key}")
             else:
                 print(f"notify_poster: issue {num} for {key} unchanged")
-        swept = gh(["issue", "list", "--state", "open", "--search", f'in:title "{ns.prefix}"',
+        swept = gh(["issue", "list", "--state", "open", "--limit", "1000",
                     "--json", "number,title"])
         try:
             open_rows = json.loads(swept.stdout.strip() or "[]")

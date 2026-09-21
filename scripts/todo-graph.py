@@ -21197,18 +21197,31 @@ track: Z1
                 "        sys.exit(1)\n"
                 "if verb == 'list':\n"
                 "    st = argv[argv.index('--state') + 1]\n"
-                "    q = argv[argv.index('--search') + 1]\n"
-                "    needle = q.split('in:title ', 1)[1].strip().strip(chr(34))\n"
+                "    q = argv[argv.index('--search') + 1] if '--search' in argv else ''\n"
+                "    needle = q.split('in:title ', 1)[1].strip().strip(chr(34)) if q else ''\n"
                 "    print(json.dumps([{'number': int(n), 'title': i['title']}\n"
                 "                      for n, i in sorted(issues.items())\n"
                 "                      if i['state'] == st and needle in i['title']]))\n"
                 "elif verb == 'view':\n"
                 "    print(issues[argv[2]]['body'], end='')\n"
+                "# Lost-response injection (review R1):\n"
+                "# FAKEGH_LOST_CREATE=n writes the first n creates then\n"
+                "# reports failure, so the adoption path proves against\n"
+                "# a real remote success with a lost answer.\n"
                 "elif verb == 'create':\n"
                 "    n = str(db['next']); db['next'] += 1\n"
                 "    issues[n] = {'title': argv[argv.index('--title') + 1], 'state': 'open',\n"
                 "                 'body': stdin_text, 'comments': []}\n"
                 "    save()\n"
+                "    _lost = int(os.environ.get('FAKEGH_LOST_CREATE', '0') or '0')\n"
+                "    _lseen = db.get('_lost', {})\n"
+                "    _ln = _lseen.get('create', 0)\n"
+                "    if _ln < _lost:\n"
+                "        _lseen['create'] = _ln + 1\n"
+                "        db['_lost'] = _lseen\n"
+                "        save()\n"
+                "        print('fake create lost response', file=sys.stderr)\n"
+                "        sys.exit(1)\n"
                 "    print('https://github.com/fake/repo/issues/' + n)\n"
                 "elif verb == 'comment':\n"
                 "    issues[argv[2]]['comments'].append(stdin_text)\n"
@@ -21503,6 +21516,49 @@ track: Z1
                 (_prc.returncode == 1 and _calls == [] and "bad --retries" in _prc.stderr),
                 True,
             )
+            # Lost-response adoption (review R1): the first create
+            # succeeds remotely with its answer lost; the poster
+            # adopts the issue instead of minting a second one, and
+            # the adopted body matches, so no comment fires.
+            _prc, _calls, _db = _post(
+                _p1, _empty, {"FAKEGH_LOST_CREATE": "1"}, _map,
+                "--today", "2026-09-20", "--retry-sleep", "0",
+            )
+            check(
+                "poster lost create response adopts without double-minting",
+                (
+                    _prc.returncode == 0
+                    and len(_db["issues"]) == 1
+                    and sum(1 for c in _calls if c["argv"][1] == "create") == 1
+                    and "adopted issue 9" in _prc.stdout
+                    and _db["issues"]["9"]["comments"] == []
+                ),
+                True,
+            )
+            # Header count binds (review R1): truncated and padded
+            # payloads fail closed instead of posting a subset.
+            _ptrunc = f"notify: 2 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_l1}\n"
+            _prc, _calls, _db = _post(_ptrunc, _empty, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster truncated payload fails closed on the count",
+                (
+                    _prc.returncode == 1
+                    and "payload count mismatch: header claims 2 payloads, body holds 1" in _prc.stderr
+                    and _db["issues"] == {}
+                ),
+                True,
+            )
+            _ppad = f"notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_l1}\n{_l2}\n"
+            _prc, _calls, _db = _post(_ppad, _empty, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster padded payload fails closed on the count",
+                (
+                    _prc.returncode == 1
+                    and "payload count mismatch: header claims 1 payloads, body holds 2" in _prc.stderr
+                    and _db["issues"] == {}
+                ),
+                True,
+            )
             _prc, _calls, _db = _post("garbage\n", _empty, {}, _map)
             check("poster unparseable payload exits 1", _prc.returncode, 1)
             check(
@@ -21646,6 +21702,19 @@ track: Z1
             "- name: Post owner notifications" in _planyml
             and _planyml.index("- name: Post owner notifications")
             < _planyml.index("python3 tools/notify_poster.py /tmp/notify.txt"),
+            True,
+        )
+        # Push-path coverage (review R1): every operational input the
+        # unattended job consumes triggers the workflow on push, so a
+        # standalone heartbeat or mapping change still runs the gates.
+        _push = _planyml.split("paths:", 1)[1].split("schedule:", 1)[0]
+        check(
+            "plan-gates push filter covers every operational input",
+            all(
+                p in _push
+                for p in ("tools/notify_poster.py", "tools/check_heartbeat.py",
+                          ".github/owner-logins.json", "scripts/**")
+            ),
             True,
         )
         check(

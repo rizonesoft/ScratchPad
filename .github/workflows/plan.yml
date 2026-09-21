@@ -11,6 +11,8 @@ on:
       - 'todo/**'
       - 'tools/githooks/**'
       - 'tools/notify_poster.py'
+      - 'tools/check_heartbeat.py'
+      - '.github/owner-logins.json'
       - '.gitattributes'
       - '.github/workflows/plan.yml'
   # Unattended gate (D00 T01 §29 item 1): daily, off-peak, away from
