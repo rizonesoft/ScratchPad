@@ -2428,6 +2428,12 @@ IDENTITY_RE = re.compile(r"\bidentity\s+([0-9a-fA-F]{12})\b")
 # non-sha1 repos closed, so hash adoption needs explicit shape
 # work, never silent acceptance.
 FIX_COMMIT_RE = re.compile(r"\bfix\s+([0-9a-fA-F]{7,40})(?:\.\.([0-9a-fA-F]{7,40}))?\b")
+# A review names the tree it attested (D00 T01 §55 item 1):
+# `> **Reviewed-tip:** <body>` in the target section's stamp
+# block. The leg validates the body (full 40-hex only: shorts
+# cannot pin a tree) and requires the fix tip at or before it
+# by ancestry. Absent reads unbound (grandfathered).
+REVIEWED_TIP_LINE_RE = re.compile(r"^>\s*\*\*Reviewed-tip:\*\*\s*(.+?)\s*$", re.MULTILINE)
 # A clearance names its proof (D00 T01 §22 item 1): `proof
 # <finding-id> <path>[::<test>]` in the target section, resolved at
 # the fix tip tree. The query proves the pointer names this row and
@@ -5124,6 +5130,42 @@ def cmd_query(args) -> int:
                                     provable = False
                                     fail_code = "resolution:merge-tip"
                                     break
+                                # Reviewed-tip containment (D00 T01 S55
+                                # item 1): a stamp naming its reviewed
+                                # tree binds the fix tip to that tree's
+                                # history, equal or ancestor (commits
+                                # order by ancestry, never timestamps).
+                                # Absent reads unbound; malformed or
+                                # conflicting fields fail closed.
+                                _rtips = [
+                                    _rm.group(1)
+                                    for _rm in REVIEWED_TIP_LINE_RE.finditer(
+                                        tgt_text
+                                    )
+                                ]
+                                if _rtips:
+                                    _rvalid = [
+                                        _r.lower()
+                                        for _r in _rtips
+                                        if re.fullmatch(r"[0-9a-fA-F]{40}", _r)
+                                    ]
+                                    if len(_rvalid) != len(_rtips) or len(
+                                        set(_rvalid)
+                                    ) > 1:
+                                        provable = False
+                                        fail_code = (
+                                            "resolution:unreviewed-tree"
+                                        )
+                                        break
+                                    _rtip_full = git_full_sha(_rvalid[0])
+                                    if _rtip_full is None or not git_is_ancestor(
+                                        tip, _rtip_full
+                                    ):
+                                        provable = False
+                                        fail_code = (
+                                            "resolution:unreviewed-tree"
+                                        )
+                                        break
                                 fixed = git_file_at(tip, tpath)
                                 fixed_span = (
                                     section_span_lines(fixed, r[1])
@@ -10427,7 +10469,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -11904,6 +11946,125 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 128. Reviewed tip equal clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipeq D90-T07-S4-PR88 fix eee0001..eee0002
+
+proof D90-T07-S4-PR88 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §128 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+> **Reviewed-tip:** eee0002000000000000000000000000000000000
+
+## 129. Reviewed tip ancestor clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipanc D90-T07-S4-PR89 fix eee0001..eee0002
+
+proof D90-T07-S4-PR89 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §129 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+> **Reviewed-tip:** d4e5f60000000000000000000000000000000000
+
+## 130. Reviewed tip off-tree stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipoff D90-T07-S4-PR90 fix eee0001..eee0002
+
+proof D90-T07-S4-PR90 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §130 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+> **Reviewed-tip:** f7a1c90000000000000000000000000000000000
+
+## 131. Reviewed tip unresolving stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipunres D90-T07-S4-PR91 fix eee0001..eee0002
+
+proof D90-T07-S4-PR91 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §131 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+> **Reviewed-tip:** 1234567890abcdef1234567890abcdef12345678
+
+## 132. Reviewed tip malformed stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipmal D90-T07-S4-PR92 fix eee0001..eee0002
+
+proof D90-T07-S4-PR92 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §132 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+> **Reviewed-tip:** abc1234
+
+## 133. Reviewed tip conflict stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipconf D90-T07-S4-PR93 fix eee0001..eee0002
+
+proof D90-T07-S4-PR93 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §133 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+> **Reviewed-tip:** eee0002000000000000000000000000000000000
+> **Reviewed-tip:** d4e5f60000000000000000000000000000000000
+
+## 134. Missing reviewed tip clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturertipabs D90-T07-S4-PR94 fix eee0001..eee0002
+
+proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §134 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12055,6 +12216,14 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
             "- [D90-T07-S4-PR85] [critical] Ambiguous proof test rejects -> filed §125\n"
             "- [D90-T07-S4-PR86] [critical] Ambiguous fix reversed rejects -> filed §126\n"
             "- [D90-T07-S4-PR87] [critical] Ambiguous proof path rejects -> filed §127\n"
+            # D00 T01 §55 item 1: reviewed-tip containment pins.
+            "- [D90-T07-S4-PR88] [critical] Reviewed tip equal clears -> filed §128\n"
+            "- [D90-T07-S4-PR89] [critical] Reviewed tip ancestor clears -> filed §129\n"
+            "- [D90-T07-S4-PR90] [critical] Reviewed tip off-tree stays -> filed §130\n"
+            "- [D90-T07-S4-PR91] [critical] Reviewed tip unresolving stays -> filed §131\n"
+            "- [D90-T07-S4-PR92] [critical] Reviewed tip malformed stays -> filed §132\n"
+            "- [D90-T07-S4-PR93] [critical] Reviewed tip conflict stays -> filed §133\n"
+            "- [D90-T07-S4-PR94] [critical] Missing reviewed tip clears -> filed §134\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -12891,6 +13060,14 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
         canned_full["b000002"] = "b000002" + "0" * 33
         canned_merges["b000002"] = False
         canned_ancestors[("aaa1111000000000000000000000000000000000", "b000002")] = True
+        # D00 T01 §55 item 1: reviewed-tip ancestry pins (full-ID
+        # pairs: the leg compares canonical fix tips to resolved
+        # reviewed tips; self-ancestry mirrors merge-base).
+        canned_full["d4e5f60"] = "d4e5f60" + "0" * 33
+        canned_full["f7a1c90"] = "f7a1c90" + "0" * 33
+        canned_ancestors[("eee0002" + "0" * 33, "eee0002" + "0" * 33)] = True
+        canned_ancestors[("eee0002" + "0" * 33, "d4e5f60" + "0" * 33)] = True
+        canned_ancestors[("eee0002" + "0" * 33, "f7a1c90" + "0" * 33)] = False
         # §31 item 5: the clearing fixes touched their proof files.
         canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
@@ -16393,6 +16570,41 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
             True,
         )
         check(
+            "clearance clears a reviewed tip equal to the fix tip",
+            any("D90-T07-S4-PR88" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance clears a reviewed tip descended from the fix",
+            any("D90-T07-S4-PR89" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance fails a reviewed tip off the fix tree",
+            any("D90-T07-S4-PR90" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails an unresolving reviewed tip",
+            any("D90-T07-S4-PR91" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a malformed reviewed tip",
+            any("D90-T07-S4-PR92" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails conflicting reviewed tips",
+            any("D90-T07-S4-PR93" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance clears a missing reviewed tip unbound",
+            any("D90-T07-S4-PR94" in ln for ln in health_lines),
+            False,
+        )
+        check(
             "canonical identity resolves a short to repo algo type full",
             canonical_commit_id("eee0001"),
             (str(root), "sha1", "commit", "eee0001" + "0" * 33),
@@ -16451,7 +16663,7 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
         )
         check(
             "plan-health ignores the fenced ledger example",
-            "PR9" in health_out,
+            re.search(r"\bPR9\b", health_out) is not None,
             False,
         )
         check(
@@ -16933,6 +17145,10 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
             "D90-T07-S4-PR85": {"proof:ambiguous"},
             "D90-T07-S4-PR86": {"resolution:ambiguous-fix"},
             "D90-T07-S4-PR87": {"proof:ambiguous"},
+            "D90-T07-S4-PR90": {"resolution:unreviewed-tree"},
+            "D90-T07-S4-PR91": {"resolution:unreviewed-tree"},
+            "D90-T07-S4-PR92": {"resolution:unreviewed-tree"},
+            "D90-T07-S4-PR93": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
