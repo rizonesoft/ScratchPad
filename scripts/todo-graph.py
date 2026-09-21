@@ -10893,7 +10893,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12669,6 +12669,24 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-dangling.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 147. Obsolete amendment misses the head
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturehead D90-T07-S4-PR104 fix ab00001
+
+The obsolete amendment D90-T07-S4-PR105 keeps its own tokens.
+
+proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
+
+> **Verified:** __D5__ | §147 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12841,6 +12859,11 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR102] [critical] Red execution stays -> filed §142\n"
             # D00 T01 §55 item 6: range merge-exclusion pin.
             "- [D90-T07-S4-PR103] [critical] Merge-carried range stays -> filed §143\n"
+            # D00 T01 §55 item 10: the head is PR104. PR105 is the
+            # superseded amendment. Its proof and fix sit in §147,
+            # which also names the head, and they must not clear it.
+            "- [D90-T07-S4-PR105] [critical] Obsolete amendment -> filed §147\n"
+            "- [D90-T07-S4-PR104] [critical] Current head -> filed §147 supersedes D90-T07-S4-PR105 identity 017a43e06ea4 old tokens stay on the old id\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -13783,6 +13806,13 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             canned_commit_hunks[(_esha, marker_todo.as_posix())] = [
                 (_espan_lines[0], _espan_lines[0] + 2)
             ]
+        # D00 T01 §55 item 10: the head section must be touched too,
+        # or hunk-span fails before the exact-ID proof filter.
+        _span147 = section_span_lines(_mtxt, 147)
+        assert _span147 is not None
+        canned_commit_hunks[("ab00001", marker_todo.as_posix())].append(
+            (_span147[0], _span147[0] + 2)
+        )
         # D00 T01 §55 item 6: a range that would otherwise clear, except
         # a first-parent merge changed the target path. Default for
         # every other range is False (the lambda), so existing pins
@@ -17484,6 +17514,12 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "an obsolete amendment does not clear the head",
+            any("D90-T07-S4-PR104" in ln for ln in health_lines)
+            and not any("D90-T07-S4-PR105" in ln for ln in health_lines),
+            True,
+        )
+        check(
             "hunk parser reads new-side ranges",
             _parse_unified_hunks("@@ -1,3 +10,4 @@\n@@ -20 +30 @@\n"),
             [(10, 14), (30, 31)],
@@ -18045,6 +18081,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR101": {"proof:unattested"},
             "D90-T07-S4-PR102": {"proof:unattested"},
             "D90-T07-S4-PR103": {"resolution:merge-range"},
+            "D90-T07-S4-PR104": {"proof:loop"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
