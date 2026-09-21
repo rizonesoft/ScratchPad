@@ -4,4 +4,4 @@ Live plus lapsed acceptance instruments with residual severity (findings: row se
 
 | Target | Residual | State | Owner | Approver | Expires | Review | Rationale |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| D00-T02-S10-PR1 | critical | live | DerickPayne | DerickPayne | 2026-10-20 | 2026-09-27 | Self-filed critical cannot clear by ordering (target == reviewer §10); proofs ride §11's pipeline, re-review at its landing |
+| D00-T02-S10-PR1 | critical | live | DerickPayne | DerickPayne | 2026-10-20 | 2026-09-27 | Re-review at the D00 T02 S11 landing: S10 item 1 shipped the correction (true flip blockers now name red focus-free or Primary proofs, in todo/README.md plus the review-skill guardrail), and the S11 pipeline delivered the proofs: Run A attempt 2 gate exit 0 flagged=0 census primary=0 with 7 off-screen births at 10000,10000 plus suite 151 passed 1 load-flake quarantined per S5 13 pre-existing skips, Run B 2/2 Primary passed resting visibly on primary; evidence names pre-landing HEAD because the landing hash is unknowable at write time and the run proofs live in ignored scratch |
