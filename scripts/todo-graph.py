@@ -16975,7 +16975,8 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
         # addresses validate unique at build, so later growth cannot
         # make tests exercise the wrong row or section. Scopes: row
         # IDs per ledger block, section numbers per TODO file, and
-        # short-vs-full shadowing in the resolve map.
+        # short-vs-full shadowing plus prefix ambiguity in the
+        # resolve map.
         def _dupes(xs):
             seen = set()
             out = []
@@ -16987,11 +16988,27 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
 
         def _shadowed_keys(fullmap):
             out = []
+            _fulls = [
+                k
+                for k in fullmap
+                if len(k) == 40 and re.fullmatch(r"[0-9a-fA-F]{40}", k)
+            ]
             for k in fullmap:
                 if not (7 <= len(k) < 40) or not re.fullmatch(r"[0-9a-fA-F]+", k):
                     continue
+                if k in out:
+                    continue
                 pad = k + "0" * (40 - len(k))
-                if pad in fullmap and fullmap[pad] != fullmap[k] and k not in out:
+                if pad in fullmap and fullmap[pad] != fullmap[k]:
+                    out.append(k)
+                    continue
+                # Prefix ambiguity (D00 T01 S54 review R2-F1): a short
+                # sharing its prefix with a distinct canned full would
+                # read ambiguous under real git, so the mock must not
+                # resolve it silently. Full-full pairs with no short
+                # key stay unflagged: exact lookups never reach them.
+                _target = fullmap[k]
+                if any(_f != _target and _f.startswith(k) for _f in _fulls):
                     out.append(k)
             return sorted(out)
 
@@ -17046,6 +17063,12 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
         check(
             "fixture uniqueness spots short-vs-full shadowing",
             _shadowed_keys(_syn_full),
+            ["abc1234"],
+        )
+        _syn_amb = {"abc1234": "abc1234" + "0" * 33, "abc1234f" + "0" * 32: "abc1234f" + "0" * 32}
+        check(
+            "fixture uniqueness spots prefix-ambiguous shorts",
+            _shadowed_keys(_syn_amb),
             ["abc1234"],
         )
         # --- resolution legs with no shared-fixture row (D00 T01 §32) ---
