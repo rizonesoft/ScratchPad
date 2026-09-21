@@ -19911,6 +19911,56 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
                 check("real canonical identity fails closed on sha256", _sclosed, None)
             finally:
                 _stmp.cleanup()
+            # CLI-mode lane proof (D00 T01 S54 item 5, review R2): the
+            # required/optional behavior proves through real child CLI
+            # runs with git hidden from PATH, above the gate unit and
+            # the wiring pins. The guard env stops the children
+            # spawning grandchildren; each child self-verifies git
+            # absence by printing SKIP. Runs only where the outer
+            # suite sees git to hide.
+            if os.environ.get("TODO_GRAPH_NO_CLI_PROOF") != "1" and (shutil.which("git") or ""):
+                import subprocess as _sproc
+
+                _gitdir = os.path.dirname(shutil.which("git") or "")
+                _child_path = os.pathsep.join(
+                    p for p in os.environ.get("PATH", "").split(os.pathsep)
+                    if p and p != _gitdir and "Git" not in p
+                )
+                _child_env = dict(os.environ, PATH=_child_path, TODO_GRAPH_NO_CLI_PROOF="1")
+                _fatal = _sproc.run(
+                    [sys.executable, "scripts/todo-graph.py", "self-test", "--require-git"],
+                    cwd=str(REPO),
+                    env=_child_env,
+                    capture_output=True,
+                    timeout=600,
+                )
+                _skip = _sproc.run(
+                    [sys.executable, "scripts/todo-graph.py", "self-test"],
+                    cwd=str(REPO),
+                    env=_child_env,
+                    capture_output=True,
+                    timeout=600,
+                )
+                _fatal_out = _fatal.stdout.decode("utf-8", "replace") + _fatal.stderr.decode("utf-8", "replace")
+                _skip_out = _skip.stdout.decode("utf-8", "replace") + _skip.stderr.decode("utf-8", "replace")
+                check(
+                    "required lane CLI fails without git",
+                    (
+                        _fatal.returncode != 0
+                        and "required lane provides git" in _fatal_out
+                        and "SKIP real-git" in _fatal_out
+                    ),
+                    True,
+                )
+                check(
+                    "optional lane CLI skips honestly without git",
+                    (
+                        _skip.returncode == 0
+                        and "SKIP real-git" in _skip_out
+                        and "0 failed" in _skip_out
+                    ),
+                    True,
+                )
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.
