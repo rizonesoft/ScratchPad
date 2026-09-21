@@ -239,6 +239,51 @@ def check_panel_output(text: str) -> tuple[bool, str]:
     return True, "four lenses, one verdict each"
 
 
+CHECKER_VERSION = "review_prompt/1"
+
+
+def _producer_binding(argv: list[str]) -> tuple[str, str]:
+    """Model and effort taken from a producer argv, or empty when absent."""
+    model = ""
+    effort = ""
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-m", "--model") and i + 1 < len(argv):
+            model = argv[i + 1]
+            i += 2
+            continue
+        if arg == "--effort" and i + 1 < len(argv):
+            effort = argv[i + 1]
+            i += 2
+            continue
+        if arg.startswith("--model="):
+            model = arg.split("=", 1)[1]
+        elif arg.startswith("-c") and "model_reasoning_effort=" in arg:
+            effort = arg.split("model_reasoning_effort=", 1)[1].strip("\"'")
+        elif arg == "-c" and i + 1 < len(argv) and "model_reasoning_effort=" in argv[i + 1]:
+            effort = argv[i + 1].split("model_reasoning_effort=", 1)[1].strip("\"'")
+            i += 2
+            continue
+        i += 1
+    return model, effort
+
+
+def _dirty_state() -> str:
+    """Whether the checkout has uncommitted changes. Unknown if git cannot say."""
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    if out.returncode != 0:
+        return "unknown"
+    return "dirty" if out.stdout.strip() else "clean"
+
+
 def clone_token() -> str:
     """Eight hex chars from this checkout's path (D00 T01 §55 item 20).
 
@@ -889,12 +934,20 @@ if __name__ == "__main__":
                 lambda ct: next_run_id(
                     todo_path, run_section, family, date, *claim_texts, ct, clone=clone_token()
                 ),
-                lambda rid: {
+                lambda rid, _prompt=prompt_text, _producer=list(producer): {
                     "run": rid,
                     "kind": kind,
                     "digest": "sha256:" + digest,
                     "verdict": verdict,
                     "artifact": artifact,
+                    "prompt_sha256": hashlib.sha256(
+                        canonical_prompt_bytes(_prompt)
+                    ).hexdigest(),
+                    "model": _producer_binding(_producer)[0],
+                    "effort": _producer_binding(_producer)[1],
+                    "producer": _producer,
+                    "checker": CHECKER_VERSION,
+                    "dirty": _dirty_state(),
                 },
             )
         except (OSError, ValueError) as exc:

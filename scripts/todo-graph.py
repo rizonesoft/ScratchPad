@@ -22222,6 +22222,25 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
                 True,
             ),
         )
+        check(
+            "a review receipt binds prompt, producer, checker, and dirty state",
+            (
+                len(_rledger.get("prompt_sha256") or "") == 64,
+                _rledger.get("checker"),
+                isinstance(_rledger.get("producer"), list),
+                _rledger.get("dirty") in ("clean", "dirty", "unknown"),
+                _rledger.get("model"),
+                _rledger.get("effort"),
+            ),
+            (True, "review_prompt/1", True, True, "", ""),
+        )
+        check(
+            "producer argv yields model and effort",
+            rp._producer_binding(
+                ["codex", "exec", "-m", "gpt-5.6-terra", "-c", "model_reasoning_effort=high"]
+            ),
+            ("gpt-5.6-terra", "high"),
+        )
         _part_a = (
             "Provenance: candidate aaa1111000000000000000000000000000000000; "
             "command true; exit 0; tool fixture 1; digest " + ("ab" * 32) + "; "
