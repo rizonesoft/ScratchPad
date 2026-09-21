@@ -5088,12 +5088,20 @@ def cmd_query(args) -> int:
                             # mention), and the fix must touch the proof
                             # file (D00 T01 §31 item 5). Stated boundary
                             # (review R5, narrowed by §22, extended by
-                            # §31): bytes prove attribution plus a named,
-                            # defined, fix-touched proof pointer, not
-                            # execution: the semantic proof that the
-                            # test exercises the finding's acceptance
-                            # condition, and that it ran, is the target's
-                            # own review and stamp. A sha whose tree lacks
+                            # §31, execution bound by §55 item 5): bytes
+                            # prove attribution plus a named, defined,
+                            # fix-touched proof pointer. Recorded
+                            # execution is a separate leg. A provenance
+                            # line on the target's own findings file,
+                            # whose path is the proof file or whose
+                            # command names the test, clears only on
+                            # exit 0, a 64-hex digest, and the exact
+                            # test name (`proof:unattested` otherwise).
+                            # Zero such lines skip, the same way a
+                            # candidate-less record skips ancestry.
+                            # The semantic proof that the test exercises
+                            # the finding's acceptance condition stays
+                            # the target's own review and stamp. A sha whose tree lacks
                             # the ID, that never touched the file, that git
                             # cannot prove, that predates the review, that
                             # postdates its attestation, or whose proof
@@ -5408,6 +5416,70 @@ def cmd_query(args) -> int:
                                         else "proof:loop"
                                     )
                                     break
+                                # Execution binding (D00 T01 S55 item 5):
+                                # a provenance line whose path is the
+                                # proof file, or whose command names the
+                                # test, is an execution record. Rule-23
+                                # placeholders (`command true` against
+                                # the findings path) are not. No
+                                # execution record skips, the same way a
+                                # candidate-less record skips ancestry.
+                                # A record clears only when one line
+                                # exits 0, carries a sha256 digest, and
+                                # names this exact test, so a skip, a
+                                # red run, a pre-existing test, or a
+                                # cosmetic touch cannot clear.
+                                _execs = []
+                                _exec_src = ""
+                                _efm = FINDINGS_RE.search(tgt.review_body or "")
+                                if _efm:
+                                    try:
+                                        _exec_src = (
+                                            TODO_DIR.parent / _efm.group(1)
+                                        ).read_text(encoding="utf-8")
+                                    except OSError:
+                                        _exec_src = ""
+                                _exec_src, _ = strip_fenced_code(_exec_src)
+                                for _pln in _exec_src.splitlines():
+                                    _ep = PROVENANCE_RE.match(_pln)
+                                    if _ep is None:
+                                        continue
+                                    _ecmd = _ep.group(2)
+                                    _epath = _ep.group(6)
+                                    if _epath == ppath or (
+                                        pname
+                                        and re.search(
+                                            r"(?<![\w.])"
+                                            + re.escape(pname)
+                                            + r"(?![\w.])",
+                                            _ecmd,
+                                        )
+                                    ):
+                                        _execs.append(_ep)
+                                if _execs:
+                                    def _attests(_ep, _pname=pname):
+                                        if _ep.group(3) != "0":
+                                            return False
+                                        if not re.fullmatch(
+                                            r"[0-9a-fA-F]{64}", _ep.group(5)
+                                        ):
+                                            return False
+                                        if not _pname:
+                                            return True
+                                        return (
+                                            re.search(
+                                                r"(?<![\w.])"
+                                                + re.escape(_pname)
+                                                + r"(?![\w.])",
+                                                _ep.group(2),
+                                            )
+                                            is not None
+                                        )
+
+                                    if not any(_attests(_ep) for _ep in _execs):
+                                        provable = False
+                                        fail_code = "proof:unattested"
+                                        break
                                 cands = []
                                 for pln in text.splitlines():
                                     pcm = PROVENANCE_RE.match(pln)
@@ -10683,7 +10755,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12359,6 +12431,54 @@ proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 140. Attested execution clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureexecok D90-T07-S4-PR100 fix ab00001
+
+proof D90-T07-S4-PR100 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §140 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 141. Cosmetic command stays unattested
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureexecmiss D90-T07-S4-PR101 fix ab00002
+
+proof D90-T07-S4-PR101 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §141 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-miss.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 142. Red execution stays unattested
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureexecred D90-T07-S4-PR102 fix ab00003
+
+proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §142 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-red.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12525,6 +12645,10 @@ proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR97] [critical] In-span hunk clears -> filed §137\n"
             "- [D90-T07-S4-PR98] [critical] Out-of-span hunk stays -> filed §138\n"
             "- [D90-T07-S4-PR99] [critical] Out-of-span range stays -> filed §139\n"
+            # D00 T01 §55 item 5: execution-binding pins.
+            "- [D90-T07-S4-PR100] [critical] Attested execution clears -> filed §140\n"
+            "- [D90-T07-S4-PR101] [critical] Cosmetic command stays -> filed §141\n"
+            "- [D90-T07-S4-PR102] [critical] Red execution stays -> filed §142\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -13071,6 +13195,38 @@ proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
             _shaped = [r for r in _mruns if RUN_ID_SHAPE_RE.match(r)]
             if _shaped:
                 _file_runs[_fname] = _shaped[-1]
+        _exec_digest = "0123456789abcdef" * 4
+        _exec_candidate = "aaa1111000000000000000000000000000000000"
+        (rev_dir / "90-exec-ok.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            f"Provenance: candidate {_exec_candidate}; command dotnet test --filter FullyQualifiedName~test_clearance; "
+            f"exit 0; tool fixture 1; digest {_exec_digest}; path tests/fix-proof.py; "
+            "run 20260921-D90-T07-S140-gpt\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-exec-miss.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            f"Provenance: candidate {_exec_candidate}; command dotnet test --filter FullyQualifiedName~test_other; "
+            f"exit 0; tool fixture 1; digest {_exec_digest}; path tests/fix-proof.py; "
+            "run 20260921-D90-T07-S141-gpt\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-exec-red.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            f"Provenance: candidate {_exec_candidate}; command dotnet test --filter FullyQualifiedName~test_clearance; "
+            f"exit 1; tool fixture 1; digest {_exec_digest}; path tests/fix-proof.py; "
+            "run 20260921-D90-T07-S142-gpt\n",
+            encoding="utf-8",
+        )
         for _pf in sorted(rev_dir.glob("90-*.md")):
             if _pf.name == "90-health-old.md":
                 continue
@@ -13411,6 +13567,28 @@ proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
         canned_commit_hunks[("aa00001", marker_todo.as_posix())] = [(_span137[0], _span137[0] + 2)]
         canned_commit_hunks[("aa00002", marker_todo.as_posix())] = [(1, 2)]
         canned_range_hunks[("aa00003", "aa00004", marker_todo.as_posix())] = [(1, 2)]
+        # D00 T01 §55 item 5: execution-binding pins. Full passing
+        # profiles otherwise, so only the execution leg decides.
+        # ab00001 attests test_clearance at exit 0. ab00002 names a
+        # different test. ab00003 names it and exits 1.
+        for _esha, _espan in (
+            ("ab00001", 140),
+            ("ab00002", 141),
+            ("ab00003", 142),
+        ):
+            canned_git[(_esha, marker_todo.as_posix())] = _mtxt
+            canned_touches[(_esha, marker_todo.as_posix())] = True
+            canned_git[(_esha, "tests/fix-proof.py")] = _proof_ok
+            canned_touches[(_esha, "tests/fix-proof.py")] = True
+            canned_ts[_esha] = _tss(d5, "12:00:00")
+            canned_full[_esha] = _esha + "0" * 33
+            canned_merges[_esha] = False
+            canned_ancestors[("aaa1111000000000000000000000000000000000", _esha)] = True
+            _espan_lines = section_span_lines(_mtxt, _espan)
+            assert _espan_lines is not None
+            canned_commit_hunks[(_esha, marker_todo.as_posix())] = [
+                (_espan_lines[0], _espan_lines[0] + 2)
+            ]
         # §31 item 5: the clearing fixes touched their proof files.
         canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
@@ -16992,6 +17170,21 @@ proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "clearance clears an attested execution",
+            any("D90-T07-S4-PR100" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance fails a command that names another test",
+            any("D90-T07-S4-PR101" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a red execution",
+            any("D90-T07-S4-PR102" in ln for ln in health_lines),
+            True,
+        )
+        check(
             "hunk parser reads new-side ranges",
             _parse_unified_hunks("@@ -1,3 +10,4 @@\n@@ -20 +30 @@\n"),
             [(10, 14), (30, 31)],
@@ -17550,6 +17743,8 @@ proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR96": {"ancestry:range-base"},
             "D90-T07-S4-PR98": {"touch:hunk-span"},
             "D90-T07-S4-PR99": {"touch:hunk-span"},
+            "D90-T07-S4-PR101": {"proof:unattested"},
+            "D90-T07-S4-PR102": {"proof:unattested"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
