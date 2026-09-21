@@ -1440,8 +1440,9 @@ function Format-TrendTable($Results, [hashtable]$Quarantine) {
 
 function Test-RedAcknowledged([string[]]$RedDays, [string[]]$AckDays) {
   # Unacked-RED check (D00 T02 §17 item 3): every RED day needs its
-  # ack file (docs/nightly-evidence/ack-YYYY-MM-DD.md). Pure set
-  # difference; the run collects RED days from result files.
+  # ack file (docs/nightly-acks/ack-YYYY-MM-DD.md, beside the evidence
+  # dir so retention verify never reads sign-offs as manifests). Pure
+  # set difference; the run collects RED days from result files.
   $un = @($RedDays | Where-Object { $AckDays -notcontains $_ } | Sort-Object -Unique)
   if ($un.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Unacked = $un } }
   return [pscustomobject]@{ Ok = $true; Unacked = @() }

@@ -694,8 +694,10 @@ $rawFx = Join-Path $dir 'raw.txt'
 $rawGot = @(Read-RawLines $rawFx)
 Assert ($rawGot.Count -eq 2) 'rawline-count' ("got $($rawGot.Count)")
 Assert ((@($rawGot[0].PSObject.Properties.Name) -join ',') -eq 'Length') 'rawline-stripped' (@($rawGot[0].PSObject.Properties.Name) -join ',')
-$rawJson = ConvertTo-Json $rawGot[0] -Depth 8 -Compress
-Assert (($rawJson -notlike '*ReadCount*') -and ($rawJson -notlike '*PSProvider*') -and ($rawJson.Length -lt 500)) 'rawline-json-small' ("len $($rawJson.Length)")
+if ((@($rawGot[0].PSObject.Properties.Name) -join ',') -eq 'Length') {
+  $rawJson = ConvertTo-Json $rawGot[0] -Depth 8 -Compress
+  Assert (($rawJson -notlike '*ReadCount*') -and ($rawJson -notlike '*PSProvider*') -and ($rawJson.Length -lt 500)) 'rawline-json-small' ("len $($rawJson.Length)")
+} else { Assert $false 'rawline-json-small' 'skipped: strip regressed (serializing would hang, not fail)' }
 Assert ((@(Read-RawLines (Join-Path $dir 'missing.txt')).Count -eq 0)) 'rawline-missing-empty'
 
 Remove-Item $dir -Recurse -Force

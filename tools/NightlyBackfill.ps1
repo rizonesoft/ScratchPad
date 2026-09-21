@@ -20,7 +20,6 @@ if ($reportFile.Count -eq 0) { Write-Output "backfill: no morning report in $Run
 # lines into ConvertTo-Json expand the provider graph to the depth
 # limit and never return). Never feed file lines to JSON raw.
 $rep = @(Read-RawLines $reportFile[0].FullName)
-$repText = $rep -join "`n"
 
 function Find-ReportLine($lines, $prefix) {
   $hit = @($lines | Where-Object { $_ -like "$prefix*" } | Select-Object -First 1)
@@ -82,6 +81,33 @@ function Read-LegRow($lines, $name) {
 $rowA = Read-LegRow $rep 'Run A (default)'
 $rowB = Read-LegRow $rep 'Run B (primary)'
 $rowI = Read-LegRow $rep 'Interactive (collection)'
+function Read-TranscriptCounts($runDir, $leg) {
+  # Assembly sums beat the report row (D00-T02-S9 S4/FL2): the §9
+  # generator wrote UI-only rows (rerun Run A reads 163/1/3; the
+  # archive sums 545/1/3 and the §9 stamp quotes 545). Returns $null
+  # when no leg log parses to an assembly row.
+  $log = @(Get-ChildItem $runDir -Filter "*-$leg.log" -ErrorAction SilentlyContinue | Select-Object -First 1)
+  if ($log.Count -eq 0) { return $null }
+  $rows = @()
+  try { $rows = @(Get-TranscriptRows $log[0].FullName) } catch { return $null }
+  if ($rows.Count -eq 0) { return $null }
+  $p = 0; $f = 0; $s = 0
+  foreach ($r in $rows) { try { $p += [int]$r.Passed; $f += [int]$r.Failed; $s += [int]$r.Skipped } catch { } }
+  return [pscustomobject]@{ passed = $p; failed = $f; skipped = $s; assemblies = $rows.Count }
+}
+$countNotes = @()
+foreach ($leg in @('default', 'primary')) {
+  $tc = Read-TranscriptCounts $RunDir $leg
+  if ($null -eq $tc) { continue }
+  $nm = if ($leg -eq 'default') { 'run-a' } else { 'run-b' }
+  $row = if ($leg -eq 'default') { $rowA } else { $rowB }
+  $gate = if ($null -ne $row) { $row.gate } else { $null }
+  if (($null -ne $row) -and ($row.passed -eq $tc.passed) -and ($row.failed -eq $tc.failed) -and ($row.skipped -eq $tc.skipped)) { continue }
+  if ($null -ne $row) { $countNotes += "$nm counts from transcript ($($tc.passed)/$($tc.failed)/$($tc.skipped) across $($tc.assemblies) assemblies; row reads $($row.passed)/$($row.failed)/$($row.skipped))" }
+  else { $countNotes += "$nm counts from transcript ($($tc.passed)/$($tc.failed)/$($tc.skipped) across $($tc.assemblies) assemblies; no row)" }
+  $newRow = [pscustomobject]@{ passed = $tc.passed; failed = $tc.failed; skipped = $tc.skipped; gate = $gate }
+  if ($leg -eq 'default') { $rowA = $newRow } else { $rowB = $newRow }
+}
 function Read-TestSeconds($runDir, $leg) {
   $log = @(Get-ChildItem $runDir -Filter "*-$leg.log" -ErrorAction SilentlyContinue | Select-Object -First 1)
   if ($log.Count -eq 0) { return $null }
@@ -118,8 +144,24 @@ function Test-LegTranscript($runDir, $leg) {
 $legA = New-BackLeg $rowA (Read-TestSeconds $RunDir 'default') (Test-LegTranscript $RunDir 'default')
 $legB = New-BackLeg $rowB (Read-TestSeconds $RunDir 'primary') (Test-LegTranscript $RunDir 'primary')
 $legI = New-BackLeg $rowI (Read-TranscriptWall $RunDir 'full') (Test-LegTranscript $RunDir 'full')
-$legI | Add-Member -NotePropertyName 'enforcementRed' -NotePropertyValue $false -Force
-if ($null -ne $rowA) { $legA | Add-Member -NotePropertyName 'note' -NotePropertyValue 'run-a counts cover UI only (shared trx name pre-§15)' -Force }
+# Enforcement replays the live rule on the retained trx (the stamps
+# live in the messages, so no ledger is needed): unclassifiable or
+# leaking reads red exactly as the live leg would.
+$enfRed = $false
+$enfNote = ''
+if ($legI.ran) {
+  $itrx = @(Get-ChildItem $RunDir -Filter 'interactive.trx' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)
+  if ($itrx.Count -eq 0) { $enfRed = $true; $enfNote = 'enforcement unproven (ran, no interactive trx)' }
+  else {
+    try {
+      $nc = Get-NonQuarantineSkips $itrx[0].FullName
+      $enfRed = ((-not [bool]$nc.Ok) -or (@($nc.Names).Count -gt 0))
+      if (-not [bool]$nc.Ok) { $enfNote = 'enforcement unproven (interactive trx unclassifiable)' }
+    } catch { $enfRed = $true; $enfNote = 'enforcement unproven (interactive trx unreadable)' }
+  }
+}
+$legI | Add-Member -NotePropertyName 'enforcementRed' -NotePropertyValue ([bool]$enfRed) -Force
+if ($enfNote -ne '') { $legI | Add-Member -NotePropertyName 'note' -NotePropertyValue $enfNote -Force }
 
 # Soak: per-iteration trx summaries (mechanical, no prose).
 $soakFailed = @()
@@ -156,14 +198,15 @@ function Get-TrxIncidentInputs($trxPath, $where) {
 }
 $incidents = @($rep | Where-Object { $_ -match '^- INC-[0-9a-f]{8} `' })
 $incidentsDerived = $false
+$inputs = @()
 if ($incidents.Count -eq 0) {
-  $inputs = @()
   foreach ($t in @(Get-ChildItem $RunDir -Filter 'run-a*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Run A' }
   foreach ($t in @(Get-ChildItem $RunDir -Filter 'run-b*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Run B' }
   foreach ($t in @(Get-ChildItem $RunDir -Filter 'interactive.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Interactive' }
   foreach ($t in @(Get-ChildItem $RunDir -Filter '*-soak-*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Soak' }
   if ($inputs.Count -gt 0) { $incidents = @(Format-Incidents $inputs); $incidentsDerived = $true }
 }
+$soakFailures = @($inputs | Where-Object { $_.Where -eq 'Soak' })
 
 # Verdict: red on any failure evidence; red without execution
 # evidence (no trx, no counts) since a silent run proves nothing.
@@ -175,6 +218,11 @@ elseif ((($null -ne $rowA) -and ($rowA.failed -gt 0)) -or (($null -ne $rowB) -an
 elseif ((($null -ne $rowA) -and ($null -ne $rowA.gate) -and ($rowA.gate -ne 0)) -or (($null -ne $rowB) -and ($null -ne $rowB.gate) -and ($rowB.gate -ne 0))) { $verdict = 'red' }
 elseif ($soakVerdict -eq 'red') { $verdict = 'red' }
 
+# Scheduler-enabled reads true only on scheduler-parented launches (a
+# manual run fires with the task disabled, so enabled is unknowable
+# there, never true).
+$schedEnabled = $null
+if (($launch -eq 'timer') -or ($launch -eq 'demand')) { $schedEnabled = $true }
 $envBlock = Get-EnvironmentBlock ''
 $envBlock | Add-Member -NotePropertyName 'basis' -NotePropertyValue 'backfill: live capture on the same box (topology/DPI/session corroborated by the §13 09-20 manifest); settings are current, not historical' -Force
 $timings = @{}
@@ -187,11 +235,11 @@ $result = [pscustomobject]@{
   simulated = $false; trigger = $trigger; launch = $launch; commit = $commit
   buildError = ''
   legs = [pscustomobject]@{ 'run-a' = $legA; 'run-b' = $legB; interactive = $legI }
-  soak = [pscustomobject]@{ ran = $soakRan; verdict = $soakVerdict; failed = @($soakFailed); killed = @(); cut = @(); failures = @() }
+  soak = [pscustomobject]@{ ran = $soakRan; verdict = $soakVerdict; failed = @($soakFailed); killed = @(); cut = @(); failures = @($soakFailures) }
   quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @(); note = 'predates result capture; windows unrecoverable' }
   incidents = @($incidents)
-  scheduler = [pscustomobject]@{ voted = $false; faults = @(); enabled = $true; lastRun = ''; lastResult = '' }
-  tree = [pscustomobject]@{ start = 'unknown (predates §16)'; end = 'unknown (predates §16)'; stable = $true }
+  scheduler = [pscustomobject]@{ voted = $false; faults = @(); enabled = $schedEnabled; lastRun = ''; lastResult = '' }
+  tree = [pscustomobject]@{ start = 'unknown (predates §16)'; end = 'unknown (predates §16)'; stable = $null }
   recovered = 'none'; omissionOk = $true
   timings = $timings; reserve = $null
   env = $envBlock
@@ -207,6 +255,7 @@ if ($legacyGates.Count -gt 0) { $result.note += "; legacy gate prose on $($legac
 # note (a backfill can neither recover nor rule out an older death).
 $result.note += '; recovery unknowable (predates the run journal)'
 if ($incidentsDerived) { $result.note += '; incidents derived from trx failures (no INC lines pre-§15)' }
+foreach ($cn in $countNotes) { $result.note += "; $cn" }
 if ($OutFile -eq '') { $OutFile = Join-Path $RunDir 'result.json' }
 Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $OutFile
 $chk = Test-ResultFile $OutFile
