@@ -14590,7 +14590,7 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check(
             "a digest that misses the candidate blob fires",
             any(
-                "§144 " in ln and "provenance digest" in ln and "FATAL" in ln
+                "§144 " in ln and "leg=digest " in ln and "FATAL" in ln
                 for ln in marker_out
             ),
             True,
@@ -14598,7 +14598,7 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check(
             "an unreadable candidate blob warns",
             any(
-                "§145 " in ln and "provenance digest" in ln and "WARN" in ln
+                "§145 " in ln and "leg=digest-unprovable " in ln and "WARN" in ln
                 for ln in marker_out
             ),
             True,
@@ -14607,6 +14607,17 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "a dangling commit candidate fires",
             any(
                 "§146 " in ln and "dangling commit" in ln and "FATAL" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "a provenance failure names leg, run, candidate, and path",
+            any(
+                "leg=dangling" in ln
+                and "run=20260920-D90-T07-S146-gpt" in ln
+                and "candidate=dang1111000000000000000000000000000000000" in ln
+                and "path=-" in ln
                 for ln in marker_out
             ),
             True,
@@ -15448,7 +15459,7 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check(
             "missing provenance path fires",
             any(
-                "TODO-07-marker.md" in ln and "§30 " in ln and "90-health-gone.md names no regular file in the" in ln
+                "TODO-07-marker.md" in ln and "§30 " in ln and "90-health-gone.md" in ln and "names no regular file in the" in ln
                 for ln in marker_out
             ),
             True,

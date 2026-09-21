@@ -15,6 +15,21 @@ import re
 import sys
 
 
+def provenance_diag(leg: str, run: str, candidate: str, path: str, detail: str) -> str:
+    """One shape for every provenance failure (D00 T01 §55 item 18).
+
+    `leg`, `run`, `candidate`, and the normalized `path` are always
+    present. A field that the line never parsed is `-`. Backslashes
+    fold to forward slashes so the path reads the same on both
+    platforms. The detail stays after the colon.
+    """
+    shown = "-" if not path or path == "-" else path.replace("\\", "/")
+    return (
+        f"provenance leg={leg} run={run or '-'} candidate={candidate or '-'} "
+        f"path={shown}: {detail}"
+    )
+
+
 def validate(graph, _args) -> int:
     todos = graph.load_todos()
     fatal: list[str] = []
@@ -1520,7 +1535,8 @@ def validate(graph, _args) -> int:
             if not prov:
                 flag(
                     "provenance-malformed",
-                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} carries no Provenance line",
+                    f"{t.path}:{s.line}: §{num} "
+                    + provenance_diag("missing", "-", "-", "-", "carries no Provenance line"),
                 )
                 continue
             for ln in prov:
@@ -1528,7 +1544,10 @@ def validate(graph, _args) -> int:
                 if pm is None or not graph.RUN_ID_SHAPE_RE.match(pm.group(7)):
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} malformed Provenance line: {ln.strip()[:80]}",
+                        f"{t.path}:{s.line}: §{num} "
+                        + provenance_diag(
+                            "shape", "-", "-", "-", f"malformed Provenance line: {ln.strip()[:80]}"
+                        ),
                     )
                     continue
                 # The candidate leg degrades visibly (D00 T01 §33 item
@@ -1543,13 +1562,26 @@ def validate(graph, _args) -> int:
                 if _res is False:
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} resolves to nothing",
+                        f"{t.path}:{s.line}: §{num} "
+                        + provenance_diag(
+                            "resolve",
+                            pm.group(7),
+                            _cand,
+                            "-",
+                            f"provenance candidate {_cand} resolves to nothing",
+                        ),
                     )
                 elif _res is None:
                     flag(
                         "provenance-candidate-unprovable",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
-                        "is unverifiable here (git unprovable; degraded, not verified)",
+                        f"{t.path}:{s.line}: §{num} "
+                        + provenance_diag(
+                            "unprovable",
+                            pm.group(7),
+                            _cand,
+                            "-",
+                            "provenance candidate is unverifiable here (git unprovable; degraded, not verified)",
+                        ),
                     )
                 # New records resolve at mint time (D00 T01 §33 item
                 # 3): the run-date prefix scopes the ratchet, so every
@@ -1558,8 +1590,14 @@ def validate(graph, _args) -> int:
                 if pm.group(7)[:8] > "20260919" and re.fullmatch(r"[0-9a-fA-F]{40}", _cand) is None:
                     flag(
                         "provenance-short-candidate",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
-                        "is short in a post-2026-09-19 run (resolve at mint time; record the full 40-hex ID)",
+                        f"{t.path}:{s.line}: §{num} "
+                        + provenance_diag(
+                            "short",
+                            pm.group(7),
+                            _cand,
+                            "-",
+                            "provenance candidate is short in a post-2026-09-19 run (resolve at mint time; record the full 40-hex ID)",
+                        ),
                     )
                 # A recorded full ID must BE a commit, not merely peel
                 # to one (round-1 adversarial): `rev-parse <tag>^{commit}`
@@ -1573,8 +1611,14 @@ def validate(graph, _args) -> int:
                     if _peeled is not None and _peeled.lower() != _cand.lower():
                         flag(
                             "provenance-malformed",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
-                            f"is not a commit object (peels to {_peeled}; record the commit)",
+                            f"{t.path}:{s.line}: §{num} "
+                            + provenance_diag(
+                                "peel",
+                                pm.group(7),
+                                _cand,
+                                "-",
+                                f"provenance candidate is not a commit object (peels to {_peeled}; record the commit)",
+                            ),
                         )
                 # Dangling commits (D00 T01 §55 item 8): the peel
                 # accepts any commit object, including one no ref
@@ -1585,14 +1629,26 @@ def validate(graph, _args) -> int:
                     if _reach is False:
                         flag(
                             "provenance-malformed",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
-                            "is a dangling commit (no ref contains it)",
+                            f"{t.path}:{s.line}: §{num} "
+                            + provenance_diag(
+                                "dangling",
+                                pm.group(7),
+                                _cand,
+                                "-",
+                                "provenance candidate is a dangling commit (no ref contains it)",
+                            ),
                         )
                     elif _reach is None:
                         flag(
                             "provenance-candidate-unprovable",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
-                            "reachability is unverifiable here (git unprovable; degraded, not verified)",
+                            f"{t.path}:{s.line}: §{num} "
+                            + provenance_diag(
+                                "reach",
+                                pm.group(7),
+                                _cand,
+                                "-",
+                                "reachability is unverifiable here (git unprovable; degraded, not verified)",
+                            ),
                         )
                 _pp = pm.group(6)
                 _new_scope = pm.group(7)[:8] > "20260919"
@@ -1605,8 +1661,14 @@ def validate(graph, _args) -> int:
                 if "\0" in _pp or Path(_pp).is_absolute() or _pp.startswith("/"):
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
-                        "escapes the repo root or is not a well-formed relative path",
+                        f"{t.path}:{s.line}: §{num} "
+                        + provenance_diag(
+                            "absolute",
+                            pm.group(7),
+                            _cand,
+                            _pp,
+                            "escapes the repo root or is not a well-formed relative path",
+                        ),
                     )
                 elif _new_scope:
                     # New records bind the candidate tree itself
@@ -1629,16 +1691,28 @@ def validate(graph, _args) -> int:
                     if _issue is not None:
                         flag(
                             "provenance-malformed",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
-                            f"is not canonical ({_issue})",
+                            f"{t.path}:{s.line}: §{num} "
+                            + provenance_diag(
+                                "canonical",
+                                pm.group(7),
+                                _cand,
+                                _pp,
+                                f"is not canonical ({_issue})",
+                            ),
                         )
                     elif _res is True:
                         _mode = graph.git_tree_mode(_cand, _pp)
                         if _mode is None or not _mode.startswith("100"):
                             flag(
                                 "provenance-malformed",
-                                f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
-                                f"names no regular file in the {_cand} tree (new records pin the reviewed artifact)",
+                                f"{t.path}:{s.line}: §{num} "
+                                + provenance_diag(
+                                    "mode",
+                                    pm.group(7),
+                                    _cand,
+                                    _pp,
+                                    "names no regular file in the candidate tree (new records pin the reviewed artifact)",
+                                ),
                             )
                         elif pm.group(7)[:8] > graph.PROVENANCE_DIGEST_CUTOFF:
                             # Digest recompute (D00 T01 §55 item 7):
@@ -1651,14 +1725,26 @@ def validate(graph, _args) -> int:
                             if _got is None:
                                 flag(
                                     "provenance-digest-unprovable",
-                                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance digest for {_pp} "
-                                    "is unverifiable here (candidate blob unreadable; degraded, not verified)",
+                                    f"{t.path}:{s.line}: §{num} "
+                                    + provenance_diag(
+                                        "digest-unprovable",
+                                        pm.group(7),
+                                        _cand,
+                                        _pp,
+                                        "digest is unverifiable here (candidate blob unreadable; degraded, not verified)",
+                                    ),
                                 )
                             elif _got != _want:
                                 flag(
                                     "provenance-digest",
-                                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance digest for {_pp} "
-                                    f"is {_want}, candidate tree hashes {_got}",
+                                    f"{t.path}:{s.line}: §{num} "
+                                    + provenance_diag(
+                                        "digest",
+                                        pm.group(7),
+                                        _cand,
+                                        _pp,
+                                        f"digest is {_want}, candidate tree hashes {_got}",
+                                    ),
                                 )
                 else:
                     # Pre-ratchet records keep resolve-plus-checkout:
@@ -1695,20 +1781,38 @@ def validate(graph, _args) -> int:
                     if not _contained:
                         flag(
                             "provenance-malformed",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
-                            "escapes the repo root or is not a well-formed relative path",
+                            f"{t.path}:{s.line}: §{num} "
+                            + provenance_diag(
+                                "checkout",
+                                pm.group(7),
+                                _cand,
+                                _pp,
+                                "escapes the repo root or is not a well-formed relative path",
+                            ),
                         )
                     elif not _pfile.is_file():
                         flag(
                             "provenance-malformed",
-                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
-                            "names no file under the repo root",
+                            f"{t.path}:{s.line}: §{num} "
+                            + provenance_diag(
+                                "missing-file",
+                                pm.group(7),
+                                _cand,
+                                _pp,
+                                "names no file under the repo root",
+                            ),
                         )
                 if last_run is not None and graph.normalize_run_id(pm.group(7)) != last_run:
                     flag(
                         "provenance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance run {pm.group(7)} "
-                        f"equals no live marker run of §{num} (last marker carries {last_run}; superseded runs cite old evidence)",
+                        f"{t.path}:{s.line}: §{num} "
+                        + provenance_diag(
+                            "run",
+                            pm.group(7),
+                            _cand,
+                            _pp,
+                            f"provenance run equals no live marker run of §{num} (last marker carries {last_run}; superseded runs cite old evidence)",
+                        ),
                     )
 
     # 24. risk acceptances terminate escalations in a checkable shape
