@@ -3027,6 +3027,82 @@ def git_range_touch_ts(base: str, tip: str, repo_path: str) -> int | None:
     return max(int(ln) for ln in lines)
 
 
+def _parse_unified_hunks(diff_text: str) -> list[tuple[int, int]]:
+    """New-side [start, end) line ranges from unified-diff hunk headers.
+
+    The hunk-span leg (D00 T01 S55 item 4) reads these: a hunk
+    header's `+start[,count]` names the new-file lines the hunk
+    added or changed (count defaults to 1; a zero count is a pure
+    deletion with no new-side lines). Off-shape headers are not
+    hunks and never match.
+    """
+    out: list[tuple[int, int]] = []
+    for _m in re.finditer(r"(?m)^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", diff_text):
+        _start = int(_m.group(1))
+        _count = int(_m.group(2)) if _m.group(2) is not None else 1
+        out.append((_start, _start + _count))
+    return out
+
+
+def git_commit_hunk_lines(sha: str, repo_path: str) -> list[tuple[int, int]] | None:
+    """New-side hunk line ranges a commit changed in a path, or None when
+    unprovable. The single-shape hunk leg (D00 T01 S55 item 4):
+    zero-context diff headers, so the ranges name exactly the
+    touched lines. An empty list (a mode-only change, an untouched
+    path) satisfies no span; the self-test patches this name, never
+    a repo.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "show", "--pretty=format:", "--unified=0", sha, "--", repo_path],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return _parse_unified_hunks(out.stdout.decode("utf-8", "replace"))
+
+
+def git_range_hunk_lines(base: str, tip: str, repo_path: str) -> list[tuple[int, int]] | None:
+    """Union of new-side hunk line ranges over the non-merge first-parent
+    commits in base..tip touching a path, or None when unprovable. The
+    range-shape hunk leg (D00 T01 S55 item 4): per-commit patches, not
+    the endpoint diff, so an edit a later commit reverted still counts
+    its hunk. Same linear-loop flags as git_range_touches; the
+    self-test patches this name, never a repo.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "log",
+                "--no-merges",
+                "--first-parent",
+                "-p",
+                "--pretty=format:",
+                "--unified=0",
+                f"{base}..{tip}",
+                "--",
+                repo_path,
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return _parse_unified_hunks(out.stdout.decode("utf-8", "replace"))
+
+
 # The file a `Moved:` body points at: the first `path/to/file.md` token.
 MOVED_PATH_RE = re.compile(r"(?P<path>(?:[\w.-]+/)+[\w.-]+\.md)")
 
@@ -5220,6 +5296,27 @@ def cmd_query(args) -> int:
                                 elif not git_commit_touches(tip, tpath):
                                     provable = False
                                     fail_code = "touch:single"
+                                    break
+                                # Hunk-span binding (D00 T01 S55 item 4):
+                                # the qualifying touch must land inside
+                                # the resolved target section span at the
+                                # tip, so an unrelated edit in the same
+                                # TODO file cannot satisfy clearance
+                                # through file-level touch. Pure deletions
+                                # carry no new-side lines and satisfy
+                                # nothing (fail closed); target fixes
+                                # always add back-link plus proof lines.
+                                if fm.group(2) is not None:
+                                    _hunks = git_range_hunk_lines(base, tip, tpath)
+                                else:
+                                    _hunks = git_commit_hunk_lines(tip, tpath)
+                                if not _hunks or not any(
+                                    _hs < fixed_span[1] and fixed_span[0] < _he
+                                    for _hs, _he in _hunks
+                                    if _he > _hs
+                                ):
+                                    provable = False
+                                    fail_code = "touch:hunk-span"
                                     break
                                 fix_ts = git_commit_ts(tip)
                                 if not fix_postdates_review(fix_ts, rts, reviewer_day):
@@ -10513,7 +10610,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12141,6 +12238,54 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 137. In-span hunk target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturehunkin D90-T07-S4-PR97 fix aa00001
+
+proof D90-T07-S4-PR97 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §137 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 138. Out-of-span hunk target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturehunkout D90-T07-S4-PR98 fix aa00002
+
+proof D90-T07-S4-PR98 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §138 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 139. Out-of-span range target
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturehunkrange D90-T07-S4-PR99 fix aa00003..aa00004
+
+proof D90-T07-S4-PR99 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §139 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12303,6 +12448,10 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
             # D00 T01 §55 item 3: range-candidate join pins.
             "- [D90-T07-S4-PR95] [critical] Range base joins candidate clears -> filed §135\n"
             "- [D90-T07-S4-PR96] [critical] Range base predates candidate stays -> filed §136\n"
+            # D00 T01 §55 item 4: hunk-span pins.
+            "- [D90-T07-S4-PR97] [critical] In-span hunk clears -> filed §137\n"
+            "- [D90-T07-S4-PR98] [critical] Out-of-span hunk stays -> filed §138\n"
+            "- [D90-T07-S4-PR99] [critical] Out-of-span range stays -> filed §139\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -13159,6 +13308,36 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
         canned_range_touches[("b000001", "eee0002", marker_todo.as_posix())] = True
         canned_range_touches[("b000001", "eee0002", "tests/fix-proof.py")] = True
         canned_range_ts[("b000001", "eee0002", marker_todo.as_posix())] = _tss(d5, "12:00:00")
+        # D00 T01 §55 item 4: hunk-span pins. `aa00001` lands its hunk
+        # inside the §137 span (PR97 clears); `aa00002` lands its hunk
+        # at the file head, outside the §138 span (PR98 stays); the
+        # `aa00003..aa00004` range unions hunks at the file head
+        # (PR99 stays). Full passing profiles otherwise, so only the
+        # hunk leg decides.
+        canned_commit_hunks = {}
+        canned_range_hunks = {}
+        for _hsha in ("aa00001", "aa00002", "aa00004"):
+            canned_git[(_hsha, marker_todo.as_posix())] = _mtxt
+            canned_touches[(_hsha, marker_todo.as_posix())] = True
+            canned_git[(_hsha, "tests/fix-proof.py")] = _proof_ok
+            canned_touches[(_hsha, "tests/fix-proof.py")] = True
+            canned_ts[_hsha] = _tss(d5, "12:00:00")
+            canned_full[_hsha] = _hsha + "0" * 33
+            canned_merges[_hsha] = False
+            canned_ancestors[("aaa1111000000000000000000000000000000000", _hsha)] = True
+        canned_full["aa00003"] = "aa00003" + "0" * 33
+        canned_merges["aa00003"] = False
+        canned_ancestors[("aa00003", "aa00004")] = True
+        canned_ancestors[("aaa1111000000000000000000000000000000000", "aa00003")] = True
+        canned_fpchain[("aa00003", "aa00004")] = True
+        canned_range_touches[("aa00003", "aa00004", marker_todo.as_posix())] = True
+        canned_range_touches[("aa00003", "aa00004", "tests/fix-proof.py")] = True
+        canned_range_ts[("aa00003", "aa00004", marker_todo.as_posix())] = _tss(d5, "12:00:00")
+        _span137 = section_span_lines(_mtxt, 137)
+        assert _span137 is not None
+        canned_commit_hunks[("aa00001", marker_todo.as_posix())] = [(_span137[0], _span137[0] + 2)]
+        canned_commit_hunks[("aa00002", marker_todo.as_posix())] = [(1, 2)]
+        canned_range_hunks[("aa00003", "aa00004", marker_todo.as_posix())] = [(1, 2)]
         # §31 item 5: the clearing fixes touched their proof files.
         canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
@@ -13214,6 +13393,18 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
         # is its probe).
         for _rev in sorted(rev_dir.glob("90-*.md")):
             canned_tree_modes[("aaa1111000000000000000000000000000000000", f"docs/reviews/{_rev.name}")] = "100644"
+        # D00 T01 §55 item 4: hunk-span backfill. Every canned
+        # target touch that passed file-level keeps passing at hunk
+        # level (the whole-file sentinel intersects any span), so the
+        # new leg changes no existing pin and only PR97-99 isolate
+        # it. Proof-path touches never reach the leg (target spans
+        # only), so they stay uncanned.
+        for (_bsha, _bpath), _bt in canned_touches.items():
+            if _bt is True and _bpath == marker_todo.as_posix():
+                canned_commit_hunks.setdefault((_bsha, _bpath), [(1, 10**9)])
+        for (_bb, _btip, _bpath), _bt in canned_range_touches.items():
+            if _bt is True and _bpath == marker_todo.as_posix():
+                canned_range_hunks.setdefault((_bb, _btip, _bpath), [(1, 10**9)])
         # Dual-form aliasing (D00 T01 §54 item 1): capture
         # canonicalizes fix tokens to full IDs before any leg, so
         # every canned map serves the padded alias beside its
@@ -13227,7 +13418,7 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
         # setdefault. Runs here, after every canned_full entry.
         for _s in list(canned_full.values()):
             canned_full.setdefault(_s, _s)
-        for _dm in (canned_git, canned_touches, canned_ts, canned_ancestors, canned_range_touches, canned_resolves, canned_merges, canned_range_ts, canned_fpchain, canned_tree_modes):
+        for _dm in (canned_git, canned_touches, canned_ts, canned_ancestors, canned_range_touches, canned_resolves, canned_merges, canned_range_ts, canned_fpchain, canned_tree_modes, canned_commit_hunks, canned_range_hunks):
             for _dk, _dv in list(_dm.items()):
                 _nk = tuple(_pad40(x) if isinstance(x, str) else x for x in _dk) if isinstance(_dk, tuple) else _pad40(_dk)
                 if _nk != _dk:
@@ -13246,6 +13437,8 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
         _real_git_rangets = git_range_touch_ts
         _real_git_fpchain = git_on_first_parent_chain
         _real_git_treemode = git_tree_mode
+        _real_git_comhunks = git_commit_hunk_lines
+        _real_git_rangehunks = git_range_hunk_lines
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
@@ -13259,6 +13452,8 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
         globals()["git_range_touch_ts"] = lambda a, b, p: canned_range_ts.get((a, b, p))
         globals()["git_on_first_parent_chain"] = lambda a, b: canned_fpchain.get((a, b))
         globals()["git_tree_mode"] = lambda ref, p: canned_tree_modes.get((ref, p))
+        globals()["git_commit_hunk_lines"] = lambda sha, p: canned_commit_hunks.get((sha, p))
+        globals()["git_range_hunk_lines"] = lambda a, b, p: canned_range_hunks.get((a, b, p))
         _live_marker = marker_todo.read_text(encoding="utf-8")
         canned_git[("HEAD", marker_todo.as_posix())] = (
             _live_marker.replace(
@@ -16709,6 +16904,31 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "clearance clears a hunk inside its section span",
+            any("D90-T07-S4-PR97" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance fails a hunk outside its section span",
+            any("D90-T07-S4-PR98" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails range hunks outside their span",
+            any("D90-T07-S4-PR99" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "hunk parser reads new-side ranges",
+            _parse_unified_hunks("@@ -1,3 +10,4 @@\n@@ -20 +30 @@\n"),
+            [(10, 14), (30, 31)],
+        )
+        check(
+            "hunk parser reads a pure deletion as empty",
+            _parse_unified_hunks("@@ -5,2 +4,0 @@\n"),
+            [(4, 4)],
+        )
+        check(
             "canonical identity resolves a short to repo algo type full",
             canonical_commit_id("eee0001"),
             (str(root), "sha1", "commit", "eee0001" + "0" * 33),
@@ -17255,6 +17475,8 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR92": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR93": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR96": {"ancestry:range-base"},
+            "D90-T07-S4-PR98": {"touch:hunk-span"},
+            "D90-T07-S4-PR99": {"touch:hunk-span"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
@@ -19812,6 +20034,8 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
         globals()["git_range_touch_ts"] = _real_git_rangets
         globals()["git_on_first_parent_chain"] = _real_git_fpchain
         globals()["git_tree_mode"] = _real_git_treemode
+        globals()["git_commit_hunk_lines"] = _real_git_comhunks
+        globals()["git_range_hunk_lines"] = _real_git_rangehunks
         # Real-git helper fixtures (D00 T01 §30 item 3): the six git
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
@@ -20000,6 +20224,11 @@ proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
                     check("real git proves first-parent membership", git_on_first_parent_chain(_gc1, _gm1), True)
                     check("real git refuses a side-branch base", git_on_first_parent_chain(_gc3, _gm1), False)
                     check("real git chain probe on a bad ref is unprovable", git_on_first_parent_chain("deadbee000000000000000000000000000000000", _gm1), None)
+                    check("real git reads single-shape hunks", git_commit_hunk_lines(_gc2, "proof.txt"), [(1, 2)])
+                    check("real git reads no hunks on an untouched path", git_commit_hunk_lines(_gc2, "side.txt"), [])
+                    check("real git hunk probe on a bad ref is unprovable", git_commit_hunk_lines("deadbee000000000000000000000000000000000", "proof.txt"), None)
+                    check("real git reads range-shape hunks", git_range_hunk_lines(_gc1, _gc2, "proof.txt"), [(1, 2)])
+                    check("real git reads no range hunks off-branch", git_range_hunk_lines(_gc1, _gm1, "side.txt"), [])
                     check("real git reads an exact-case path", git_file_at(_gwin, "Case.TXT"), "case\n")
                     check("real git misses a wrong-case path", git_file_at(_gwin, "case.txt"), None)
                     check("real git reads a forward-slash subdir path", git_file_at(_gwin, "sub/sep.txt"), "sep\n")
