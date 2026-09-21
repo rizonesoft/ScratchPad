@@ -5316,6 +5316,32 @@ def cmd_query(args) -> int:
                                     pcm = PROVENANCE_RE.match(pln)
                                     if pcm is not None:
                                         cands.append(pcm.group(1))
+                                # Range-candidate join (D00 T01 S55
+                                # item 3): a range opens at or after
+                                # the reviewed candidate, so the
+                                # declared range cannot smuggle
+                                # pre-finding work past the tip-only
+                                # ancestry check. Any-shape like the
+                                # strict leg; singles skip (strict
+                                # owns them); no candidates skips
+                                # (pre-mandate records). Touch
+                                # descendancy follows by transitivity
+                                # (candidate <= base < touch on the
+                                # first-parent chain), so no second
+                                # leg reads it twice.
+                                if fm.group(2) is not None and cands:
+                                    _joined = False
+                                    for _jc in cands:
+                                        _jc_full = git_full_sha(_jc)
+                                        if _jc_full is not None and git_is_ancestor(
+                                            _jc_full, base
+                                        ):
+                                            _joined = True
+                                            break
+                                    if not _joined:
+                                        provable = False
+                                        fail_code = "ancestry:range-base"
+                                        break
                                 tip_full = git_full_sha(tip)
                                 strict_ok = False
                                 for c in cands:
@@ -10487,7 +10513,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12083,6 +12109,38 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 135. Range base joins candidate clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturejoinpass D90-T07-S4-PR95 fix eee0001..eee0002
+
+proof D90-T07-S4-PR95 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §135 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 136. Range base predates candidate stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturejoinfail D90-T07-S4-PR96 fix b000001..eee0002
+
+proof D90-T07-S4-PR96 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §136 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12242,6 +12300,9 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR92] [critical] Reviewed tip malformed stays -> filed §132\n"
             "- [D90-T07-S4-PR93] [critical] Reviewed tip conflict stays -> filed §133\n"
             "- [D90-T07-S4-PR94] [critical] Missing reviewed tip clears -> filed §134\n"
+            # D00 T01 §55 item 3: range-candidate join pins.
+            "- [D90-T07-S4-PR95] [critical] Range base joins candidate clears -> filed §135\n"
+            "- [D90-T07-S4-PR96] [critical] Range base predates candidate stays -> filed §136\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -13089,6 +13150,15 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
         # D00 T01 §55 item 2: the shared live tip (PR88 clears
         # against it; PR89's ahead-of-HEAD tip regresses).
         canned_full["HEAD"] = "eee0002" + "0" * 33
+        # D00 T01 §55 item 3: the eee clearing ranges open at the
+        # reviewed candidate; the b000001 range opens off-candidate
+        # with a full passing profile otherwise.
+        canned_ancestors[("aaa1111000000000000000000000000000000000", "eee0001")] = True
+        canned_ancestors[("b000001", "eee0002")] = True
+        canned_fpchain[("b000001", "eee0002")] = True
+        canned_range_touches[("b000001", "eee0002", marker_todo.as_posix())] = True
+        canned_range_touches[("b000001", "eee0002", "tests/fix-proof.py")] = True
+        canned_range_ts[("b000001", "eee0002", marker_todo.as_posix())] = _tss(d5, "12:00:00")
         # §31 item 5: the clearing fixes touched their proof files.
         canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
@@ -16629,6 +16699,16 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
             False,
         )
         check(
+            "clearance clears a range joined to its candidate",
+            any("D90-T07-S4-PR95" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance fails a range predating its candidate",
+            any("D90-T07-S4-PR96" in ln for ln in health_lines),
+            True,
+        )
+        check(
             "canonical identity resolves a short to repo algo type full",
             canonical_commit_id("eee0001"),
             (str(root), "sha1", "commit", "eee0001" + "0" * 33),
@@ -17174,6 +17254,7 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR91": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR92": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR93": {"resolution:unreviewed-tree"},
+            "D90-T07-S4-PR96": {"ancestry:range-base"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
