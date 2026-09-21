@@ -15337,7 +15337,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "End of ledger\n\n"
             "Risk accepted: D90-T77-S1-PR1; id A1; approver ann; owner xenia; date 2026-09-14; "
             "expires 2099-01-01; review 2099-01-02; evidence "
-            "ffffffffffffffffffffffffffffffffffffffff; rationale probe record\n",
+            "ffffffffffffffffffffffffffffffffffffffff; rationale probe record\n"
+            "\n```\n"
+            "Quoted panel output, invisible to every scan:\n"
+            "- [D90-T77-S1-PR9] [major] quoted row -> accepted (owner quinn, due 2099-01-01)\n"
+            "Risk accepted: D90-T77-S1-PR9; id A9; approver ann; owner quinn; date 2026-09-14; "
+            "expires 2099-01-01; review 2099-01-02; evidence "
+            "ffffffffffffffffffffffffffffffffffffffff; rationale quoted record\n"
+            "A close note names supersedes A1 as the link shape.\n"
+            "```\n",
             encoding="utf-8",
         )
         _ol33_map = ol33 / ".github" / "owner-logins.json"
@@ -15418,6 +15426,21 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 == 0
                 and sum(1 for ln in _ol33_out7 if "owner xenia has no GitHub login mapping" in ln)
                 == 0
+            ),
+            True,
+        )
+        # Fenced quotes never warn (fix-loop R3): the phantom
+        # ledger row plus acceptance name quinn, and the quoted
+        # `supersedes A1` must not exclude the real A1 (xenia
+        # still warns in run 1). Pre-strip, quinn warns and
+        # xenia vanishes.
+        check(
+            "quoted rows inside fences never warn",
+            (
+                sum(1 for ln in _ol33_out1 if "owner quinn has no GitHub login mapping" in ln)
+                == 0
+                and sum(1 for ln in _ol33_out1 if "owner xenia has no GitHub login mapping" in ln)
+                == 1
             ),
             True,
         )
@@ -21620,8 +21643,11 @@ track: Z1
             _hdir = Path(_hstr)
             _hfake = _hdir / "fake_gh.py"
             _hfake.write_text(
-                "import os\n"
-                "print(os.environ.get('FAKEGH_RUNS', '[]'))\n",
+                "import json, os, sys\n"
+                "argv = sys.argv[1:]\n"
+                "open(os.environ['FAKEGH_HBLOG'], 'a', encoding='utf-8').write(json.dumps(argv) + chr(10))\n"
+                "key = 'FAKEGH_RUNS_SCHED' if '--event' in argv else 'FAKEGH_RUNS_ANY'\n"
+                "print(os.environ.get(key, '[]'))\n",
                 encoding="utf-8",
             )
             if os.name == "nt":
@@ -21635,13 +21661,22 @@ track: Z1
                 )
                 os.chmod(_hgh, 0o755)
 
-            def _beat(runs: str, *args: str) -> "subprocess.CompletedProcess[str]":
+            def _beat(sched: str, *args: str, any_runs: str = "[]") -> "subprocess.CompletedProcess[str]":
+                (_hdir / "hb.log").write_text("", encoding="utf-8")
                 return subprocess.run(
                     [sys.executable, str(_hb), "--gh", str(_hgh), *args],
                     capture_output=True, text=True, encoding="utf-8",
-                    env=dict(os.environ, FAKEGH_RUNS=runs),
+                    env=dict(os.environ, FAKEGH_RUNS_SCHED=sched, FAKEGH_RUNS_ANY=any_runs,
+                             FAKEGH_HBLOG=str(_hdir / "hb.log")),
                     cwd=str(_hdir), timeout=60,
                 )
+
+            def _hb_calls() -> list:
+                return [
+                    json.loads(ln)
+                    for ln in (_hdir / "hb.log").read_text(encoding="utf-8").splitlines()
+                    if ln.strip()
+                ]
 
             _now = "2026-09-21T04:30:00Z"
             _fresh_runs = json.dumps([
@@ -21656,10 +21691,6 @@ track: Z1
                 {"databaseId": 3, "event": "schedule", "createdAt": "2026-09-20T04:24:00Z"},
             ])
             _push_runs = json.dumps([
-                {"databaseId": 5, "event": "push", "createdAt": "2026-09-21T04:00:00Z"},
-            ])
-            _stale_push_runs = json.dumps([
-                {"databaseId": 2, "event": "schedule", "createdAt": "2026-09-19T02:00:00Z"},
                 {"databaseId": 5, "event": "push", "createdAt": "2026-09-21T04:00:00Z"},
             ])
             _hb_p = _beat(_fresh_runs, "--now", _now)
@@ -21685,16 +21716,33 @@ track: Z1
                 _hb_p.returncode == 0 and "0.1h ago" in _hb_p.stdout,
                 True,
             )
-            _hb_p = _beat(_push_runs, "--now", _now)
+            # Two-call shape (fix-loop R3): the schedule listing
+            # carries `--event schedule`, the fallback listing does
+            # not, and a stale schedule judgment never consults the
+            # fallback (pushes neither heal nor confuse it).
+            _hb_p = _beat("[]", "--now", _now, any_runs=_push_runs)
+            _hb_c = _hb_calls()
             check(
                 "heartbeat schedule-never-ran fails with the count",
-                _hb_p.returncode == 1 and "schedule never produced a completed run" in _hb_p.stderr,
+                (
+                    _hb_p.returncode == 1
+                    and "schedule never produced a completed run" in _hb_p.stderr
+                    and "(1 other-event completions" in _hb_p.stderr
+                    and len(_hb_c) == 2
+                    and "--event" in _hb_c[0]
+                    and _hb_c[0][_hb_c[0].index("--event") + 1] == "schedule"
+                    and "--event" not in _hb_c[1]
+                ),
                 True,
             )
-            _hb_p = _beat(_stale_push_runs, "--now", _now)
+            _hb_p = _beat(_stale_runs, "--now", _now, any_runs=_push_runs)
             check(
                 "heartbeat stale schedule fails despite fresh pushes",
-                _hb_p.returncode == 1 and "no schedule completion of plan.yml in 26h" in _hb_p.stderr,
+                (
+                    _hb_p.returncode == 1
+                    and "no schedule completion of plan.yml in 26h" in _hb_p.stderr
+                    and len(_hb_calls()) == 1
+                ),
                 True,
             )
             _hb_p = _beat("[]", "--now", _now)

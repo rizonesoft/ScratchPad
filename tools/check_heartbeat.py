@@ -5,25 +5,28 @@ D00 T01 §53 item 7 owns this file: last-completion monitoring plus a
 stale-run detector on the cron, so delayed schedules surface instead
 of letting dates expire silently against the section claim.
 
-The detector reads GitHub workflow history at job time (`gh run list`
-over recent completed runs) and fails when no schedule completion is
-newer than --max-age-hours (default 26: the daily cron plus slack
-for runner delay). Completion, not success (fix-loop R2):
-conclusions are ignored on purpose, because a success-gated
-detector latches red permanently (its own failure keeps the next
-success off the record, so every later run fails too), while a
-completion-gated one heals the moment the schedule produces
-anything. Repeatedly failing schedules need no heartbeat failure:
-their red jobs plus the always-run notifications already surface.
+The detector reads GitHub workflow history at job time in two
+calls. First it lists schedule completions (`--event schedule`),
+failing when none is newer than --max-age-hours (default 26: the
+daily cron plus slack for runner delay). Completion, not success
+(fix-loop R2): conclusions are ignored on purpose, because a
+success-gated detector latches red permanently (its own failure
+keeps the next success off the record, so every later run fails
+too), while a completion-gated one heals the moment the schedule
+produces anything. Repeatedly failing schedules need no heartbeat
+failure: their red jobs plus the always-run notifications already
+surface. The schedule filter is load-bearing (fix-loop R3): an
+unfiltered `--limit 20` window on a push-heavy repo returns push
+runs only, misreading a live cron as never fired.
 
-Empty schedule history splits two ways from the same listing. No
-completed runs of any event passes with a bootstrap note (a
-workflow that never ran is starting, not stale, and failing would
-wedge the first green permanently). Completed runs with zero from
-schedule fail: pushes prove CI works while the cron never fired,
-which is exactly the silent schedule. A trigger set with no push
-escape stays operator-visible on the Actions page (nothing runs,
-so nothing can report from inside).
+Empty schedule history splits two ways via a second, unfiltered
+listing. No completed runs of any event passes with a bootstrap
+note (a workflow that never ran is starting, not stale, and
+failing would wedge the first green permanently). Completed runs
+with zero from schedule fail: pushes prove CI works while the
+cron never fired, which is exactly the silent schedule. A trigger
+set with no push escape stays operator-visible on the Actions
+page (nothing runs, so nothing can report from inside).
 
 Residual, recorded: a deliberately disabled schedule never runs this
 step, so no in-repo detector can catch it; disable stays
@@ -76,37 +79,54 @@ def main(argv: list | None = None) -> int:
         now = parse_now(ns.now) if ns.now is not None else datetime.now(timezone.utc)
     except ValueError:
         return fail(f"bad --now (want ISO-8601): {ns.now!r}")
-    try:
-        p = subprocess.run(
-            [ns.gh, "run", "list", "--workflow", ns.workflow,
-             "--status", "completed", "--limit", "20",
-             "--json", "databaseId,event,createdAt"],
-            capture_output=True, text=True, encoding="utf-8",
-        )
-    except OSError as e:
-        return fail(f"cannot run gh: {e}")
-    if p.returncode != 0:
-        return fail(f"gh run list failed (exit {p.returncode}): {p.stderr.strip()[-300:]}")
-    try:
-        runs = json.loads(p.stdout.strip() or "[]")
-        if not isinstance(runs, list):
-            raise ValueError
-    except ValueError:
-        return fail(f"gh run list returned non-JSON: {p.stdout.strip()[:200]!r}")
-    sched: list[datetime] = []
-    other: list[datetime] = []
-    for row in runs:
-        if not isinstance(row, dict):
-            return fail(f"gh run list returned a non-object row: {row!r}"[:200])
+
+    def fetch(extra: list[str]) -> list | int:
         try:
-            ts = parse_stamp(row.get("createdAt", ""))
+            p = subprocess.run(
+                [ns.gh, "run", "list", "--workflow", ns.workflow,
+                 "--status", "completed", "--limit", "20",
+                 "--json", "databaseId,event,createdAt"] + extra,
+                capture_output=True, text=True, encoding="utf-8",
+            )
+        except OSError as e:
+            return fail(f"cannot run gh: {e}")
+        if p.returncode != 0:
+            return fail(f"gh run list failed (exit {p.returncode}): {p.stderr.strip()[-300:]}")
+        try:
+            rows = json.loads(p.stdout.strip() or "[]")
+            if not isinstance(rows, list):
+                raise ValueError
         except ValueError:
-            return fail(f"gh run list returned a bad timestamp: {row.get('createdAt')!r}")
-        (sched if row.get("event") == "schedule" else other).append(ts)
-    if not sched and not other:
-        print(f"check_heartbeat: no completed runs of {ns.workflow} yet (bootstrap)")
-        return 0
+            return fail(f"gh run list returned non-JSON: {p.stdout.strip()[:200]!r}")
+        return rows
+
+    def stamps(rows: list) -> list[datetime] | int:
+        out: list[datetime] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                return fail(f"gh run list returned a non-object row: {row!r}"[:200])
+            try:
+                out.append(parse_stamp(row.get("createdAt", "")))
+            except ValueError:
+                return fail(f"gh run list returned a bad timestamp: {row.get('createdAt')!r}")
+        return out
+
+    sched_rows = fetch(["--event", "schedule"])
+    if isinstance(sched_rows, int):
+        return sched_rows
+    sched = stamps(sched_rows)
+    if isinstance(sched, int):
+        return sched
     if not sched:
+        any_rows = fetch([])
+        if isinstance(any_rows, int):
+            return any_rows
+        other = stamps(any_rows)
+        if isinstance(other, int):
+            return other
+        if not other:
+            print(f"check_heartbeat: no completed runs of {ns.workflow} yet (bootstrap)")
+            return 0
         newest_other = max(other)
         return fail(
             f"schedule never produced a completed run of {ns.workflow} "

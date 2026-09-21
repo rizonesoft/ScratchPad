@@ -2163,7 +2163,10 @@ def validate(graph, _args) -> int:
     # and current acceptance lines -- the notify population, so
     # rejected-row reasons and superseded records never warn.
     # Acceptance lines read the first owner only, since rationales
-    # are free prose and later matches lie. Roots without a mapping
+    # are free prose and later matches lie. Findings files strip
+    # fenced code first like rules 23-24 (fix-loop R3): raw panel
+    # output quotes example rows, and a quoted owner is fictional.
+    # Roots without a mapping
     # file skip: fixture trees carry no GitHub identity, and an
     # unconfigured tree must not fail. This rule sits before the
     # baseline snapshot below: warns flagged after it never ratchet.
@@ -2204,6 +2207,7 @@ def validate(graph, _args) -> int:
                     ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
                 except OSError:
                     continue
+                ftext, _u = graph.strip_fenced_code(ftext)
                 _sup = set(graph.SUPERSEDES_RE.findall(ftext))
                 for ln in ftext.splitlines():
                     lm = graph.LEDGER_ROW_RE.match(ln)
