@@ -1575,6 +1575,24 @@ def validate(graph, _args) -> int:
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
                             f"is not a commit object (peels to {_peeled}; record the commit)",
                         )
+                # Dangling commits (D00 T01 §55 item 8): the peel
+                # accepts any commit object, including one no ref
+                # contains. Reachability here is any ref, never HEAD,
+                # so a side branch still attests until its ref is gone.
+                if _res is True:
+                    _reach = graph.git_commit_reachable(_cand)
+                    if _reach is False:
+                        flag(
+                            "provenance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
+                            "is a dangling commit (no ref contains it)",
+                        )
+                    elif _reach is None:
+                        flag(
+                            "provenance-candidate-unprovable",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance candidate {_cand} "
+                            "reachability is unverifiable here (git unprovable; degraded, not verified)",
+                        )
                 _pp = pm.group(6)
                 _new_scope = pm.group(7)[:8] > "20260919"
                 # Pure-string gates (both scopes, no filesystem

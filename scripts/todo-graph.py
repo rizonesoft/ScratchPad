@@ -2864,6 +2864,32 @@ def git_resolves(sha: str) -> bool | None:
     return None
 
 
+def git_commit_reachable(sha: str) -> bool | None:
+    """Whether any ref contains the commit, or None when unprovable.
+
+    Dangling-commit leg (D00 T01 §55 item 8): a commit object that
+    no ref contains cannot be provenance. This is not ancestry of
+    HEAD. A side-branch tip still passes while its ref exists.
+    The self-test patches this name.
+    """
+    full = git_full_sha(sha)
+    if full is None:
+        return None
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "for-each-ref", f"--contains={full}"],
+            capture_output=True,
+            timeout=60,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return bool(out.stdout.strip())
+
+
 def git_tree_mode(ref: str, path: str) -> str | None:
     """The tree-entry mode for path at ref (`100644`, `120000`,
     ...), or None when missing or unprovable. The candidate-tree
@@ -10326,8 +10352,10 @@ track: Z1
         # integration) binds modes, not bytes: fixture panel paths
         # read 100644, everything else delegates to real git.
         _real_resolves_panel = git_resolves
+        _real_reach_panel = git_commit_reachable
         _real_treemode_panel = git_tree_mode
         globals()["git_resolves"] = lambda sha: True if sha == "aaa1111000000000000000000000000000000000" else None
+        globals()["git_commit_reachable"] = lambda sha: True if sha == "aaa1111000000000000000000000000000000000" else None
         globals()["git_tree_mode"] = lambda ref, p: (
             "100644"
             if ref == "aaa1111000000000000000000000000000000000" and p.startswith("docs/reviews/90-panel-")
@@ -10337,6 +10365,7 @@ track: Z1
         with _mctx.redirect_stdout(pbuf), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_validate(None)
         globals()["git_resolves"] = _real_resolves_panel
+        globals()["git_commit_reachable"] = _real_reach_panel
         globals()["git_tree_mode"] = _real_treemode_panel
         panel_out = pbuf.getvalue().splitlines()
         check(
@@ -12628,6 +12657,18 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-digest-blind.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 146. Dangling commit fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** __D5__ | §146 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-dangling.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13527,7 +13568,8 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         # uncanned is unprovable (missing key, like every canned map).
         # Dual forms (D00 T01 §51 item 2): provenance shorts keep their
         # original keys while padded forms serve the 40-hex era.
-        canned_resolves = {"aaa1111": True, "deadbee": False, "aaa1111000000000000000000000000000000000": True, "deadbee000000000000000000000000000000000": False}
+        canned_resolves = {"aaa1111": True, "deadbee": False, "aaa1111000000000000000000000000000000000": True, "deadbee000000000000000000000000000000000": False, "dang1111000000000000000000000000000000000": True}
+        canned_reachable = {"dang1111000000000000000000000000000000000": False}
         canned_range_touches = {
             ("eee0001", "eee0002", marker_todo.as_posix()): True,
             ("eee0003", "eee0004", marker_todo.as_posix()): False,
@@ -13546,6 +13588,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             "c20c200000000000000000000000000000000000",
             "1209200000000000000000000000000000000000",
             "ccc3333",
+            "dang1111000000000000000000000000000000000",
             "fff0001",
             "ddd0001",
             "ddd0002",
@@ -13832,6 +13875,16 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             f"digest {_digest_want}; path docs/reviews/90-digest-blind.md; run 20260922-D90-T07-S145-gpt\n",
             encoding="utf-8",
         )
+        (rev_dir / "90-dangling.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            "Provenance: candidate dang1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
+            "digest ababababababababababababababababababababababababababababababababab; "
+            "path docs/reviews/90-dangling.md; run 20260920-D90-T07-S146-gpt\n",
+            encoding="utf-8",
+        )
         canned_blob_sha = {
             (
                 "aaa1111000000000000000000000000000000000",
@@ -13882,6 +13935,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         _real_git_ancestor = git_is_ancestor
         _real_git_range = git_range_touches
         _real_git_resolves = git_resolves
+        _real_git_reachable = git_commit_reachable
         _real_git_full = git_full_sha
         _real_git_format = git_object_format
         _real_git_top = git_repo_toplevel
@@ -13899,6 +13953,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         globals()["git_is_ancestor"] = lambda a, b: canned_ancestors.get((a, b))
         globals()["git_range_touches"] = lambda a, b, p: canned_range_touches.get((a, b, p))
         globals()["git_resolves"] = lambda sha: canned_resolves.get(sha)
+        globals()["git_commit_reachable"] = lambda sha: canned_reachable.get(sha, True)
         globals()["git_full_sha"] = lambda ref: canned_full.get(ref)
         globals()["git_object_format"] = lambda: "sha1"
         globals()["git_repo_toplevel"] = lambda: str(root)
@@ -14372,6 +14427,14 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             "an unreadable candidate blob warns",
             any(
                 "§145 " in ln and "provenance digest" in ln and "WARN" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "a dangling commit candidate fires",
+            any(
+                "§146 " in ln and "dangling commit" in ln and "FATAL" in ln
                 for ln in marker_out
             ),
             True,
@@ -20532,6 +20595,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         globals()["git_is_ancestor"] = _real_git_ancestor
         globals()["git_range_touches"] = _real_git_range
         globals()["git_resolves"] = _real_git_resolves
+        globals()["git_commit_reachable"] = _real_git_reachable
         globals()["git_full_sha"] = _real_git_full
         globals()["git_object_format"] = _real_git_format
         globals()["git_repo_toplevel"] = _real_git_top
@@ -20738,6 +20802,10 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
                         check("real git tree mode symlink untestable: links unsupported", True, True)
                     check("real git spots a merge", git_is_merge(_gm1), True)
                     check("real git clears a non-merge", git_is_merge(_gc2), False)
+                    _dtree = _git("rev-parse", f"{_gc2}^{{tree}}")
+                    _dangle = _git("commit-tree", _dtree, "-p", _gc1, "-m", "dangling")
+                    check("real git rejects a dangling commit", git_commit_reachable(_dangle), False)
+                    check("real git keeps a ref-contained commit", git_commit_reachable(_gc2), True)
                     check("real git merge probe on a bad ref is unprovable", git_is_merge("deadbee000000000000000000000000000000000"), None)
                     check("real git dates a range touch", git_range_touch_ts(_gc1, _gc2, "proof.txt"), _gts)
                     check("real git range touch ts misses off-branch", git_range_touch_ts(_gc1, _gm1, "side.txt"), None)
