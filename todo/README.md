@@ -436,6 +436,8 @@ is a complete instruction: nobody has to translate domain `00` and TODO `01` int
 | `provenance-digest` | FATAL | A provenance digest on a run dated after 2026-09-21 that is not the sha256 of the path's blob in the candidate tree. Lines through that day stay attested. |
 | `provenance-digest-unprovable` | WARN | The candidate names a regular file whose blob git cannot read, so the digest was not recomputed. The line stays unverified and the skip is visible. |
 | `backdated-stamp` | FATAL | A pre-cutoff stamp or retirement note outside the frozen migration membership (the 53 pairs retired 2026-09-19): dated on or before the cutoff but committed after it, silently re-opening the grandfathered set. Marked pre-cutoff stamps never fire (a real review ran); newly discovered pre-cutoff stamps mark via a real review, never retire. |
+| `exemption-drift` | FATAL | A frozen exemption inventory changed size: the 57 run-less findings files, or the 47 ratchet lines in 17 files. The recorded counts are the gate. |
+| `exemption-overdue` | FATAL | Today is past 2026-12-31 and a frozen exemption set still has members. |
 
 Treat a warning as a decision to make rather than noise to clear. The tree currently sits at zero FATAL and zero non-baselined warnings, and it is worth keeping there.
 

@@ -43,6 +43,9 @@ from pathlib import Path
 from typing import NamedTuple
 
 REPO = Path(__file__).resolve().parent.parent
+# Stable workspace for exemption scans. `REPO` is patched during
+# self-test git probes; this path is not.
+WORKSPACE = REPO
 TODO_DIR = REPO / "todo"
 CACHE = REPO / "build" / "todo-cache.json"
 
@@ -1122,6 +1125,10 @@ SEVERITY_MAP: dict[str, str] = {
     # migration membership: backdated past completion, silently
     # re-opening the grandfathered set (D00 T01 §48 item 6).
     "backdated-stamp": "fatal",
+    # the frozen exemption inventories changed size (D00 T01 §55 item 17).
+    "exemption-drift": "fatal",
+    # today is past 2026-12-31 and an inventoried exemption remains.
+    "exemption-overdue": "fatal",
 }
 # Clearance failure codes (D00 T01 §55 item 13). Stable names:
 # do not rename a member; add one only in the same change as its
@@ -1284,6 +1291,80 @@ MIGRATION_DEADLINE = "2026-12-31"
 def migration_overdue_today(today: str) -> bool:
     """Whether the grandfathered migration is past its deadline."""
     return today > MIGRATION_DEADLINE
+
+
+# Frozen exemption inventories (D00 T01 §55 item 17). The §21
+# provenance set is the run-less findings files. The §55 ratchet
+# set is the short-candidate findings-self-path lines counted
+# 2026-09-22. Drift fails on any date. Overdue fails after
+# MIGRATION_DEADLINE while either set is non-empty.
+RATCHET_EXEMPT_LINES = 47
+RATCHET_EXEMPT_FILES = 17
+PROVENANCE_EXEMPT_FILES = 57
+_PROVENANCE_LINE = re.compile(
+    r"^Provenance:\s*candidate\s+(\S+);\s*command\s+.+;\s*exit\s+\d+;\s*tool\s+.+;\s*"
+    r"digest\s+[0-9a-fA-F]+;\s*path\s+(\S+);\s*run\s+(\S+)\s*$",
+    re.M,
+)
+
+
+def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
+    """Drift and overdue problems for the frozen exemption inventories.
+
+    Each item is `(code, message)`. An empty list means the
+    inventories still match and the deadline has not passed, or it
+    has passed and both sets are empty.
+    """
+    reviews = root / "docs" / "reviews"
+    runless: set[str] = set()
+    ratchet_lines = 0
+    ratchet_files: set[str] = set()
+    if reviews.is_dir():
+        for path in reviews.rglob("*.md"):
+            rel = path.relative_to(root).as_posix()
+            if not re.search(r"/D\d+-T\d+-s\d+\.md$", "/" + rel):
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            matched = list(_PROVENANCE_LINE.finditer(text))
+            if not any(True for _ in matched):
+                # A findings file with no shaped provenance line is
+                # the §21 run-less set. Lines that fail the shape are
+                # not a run.
+                if not re.search(r"(?m)^Provenance:\s*.*\brun\s+\S+", text):
+                    runless.add(rel)
+            for match in matched:
+                cand, recorded, run = match.group(1), match.group(2), match.group(3)
+                if run[:8] > "20260919":
+                    continue
+                short = re.fullmatch(r"[0-9a-fA-F]{40}", cand) is None
+                if short or recorded == rel:
+                    ratchet_lines += 1
+                    ratchet_files.add(rel)
+    problems: list[tuple[str, str]] = []
+    if len(runless) != PROVENANCE_EXEMPT_FILES:
+        problems.append(
+            (
+                "exemption-drift",
+                f"provenance exemption is {len(runless)} files, inventory says {PROVENANCE_EXEMPT_FILES}",
+            )
+        )
+    if ratchet_lines != RATCHET_EXEMPT_LINES or len(ratchet_files) != RATCHET_EXEMPT_FILES:
+        problems.append(
+            (
+                "exemption-drift",
+                f"ratchet exemption is {ratchet_lines} lines in {len(ratchet_files)} files, "
+                f"inventory says {RATCHET_EXEMPT_LINES} lines in {RATCHET_EXEMPT_FILES} files",
+            )
+        )
+    if today > MIGRATION_DEADLINE and (runless or ratchet_lines):
+        problems.append(
+            (
+                "exemption-overdue",
+                f"exemption deadline {MIGRATION_DEADLINE} has passed "
+                f"({len(runless)} provenance files, {ratchet_lines} ratchet lines remain)",
+            )
+        )
+    return problems
 
 
 # An open major older than this many days past its review's stamp is
@@ -22143,6 +22224,32 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "unicode not NFC",
         )
         check("an NFC path is canonical", provenance_path_issue(unicodedata.normalize("NFC", _nfc)), None)
+        check(
+            "live exemptions match the inventory",
+            exemption_problems(WORKSPACE, "2026-09-22"),
+            [],
+        )
+        check(
+            "a past exemption deadline is overdue",
+            any(code == "exemption-overdue" for code, _msg in exemption_problems(WORKSPACE, "2027-01-01")),
+            True,
+        )
+        _ex_root = root / "exempt-drift"
+        (_ex_root / "docs" / "reviews" / "00-workspace").mkdir(parents=True)
+        (_ex_root / "docs" / "reviews" / "00-workspace" / "D00-T01-s1.md").write_text(
+            "no provenance\n", encoding="utf-8"
+        )
+        _ex_probs = exemption_problems(_ex_root, "2026-09-22")
+        check(
+            "a changed inventory drifts",
+            any(code == "exemption-drift" for code, _msg in _ex_probs),
+            True,
+        )
+        check(
+            "drift before the deadline is not overdue",
+            any(code == "exemption-overdue" for code, _msg in _ex_probs),
+            False,
+        )
         _rfail = _sp.run(
             [
                 sys.executable,

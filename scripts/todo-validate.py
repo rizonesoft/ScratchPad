@@ -6,6 +6,7 @@ warning accounting use the same state as query/resolve. No copied constants.
 from __future__ import annotations
 
 from collections import Counter
+from datetime import datetime, timezone
 import importlib.util
 import json
 import os
@@ -2199,6 +2200,14 @@ def validate(graph, _args) -> int:
                     f"{t.path}:{s.line}: §{num} Duration ends {s.duration_end[:10]} "
                     f"but the stamp reads {s.stamped_on} (align the end with the stamp day)",
                 )
+
+    # Exemption inventories (D00 T01 §55 item 17). Drift fails on any
+    # date. Overdue fails after the shared 2026-12-31 deadline while
+    # a frozen set still has members. The scan is the workspace, not
+    # the fixture TODO dir.
+    _today = datetime.now(timezone.utc).date().isoformat()
+    for _ecode, _emsg in graph.exemption_problems(graph.WORKSPACE, _today):
+        flag(_ecode, _emsg)
 
     # 33. owner-to-login mapping validated (D00 T01 §53 item 3): the
     # poster assigns mapped owners, so the mapping file must parse
