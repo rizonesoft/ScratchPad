@@ -60,14 +60,20 @@ function Get-NonQuarantineSkips([string]$TrxPath) {
   # The Interactive bar excuses quarantine plus capability skips only
   # (docs/testing.md): any other skip reds the leg. xUnit's exit code
   # stays zero under skips, so the trx is the enforcement point.
-  # Classification prefers the stable CAPABILITY: reason code (D00 T02
-  # §15 item 1); the legacy free-text list covers trx from binaries
-  # predating the code, fallback only.
+  # Returns Ok plus Names (module wrapper convention): a missing or
+  # malformed trx returns Ok false (fail closed: an unclassifiable leg
+  # is unproven, never green; the caller reds the run -- D00 T02 §15
+  # R2-F1). Classification prefers the stable CAPABILITY: reason code
+  # (D00 T02 §15 item 1); the legacy free-text list covers trx from
+  # binaries predating the code, fallback only.
+  # Matching is strict (D00 T02 §15 R2-F2): QUARANTINED needs the stamp
+  # shape (date plus id), CAPABILITY: is case-sensitive, and legacy
+  # fragments anchor to the message start, so prose merely mentioning
+  # the tokens cannot self-allowlist.
+  $unproven = [pscustomobject]@{ Ok = $false; Names = @() }
+  if (-not (Test-Path $TrxPath)) { return $unproven }
+  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $unproven }
   $names = @()
-  if (-not (Test-Path $TrxPath)) { return $names }
-  # Same truncated-XML guard as Get-TrxSummary: malformed trx reads as
-  # no skips (the transcript skip merge still reports the names).
-  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $names }
   $legacyCapability = @(
     'Low-level mouse hooks are unavailable on this host',
     'No printers enumerated in this context',
@@ -76,14 +82,14 @@ function Get-NonQuarantineSkips([string]$TrxPath) {
   foreach ($r in @($t.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'NotExecuted' })) {
     $msg = ''
     if ($r.Output -and $r.Output.ErrorInfo -and $r.Output.ErrorInfo.Message) { $msg = $r.Output.ErrorInfo.Message }
-    if ($msg -like '*QUARANTINED*') { continue }
-    if ($msg -like 'CAPABILITY:*') { continue }
+    if ($msg -cmatch 'QUARANTINED \d{4}-\d{2}-\d{2} \S+') { continue }
+    if ($msg -clike 'CAPABILITY:*') { continue }
     $legacy = $false
-    foreach ($frag in $legacyCapability) { if ($msg -like "*$frag*") { $legacy = $true; break } }
+    foreach ($frag in $legacyCapability) { if ($msg -clike "$frag*") { $legacy = $true; break } }
     if ($legacy) { continue }
     $names += $r.testName
   }
-  return $names
+  return [pscustomobject]@{ Ok = $true; Names = $names }
 }
 
 function Get-TranscriptSkips([string]$LogPath) {
@@ -231,7 +237,28 @@ function Test-CountConservation([string]$Leg, [string[]]$TrxPaths, [string[]]$Lo
   return [pscustomobject]@{ Ok = ($breaks.Count -eq 0); Breaks = $breaks }
 }
 
-function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut) {
+function Test-SupervisorUnderLimit([string]$SupervisorPath, [string]$LimitText) {
+  # Supervisor-versus-task pin (D00 T02 §15 R2-F5): the supervisor
+  # default must precede the scheduled task's kill, or scheduled hangs
+  # die silent with no tombstone. Reads the live default from the
+  # supervisor script plus the live PT limit text; fails closed on any
+  # unreadable input. Provision calls this inside the task leg.
+  if (-not (Test-Path $SupervisorPath)) { return [pscustomobject]@{ Ok = $false; Detail = 'supervisor script missing' } }
+  $m = [regex]::Match((Get-Content $SupervisorPath -Raw), '\[int\]\$TimeoutSeconds\s*=\s*(\d+)')
+  if (-not $m.Success) { return [pscustomobject]@{ Ok = $false; Detail = 'supervisor default unreadable' } }
+  $def = [int]$m.Groups[1].Value
+  $lm = [regex]::Match($LimitText, '^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$')
+  if (-not $lm.Success) { return [pscustomobject]@{ Ok = $false; Detail = "task limit unparseable: $LimitText" } }
+  $lim = 0
+  if ($lm.Groups[1].Success) { $lim += [int]$lm.Groups[1].Value * 3600 }
+  if ($lm.Groups[2].Success) { $lim += [int]$lm.Groups[2].Value * 60 }
+  if ($lm.Groups[3].Success) { $lim += [int]$lm.Groups[3].Value }
+  if ($lim -le 0) { return [pscustomobject]@{ Ok = $false; Detail = "task limit non-positive: $LimitText" } }
+  if ($def -ge $lim) { return [pscustomobject]@{ Ok = $false; Detail = "supervisor ${def}s not under task ${lim}s" } }
+  return [pscustomobject]@{ Ok = $true; Detail = "supervisor ${def}s under task ${lim}s" }
+}
+
+function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [string[]]$Failed, [bool]$Ran) {
   # Fourth-phase soak verdict (D00 T02 §15 PR7): per-iteration rows keep
   # the §14 mark vocabulary (proved, killed at cap: unproven, budget-cut
   # unproven) and gain a FAILED mark plus an aggregate verdict line, so
@@ -252,10 +279,23 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut) {
   $failedNames = @()
   $unproven = @()
   $failures = @()
+  # -SkipSoak never executes an iteration: the empty shape prints only
+  # here, never from an all-failed ledger (D00 T02 §15 R2-F6).
+  if (-not $Ran) { return [pscustomobject]@{ Rows = @('(no soak iterations ran: -SkipSoak)'); Failed = $false; Failures = @() } }
   foreach ($n in $names) {
     $st = Get-TrxSummary (Join-Path $TrxDir "$n.trx")
     if ($null -eq $st) {
+      $covered = $false
+      foreach ($c in @($Cut)) {
+        if ($c -eq $n) { $covered = $true; break }
+        $cm = [regex]::Match($c, '^(ui-soak|protocol-soak)-(\d+)\.\.(\d+)$')
+        $nm = [regex]::Match($n, '^(ui-soak|protocol-soak)-(\d+)$')
+        if ($cm.Success -and $nm.Success -and ($cm.Groups[1].Value -eq $nm.Groups[1].Value) -and ([int]$nm.Groups[2].Value -ge [int]$cm.Groups[2].Value) -and ([int]$nm.Groups[2].Value -le [int]$cm.Groups[3].Value)) { $covered = $true; break }
+      }
+      if ($covered) { continue }
       if ($Killed -contains $n) { $unproven += $n; $rows += "- $n : no trx (killed at cap: unproven; owes triage: re-drive or carry)" }
+      elseif ($Failed -contains $n) { $unproven += $n; $rows += "- $n : no trx (failed without trx: infrastructure failure, unproven; owes triage: re-drive or carry)" }
+      else { $unproven += $n; $rows += "- $n : no trx despite exit 0 (logger failure suspected: unproven; owes triage: re-drive or carry)" }
       continue
     }
     if ($Killed -contains $n) { $unproven += $n; $rows += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped (killed at cap: unproven; owes triage: re-drive or carry)" }
@@ -276,7 +316,6 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut) {
     $unproven += $c
     $rows += "- $c : budget-cut (unproven; owes triage: re-drive or carry)"
   }
-  if ($rows.Count -eq 0) { return [pscustomobject]@{ Rows = @('(no soak iterations ran: -SkipSoak)'); Failed = $false; Failures = @() } }
   $bits = @()
   if ($failedNames.Count -gt 0) { $bits += "FAILED: $($failedNames -join ', ')" }
   if ($unproven.Count -gt 0) { $bits += "unproven: $($unproven -join ', ')" }
@@ -430,11 +469,13 @@ function Test-PrimaryPlacement([string]$TestsRoot) {
   # excludes Primary solution-wide, Run B scopes to tests/UI), so a
   # Primary trait anywhere else fails closed. A source scan, not
   # reflection, so future test projects are covered without growing
-  # their own guard. Line comments strip before matching; a trait
-  # inside a block comment still matches (fail closed, triage quotes
-  # the hit), while a trait split across lines would miss (a shape
-  # that never occurs; noted, not handled). Returns Ok plus Strays
-  # (root-relative path:line) plus the tests/UI mention count.
+  # their own guard. Each file scans whole: comments strip per line,
+  # then the text joins and the pattern spans newlines, so a trait
+  # split across lines still matches with its start line computed from
+  # the match offset (D00 T02 §15 R2-F3); a trait inside a block
+  # comment still matches (fail closed, triage quotes the hit).
+  # Returns Ok plus Strays (root-relative path:line) plus the tests/UI
+  # mention count.
   $strays = @()
   $uiCount = 0
   if (-not (Test-Path $TestsRoot)) { return [pscustomobject]@{ Ok = $false; Strays = @('(tests root missing: ' + $TestsRoot + ')'); UiCount = 0 } }
@@ -442,14 +483,11 @@ function Test-PrimaryPlacement([string]$TestsRoot) {
   foreach ($f in (Get-ChildItem -Path $TestsRoot -Recurse -Filter '*.cs' -File)) {
     $rel = $f.FullName.Substring($TestsRoot.Length).TrimStart('\', '/')
     $underUi = $f.FullName.StartsWith($uiRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
-    $n = 0
-    foreach ($ln in (Get-Content $f.FullName)) {
-      $n++
-      $code = ($ln -replace '//.*$', '')
-      if ($code -match 'Trait\s*\(\s*"Category"\s*,\s*"Primary"\s*\)') {
-        if ($underUi) { $uiCount++ }
-        else { $strays += ("$rel" + ':' + $n) }
-      }
+    $text = ((Get-Content $f.FullName) | ForEach-Object { $_ -replace '//.*$', '' }) -join "`n"
+    foreach ($m in [regex]::Matches($text, 'Trait\s*\(\s*"Category"\s*,\s*"Primary"\s*\)')) {
+      $lineNo = (@($text.Substring(0, $m.Index) -split "`n").Count)
+      if ($underUi) { $uiCount++ }
+      else { $strays += ("$rel" + ':' + $lineNo) }
     }
   }
   return [pscustomobject]@{ Ok = ($strays.Count -eq 0); Strays = $strays; UiCount = $uiCount }
@@ -481,12 +519,14 @@ function Read-TestPopulationFile([string]$Path) {
   if (-not (Test-Path $Path)) { return (& $bad "fingerprint missing: $Path") }
   $filters = @{}
   $counts = @{}
+  $runA = @()
   $runB = @()
   $interactive = @()
   $section = ''
   foreach ($raw in (Get-Content $Path)) {
     $ln = $raw.Trim()
     if (($ln -eq '') -or $ln.StartsWith('#')) { continue }
+    if ($ln -eq 'run-a:') { $section = 'run-a'; continue }
     if ($ln -eq 'run-b:') { $section = 'run-b'; continue }
     if ($ln -eq 'interactive:') { $section = 'interactive'; continue }
     $kv = [regex]::Match($ln, '^([a-z-]+):\s*(.+)$')
@@ -495,6 +535,7 @@ function Read-TestPopulationFile([string]$Path) {
       $filters[$kv.Groups[1].Value] = $kv.Groups[2].Value.Trim()
       continue
     }
+    if (($section -eq 'run-a') -and ($raw -match '^  \S')) { $runA += $ln; continue }
     if (($section -eq 'run-b') -and ($raw -match '^  \S')) { $runB += $ln; continue }
     if (($section -eq 'interactive') -and ($raw -match '^  \S')) { $interactive += $ln; continue }
     return (& $bad "fingerprint malformed line: $raw")
@@ -508,28 +549,33 @@ function Read-TestPopulationFile([string]$Path) {
     if (-not [int]::TryParse($filters[$k], [ref]$n)) { return (& $bad "fingerprint bad count ${k}: $($filters[$k])") }
     $counts[$k] = $n
   }
+  if ($runA.Count -ne $counts['run-a-methods']) { return (& $bad "fingerprint run-a items $($runA.Count) != methods $($counts['run-a-methods'])") }
   if ($runB.Count -ne $counts['run-b-methods']) { return (& $bad "fingerprint run-b items $($runB.Count) != methods $($counts['run-b-methods'])") }
   if ($interactive.Count -ne $counts['interactive-methods']) { return (& $bad "fingerprint interactive items $($interactive.Count) != methods $($counts['interactive-methods'])") }
-  return [pscustomobject]@{ Ok = $true; Error = ''; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases'] }
+  return [pscustomobject]@{ Ok = $true; Error = ''; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases'] }
 }
 
 function Write-TestPopulationFile([string]$Path, [string]$RunAFilter, [string]$RunBFilter, [string]$InteractiveFilter, $Discovery) {
   # Canonical writer for the fingerprint (D00 T02 §15, D00-T02-S13-PR13):
   # filters, sorted unique member FQNs, method plus case counts. Atomic
   # via same-volume rename; $Discovery carries RunA/RunB/Interactive
-  # method lists plus the six counts.
+  # method lists plus the six counts. The header § emits by code point:
+  # Windows PowerShell reads BOM-less scripts as ANSI, so a literal §
+  # double-encodes on write (D00 T02 §15 R2-F7).
   $lines = @(
-    '# Nightly UI test population fingerprint (D00 T02 §15, D00-T02-S13-PR13).',
+    "# Nightly UI test population fingerprint (D00 T02 $([char]0xA7)15, D00-T02-S13-PR13).",
     '# One --list-tests discovery per leg filter; member FQNs sorted unique.',
     '# Regen: tools/Update-TestFingerprint.ps1 (build first). Review the diff:',
     '# every membership change stales prior proofs until re-accepted here.',
     "run-a-filter: $RunAFilter",
     "run-b-filter: $RunBFilter",
     "interactive-filter: $InteractiveFilter",
-    "run-a-methods: $($Discovery.RunAMethods)",
-    "run-a-cases: $($Discovery.RunACases)",
-    'run-b:'
+    'run-a:'
   )
+  foreach ($m in (@($Discovery.RunA) | Sort-Object -Unique)) { $lines += "  $m" }
+  $lines += "run-a-methods: $($Discovery.RunAMethods)"
+  $lines += "run-a-cases: $($Discovery.RunACases)"
+  $lines += 'run-b:'
   foreach ($m in (@($Discovery.RunB) | Sort-Object -Unique)) { $lines += "  $m" }
   $lines += "run-b-methods: $($Discovery.RunBMethods)"
   $lines += "run-b-cases: $($Discovery.RunBCases)"
@@ -558,7 +604,7 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
     if ($hits -ne 1) { $drifts += "filter '$want' appears $hits times in nightly.ps1 (want exactly once)" }
   }
   if ($live.CollectDefault -ne $fp.InteractiveFilter) { $drifts += "collection default '$($live.CollectDefault)' != fingerprinted '$($fp.InteractiveFilter)'" }
-  foreach ($leg in @(@('run-b', $fp.RunB, $Discovery.RunB), @('interactive', $fp.Interactive, $Discovery.Interactive))) {
+  foreach ($leg in @(@('run-a', $fp.RunA, $Discovery.RunA), @('run-b', $fp.RunB, $Discovery.RunB), @('interactive', $fp.Interactive, $Discovery.Interactive))) {
     $added = @(Compare-Object $leg[1] $leg[2] | Where-Object { $_.SideIndicator -eq '=>' } | ForEach-Object { $_.InputObject })
     $removed = @(Compare-Object $leg[1] $leg[2] | Where-Object { $_.SideIndicator -eq '<=' } | ForEach-Object { $_.InputObject })
     foreach ($a in ($added | Select-Object -First 5)) { $drifts += "$($leg[0]) added: $a" }
@@ -570,6 +616,7 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
   foreach ($p in $pairs) {
     if ($p[1] -ne $p[2]) { $drifts += "$($p[0]): fingerprinted $($p[1]) vs discovered $($p[2])" }
   }
+  if ($Discovery.RunAMethods -ne @($Discovery.RunA).Count) { $drifts += 'discovery run-a method list disagrees with its count (internal error)' }
   if ($Discovery.RunBMethods -ne @($Discovery.RunB).Count) { $drifts += 'discovery run-b method list disagrees with its count (internal error)' }
   if ($Discovery.InteractiveMethods -ne @($Discovery.Interactive).Count) { $drifts += 'discovery interactive method list disagrees with its count (internal error)' }
   return [pscustomobject]@{ Ok = ($drifts.Count -eq 0); Drifts = $drifts }
@@ -725,11 +772,14 @@ function Get-ShortHash([string]$Path) {
   } catch { return 'unreadable' }
 }
 
-function Format-EnforcementVerdict([bool]$Ran, [string[]]$Leaked) {
+function Format-EnforcementVerdict([bool]$Ran, [string[]]$Leaked, [bool]$Classified) {
   # Enforcement verdict, separate from test, gate, and infrastructure
   # (D00 T02 §15 PR8): the Interactive allowlist decides quarantine
-  # plus capability; anything else names names.
+  # plus capability; anything else names names. An unclassifiable leg
+  # (missing or malformed trx) is unproven, never green (D00 T02 §15
+  # R2-F1); the caller reds the run.
   if (-not $Ran) { return '- Interactive (collection): n/a (leg did not run)' }
+  if (-not $Classified) { return '- Interactive (collection): UNPROVEN (trx missing or malformed: no skip classification)' }
   if ($Leaked.Count -gt 0) { return "- Interactive (collection): RED ($($Leaked.Count) non-quarantine skips: $($Leaked -join ', '))" }
   return '- Interactive (collection): GREEN (every skip quarantined or capability)'
 }

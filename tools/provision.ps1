@@ -27,9 +27,10 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 $Rid = 'win-x64'
 $Tasks = @(
-  @{ Name = 'Nightly UI'; Path = '\ScratchPad\'; Time = '02:30'; ArgMatch = 'NightlySupervisor.ps1'; Xml = 'tools/tasks/nightly-ui.xml';
+  @{ Name = 'Nightly UI'; Path = '\ScratchPad\'; Time = '02:30'; ArgMatch = 'NightlySupervisor.ps1'; Supervisor = 'tools/NightlySupervisor.ps1'; Xml = 'tools/tasks/nightly-ui.xml';
      Extra = @{ MultipleInstances = 'IgnoreNew'; ExecutionTimeLimit = 'PT4H'; WakeToRun = 'True' } },
   @{ Name = 'Nightly Foreground Single'; Path = '\ScratchPad\'; Time = '02:05'; ArgMatch = 'OpenInNewWindowModeOpensSecondWindow'; Xml = 'tools/tasks/nightly-foreground-single.xml';
      Extra = @{} }
@@ -66,6 +67,10 @@ function Test-OneTask($Spec) {
     if ("$($t.Settings.psobject.Properties[$k].Value)" -ne "$($Spec.Extra[$k])") {
       $faults += "$k $($t.Settings.psobject.Properties[$k].Value)"
     }
+  }
+  if ($Spec.Supervisor) {
+    $sup = Test-SupervisorUnderLimit (Join-Path $Root $Spec.Supervisor) ([string]$t.Settings.ExecutionTimeLimit)
+    if (-not $sup.Ok) { $faults += "supervisor $($sup.Detail)" }
   }
   if ($faults.Count -eq 0) { return @{ Name = $label; Ok = $true; Detail = "ready $($Spec.Time) daily $($Spec.ArgMatch)" } }
   return @{ Name = $label; Ok = $false; Detail = ($faults -join '; ') }

@@ -11,16 +11,18 @@
   Status line) always stands: the supervisor relays the child exit code
   and writes nothing. Diagnostic flags (-Smoke, -CheckOnly) publish no
   report and are refused here; run them on nightly.ps1 directly.
-  Layering: the scheduled task's PT4H kill precedes the default 4.5 h
-  timeout, so scheduled hangs die by task kill (next-start recovery is
-  D00 T02 §16 work) while manual runs get the full timeout; fast
-  crash-no-publish tombstones on every path. A supervisor mutex stands
+  Layering: the default 14280 s timeout (PT4H minus 120 s) precedes the
+  scheduled task's PT4H kill, so scheduled hangs tombstone instead of
+  dying silent; the 120 s covers kill plus atomic write plus scheduler
+  slop, and manual runs share the timeout. Next-start recovery
+  (D00 T02 §16) stays as the reboot, power-loss, and supervisor-kill
+  backstop; fast crash-no-publish tombstones on every path. A supervisor mutex stands
   down second watchers (the scheduled IgnoreNew equivalent), so a
   concurrent supervisor never tombstones a live run's fixed path.
 #>
 [CmdletBinding()]
 param(
-  [int]$TimeoutSeconds = 16200,
+  [int]$TimeoutSeconds = 14280,
   [string]$NightlyArgs = '',
   [string]$NightlyPath = ''
 )

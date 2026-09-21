@@ -464,6 +464,7 @@ function Test-LegBudget([int]$CapSeconds) {
 }
 $budgetCut = @()
 $soakKilled = @()
+$soakFailed = @()
 
 $day = Get-Date -Format 'yyyy-MM-dd'
 $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
@@ -507,6 +508,7 @@ $gateB = $null
 $interactiveRan = $false
 $interactiveKilled = $false
 $interactiveLeaked = @()
+$interactiveClassified = $true
 $interactiveSkipReason = ''
 $nightOwedRows = @()
 # Collector snapshot (D00 T02 §10 items 4-6): open debts before the
@@ -725,9 +727,12 @@ try {
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
         if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
-        $leaked = @(Get-NonQuarantineSkips $trx)
+        $enf = Get-NonQuarantineSkips $trx
+        $interactiveClassified = $enf.Ok
+        $leaked = @($enf.Names)
         $interactiveLeaked = $leaked
-        if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
+        if (-not $enf.Ok) { Write-Host 'nightly: interactive trx missing or malformed (unproven: no skip classification)'; $failed = $true }
+        elseif ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
       }
@@ -749,9 +754,12 @@ try {
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
         if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
-        $leaked = @(Get-NonQuarantineSkips $trx)
+        $enf = Get-NonQuarantineSkips $trx
+        $interactiveClassified = $enf.Ok
+        $leaked = @($enf.Names)
         $interactiveLeaked = $leaked
-        if ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
+        if (-not $enf.Ok) { Write-Host 'nightly: interactive trx missing or malformed (unproven: no skip classification)'; $failed = $true }
+        elseif ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
       } finally {
         Stop-LegLog
       }
@@ -848,6 +856,7 @@ try {
       $soakArgs = @('test', 'tests/UI/UI.csproj', '--no-build', '--nologo', '--filter', 'Category!=Interactive', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=ui-soak-$i.trx", '--results-directory', $trxDir)
       $r = Invoke-TimedStep "soak-ui-$i" $capSoak $soakArgs (Join-Path $trxDir "soak-ui-$i.out.log") (Join-Path $trxDir "captures-soak-ui-$i")
       if ($r.Killed) { $soakKilled += "ui-soak-$i" }
+      elseif ($r.Code -ne 0) { $soakFailed += "ui-soak-$i" }
       if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
       if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture "soak-ui-$i" (Join-Path $trxDir "captures-soak-ui-$i") $r.Killed) }
     }
@@ -861,6 +870,7 @@ try {
       $soakArgs = @('test', 'tests/Protocol/Protocol.csproj', '--no-build', '--nologo', '-e', 'SCRATCHPAD_BACKGROUND=1', '--logger', "trx;LogFileName=protocol-soak-$i.trx", '--results-directory', $trxDir)
       $r = Invoke-TimedStep "soak-protocol-$i" $capSoak $soakArgs (Join-Path $trxDir "soak-protocol-$i.out.log") (Join-Path $trxDir "captures-soak-protocol-$i")
       if ($r.Killed) { $soakKilled += "protocol-soak-$i" }
+      elseif ($r.Code -ne 0) { $soakFailed += "protocol-soak-$i" }
       if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
       if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture "soak-protocol-$i" (Join-Path $trxDir "captures-soak-protocol-$i") $r.Killed) }
     }
@@ -930,7 +940,7 @@ $report += $quarantineNotes
 $report += ''
 $report += '## Enforcement'
 $report += ''
-$report += (Format-EnforcementVerdict $interactiveRan $interactiveLeaked)
+$report += (Format-EnforcementVerdict $interactiveRan $interactiveLeaked $interactiveClassified)
 $report += ''
 $report += '## Failures (triage appends finding refs)'
 $report += ''
@@ -967,7 +977,7 @@ $report += ''
 # record.
 $report += '## Soak'
 $report += ''
-$soakLedger = Format-SoakLedger $trxDir $soakKilled $budgetCut
+$soakLedger = Format-SoakLedger $trxDir $soakKilled $budgetCut $soakFailed (-not $SkipSoak)
 if ($soakLedger.Failed) { $failed = $true }
 $report += $soakLedger.Rows
 $report += ''
