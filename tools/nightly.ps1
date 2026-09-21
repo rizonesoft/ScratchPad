@@ -298,7 +298,7 @@ function Invoke-GatedLeg([string]$Name, [int]$GateSeconds, [string]$GateArgs, [s
   if ($gateHung) { $gateCode = 1; $verdict = 'gate hung past its bell plus grace (unproven)' }
   $overrun = $killed -or ($sw.Elapsed.TotalSeconds -gt $GateSeconds)
   Write-Host "--- $Name gate exit: $gateCode verdict: $verdict overrun: $overrun test-seconds: $([int]$sw.Elapsed.TotalSeconds) ---"
-  return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun; Killed = $killed }
+  return [pscustomobject]@{ TestCode = $testCode; GateCode = $gateCode; Verdict = $verdict; Overrun = $overrun; Killed = $killed; TestSeconds = [int]$sw.Elapsed.TotalSeconds }
 }
 
 # Result parsing plus report formatting live in tools/NightlyParse.ps1
@@ -361,6 +361,8 @@ $runStart = Get-Date
 # Monotonic run clock starts with the run itself (D00 T02 §14 PR18), so
 # elapsed budgets never see time-sync or timezone jumps.
 $runClock = [System.Diagnostics.Stopwatch]::StartNew()
+$phaseTimes = @{}
+$segClock = [System.Diagnostics.Stopwatch]::StartNew()
 $mutex = New-Object System.Threading.Mutex($false, 'Global\ScratchPadNightlyRun')
 $lockHeld = $false
 try { $lockHeld = $mutex.WaitOne(0) }
@@ -399,11 +401,26 @@ trap {
   # defined by then (they live above the leg block).
   if ((-not [string]::IsNullOrWhiteSpace($nightDir)) -and (-not [string]::IsNullOrWhiteSpace($day)) -and (Test-Path $nightDir)) {
     Write-AtomicReport @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)') (Join-Path $nightDir "morning-$day.md")
+    if (-not [string]::IsNullOrWhiteSpace($stamp)) { Write-RunJournal $nightDir $stamp $PID $runStart 'cancelled' }
     Write-Output 'nightly: RED (cancelled; record landed)'
   }
   if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
   exit 1
 }
+
+# Launcher parent chain (D00 T02 §16 item 7): captured once up front
+# (it cannot change mid-run) and reused by the trigger label plus the
+# timer-launch verdict at report time.
+$trigParent = ''; $trigGrandparent = ''
+try {
+  $me = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
+  $trigParent = (Get-CimInstance Win32_Process -Filter "ProcessId=$me").Name
+  if ($trigParent -eq 'powershell.exe') {
+    $gp = (Get-CimInstance Win32_Process -Filter "ProcessId=$me").ParentProcessId
+    $trigGrandparent = (Get-CimInstance Win32_Process -Filter "ProcessId=$gp").Name
+  }
+} catch { }
+$schedulerParented = (($trigParent -eq 'taskeng.exe') -or ($trigParent -eq 'svchost.exe') -or ($trigGrandparent -eq 'taskeng.exe') -or ($trigGrandparent -eq 'svchost.exe'))
 
 # Run-level deadline (D00 T02 §14): the catastrophe bound. Every leg
 # starts only when its full cap fits inside the remaining budget, so the
@@ -480,6 +497,20 @@ New-Item -ItemType Directory -Path $nightDir -Force | Out-Null
 # name: the guard plus the operator check one fixed path.
 $trxDir = Join-Path $nightDir $stamp
 New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
+# Next-start recovery (D00 T02 §16 items 4, 12): probe BEFORE writing
+# this run's journal, so a dead previous run lands its RED record
+# exactly once (the probe reads the old journal; the write below
+# replaces it). Diagnostics (-Smoke) probe but never journal: a
+# diagnostic is not a run and must not mask a dead one.
+$recoveredLine = 'none'
+$dj = Find-DeadRun $nightDir $stamp
+if ($dj.Dead) {
+  $recName = if ($dj.Stamp -ne '') { "morning-$($dj.Stamp)-recovery.md" } else { 'morning-corrupt-journal-recovery.md' }
+  Write-AtomicReport (Format-RecoveryRecord $dj.Stamp $dj.Phase $dj.Started $dj.Evidence $dj.Tombstone $stamp) (Join-Path $nightDir $recName)
+  $recoveredLine = "$($dj.Stamp) died at phase $($dj.Phase) (record $recName)"
+  Write-Output "nightly: recovered dead run $($dj.Stamp) at phase $($dj.Phase)"
+}
+if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'started' }
 # Pre-flight: reap orphaned test apps from a dead run. Path-scoped to this
 # checkout's Bin, so a released ScratchPad anywhere else is never touched;
 # age-scoped to before this run's start, so a concurrent run's children
@@ -506,6 +537,82 @@ if (-not $placement.Ok) {
   Write-Output "nightly: $placementError; no leg runs on a misplaced trait, report still lands"
 }
 $placementLine = if ($placementError -eq '') { "OK ($($placement.UiCount) Primary traits in tests/UI, none elsewhere)" } else { "VIOLATION: $placementError" }
+# Omission gate (D00 T02 §16 item 15): discovered test projects must
+# all run. Same red-path shape as placement: nothing runs, the
+# report still lands with the omission named.
+$omissionError = ''
+$cover = Test-ProjectCoverage (Join-Path $Root 'tests') $runAProjects
+if (-not $cover.Ok) {
+  $omissionError = "test projects missing from the run: $($cover.Missing -join ', ')"
+  $failed = $true
+  $SkipDefault = $true
+  $SkipPrimary = $true
+  $SkipFenced = $true
+  $SkipSoak = $true
+  $soakSkipReason = 'project omission'
+  Write-Output "nightly: $omissionError; no leg runs on an incomplete project set, report still lands"
+}
+$omissionLine = if ($omissionError -eq '') { "OK ($($cover.Found -join ', '))" } else { "OMISSION: $omissionError" }
+# Inherited pointer (D00 T02 §16 item 14): captured before core
+# publication repoints latest.txt, verified at report time.
+$priorPointer = $null
+if (Test-Path (Join-Path $nightDir 'latest.txt')) { $priorPointer = Read-LatestReport $nightDir }
+# Scheduler health (D00 T02 §16 item 9): drift, disabled, missing
+# starts. Credentials have no unelevated pre-fire expiry signal
+# (owned gap in docs/testing.md); auth-shaped LastResult codes
+# surface post-fire in the missing-start line. Verdicts vote red
+# only on scheduler-parented runs: a manual backup exists to prove
+# legs while the schedule is broken.
+$schedLines = @()
+$schedFaults = @()
+$taskLastRun = $null; $taskLastResult = ''; $taskEnabledLive = $true
+$taskActionLive = 'unknown'; $triggerTODs = @(); $taskRegistered = $runStart
+$schedComFailed = $false
+try {
+  $svc = New-Object -ComObject Schedule.Service
+  $svc.Connect()
+  $live = $svc.GetFolder('\ScratchPad').GetTask('Nightly UI')
+  $taskEnabledLive = [bool]$live.Enabled
+  $taskLastRun = $live.LastRunTime
+  $taskLastResult = "$($live.LastTaskResult)"
+  try { $taskRegistered = [datetime]$live.Definition.RegistrationInfo.Date } catch { }
+  $liveXml = Read-TaskXml $live.Definition.XmlText
+  $trackedXml = Read-TaskXml (Get-Content (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml') -Raw -ErrorAction Stop)
+  if (-not $liveXml.Ok) { $schedFaults += "live definition unreadable ($($liveXml.Error))" }
+  elseif (-not $trackedXml.Ok) { $schedFaults += "tracked definition unreadable ($($trackedXml.Error))" }
+  else {
+    $lb = @($liveXml.Triggers | ForEach-Object { "$($_.Kind)|$($_.StartBoundary)|$($_.DaysInterval)|$($_.Enabled)" } | Sort-Object) -join ';'
+    $tb = @($trackedXml.Triggers | ForEach-Object { "$($_.Kind)|$($_.StartBoundary)|$($_.DaysInterval)|$($_.Enabled)" } | Sort-Object) -join ';'
+    if ($lb -ne $tb) { $schedFaults += 'trigger definition drifted' }
+    if (($liveXml.Command -ne $trackedXml.Command) -or ($liveXml.Arguments -ne $trackedXml.Arguments)) { $schedFaults += 'action args drifted' }
+    if ($liveXml.ExecutionTimeLimit -ne $trackedXml.ExecutionTimeLimit) { $schedFaults += 'time limit drifted' }
+    $taskActionLive = "$($liveXml.Command) $($liveXml.Arguments)".Trim()
+    foreach ($t in @($liveXml.Triggers | Where-Object { $_.Enabled })) {
+      try { $triggerTODs += ([datetime]$t.StartBoundary).ToString('HH:mm') } catch { }
+    }
+  }
+} catch { $schedFaults += "scheduler state unavailable: $_"; $schedComFailed = $true }
+if ((-not $taskEnabledLive) -and (-not $schedComFailed)) { $schedFaults += 'task disabled' }
+$ms = Test-MissingStart $taskLastRun $runStart $taskRegistered $taskLastResult
+if ($schedComFailed) { $ms = [pscustomobject]@{ Verdict = 'unknown'; Line = 'scheduler last fire: unknown (scheduler state unreadable)' } }
+if ($ms.Verdict -eq 'missing') { $schedFaults += 'missing start' }
+$schedLines += if ($schedComFailed) { 'scheduler drift: unknown (state unreadable)' } elseif (@($schedFaults | Where-Object { $_ -like '*drifted*' }).Count -gt 0) { "scheduler drift: RED ($($schedFaults -join '; '))" } else { 'scheduler drift: none (live definition matches tools/tasks/nightly-ui.xml)' }
+$schedLines += if ($schedComFailed) { 'scheduler task: unknown (state unreadable)' } elseif ($taskEnabledLive) { 'scheduler task: enabled' } else { 'scheduler task: RED (disabled; no fire can launch)' }
+$schedLines += $ms.Line
+$schedLines += 'scheduler credentials: owned gap (docs/testing.md: no unelevated pre-fire expiry signal; auth-shaped LastResult codes surface above)'
+if (($schedFaults.Count -gt 0) -and $schedulerParented) {
+  $failed = $true
+  Write-Output "nightly: scheduler health RED ($($schedFaults -join '; ')); legs still run, verdict red"
+}
+$invokedBits = @()
+if ($Force) { $invokedBits += '-Force' }
+if ($SkipDefault) { $invokedBits += '-SkipDefault' }
+if ($SkipPrimary) { $invokedBits += '-SkipPrimary' }
+if ($SkipFenced) { $invokedBits += '-SkipFenced' }
+if ($SkipSoak) { $invokedBits += '-SkipSoak' }
+if ($Smoke) { $invokedBits += '-Smoke' }
+if ($CollectDebt -ne '') { $invokedBits += "-CollectDebt $CollectDebt" }
+$invokedWith = if ($invokedBits.Count -eq 0) { '(full shape, no switches)' } else { ($invokedBits -join ' ') }
 $populationLine = 'not verified (check skipped)'
 $buildError = ''
 $gateA = $null
@@ -613,9 +720,13 @@ try {
   try { $script:buildHead = (git -C $Root rev-parse HEAD).Trim() } catch { }
   # Build-once snapshot identity (D00 T02 §15 PR9): commit, dirty
   # state, binaries, config, and tool versions, captured once so every
-  # leg header quotes the identical line.
+  # leg header quotes the identical line. Dirt carries a content
+  # fingerprint (D00 T02 §16 item 16), not just a count, and the
+  # end-of-run re-check compares against it.
+  $treeStart = Get-TreeFingerprint $Root
   $dirtyState = 'clean'
-  try { $dirtyCount = @((git -C $Root status --porcelain)).Count; if ($dirtyCount -gt 0) { $dirtyState = "dirty:$dirtyCount" } } catch { $dirtyState = 'unknown' }
+  if ($treeStart.State -eq 'dirty') { $dirtyState = "dirty:$($treeStart.Count):$($treeStart.Fingerprint)" }
+  elseif ($treeStart.State -eq 'unknown') { $dirtyState = 'unknown' }
   $sdkVersion = 'unknown'
   try { $sdkVersion = (& $Dotnet --version).Trim() } catch { }
   $script:snapshot = "HEAD $($script:buildHead) $dirtyState; config Debug; dotnet $sdkVersion; UI $(Get-ShortHash (Join-Path $Root 'Bin\UI\Debug\UI.dll')); Protocol $(Get-ShortHash (Join-Path $Root 'Bin\Protocol\Debug\Protocol.dll')); gate $(Get-ShortHash $GateExe); jobctl $(Get-ShortHash $JobCtl)"
@@ -648,6 +759,7 @@ try {
     $populationLine = 'not verified (build failed)'
   }
 
+  $phaseTimes['build'] = [int]$segClock.Elapsed.TotalSeconds; $segClock.Restart()
   if ((-not $SkipDefault) -and (-not (Test-LegBudget $capA))) {
     $SkipDefault = $true
     $budgetCut += 'Run A (default)'
@@ -679,6 +791,8 @@ try {
     }
   }
 
+  if ($null -ne $gateA) { $phaseTimes['run-a'] = $gateA.TestSeconds }
+  $segClock.Restart()
   if ((-not $SkipPrimary) -and (-not (Test-LegBudget $capB))) {
     $SkipPrimary = $true
     $budgetCut += 'Run B (primary)'
@@ -702,6 +816,8 @@ try {
     }
   }
 
+  if ($null -ne $gateB) { $phaseTimes['run-b'] = $gateB.TestSeconds }
+  $segClock.Restart()
   if ((-not $SkipFenced) -and (-not (Test-LegBudget $capI))) {
     $SkipFenced = $true
     $interactiveSkipReason = 'budget-cut (run deadline)'
@@ -776,6 +892,8 @@ try {
     if ($interactiveSkipReason -eq '') { $interactiveSkipReason = '-SkipFenced' }
   }
 
+  if ($interactiveRan) { $phaseTimes['interactive'] = [int]$segClock.Elapsed.TotalSeconds }
+  $segClock.Restart()
   # Core verdicts publish before soak (D00 T02 §14 item 3): the three
   # regression legs land on the fixed report path now, so a long night
   # keeps its core proof even if soak eats the remaining budget.
@@ -852,6 +970,7 @@ try {
   $coreReport += ''
   $coreReport += $quarantineNotes
   Publish-NightlyReport $coreReport '-core'
+  if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'core' }
   Write-Output "nightly: core verdicts published before soak"
   if (-not $SkipSoak) {
     for ($i = 1; $i -le 5; $i++) {
@@ -883,6 +1002,8 @@ try {
       if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture "soak-protocol-$i" (Join-Path $trxDir "captures-soak-protocol-$i") $r.Killed) }
     }
   }
+  if (-not $SkipSoak) { $phaseTimes['soak'] = [int]$segClock.Elapsed.TotalSeconds }
+  $segClock.Restart()
 } finally {
   Pop-Location
 }
@@ -895,23 +1016,15 @@ if ([string]::IsNullOrWhiteSpace($head)) {
   try { $head = (git -C $Root rev-parse HEAD).Trim() } catch { }
 }
 $trigger = 'manual (see transcript head)'
-try {
-  $parent = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
-  $pname = (Get-CimInstance Win32_Process -Filter "ProcessId=$parent").Name
-  # The supervisor (D00 T02 §15 PR1) interposes one powershell level on
-  # the scheduled path, so scheduler labels match the grandparent when
-  # the parent is a plain shell; parent-first order keeps the direct
-  # (unsupervised) readings identical.
-  $gpname = ''
-  if ($pname -eq 'powershell.exe') {
-    $grandparent = (Get-CimInstance Win32_Process -Filter "ProcessId=$parent").ParentProcessId
-    $gpname = (Get-CimInstance Win32_Process -Filter "ProcessId=$grandparent").Name
-  }
-  $sched = if (($pname -eq 'taskeng.exe') -or ($pname -eq 'svchost.exe')) { $pname } else { $gpname }
-  if ($sched -eq 'taskeng.exe') { $trigger = 'cron \ScratchPad\Nightly UI (daily 02:30)' }
-  elseif ($sched -eq 'svchost.exe') { $trigger = 'task \ScratchPad\Nightly UI (timer or demand; svchost.exe hosts the scheduler on Win8+, an interactive shell never parents to it)' }
-  else { $trigger = "manual (parent $pname)" }
-} catch { }
+# Parent chain was captured up front (D00 T02 §16 item 7). The
+# supervisor (D00 T02 §15 PR1) interposes one powershell level on the
+# scheduled path, so scheduler labels match the grandparent when the
+# parent is a plain shell; parent-first order keeps the direct
+# (unsupervised) readings identical.
+$sched = if (($trigParent -eq 'taskeng.exe') -or ($trigParent -eq 'svchost.exe')) { $trigParent } else { $trigGrandparent }
+if ($sched -eq 'taskeng.exe') { $trigger = 'cron \ScratchPad\Nightly UI (daily 02:30)' }
+elseif ($sched -eq 'svchost.exe') { $trigger = 'task \ScratchPad\Nightly UI (timer or demand; svchost.exe hosts the scheduler on Win8+, an interactive shell never parents to it)' }
+elseif ($trigParent -ne '') { $trigger = "manual (parent $trigParent)" }
 # (Format-LegRow plus Get-LegNote live with the helpers above: the core
 # publish calls them before the final report block runs.)
 $report = @()
@@ -1002,6 +1115,8 @@ foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sum
 }
 $incidentInputs += @($soakLedger.Failures)
 $incidentLines = @(Format-Incidents $incidentInputs)
+$idc = Test-RunIdConsistency $nightDir $stamp $PID $incidentLines $priorPointer
+if (-not $idc.Ok) { $failed = $true }
 if ($incidentLines.Count -eq 0) { $report += '(none)' } else { $report += $incidentLines }
 $report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
@@ -1105,14 +1220,42 @@ if ($nightOwedRows.Count -gt 0) {
   $report += $nightOwedRows
   $report += ''
 }
-$reportPath = Join-Path $nightDir "morning-$day.md"
-Publish-NightlyReport $report ''
-Write-Output "nightly: report at $reportPath"
-
+# Run integrity (D00 T02 §16): the correlation chain plus the
+# end-of-run re-verifications, computed last so every value is
+# final. Timer proofs quote this section.
+$launch = Test-TimerLaunch $trigParent $trigGrandparent $runStart $triggerTODs $taskLastRun
+$treeEnd = Get-TreeFingerprint $Root
+$treeLine = 'clean at start and end'
+if (($treeStart.State -eq 'clean') -and ($treeEnd.State -eq 'clean')) { $treeLine = 'clean at start and end' }
+elseif (($treeStart.State -eq $treeEnd.State) -and ($treeStart.Fingerprint -eq $treeEnd.Fingerprint) -and ($treeStart.Count -eq $treeEnd.Count)) { $treeLine = "stable ($($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint))" }
+else { $treeLine = "MUTATED (start $($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint), end $($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint))" }
+$reserveLeft = [int](($deadline - (Get-Date)).TotalSeconds)
+$timLine = ((@($phaseTimes.Keys | Sort-Object | ForEach-Object { "$_=$($phaseTimes[$_])s" }) -join ' ') + " reserve=${reserveLeft}s")
+$dur = Test-PhaseDurations (Join-Path $PSScriptRoot 'nightly-baseline.json') $phaseTimes
+if (-not $dur.Ok) { $failed = $true }
+$report += ''
+$report += '## Run integrity'
+$report += ''
+$report += "- Launch: $($launch.Line)"
+$report += "- Action: task [$taskActionLive] invoked [$invokedWith]"
+$report += "- Scheduler: $($schedLines -join '; ')"
+$report += "- Tree: $treeLine"
+if ($idc.Ok) { $report += '- Identity: consistent (directories, archives, loser reports, incidents, pointers)' } else { foreach ($b in $idc.Breaks) { $report += "- Identity RED: $b" } }
+$report += "- Timings: $timLine"
+$report += $dur.Lines
+$report += "- Recovered: $recoveredLine"
+$report += "- Omission: $omissionLine"
 # A simulation run never exits 0 (D00 T02 §14 R2-F3): short deadlines
 # prove the watchdog, never the suite, so no sim report reads as
-# governed green proof however its legs land.
+# governed green proof however its legs land. Decided before
+# publication so the Exit line quotes the true code.
 if ($simMode -and (-not $failed)) { Write-Output 'nightly: simulation run forced RED (not a governed proof)'; $failed = $true }
-if ($failed) { Write-Output 'nightly: RED (see above)'; exit 1 }
+$exitCode = if ($failed) { 1 } else { 0 }
+$report += "- Exit: $exitCode"
+$reportPath = Join-Path $nightDir "morning-$day.md"
+Publish-NightlyReport $report ''
+if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
+Write-Output "nightly: report at $reportPath"
+if ($exitCode -ne 0) { Write-Output 'nightly: RED (see above)'; exit 1 }
 Write-Output 'nightly: GREEN'
 exit 0

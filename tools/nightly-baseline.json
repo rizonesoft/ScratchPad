@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "note": "Healthy-run phase durations (D00 T02 §16 item 14). Gated legs compare test-seconds (suite execution); ungated phases compare wall time. Warn is advisory (WARN line, never red). Values refine after the first timer-green run re-measures them.",
+  "phases": {
+    "build": { "baseline": 30, "warn": 300, "basis": "bootstrap comment (~10 s normal) plus build-plus-discovery wall; warn at half the 600 s bootstrap cap" },
+    "run-a": { "baseline": 600, "warn": 1200, "basis": "taskrun 2026-09-20 test-seconds 578 (test execution; gate holds the 1800 s window by design)" },
+    "run-b": { "baseline": 30, "warn": 150, "basis": "taskrun 2026-09-20 test-seconds 7 (test execution; gate holds the 300 s window by design)" },
+    "interactive": { "baseline": 150, "warn": 600, "basis": "taskrun 2026-09-20 transcript wall 04:49:05-04:51:15 (130 s)" },
+    "soak": { "baseline": 2800, "warn": 4500, "basis": "taskrun 2026-09-20 wall-derived (full-leg end 04:51:15 to run end 05:38:07 across 10 iterations)" }
+  }
+}

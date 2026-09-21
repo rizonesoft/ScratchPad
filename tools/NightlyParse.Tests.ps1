@@ -424,6 +424,185 @@ Write-AtomicReport @('line-a', 'line-b') (Join-Path $dir 'atomic.md')
 Assert (((Get-Content (Join-Path $dir 'atomic.md') -Raw) -replace "`r`n", '|') -eq 'line-a|line-b|') 'atomic-content'
 Assert (-not (Test-Path (Join-Path $dir 'atomic.md.tmp'))) 'atomic-no-residue'
 
+# --- D00 T02 §16 fixtures ---
+$s16 = Join-Path $dir 's16'
+$null = New-Item -ItemType Directory -Force -Path $s16
+
+# Read-LatestReport: pointer resolves and verifies.
+$lr = Join-Path $s16 'latest-ok'
+$null = New-Item -ItemType Directory -Force -Path $lr
+'2026-09-20-023001' | Set-Content -Path (Join-Path $lr 'latest.txt') -Encoding UTF8
+@('# Morning report: 2026-09-20', 'Status: final', '', '- Run identity: 2026-09-20-023001-pid4242') | Set-Content -Path (Join-Path $lr 'morning-2026-09-20-023001.md') -Encoding UTF8
+$r = Read-LatestReport $lr
+Assert ($r.Ok -and ($r.Stamp -eq '2026-09-20-023001')) 'latest-ok' $r.Error
+$lrMissing = Join-Path $s16 'latest-missing'
+$null = New-Item -ItemType Directory -Force -Path $lrMissing
+Assert (-not (Read-LatestReport $lrMissing).Ok) 'latest-missing-pointer'
+'' | Set-Content -Path (Join-Path $lrMissing 'latest.txt') -Encoding UTF8
+Assert ((Read-LatestReport $lrMissing).Error -eq 'latest.txt empty') 'latest-empty'
+'2026-09-20-023002' | Set-Content -Path (Join-Path $lrMissing 'latest.txt') -Encoding UTF8
+Assert ((Read-LatestReport $lrMissing).Error -like 'target missing*') 'latest-target-missing'
+@('# Morning report: 2026-09-20', 'Status: pre-soak core verdicts (final report overwrites after soak)', '', '- Run identity: 2026-09-20-023002-pid9') | Set-Content -Path (Join-Path $lrMissing 'morning-2026-09-20-023002.md') -Encoding UTF8
+Assert ((Read-LatestReport $lrMissing).Error -eq 'target is not final') 'latest-not-final'
+@('# Morning report: 2026-09-20', 'Status: final', '', '- Run identity: 2026-09-20-999999-pid9') | Set-Content -Path (Join-Path $lrMissing 'morning-2026-09-20-023002.md') -Encoding UTF8
+Assert ((Read-LatestReport $lrMissing).Error -like 'identity mismatch*') 'latest-identity-mismatch'
+@('# Stood-down run: x', 'Status: stood-down') | Set-Content -Path (Join-Path $lrMissing 'morning-2026-09-20-023002.md') -Encoding UTF8
+Assert ((Read-LatestReport $lrMissing).Error -eq 'target is not a morning report') 'latest-not-report'
+
+# Get-TreeFingerprint: content, not just counts.
+$gr = Join-Path $s16 'gitrepo'
+$null = New-Item -ItemType Directory -Force -Path $gr
+Push-Location $gr
+git init -q 2>$null | Out-Null; git config user.email 't@t' 2>$null | Out-Null; git config user.name 't' 2>$null | Out-Null
+'v1' | Set-Content -Path (Join-Path $gr 'a.txt') -Encoding UTF8
+git add -A 2>$null | Out-Null; git commit -qm init 2>$null | Out-Null
+Pop-Location
+$f = Get-TreeFingerprint $gr
+Assert (($f.State -eq 'clean') -and ($f.Fingerprint -eq '') -and ($f.Count -eq 0)) 'tree-clean'
+'v2' | Set-Content -Path (Join-Path $gr 'a.txt') -Encoding UTF8
+$f2 = Get-TreeFingerprint $gr
+Assert (($f2.State -eq 'dirty') -and ($f2.Fingerprint -ne '') -and ($f2.Count -eq 1)) 'tree-dirty'
+'v3-other-bytes' | Set-Content -Path (Join-Path $gr 'a.txt') -Encoding UTF8
+$f3 = Get-TreeFingerprint $gr
+Assert (($f3.Count -eq 1) -and ($f3.Fingerprint -ne $f2.Fingerprint)) 'tree-content-swap' "$($f2.Fingerprint) vs $($f3.Fingerprint)"
+'new' | Set-Content -Path (Join-Path $gr 'b.txt') -Encoding UTF8
+$f4 = Get-TreeFingerprint $gr
+Assert (($f4.Count -eq 2) -and ($f4.Fingerprint -ne $f3.Fingerprint)) 'tree-add-file'
+$nr = Join-Path $s16 'notrepo'
+$null = New-Item -ItemType Directory -Force -Path $nr
+Assert ((Get-TreeFingerprint $nr).State -eq 'unknown') 'tree-unknown'
+
+# Test-ProjectCoverage: discovery cross-checks the executed set.
+$tr = Join-Path $s16 'testsroot'
+foreach ($p in @('Smoke', 'Unit', 'Protocol', 'UI')) {
+  $pd = Join-Path $tr $p; $null = New-Item -ItemType Directory -Force -Path $pd
+  '<Project Sdk="x"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" Version="1" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $pd "$p.csproj") -Encoding UTF8
+}
+$fx = Join-Path $tr 'Fixtures\AcpLoopback'; $null = New-Item -ItemType Directory -Force -Path $fx
+'<Project Sdk="x"><PropertyGroup><OutputType>Exe</OutputType></PropertyGroup></Project>' | Set-Content -Path (Join-Path $fx 'AcpLoopback.csproj') -Encoding UTF8
+$bd = Join-Path $tr 'UI\bin'; $null = New-Item -ItemType Directory -Force -Path $bd
+'Microsoft.NET.Test.Sdk' | Set-Content -Path (Join-Path $bd 'Decoy.csproj') -Encoding UTF8
+$c = Test-ProjectCoverage $tr @('Smoke', 'Unit', 'Protocol', 'UI')
+Assert ($c.Ok -and ($c.Found.Count -eq 4)) 'coverage-clean' ($c.Found -join ',')
+$c2 = Test-ProjectCoverage $tr @('Smoke', 'Unit', 'Protocol')
+Assert ((-not $c2.Ok) -and ($c2.Missing -join ',' -eq 'UI')) 'coverage-missing' ($c2.Missing -join ',')
+$np = Join-Path $tr 'NewSuite'; $null = New-Item -ItemType Directory -Force -Path $np
+'<Project Sdk="x"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" Version="1" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $np 'NewSuite.csproj') -Encoding UTF8
+$c3 = Test-ProjectCoverage $tr @('Smoke', 'Unit', 'Protocol', 'UI')
+Assert ((-not $c3.Ok) -and ($c3.Missing -join ',' -eq 'NewSuite')) 'coverage-planted'
+$lp = Join-Path $tr 'Locked'; $null = New-Item -ItemType Directory -Force -Path $lp
+'<Project Sdk="x"><ItemGroup><PackageReference Include="Microsoft.NET.Test.Sdk" Version="1" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $lp 'Locked.csproj') -Encoding UTF8
+$fs = [System.IO.File]::Open((Join-Path $lp 'Locked.csproj'), 'Open', 'Read', 'None')
+try { $cLock = Test-ProjectCoverage $tr @('Smoke', 'Unit', 'Protocol', 'UI', 'NewSuite') } finally { $fs.Close() }
+Assert ((-not $cLock.Ok) -and (@($cLock.Missing) -contains 'Locked')) 'coverage-unreadable'
+Remove-Item $lp -Recurse -Force
+Assert ((Test-ProjectCoverage (Join-Path $s16 'no-such-root') @('UI')).Ok) 'coverage-missing-root'
+
+# Read-TaskXml: definition parses or fails closed.
+$taskXml = @'
+<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers><CalendarTrigger><StartBoundary>2026-09-19T02:30:00+02:00</StartBoundary><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger></Triggers>
+  <Principals><Principal id="Author"><LogonType>InteractiveToken</LogonType></Principal></Principals>
+  <Settings><ExecutionTimeLimit>PT4H</ExecutionTimeLimit><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><StartWhenAvailable>true</StartWhenAvailable><WakeToRun>true</WakeToRun></Settings>
+  <Actions Context="Author"><Exec><Command>powershell.exe</Command><Arguments>-File tools/nightly.ps1</Arguments></Exec></Actions>
+</Task>
+'@
+$tx = Read-TaskXml $taskXml
+Assert ($tx.Ok -and ($tx.Triggers.Count -eq 1) -and ($tx.Triggers[0].StartBoundary -eq '2026-09-19T02:30:00+02:00') -and ($tx.Arguments -eq '-File tools/nightly.ps1') -and ($tx.LogonType -eq 'InteractiveToken')) 'taskxml-ok' $tx.Error
+Assert (-not (Read-TaskXml '<Task><oops').Ok) 'taskxml-malformed'
+Assert ((Read-TaskXml '<NotTask/>').Error -eq 'task XML has no Task root') 'taskxml-no-root'
+Assert ((Read-TaskXml '<Task><Triggers></Triggers></Task>').Error -eq 'task XML carries no triggers') 'taskxml-no-triggers'
+
+# Test-MissingStart: staleness verdicts.
+$now = [datetime]'2026-09-21 10:00:00'
+$m = Test-MissingStart ([datetime]'2026-09-21 02:30:01') $now ([datetime]'2026-09-19 12:00:00') '1'
+Assert ($m.Verdict -eq 'ok') 'missingstart-ok' $m.Line
+$m2 = Test-MissingStart ([datetime]'2026-09-19 02:30:01') $now ([datetime]'2026-09-19 12:00:00') '1'
+Assert (($m2.Verdict -eq 'missing') -and ($m2.Line -like '*MISSING*')) 'missingstart-stale'
+$m3 = Test-MissingStart $null $now ([datetime]'2026-09-21 09:00:00') ''
+Assert ($m3.Verdict -eq 'bootstrap') 'missingstart-bootstrap'
+$m4 = Test-MissingStart ([datetime]'1899-12-30') $now ([datetime]'2026-09-18 12:00:00') ''
+Assert ($m4.Verdict -eq 'missing') 'missingstart-never-old'
+$m5 = Test-MissingStart ([datetime]'2026-09-21 02:30:01') $now ([datetime]'2026-09-19 12:00:00') '0x8007052E'
+Assert ($m5.Line -like '*auth-shaped*') 'missingstart-auth'
+
+# Test-TimerLaunch: timer, demand, manual, unknown, midnight wrap.
+$tl = Test-TimerLaunch 'powershell.exe' 'taskeng.exe' ([datetime]'2026-09-21 02:30:01') @('02:30') ([datetime]'2026-09-21 02:30:00')
+Assert ($tl.Verdict -eq 'timer') 'timerlaunch-timer' $tl.Line
+$tl2 = Test-TimerLaunch 'powershell.exe' 'svchost.exe' ([datetime]'2026-09-21 04:13:43') @('02:30') ([datetime]'2026-09-21 04:13:40')
+Assert ($tl2.Verdict -eq 'demand') 'timerlaunch-demand' $tl2.Line
+$tl3 = Test-TimerLaunch 'powershell.exe' 'explorer.exe' ([datetime]'2026-09-21 02:30:01') @('02:30') ([datetime]'2026-09-21 02:30:00')
+Assert ($tl3.Verdict -eq 'manual') 'timerlaunch-manual'
+$tl4 = Test-TimerLaunch '' '' ([datetime]'2026-09-21 02:30:01') @('02:30') ([datetime]'2026-09-21 02:30:00')
+Assert ($tl4.Verdict -eq 'unknown') 'timerlaunch-unknown'
+$tl5 = Test-TimerLaunch 'powershell.exe' 'taskeng.exe' ([datetime]'2026-09-21 00:01:00') @('23:59') ([datetime]'2026-09-21 00:01:00')
+Assert ($tl5.Verdict -eq 'timer') 'timerlaunch-wrap' $tl5.Line
+
+# Journal roundtrip plus dead-run probe.
+$jr = Join-Path $s16 'journal'
+$null = New-Item -ItemType Directory -Force -Path $jr
+Assert (-not (Read-RunJournal $jr).Exists) 'journal-missing'
+Write-RunJournal $jr '2026-09-21-100000' 4242 ([datetime]'2026-09-21 10:00:00') 'legs'
+$jj = Read-RunJournal $jr
+Assert (($jj.Ok) -and ($jj.Stamp -eq '2026-09-21-100000') -and ($jj.Pid -eq 4242) -and ($jj.Phase -eq 'legs')) 'journal-roundtrip' $jj.Error
+'{broken json' | Set-Content -Path (Join-Path $jr 'current.json') -Encoding UTF8
+Assert (-not (Read-RunJournal $jr).Ok) 'journal-corrupt'
+'{"stamp":"","phase":"legs","pid":1,"started":"2026-09-21T10:00:00"}' | Set-Content -Path (Join-Path $jr 'current.json') -Encoding UTF8
+Assert ((Read-RunJournal $jr).Error -like '*stamp missing*') 'journal-shape'
+$dr = Join-Path $s16 'deadrun'
+$null = New-Item -ItemType Directory -Force -Path $dr
+Assert (-not (Find-DeadRun $dr '2026-09-21-023001').Dead) 'deadrun-no-journal'
+Write-RunJournal $dr '2026-09-20-023001' 999199 ([datetime]'2026-09-20 02:30:05') 'legs'
+$sd = Join-Path $dr '2026-09-20-023001'; $null = New-Item -ItemType Directory -Force -Path $sd
+'' | Set-Content -Path (Join-Path $sd 'run-a-UI.trx') -Encoding UTF8
+'' | Set-Content -Path (Join-Path $sd 'run-b.trx') -Encoding UTF8
+$d = Find-DeadRun $dr '2026-09-21-023001'
+Assert (($d.Dead) -and ($d.Phase -eq 'legs') -and (($d.Evidence -join ';') -like '*2 trx files*')) 'dead-run' $d.Reason
+@('# Morning report: 2026-09-20', 'Status: supervisor tombstone') | Set-Content -Path (Join-Path $dr 'morning-2026-09-20.md') -Encoding UTF8
+$d2 = Find-DeadRun $dr '2026-09-21-023001'
+Assert (($d2.Dead) -and ($d2.Tombstone -like '*morning-2026-09-20.md')) 'dead-run-tombstone'
+Write-RunJournal $dr '2026-09-20-023001' $PID (Get-Process -Id $PID).StartTime 'legs'
+$d3 = Find-DeadRun $dr '2026-09-21-023001'
+Assert ((-not $d3.Dead) -and ($d3.Reason -like '*still alive*')) 'dead-run-live-refused'
+Write-RunJournal $dr '2026-09-20-023001' 999199 ([datetime]'2026-09-20 02:30:05') 'final'
+Assert (-not (Find-DeadRun $dr '2026-09-21-023001').Dead) 'dead-run-final'
+$rec = Format-RecoveryRecord '2026-09-20-023001' 'legs' '2026-09-20 02:30:05' @('stamp dir 2026-09-20-023001', '2 trx files') '' '2026-09-21-023001'
+Assert ((($rec -join "`n") -like '*Status: recovered-dead-run*') -and (($rec -join "`n") -like '*Verdict: RED*')) 'recovery-record'
+$rec2 = Format-RecoveryRecord '2026-09-20-023001' 'legs' '2026-09-20 02:30:05' @('stamp dir') 'morning-2026-09-20.md' '2026-09-21-023001'
+Assert (($rec2 -join "`n") -like '*Tombstone: morning-2026-09-20.md*') 'recovery-tombstone-link'
+
+# Test-RunIdConsistency: five surfaces.
+$ir = Join-Path $s16 'ids'
+$null = New-Item -ItemType Directory -Force -Path $ir
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $ir '2026-09-21-023001')
+'2026-09-20-023001' | Set-Content -Path (Join-Path $ir 'latest.txt') -Encoding UTF8
+@('# Morning report: 2026-09-20', 'Status: final', '', '- Run identity: 2026-09-20-023001-pid7') | Set-Content -Path (Join-Path $ir 'morning-2026-09-20-023001.md') -Encoding UTF8
+$goodInc = @('- INC-abcdef12 `UI.OkTest` x2 (Run A): boom')
+$priorGood = Read-LatestReport $ir
+Assert ((Test-RunIdConsistency $ir '2026-09-21-023001' 4242 $goodInc $priorGood).Ok) 'ids-clean'
+Assert (-not (Test-RunIdConsistency $ir '2026-09-21-999999' 4242 $goodInc $null).Ok) 'ids-missing-dir'
+Assert (@((Test-RunIdConsistency $ir 'not-a-stamp' 4242 $goodInc $null).Breaks -like 'identity malformed*').Count -eq 1) 'ids-malformed'
+'2026-09-19-023001' | Set-Content -Path (Join-Path $ir 'latest.txt') -Encoding UTF8
+$priorBad = Read-LatestReport $ir
+Assert (@((Test-RunIdConsistency $ir '2026-09-21-023001' 4242 $goodInc $priorBad).Breaks -like 'pointer continuity*').Count -eq 1) 'ids-pointer'
+'2026-09-20-023001' | Set-Content -Path (Join-Path $ir 'latest.txt') -Encoding UTF8
+'' | Set-Content -Path (Join-Path $ir 'loser-2026-09-21-023001-pid999.md') -Encoding UTF8
+Assert (@((Test-RunIdConsistency $ir '2026-09-21-023001' 4242 $goodInc $null).Breaks -like 'same-second twin*').Count -eq 1) 'ids-twin'
+Remove-Item (Join-Path $ir 'loser-2026-09-21-023001-pid999.md') -Force
+$collide = @('- INC-abcdef12 `UI.OkTest` x1 (Run A): boom', '- INC-abcdef12 `UI.Other` x1 (Run A): bam')
+Assert (@((Test-RunIdConsistency $ir '2026-09-21-023001' 4242 $collide $null).Breaks -like 'incident id collision*').Count -eq 1) 'ids-collision'
+Assert (@((Test-RunIdConsistency $ir '2026-09-21-023001' 4242 @('- INC-XYZ broken') $null).Breaks -like 'incident line malformed*').Count -eq 1) 'ids-malformed-line'
+
+# Test-PhaseDurations: baseline compare.
+'{"version":1,"phases":{"run-a":{"baseline":600,"warn":1200}}}' | Set-Content -Path (Join-Path $s16 'baseline.json') -Encoding UTF8
+$pd = Test-PhaseDurations (Join-Path $s16 'baseline.json') @{ 'run-a' = 100 }
+Assert (($pd.Ok) -and (($pd.Lines -join ';') -like '*baseline 600s*')) 'durations-ok'
+$pd2 = Test-PhaseDurations (Join-Path $s16 'baseline.json') @{ 'run-a' = 1300 }
+Assert (($pd2.Ok) -and (($pd2.Lines -join ';') -like '*WARN over warn 1200s*')) 'durations-warn'
+$pd3 = Test-PhaseDurations (Join-Path $s16 'baseline.json') @{ 'run-b' = 50 }
+Assert (($pd3.Ok) -and (($pd3.Lines -join ';') -like '*no baseline*')) 'durations-unbaselined'
+Assert (-not (Test-PhaseDurations (Join-Path $s16 'no-baseline.json') @{ 'run-a' = 1 }).Ok) 'durations-missing'
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyParse.Tests: all green'

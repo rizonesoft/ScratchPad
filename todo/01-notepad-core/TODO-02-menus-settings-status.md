@@ -480,6 +480,7 @@ Why this section exists: three `MenuBarTests` failed nondeterministically on CI 
 
 - -> XREF: D00 T02 §7 -- filed from its pipeline run; the flakes blocked its first artifact.
 - -> XREF: D00 T02 §9 -- two more flakes filed from its night triage (FileOpen plus LiveItems, red 02:30 run, green governed re-run).
+- -> XREF: D00 T02 §16 -- post-fix green needs this section's red resolutions (item 3).
 - -> SOURCE: CI-flakes-2026-09-17 (`UI.MenuBarTests.FileSaveAllWalksDirtyTabs`: COMException UIA timeout in `WaitForNativeModalGone`, red on run 35230396785 attempt 1, green on the rerun of the same commit; `UI.MenuBarTests.ToolsMenuInvokesStats`: `Assert.NotNull` in `OpenToolsDialog`, red on run 35230230322, green on run 35230396785 whose tree differs only in workflow YAML plus TODO prose, i.e. a bit-identical test binary; `UI.MenuBarTests.FileMenuLiveAcceleratorsWork`: `Assert.NotNull`, red on run 35234746568 attempt 1, green on the rerun of the same commit. All smell like slow-runner load; the owners confirm via soak.)
 - -> SOURCE: night-flakes-2026-09-20 (`UI.MenuBarTests.FileOpenMissingNameOffersCreate`: "menu item MenuFileOpen never dispatched"; `UI.MenuBarTests.LiveItemsStayEnabledAcrossStates`: `Assert.NotNull`. Both red on the 02:30 run, green on the 03:20 governed re-run; `git diff d3111e4 a8127c7 -- tests/ src/` is empty, so the pair is a same-binary red-then-green. Filed from the D00 T02 §9 night triage.)
 

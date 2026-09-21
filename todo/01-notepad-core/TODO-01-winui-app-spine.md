@@ -1029,6 +1029,7 @@ Why this section exists: two §13 drives fail deterministically in the night run
 
 - -> XREF: D01 T01 §13 -- owns the pinned close path this section repairs; its drives red-flagged.
 - -> XREF: D00 T02 §9 -- filed from its night triage; both runs' evidence quoted there.
+- -> XREF: D00 T02 §16 -- post-fix green needs this section's red resolutions (item 3).
 - -> SOURCE: night-triage-2026-09-20 (`UI.PinnedTabsTests.SingleCloseStillClosesPinned`: `Assert.NotNull` (`PinnedTabsTests.cs:213`); `UI.PinnedTabsTests.CloseRightSkipsPinned`: `Assert.NotNull` in `WaitForPin` (`PinnedTabsTests.cs:339`); both red in the 02:30 `ui-interactive.trx` (24 passed, 3 failed, 1 skipped) and red again in the re-run `interactive.trx` (24 passed, 3 failed, 1 skipped); counts quoted in `docs/reviews/00-workspace/D00-T02-s9.md`). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s34 D00-T02-S9-PR28 D00-T02-S9-PR29 (visible-oracle plus leg corrections from the §9 plan review).
 
 - [ ] `SingleCloseStillClosesPinned` passes: the NotNull cause is quoted and fixed in app or test, and single-close closes exactly the pinned tab it was invoked on (PR28). Done when: the test passes in the room and in a full default run with the visible outcome asserted (PR29: default leg — the failures reproduced backgrounded, so no Interactive leg is owed).

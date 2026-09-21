@@ -832,3 +832,295 @@ function Format-EnforcementVerdict([bool]$Ran, [string[]]$Leaked, [bool]$Classif
   if ($Leaked.Count -gt 0) { return "- Interactive (collection): RED ($($Leaked.Count) non-quarantine skips: $($Leaked -join ', '))" }
   return '- Interactive (collection): GREEN (every skip quarantined or capability)'
 }
+
+# --- D00 T02 §16: timer verification, recovery, and evidence integrity ---
+
+function Read-LatestReport([string]$NightDir) {
+  # Resolves latest.txt to its archived morning report and verifies the
+  # target (D00 T02 §16 item 10): the pointer exists, the target exists,
+  # the target is a final morning report, and its run identity carries
+  # the pointed stamp. Triage resolves the current report through this
+  # reader (docs/testing.md), never by globbing stamp dirs.
+  $ptr = Join-Path $NightDir 'latest.txt'
+  if (-not (Test-Path $ptr)) { return [pscustomobject]@{ Ok = $false; Stamp = ''; Path = ''; Error = 'latest.txt missing' } }
+  $first = @((Get-Content $ptr -ErrorAction SilentlyContinue)) | Select-Object -First 1
+  $stamp = "$first".Trim()
+  if ($stamp -eq '') { return [pscustomobject]@{ Ok = $false; Stamp = ''; Path = ''; Error = 'latest.txt empty' } }
+  $target = Join-Path $NightDir "morning-$stamp.md"
+  if (-not (Test-Path $target)) { return [pscustomobject]@{ Ok = $false; Stamp = $stamp; Path = $target; Error = "target missing: morning-$stamp.md" } }
+  $head = @(Get-Content $target -TotalCount 14 -ErrorAction SilentlyContinue)
+  if (($head.Count -eq 0) -or ($head[0] -notlike '# Morning report:*')) { return [pscustomobject]@{ Ok = $false; Stamp = $stamp; Path = $target; Error = 'target is not a morning report' } }
+  if ((($head -join "`n") -notlike '*Status: final*')) { return [pscustomobject]@{ Ok = $false; Stamp = $stamp; Path = $target; Error = 'target is not final' } }
+  $idLine = @($head | Where-Object { $_ -like '- Run identity:*' })
+  if ($idLine.Count -eq 0) { return [pscustomobject]@{ Ok = $false; Stamp = $stamp; Path = $target; Error = 'target carries no run identity' } }
+  if ($idLine[0] -notlike "- Run identity: $stamp-pid*") { return [pscustomobject]@{ Ok = $false; Stamp = $stamp; Path = $target; Error = "identity mismatch (want $stamp-pid*)" } }
+  return [pscustomobject]@{ Ok = $true; Stamp = $stamp; Path = $target; Error = '' }
+}
+
+function Get-TreeFingerprint([string]$Root) {
+  # Content fingerprint of worktree dirt (D00 T02 §16 item 16): the
+  # porcelain file list alone cannot see content swaps, so every dirty
+  # path contributes its worktree-bytes hash. Clean trees fingerprint
+  # empty; a git failure reads unknown (fail closed: never clean).
+  $porc = @()
+  try {
+    $porc = @(git -C $Root status --porcelain 2>$null)
+    if ($LASTEXITCODE -ne 0) { return [pscustomobject]@{ State = 'unknown'; Fingerprint = ''; Count = -1 } }
+  } catch { return [pscustomobject]@{ State = 'unknown'; Fingerprint = ''; Count = -1 } }
+  if ($porc.Count -eq 0) { return [pscustomobject]@{ State = 'clean'; Fingerprint = ''; Count = 0 } }
+  $rows = @()
+  foreach ($line in $porc) {
+    if ($line.Length -lt 4) { continue }
+    $xy = $line.Substring(0, 2)
+    $path = $line.Substring(3)
+    if ($path -like '* -> *') { $path = $path.Substring($path.IndexOf(' -> ') + 4) }
+    $path = $path.Trim().Trim('"')
+    $h = 'absent'
+    $full = Join-Path $Root $path
+    if (Test-Path $full -PathType Leaf) {
+      try { $h = ((git -C $Root hash-object -- $full 2>$null) | Out-String).Trim() } catch { $h = 'unhashable' }
+      if ($h -eq '') { $h = 'unhashable' }
+    } elseif (Test-Path $full) { $h = 'dir' }
+    $rows += "$xy|$path|$h"
+  }
+  $fp = Get-StringHash (($rows | Sort-Object) -join "`n")
+  return [pscustomobject]@{ State = 'dirty'; Fingerprint = $fp; Count = $porc.Count }
+}
+
+function Test-ProjectCoverage([string]$TestsRoot, [string[]]$Executed) {
+  # Discovery cross-check (D00 T02 §16 item 15): a test project is a
+  # tests/*/*.csproj referencing the test SDK; every discovered
+  # project must run, or the leg omits coverage silently. bin/obj
+  # trees never count as sources. Discovery errors fail closed:
+  # unreadable projects land in Missing, never silently out.
+  # Returns Ok plus Missing names.
+  $found = @()
+  $unreadable = @()
+  if (Test-Path $TestsRoot) {
+    $covErrs = $null
+    $files = @(Get-ChildItem -Path $TestsRoot -Filter '*.csproj' -Recurse -File -ErrorAction SilentlyContinue -ErrorVariable covErrs | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' })
+    if (@($covErrs).Count -gt 0) { return [pscustomobject]@{ Ok = $false; Missing = @('discovery error: test tree unreadable'); Found = @() } }
+    foreach ($f in $files) {
+      $text = ''
+      try { $text = Get-Content $f.FullName -Raw -ErrorAction Stop } catch { $unreadable += $f.BaseName; continue }
+      if ($text -match 'Microsoft\.NET\.Test\.Sdk') { $found += $f.BaseName }
+    }
+  }
+  $missing = @(@($found | Where-Object { $Executed -notcontains $_ }) + @($unreadable) | Sort-Object -Unique)
+  $uniq = @($found | Sort-Object -Unique)
+  if ($missing.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Missing = $missing; Found = $uniq } }
+  return [pscustomobject]@{ Ok = $true; Missing = @(); Found = $uniq }
+}
+
+function Read-TaskXml([string]$XmlText) {
+  # Parses a scheduled-task definition (D00 T02 §16 items 7, 9):
+  # daily triggers plus action, principal, and schedule settings.
+  # Malformed XML fails closed (never a partial definition).
+  $xml = $null
+  try { $xml = [xml]$XmlText } catch { return [pscustomobject]@{ Ok = $false; Error = "task XML does not parse: $_" } }
+  if ($null -eq $xml.Task) { return [pscustomobject]@{ Ok = $false; Error = 'task XML has no Task root' } }
+  $kids = @()
+  try { $kids = @($xml.Task.Triggers.ChildNodes) } catch { $kids = @() }
+  $trigs = @()
+  foreach ($t in $kids) {
+    if ("$($t.LocalName)" -match 'Trigger$') {
+      $start = ''; $days = ''; $en = $true
+      try { $start = "$($t.StartBoundary)" } catch { }
+      try { $days = "$($t.ScheduleByDay.DaysInterval)" } catch { }
+      try { if ("$($t.Enabled)" -eq 'false') { $en = $false } } catch { }
+      $trigs += [pscustomobject]@{ Kind = "$($t.LocalName)"; StartBoundary = $start; DaysInterval = $days; Enabled = $en }
+    }
+  }
+  if ($trigs.Count -eq 0) { return [pscustomobject]@{ Ok = $false; Error = 'task XML carries no triggers' } }
+  $cmd = ''; $targs = ''; $logon = ''; $limit = ''; $multi = ''; $swa = ''; $wake = ''
+  try { $e = $xml.Task.Actions.Exec; if ($null -ne $e) { $cmd = "$($e.Command)".Trim(); $targs = "$($e.Arguments)".Trim() } } catch { }
+  try { $logon = "$($xml.Task.Principals.Principal.LogonType)".Trim() } catch { }
+  try { $limit = "$($xml.Task.Settings.ExecutionTimeLimit)".Trim() } catch { }
+  try { $multi = "$($xml.Task.Settings.MultipleInstancesPolicy)".Trim() } catch { }
+  try { $swa = "$($xml.Task.Settings.StartWhenAvailable)".Trim() } catch { }
+  try { $wake = "$($xml.Task.Settings.WakeToRun)".Trim() } catch { }
+  return [pscustomobject]@{ Ok = $true; Error = ''; Triggers = $trigs; Command = $cmd; Arguments = $targs; LogonType = $logon; ExecutionTimeLimit = $limit; MultipleInstances = $multi; StartWhenAvailable = $swa; WakeToRun = $wake }
+}
+
+function Test-MissingStart($LastRunTime, [datetime]$Now, [datetime]$Registered, [string]$LastResult, [int]$MaxAgeHours = 26) {
+  # Missing-start verdict (D00 T02 §16 item 9): an enabled daily task
+  # fires within MaxAgeHours; older reads MISSING, never-ran reads
+  # bootstrap only while the registration itself is young.
+  # Auth-shaped LastResult codes surface the credential residual
+  # post-fire (no unelevated pre-fire expiry signal exists).
+  $authNote = ''
+  if (($LastResult -like '*0x8007052E*') -or ($LastResult -like '*0x80070569*') -or ($LastResult -like '*1326*') -or ($LastResult -like '*1385*')) { $authNote = ' (auth-shaped result: re-check stored credentials)' }
+  $never = ($null -eq $LastRunTime) -or ($LastRunTime -isnot [datetime]) -or ($LastRunTime.Year -le 1900)
+  if ($never) {
+    $regAge = ($Now - $Registered).TotalHours
+    if ($regAge -gt $MaxAgeHours) { return [pscustomobject]@{ Verdict = 'missing'; Line = "scheduler last fire: MISSING (never fired since registration $Registered)$authNote" } }
+    return [pscustomobject]@{ Verdict = 'bootstrap'; Line = "scheduler last fire: bootstrap (registered $Registered, first fire pending)$authNote" }
+  }
+  $ageH = [math]::Round(($Now - $LastRunTime).TotalHours, 1)
+  if (($Now - $LastRunTime).TotalHours -gt $MaxAgeHours) { return [pscustomobject]@{ Verdict = 'missing'; Line = "scheduler last fire: MISSING (last $LastRunTime, ${ageH}h ago; result $LastResult)$authNote" } }
+  return [pscustomobject]@{ Verdict = 'ok'; Line = "scheduler last fire: $LastRunTime (${ageH}h ago; result $LastResult)$authNote" }
+}
+
+function Test-TimerLaunch([string]$ParentName, [string]$GrandparentName, [datetime]$RunStart, [string[]]$TriggerTimeOfDay, $LastRunTime, [int]$WindowMinutes = 5) {
+  # Timer-vs-demand-vs-manual verdict (D00 T02 §16 items 7, 8): a
+  # scheduler-parented start inside ±WindowMinutes of a defined daily
+  # trigger time, with the scheduler's own LastRunTime agreeing,
+  # reads timer. Trigger times ride HH:mm (daily occurrences); the
+  # date and offset do not participate, so DST shifts read unknown,
+  # never a false timer.
+  $sched = @($ParentName, $GrandparentName) | Where-Object { ($_ -eq 'taskeng.exe') -or ($_ -eq 'svchost.exe') }
+  $isSched = (@($sched).Count -gt 0)
+  $inWindow = $false
+  foreach ($tod in $TriggerTimeOfDay) {
+    $m = [regex]::Match("$tod", '^(\d{2}):(\d{2})$')
+    if (-not $m.Success) { continue }
+    $t = New-TimeSpan -Hours ([int]$m.Groups[1].Value) -Minutes ([int]$m.Groups[2].Value)
+    $diffMin = [math]::Abs(($RunStart.TimeOfDay - $t).TotalMinutes)
+    if ($diffMin -gt 720) { $diffMin = 1440 - $diffMin }
+    if ($diffMin -le $WindowMinutes) { $inWindow = $true }
+  }
+  $lastOk = $false
+  if (($null -ne $LastRunTime) -and ($LastRunTime -is [datetime]) -and ($LastRunTime.Year -gt 1900)) {
+    if ([math]::Abs(($RunStart - $LastRunTime).TotalMinutes) -le $WindowMinutes) { $lastOk = $true }
+  }
+  if ([string]::IsNullOrWhiteSpace("$ParentName$GrandparentName")) { return [pscustomobject]@{ Verdict = 'unknown'; Line = 'launch: unknown (no parent chain captured)' } }
+  if ($isSched -and $inWindow -and $lastOk) { return [pscustomobject]@{ Verdict = 'timer'; Line = "launch: timer (scheduler-parented $ParentName/$GrandparentName, start $($RunStart.ToString('HH:mm')) in trigger window, LastRunTime agrees)" } }
+  if ($isSched) { return [pscustomobject]@{ Verdict = 'demand'; Line = "launch: demand-or-recovered (scheduler-parented $ParentName/$GrandparentName outside trigger windows; operator, API, or StartWhenAvailable recovery: see LastRunTime)" } }
+  return [pscustomobject]@{ Verdict = 'manual'; Line = "launch: manual (parent $ParentName)" }
+}
+
+function Write-RunJournal([string]$NightDir, [string]$Stamp, [int]$ProcId, [datetime]$Started, [string]$Phase) {
+  # Atomically records this run's phase (D00 T02 §16 items 4, 12):
+  # started at launch, core at core-verdict publication, final at
+  # final publication. Next-start recovery reads the last-known
+  # phase of any run that never reached final.
+  $obj = [pscustomobject]@{ stamp = $Stamp; pid = $ProcId; started = $Started.ToString('o'); phase = $Phase }
+  Write-AtomicReport @((ConvertTo-Json $obj -Compress)) (Join-Path $NightDir 'current.json')
+}
+
+function Read-RunJournal([string]$NightDir) {
+  # Reads the run journal, failing closed on any malformed shape: a
+  # journal that cannot prove its stamp, process, start, and phase
+  # reads corrupt, and corruption with no final report reads dead.
+  $p = Join-Path $NightDir 'current.json'
+  if (-not (Test-Path $p)) { return [pscustomobject]@{ Exists = $false; Ok = $true; Stamp = ''; Pid = 0; Started = $null; Phase = ''; Error = '' } }
+  $o = $null
+  try { $o = Get-Content $p -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Exists = $true; Ok = $false; Stamp = ''; Pid = 0; Started = $null; Phase = ''; Error = "journal unreadable: $_" } }
+  if (($null -eq $o.stamp) -or ("$($o.stamp)" -eq '')) { return [pscustomobject]@{ Exists = $true; Ok = $false; Stamp = ''; Pid = 0; Started = $null; Phase = ''; Error = 'journal shape wrong (stamp missing)' } }
+  if (($null -eq $o.phase) -or ("$($o.phase)" -eq '')) { return [pscustomobject]@{ Exists = $true; Ok = $false; Stamp = ''; Pid = 0; Started = $null; Phase = ''; Error = 'journal shape wrong (phase missing)' } }
+  $st = $null
+  try { $st = [datetime]$o.started } catch { return [pscustomobject]@{ Exists = $true; Ok = $false; Stamp = ''; Pid = 0; Started = $null; Phase = ''; Error = 'journal shape wrong (start unparseable)' } }
+  $id = 0
+  try { $id = [int]$o.pid } catch { return [pscustomobject]@{ Exists = $true; Ok = $false; Stamp = ''; Pid = 0; Started = $null; Phase = ''; Error = 'journal shape wrong (pid unparseable)' } }
+  return [pscustomobject]@{ Exists = $true; Ok = $true; Stamp = "$($o.stamp)"; Pid = $id; Started = $st; Phase = "$($o.phase)"; Error = '' }
+}
+
+function Test-JournalProcessAlive([int]$ProcId, [datetime]$Started) {
+  # PID-reuse guard: the journaled process counts alive only when a
+  # process with that PID started near the journaled start instant.
+  # The tolerance is deliberately narrow (2 min) so a clock jump
+  # risks a spurious recovery record, never a swallowed dead run.
+  try {
+    $p = Get-Process -Id $ProcId -ErrorAction Stop
+    return ([math]::Abs(($p.StartTime - $Started).TotalMinutes) -lt 2)
+  } catch { return $false }
+}
+
+function Find-DeadRun([string]$NightDir, [string]$CurrentStamp) {
+  # Next-start dead-run probe (D00 T02 §16 items 4, 12): a journaled
+  # run that is not this run, never reached final, left no final
+  # archive, and owns no live process died mid-flight. A same-day
+  # supervisor tombstone at the fixed path links as the same
+  # abandoned run instead of double-reporting the incident.
+  $j = Read-RunJournal $NightDir
+  if (-not $j.Exists) { return [pscustomobject]@{ Dead = $false; Stamp = ''; Phase = ''; Started = $null; Evidence = @(); Tombstone = ''; Reason = 'no journal: first run on record' } }
+  if (-not $j.Ok) { return [pscustomobject]@{ Dead = $true; Stamp = ''; Phase = 'unknown (journal unreadable)'; Started = $null; Evidence = @('current.json (unparseable)'); Tombstone = ''; Reason = $j.Error } }
+  if ($j.Stamp -eq $CurrentStamp) { return [pscustomobject]@{ Dead = $false; Stamp = ''; Phase = ''; Started = $null; Evidence = @(); Tombstone = ''; Reason = 'journal names this run' } }
+  if ($j.Phase -eq 'final') { return [pscustomobject]@{ Dead = $false; Stamp = ''; Phase = ''; Started = $null; Evidence = @(); Tombstone = ''; Reason = "prior run $($j.Stamp) reached final" } }
+  $arch = Join-Path $NightDir "morning-$($j.Stamp).md"
+  if (Test-Path $arch) {
+    $txt = (@(Get-Content $arch -TotalCount 10 -ErrorAction SilentlyContinue) -join "`n")
+    if ($txt -like '*Status: final*') { return [pscustomobject]@{ Dead = $false; Stamp = ''; Phase = ''; Started = $null; Evidence = @(); Tombstone = ''; Reason = "final archive landed for $($j.Stamp) (journal phase lagged)" } }
+  }
+  if (Test-JournalProcessAlive $j.Pid $j.Started) { return [pscustomobject]@{ Dead = $false; Stamp = ''; Phase = ''; Started = $null; Evidence = @(); Tombstone = ''; Reason = "journaled process $($j.Pid) still alive: possible concurrent run, recovery refused" } }
+  $ev = @()
+  $sdir = Join-Path $NightDir $j.Stamp
+  if (Test-Path $sdir) {
+    $ev += "stamp dir $($j.Stamp)"
+    $trx = @(Get-ChildItem $sdir -Filter '*.trx' -ErrorAction SilentlyContinue).Count
+    $ev += "$trx trx files"
+  } else { $ev += "no stamp dir $($j.Stamp)" }
+  $tomb = ''
+  if ($j.Stamp.Length -ge 10) {
+    $fixed = Join-Path $NightDir ("morning-" + $j.Stamp.Substring(0, 10) + ".md")
+    if (Test-Path $fixed) {
+      $ftxt = (@(Get-Content $fixed -TotalCount 10 -ErrorAction SilentlyContinue) -join "`n")
+      if ($ftxt -like '*Status: supervisor tombstone*') { $tomb = $fixed }
+    }
+  }
+  return [pscustomobject]@{ Dead = $true; Stamp = $j.Stamp; Phase = $j.Phase; Started = $j.Started; Evidence = $ev; Tombstone = $tomb; Reason = "journaled run $($j.Stamp) died at phase $($j.Phase)" }
+}
+
+function Format-RecoveryRecord([string]$DeadStamp, [string]$Phase, $Started, [string[]]$Evidence, [string]$Tombstone, [string]$RecoveredBy) {
+  # RED recovery record for a dead previous run (D00 T02 §16 item 4):
+  # last-known phase plus evidence, linked to the supervisor
+  # tombstone when it covers the same abandoned run.
+  $lines = @("# Recovery record: $DeadStamp", 'Status: recovered-dead-run', '', "- Last-known phase: $Phase", "- Started: $Started", "- Evidence: $($Evidence -join '; ')")
+  if ($Tombstone -ne '') { $lines += "- Tombstone: $Tombstone (same abandoned run; this record carries the phase detail the tombstone lacks)" }
+  $lines += "- Recovered by: $RecoveredBy"
+  $lines += '- Verdict: RED (previous run died mid-flight; see evidence)'
+  return $lines
+}
+
+function Test-RunIdConsistency([string]$NightDir, [string]$Stamp, [int]$ProcId, [string[]]$IncidentLines, $PriorPointer) {
+  # Run-identity consistency across the five evidence surfaces (D00
+  # T02 §16 item 14): directories, archives, loser reports, incidents,
+  # and pointers. Any break reds the run: evidence that cannot prove
+  # which run it belongs to proves nothing. $PriorPointer is the
+  # pre-flight Read-LatestReport result (or $null on a first run):
+  # core publication repoints latest.txt at the current stamp, so a
+  # late re-read would fault on the not-yet-published archive; the
+  # inherited pointer verifies instead, and the next run verifies
+  # this run's archive the same way (chain of custody).
+  $breaks = @()
+  if (-not (Test-Path (Join-Path $NightDir $Stamp))) { $breaks += "directory missing: $Stamp" }
+  if ("$Stamp-pid$ProcId" -notmatch '^\d{4}-\d{2}-\d{2}-\d{6}-pid\d+$') { $breaks += "identity malformed: $Stamp-pid$ProcId" }
+  if ($null -ne $PriorPointer) {
+    if (-not $PriorPointer.Ok) { $breaks += "pointer continuity: $($PriorPointer.Error)" }
+  }
+  $self = "loser-$Stamp-pid$ProcId.md"
+  $twins = @(Get-ChildItem $NightDir -Filter "loser-$Stamp-pid*.md" -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $self })
+  foreach ($t in $twins) { $breaks += "same-second twin loser report: $($t.Name)" }
+  $seen = @{}
+  foreach ($ln in $IncidentLines) {
+    $m = [regex]::Match($ln, '^- (INC-[0-9a-f]{8}) `([^`]+)`')
+    if (-not $m.Success) { $breaks += "incident line malformed: $ln"; continue }
+    $id = $m.Groups[1].Value; $test = $m.Groups[2].Value
+    if ($seen.ContainsKey($id) -and ($seen[$id] -ne $test)) { $breaks += "incident id collision: $id on $($seen[$id]) and $test" }
+    else { $seen[$id] = $test }
+  }
+  if ($breaks.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Breaks = $breaks } }
+  return [pscustomobject]@{ Ok = $true; Breaks = @() }
+}
+
+function Test-PhaseDurations([string]$BaselinePath, [hashtable]$Actual) {
+  # Duration baseline compare (D00 T02 §16 item 14): every measured
+  # phase reads against its baseline plus warning threshold.
+  # Over-warn surfaces as a WARN line, never a red: slowness is
+  # signal, not failure. A missing baseline file reds (the tree
+  # ships it); an unbaselined phase notes once without failing.
+  if (-not (Test-Path $BaselinePath)) { return [pscustomobject]@{ Ok = $false; Lines = @("durations: RED (baseline file missing: $BaselinePath)") } }
+  $base = $null
+  try { $base = Get-Content $BaselinePath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Ok = $false; Lines = @("durations: RED (baseline unreadable: $_)") } }
+  $lines = @()
+  foreach ($k in @($Actual.Keys | Sort-Object)) {
+    $v = [int]$Actual[$k]
+    $entry = $null
+    try { $entry = $base.phases.$k } catch { $entry = $null }
+    if ($null -eq $entry) { $lines += "durations: $k ${v}s (no baseline; first measurement)"; continue }
+    $b = [int]$entry.baseline; $w = [int]$entry.warn
+    if ($v -gt $w) { $lines += "durations: $k ${v}s WARN over warn ${w}s (baseline ${b}s)" }
+    else { $lines += "durations: $k ${v}s (baseline ${b}s, warn ${w}s)" }
+  }
+  return [pscustomobject]@{ Ok = $true; Lines = $lines }
+}
