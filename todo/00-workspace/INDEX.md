@@ -14,6 +14,7 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 | [TODO-05](./TODO-05-runner-loop.md) | Runner Loop | active |
 | [TODO-06](./TODO-06-operator-docs.md) | Operator Docs | active |
 | [TODO-07](./TODO-07-bin-output-follow-ups.md) | Bin Output Follow-Ups | active |
+| [TODO-08](./TODO-08-unattended-notification-follow-ups.md) | Unattended Notification Follow-Ups | active |
 
 ## Completed
 
