@@ -1122,6 +1122,38 @@ SEVERITY_MAP: dict[str, str] = {
     # re-opening the grandfathered set (D00 T01 §48 item 6).
     "backdated-stamp": "fatal",
 }
+# Clearance failure codes (D00 T01 §55 item 13). Stable names:
+# do not rename a member; add one only in the same change as its
+# assignment. Recount 2026-09-22: 24 codes. resolution:unresolvable
+# is three sites, touch:range is two, and proof:proof-touch shares
+# its site with proof:loop. Consumers can check this tuple instead
+# of reading the query.
+CLEARANCE_FAILURE_CODES = (
+    "ancestry:range-base",
+    "ancestry:strict",
+    "chronology:attestation",
+    "chronology:ordering",
+    "chronology:range-touch-time",
+    "chronology:recency",
+    "proof:ambiguous",
+    "proof:back-link",
+    "proof:loop",
+    "proof:proof-touch",
+    "proof:unattested",
+    "resolution:ambiguous-fix",
+    "resolution:merge-range",
+    "resolution:merge-tip",
+    "resolution:missing-fix",
+    "resolution:regressed-tree",
+    "resolution:unlinked",
+    "resolution:unnamed",
+    "resolution:unresolvable",
+    "resolution:unreviewed-tree",
+    "touch:first-parent-chain",
+    "touch:hunk-span",
+    "touch:range",
+    "touch:single",
+)
 # Rule-24 leg markers for the description probes (D00 T01 §46): each
 # leg of the `risk-acceptance-malformed` rule matches a normalized
 # (comment-stripped, lowercased, whitespace-squeezed) phrase
@@ -18093,6 +18125,17 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
         }
+        _code_src = Path(__file__).read_text(encoding="utf-8").split(
+            "# --- clearance failure codes", 1
+        )[0]
+        _assigned_codes = set(re.findall(r'fail_code = "([^"]+)"', _code_src))
+        _assigned_codes.update(re.findall(r'fail_code = \(\s*"([^"]+)"', _code_src))
+        _assigned_codes.update(re.findall(r'else "([a-z]+:[a-z-]+)"', _code_src))
+        check(
+            "clearance failure codes match the enum",
+            set(CLEARANCE_FAILURE_CODES),
+            _assigned_codes,
+        )
         check(
             "clearance failures name their failed leg",
             {k: _codes.get(k, set()) for k in _want_codes},
