@@ -1614,15 +1614,22 @@ def validate(graph, _args) -> int:
                     # tree symlink and vice versa), so containment
                     # reads the path as a canonical string and
                     # existence reads the tree-entry mode, never the
-                    # bytes (`git show` serves a link's target string
-                    # as if it were file content). Unresolving
+                    # bytes. The path string is a canonical git path
+                    # (D00 T01 §55 item 16): forward slashes, no empty
+                    # or dot segment, NFC, and the tree entry's path
+                    # must equal that string, so case and separators
+                    # cannot pick a different entry on Windows.
+                    # `git show` serves a link's target string as if
+                    # it were file content, so the mode is the check.
+                    # Unresolving
                     # candidates skip through the WARN above, never
                     # silently.
-                    if ".." in Path(_pp).parts:
+                    _issue = graph.provenance_path_issue(_pp)
+                    if _issue is not None:
                         flag(
                             "provenance-malformed",
                             f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp!r} "
-                            "is not canonical (.. segments rejected on new records)",
+                            f"is not canonical ({_issue})",
                         )
                     elif _res is True:
                         _mode = graph.git_tree_mode(_cand, _pp)

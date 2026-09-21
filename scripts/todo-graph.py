@@ -30,6 +30,7 @@ import argparse
 import difflib
 import hashlib
 import importlib.util
+import unicodedata
 import json
 import os
 import re
@@ -2926,6 +2927,26 @@ def git_commit_reachable(sha: str) -> bool | None:
     return bool(out.stdout.strip())
 
 
+def provenance_path_issue(path: str) -> str | None:
+    """Why a new-record provenance path is not a canonical git path.
+
+    D00 T01 §55 item 16. The recorded string is the tree key on
+    every platform: forward slashes only, no empty segment, no
+    `.` or `..`, no case folding, and NFC Unicode. None means the
+    path is canonical. The same function runs on Windows and Unix.
+    """
+    if "\\" in path or path.startswith("/") or re.match(r"^[A-Za-z]:", path):
+        return "separator or absolute form"
+    parts = path.split("/")
+    if any(part == "" for part in parts):
+        return "empty segment"
+    if any(part in (".", "..") for part in parts):
+        return "dot segment"
+    if unicodedata.normalize("NFC", path) != path:
+        return "unicode not NFC"
+    return None
+
+
 def git_tree_mode(ref: str, path: str) -> str | None:
     """The tree-entry mode for path at ref (`100644`, `120000`,
     ...), or None when missing or unprovable. The candidate-tree
@@ -2949,7 +2970,11 @@ def git_tree_mode(ref: str, path: str) -> str | None:
     if out.returncode != 0:
         return None
     try:
-        first = out.stdout.decode("utf-8", "replace").split("\t", 1)[0].split()
+        raw = out.stdout.decode("utf-8", "replace")
+        meta, listed = raw.split("\t", 1)
+        if listed.rstrip("\r\n") != path:
+            return None
+        first = meta.split()
     except Exception:
         return None
     if len(first) != 3 or not re.fullmatch(r"[0-7]{6}", first[0]):
@@ -20883,6 +20908,7 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
                     check("real git canonical identity fails a bad ref", canonical_commit_id("deadbee000000000000000000000000000000000"), None)
                     check("real git canonical identity fails a blob", canonical_commit_id(_blob), None)
                     check("real git tree mode reads a file", git_tree_mode(_gc2, "proof.txt"), "100644")
+                    check("real git tree mode keeps case", git_tree_mode(_gc2, "Proof.txt"), None)
                     check("real git tree mode misses a missing path", git_tree_mode(_gc2, "missing.txt"), None)
                     check("real git tree mode on a bad ref is unprovable", git_tree_mode("deadbee000000000000000000000000000000000", "proof.txt"), None)
                     if _have_link:
@@ -22104,6 +22130,19 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             PROVENANCE_RE.match(_part_glued) is None,
             True,
         )
+        _nfc = "docs/caf\u00e9.md"
+        check("a forward-slash NFC path is canonical", provenance_path_issue("docs/a.md"), None)
+        check("a backslash path is not canonical", provenance_path_issue("docs\\a.md"), "separator or absolute form")
+        check("a repeated separator is not canonical", provenance_path_issue("docs//a.md"), "empty segment")
+        check("a dot segment is not canonical", provenance_path_issue("docs/./a.md"), "dot segment")
+        check("a parent segment is not canonical", provenance_path_issue("docs/../a.md"), "dot segment")
+        check("case is not folded", provenance_path_issue("Docs/A.md"), None)
+        check(
+            "an NFD path is not canonical",
+            provenance_path_issue(unicodedata.normalize("NFD", _nfc)),
+            "unicode not NFC",
+        )
+        check("an NFC path is canonical", provenance_path_issue(unicodedata.normalize("NFC", _nfc)), None)
         _rfail = _sp.run(
             [
                 sys.executable,
