@@ -10,12 +10,17 @@ on:
       - 'scripts/**'
       - 'todo/**'
       - 'tools/githooks/**'
+      - 'tools/notify_poster.py'
       - '.gitattributes'
       - '.github/workflows/plan.yml'
   # Unattended gate (D00 T01 §29 item 1): daily, off-peak, away from
   # soak's 3:17 slot. The unattended job below runs on every trigger
   # (its gates also catch push-time drift); only the notify post is
   # schedule-gated, so pushes never file issues.
+  # Clock boundary (D00 T01 §53 item 8): GitHub cron fires in UTC and
+  # every query defaults today to the UTC calendar date, so review
+  # and expiry states flip at 00:00 UTC; --today freezes that date
+  # for fixtures, never a timezone.
   schedule:
     - cron: '23 4 * * *'
 
@@ -53,36 +58,74 @@ jobs:
     permissions:
       contents: read
       issues: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+      - name: Check schedule heartbeat
+        # Last-success monitor (D00 T01 §53 item 7): fails when the
+        # daily cron has no success in the last 26 hours, so a
+        # delayed or repeatedly failing schedule surfaces here
+        # instead of letting dates expire silently. Runs on pushes
+        # too: any job run can report a stale schedule.
+        # always() (D00 T01 §53 item 9): every gate step runs even
+        # when an earlier gate fails; the verdict step below judges.
+        id: heartbeat
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/check_heartbeat.py --max-age-hours 26
       - name: Gate plan health plus migration zero
+        id: health
+        if: always()
         run: python3 scripts/todo-graph.py query plan-health --check --fail-on grandfathered
       - name: Gate risk register freshness
+        id: register
+        if: always()
         run: python3 scripts/todo-graph.py query risk-register --check
       - name: Record the operator digest
+        id: digest
         if: always()
         run: python3 scripts/todo-graph.py query summary
-      - name: Notify owners of due dates
+      - name: Build owner notifications
+        id: notify_build
+        if: ${{ always() && github.event_name == 'schedule' }}
+        run: |
+          # Notice horizon 7 (D00 T01 §53 item 4): one weekly cycle of
+          # daily notices per obligation; the notify contract states
+          # the rationale and the self-test pins this line.
+          python3 scripts/todo-graph.py query notify --within-days 7 > /tmp/notify.txt
+      - name: Post owner notifications
+        id: notify_post
+        # Explicit notification-failure gate (D00 T01 §53 item 6): the
+        # poster runs as its own step, so a post failure fails the job
+        # under this name instead of hiding inside the query step.
         # always(): notification must fire especially when the gates
         # above fail (panel R1: fail-fast skips would let the
-        # obligations causing the failure expire silently).
+        # obligations causing the failure expire silently); a missing
+        # payload file fails this step closed, which is the correct
+        # signal when the query above broke.
         if: ${{ always() && github.event_name == 'schedule' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/notify_poster.py /tmp/notify.txt
+      - name: Verdict on all gates
+        # Combined verdict (D00 T01 §53 item 9): every gate above runs
+        # always, so this last step judges the job from the step
+        # outcomes. Skipped steps (schedule-gated notify on pushes)
+        # pass; only failure fails. Without it an always() gate
+        # failure would still fail the job, but the verdict names
+        # every gate result in one place.
+        if: always()
         run: |
-          python3 scripts/todo-graph.py query notify --within-days 7 > /tmp/notify.txt
-          N=$(sed -n 's/^notify: \([0-9]*\) payloads.*/\1/p' /tmp/notify.txt)
-          TITLE="Unattended risk watch (scheduled)"
-          NUM=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number -q '.[0].number')
-          if [ "$N" != "0" ]; then
-            if [ -z "$NUM" ]; then
-              gh issue create --title "$TITLE" --body-file /tmp/notify.txt
-            else
-              gh issue comment "$NUM" --body-file /tmp/notify.txt
-            fi
-          elif [ -n "$NUM" ]; then
-            echo "clear as of $(date -u +%F): 0 payloads within 7 days" | gh issue comment "$NUM" --body-file -
-            gh issue close "$NUM"
-          fi
+          echo "heartbeat: ${{ steps.heartbeat.outcome }}"
+          echo "plan-health: ${{ steps.health.outcome }}"
+          echo "register: ${{ steps.register.outcome }}"
+          echo "digest: ${{ steps.digest.outcome }}"
+          echo "notify-build: ${{ steps.notify_build.outcome }}"
+          echo "notify-post: ${{ steps.notify_post.outcome }}"
+          case "${{ steps.heartbeat.outcome }} ${{ steps.health.outcome }} ${{ steps.register.outcome }} ${{ steps.digest.outcome }} ${{ steps.notify_build.outcome }} ${{ steps.notify_post.outcome }}" in
+            *failure*) echo "one or more gates failed"; exit 1 ;;
+          esac
+          echo "all gates passed"

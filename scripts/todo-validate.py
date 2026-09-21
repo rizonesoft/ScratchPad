@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections import Counter
 import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -1674,8 +1675,12 @@ def validate(graph, _args) -> int:
     # file-scoped serial and the supersession identity (the
     # record date stays ordering metadata, never identity);
     # expiry never predates the record; and the review date sits
-    # inside record..expiry, bounds inclusive (§21 review R4,
-    # named here D00 T01 §25). Date-scoped and fence-stripped
+    # inside record..expiry, lower bound inclusive, upper strict
+    # (§21 review R4, named here D00 T01 §25; the upper strictness
+    # is the D00 T01 §53 item 12 lead time: the review precedes
+    # expiry by at least a day, so it can never satisfy the
+    # contract only at the instant acceptance expires).
+    # Date-scoped and fence-stripped
     # like rule 23; first reporter wins per file. Dangling
     # targets (well-formed but covering nothing) stay silent
     # here: the query only consults acceptances for live
@@ -1739,15 +1744,25 @@ def validate(graph, _args) -> int:
                         "risk-acceptance-malformed",
                         f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance expires before it is recorded: {am.group(6)} < {am.group(5)}",
                     )
-                elif am.group(7) < am.group(5) or am.group(7) > am.group(6):
+                elif am.group(7) < am.group(5) or am.group(7) >= am.group(6):
                     # Review-window order (D00 T01 §21 review R4): the
-                    # review date sits inside record..expiry, bounds
-                    # inclusive like the expiry leg. In-file dates
+                    # review date sits inside record..expiry, lower
+                    # bound inclusive like the expiry leg, upper
+                    # bound strict (D00 T01 §53 item 12: at least a
+                    # day of lead time before expiry, so the review
+                    # can never satisfy the contract only at the
+                    # instant acceptance expires). In-file dates
                     # only, so the rule stays wall-clock-free.
-                    flag(
-                        "risk-acceptance-malformed",
-                        f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(7)} not in {am.group(5)}..{am.group(6)}",
-                    )
+                    if am.group(7) < am.group(5):
+                        flag(
+                            "risk-acceptance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review outside its record-expiry window: {am.group(7)} not in {am.group(5)}..{am.group(6)}",
+                        )
+                    else:
+                        flag(
+                            "risk-acceptance-malformed",
+                            f"{t.path}:{s.line}: §{num} findings {fm.group(1)} acceptance review at expiry needs a day of lead time: {am.group(7)} not before {am.group(6)}",
+                        )
 
             def _acceptance_records(text: str) -> dict[str, tuple[str, str, str, str]]:
                 # Key record ID to (full line, supersedes ID or "",
@@ -2121,6 +2136,85 @@ def validate(graph, _args) -> int:
                     "duration-range-uncheckable",
                     f"{t.path}:{s.line}: §{num} Duration ends {s.duration_end[:10]} "
                     f"but the stamp reads {s.stamped_on} (align the end with the stamp day)",
+                )
+
+    # 33. owner-to-login mapping validated (D00 T01 §53 item 3): the
+    # poster assigns mapped owners, so the mapping file must parse
+    # (fatal when it does not) and every owner a notification could
+    # name must map (warn otherwise: a new owner appears before its
+    # mapping lands, and a red build cannot invent a login). Owners
+    # collect from verified markers, accepted/deferred ledger rows,
+    # and current acceptance lines -- the notify population, so
+    # rejected-row reasons and superseded records never warn.
+    # Acceptance lines read the first owner only, since rationales
+    # are free prose and later matches lie. Roots without a mapping
+    # file skip: fixture trees carry no GitHub identity, and an
+    # unconfigured tree must not fail. This rule sits before the
+    # baseline snapshot below: warns flagged after it never ratchet.
+    _omap_path = graph.TODO_DIR.parent / ".github" / "owner-logins.json"
+    if _omap_path.exists():
+        try:
+            _omap = json.loads(_omap_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _omap = None
+        if (
+            not isinstance(_omap, dict)
+            or any(not isinstance(k, str) or not isinstance(v, str) for k, v in _omap.items())
+            or any(
+                re.fullmatch(r"(?!-)(?!.*--)[A-Za-z0-9-]{1,39}(?<!-)", v) is None
+                for v in _omap.values()
+            )
+        ):
+            flag(
+                "owner-logins-invalid",
+                ".github/owner-logins.json: owner-login mapping is malformed "
+                "(want a JSON string-to-string object with valid GitHub logins)",
+            )
+            _omap = {}
+        _seen_owners: dict[str, str] = {}
+        for t in todos:
+            for num, s in sorted(t.sections.items()):
+                if num not in t.verified_sections:
+                    continue
+                chain = section_markers(t, num) or []
+                for b in chain:
+                    for o in graph.OWNER_RE.findall(b):
+                        if o != "?" and o not in _seen_owners:
+                            _seen_owners[o] = f"{t.path}:{s.line} §{num}"
+                fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+                if not fm:
+                    continue
+                try:
+                    ftext = (graph.TODO_DIR.parent / fm.group(1)).read_text(encoding="utf-8")
+                except OSError:
+                    continue
+                _sup = set(graph.SUPERSEDES_RE.findall(ftext))
+                for ln in ftext.splitlines():
+                    lm = graph.LEDGER_ROW_RE.match(ln)
+                    if lm:
+                        if lm.group(3).lower() not in ("accepted", "deferred"):
+                            continue
+                        # Owners ride the trailing parenthetical, never
+                        # the finding prose: whole-line matching reads
+                        # "owner and" out of sentences.
+                        owners = graph.OWNER_RE.findall(ln[lm.end():])
+                    elif graph.RISK_ACCEPTED_RE.match(ln):
+                        _idz = re.search(r"\bid\s+(A[0-9]+)", ln)
+                        if _idz and _idz.group(1) in _sup:
+                            continue
+                        om = graph.OWNER_RE.search(ln)
+                        owners = [om.group(1)] if om else []
+                    else:
+                        continue
+                    for o in owners:
+                        if o != "?" and o not in _seen_owners:
+                            _seen_owners[o] = f"{fm.group(1)} (via {t.path} §{num})"
+        for o, where in sorted(_seen_owners.items()):
+            if o not in _omap:
+                flag(
+                    "owner-login-unmapped",
+                    f".github/owner-logins.json: owner {o} has no GitHub login mapping "
+                    f"(first seen {where})",
                 )
 
     # The warning BASELINE. A count that only grows is a count nobody reads,

@@ -1,0 +1,5 @@
+# Warnings accepted as of the date below. A warning NOT in this file is
+# NEW and fails `validate`. The set may shrink and never grow without a
+# deliberate --accept. -> XREF: INT-0034.
+# accepted 1 warning(s)
+.github/owner-logins.json||owner operator has no GitHub login mapping (first

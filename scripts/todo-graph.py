@@ -1020,6 +1020,16 @@ SEVERITY_MAP: dict[str, str] = {
     # same-family survivor (D00 T01 §52 item 3, R1-F3; partials stay
     # out per R2-F3, rule 21 owns their debt).
     "quorum-same-family": "fatal",
+    # an owner-login mapping file that is not a JSON
+    # string-to-string object with valid GitHub logins: the poster
+    # assigns off this file, so a malformed one breaks delivery
+    # (D00 T01 §53 item 3).
+    "owner-logins-invalid": "fatal",
+    # an owner named by a verified marker, ledger row, or acceptance
+    # with no login in the mapping: the poster degrades to an
+    # unassigned issue, so the gap warns until mapped (D00 T01 §53
+    # item 3).
+    "owner-login-unmapped": "warn",
     # a `**Requires:**` value outside REQUIRES_ALLOWED: the list is closed
     # so a misspelt capability cannot silently unmark a section (D00 T01 §13).
     "requires-unknown": "fatal",
@@ -1072,9 +1082,10 @@ SEVERITY_MAP: dict[str, str] = {
     "ledger-supersession-broken": "fatal",
     # a `Risk accepted:` line outside the record shape, with an
     # uncoverable target, expiring before it is recorded, or reviewed
-    # outside its record-expiry window: an unauditable waiver
-    # (D00 T01 §21; review-window leg §21 review R4, named here
-    # D00 T01 §25).
+    # outside its record-expiry window or without a day of lead time
+    # before expiry: an unauditable waiver (D00 T01 §21;
+    # review-window leg §21 review R4, named here D00 T01 §25;
+    # lead time D00 T01 §53 item 12).
     "risk-acceptance-malformed": "fatal",
     "risk-acceptance-silent-edit": "fatal",
     "risk-acceptance-chain-broken": "fatal",
@@ -1262,7 +1273,12 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # New keys since /7 (D00 T01 §52 item 4): degraded entries carry
 # `rung` (the failed rung of a bare partial, "" otherwise: one
 # rung failing across reviews is the persistence signal).
-PLAN_HEALTH_SCHEMA = "plan-health/8"
+# New keys since /8 (D00 T01 §53 item 14): criticals and majors
+# carry `superseded` (the row target's superseded instruments as
+# "A<pred> by A<succ> (<outcome>)", "; "-joined in file order, ""
+# when the target has no history: the reopened finding names
+# what covered it before).
+PLAN_HEALTH_SCHEMA = "plan-health/9"
 # Bare-partial persistence (D00 T01 §52 item 4): one failed rung
 # recurring across this many stamped reviews means the spare
 # failed repeatedly while the survivor reviewed alone, so the
@@ -1906,6 +1922,7 @@ class CriticalFinding(NamedTuple):
     noncover_fix: str
     failure_code: str
     accepted_outcome: str
+    superseded: str
 
 
 class MajorFinding(NamedTuple):
@@ -1924,6 +1941,7 @@ class MajorFinding(NamedTuple):
     noncover_cause: str
     noncover_fix: str
     accepted_outcome: str
+    superseded: str
 
 
 def evidence_state(sha: str, repo_path: str, current_text: str, kind: str, tgt: str) -> str:
@@ -2005,10 +2023,19 @@ def dim_failing(name: str, entries: list, strict: bool = False) -> bool:
         # an owed action (D00 T01 §27 item 6).
         return any(e.get("state") == "review-overdue" for e in entries)
     if name == "inert":
-        # Inert waivers warn, never fail (D00 T01 §29 item 4); the
-        # escalation they leave uncovered already gates on its own
-        # dimension, so failing here would double-count it.
-        return False
+        # Inert waivers reject (D00 T01 §53 item 10, overriding §29
+        # item 4's warn-only): a post-dated record is a future-dated
+        # authorization sitting in the tree, and warn-only lets it
+        # auto-cover the day its date arrives with no review at
+        # activation. Failing on presence means a green tree never
+        # holds a future-dated record: the author records the
+        # acceptance when it is made (record date at or before
+        # today), and any future effectiveness needs a fresh record
+        # with its own review. The old double-count rationale
+        # (the uncovered escalation already gates) yields to the
+        # stronger silence argument: the escalation leg goes green at
+        # activation while this leg names the pre-authorization.
+        return bool(entries)
     return bool(entries)
 
 
@@ -4725,6 +4752,33 @@ def cmd_query(args) -> int:
                             if _cause
                             else ""
                         )
+                        # Superseded linkage (D00 T01 §53 item 14,
+                        # answering §29 PR16): every superseded
+                        # instrument on this row's target rides the
+                        # finding as "A<pred> by A<succ>
+                        # (<outcome>)", joined by "; " in file order
+                        # ("" when the target has no history), so
+                        # risk never disappears across supersession:
+                        # the reopened finding names the instruments
+                        # that covered it before. Cross-target
+                        # successors ride too (narrow dispositions
+                        # supersede across targets); a successor the
+                        # file never names reads "?" (the missing
+                        # link is the validator's FATAL, never a
+                        # query crash).
+                        _succ_of: dict[str, tuple[str, str]] = {}
+                        for _ht in _accs:
+                            if _ht[7]:
+                                _succ_of[_ht[7]] = (_ht[10], _ht[12])
+                        _link_parts = []
+                        for _ht in _accs:
+                            if _ht[9] != "finding" or _ht[0].lower() != lr.group(1).lower():
+                                continue
+                            if _ht[10] not in _supd:
+                                continue
+                            _s = _succ_of.get(_ht[10], ("?", ""))
+                            _link_parts.append(f"{_ht[10]} by {_s[0]} ({_s[1] or '?'})")
+                        _supd_link = "; ".join(_link_parts)
                         if sev == "major" and disp in ("accepted", "deferred"):
                             # Open majors age visibly (D00 T01 §17 item 11,
                             # §19 review R3: deferred majors count too, or
@@ -4768,6 +4822,7 @@ def cmd_query(args) -> int:
                                     noncover_cause=_cause,
                                     noncover_fix=_fix,
                                     accepted_outcome=aout,
+                                    superseded=_supd_link,
                                 )
                             )
                             continue
@@ -4804,6 +4859,7 @@ def cmd_query(args) -> int:
                                     # clearance: no leg failed (D00 T01 §32).
                                     failure_code="",
                                     accepted_outcome=aout,
+                                    superseded=_supd_link,
                                 )
                             )
                         elif disp == "filed":
@@ -5109,6 +5165,7 @@ def cmd_query(args) -> int:
                                         noncover_fix=_fix,
                                         failure_code=fail_code,
                                         accepted_outcome=aout,
+                                        superseded=_supd_link,
                                     )
                                 )
         for path in sorted(unshaped):
@@ -5138,6 +5195,23 @@ def cmd_query(args) -> int:
         # marker evaluates (D00 T01 §49): the hold predicate runs
         # per citer, and one obligation lists once no matter how
         # many citers cover it, so the gate vote stays singular.
+        # Review dispositions (D00 T01 §53 item 11, answering §29
+        # PR13): surfacing the date never closes the review; the
+        # reviewer closes it with one disposition, recorded as the
+        # superseding outcome. RENEW (outcome renewed, same target):
+        # the risk still holds, coverage continues, next review at
+        # the successor's date. NARROW (outcome renewed on a fresh
+        # waiver with a narrower target, superseding the broad
+        # record): the broad review closes but the broad finding
+        # goes uncovered until its row resolves, so narrow completes
+        # only with the broad remediation or filing. REVOKE
+        # (outcome rejected): the acceptance is withdrawn, the
+        # review closes, and the escalation returns to unhandled.
+        # Evidence: the closing record carries re-examination
+        # evidence (grammar-required on every record); reusing the
+        # predecessor's commit is sound only when the tree is
+        # unchanged at review, a reviewer expectation history could
+        # one day enforce and today only records.
         reviews = []
         due_line = (_today_d + timedelta(days=7)).isoformat()
         _escalated_rows = {(e.file, e.id.lower()) for e in criticals + majors}
@@ -5166,9 +5240,11 @@ def cmd_query(args) -> int:
                 for tgt, _appr, own, exp, rec, rvw, evi, _sup, _rat, kind, rec_id, recgen, _outcome, _action in _paccs:
                     if rec_id in _psupd:
                         continue
-                    if rvw < rec or rvw > exp:
+                    if rvw < rec or rvw >= exp:
                         # A review date outside its own record-expiry
-                        # window is validator-malformed (rule 24) and
+                        # window (upper bound strict since D00 T01
+                        # §53 item 12: review at expiry wants lead
+                        # time) is validator-malformed (rule 24) and
                         # names no coherent obligation; the FATAL is the
                         # signal, not this list.
                         continue
@@ -5213,7 +5289,7 @@ def cmd_query(args) -> int:
                         _rstate,
                         own,
                         (
-                            f"{own}: record the review outcome in a superseding acceptance"
+                            f"{own}: record the review disposition (renew, narrow, revoke) with evidence in a superseding acceptance"
                             if _rstate == "review-overdue"
                             else ""
                         ),
@@ -5221,13 +5297,16 @@ def cmd_query(args) -> int:
                     if _prow not in _plisted:
                         _plisted.add(_prow)
                         reviews.append(_prow)
-        # Inert waivers (D00 T01 §29 item 4): post-dated acceptances
-        # cover nothing while reading as authorization, so they list
-        # as a warning here and in the summary. Un-superseded records
-        # only (history never lists); malformed-window records skip
-        # (their FATAL is the signal, never this list). Warn-only:
-        # the dimension never fails lenient `--check`; explicit
-        # `--fail-on inert` gates presence like stale.
+        # Inert waivers (D00 T01 §29 item 4, rejecting since §53
+        # item 10): post-dated acceptances cover nothing while
+        # reading as authorization, so they list here and in the
+        # summary and fail lenient `--check` on presence: a green
+        # tree never holds a future-dated record, so no
+        # pre-authorized suppression can auto-cover at activation.
+        # Un-superseded records only (history never lists);
+        # malformed-window records skip (their FATAL is the signal,
+        # never this list). Explicit `--fail-on inert` still gates
+        # presence, redundantly with the default.
         inert = []
         for path in sorted(seen):
             _iaccs = file_acceptances(path)
@@ -5237,7 +5316,7 @@ def cmd_query(args) -> int:
             for tgt, _appr, own, exp, rec, rvw, _evi, _sup, _rat, _kind, rec_id, _recgen, _outcome, _action in _iaccs:
                 if rec_id in _isupd:
                     continue
-                if rvw < rec or rvw > exp:
+                if rvw < rec or rvw >= exp:
                     continue
                 if rec > today:
                     inert.append((path, tgt, rec, exp, own))
@@ -5341,6 +5420,7 @@ def cmd_query(args) -> int:
                     "noncover_cause": c.noncover_cause,
                     "noncover_fix": c.noncover_fix,
                     "failure_code": c.failure_code,
+                    "superseded": c.superseded,
                 }
                 for c in criticals_sorted
             ],
@@ -5361,6 +5441,7 @@ def cmd_query(args) -> int:
                     "accepted_outcome": m.accepted_outcome,
                     "noncover_cause": m.noncover_cause,
                     "noncover_fix": m.noncover_fix,
+                    "superseded": m.superseded,
                 }
                 for m in majors_sorted
             ],
@@ -5389,7 +5470,10 @@ def cmd_query(args) -> int:
         gate_dims = []
         check_mode = getattr(args, "check", False) or what == "summary"
         if check_mode:
-            gate_dims += ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable", "reviews"]
+            # `inert` joins the default set (D00 T01 §53 item 10):
+            # post-dated records reject, so the lenient gate fails
+            # on their presence like any actionable dimension.
+            gate_dims += ["unmarked", "uncovered", "degraded", "criticals", "majors", "unreadable", "reviews", "inert"]
             # Deadline gate (D00 T01 §21 item 3): past the migration
             # deadline, leftover grandfathered batches join `--check`.
             # Explicit `--fail-on grandfathered` gates progress on any
@@ -5477,11 +5561,17 @@ def cmd_query(args) -> int:
                 if _m.overdue:
                     od_by_owner.setdefault(_m.owner or "?", []).append(_m.due)
             # Review-overdue owners tally alongside the escalation
-            # owners (D00 T01 §29 item 6): the date stays empty so a
-            # review date never poses as a due date in `oldest due`.
+            # owners (D00 T01 §29 item 6, re-dated D00 T01 §53 item
+            # 16): review dates ride a separate list and render as
+            # `oldest review`, so the digest prioritizes the oldest
+            # neglected acceptance (PR18) without a review date ever
+            # posing as a due date in `oldest due` (the §29 item-6
+            # rationale, kept: the two ages answer different
+            # questions, so they print as two clauses).
+            _rv_by_owner: dict[str, list[str]] = {}
             for _f, _tgt, _rvw, st, own, _esc in reviews_sorted:
                 if st == "review-overdue":
-                    od_by_owner.setdefault(own or "?", []).append("")
+                    _rv_by_owner.setdefault(own or "?", []).append(_rvw)
             print(f"incomplete runs     {len(incomplete)}")
             for d in incomplete:
                 print(
@@ -5505,11 +5595,18 @@ def cmd_query(args) -> int:
                     f"    {d['id']}  {d['section']}  count {d['count']}"
                     f"  age {_age}  last log {d['last_log'] or 'none'}"
                 )
-            print(f"overdue owners      {len(od_by_owner)}")
-            for own in sorted(od_by_owner):
-                dues = sorted(x for x in od_by_owner[own] if x)
-                oldest = f" (oldest due {dues[0]})" if dues else ""
-                print(f"    {own}: {len(od_by_owner[own])} overdue{oldest}")
+            _od_owners = sorted(set(od_by_owner) | set(_rv_by_owner))
+            print(f"overdue owners      {len(_od_owners)}")
+            for own in _od_owners:
+                dues = sorted(x for x in od_by_owner.get(own, []) if x)
+                rvs = sorted(_rv_by_owner.get(own, []))
+                _bits = []
+                if dues:
+                    _bits.append(f"oldest due {dues[0]}")
+                if rvs:
+                    _bits.append(f"oldest review {rvs[0]}")
+                oldest = f" ({'; '.join(_bits)})" if _bits else ""
+                print(f"    {own}: {len(od_by_owner.get(own, [])) + len(rvs)} overdue{oldest}")
             print(f"acceptance reviews  {len(reviews_sorted)} due or overdue")
             for f, tgt, rvw, st, own, esc in reviews_sorted:
                 print(
@@ -5574,10 +5671,20 @@ def cmd_query(args) -> int:
             return 1 if failing else 0
         if what == "dashboard":
             # Health dashboard (D00 T01 §29 item 2): a Markdown
-            # rollup over reviews, expiries, partials, and migration
-            # plus open findings, rendered from this shared report
-            # (text-only like the summary; no committed consumer to
-            # extend, so the operator renders on demand).
+            # rollup over five sections in this order, rendered from
+            # the shared report (text-only like the summary; no
+            # committed consumer to extend, so the operator renders
+            # on demand):
+            #   1. reviews (due or overdue acceptances)
+            #   2. expiries (acceptances expiring within 30 days)
+            #   3. partials and outages (unaccepted owed markers)
+            #   4. migration (grandfathered leftovers plus deadline)
+            #   5. open findings (unaccepted criticals plus majors)
+            # §29 item 2's four-area phrasing
+            # ("reviews, expiries, partials, and migration") is
+            # drifted-but-shipped (D00 T01 §53 item 15): the fifth
+            # section (open findings) shipped with the dashboard
+            # and the item-2 record now carries the correction.
             _od = sum(1 for _e in reviews_sorted if _e[3] == "review-overdue")
             print("# Health dashboard")
             print(f"\nReviews: {len(reviews_sorted)} due or overdue ({_od} overdue)")
@@ -5603,15 +5710,29 @@ def cmd_query(args) -> int:
         if what == "risk-register":
             # The acceptance register (D00 T01 §29 item 2): every
             # un-superseded acceptance in a validated file with its
-            # residual severity (finding rows read their row severity
-            # off row_sev, `dangling` when the target names no
-            # current row; run/outage targets read the owed states
-            # of the markers carrying them off the debt maps, `none`
-            # when the marker is healthy, `unmatched` when no marker
-            # carries the target) and its wall-clock state. History
+            # residual severity and its wall-clock state. History
             # never lists. `--sync` persists the committed copy
             # (plan-projection precedent); `--check` fails when it
             # drifts.
+            # Residual combination table (D00 T01 §53 item 13,
+            # answering §29 PR15): residual reads down the target
+            # axis, across the owed axis. Findings carry target
+            # severity and never read the debt maps; runs and
+            # outages carry marker owed states and never read row
+            # severity; the two inputs never mix in one cell.
+            #   target \ owed  | residual
+            #   finding, row current      | row severity (critical, major, minor)
+            #   finding, row gone         | dangling
+            #   run/outage, states owed   | states joined "+" (vocabulary:
+            #                               outage, retry-owed, partial)
+            #   run/outage, marker clean  | none
+            #   run/outage, no marker     | unmatched
+            # Ordering: composite states sort byte-alphabetical
+            # before joining ("outage+retry-owed", never insertion
+            # order: debt sets carry none); register rows sort by
+            # the total key below (file, target, kind, residual,
+            # state, owner, approver, expires, review, rationale),
+            # so text and JSON share one order.
             reg = []
             for path in sorted(seen):
                 _raccs = file_acceptances(path)
@@ -5735,7 +5856,16 @@ def cmd_query(args) -> int:
             # one flat greppable line per obligation, sorted by
             # owner, date, reference. Exit 0 always (warnings are
             # not failures); the scheduled job posts when the count
-            # reads nonzero.
+            # reads nonzero. Dates compare against the UTC calendar
+            # date (D00 T01 §53 item 8): states flip at 00:00 UTC and
+            # --today freezes that date. Production notice horizon is 7
+            # (D00 T01 §53 item 4): one weekly cycle, so every
+            # obligation gets about seven daily notices, a work
+            # week of dues stays visible, and weekend-crossing
+            # dates never slip between runs; shorter horizons
+            # miss them, longer ones spam. The flag stays free
+            # for probes; the job pins 7 and the self-test pins
+            # the job line.
             _n = getattr(args, "within_days", None) or "7"
             # Length-capped like attempts (D00 T01 §34 item 6): past
             # the 4300-digit interpreter limit int() raises instead
@@ -5744,22 +5874,50 @@ def cmd_query(args) -> int:
                 print(f"query notify: --within-days takes a non-negative integer, got {_n!r}", file=sys.stderr)
                 return 2
             _horizon = (_today_d + timedelta(days=int(_n))).isoformat()
+            # Overdue re-notify (D00 T01 §53 item 5): every scheduled
+            # run re-emits every unaccepted obligation in the window,
+            # so the cadence is the job cadence (daily) and an ignored
+            # overdue stays a live assigned issue rather than going
+            # quiet. Lines dated before today name the escalation
+            # owner after the ref, reusing the plan-health head
+            # convention (record escalation before the colon, else
+            # the operator role); the poster assigns mapped
+            # escalation owners additively and keys issues on the
+            # ref without the suffix, so the due/overdue
+            # transition updates one issue instead of minting a
+            # second. Expiring lines never suffix: that leg lists
+            # live records only, so none is overdue.
+            def _esc_head(esc: str) -> str:
+                return esc.split(":", 1)[0] if esc else "operator"
+
             _pay: list[tuple[str, str, str]] = []
             for d in degraded_sorted:
                 if d["accepted_by"] or not d["due"] or d["due"] > _horizon:
                     continue
-                _pay.append((d["owner"] or "?", d["due"], f"degraded {d['ref']} {d['state']}"))
+                _dref = f"degraded {d['ref']} {d['state']}"
+                if d["due"] < today:
+                    _dref += f" escalate {_esc_head(d['escalation'])}"
+                _pay.append((d["owner"] or "?", d["due"], _dref))
             for _c in criticals_sorted:
                 if _c.accepted_by or not _c.due or _c.due > _horizon:
                     continue
-                _pay.append((_c.owner or "?", _c.due, f"critical {_c.id} in {_c.file}"))
+                _cref = f"critical {_c.id} in {_c.file}"
+                if _c.due < today:
+                    _cref += f" escalate {_esc_head(_c.escalation)}"
+                _pay.append((_c.owner or "?", _c.due, _cref))
             for _m in majors_sorted:
                 if _m.accepted_by or not _m.due or _m.due > _horizon:
                     continue
-                _pay.append((_m.owner or "?", _m.due, f"major {_m.id} in {_m.file}"))
+                _mref = f"major {_m.id} in {_m.file}"
+                if _m.due < today:
+                    _mref += f" escalate {_esc_head(_m.escalation)}"
+                _pay.append((_m.owner or "?", _m.due, _mref))
             for f, tgt, rvw, st, own, _esc in reviews_sorted:
                 if st == "review-overdue" or rvw <= _horizon:
-                    _pay.append((own or "?", rvw, f"{st} {tgt} in {f}"))
+                    _rref = f"{st} {tgt} in {f}"
+                    if rvw < today:
+                        _rref += f" escalate {_esc_head(_esc)}"
+                    _pay.append((own or "?", rvw, _rref))
             for exp, tgt, f, own in expiring_sorted:
                 if exp <= _horizon:
                     _pay.append((own or "?", exp, f"expiring {tgt} in {f}"))
@@ -5816,6 +5974,8 @@ def cmd_query(args) -> int:
                 acct += f"  OVERDUE  escalate {_c.escalation.split(':', 1)[0] if _c.escalation else 'operator'}"
             if _c.accepted_by:
                 acct += f"  accepted by {_c.accepted_by} owner {_c.accepted_owner} expires {_c.accepted_expires} review {_c.accepted_review} rationale {_c.accepted_rationale}" + (f" outcome {_c.accepted_outcome}" if _c.accepted_outcome else "")
+            if _c.superseded:
+                acct += f"  superseded {_c.superseded}"
             if not _c.owner or not _c.due:
                 acct += "  UNACCOUNTABLE"
             if _c.failure_code:
@@ -5831,6 +5991,8 @@ def cmd_query(args) -> int:
                 acct += f"  OVERDUE  escalate {_m.escalation.split(':', 1)[0] if _m.escalation else 'operator'}"
             if _m.accepted_by:
                 acct += f"  accepted by {_m.accepted_by} owner {_m.accepted_owner} expires {_m.accepted_expires} review {_m.accepted_review} rationale {_m.accepted_rationale}" + (f" outcome {_m.accepted_outcome}" if _m.accepted_outcome else "")
+            if _m.superseded:
+                acct += f"  superseded {_m.superseded}"
             if not _m.owner or not _m.due:
                 acct += "  UNACCOUNTABLE"
             print(f"    {_m.id}  in {_m.file}  since {_m.since}  {acct}")
@@ -11888,7 +12050,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             + "Risk accepted: 20260920-D90-T07-S44-gpt; id A1; approver bob; owner bob; date 2026-09-01; review 2026-10-01; evidence ccc4444000000000000000000000000000000000; rationale missing expires\n"
             + "Risk accepted: D90-T07-S4-PR1; id A2; approver bob; owner bob; date 2026-09-02; expires 2026-01-01; review 2026-10-01; evidence ccc4445000000000000000000000000000000000; rationale inverted dates\n"
             + "Risk accepted: D90-T07-S4-PR2; id A3; approver bob; owner bob; date 2026-09-01; expires 2099-01-01; review 2026-01-01; evidence ccc4446000000000000000000000000000000000; rationale review before record\n"
-            + "Risk accepted: D90-T07-S4-PR53; id A4; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447000000000000000000000000000000000; rationale typo'd year\n",
+            + "Risk accepted: D90-T07-S4-PR53; id A4; approver bob; owner bob; date 2099-01-01; expires 2099-12-31; review 2099-06-01; evidence ccc4447000000000000000000000000000000000; rationale typo'd year\n"
+            + "Risk accepted: D90-T07-S4-PR54; id A5; approver bob; owner bob; date 2026-09-01; expires 2026-10-01; review 2026-10-01; evidence ccc4448000000000000000000000000000000000; rationale review at expiry\n",
             encoding="utf-8",
         )
         (rev_dir / "90-health-accept4.md").write_text(
@@ -13587,9 +13750,17 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "§44 fires exactly three times (shape, inverted dates, review window)",
+            "review at expiry fires the lead-time leg",
+            any(
+                "TODO-07-marker.md" in ln and "§44 " in ln and "needs a day of lead time" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "§44 fires exactly four times (shape, inverted dates, review window, lead time)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§44 " in ln and "FATAL" in ln),
-            3,
+            4,
         )
         check(
             "zero record id fires",
@@ -15111,6 +15282,104 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             sum(1 for ln in r31_out if "§2 " in ln and "FATAL" in ln),
             0,
         )
+        # --- rule 33: owner-login mapping validated (D00 T01 §53 item 3)
+        # Isolated root: §1's marker names ann (mapped), its ledger
+        # row names yara, its acceptance names xenia (both unmapped).
+        # Pre-cutoff stamps dodge every other rule, so only rule 33
+        # can fire. Variants rewrite the mapping (full, malformed,
+        # bad login) or delete it.
+        ol33 = root / "ol33"
+        (ol33 / "todo" / "90-ol33").mkdir(parents=True)
+        (ol33 / "docs" / "reviews").mkdir(parents=True)
+        (ol33 / ".github").mkdir(parents=True)
+        (ol33 / "todo" / "90-ol33" / "TODO-13-ownermap.md").write_text(
+            "---\nschema_version: 1\nid: ol33\ndomain: 90-ol33\nstatus: active\n"
+            'title: "TODO-13 -- Ownermap"\ntrack: Z1\n---\n\n# TODO-13 -- Ownermap\n\n'
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Map one | -- |  [x]   |\n\n"
+            "---\n\n## 1. Map one\n\n"
+            '- [x] Did the thing\n- [x] Commit: `"selftest: ol33"`\n\n'
+            "**Test checkpoint:** `true`\n\n"
+            "> **Verified:** 2026-09-14 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-ol33-1.md\n"
+            "> **Plan review:** GPT high, retry-owed (owner ann, due 2099-01-01) class infra attempts 1\n",
+            encoding="utf-8",
+        )
+        (ol33 / "todo" / "90-ol33" / "INDEX.md").write_text(
+            "# 90 Ol33\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-13](./TODO-13-ownermap.md) | Ownermap | active |\n",
+            encoding="utf-8",
+        )
+        (ol33 / "docs" / "reviews" / "90-ol33-1.md").write_text(
+            "# Review: fixture\n\n## Plan review\n\n"
+            "Manifest: sections [D90 T77 §1]; dependents [none]; bytes 100\n\n"
+            "Ledger:\n"
+            "- [D90-T77-S1-PR1] [major] probe row -> accepted (owner yara, due 2099-01-01)\n"
+            "End of ledger\n\n"
+            "Risk accepted: D90-T77-S1-PR1; id A1; approver ann; owner xenia; date 2026-09-14; "
+            "expires 2099-01-01; review 2099-01-02; evidence "
+            "ffffffffffffffffffffffffffffffffffffffff; rationale probe record\n",
+            encoding="utf-8",
+        )
+        _ol33_map = ol33 / ".github" / "owner-logins.json"
+
+        def _ol33_run():
+            buf = _mio.StringIO()
+            with _mctx.redirect_stdout(buf), _mctx.redirect_stderr(_mio.StringIO()):
+                rc = cmd_validate(None)
+            return rc, buf.getvalue().splitlines()
+
+        saved_ol33, TODO_DIR = TODO_DIR, ol33 / "todo"
+        try:
+            _ol33_map.write_text('{"ann": "anngh"}', encoding="utf-8")
+            _ol33_rc1, _ol33_out1 = _ol33_run()
+            _ol33_map.write_text(
+                '{"ann": "anngh", "yara": "yaragh", "xenia": "xeniagh"}', encoding="utf-8"
+            )
+            _ol33_rc2, _ol33_out2 = _ol33_run()
+            _ol33_map.write_text("{bad json", encoding="utf-8")
+            _ol33_rc3, _ol33_out3 = _ol33_run()
+            _ol33_map.write_text('{"ann": "-bad-"}', encoding="utf-8")
+            _ol33_rc4, _ol33_out4 = _ol33_run()
+            _ol33_map.unlink()
+            _ol33_rc5, _ol33_out5 = _ol33_run()
+        finally:
+            TODO_DIR = saved_ol33
+        check(
+            "unmapped ledger plus acceptance owners warn",
+            (
+                _ol33_rc1 == 1
+                and sum(1 for ln in _ol33_out1 if "owner yara has no GitHub login mapping" in ln)
+                == 1
+                and sum(1 for ln in _ol33_out1 if "owner xenia has no GitHub login mapping" in ln)
+                == 1
+                and sum(1 for ln in _ol33_out1 if "owner ann has no GitHub login mapping" in ln)
+                == 0
+            ),
+            True,
+        )
+        check("a fully mapped tree validates clean", _ol33_rc2, 0)
+        check(
+            "a malformed mapping fires fatal",
+            (
+                _ol33_rc3 == 1
+                and sum(1 for ln in _ol33_out3 if "owner-login mapping is malformed" in ln)
+                == 1
+            ),
+            True,
+        )
+        check(
+            "a bad login fires fatal",
+            (
+                _ol33_rc4 == 1
+                and sum(1 for ln in _ol33_out4 if "owner-login mapping is malformed" in ln) == 1
+            ),
+            True,
+        )
+        check("a root without a mapping file stays silent", _ol33_rc5, 0)
         # --- composite residual states pin the sort-plus-join (D00 T01 §52 item 6)
         # Isolated root: §1's marker carries a run plus partial plus
         # retry-owed (grammar-legal composite), §2's a run plus a
@@ -15996,7 +16265,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "plan-health fallback membership is GPT-last: only records whose last panel "
             "section is GPT count as fallback (planned GPT-early rounds under an Opus "
             "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/8 shape stable."
+            "holding the plan-health/9 shape stable."
         )
         _ph_buf = _mio.StringIO()
         _ph_argv = sys.argv
@@ -16161,7 +16430,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         check(
             "plan-health --json carries the schema version",
             jdata.get("schema"),
-            "plan-health/8",
+            "plan-health/9",
         )
         # --- clearance failure codes (D00 T01 §32 item 4) ---
         # Every leg the S4 probes isolate already pins its row's
@@ -16706,6 +16975,138 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             (gate_partial_summary, "nothing actionable" in spart.getvalue()),
             (0, True),
         )
+        # Post-dated reject (D00 T01 §53 item 10): one future-dated
+        # run waiver on a bare-partial target and nothing else. The
+        # bare partial is complete (never fails lenient), so the
+        # failing gate isolates the inert dimension: the record
+        # cannot sit in a green tree waiting to auto-cover.
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: one post-dated waiver and nothing else.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Partial work | -- |  [x]   |\n\n---\n\n## 1. Partial work\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-20 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-clean.md\n"
+            "> **Plan review:** GPT high, partial: opus rung, filed §2 (run 20260920-D90-T01-S1-gpt)\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-clean.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n## Plan review\n\n"
+            "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260920-D90-T01-S1-gpt\n\n"
+            "Ledger:\n- [D90-C01-S1-PR0] [minor] clean round -> accepted\nEnd of ledger\n"
+            "Risk accepted: 20260920-D90-T01-S1-gpt; id A1; approver bob; owner bob; date 2099-01-01; expires 2099-06-01; review 2099-02-01; evidence bbb2222000000000000000000000000000000000; rationale future waiver, never covers\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                gate_inert_default = cmd_query(argparse.Namespace(what="plan-health", check=True))
+            _inert_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_inert_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=True))
+            _inert_rep = json.loads(_inert_buf.getvalue())
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "plan-health --check rejects a lone post-dated waiver",
+            (
+                gate_inert_default == 1
+                and [e["target"] for e in _inert_rep["inert"]]
+                == ["20260920-D90-T01-S1-gpt"]
+            ),
+            True,
+        )
+        # Review dispositions (D00 T01 §53 item 11): one tree with a
+        # narrow chain (broad A1 overdue, superseded by renewed A2 on
+        # the narrowed target) and a revoke chain (A3 overdue,
+        # superseded by rejected A4). Both overdue reviews close;
+        # the narrowed target stays covered, the broad and revoked
+        # findings go uncovered, and the gate names them.
+        _d0 = date.today().isoformat()
+        _d_rec = (date.today() - timedelta(days=3)).isoformat()
+        _d_over = (date.today() - timedelta(days=1)).isoformat()
+        _d_far = (date.today() + timedelta(days=365)).isoformat()
+        (clean / "todo" / "90-clean" / "TODO-01-clean.md").write_text(
+            "---\nschema_version: 1\nid: clean\ndomain: 90-clean\nstatus: active\n"
+            'title: "TODO-01 -- Clean"\ntrack: Z9\n---\n\n# TODO-01 -- Clean\n\n'
+            "> **Goal:** Fixture: narrow plus revoke dispositions.\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Disposed work | -- |  [x]   |\n\n---\n\n## 1. Disposed work\n\n"
+            "- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
+            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-20 | §1 | fixture\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-clean.md\n"
+            "> **Plan review:** GPT high, filed §1 (run 20260920-D90-T01-S1-gpt)\n",
+            encoding="utf-8",
+        )
+        (clean / "docs" / "reviews" / "90-clean.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n## Plan review\n\n"
+            "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260920-D90-T01-S1-gpt\n\n"
+            "Ledger:\n- [D90-T01-S1-PR1] [major] broad risk -> accepted\n- [D90-T01-S1-PR2] [major] narrowed risk -> accepted\n- [D90-T01-S1-PR3] [major] revoked risk -> accepted\nEnd of ledger\n"
+            f"Risk accepted: D90-T01-S1-PR1; id A1; approver bob; owner bob; date {_d_rec}; expires {_d_far}; review {_d_over}; evidence c111111100000000000000000000000000000000; rationale broad risk under review\n"
+            f"Risk accepted: D90-T01-S1-PR2; id A2; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c222222200000000000000000000000000000000; supersedes A1; outcome renewed; rationale narrowed to PR2 at review\n"
+            f"Risk accepted: D90-T01-S1-PR3; id A3; approver bob; owner bob; date {_d_rec}; expires {_d_far}; review {_d_over}; evidence c333333300000000000000000000000000000000; rationale revoked risk under review\n"
+            f"Risk accepted: D90-T01-S1-PR3; id A4; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c444444400000000000000000000000000000000; supersedes A3; outcome rejected; rationale revoked at review, needs remediation\n",
+            encoding="utf-8",
+        )
+        # Fresh canned evidence (the acc6 pattern): the narrowed
+        # head covers only over bytes equal to the live record.
+        _disp_live = (clean / "docs" / "reviews" / "90-clean.md").read_text(encoding="utf-8")
+        for _dsha in ("c1111111", "c2222222", "c3333333", "c4444444"):
+            canned_git[(_dsha + "0" * 32, "docs/reviews/90-clean.md")] = _disp_live
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+                gate_disp = cmd_query(
+                    argparse.Namespace(what="plan-health", check=True, today=_d0)
+                )
+            _disp_buf = _mio.StringIO()
+            with _mctx.redirect_stdout(_disp_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="plan-health", json=True, today=_d0))
+            _disp_rep = json.loads(_disp_buf.getvalue())
+        finally:
+            TODO_DIR = saved_tree
+        _disp_maj = {e["id"]: e for e in _disp_rep["majors"]}
+        check(
+            "narrow and revoke close the overdue reviews",
+            _disp_rep["reviews"] == [],
+            True,
+        )
+        check(
+            "narrow covers the narrowed target, broad goes uncovered",
+            (
+                _disp_maj["D90-T01-S1-PR2"]["accepted_by"] != ""
+                and _disp_maj["D90-T01-S1-PR2"]["accepted_outcome"] == "renewed"
+                and _disp_maj["D90-T01-S1-PR1"]["accepted_by"] == ""
+            ),
+            True,
+        )
+        check(
+            "revoke voids coverage and the gate names the fallout",
+            (
+                _disp_maj["D90-T01-S1-PR3"]["accepted_by"] == ""
+                and gate_disp == 1
+            ),
+            True,
+        )
+        check(
+            "dispositions link across targets and outcomes",
+            (
+                _disp_maj["D90-T01-S1-PR1"]["superseded"] == "A1 by A2 (renewed)"
+                and _disp_maj["D90-T01-S1-PR3"]["superseded"] == "A3 by A4 (rejected)"
+                and _disp_maj["D90-T01-S1-PR2"]["superseded"] == ""
+            ),
+            True,
+        )
         # Legacy-only clean form: a pre-cutoff stamp with a shaped
         # marker whose findings carry a Plan review but no Manifest
         # or Ledger block. The check set passes, so --fail-on legacy
@@ -17123,13 +17524,13 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         try:
             _acc_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_acc_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="plan-health", json=False, check=False, fail_on=None))
+                cmd_query(argparse.Namespace(what="plan-health", json=False, check=False, fail_on=None, today=_r0))
             _acc_json_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_acc_json_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="plan-health", json=True, check=False, fail_on=None))
+                cmd_query(argparse.Namespace(what="plan-health", json=True, check=False, fail_on=None, today=_r0))
             _acc_sum_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_acc_sum_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="summary"))
+                cmd_query(argparse.Namespace(what="summary", today=_r0))
         finally:
             TODO_DIR = saved_tree
         _acc_lines = _acc_buf.getvalue().splitlines()
@@ -17436,6 +17837,23 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
+        # Superseded linkage (D00 T01 §53 item 14): the reopened
+        # finding names its history, covered findings name theirs,
+        # and history-free rows read "".
+        _maj6a = [e for e in _acc_json["majors"] if e["id"] == "D90-T01-S6-PR1"]
+        check(
+            "reopened findings link their superseded instruments",
+            (
+                len(_crit23b) == 1
+                and _crit23b[0]["superseded"] == "A3 by A4 (rejected)"
+                and len(_maj21b) == 1
+                and _maj21b[0]["superseded"] == "A2 by A3 (renewed)"
+                and _crit23a[0]["superseded"] == "A1 by A2 (renewed)"
+                and len(_maj6a) == 1
+                and _maj6a[0]["superseded"] == ""
+            ),
+            True,
+        )
         # Consumer contracts for the named health results (D00 T04
         # §6 item 5): the field order is pinned (a reorder breaks
         # the pin, not a consumer), keyword construction maps
@@ -17461,6 +17879,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "noncover_fix",
                 "failure_code",
                 "accepted_outcome",
+                "superseded",
             ],
         )
         check(
@@ -17482,6 +17901,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 "noncover_cause",
                 "noncover_fix",
                 "accepted_outcome",
+                "superseded",
             ],
         )
         _kw_c = CriticalFinding(
@@ -17500,6 +17920,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             noncover_fix="NF",
             failure_code="FC",
             accepted_outcome="OUT",
+            superseded="SUP",
         )
         _kw_m = MajorFinding(
             file="F",
@@ -17517,6 +17938,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             noncover_cause="NC",
             noncover_fix="NF",
             accepted_outcome="OUT",
+            superseded="SUP",
         )
         check(
             "keyword construction maps every critical field",
@@ -17536,8 +17958,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 _kw_c.noncover_fix,
                 _kw_c.failure_code,
                 _kw_c.accepted_outcome,
+                _kw_c.superseded,
             ),
-            ("F", "I", "O", "D", True, "E", "AB", "AO", "AE", "AR", "AT", "NC", "NF", "FC", "OUT"),
+            ("F", "I", "O", "D", True, "E", "AB", "AO", "AE", "AR", "AT", "NC", "NF", "FC", "OUT", "SUP"),
         )
         check(
             "keyword construction maps every major field",
@@ -17557,8 +17980,9 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 _kw_m.noncover_cause,
                 _kw_m.noncover_fix,
                 _kw_m.accepted_outcome,
+                _kw_m.superseded,
             ),
-            ("F", "I", "S", "O", "D", True, "E", "AB", "AO", "AE", "AR", "AT", "NC", "NF", "OUT"),
+            ("F", "I", "S", "O", "D", True, "E", "AB", "AO", "AE", "AR", "AT", "NC", "NF", "OUT", "SUP"),
         )
         check(
             "plan-health criticals JSON keys align with CriticalFinding fields",
@@ -17659,20 +18083,25 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "review-overdue owners join the digest tally dateless",
-            "    bob: 2 overdue" in _acc_sum,
+            "review-overdue owners carry oldest review, never oldest due",
+            (
+                f"    bob: 2 overdue (oldest review {_rvw_over})" in _acc_sum
+                and not any(
+                    ln.strip().startswith("bob:") and "oldest due" in ln for ln in _acc_sum
+                )
+            ),
             True,
         )
         check(
-            "inert never fails lenient gates",
+            "inert fails lenient gates (post-dated rejects)",
             dim_failing("inert", [{"target": "x"}]),
-            False,
+            True,
         )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
         try:
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
                 gate_inert = cmd_query(
-                    argparse.Namespace(what="plan-health", check=False, fail_on="inert")
+                    argparse.Namespace(what="plan-health", check=False, fail_on="inert", today=_r0)
                 )
         finally:
             TODO_DIR = saved_tree
@@ -17681,20 +18110,25 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         try:
             _reg_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_reg_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="risk-register", json=True))
+                cmd_query(argparse.Namespace(what="risk-register", json=True, today=_r0))
             _reg = json.loads(_reg_buf.getvalue())
             _dash_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_dash_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="dashboard"))
+                cmd_query(argparse.Namespace(what="dashboard", today=_r0))
             _dash = _dash_buf.getvalue().splitlines()
             _not_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_not_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                # Live-date freeze: the acc6 fixtures float with the real
-                # clock (_rvw_over is today-minus-1), so a fixed freeze
-                # rots -- 2026-09-19 read PR1 overdue only on 2026-09-19
-                # itself, review-due ever after.
+                # One clock (D00 T01 §53 item 17): the acc6 fixtures
+                # float on the local date (_r0, and _rvw_over is one
+                # before it), so every date-sensitive leg pins
+                # today=_r0; unpinned legs default to UTC, which
+                # reads yesterday through the 00:00-02:00 local
+                # window and reddens review-date assertions. A fixed
+                # freeze would rot the same way -- 2026-09-19 read
+                # PR1 overdue only on 2026-09-19 itself, review-due
+                # ever after -- so the freeze floats with the build.
                 rc_not = cmd_query(
-                    argparse.Namespace(what="notify", today=date.today().isoformat(), within_days="7")
+                    argparse.Namespace(what="notify", today=_r0, within_days="7")
                 )
             _not = _not_buf.getvalue().splitlines()
             _not_f_buf = _mio.StringIO()
@@ -17730,7 +18164,22 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                 and any(e["target"].endswith("S6-gpt") and e["residual"] == "none" for e in _rent)
                 and any(e["target"].endswith("S5-gpt") and e["state"] == "expired" for e in _rent)
                 and any(e["target"].endswith("S7-gpt") and e["state"] == "post-dated" for e in _rent)
+                and any(e["target"] == "D90-T01-S6-PR5" and e["residual"] == "minor" for e in _rent)
+                and any(e["target"] == "D90-T01-S23-PR1" and e["residual"] == "critical" for e in _rent)
             ),
+            True,
+        )
+        # Combination-table ordering (D00 T01 §53 item 13): entries
+        # emit in total-key order (file, target, kind, residual,
+        # state, owner, approver, expires, review, rationale), so
+        # the order is contractual, not incidental.
+        _rent_key = lambda e: (
+            e["file"], e["target"], e["kind"], e["residual"], e["state"],
+            e["owner"], e["approver"], e["expires"], e["review"], e["rationale"],
+        )
+        check(
+            "register entries emit in total-key order",
+            [ _rent_key(e) for e in _rent ] == sorted(_rent_key(e) for e in _rent) and len(_rent) > 1,
             True,
         )
         check(
@@ -17753,6 +18202,32 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
+        # Five-section contract (D00 T01 §53 item 15): the rendered
+        # headers read in contract order, and the dashboard comment
+        # enumerates all five (the §29 item-2 four-area phrasing is
+        # drifted-but-shipped, corrected on the item record).
+        _dash_heads = [ln for ln in _dash if re.match(r"^(Reviews|Expiries|Partials and outages|Migration|Open findings):", ln)]
+        check(
+            "dashboard renders five sections in contract order",
+            [h.split(":")[0] for h in _dash_heads]
+            == ["Reviews", "Expiries", "Partials and outages", "Migration", "Open findings"],
+            True,
+        )
+        _own_dash = Path(__file__).read_text(encoding="utf-8")
+        _dstart = _own_dash.index('if what == "dashboard":')
+        _dcomment = "\n".join(
+            ln.strip()[1:].strip()
+            for ln in _own_dash[_dstart:].splitlines()[1:20]
+            if ln.strip().startswith("#")
+        ).lower()
+        check(
+            "dashboard contract enumerates all five sections",
+            all(
+                s in _dcomment
+                for s in ("reviews", "expiries", "partials and outages", "migration", "open findings")
+            ),
+            True,
+        )
         check(
             "notify emits flat owner payloads and exits 0",
             (
@@ -17771,19 +18246,92 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             any(ln.startswith("notify: 17 payloads within 7 days (today 2020-01-02") for ln in _not_f),
             True,
         )
+        # Overdue escalation suffix (D00 T01 §53 item 5): lines dated
+        # before the freeze name an escalation owner, due lines name
+        # none, and the review-overdue line escalates to the
+        # acceptance owner (bob), pinning the record-head path.
+        _not_pay = [
+            ln.strip().split(" | ")
+            for ln in _not
+            if ln.startswith("    ") and ln.count(" | ") == 2
+        ]
+        _not_today = _r0
+        _not_over = [p for p in _not_pay if p[1] < _not_today]
+        _not_due = [p for p in _not_pay if p[1] >= _not_today]
+        check(
+            "notify overdue lines escalate, due lines do not",
+            (
+                len(_not_pay) == 16
+                and len(_not_over) >= 1
+                and all(" escalate " in p[2] for p in _not_over)
+                and all(" escalate " not in p[2] for p in _not_due)
+                and any("review-overdue" in p[2] and p[2].endswith("escalate bob") for p in _not_pay)
+            ),
+            True,
+        )
+        # Straddle coverage (D00 T01 §53 item 17): the same legs run
+        # at _rvw_over (the UTC-yesterday side of the straddle) and
+        # _r0 (the local-today side); review states flip across the
+        # boundary, proving each leg honors the explicit today
+        # instead of the ambient clock. (Notify's control pin is
+        # "frozen --today moves the notify window" above.)
+        saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
+        try:
+            def _frozen_leg(what: str, today: str, **kw: object) -> str:
+                _buf = _mio.StringIO()
+                with _mctx.redirect_stdout(_buf), _mctx.redirect_stderr(_mio.StringIO()):
+                    cmd_query(argparse.Namespace(what=what, today=today, **kw))
+                return _buf.getvalue()
+
+            _st_ph = json.loads(
+                _frozen_leg("plan-health", _rvw_over, json=True, check=False, fail_on=None)
+            )
+            _st_dash = _frozen_leg("dashboard", _rvw_over).splitlines()
+            _st_sum = _frozen_leg("summary", _rvw_over).splitlines()
+            _st_reg = json.loads(_frozen_leg("risk-register", _r30f, json=True))["entries"]
+        finally:
+            TODO_DIR = saved_tree
+        check(
+            "plan-health honors explicit today across the straddle",
+            (
+                [e["state"] for e in _st_ph["reviews"] if e["target"] == "D90-T01-S6-PR1"]
+                == ["review-due"]
+                and [e["state"] for e in _acc_json["reviews"] if e["target"] == "D90-T01-S6-PR1"]
+                == ["review-overdue"]
+            ),
+            True,
+        )
+        check(
+            "dashboard honors explicit today across the straddle",
+            any(ln == "Reviews: 3 due or overdue (0 overdue)" for ln in _st_dash),
+            True,
+        )
+        check(
+            "summary honors explicit today across the straddle",
+            (
+                any("S6-PR1" in ln and "review-due" in ln for ln in _st_sum)
+                and not any("S6-PR1" in ln and "review-overdue" in ln for ln in _st_sum)
+            ),
+            True,
+        )
+        check(
+            "risk-register honors explicit today across the straddle",
+            any(e["target"].endswith("S7-gpt") and e["state"] == "live" for e in _st_reg),
+            True,
+        )
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
         try:
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_sync = cmd_query(argparse.Namespace(what="risk-register", sync=True))
+                rc_sync = cmd_query(argparse.Namespace(what="risk-register", sync=True, today=_r0))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_rcheck = cmd_query(argparse.Namespace(what="risk-register", check=True))
+                rc_rcheck = cmd_query(argparse.Namespace(what="risk-register", check=True, today=_r0))
             _rfile = clean / "docs" / "risk-register.md"
             _rsynced = _rfile.exists()
             _rfile.write_text(_rfile.read_text(encoding="utf-8") + "\ncorruption\n", encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_rstale = cmd_query(argparse.Namespace(what="risk-register", check=True))
+                rc_rstale = cmd_query(argparse.Namespace(what="risk-register", check=True, today=_r0))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+                cmd_query(argparse.Namespace(what="risk-register", sync=True, today=_r0))
             # Date-crossing probe (D00 T01 §34 item 9): flip every
             # State cell as a clock crossing would, with no other
             # change; the gate must pass. Then flip one residual
@@ -17791,31 +18339,31 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _rcrossed = re.sub(r"\| (live|post-dated|expired) \|", "| crossed |", _rfile.read_text(encoding="utf-8"))
             _rfile.write_text(_rcrossed, encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_rcross = cmd_query(argparse.Namespace(what="risk-register", check=True))
+                rc_rcross = cmd_query(argparse.Namespace(what="risk-register", check=True, today=_r0))
             _rdrift = _rcrossed.replace("| none |", "| outage |", 1)
             _rfile.write_text(_rdrift, encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_rdrift = cmd_query(argparse.Namespace(what="risk-register", check=True))
+                rc_rdrift = cmd_query(argparse.Namespace(what="risk-register", check=True, today=_r0))
             # Newline drift is real drift (D00 T01 §34 R1 record 2):
             # a missing terminal newline or translated endings fail
             # the gate even with a blanked State column.
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+                cmd_query(argparse.Namespace(what="risk-register", sync=True, today=_r0))
             _rfile.write_text(_rfile.read_text(encoding="utf-8").rstrip("\n"), encoding="utf-8", newline="\n")
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_rnoeol = cmd_query(argparse.Namespace(what="risk-register", check=True))
+                rc_rnoeol = cmd_query(argparse.Namespace(what="risk-register", check=True, today=_r0))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+                cmd_query(argparse.Namespace(what="risk-register", sync=True, today=_r0))
             _rfile.write_bytes(_rfile.read_bytes().replace(b"\n", b"\r\n"))
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                rc_rcrlf = cmd_query(argparse.Namespace(what="risk-register", check=True))
+                rc_rcrlf = cmd_query(argparse.Namespace(what="risk-register", check=True, today=_r0))
             # Byte-exact sync runs under the fixture redirect (D00 T01
             # §34 R2 integration 2): past the finally the sync would
             # target the real tree and the fixture bytes below could
             # never change.
             _rsync_bytes = _rfile.read_bytes()
             with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="risk-register", sync=True))
+                cmd_query(argparse.Namespace(what="risk-register", sync=True, today=_r0))
         finally:
             TODO_DIR = saved_tree
         check(
@@ -17890,9 +18438,14 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     ("outage opus rung 2026-09-18", "review-overdue"),
                 ]
                 and [e for e in _revs if e["state"] == "review-overdue"][0]["escalation"]
-                == "bob: record the review outcome in a superseding acceptance"
+                == "bob: record the review disposition (renew, narrow, revoke) with evidence in a superseding acceptance"
                 and [e for e in _revs if e["state"] == "review-due"][0]["escalation"] == ""
             ),
+            True,
+        )
+        check(
+            "renewed successor closes the predecessor review",
+            not any(e["target"] == "D90-T01-S6-PR3" for e in _revs),
             True,
         )
         # Summary next-action precision (D00 T01 §27 review self-fix):
@@ -17927,7 +18480,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         try:
             _acc8_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_acc8_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                _acc8_gate = cmd_query(argparse.Namespace(what="summary"))
+                _acc8_gate = cmd_query(argparse.Namespace(what="summary", today=_r0))
         finally:
             TODO_DIR = saved_tree
         check(
@@ -18009,11 +18562,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         try:
             _mc_json_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_mc_json_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                cmd_query(argparse.Namespace(what="plan-health", json=True, check=False, fail_on=None))
+                cmd_query(argparse.Namespace(what="plan-health", json=True, check=False, fail_on=None, today=_r0))
             _mc_json = json.loads(_mc_json_buf.getvalue())
             _mc_chk_buf = _mio.StringIO()
             with _mctx.redirect_stdout(_mc_chk_buf), _mctx.redirect_stderr(_mio.StringIO()):
-                _mc_rc = cmd_query(argparse.Namespace(what="plan-health", check=True))
+                _mc_rc = cmd_query(argparse.Namespace(what="plan-health", check=True, today=_r0))
         finally:
             TODO_DIR = saved_tree
         _mc_revs = _mc_json["reviews"]
@@ -20564,6 +21117,562 @@ track: Z1
             any("D90-T01-S1-N1" in ln for ln in _ndsumlines),
             True,
         )
+        # Poster path proof (D00 T01 §53 items 1-2): the extracted
+        # tools/notify_poster.py against a fake gh with an issue
+        # database, so per-obligation create, quiet-unchanged,
+        # update-on-change, reopen-on-recurrence, close-when-clear,
+        # legacy retirement, and failure handling prove without
+        # touching GitHub. --gh points the poster at the fake,
+        # --today freezes wave dates.
+        import subprocess
+
+        _poster = saved_todo_dir.parent / "tools" / "notify_poster.py"
+        with tempfile.TemporaryDirectory(prefix="todo-graph-poster-") as _pstr:
+            _pdir = Path(_pstr)
+            _fake = _pdir / "fake_gh.py"
+            _fake.write_text(
+                "import json, os, sys\n"
+                "argv = sys.argv[1:]\n"
+                "db_path = os.environ['FAKEGH_DB']\n"
+                "with open(db_path, encoding='utf-8') as _f:\n"
+                "    db = json.load(_f)\n"
+                "_bi = argv.index('--body-file') if '--body-file' in argv else -1\n"
+                "stdin_text = (sys.stdin.read() if _bi >= 0 and argv[_bi + 1:_bi + 2] == ['-'] else '')\n"
+                "with open(os.environ['FAKEGH_LOG'], 'a', encoding='utf-8') as log:\n"
+                "    log.write(json.dumps({'argv': argv, 'stdin': stdin_text}) + chr(10))\n"
+                "verb = argv[1] if argv[:1] == ['issue'] else ''\n"
+                "fail = os.environ.get('FAKEGH_FAIL_' + verb.upper(), '')\n"
+                "if fail:\n"
+                "    code, _, msg = fail.partition(':')\n"
+                "    print(msg or ('fake ' + verb + ' failure'), file=sys.stderr)\n"
+                "    sys.exit(int(code))\n"
+                "issues = db['issues']\n"
+                "def save():\n"
+                "    open(db_path, 'w', encoding='utf-8').write(json.dumps(db))\n"
+                "# Fail-then-succeed injection (D00 T01 §53 item 6):\n"
+                "# FAKEGH_FLAKY_<VERB>=n fails the first n calls of that\n"
+                "# verb, counting in the shared db so the count survives\n"
+                "# across fake invocations.\n"
+                "flaky = os.environ.get('FAKEGH_FLAKY_' + verb.upper(), '')\n"
+                "if flaky:\n"
+                "    _seen = db.get('_flaky', {})\n"
+                "    _n = _seen.get(verb, 0)\n"
+                "    if _n < int(flaky):\n"
+                "        _seen[verb] = _n + 1\n"
+                "        db['_flaky'] = _seen\n"
+                "        save()\n"
+                "        print('fake ' + verb + ' flake', file=sys.stderr)\n"
+                "        sys.exit(1)\n"
+                "if verb == 'list':\n"
+                "    st = argv[argv.index('--state') + 1]\n"
+                "    q = argv[argv.index('--search') + 1]\n"
+                "    needle = q.split('in:title ', 1)[1].strip().strip(chr(34))\n"
+                "    print(json.dumps([{'number': int(n), 'title': i['title']}\n"
+                "                      for n, i in sorted(issues.items())\n"
+                "                      if i['state'] == st and needle in i['title']]))\n"
+                "elif verb == 'view':\n"
+                "    print(issues[argv[2]]['body'], end='')\n"
+                "elif verb == 'create':\n"
+                "    n = str(db['next']); db['next'] += 1\n"
+                "    issues[n] = {'title': argv[argv.index('--title') + 1], 'state': 'open',\n"
+                "                 'body': stdin_text, 'comments': []}\n"
+                "    save()\n"
+                "    print('https://github.com/fake/repo/issues/' + n)\n"
+                "elif verb == 'comment':\n"
+                "    issues[argv[2]]['comments'].append(stdin_text)\n"
+                "    save()\n"
+                "elif verb == 'edit':\n"
+                "    issues[argv[2]]['body'] = stdin_text\n"
+                "    save()\n"
+                "elif verb == 'close':\n"
+                "    issues[argv[2]]['state'] = 'closed'\n"
+                "    save()\n"
+                "elif verb == 'reopen':\n"
+                "    issues[argv[2]]['state'] = 'open'\n"
+                "    save()\n",
+                encoding="utf-8",
+            )
+            if os.name == "nt":
+                _gh = _pdir / "gh.bat"
+                _gh.write_text(f'@"{sys.executable}" "{_fake}" %*\n', encoding="utf-8")
+            else:
+                _gh = _pdir / "gh"
+                _gh.write_text(
+                    "#!/usr/bin/env python3\n" + _fake.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+                os.chmod(_gh, 0o755)
+
+            def _post(payload_text, seed, env_extra, mapping, *args):
+                (_pdir / "notify.txt").write_text(payload_text, encoding="utf-8")
+                (_pdir / "calls.log").write_text("", encoding="utf-8")
+                (_pdir / "db.json").write_text(json.dumps(seed), encoding="utf-8")
+                argv = [sys.executable, str(_poster), str(_pdir / "notify.txt"),
+                       "--gh", str(_gh)]
+                if mapping == "MISSING":
+                    argv += ["--mapping", str(_pdir / "no-such.json")]
+                else:
+                    (_pdir / "mapping.json").write_text(json.dumps(mapping), encoding="utf-8")
+                    argv += ["--mapping", str(_pdir / "mapping.json")]
+                argv += list(args)
+                env = dict(
+                    os.environ,
+                    FAKEGH_LOG=str(_pdir / "calls.log"),
+                    FAKEGH_DB=str(_pdir / "db.json"),
+                    **env_extra,
+                )
+                p = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    env=env,
+                    cwd=str(_pdir),
+                    timeout=60,
+                )
+                calls = [
+                    json.loads(ln)
+                    for ln in (_pdir / "calls.log").read_text(encoding="utf-8").splitlines()
+                    if ln.strip()
+                ]
+                final = json.loads((_pdir / "db.json").read_text(encoding="utf-8"))
+                return p, calls, final
+
+            _l1 = "    bob | 2026-09-22 | degraded D00-T02-S15 retry-owed"
+            _l2 = "    ann | 2026-09-23 | critical D00-T01-S4-PR1 in docs/reviews/r.md"
+            _p2 = f"notify: 2 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_l1}\n{_l2}\n"
+            _p0 = "notify: 0 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n"
+            _empty = {"issues": {}, "next": 9}
+            _map = {"bob": "bobgh"}
+            _prc, _calls, _db = _post(_p2, _empty, {}, _map, "--today", "2026-09-20")
+            check("poster creates one issue per obligation", _prc.returncode, 0)
+            check(
+                "poster create titles key on obligations",
+                sorted(i["title"] for i in _db["issues"].values())
+                == ["Risk watch: critical D00-T01-S4-PR1 in docs/reviews/r.md",
+                    "Risk watch: degraded D00-T02-S15"],
+                True,
+            )
+            check(
+                "poster create assigns mapped owners only",
+                (
+                    lambda _flat: _flat.count("--assignee") == 1 and "bobgh" in _flat
+                )([a for c in _calls if c["argv"][1] == "create" for a in c["argv"]]),
+                True,
+            )
+            check(
+                "poster create body names assignees plus unmapped",
+                _db["issues"]["10"]["body"]
+                == f"watch obligation: degraded D00-T02-S15\nassignees: bobgh\n{_l1}\n"
+                and _db["issues"]["9"]["body"].splitlines()[1].startswith("unmapped owners: ann "),
+                True,
+            )
+            # Overdue escalation (D00 T01 §53 item 5): the suffix never
+            # keys, mapped escalation owners assign on create, unmapped
+            # ones ride the unmapped line, and the due/overdue
+            # transition updates the one keyed issue.
+            _le = "    ann | 2026-09-18 | critical D00-T01-S4-PR1 in docs/reviews/r.md escalate bob"
+            _pe = f"notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_le}\n"
+            _prc, _calls, _db = _post(_pe, _empty, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster escalation suffix keys without the suffix",
+                _prc.returncode == 0
+                and sorted(i["title"] for i in _db["issues"].values())
+                == ["Risk watch: critical D00-T01-S4-PR1 in docs/reviews/r.md"],
+                True,
+            )
+            check(
+                "poster create assigns the mapped escalation owner",
+                (
+                    lambda _flat: _flat.count("--assignee") == 1 and "bobgh" in _flat
+                )([a for c in _calls if c["argv"][1] == "create" for a in c["argv"]])
+                and _db["issues"]["9"]["body"].splitlines()[1] == "assignees: bobgh"
+                and _db["issues"]["9"]["body"].splitlines()[2].startswith("unmapped owners: ann "),
+                True,
+            )
+            _lo = "    ann | 2026-09-18 | critical D00-T01-S4-PR1 in docs/reviews/r.md escalate operator"
+            _po = f"notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_lo}\n"
+            _prc, _calls, _db = _post(_po, _empty, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster unmapped escalation rides the unmapped line",
+                _prc.returncode == 0
+                and _db["issues"]["9"]["body"].splitlines()[1].startswith(
+                    "unmapped owners: ann operator "
+                ),
+                True,
+            )
+            _ld = "    ann | 2026-09-23 | critical D00-T01-S4-PR1 in docs/reviews/r.md"
+            _due_seed = {
+                "issues": {"5": {"title": "Risk watch: critical D00-T01-S4-PR1 in docs/reviews/r.md",
+                                 "state": "open",
+                                 "body": f"watch obligation: critical D00-T01-S4-PR1 in docs/reviews/r.md\nunmapped owners: ann (add to {_pdir / 'mapping.json'})\n{_ld}\n",
+                                 "comments": []}},
+                "next": 6,
+            }
+            _prc, _calls, _db = _post(_pe, _due_seed, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster due/overdue transition updates one issue",
+                _prc.returncode == 0
+                and sorted(_db["issues"]) == ["5"]
+                and len(_db["issues"]["5"]["comments"]) == 1
+                and "--add-assignee" in [a for c in _calls if c["argv"][1] == "edit" for a in c["argv"]]
+                and "bobgh" in [a for c in _calls if c["argv"][1] == "edit" for a in c["argv"]]
+                and _db["issues"]["5"]["body"].splitlines()[1] == "assignees: bobgh",
+                True,
+            )
+            _same = {
+                "issues": {"7": {"title": "Risk watch: degraded D00-T02-S15", "state": "open",
+                                 "body": f"watch obligation: degraded D00-T02-S15\nassignees: bobgh\n{_l1}\n",
+                                 "comments": []}},
+                "next": 10,
+            }
+            _p1 = f"notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_l1}\n"
+            _prc, _calls, _db = _post(_p1, _same, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster unchanged obligation stays quiet",
+                (
+                    _prc.returncode == 0
+                    and [c["argv"][1] for c in _calls]
+                    == ["list", "list", "view", "list"]
+                    and _db["issues"]["7"]["comments"] == []
+                ),
+                True,
+            )
+            _stale = {
+                "issues": {"7": {"title": "Risk watch: degraded D00-T02-S15", "state": "open",
+                                 "body": "watch obligation: degraded D00-T02-S15\nold\n",
+                                 "comments": []}},
+                "next": 10,
+            }
+            _prc, _calls, _db = _post(_p1, _stale, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster changed obligation edits plus comments",
+                (
+                    _prc.returncode == 0
+                    and [c["argv"][1] for c in _calls]
+                    == ["list", "list", "view", "edit", "comment", "list"]
+                    and _db["issues"]["7"]["body"]
+                    == f"watch obligation: degraded D00-T02-S15\nassignees: bobgh\n{_l1}\n"
+                    and _db["issues"]["7"]["comments"]
+                    == [f"update as of 2026-09-20:\n{_l1}"]
+                    and "--add-assignee" in _calls[3]["argv"]
+                ),
+                True,
+            )
+            _shut = {
+                "issues": {"7": {"title": "Risk watch: degraded D00-T02-S15", "state": "closed",
+                                 "body": "watch obligation: degraded D00-T02-S15\nold\n",
+                                 "comments": []}},
+                "next": 10,
+            }
+            _prc, _calls, _db = _post(_p1, _shut, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster recurring obligation reopens",
+                (
+                    _prc.returncode == 0
+                    and [c["argv"][1] for c in _calls]
+                    == ["list", "list", "list", "reopen", "view", "edit", "comment", "list"]
+                    and _db["issues"]["7"]["state"] == "open"
+                    and _db["issues"]["7"]["comments"]
+                    == [f"recurring as of 2026-09-20:\n{_l1}"]
+                    and "--add-assignee" in [c["argv"] for c in _calls if c["argv"][1] == "edit"][0]
+                ),
+                True,
+            )
+            _gone = {
+                "issues": {"7": {"title": "Risk watch: degraded D00-T99-S9", "state": "open",
+                                 "body": "watch obligation: degraded D00-T99-S9\nold\n",
+                                 "comments": []}},
+                "next": 10,
+            }
+            _prc, _calls, _db = _post(_p0, _gone, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster cleared obligation comments plus closes",
+                (
+                    _prc.returncode == 0
+                    and [c["argv"][1] for c in _calls] == ["list", "list", "comment", "close"]
+                    and _db["issues"]["7"]["state"] == "closed"
+                    and _db["issues"]["7"]["comments"] == ["clear as of 2026-09-20"]
+                ),
+                True,
+            )
+            _leg = {
+                "issues": {"5": {"title": "Unattended risk watch (scheduled)", "state": "open",
+                                 "body": "old thread", "comments": []}},
+                "next": 10,
+            }
+            _prc, _calls, _db = _post(_p0, _leg, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster retires the legacy rolling issue once",
+                (
+                    _prc.returncode == 0
+                    and [c["argv"][1] for c in _calls] == ["list", "comment", "close", "list"]
+                    and _db["issues"]["5"]["state"] == "closed"
+                    and _db["issues"]["5"]["comments"]
+                    == ["retired as of 2026-09-20: obligations now track one issue each"]
+                ),
+                True,
+            )
+            _rl = "    bob | 2026-09-22 | review-overdue D00-T01-S6-PR2 in docs/reviews/r.md"
+            _prl = f"notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n{_rl}\n"
+            _rseed = {
+                "issues": {"7": {"title": "Risk watch: review D00-T01-S6-PR2 in docs/reviews/r.md",
+                                 "state": "open", "body": "stale\n", "comments": []}},
+                "next": 10,
+            }
+            _prc, _calls, _db = _post(_prl, _rseed, {}, _map, "--today", "2026-09-20")
+            check(
+                "poster review key survives the due-overdue transition",
+                (
+                    _prc.returncode == 0
+                    and "create" not in [c["argv"][1] for c in _calls]
+                    and _db["issues"]["7"]["body"]
+                    == f"watch obligation: review D00-T01-S6-PR2 in docs/reviews/r.md\nassignees: bobgh\n{_rl}\n"
+                ),
+                True,
+            )
+            _prc, _calls, _db = _post(_p2, _empty, {"FAKEGH_FAIL_CREATE": "3:boom"}, _map)
+            check("poster create failure exits 1", _prc.returncode, 1)
+            check(
+                "poster create failure names the call plus exit",
+                "issue create" in _prc.stderr and "failed (exit 3): boom" in _prc.stderr,
+                True,
+            )
+            # Bounded retry (D00 T01 §53 item 6): flakes inside the
+            # bound succeed, exhaustion fails loud with the attempt
+            # count, and bad retry flags fail before any gh call.
+            _prc, _calls, _db = _post(
+                _p1, _empty, {"FAKEGH_FLAKY_CREATE": "2"}, _map,
+                "--today", "2026-09-20", "--retry-sleep", "0",
+            )
+            check(
+                "poster flaky create succeeds inside the bound",
+                _prc.returncode == 0
+                and sum(1 for c in _calls if c["argv"][1] == "create") == 3
+                and "retry 2/2" in _prc.stderr
+                and sorted(i["title"] for i in _db["issues"].values())
+                == ["Risk watch: degraded D00-T02-S15"],
+                True,
+            )
+            _prc, _calls, _db = _post(
+                _p1, _empty, {"FAKEGH_FLAKY_CREATE": "9"}, _map,
+                "--today", "2026-09-20", "--retry-sleep", "0",
+            )
+            check(
+                "poster retry exhaustion fails loud with the count",
+                _prc.returncode == 1
+                and sum(1 for c in _calls if c["argv"][1] == "create") == 3
+                and "(after 3 attempts)" in _prc.stderr,
+                True,
+            )
+            _prc, _calls, _db = _post(_p0, _empty, {}, _map, "--retries", "-1")
+            check(
+                "poster bad retries fails before any gh call",
+                (_prc.returncode == 1 and _calls == [] and "bad --retries" in _prc.stderr),
+                True,
+            )
+            _prc, _calls, _db = _post("garbage\n", _empty, {}, _map)
+            check("poster unparseable payload exits 1", _prc.returncode, 1)
+            check(
+                "poster unparseable payload says why",
+                "unparseable payload header" in _prc.stderr,
+                True,
+            )
+            _prc, _calls, _db = _post(
+                "notify: 1 payloads within 7 days (today 2026-09-20, horizon 2026-09-27)\n    ???\n",
+                _empty, {}, _map,
+            )
+            check(
+                "poster unknown line shape exits 1 before any gh call",
+                (_prc.returncode == 1 and _calls == []),
+                True,
+            )
+            _prc, _calls, _db = _post(_p0, _empty, {}, _map, "--today", "yesterday")
+            check(
+                "poster bad --today exits 1 before any gh call",
+                (_prc.returncode == 1 and _calls == []),
+                True,
+            )
+            _prc, _calls, _db = _post(_p1, _same, {}, "MISSING", "--today", "2026-09-20")
+            check(
+                "poster missing mapping fails before any gh call",
+                (_prc.returncode == 1 and _calls == [] and "cannot read mapping" in _prc.stderr),
+                True,
+            )
+            (_pdir / "badmap.json").write_text('{"bob": "-bad-"}', encoding="utf-8")
+            _prc = subprocess.run(
+                [sys.executable, str(_poster), str(_pdir / "notify.txt"), "--gh", str(_gh),
+                 "--mapping", str(_pdir / "badmap.json"), "--today", "2026-09-20"],
+                capture_output=True, text=True, encoding="utf-8", cwd=str(_pdir), timeout=60,
+                env=dict(os.environ, FAKEGH_LOG=str(_pdir / "calls.log"),
+                         FAKEGH_DB=str(_pdir / "db.json")),
+            )
+            check(
+                "poster bad login fails closed",
+                (_prc.returncode == 1 and "bad GitHub login" in _prc.stderr),
+                True,
+            )
+        # Schedule heartbeat proof (D00 T01 §53 item 7): the
+        # extracted tools/check_heartbeat.py against a fake gh that
+        # replays canned `run list` JSON, so fresh, stale,
+        # failures-only, bootstrap, and corrupt history prove without
+        # touching GitHub.
+        _hb = saved_todo_dir.parent / "tools" / "check_heartbeat.py"
+        with tempfile.TemporaryDirectory(prefix="todo-graph-heartbeat-") as _hstr:
+            _hdir = Path(_hstr)
+            _hfake = _hdir / "fake_gh.py"
+            _hfake.write_text(
+                "import os\n"
+                "print(os.environ.get('FAKEGH_RUNS', '[]'))\n",
+                encoding="utf-8",
+            )
+            if os.name == "nt":
+                _hgh = _hdir / "gh.bat"
+                _hgh.write_text(f'@"{sys.executable}" "{_hfake}" %*\n', encoding="utf-8")
+            else:
+                _hgh = _hdir / "gh"
+                _hgh.write_text(
+                    "#!/usr/bin/env python3\n" + _hfake.read_text(encoding="utf-8"),
+                    encoding="utf-8",
+                )
+                os.chmod(_hgh, 0o755)
+
+            def _beat(runs: str, *args: str) -> "subprocess.CompletedProcess[str]":
+                return subprocess.run(
+                    [sys.executable, str(_hb), "--gh", str(_hgh), *args],
+                    capture_output=True, text=True, encoding="utf-8",
+                    env=dict(os.environ, FAKEGH_RUNS=runs),
+                    cwd=str(_hdir), timeout=60,
+                )
+
+            _now = "2026-09-21T04:30:00Z"
+            _fresh_runs = json.dumps([
+                {"databaseId": 3, "conclusion": "success", "createdAt": "2026-09-21T03:00:00Z"},
+                {"databaseId": 2, "conclusion": "failure", "createdAt": "2026-09-20T04:25:00Z"},
+            ])
+            _stale_runs = json.dumps([
+                {"databaseId": 2, "conclusion": "success", "createdAt": "2026-09-19T02:00:00Z"},
+            ])
+            _fail_runs = json.dumps([
+                {"databaseId": 4, "conclusion": "failure", "createdAt": "2026-09-21T04:24:00Z"},
+                {"databaseId": 3, "conclusion": "failure", "createdAt": "2026-09-20T04:24:00Z"},
+            ])
+            _hb_p = _beat(_fresh_runs, "--now", _now)
+            check(
+                "heartbeat fresh success exits 0 with the age",
+                _hb_p.returncode == 0 and "1.5h ago" in _hb_p.stdout,
+                True,
+            )
+            _hb_p = _beat(_stale_runs, "--now", _now)
+            check(
+                "heartbeat stale success exits 1 naming the age",
+                _hb_p.returncode == 1 and "older than 26h" in _hb_p.stderr,
+                True,
+            )
+            _hb_p = _beat(_stale_runs, "--now", _now, "--max-age-hours", "100")
+            check("heartbeat max age flag is honored", _hb_p.returncode, 0)
+            _hb_p = _beat(_fail_runs, "--now", _now)
+            check(
+                "heartbeat failures-only exits 1 with no success",
+                _hb_p.returncode == 1 and "no successful schedule run" in _hb_p.stderr,
+                True,
+            )
+            _hb_p = _beat("[]", "--now", _now)
+            check(
+                "heartbeat bootstrap passes with a note",
+                _hb_p.returncode == 0 and "bootstrap" in _hb_p.stdout,
+                True,
+            )
+            _hb_p = _beat("not json", "--now", _now)
+            check(
+                "heartbeat corrupt history fails closed",
+                _hb_p.returncode == 1 and "non-JSON" in _hb_p.stderr,
+                True,
+            )
+        _planyml = (saved_todo_dir.parent / ".github" / "workflows" / "plan.yml").read_text(
+            encoding="utf-8"
+        )
+        check(
+            "plan-gates calls the extracted poster",
+            "python3 tools/notify_poster.py /tmp/notify.txt" in _planyml
+            and "'tools/notify_poster.py'" in _planyml,
+            True,
+        )
+        check(
+            "plan-gates notify pins the production horizon 7",
+            "query notify --within-days 7 > /tmp/notify.txt" in _planyml,
+            True,
+        )
+        check(
+            "plan-gates poster runs as its own failure-gate step",
+            "- name: Post owner notifications" in _planyml
+            and _planyml.index("- name: Post owner notifications")
+            < _planyml.index("python3 tools/notify_poster.py /tmp/notify.txt"),
+            True,
+        )
+        check(
+            "plan-gates heartbeat step runs before the gates",
+            "- name: Check schedule heartbeat" in _planyml
+            and "tools/check_heartbeat.py --max-age-hours 26" in _planyml
+            and "actions: read" in _planyml
+            and _planyml.index("tools/check_heartbeat.py")
+            < _planyml.index("- name: Gate plan health plus migration zero"),
+            True,
+        )
+        # Clock boundary documentation (D00 T01 §53 item 8): the UTC
+        # rule reads beside the cron and beside the --today flag.
+        check(
+            "plan-gates cron states the UTC boundary",
+            "00:00 UTC" in _planyml
+            and _planyml.index("00:00 UTC") < _planyml.index("cron: '23 4 * * *'"),
+            True,
+        )
+        _help_p = subprocess.run(
+            [sys.executable, str(saved_todo_dir.parent / "scripts" / "todo-graph.py"),
+             "query", "--help"],
+            capture_output=True, text=True, encoding="utf-8", timeout=60,
+        )
+        check(
+            "query --today help states the UTC boundary",
+            _help_p.returncode == 0 and "states flip at 00:00 UTC" in _help_p.stdout,
+            True,
+        )
+        # Independent gates plus combined verdict (D00 T01 §53 item
+        # 9): every unattended gate step runs always, carries an id,
+        # and the last step judges all outcomes.
+        _ujob = _planyml.split("  unattended:", 1)[1]
+        _gate_steps = [
+            ("Check schedule heartbeat", "heartbeat"),
+            ("Gate plan health plus migration zero", "health"),
+            ("Gate risk register freshness", "register"),
+            ("Record the operator digest", "digest"),
+            ("Build owner notifications", "notify_build"),
+            ("Post owner notifications", "notify_post"),
+        ]
+
+        def _step_seg(name: str) -> str:
+            seg = _ujob.split(f"- name: {name}", 1)[1]
+            return seg.split("- name: ", 1)[0]
+
+        check(
+            "plan-gates every gate step runs always with an id",
+            all(
+                "always()" in _step_seg(name) and f"id: {sid}" in _step_seg(name)
+                for name, sid in _gate_steps
+            ),
+            True,
+        )
+        _verdict = _ujob.split("- name: Verdict on all gates", 1)[1]
+        check(
+            "plan-gates verdict judges every gate outcome last",
+            "- name: Verdict on all gates" in _ujob
+            and _ujob.index("- name: Verdict on all gates")
+            > _ujob.index("- name: Post owner notifications")
+            and all(f"steps.{sid}.outcome" in _verdict for _, sid in _gate_steps)
+            and "*failure*)" in _verdict
+            and "exit 1" in _verdict,
+            True,
+        )
 
     finally:
         TODO_DIR, PLAN = saved_todo_dir, saved_plan
@@ -20602,13 +21711,13 @@ def main() -> int:
         help="ask the graph a question",
         # The fallback definition rides the command help, not a
         # per-choice string (argparse has no per-choice help): GPT-last
-        # membership is the compat guarantee holding the plan-health/8
+        # membership is the compat guarantee holding the plan-health/9
         # shape stable (D00 T01 §37 item 5). Pinned verbatim by probe.
         description=(
             "plan-health fallback membership is GPT-last: only records whose last panel "
             "section is GPT count as fallback (planned GPT-early rounds under an Opus "
             "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/8 shape stable."
+            "holding the plan-health/9 shape stable."
         ),
     )
     q.add_argument(
@@ -20638,7 +21747,7 @@ def main() -> int:
     q.add_argument("--at", help="adjacency: inspect an isolated historical commit")
     q.add_argument("--json", action="store_true", help="adjacency, plan-health, risk-register, run, telemetry: machine-readable report")
     q.add_argument("--check", action="store_true", help="plan-health: exit 1 on actionable entries (covered escalations and bare partials pass; --fail-on gates presence); risk-register: exit 1 when the committed register is stale")
-    q.add_argument("--today", metavar="YYYY-MM-DD", default=None, help="plan-health, summary, dashboard, risk-register, notify, night-debt: freeze wall clock here instead of today (fixture-date runs)")
+    q.add_argument("--today", metavar="YYYY-MM-DD", default=None, help="plan-health, summary, dashboard, risk-register, notify, night-debt: freeze the UTC wall-clock date here instead of today (states flip at 00:00 UTC; fixture-date runs)")
     q.add_argument("--within-days", metavar="N", default=None, help="notify: warn on dates within N days (default 7)")
     q.add_argument("--sync", action="store_true", help="risk-register: write the committed register file")
     q.add_argument("--fail-on", metavar="DIMS", help="plan-health: comma-separated dimensions whose non-emptiness exits 1")
