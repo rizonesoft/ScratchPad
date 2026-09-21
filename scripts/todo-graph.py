@@ -1109,6 +1109,12 @@ SEVERITY_MAP: dict[str, str] = {
     # rather than blocks -- new records resolve at mint time and
     # record the full 40-hex ID (D00 T01 §33 item 3).
     "provenance-short-candidate": "warn",
+    # a post-cutoff provenance digest that is not the sha256 of the
+    # path's blob in the candidate tree (D00 T01 §55 item 7).
+    "provenance-digest": "fatal",
+    # the candidate names a regular file whose bytes git cannot read.
+    # The line stays unverified, and the skip is visible.
+    "provenance-digest-unprovable": "warn",
     # a pre-cutoff stamp or retirement note outside the frozen
     # migration membership: backdated past completion, silently
     # re-opening the grandfathered set (D00 T01 §48 item 6).
@@ -1150,6 +1156,11 @@ def rule24_comment_legs(block: str) -> frozenset:
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
 PLAN_REVIEW_CUTOFF = "2026-09-18"
+# Digest recompute binds runs after this day (D00 T01 §55 item 7).
+# Lines through 20260921 stay attested: most post-20260919 digests
+# are not the candidate blob. Moving the day earlier means rehashing
+# those lines.
+PROVENANCE_DIGEST_CUTOFF = "20260921"
 # Stamps on or before this date predate the outage-note link rule and are
 # grandfathered (D00 T01 §52 item 1): outage markers without shaped
 # notes stay silent, so pre-rule records (including every fixture
@@ -2882,6 +2893,30 @@ def git_tree_mode(ref: str, path: str) -> str | None:
     if len(first) != 3 or not re.fullmatch(r"[0-7]{6}", first[0]):
         return None
     return first[0]
+
+
+def git_blob_sha256(ref: str, path: str) -> str | None:
+    """Lowercase sha256 of the blob at `ref:path`, or None when missing.
+
+    Provenance digest recompute (D00 T01 §55 item 7): the recorded
+    digest is checked against the candidate tree. Git failures and
+    missing blobs read None, never raise. The self-test patches
+    this name.
+    """
+    try:
+        import hashlib
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "cat-file", "blob", f"{ref}:{path}"],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    return hashlib.sha256(out.stdout).hexdigest()
 
 
 def git_full_sha(ref: str) -> str | None:
@@ -12569,6 +12604,30 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 144. Digest mismatch fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** __D5__ | §144 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-digest-miss.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 145. Digest unreadable warns
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** __D5__ | §145 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-digest-blind.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13749,6 +13808,36 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             "digest 0123456789abcdef; path docs/reviews/90-health-badprov.md; run 20260920-D90-T07-S9-gpt\n",
             encoding="utf-8",
         )
+        # D00 T01 §55 item 7: digest recompute. The recorded digest
+        # on the miss file is ab*32; the candidate blob hashes cd*32.
+        # The blind file names a regular file with no readable blob.
+        _digest_run = "20260922-D90-T07-S144-gpt"
+        _digest_want = "ab" * 32
+        _digest_got = "cd" * 32
+        (rev_dir / "90-digest-miss.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
+            f"digest {_digest_want}; path docs/reviews/90-digest-miss.md; run {_digest_run}\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-digest-blind.md").write_text(
+            "# Review: fixture\n\n## Opus panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Sol outage: model error (fixture note)\n\n"
+            "Provenance: candidate aaa1111000000000000000000000000000000000; command true; exit 0; tool fixture 1; "
+            f"digest {_digest_want}; path docs/reviews/90-digest-blind.md; run 20260922-D90-T07-S145-gpt\n",
+            encoding="utf-8",
+        )
+        canned_blob_sha = {
+            (
+                "aaa1111000000000000000000000000000000000",
+                "docs/reviews/90-digest-miss.md",
+            ): _digest_got,
+        }
         # D00 T01 §33 item 4 (round-1 integration): the
         # candidate-tree leg binds the entry mode read from the
         # candidate, so each written review file cans 100644 at
@@ -13803,6 +13892,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         _real_git_comhunks = git_commit_hunk_lines
         _real_git_rangehunks = git_range_hunk_lines
         _real_git_rangemerge = git_range_merge_touches
+        _real_git_blobsha = git_blob_sha256
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
@@ -13819,6 +13909,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         globals()["git_commit_hunk_lines"] = lambda sha, p: canned_commit_hunks.get((sha, p))
         globals()["git_range_hunk_lines"] = lambda a, b, p: canned_range_hunks.get((a, b, p))
         globals()["git_range_merge_touches"] = lambda a, b, p: canned_range_merges.get((a, b, p), False)
+        globals()["git_blob_sha256"] = lambda ref, p: canned_blob_sha.get((ref, p))
         _live_marker = marker_todo.read_text(encoding="utf-8")
         canned_git[("HEAD", marker_todo.as_posix())] = (
             _live_marker.replace(
@@ -14258,6 +14349,32 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
             "provenance-malformed is a FATAL class",
             SEVERITY_MAP.get("provenance-malformed"),
             "fatal",
+        )
+        check(
+            "provenance-digest is a FATAL class",
+            SEVERITY_MAP.get("provenance-digest"),
+            "fatal",
+        )
+        check(
+            "provenance-digest-unprovable is a WARN class",
+            SEVERITY_MAP.get("provenance-digest-unprovable"),
+            "warn",
+        )
+        check(
+            "a digest that misses the candidate blob fires",
+            any(
+                "§144 " in ln and "provenance digest" in ln and "FATAL" in ln
+                for ln in marker_out
+            ),
+            True,
+        )
+        check(
+            "an unreadable candidate blob warns",
+            any(
+                "§145 " in ln and "provenance digest" in ln and "WARN" in ln
+                for ln in marker_out
+            ),
+            True,
         )
         check(
             "genesis markers stay lineage-silent",
@@ -20425,6 +20542,7 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
         globals()["git_commit_hunk_lines"] = _real_git_comhunks
         globals()["git_range_hunk_lines"] = _real_git_rangehunks
         globals()["git_range_merge_touches"] = _real_git_rangemerge
+        globals()["git_blob_sha256"] = _real_git_blobsha
         # Real-git helper fixtures (D00 T01 §30 item 3): the six git
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
@@ -20578,6 +20696,16 @@ proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
                     check("real git refuses a side-branch range touch", git_range_touches(_gc1, _gm1, "side.txt"), False)
                     check("real git proves a first-parent range touch", git_range_touches(_gc1, _gc2, "proof.txt"), True)
                     check("real git refuses an out-of-range touch", git_range_touches(_gc1, _gc2, "side.txt"), False)
+                    check(
+                        "real git hashes a blob",
+                        git_blob_sha256(_gc2, "proof.txt"),
+                        hashlib.sha256(b"v2\n").hexdigest(),
+                    )
+                    check(
+                        "real git blob hash on a bad ref is unprovable",
+                        git_blob_sha256("deadbee000000000000000000000000000000000", "proof.txt"),
+                        None,
+                    )
                     check("real git sees a merge-carried path", git_range_merge_touches(_gc1, _gm1, "side.txt"), True)
                     check("real git sees no merge-carried path on a linear range", git_range_merge_touches(_gc1, _gc2, "proof.txt"), False)
                     check("real git merge-range probe on a bad ref is unprovable", git_range_merge_touches("deadbee000000000000000000000000000000000", _gm1, "side.txt"), None)

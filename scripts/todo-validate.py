@@ -1478,9 +1478,10 @@ def validate(graph, _args) -> int:
     # item 4), and the run
     # must equal the reporting section's last shaped marker run
     # (last-governs: a superseded run cited as live evidence
-    # misattributes it, D00 T01 §33 item 6). The digest stays
-    # attested: presence plus shape, never re-verified (the file
-    # keeps no bytes to verify against). Equality skips when the
+    # misattributes it, D00 T01 §33 item 6). On runs after
+    # `PROVENANCE_DIGEST_CUTOFF` the digest recomputes as the sha256
+    # of the path's blob in the candidate tree (D00 T01 §55 item 7).
+    # Earlier lines stay attested. Equality skips when the
     # section carries no shaped marker run (the marker-shape rule
     # owns that defect). Date-scoped like rules 16-18: stamps on or
     # before 2026-09-18 (`PLAN_REVIEW_CUTOFF`) predate the mandate
@@ -1613,6 +1614,26 @@ def validate(graph, _args) -> int:
                                 f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance path {_pp} "
                                 f"names no regular file in the {_cand} tree (new records pin the reviewed artifact)",
                             )
+                        elif pm.group(7)[:8] > graph.PROVENANCE_DIGEST_CUTOFF:
+                            # Digest recompute (D00 T01 §55 item 7):
+                            # the recorded hex must be the sha256 of
+                            # this blob. Unreadable bytes warn, the
+                            # same way an unprovable candidate warns,
+                            # so a green result is not a skip.
+                            _got = graph.git_blob_sha256(_cand, _pp)
+                            _want = pm.group(5).lower()
+                            if _got is None:
+                                flag(
+                                    "provenance-digest-unprovable",
+                                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance digest for {_pp} "
+                                    "is unverifiable here (candidate blob unreadable; degraded, not verified)",
+                                )
+                            elif _got != _want:
+                                flag(
+                                    "provenance-digest",
+                                    f"{t.path}:{s.line}: §{num} findings {fm.group(1)} provenance digest for {_pp} "
+                                    f"is {_want}, candidate tree hashes {_got}",
+                                )
                 else:
                     # Pre-ratchet records keep resolve-plus-checkout:
                     # their self-paths postdate their candidates, so
