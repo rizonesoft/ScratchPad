@@ -617,13 +617,19 @@ $tx2 = Format-ToastXml 't' @('1', '2', '3', '4', '5', '6', '7', '8')
 Assert ((@($tx2 -split '<text>').Count) -eq 8) 'toast-truncate'
 
 # Test-ResultFile: versioned shapes.
-$goodResult = '{"version":1,"stamp":"2026-09-21-105146","day":"2026-09-21","identity":"2026-09-21-105146-pid1","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{},"timings":{}}'
+$goodResult = '{"version":1,"stamp":"2026-09-21-105146","day":"2026-09-21","identity":"2026-09-21-105146-pid1","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{"os":"10.0"},"timings":{}}'
 $goodResult | Set-Content -Path (Join-Path $s17 'good.result.json') -Encoding UTF8
 Assert ((Test-ResultFile (Join-Path $s17 'good.result.json')).Ok) 'result-good'
 '{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{},"soak":{},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'empty.result.json') -Encoding UTF8
 Assert ((Test-ResultFile (Join-Path $s17 'empty.result.json')).Error -like 'result legs missing*') 'result-emptylegs'
 '{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"purple"},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'badsoak.result.json') -Encoding UTF8
 Assert ((Test-ResultFile (Join-Path $s17 'badsoak.result.json')).Error -like 'result soak verdict unknown*') 'result-badsoak'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":1,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{"os":"o"},"timings":{}}' | Set-Content -Path (Join-Path $s17 'contra.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'contra.result.json')).Error -like 'result verdict green contradicts*') 'result-contra'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"red","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{"os":"o"},"timings":{}}' | Set-Content -Path (Join-Path $s17 'contra2.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'contra2.result.json')).Error -like 'result verdict red contradicts*') 'result-contra2'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'noenv.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'noenv.result.json')).Error -like 'result env unproven*') 'result-noenv'
 '{oops' | Set-Content -Path (Join-Path $s17 'bad.result.json') -Encoding UTF8
 Assert ((Test-ResultFile (Join-Path $s17 'bad.result.json')).Error -like 'result unreadable*') 'result-badjson'
 '{"version":2,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{},"soak":{},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'v2.result.json') -Encoding UTF8
@@ -677,7 +683,7 @@ Assert ((($tfTrend -join "`n") -like '*| 2026-09-21 | red | degraded-soak |*') -
 
 # Format-TrendTable: two nights plus a mark.
 $t1 = [pscustomobject]@{ day = '2026-09-20'; stamp = '2026-09-20-041343'; verdict = 'green'; reserve = 9000; consumed = 700; timings = [pscustomobject]@{ build = 2; 'run-a' = 600; 'run-b' = 7 }; incidents = @('- INC-aaaabbbb `UI.Flake` x1 (Soak): wobble'); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ gate = 0; failed = 0; passed = 540; skipped = 9; killed = $false; cut = $false; testSeconds = 600 }; 'run-b' = [pscustomobject]@{ gate = 0; failed = 0; passed = 2; skipped = 0; killed = $false; cut = $false; testSeconds = 7 } }; soak = [pscustomobject]@{ verdict = 'green'; failed = @(); killed = @(); cut = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = '10.0'; powershell = '5.1'; dotnet = '10.0.400'; session = 'u/c'; topology = 'one screen'; dpi = '144x144'; adapters = 'gpu'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
-$t2 = [pscustomobject]@{ day = '2026-09-21'; stamp = '2026-09-21-023001'; verdict = 'red'; reserve = 12000; incidents = @('- INC-aaaabbbb `UI.Flake` x2 (Run A): wobble'); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ gate = 0; failed = 2; passed = 538; skipped = 9; killed = $false; cut = $false; testSeconds = 700 }; 'run-b' = [pscustomobject]@{ gate = 0; failed = 0; passed = 2; skipped = 0; killed = $false; cut = $false; testSeconds = 8 } }; soak = [pscustomobject]@{ verdict = 'red'; failed = @('ui-soak-3'); killed = @(); cut = @('protocol-soak-4..5') }; quarantine = [pscustomobject]@{ overdue = @('UI.Old'); dueSoon = @() }; env = [pscustomobject]@{ os = '10.0'; powershell = '5.1'; dotnet = '10.0.400'; session = 'u/c'; topology = 'one screen'; dpi = '144x144'; adapters = 'gpu'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
+$t2 = [pscustomobject]@{ day = '2026-09-21'; stamp = '2026-09-21-023001'; verdict = 'red'; reserve = 12000; incidents = @('- INC-aaaabbbb `UI.Flake` x2 (Run A): wobble'); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ gate = 0; failed = 2; passed = 538; skipped = 9; killed = $false; cut = $false; testSeconds = 700 }; 'run-b' = [pscustomobject]@{ gate = 0; failed = 0; passed = 2; skipped = 0; killed = $false; cut = $false; testSeconds = 8 } }; soak = [pscustomobject]@{ verdict = 'red'; failed = @('ui-soak-3'); killed = @(); cut = @('protocol-soak-4..5') }; quarantine = [pscustomobject]@{ overdue = @('UI.Old'); dueSoon = @(); overdueDetail = @([pscustomobject]@{ Test = 'UI.Old'; Due = '2026-09-19'; Owner = 'op' }) }; env = [pscustomobject]@{ os = '10.0'; powershell = '5.1'; dotnet = '10.0.400'; session = 'u/c'; topology = 'one screen'; dpi = '144x144'; adapters = 'gpu'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
 $t3 = [pscustomobject]@{ day = '2026-09-21'; stamp = 'loser-x'; verdict = 'stood-down' }
 $trend = Format-TrendTable @($t1, $t2, $t3) @{ Overdue = @('UI.Old'); DueSoon = @() }
 $tj = $trend -join "`n"
@@ -687,10 +693,11 @@ Assert ($tj -like '*Flake recurrence: INC-aaaabbbb*') 'trend-recurrence'
 Assert ($tj -like '*p50/median: 700*') 'trend-percentile'
 Assert ($tj -like '*## Environments*2026-09-20 2026-09-20-041343*') 'trend-env'
 Assert ($tj -like '*Quarantine now: 1 overdue*') 'trend-quar'
+Assert ($tj -like '*| 1/0 (oldest 2d) |*') 'trend-qage'
 Assert (($tj -like '*| green |*') -and ($tj -like '*| red ui-soak-3 cut=1 |*')) 'trend-soakcell'
 Assert ($tj -like '*542/0/9 (98.4%)*') 'trend-rate'
-Assert ($tj -like '*phases build=2s run-a=600s run-b=7s; used 700s / left 9000s (span 9700s); RunA rank 1/2*') 'trend-budget'
-Assert ($tj -like '*2026-09-21-023001: phases no timings; used unknown / left 12000s; RunA rank 2/2*') 'trend-budget-partial'
+Assert ($tj -like '*phases build=2s run-a=600s run-b=7s; used 700s / left 9000s (span 9700s); RunA 600s rank 1/2 pct 100*') 'trend-budget'
+Assert ($tj -like '*2026-09-21-023001: phases no timings; used unknown / left 12000s; RunA 700s rank 2/2 pct 0*') 'trend-budget-partial'
 $taTrend = Format-TrendTable @($t1) @{ Overdue = @([pscustomobject]@{ Test = 'UI.Old'; Due = '2026-09-17' }); DueSoon = @() } ([datetime]'2026-09-21')
 Assert ((($taTrend -join "`n") -like '*Quarantine now: 1 overdue, oldest 4d: UI.Old, 0 due within 3 days*')) 'trend-oldest'
 
@@ -710,6 +717,9 @@ Assert ((Test-AckFile (Join-Path $s17 'ack-noday.md') '2026-09-20').Error -like 
 Assert ((Test-AckFile (Join-Path $s17 'ack-noowner.md') '2026-09-20').Error -like 'ack names no owner*') 'ack-noowner'
 'Owner: operator. 2026-09-20 ack.' | Set-Content -Path (Join-Path $s17 'ack-short.md') -Encoding UTF8
 Assert ((Test-AckFile (Join-Path $s17 'ack-short.md') '2026-09-20').Error -like 'ack too short*') 'ack-short'
+$ackTbd = 'Owner: TBD. This acknowledgement for 2026-09-20 carries more than two hundred characters of carefully worded placeholder prose that names no failures and no cause, proving only that length plus owner-shape cannot catch a determined filler.'
+$ackTbd | Set-Content -Path (Join-Path $s17 'ack-tbd.md') -Encoding UTF8
+Assert ((Test-AckFile (Join-Path $s17 'ack-tbd.md') '2026-09-20').Error -like 'ack owner is a placeholder*') 'ack-tbd'
 
 # Read-RawLines: provider decoration stripped, JSON stays small.
 $rawFx = Join-Path $dir 'raw.txt'

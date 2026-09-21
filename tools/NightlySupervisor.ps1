@@ -47,6 +47,7 @@ if (-not $supHeld) {
   $supState = Get-SchedulerState (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml')
   $supResult = [pscustomobject]@{ version = 1; stamp = $supStamp; day = (Get-Date -Format 'yyyy-MM-dd'); identity = $supId; verdict = 'stood-down'; exit = 0; reason = 'supervisor mutex held by another watcher'; kind = 'supervisor'; scheduler = [pscustomobject]@{ ok = $supState.Ok; enabled = $supState.Enabled; lastRun = "$($supState.LastRunTime)"; lastResult = $supState.LastResult } }
   Write-AtomicReport @((ConvertTo-Json $supResult -Depth 5)) (Join-Path $supNightDir "loser-$supId.result.json")
+  try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $supNightDir -OutFile (Join-Path $supNightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
   Write-Output 'supervisor: another watcher holds the lock; standing down (exit 0, nothing failed)'
   exit 0
 }

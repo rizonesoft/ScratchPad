@@ -227,8 +227,13 @@ elseif ($soakVerdict -eq 'red') { $verdict = 'red' }
 # there, never true).
 $schedEnabled = $null
 if (($launch -eq 'timer') -or ($launch -eq 'demand')) { $schedEnabled = $true }
-$envBlock = Get-EnvironmentBlock ''
-$envBlock | Add-Member -NotePropertyName 'basis' -NotePropertyValue 'backfill: live capture on the same box (topology/DPI/session corroborated by the §13 09-20 manifest); settings are current, not historical' -Force
+# Historical environment is unrecoverable, so every dimension reads
+# unknown: stamping current-box values onto a September night would
+# fabricate cross-night comparability (SDKs update, sessions differ,
+# settings drift). The basis line says exactly that; triage compares
+# live nights, never backfills, on env.
+$envBlock = [pscustomobject]@{ os = 'unknown'; powershell = 'unknown'; dotnet = 'unknown'; session = 'unknown'; topology = 'unknown'; dpi = 'unknown'; adapters = 'unknown'; settings = 'unknown' }
+$envBlock | Add-Member -NotePropertyName 'basis' -NotePropertyValue 'backfilled: run-night environment unrecoverable, all dimensions unknown' -Force
 $timings = @{}
 if ($null -ne $legA.testSeconds) { $timings['run-a'] = $legA.testSeconds }
 if ($null -ne $legB.testSeconds) { $timings['run-b'] = $legB.testSeconds }
@@ -240,7 +245,7 @@ $result = [pscustomobject]@{
   buildError = ''
   legs = [pscustomobject]@{ 'run-a' = $legA; 'run-b' = $legB; interactive = $legI }
   soak = [pscustomobject]@{ ran = $soakRan; verdict = $soakVerdict; failed = @($soakFailed); killed = @(); cut = @(); failures = @($soakFailures) }
-  quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @(); note = 'predates result capture; windows unrecoverable' }
+  quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @(); overdueDetail = @(); note = 'predates result capture; windows unrecoverable' }
   incidents = @($incidents)
   scheduler = [pscustomobject]@{ voted = $false; faults = @(); enabled = $schedEnabled; lastRun = ''; lastResult = '' }
   tree = [pscustomobject]@{ start = 'unknown (predates §16)'; end = 'unknown (predates §16)'; stable = $null }

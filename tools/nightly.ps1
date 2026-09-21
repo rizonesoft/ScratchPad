@@ -392,6 +392,7 @@ if (-not $lockHeld) {
   $loserState = Get-SchedulerState (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml')
   $loserResult = [pscustomobject]@{ version = 1; stamp = $loserStamp; day = (Get-Date -Format 'yyyy-MM-dd'); identity = $loserId; verdict = 'stood-down'; exit = 0; reason = 'mutex held by another governed run'; kind = $kind; scheduler = [pscustomobject]@{ ok = $loserState.Ok; enabled = $loserState.Enabled; lastRun = "$($loserState.LastRunTime)"; lastResult = $loserState.LastResult } }
   Write-AtomicReport @((ConvertTo-Json $loserResult -Depth 5)) (Join-Path $loserDir "loser-$loserId.result.json")
+  try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $loserDir -OutFile (Join-Path $loserDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
   Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'
   exit 0
 }
@@ -406,6 +407,8 @@ trap {
     Write-AtomicReport @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)') (Join-Path $nightDir "morning-$day.md")
     if (-not [string]::IsNullOrWhiteSpace($stamp)) { Write-RunJournal $nightDir $stamp $PID $runStart 'cancelled' }
     if ((-not [string]::IsNullOrWhiteSpace($stamp)) -and (-not [string]::IsNullOrWhiteSpace($day))) { $trapResult = [pscustomobject]@{ version = 1; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"; verdict = 'cancelled'; exit = 1; reason = "$($_.Exception.Message)" }; Write-AtomicReport @((ConvertTo-Json $trapResult -Depth 4)) (Join-Path $nightDir "morning-$stamp.result.json") }
+    try { Send-NightlyToast "Nightly $day : CANCELLED" @("Run interrupted: $($_.Exception.Message)", "Result: build/nightly/morning-$stamp.result.json") | Out-Null } catch { }
+    try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
     Write-Output 'nightly: RED (cancelled; record landed)'
   }
   if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
@@ -1302,7 +1305,7 @@ $result = [pscustomobject]@{
   buildError = $buildError
   legs = [pscustomobject]@{ 'run-a' = $legA; 'run-b' = $legB; interactive = $legI }
   soak = [pscustomobject]@{ ran = $soakRan; verdict = $soakVerdict; failed = @($soakFailed); killed = @($soakKilled); cut = @($soakCuts); failures = @($soakLedger.Failures) }
-  quarantine = [pscustomobject]@{ overdue = $odNames; dueSoon = @($dueSoon) }
+  quarantine = [pscustomobject]@{ overdue = $odNames; dueSoon = @($dueSoon); overdueDetail = @($quar.Overdue | ForEach-Object { [pscustomobject]@{ Test = "$($_.Test)"; Due = "$($_.Due)"; Owner = "$($_.Owner)" } }) }
   incidents = @($incidentLines)
   scheduler = [pscustomobject]@{ voted = $schedVoted; faults = @($schedFaults); enabled = $taskEnabledLive; lastRun = "$taskLastRun"; lastResult = $taskLastResult }
   tree = [pscustomobject]@{ start = "$($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint)"; end = "$($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint)"; stable = ($treeLine -notlike 'MUTATED*') }
@@ -1323,8 +1326,8 @@ if (-not $selfCheck.Ok) {
 }
 $exitCode = if ($failed) { 1 } else { 0 }
 $redDays = @()
-foreach ($rf in @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue)) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and ("$($ro.verdict)" -eq 'red')) { $redDays += "$($ro.day)" } }
-foreach ($rf in @((Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue))) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and ("$($ro.verdict)" -eq 'red')) { $redDays += "$($ro.day)" } }
+foreach ($rf in @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue)) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and (@('red', 'cancelled') -contains "$($ro.verdict)")) { $redDays += "$($ro.day)" } }
+foreach ($rf in @((Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue))) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and (@('red', 'cancelled') -contains "$($ro.verdict)")) { $redDays += "$($ro.day)" } }
 $ackDays = @(Get-ChildItem (Join-Path $Root 'docs/nightly-acks') -Filter 'ack-*.md' -ErrorAction SilentlyContinue | ForEach-Object { if (($_.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') -and (Test-AckFile $_.FullName $Matches[1]).Ok) { $Matches[1] } })
 $ackCheck = Test-RedAcknowledged $redDays $ackDays
 $report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { ($ackCheck.Unacked -join ', ') })"

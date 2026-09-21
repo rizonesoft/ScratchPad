@@ -1246,6 +1246,10 @@ function Test-ResultFile([string]$Path) {
     if (($null -eq $o.$f) -or ("$($o.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result missing $f" } }
   }
   if (@('green', 'red', 'stood-down', 'cancelled') -notcontains "$($o.verdict)") { return [pscustomobject]@{ Ok = $false; Error = "unknown verdict $($o.verdict)" } }
+  $ex = 0
+  try { $ex = [int]$o.exit } catch { return [pscustomobject]@{ Ok = $false; Error = 'result exit not a number' } }
+  if ((@('green', 'stood-down') -contains "$($o.verdict)") -and ($ex -ne 0)) { return [pscustomobject]@{ Ok = $false; Error = "result verdict $($o.verdict) contradicts exit $ex" } }
+  if ((@('red', 'cancelled') -contains "$($o.verdict)") -and ($ex -eq 0)) { return [pscustomobject]@{ Ok = $false; Error = "result verdict $($o.verdict) contradicts exit $ex" } }
   if (@('green', 'red') -contains "$($o.verdict)") {
     foreach ($f in @('legs', 'soak', 'env', 'timings')) {
       if ($null -eq $o.$f) { return [pscustomobject]@{ Ok = $false; Error = "result missing $f" } }
@@ -1257,6 +1261,7 @@ function Test-ResultFile([string]$Path) {
       try { if ($null -eq $g.ran) { return [pscustomobject]@{ Ok = $false; Error = "result legs.$leg missing ran" } } } catch { return [pscustomobject]@{ Ok = $false; Error = "result legs.$leg missing ran" } }
     }
     if (("$($o.soak.verdict)" -eq '') -or (@('green', 'red', 'skipped') -notcontains "$($o.soak.verdict)")) { return [pscustomobject]@{ Ok = $false; Error = 'result soak verdict unknown' } }
+    if ("$($o.env.os)" -eq '') { return [pscustomobject]@{ Ok = $false; Error = 'result env unproven (os missing)' } }
   }
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }
@@ -1416,11 +1421,26 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     $od = 0; $ds = 0
     try { $od = @($r.quarantine.overdue | Where-Object { $null -ne $_ }).Count } catch { }
     try { $ds = @($r.quarantine.dueSoon | Where-Object { $null -ne $_ }).Count } catch { }
+    $qage = ''
+    try {
+      $nd = [datetime]::MinValue
+      if ([datetime]::TryParse("$($r.day)", [ref]$nd)) {
+        $ba = -1
+        foreach ($qe in @($r.quarantine.overdueDetail)) {
+          if (($null -eq $qe) -or ($null -eq $qe.Due)) { continue }
+          $qd = [datetime]::MinValue
+          if (-not [datetime]::TryParse("$($qe.Due)", [ref]$qd)) { continue }
+          $a = [int](($nd.Date - $qd.Date).TotalDays)
+          if ($a -gt $ba) { $ba = $a }
+        }
+        if ($ba -ge 0) { $qage = " (oldest ${ba}d)" }
+      }
+    } catch { }
     $sf = 0
     try { $fv = $r.soak.failed; if ($fv -is [array]) { $sf = @($fv).Count } else { $sf = [int]$fv } } catch { }
     $envShort = 'unknown'
     try { $envShort = "$($r.env.dpi) $($r.env.os)" } catch { }
-    $lines += "| $day | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds | $sf | $envShort |"
+    $lines += "| $day | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds$qage | $sf | $envShort |"
   }
   foreach ($r in $rows) {
     $incs = @()
@@ -1498,7 +1518,10 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
       if (($null -ne $mine) -and ($ranked.Count -gt 0)) {
         $pos = 1
         foreach ($v in $ranked) { if ([int]$v -lt $mine) { $pos++ } else { break } }
-        $rk = "RunA rank $pos/$($ranked.Count)"
+        $n = $ranked.Count
+        $pct = 'n/a'
+        if ($n -gt 1) { $pct = [string][int][math]::Round((100 * ($n - $pos)) / ($n - 1)) }
+        $rk = "RunA ${mine}s rank $pos/$n pct $pct"
       }
     } catch { }
     $lines += "- $($r.day) $($r.stamp): phases $ph; $bud; $rk"
@@ -1534,6 +1557,7 @@ function Test-AckFile([string]$Path, [string]$Day) {
   $text = ''
   try { $text = [string](Get-Content $Path -Raw -ErrorAction Stop) } catch { return [pscustomobject]@{ Ok = $false; Error = 'ack unreadable' } }
   if ($text -notmatch 'Owner:\s*\S+') { return [pscustomobject]@{ Ok = $false; Error = 'ack names no owner' } }
+  if ($text -match '(?im)^Owner:\s*(TBD|TODO|TBS|XXX|none|n/a|unknown)\s*(\.|$)') { return [pscustomobject]@{ Ok = $false; Error = 'ack owner is a placeholder' } }
   if ($text -notmatch [regex]::Escape($Day)) { return [pscustomobject]@{ Ok = $false; Error = 'ack names no day' } }
   if ($text.Length -lt 200) { return [pscustomobject]@{ Ok = $false; Error = 'ack too short to carry cause' } }
   return [pscustomobject]@{ Ok = $true; Error = '' }
