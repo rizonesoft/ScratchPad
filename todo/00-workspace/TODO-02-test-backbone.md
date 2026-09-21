@@ -539,6 +539,8 @@ Why this section exists: the §9 evidence proves the demand-fired path (04:13:43
 
 ## 17. Nightly Notify Plus Trend Surface
 
+> **Started:** 2026-09-21T09:02:19Z
+
 Why this section exists: the governed run's verdict currently sits in a local Markdown file the operator must remember to inspect, and per-night numbers (pass rates, durations, quarantine age, flake recurrence, gate verdicts) have no trend. A premium regression system notifies the morning and shows the slope. -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s17 D00-T02-S9-PR32 (notify plus dashboard premium win from the §9 plan review). -> SOURCE: plan-review-D00-T02-s14-2026-09-20-s17 D00-T02-S14-PR24 D00-T02-S14-PR25 (acknowledgement plus budget-telemetry findings from the §14 plan review). -> SOURCE: plan-review-D00-T02-s15-2026-09-21-s17 D00-T02-S15-PR13 D00-T02-S15-PR19 D00-T02-S15-PR20 D00-T02-S15-PR28 D00-T02-S15-PR30 D00-T02-S15-PR27 (alert delivery, machine-readable result, stand-down surfacing, routing, and env dimensions from the §15 plan review).
 
 **Needs:** Windows host (build/test)

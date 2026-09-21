@@ -1,6 +1,6 @@
 # Retained run: nightly-rerun-2026-09-20
 
-Provenance: manual re-run 03:20 2026-09-20 (`-SkipSoak`, in-window), cited by D00 T02 §9 item 5. Bytes: `build/nightly/retained/nightly-rerun-2026-09-20/` (11 files, ignored scratch); this manifest is the tracked hash record (D00 T02 §14 PR14).
+Provenance: manual re-run 03:20 2026-09-20 (`-SkipSoak`, in-window), cited by D00 T02 §9 item 5. Bytes: `build/nightly/retained/nightly-rerun-2026-09-20/` (12 files including the §17 backfilled `result.json`, ignored scratch); this manifest is the tracked hash record (D00 T02 §14 PR14).
 
 ```
 1e0a4b21154bd5d9c183a45fde5f8bc8f50f1e57388cd325a1b7e85f812faafc  build\nightly\retained\nightly-rerun-2026-09-20\2026-09-20-default.log
@@ -14,4 +14,5 @@ bbab87fe23a749c8969ca168ef32b8eb0ffb9f22ffa46db465960f1b4b9e6472  build\nightly\
 4577481ee78da86c377903ad4e59e909149d64e117cba3c38cbcab348639d053  build\nightly\retained\nightly-rerun-2026-09-20\2026-09-20\interactive.trx
 075157e5914fe0537786451e3b86bebd34b197652d0d13d1cb769383b48e259e  build\nightly\retained\nightly-rerun-2026-09-20\2026-09-20\run-a.trx
 fdcc128a0e11d7c8e0ad7c7da2fabf88d5867fb837cdabf3a0f3b5d93c150ec2  build\nightly\retained\nightly-rerun-2026-09-20\2026-09-20\run-b.trx
+796f1be9c9bc04d5132f7c211d79202cf06e14a130aac864a324a25cb727e03b  build\nightly\retained\nightly-rerun-2026-09-20\result.json
 ```

@@ -389,6 +389,9 @@ if (-not $lockHeld) {
   if ($CollectDebt -ne '') { $kindBits += "-CollectDebt $CollectDebt" }
   $kind = if ($kindBits.Count -eq 0) { 'full (scheduled/manual shape)' } else { ($kindBits -join ' ') }
   Write-AtomicReport @("# Stood-down run: $loserId", 'Status: stood-down', '', "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", "- Kind: $kind", '- Holder: another governed run holds Global\ScratchPadNightlyRun', '- Verdict: STOOD DOWN (not run; the holder owns the proof)') (Join-Path $loserDir "loser-$loserId.md")
+  $loserState = Get-SchedulerState (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml')
+  $loserResult = [pscustomobject]@{ version = 1; stamp = $loserStamp; day = (Get-Date -Format 'yyyy-MM-dd'); identity = $loserId; verdict = 'stood-down'; exit = 0; reason = 'mutex held by another governed run'; kind = $kind; scheduler = [pscustomobject]@{ ok = $loserState.Ok; enabled = $loserState.Enabled; lastRun = "$($loserState.LastRunTime)"; lastResult = $loserState.LastResult } }
+  Write-AtomicReport @((ConvertTo-Json $loserResult -Depth 5)) (Join-Path $loserDir "loser-$loserId.result.json")
   Write-Output 'nightly: another governed run holds the lock; standing down (exit 0, nothing failed)'
   exit 0
 }
@@ -402,6 +405,7 @@ trap {
   if ((-not [string]::IsNullOrWhiteSpace($nightDir)) -and (-not [string]::IsNullOrWhiteSpace($day)) -and (Test-Path $nightDir)) {
     Write-AtomicReport @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)') (Join-Path $nightDir "morning-$day.md")
     if (-not [string]::IsNullOrWhiteSpace($stamp)) { Write-RunJournal $nightDir $stamp $PID $runStart 'cancelled' }
+    if ((-not [string]::IsNullOrWhiteSpace($stamp)) -and (-not [string]::IsNullOrWhiteSpace($day))) { $trapResult = [pscustomobject]@{ version = 1; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"; verdict = 'cancelled'; exit = 1; reason = "$($_.Exception.Message)" }; Write-AtomicReport @((ConvertTo-Json $trapResult -Depth 4)) (Join-Path $nightDir "morning-$stamp.result.json") }
     Write-Output 'nightly: RED (cancelled; record landed)'
   }
   if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
@@ -568,35 +572,21 @@ $schedFaults = @()
 $taskLastRun = $null; $taskLastResult = ''; $taskEnabledLive = $true
 $taskActionLive = 'unknown'; $triggerTODs = @(); $taskRegistered = $runStart
 $schedComFailed = $false
-try {
-  $svc = New-Object -ComObject Schedule.Service
-  $svc.Connect()
-  $live = $svc.GetFolder('\ScratchPad').GetTask('Nightly UI')
-  $taskEnabledLive = [bool]$live.Enabled
-  $taskLastRun = $live.LastRunTime
-  $taskLastResult = "$($live.LastTaskResult)"
-  try { $taskRegistered = [datetime]$live.Definition.RegistrationInfo.Date } catch { }
-  $liveXml = Read-TaskXml $live.Definition.XmlText
-  $trackedXml = Read-TaskXml (Get-Content (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml') -Raw -ErrorAction Stop)
-  if (-not $liveXml.Ok) { $schedFaults += "live definition unreadable ($($liveXml.Error))" }
-  elseif (-not $trackedXml.Ok) { $schedFaults += "tracked definition unreadable ($($trackedXml.Error))" }
-  else {
-    $lb = @($liveXml.Triggers | ForEach-Object { "$($_.Kind)|$($_.StartBoundary)|$($_.DaysInterval)|$($_.Enabled)" } | Sort-Object) -join ';'
-    $tb = @($trackedXml.Triggers | ForEach-Object { "$($_.Kind)|$($_.StartBoundary)|$($_.DaysInterval)|$($_.Enabled)" } | Sort-Object) -join ';'
-    if ($lb -ne $tb) { $schedFaults += 'trigger definition drifted' }
-    if (($liveXml.Command -ne $trackedXml.Command) -or ($liveXml.Arguments -ne $trackedXml.Arguments)) { $schedFaults += 'action args drifted' }
-    if ($liveXml.ExecutionTimeLimit -ne $trackedXml.ExecutionTimeLimit) { $schedFaults += 'time limit drifted' }
-    $taskActionLive = "$($liveXml.Command) $($liveXml.Arguments)".Trim()
-    foreach ($t in @($liveXml.Triggers | Where-Object { $_.Enabled })) {
-      try { $triggerTODs += ([datetime]$t.StartBoundary).ToString('HH:mm') } catch { }
-    }
-  }
-} catch { $schedFaults += "scheduler state unavailable: $_"; $schedComFailed = $true }
+$schedState = Get-SchedulerState (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml')
+if ($schedState.Ok) {
+  $taskEnabledLive = $schedState.Enabled
+  $taskLastRun = $schedState.LastRunTime
+  $taskLastResult = $schedState.LastResult
+  if ($null -ne $schedState.Registered) { $taskRegistered = $schedState.Registered }
+  $taskActionLive = $schedState.Action
+  $triggerTODs = @($schedState.TriggerTODs)
+  $schedFaults += @($schedState.Drift)
+} else { $schedFaults += "scheduler state unavailable: $($schedState.Error)"; $schedComFailed = $true }
 if ((-not $taskEnabledLive) -and (-not $schedComFailed)) { $schedFaults += 'task disabled' }
 $ms = Test-MissingStart $taskLastRun $runStart $taskRegistered $taskLastResult
 if ($schedComFailed) { $ms = [pscustomobject]@{ Verdict = 'unknown'; Line = 'scheduler last fire: unknown (scheduler state unreadable)' } }
 if ($ms.Verdict -eq 'missing') { $schedFaults += 'missing start' }
-$schedLines += if ($schedComFailed) { 'scheduler drift: unknown (state unreadable)' } elseif (@($schedFaults | Where-Object { $_ -like '*drifted*' }).Count -gt 0) { "scheduler drift: RED ($($schedFaults -join '; '))" } else { 'scheduler drift: none (live definition matches tools/tasks/nightly-ui.xml)' }
+$schedLines += if ($schedComFailed) { 'scheduler drift: unknown (state unreadable)' } elseif (@($schedFaults | Where-Object { $_ -like '*drifted*' }).Count -gt 0) { "scheduler drift: RED ($($schedFaults -join '; '))" } elseif (@($schedFaults | Where-Object { $_ -like '*unreadable*' }).Count -gt 0) { 'scheduler drift: unknown (definition unreadable)' } else { 'scheduler drift: none (live definition matches tools/tasks/nightly-ui.xml)' }
 $schedLines += if ($schedComFailed) { 'scheduler task: unknown (state unreadable)' } elseif ($taskEnabledLive) { 'scheduler task: enabled' } else { 'scheduler task: RED (disabled; no fire can launch)' }
 $schedLines += $ms.Line
 $schedLines += 'scheduler credentials: owned gap (docs/testing.md: no unelevated pre-fire expiry signal; auth-shaped LastResult codes surface above)'
@@ -1250,12 +1240,112 @@ $report += "- Omission: $omissionLine"
 # governed green proof however its legs land. Decided before
 # publication so the Exit line quotes the true code.
 if ($simMode -and (-not $failed)) { Write-Output 'nightly: simulation run forced RED (not a governed proof)'; $failed = $true }
+# Machine-readable result (D00 T02 §17 item 6): the verdict plus
+# legs, soak, quarantine, scheduler, tree, timings, and env beside
+# the Markdown report. Self-validated: an unreadable own-result
+# reds the run (fail closed); the rewrite keeps verdict and exit
+# consistent with the final code.
+$legA = [pscustomobject]@{ ran = ($null -ne $gateA); passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = ($budgetCut -contains 'Run A (default)'); testSeconds = $null }
+if ($null -ne $gateA) {
+  try { $legA.killed = [bool]$gateA.Killed } catch { }
+  try { $legA.gate = [int]$gateA.GateCode } catch { }
+  try { $legA.testSeconds = [int]$gateA.TestSeconds } catch { }
+}
+if ($null -ne $sumA) {
+  try { $legA.passed = [int]$sumA.Passed } catch { }
+  try { $legA.failed = [int]$sumA.FailedCount } catch { }
+  try { $legA.skipped = [int]$sumA.SkippedCount } catch { }
+}
+$legB = [pscustomobject]@{ ran = ($null -ne $gateB); passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = ($budgetCut -contains 'Run B (primary)'); testSeconds = $null }
+if ($null -ne $gateB) {
+  try { $legB.killed = [bool]$gateB.Killed } catch { }
+  try { $legB.gate = [int]$gateB.GateCode } catch { }
+  try { $legB.testSeconds = [int]$gateB.TestSeconds } catch { }
+}
+if ($null -ne $sumB) {
+  try { $legB.passed = [int]$sumB.Passed } catch { }
+  try { $legB.failed = [int]$sumB.FailedCount } catch { }
+  try { $legB.skipped = [int]$sumB.SkippedCount } catch { }
+}
+$iRan = $false
+try { $iRan = [bool]$interactiveRan } catch { }
+$enfRed = $false
+if ($iRan) {
+  $cls = $false
+  try { $cls = [bool]$interactiveClassified } catch { }
+  $lk = 0
+  try { $lk = @($interactiveLeaked).Count } catch { }
+  $enfRed = ((-not $cls) -or ($lk -gt 0))
+}
+$legI = [pscustomobject]@{ ran = $iRan; passed = 0; failed = 0; skipped = 0; killed = $false; cut = ($budgetCut -contains 'Interactive (collection)'); enforcementRed = $enfRed; testSeconds = $null }
+try { if ($iRan -and ($null -ne $interactiveKilled)) { $legI.killed = [bool]$interactiveKilled } } catch { }
+if ($iRan -and ($null -ne $sumI)) {
+  try { $legI.passed = [int]$sumI.Passed } catch { }
+  try { $legI.failed = [int]$sumI.FailedCount } catch { }
+  try { $legI.skipped = [int]$sumI.SkippedCount } catch { }
+}
+if ($iRan -and ($null -ne $phaseTimes['interactive'])) { try { $legI.testSeconds = [int]$phaseTimes['interactive'] } catch { } }
+$soakCuts = @($budgetCut | Where-Object { $_ -like '*soak-*' })
+$soakRan = -not $SkipSoak
+$soakVerdict = 'skipped'
+if ($soakRan) { $soakVerdict = if ($soakLedger.Failed -or ($soakKilled.Count -gt 0) -or ($soakCuts.Count -gt 0)) { 'red' } else { 'green' } }
+$dueSoon = @()
+try { $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3 } catch { }
+$odNames = @()
+try { $odNames = @($quar.Overdue | ForEach-Object { $_.Test }) } catch { }
+$schedVoted = ((@($schedFaults).Count -gt 0) -and $schedulerParented)
+$result = [pscustomobject]@{
+  version = 1; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
+  simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
+  buildError = $buildError
+  legs = [pscustomobject]@{ 'run-a' = $legA; 'run-b' = $legB; interactive = $legI }
+  soak = [pscustomobject]@{ ran = $soakRan; verdict = $soakVerdict; failed = @($soakFailed); killed = @($soakKilled); cut = @($soakCuts); failures = @($soakLedger.Failures) }
+  quarantine = [pscustomobject]@{ overdue = $odNames; dueSoon = @($dueSoon) }
+  incidents = @($incidentLines)
+  scheduler = [pscustomobject]@{ voted = $schedVoted; faults = @($schedFaults); enabled = $taskEnabledLive; lastRun = "$taskLastRun"; lastResult = $taskLastResult }
+  tree = [pscustomobject]@{ start = "$($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint)"; end = "$($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint)"; stable = ($treeLine -notlike 'MUTATED*') }
+  recovered = $recoveredLine; omissionOk = ($omissionError -eq '')
+  timings = $phaseTimes; reserve = $reserveLeft
+  env = Get-EnvironmentBlock "$env:SCRATCHPAD_INTERACTIVE_WINDOW"
+  report = "build/nightly/morning-$stamp.md"
+}
+$resultPath = Join-Path $nightDir "morning-$stamp.result.json"
+Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
+$selfCheck = Test-ResultFile $resultPath
+if (-not $selfCheck.Ok) {
+  $failed = $true
+  $result.verdict = 'red'; $result.exit = 1
+  Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
+  $selfCheck = Test-ResultFile $resultPath
+  Write-Output "nightly: own result file invalid, failing closed ($($selfCheck.Error))"
+}
 $exitCode = if ($failed) { 1 } else { 0 }
+$redDays = @()
+foreach ($rf in @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue)) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and ("$($ro.verdict)" -eq 'red')) { $redDays += "$($ro.day)" } }
+foreach ($rf in @((Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue))) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and ("$($ro.verdict)" -eq 'red')) { $redDays += "$($ro.day)" } }
+$ackDays = @(Get-ChildItem (Join-Path $Root 'docs/nightly-acks') -Filter 'ack-*.md' -ErrorAction SilentlyContinue | ForEach-Object { if ($_.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') { $Matches[1] } })
+$ackCheck = Test-RedAcknowledged $redDays $ackDays
+$report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { ($ackCheck.Unacked -join ', ') })"
+$report += "- Result: morning-$stamp.result.json (v1 machine-readable)"
 $report += "- Exit: $exitCode"
 $reportPath = Join-Path $nightDir "morning-$day.md"
 Publish-NightlyReport $report ''
 if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
 Write-Output "nightly: report at $reportPath"
+if ((-not $Smoke) -and (-not $simMode)) {
+  $tp = $legA.passed + $legB.passed + $legI.passed
+  $tf = $legA.failed + $legB.failed + $legI.failed
+  $ts = $legA.skipped + $legB.skipped + $legI.skipped
+  $tLines = @("$tp passed, $tf failed, $ts skipped (legs Run A/B/Interactive)", "Trigger: $trigger")
+  if (@($incidentLines).Count -gt 0) { $tLines += @($incidentLines | Select-Object -First 1) } else { $tLines += 'No failures' }
+  if (@($odNames).Count -gt 0) { $tLines += ("Overdue quarantine: " + ($odNames -join ', ')) }
+  if (-not $ackCheck.Ok) { $tLines += ("Unacked REDs: " + ($ackCheck.Unacked -join ', ')) }
+  $tLines += "Report: build/nightly/morning-$day.md"
+  $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }
+  if (Send-NightlyToast "Nightly $day : $ww" $tLines) { Write-Output 'nightly: morning toast sent' } else { Write-Output 'nightly: morning toast failed (best-effort; report stands)' }
+}
+try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null; Write-Output 'nightly: trend rendered' } catch { Write-Output "nightly: trend render failed (best-effort): $_" }
 if ($exitCode -ne 0) { Write-Output 'nightly: RED (see above)'; exit 1 }
 Write-Output 'nightly: GREEN'
 exit 0

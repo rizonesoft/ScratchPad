@@ -201,6 +201,9 @@ Assert ((($quar.Overdue | Where-Object { $_.Malformed }).Test -join '') -like '*
 Assert (($quar.Open -eq 3) -and ($quar.EarliestDue -eq '2026-09-08')) 'quarantine-open-line' ("open=$($quar.Open) earliest=$($quar.EarliestDue)")
 $quarClean = Test-QuarantineWindows (Join-Path $dir 'ledger.md') ([datetime]'2026-09-01')
 Assert (($quarClean.Overdue.Count -eq 1) -and ($quarClean.Open -eq 3)) 'quarantine-clean-except-malformed' ($quarClean.Overdue.Count)
+Assert ($quar.OpenRows.Count -eq 3) 'quarantine-openrows'
+Assert ((Get-DueSoonTests $quar.OpenRows ([datetime]'2026-09-20') 3).Count -eq 0) 'duesoon-none'
+Assert ((Get-DueSoonTests $quar.OpenRows ([datetime]'2026-09-24') 3) -join '|' -like '*UI.New*') 'duesoon-hit'
 
 # Soak fourth phase: green, red-with-names, killed, and cut verdicts.
 $soakDir = Join-Path $dir 'soakgreen'
@@ -602,6 +605,98 @@ Assert (($pd2.Ok) -and (($pd2.Lines -join ';') -like '*WARN over warn 1200s*')) 
 $pd3 = Test-PhaseDurations (Join-Path $s16 'baseline.json') @{ 'run-b' = 50 }
 Assert (($pd3.Ok) -and (($pd3.Lines -join ';') -like '*no baseline*')) 'durations-unbaselined'
 Assert (-not (Test-PhaseDurations (Join-Path $s16 'no-baseline.json') @{ 'run-a' = 1 }).Ok) 'durations-missing'
+
+# --- D00 T02 §17 fixtures ---
+$s17 = Join-Path $dir 's17'
+$null = New-Item -ItemType Directory -Force -Path $s17
+
+# Format-ToastXml: escaping plus shape.
+$tx = Format-ToastXml 'Nightly <2026>&' @('a<b', 'c&d')
+Assert (($tx -like '*&lt;2026&gt;&amp;*') -and ($tx -like '*ToastGeneric*')) 'toast-escape'
+$tx2 = Format-ToastXml 't' @('1', '2', '3', '4', '5', '6', '7', '8')
+Assert ((@($tx2 -split '<text>').Count) -eq 8) 'toast-truncate'
+
+# Test-ResultFile: versioned shapes.
+$goodResult = '{"version":1,"stamp":"2026-09-21-105146","day":"2026-09-21","identity":"2026-09-21-105146-pid1","verdict":"green","exit":0,"legs":{},"soak":{},"env":{},"timings":{}}'
+$goodResult | Set-Content -Path (Join-Path $s17 'good.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'good.result.json')).Ok) 'result-good'
+'{oops' | Set-Content -Path (Join-Path $s17 'bad.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'bad.result.json')).Error -like 'result unreadable*') 'result-badjson'
+'{"version":2,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{},"soak":{},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'v2.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'v2.result.json')).Error -like 'result version 2*') 'result-badversion'
+'{"version":1,"stamp":"s","day":"d","identity":"i","exit":0,"legs":{},"soak":{},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'nofield.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'nofield.result.json')).Error -like 'result missing verdict*') 'result-missingfield'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"purple","exit":1}' | Set-Content -Path (Join-Path $s17 'purple.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'purple.result.json')).Error -like 'unknown verdict*') 'result-badverdict'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"stood-down","exit":0}' | Set-Content -Path (Join-Path $s17 'stood.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'stood.result.json')).Ok) 'result-stooddown'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0}' | Set-Content -Path (Join-Path $s17 'thin.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'thin.result.json')).Error -like 'result missing legs*') 'result-thin'
+
+# Classify-NightlyOutcome: one route per class.
+function New-ClassResult($verdict, $patch) {
+  $o = [pscustomobject]@{ verdict = $verdict; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() }; legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ gate = 0; failed = 0; passed = 1; skipped = 0; killed = $false; cut = $false } }; soak = [pscustomobject]@{ verdict = 'green' } }
+  foreach ($k in $patch.Keys) { $o.$k = $patch[$k] }
+  return $o
+}
+Assert ((Classify-NightlyOutcome (New-ClassResult 'red' @{})).Class -eq 'infrastructure') 'class-uncaused'
+$rt = New-ClassResult 'red' @{}; $rt.legs.'run-a'.failed = 3
+Assert ((Classify-NightlyOutcome $rt).Class -eq 'test') 'class-test'
+$rg = New-ClassResult 'red' @{}; $rg.legs.'run-a'.gate = 1
+Assert ((Classify-NightlyOutcome $rg).Class -eq 'gate') 'class-gate'
+$re = New-ClassResult 'red' @{}; $re.legs | Add-Member -NotePropertyName 'interactive' -NotePropertyValue ([pscustomobject]@{ enforcementRed = $true; failed = 0 }) -Force
+Assert ((Classify-NightlyOutcome $re).Class -eq 'enforcement') 'class-enforcement'
+Assert ((Classify-NightlyOutcome (New-ClassResult 'red' @{ buildError = 'MSB3027' })).Class -eq 'infrastructure') 'class-infra'
+$rk = New-ClassResult 'red' @{}; $rk.legs.'run-a'.killed = $true
+Assert ((Classify-NightlyOutcome $rk).Class -eq 'infrastructure') 'class-killed'
+$rs = New-ClassResult 'red' @{}; $rs.soak = [pscustomobject]@{ verdict = 'red' }
+Assert ((Classify-NightlyOutcome $rs).Class -eq 'degraded-soak') 'class-soak'
+Assert ((Classify-NightlyOutcome (New-ClassResult 'green' @{ recovered = '2026-09-20-020000 died at legs' })).Class -eq 'recovery') 'class-recovery'
+$rn = New-ClassResult 'red' @{}; $rn.scheduler = [pscustomobject]@{ voted = $true; faults = @('missing start') }
+Assert ((Classify-NightlyOutcome $rn).Class -eq 'scheduler-no-start') 'class-nostart'
+Assert ((Classify-NightlyOutcome (New-ClassResult 'green' @{})).Class -eq 'green') 'class-green'
+Assert ((Classify-NightlyOutcome (New-ClassResult 'stood-down' @{})).Class -eq 'stood-down') 'class-stooddown'
+Assert ((Classify-NightlyOutcome ([pscustomobject]@{ verdict = 'bogus' })).Class -eq 'infrastructure') 'class-unreadable'
+$rp = New-ClassResult 'red' @{}; $rp.legs.'run-a'.failed = 2; $rp.legs.'run-a'.gate = 1
+Assert ((Classify-NightlyOutcome $rp).Class -eq 'gate') 'class-precedence'
+$rk2 = New-ClassResult 'green' @{}; $rk2.legs.'run-a' | Add-Member -NotePropertyName 'ran' -NotePropertyValue $false -Force; $rk2.legs.'run-a'.gate = $null
+Assert ((Classify-NightlyOutcome $rk2).Class -eq 'green') 'class-skipped-leg'
+$ts = [pscustomobject]@{ day = '2026-09-21'; stamp = 'x'; verdict = 'green'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $false } }; soak = [pscustomobject]@{ verdict = 'skipped' }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
+$tsTrend = Format-TrendTable @($ts) @{ Overdue = @(); DueSoon = @() }
+Assert ((($tsTrend -join "`n") -like '*no legs ran*')) 'trend-skipped'
+$tu = [pscustomobject]@{ day = '2026-09-21'; stamp = 'y'; verdict = 'red'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; passed = 0; failed = 0; skipped = 0; gate = $null; killed = $false; cut = $false } }; soak = [pscustomobject]@{ verdict = 'skipped' }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
+$tuTrend = Format-TrendTable @($tu) @{ Overdue = @(); DueSoon = @() }
+Assert ((($tuTrend -join "`n") -like '*| unproven |*')) 'trend-unproven'
+$tf = [pscustomobject]@{ day = '2026-09-21'; stamp = 'z'; verdict = 'red'; reserve = 1; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; passed = 1; failed = 0; skipped = 0; gate = 0; killed = $false; cut = $false } }; soak = [pscustomobject]@{ verdict = 'red'; failed = @('ui-soak-3', 'protocol-soak-3'); killed = @(); cut = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = 'o'; powershell = 'p'; dotnet = 'd'; session = 's'; topology = 't'; dpi = 'd'; adapters = 'a'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
+$tfTrend = Format-TrendTable @($tf) @{ Overdue = @(); DueSoon = @() }
+Assert ((($tfTrend -join "`n") -like '*| 2026-09-21 | red | degraded-soak |*') -and ((($tfTrend -join "`n") -split "`n" | Where-Object { $_ -like '| 2026-09-21 |*' } | Select-Object -First 1) -like '*| 2 |*')) 'trend-flakes-array'
+
+# Format-TrendTable: two nights plus a mark.
+$t1 = [pscustomobject]@{ day = '2026-09-20'; stamp = '2026-09-20-041343'; verdict = 'green'; reserve = 9000; incidents = @('- INC-aaaabbbb `UI.Flake` x1 (Soak): wobble'); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ gate = 0; failed = 0; passed = 540; skipped = 9; killed = $false; cut = $false; testSeconds = 600 }; 'run-b' = [pscustomobject]@{ gate = 0; failed = 0; passed = 2; skipped = 0; killed = $false; cut = $false; testSeconds = 7 } }; soak = [pscustomobject]@{ verdict = 'green'; passed = 10; failed = 0; unproven = 0 }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; env = [pscustomobject]@{ os = '10.0'; powershell = '5.1'; dotnet = '10.0.400'; session = 'u/c'; topology = 'one screen'; dpi = '144x144'; adapters = 'gpu'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
+$t2 = [pscustomobject]@{ day = '2026-09-21'; stamp = '2026-09-21-023001'; verdict = 'red'; reserve = 12000; incidents = @('- INC-aaaabbbb `UI.Flake` x2 (Run A): wobble'); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ gate = 0; failed = 2; passed = 538; skipped = 9; killed = $false; cut = $false; testSeconds = 700 }; 'run-b' = [pscustomobject]@{ gate = 0; failed = 0; passed = 2; skipped = 0; killed = $false; cut = $false; testSeconds = 8 } }; soak = [pscustomobject]@{ verdict = 'green'; passed = 10; failed = 0; unproven = 0 }; quarantine = [pscustomobject]@{ overdue = @('UI.Old'); dueSoon = @() }; env = [pscustomobject]@{ os = '10.0'; powershell = '5.1'; dotnet = '10.0.400'; session = 'u/c'; topology = 'one screen'; dpi = '144x144'; adapters = 'gpu'; settings = 's' }; buildError = ''; omissionOk = $true; recovered = 'none'; scheduler = [pscustomobject]@{ voted = $false; faults = @() } }
+$t3 = [pscustomobject]@{ day = '2026-09-21'; stamp = 'loser-x'; verdict = 'stood-down' }
+$trend = Format-TrendTable @($t1, $t2, $t3) @{ Overdue = @('UI.Old'); DueSoon = @() }
+$tj = $trend -join "`n"
+Assert (($tj -like '*| 2026-09-20 | green | green |*') -and ($tj -like '*| 2026-09-21 | red | test |*')) 'trend-rows'
+Assert ($tj -like '*stood-down (mark)*') 'trend-mark'
+Assert ($tj -like '*Flake recurrence: INC-aaaabbbb*') 'trend-recurrence'
+Assert ($tj -like '*p50/median: 700*') 'trend-percentile'
+Assert ($tj -like '*## Environments*2026-09-20 2026-09-20-041343*') 'trend-env'
+Assert ($tj -like '*Quarantine now: 1 overdue*') 'trend-quar'
+
+# Test-RedAcknowledged: set difference.
+Assert ((Test-RedAcknowledged @('2026-09-20', '2026-09-21') @('2026-09-20', '2026-09-21')).Ok) 'ack-covered'
+Assert (@((Test-RedAcknowledged @('2026-09-20', '2026-09-21') @('2026-09-20')).Unacked) -join ',' -eq '2026-09-21') 'ack-uncovered'
+
+# Read-RawLines: provider decoration stripped, JSON stays small.
+$rawFx = Join-Path $dir 'raw.txt'
+@('- Trigger: manual (parent powershell.exe)', '| Run A (default) | 1 passed, 0 failed, 0 skipped |') | Set-Content -Path $rawFx -Encoding UTF8
+$rawGot = @(Read-RawLines $rawFx)
+Assert ($rawGot.Count -eq 2) 'rawline-count' ("got $($rawGot.Count)")
+Assert ((@($rawGot[0].PSObject.Properties.Name) -join ',') -eq 'Length') 'rawline-stripped' (@($rawGot[0].PSObject.Properties.Name) -join ',')
+$rawJson = ConvertTo-Json $rawGot[0] -Depth 8 -Compress
+Assert (($rawJson -notlike '*ReadCount*') -and ($rawJson -notlike '*PSProvider*') -and ($rawJson.Length -lt 500)) 'rawline-json-small' ("len $($rawJson.Length)")
+Assert ((@(Read-RawLines (Join-Path $dir 'missing.txt')).Count -eq 0)) 'rawline-missing-empty'
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }

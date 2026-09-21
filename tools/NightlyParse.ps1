@@ -368,11 +368,13 @@ function Test-QuarantineWindows([string]$LedgerPath, [datetime]$Today) {
   # quarantined-plus-7-days (docs/soak-and-quarantine.md). An
   # unparseable Due fails closed (a typo must not silently extend a
   # window); the header rows skip by shape. Returns Overdue entries
-  # plus the open count and earliest due for the clean line.
+  # plus the open count, earliest due, and open rows (D00 T02 §17
+  # item 5: due-soon derivation) for the clean line.
   $overdue = @()
   $open = 0
   $earliest = ''
-  if (-not (Test-Path $LedgerPath)) { return [pscustomobject]@{ Overdue = $overdue; Open = $open; EarliestDue = $earliest } }
+  $rows = @()
+  if (-not (Test-Path $LedgerPath)) { return [pscustomobject]@{ Overdue = $overdue; Open = $open; EarliestDue = $earliest; OpenRows = $rows } }
   $lines = @(Get-Content $LedgerPath)
   $inList = $false
   foreach ($ln in $lines) {
@@ -389,6 +391,7 @@ function Test-QuarantineWindows([string]$LedgerPath, [datetime]$Today) {
     $due = [datetime]::MinValue
     if (-not [datetime]::TryParse($dueText, [ref]$due)) {
       $overdue += [pscustomobject]@{ Test = $test; Due = $dueText; Owner = $owner; Malformed = $true }
+      $rows += [pscustomobject]@{ Test = $test; Due = $dueText; Owner = $owner; Malformed = $true }
       continue
     }
     $stamp = $due.ToString('yyyy-MM-dd')
@@ -396,8 +399,26 @@ function Test-QuarantineWindows([string]$LedgerPath, [datetime]$Today) {
     if ($due.Date -lt $Today.Date) {
       $overdue += [pscustomobject]@{ Test = $test; Due = $stamp; Owner = $owner; Malformed = $false }
     }
+    $rows += [pscustomobject]@{ Test = $test; Due = $stamp; Owner = $owner; Malformed = $false }
   }
-  return [pscustomobject]@{ Overdue = $overdue; Open = $open; EarliestDue = $earliest }
+  return [pscustomobject]@{ Overdue = $overdue; Open = $open; EarliestDue = $earliest; OpenRows = $rows }
+}
+
+function Get-DueSoonTests($OpenRows, [datetime]$Today, [int]$Days = 3) {
+  # Names open windows due within Days (D00 T02 §17 item 5): the
+  # morning surface warns before the window lapses. Malformed and
+  # already-overdue rows never count as due-soon.
+  $out = @()
+  foreach ($r in @($OpenRows)) {
+    $bad = $false
+    try { $bad = [bool]$r.Malformed } catch { }
+    if ($bad) { continue }
+    $due = [datetime]::MinValue
+    if (-not [datetime]::TryParse("$($r.Due)", [ref]$due)) { continue }
+    $d = ($due.Date - $Today.Date).TotalDays
+    if (($d -ge 0) -and ($d -le $Days)) { $out += "$($r.Test)" }
+  }
+  return @($out | Sort-Object -Unique)
 }
 
 function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed) {
@@ -857,6 +878,19 @@ function Read-LatestReport([string]$NightDir) {
   return [pscustomobject]@{ Ok = $true; Stamp = $stamp; Path = $target; Error = '' }
 }
 
+function Read-RawLines([string]$Path) {
+  # File lines without provider decoration (D00 T02 §17 backfill):
+  # Get-Content hangs PSPath, PSDrive, PSProvider, ReadCount on every
+  # line, and ConvertTo-Json serializes the decoration, expanding the
+  # provider graph toward the depth limit (measured: a 41-char line
+  # reads 25KB at depth 2; depth 8 spins to GBs and never returns).
+  # The [string[]] cast strips every note property, so JSON inputs stay
+  # raw. Missing or unreadable files read empty, never throw.
+  $got = @(Get-Content $Path -ErrorAction SilentlyContinue)
+  if ($got.Count -eq 0) { return @() }
+  return @([string[]]$got)
+}
+
 function Get-TreeFingerprint([string]$Root) {
   # Content fingerprint of worktree dirt (D00 T02 §16 item 16): the
   # porcelain file list alone cannot see content swaps, so every dirty
@@ -1123,4 +1157,292 @@ function Test-PhaseDurations([string]$BaselinePath, [hashtable]$Actual) {
     else { $lines += "durations: $k ${v}s (baseline ${b}s, warn ${w}s)" }
   }
   return [pscustomobject]@{ Ok = $true; Lines = $lines }
+}
+
+# --- D00 T02 §17: notify, trend, and machine-readable results ---
+
+function Format-ToastXml([string]$Title, [string[]]$Lines) {
+  # Builds the toast payload (D00 T02 §17 item 1): title plus body
+  # lines, XML-escaped, capped at six (counts, trigger, top incident,
+  # overdue, unacked, report: the emitter's full line set). Pure:
+  # fixtures pin the escaping plus shape; Send-NightlyToast delivers it.
+  $parts = @('<toast><visual><binding template="ToastGeneric">')
+  $parts += '  <text>' + [System.Security.SecurityElement]::Escape($Title) + '</text>'
+  foreach ($ln in @($Lines | Select-Object -First 6)) { $parts += '  <text>' + [System.Security.SecurityElement]::Escape($ln) + '</text>' }
+  $parts += '</binding></visual></toast>'
+  return ($parts -join "`n")
+}
+
+function Send-NightlyToast([string]$Title, [string[]]$Lines) {
+  # Delivers the morning notification (D00 T02 §17 item 1) through a
+  # Windows toast under the ScratchPad.Nightly id. Best-effort:
+  # notification never reds a run, so any failure returns false
+  # instead of throwing. Delivery proves via Notification Center
+  # history (see the §17 item-1 proof).
+  try {
+    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType=WindowsRuntime] | Out-Null
+    [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType=WindowsRuntime] | Out-Null
+    [Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType=WindowsRuntime] | Out-Null
+    $doc = New-Object -TypeName Windows.Data.Xml.Dom.XmlDocument
+    $doc.LoadXml((Format-ToastXml $Title $Lines))
+    $t = New-Object -TypeName Windows.UI.Notifications.ToastNotification -ArgumentList $doc
+    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ScratchPad.Nightly').Show($t)
+    return $true
+  } catch { return $false }
+}
+
+function Get-EnvironmentBlock([string]$WindowSpec) {
+  # Captures the environment dimensions (D00 T02 §17 item 9): OS,
+  # shells, session, topology, DPI, adapters, and active settings.
+  # Every probe fails soft to an unknown note: dimensions inform,
+  # never vote. Scratch-proven (live capture); the trend renderer
+  # formats whatever the block carries.
+  $os = 'unknown'; try { $os = [Environment]::OSVersion.Version.ToString() } catch { }
+  $ps = 'unknown'; try { $ps = $PSVersionTable.PSVersion.ToString() } catch { }
+  $dn = 'unknown'; try { $dn = ((dotnet --version 2>$null) | Out-String).Trim() } catch { }
+  $who = "$env:USERNAME/$env:SESSIONNAME"
+  $topo = 'unknown'
+  try {
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
+    $topo = (([System.Windows.Forms.Screen]::AllScreens | ForEach-Object { "$($_.DeviceName) $($_.Bounds.Width)x$($_.Bounds.Height)+$($_.Bounds.X)+$($_.Bounds.Y)$(if ($_.Primary) { ' primary' })" }) -join '; ')
+  } catch { $topo = 'unknown (forms unavailable)' }
+  $dpi = 'unknown'
+  try {
+    if (-not ([System.Management.Automation.PSTypeName]'DpiProbe').Type) {
+      Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DpiProbe {
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+  [DllImport("shcore.dll")] public static extern int GetDpiForMonitor(IntPtr hmon, int type, out uint x, out uint y);
+  public struct POINT { public int X; public int Y; }
+}
+'@ -ErrorAction Stop
+    }
+    $pt = New-Object -TypeName 'DpiProbe+POINT'; $pt.X = 64; $pt.Y = 64
+    $hm = [DpiProbe]::MonitorFromPoint($pt, 2)
+    $dx = [uint32]0; $dy = [uint32]0
+    if (([DpiProbe]::GetDpiForMonitor($hm, 0, [ref]$dx, [ref]$dy) -eq 0) -and ($dx -gt 0)) { $dpi = "primary ${dx}x${dy}" } else { $dpi = 'unknown (shcore refused)' }
+  } catch { $dpi = 'unknown (probe failed)' }
+  $adapters = 'unknown'
+  try { $adapters = ((Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object { $_.Name }) -join '; ') } catch { }
+  $settings = "BACKGROUND=$env:SCRATCHPAD_BACKGROUND WINDOW=$env:SCRATCHPAD_INTERACTIVE_WINDOW SPEC=$WindowSpec"
+  return [pscustomobject]@{ os = $os; powershell = $ps; dotnet = $dn; session = $who; topology = $topo; dpi = $dpi; adapters = $adapters; settings = $settings }
+}
+
+function Test-ResultFile([string]$Path) {
+  # Validates a versioned machine-readable result (D00 T02 §17 item
+  # 6): JSON parses, version is 1, identity fields read, verdict is
+  # known, and green/red verdicts carry legs plus soak plus env.
+  # Stood-down and cancelled verdicts carry the minimal shape.
+  $o = $null
+  try { $o = Get-Content $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Ok = $false; Error = "result unreadable: $_" } }
+  $v = -1
+  try { $v = [int]$o.version } catch { return [pscustomobject]@{ Ok = $false; Error = 'result version not a number' } }
+  if ($v -ne 1) { return [pscustomobject]@{ Ok = $false; Error = "result version $v (want 1)" } }
+  foreach ($f in @('stamp', 'day', 'identity', 'verdict', 'exit')) {
+    if (($null -eq $o.$f) -or ("$($o.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result missing $f" } }
+  }
+  if (@('green', 'red', 'stood-down', 'cancelled') -notcontains "$($o.verdict)") { return [pscustomobject]@{ Ok = $false; Error = "unknown verdict $($o.verdict)" } }
+  if (@('green', 'red') -contains "$($o.verdict)") {
+    foreach ($f in @('legs', 'soak', 'env', 'timings')) {
+      if ($null -eq $o.$f) { return [pscustomobject]@{ Ok = $false; Error = "result missing $f" } }
+    }
+  }
+  return [pscustomobject]@{ Ok = $true; Error = '' }
+}
+
+function Read-ResultFile([string]$Path) {
+  # Reads a result file, returning $null on any failure (callers
+  # that need the reason use Test-ResultFile first).
+  try { return (Get-Content $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop) } catch { return $null }
+}
+
+function Get-SchedulerState([string]$TrackedXmlPath) {
+  # Live scheduler read (D00 T02 §17 item 7; the §16 pre-flight
+  # logic refactored so the loser path shares it): COM runtime
+  # state plus live-vs-tracked drift on triggers, action args, and
+  # time limit. Impure (COM plus files); scratch-proven. Pure
+  # verdicts stay in Test-MissingStart plus Test-TimerLaunch.
+  $st = [pscustomobject]@{ Ok = $false; Error = ''; Enabled = $true; LastRunTime = $null; LastResult = ''; Registered = $null; Action = 'unknown'; TriggerTODs = @(); Drift = @() }
+  try {
+    $svc = New-Object -ComObject Schedule.Service
+    $svc.Connect()
+    $live = $svc.GetFolder('\ScratchPad').GetTask('Nightly UI')
+    $st.Enabled = [bool]$live.Enabled
+    $st.LastRunTime = $live.LastRunTime
+    $st.LastResult = "$($live.LastTaskResult)"
+    try { $st.Registered = [datetime]$live.Definition.RegistrationInfo.Date } catch { }
+    $liveXml = Read-TaskXml $live.Definition.XmlText
+    $trackedXml = Read-TaskXml (Get-Content $TrackedXmlPath -Raw -ErrorAction Stop)
+    if (-not $liveXml.Ok) { $st.Drift += "live definition unreadable ($($liveXml.Error))" }
+    elseif (-not $trackedXml.Ok) { $st.Drift += "tracked definition unreadable ($($trackedXml.Error))" }
+    else {
+      $lb = @($liveXml.Triggers | ForEach-Object { "$($_.Kind)|$($_.StartBoundary)|$($_.DaysInterval)|$($_.Enabled)" } | Sort-Object) -join ';'
+      $tb = @($trackedXml.Triggers | ForEach-Object { "$($_.Kind)|$($_.StartBoundary)|$($_.DaysInterval)|$($_.Enabled)" } | Sort-Object) -join ';'
+      if ($lb -ne $tb) { $st.Drift += 'trigger definition drifted' }
+      if (($liveXml.Command -ne $trackedXml.Command) -or ($liveXml.Arguments -ne $trackedXml.Arguments)) { $st.Drift += 'action args drifted' }
+      if ($liveXml.ExecutionTimeLimit -ne $trackedXml.ExecutionTimeLimit) { $st.Drift += 'time limit drifted' }
+      $st.Action = "$($liveXml.Command) $($liveXml.Arguments)".Trim()
+      foreach ($t in @($liveXml.Triggers | Where-Object { $_.Enabled })) {
+        try { $st.TriggerTODs += ([datetime]$t.StartBoundary).ToString('HH:mm') } catch { }
+      }
+    }
+    $st.Ok = $true
+  } catch { $st.Error = "$_"; $st.Ok = $false }
+  return $st
+}
+
+function Classify-NightlyOutcome($Result) {
+  # Routes a night to one alert class (D00 T02 §17 item 8): test,
+  # gate, enforcement, infrastructure, degraded-soak, recovery, or
+  # scheduler-no-start. Precedence (documented in docs/testing.md):
+  # scheduler-no-start beats infrastructure beats recovery beats
+  # gate beats enforcement beats test beats degraded-soak; green
+  # reads green and stood-down reads stood-down (no route). Reads
+  # the result object the emitter writes (backfills included);
+  # unknown shapes read infrastructure (fail closed: an unreadable
+  # night routes to a human, never to silence).
+  $verdict = ''
+  try { $verdict = "$($Result.verdict)" } catch { }
+  if (@('green', 'red', 'stood-down', 'cancelled') -notcontains $verdict) { return [pscustomobject]@{ Class = 'infrastructure'; Route = 'result unreadable: route to a human' } }
+  if ($verdict -eq 'stood-down') { return [pscustomobject]@{ Class = 'stood-down'; Route = 'none (holder owns the proof)' } }
+  $voted = $false
+  try { $voted = [bool]$Result.scheduler.voted } catch { }
+  $faults = @()
+  try { $faults = @($Result.scheduler.faults) } catch { }
+  $fj = $faults -join ';'
+  if ($voted -and (($fj -like '*missing start*') -or ($fj -like '*task disabled*'))) { return [pscustomobject]@{ Class = 'scheduler-no-start'; Route = 'check task enabled/fires; manual backup covers the night' } }
+  $be = ''
+  try { $be = "$($Result.buildError)" } catch { }
+  $omOk = $true
+  try { $omOk = [bool]$Result.omissionOk } catch { }
+  $killed = $false; $cut = $false; $gateRed = $false; $gateNull = $false
+  foreach ($leg in @('run-a', 'run-b')) {
+    $g = $null
+    try { $g = $Result.legs.$leg } catch { }
+    if ($null -eq $g) { continue }
+    try { if (($null -ne $g.ran) -and (-not [bool]$g.ran)) { continue } } catch { }
+    try { if ([bool]$g.killed) { $killed = $true } } catch { }
+    try { if ([bool]$g.cut) { $cut = $true } } catch { }
+    try { if ($null -eq $g.gate) { $gateNull = $true } elseif ([int]$g.gate -ne 0) { $gateRed = $true } } catch { $gateNull = $true }
+  }
+  if (($be -ne '') -or (-not $omOk) -or $killed -or $cut -or $gateNull -or ($voted -and (($fj -like '*drift*') -or ($fj -like '*unavailable*')))) { return [pscustomobject]@{ Class = 'infrastructure'; Route = 'check build/tooling/schedule; re-drive the night' } }
+  $rec = 'none'
+  try { $rec = "$($Result.recovered)" } catch { }
+  if (($rec -ne '') -and ($rec -ne 'none')) { return [pscustomobject]@{ Class = 'recovery'; Route = 'review the dead-run record' } }
+  if ($gateRed) { return [pscustomobject]@{ Class = 'gate'; Route = 'inspect foreground holds in the gate log' } }
+  $enf = $false
+  try { $enf = [bool]$Result.legs.interactive.enforcementRed } catch { }
+  if ($enf) { return [pscustomobject]@{ Class = 'enforcement'; Route = 'quarantine or fix the bare skips' } }
+  $failed = 0
+  foreach ($leg in @('run-a', 'run-b', 'interactive')) {
+    $o = $null
+    try { $o = $Result.legs.$leg } catch { }
+    if ($null -eq $o) { continue }
+    try { if (($null -ne $o.ran) -and (-not [bool]$o.ran)) { continue } } catch { }
+    try { $failed += [int]$o.failed } catch { }
+  }
+  if ($failed -gt 0) { return [pscustomobject]@{ Class = 'test'; Route = 'file findings per failure (triage)' } }
+  $soakV = ''
+  try { $soakV = "$($Result.soak.verdict)" } catch { }
+  if ($soakV -eq 'red') { return [pscustomobject]@{ Class = 'degraded-soak'; Route = 'soak-only red: quarantine-or-fix per the flake procedure' } }
+  if ($verdict -eq 'green') { return [pscustomobject]@{ Class = 'green'; Route = 'none' } }
+  return [pscustomobject]@{ Class = 'infrastructure'; Route = 'red without a classified cause: route to a human' }
+}
+
+function Format-TrendTable($Results, [hashtable]$Quarantine) {
+  # Renders nights as a Markdown trend (D00 T02 §17 items 2, 4, 9):
+  # one row per run plus pass-rate, duration, quarantine-age, flake,
+  # gate, budget-telemetry, and environment series. Pure over
+  # result objects plus the quarantine snapshot
+  # (@{Overdue=@(); DueSoon=@()}); the trend script discovers both.
+  # Stood-down and cancelled verdicts render as marks, never
+  # numbers. Percentiles are median/max (tiny-n honest).
+  $rows = @($Results | Sort-Object { "$($_.day)-$($_.stamp)" })
+  $lines = @('# Nightly trend', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | Flakes | Env |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+  $allA = @()
+  $incNights = @{}
+  foreach ($r in $rows) {
+    $day = "$($r.day)"; $v = "$($r.verdict)"
+    if (($v -eq 'stood-down') -or ($v -eq 'cancelled')) {
+      $lines += "| $day | $v (mark) | - | - | - | - | - | - | - | - | - | - |"
+      continue
+    }
+    $c = (Classify-NightlyOutcome $r).Class
+    $p = 0; $f = 0; $s = 0; $anyRan = $false
+    foreach ($leg in @('run-a', 'run-b', 'interactive')) {
+      $o = $null
+      try { $o = $r.legs.$leg } catch { }
+      if ($null -eq $o) { continue }
+      try { if (($null -ne $o.ran) -and (-not [bool]$o.ran)) { continue } } catch { }
+      $anyRan = $true
+      try { $p += [int]$o.passed } catch { }
+      try { $f += [int]$o.failed } catch { }
+      try { $s += [int]$o.skipped } catch { }
+    }
+    $pass = if (($p + $f + $s) -gt 0) { "$p/$f/$s" } elseif ($anyRan) { 'unproven' } else { 'no legs ran' }
+    $ra = '-'
+    try { if ($null -ne $r.legs.'run-a'.testSeconds) { $ra = "$($r.legs.'run-a'.testSeconds)"; $allA += [int]$r.legs.'run-a'.testSeconds } } catch { }
+    $rb = '-'
+    try { if ($null -ne $r.legs.'run-b'.testSeconds) { $rb = "$($r.legs.'run-b'.testSeconds)" } } catch { }
+    $soak = '-'
+    try { $soak = "$($r.soak.verdict) $($r.soak.passed)/$($r.soak.failed)/$($r.soak.unproven)" } catch { }
+    $gates = '-'
+    try { $gates = "$($r.legs.'run-a'.gate)/$($r.legs.'run-b'.gate)" } catch { }
+    $res = '-'
+    try { if ($null -ne $r.reserve) { $res = "$($r.reserve)s" } } catch { }
+    $od = 0; $ds = 0
+    try { $od = @($r.quarantine.overdue).Count } catch { }
+    try { $ds = @($r.quarantine.dueSoon).Count } catch { }
+    $sf = 0
+    try { $fv = $r.soak.failed; if ($fv -is [array]) { $sf = @($fv).Count } else { $sf = [int]$fv } } catch { }
+    $envShort = 'unknown'
+    try { $envShort = "$($r.env.dpi) $($r.env.os)" } catch { }
+    $lines += "| $day | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds | $sf | $envShort |"
+  }
+  foreach ($r in $rows) {
+    $incs = @()
+    try { $incs = @($r.incidents) } catch { }
+    foreach ($ln in $incs) {
+      $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8}) `([^`]+)`')
+      if ($m.Success) {
+        $id = $m.Groups[1].Value
+        if (-not $incNights.ContainsKey($id)) { $incNights[$id] = @() }
+        $incNights[$id] += "$($r.day)"
+      }
+    }
+  }
+  $rec = @($incNights.Keys | Where-Object { (@($incNights[$_] | Sort-Object -Unique).Count) -gt 1 } | Sort-Object)
+  $lines += ''
+  if ($rec.Count -gt 0) { $lines += ("- Flake recurrence: " + (($rec | ForEach-Object { "$_ ($($incNights[$_] -join ', '))" }) -join '; ')) }
+  else { $lines += '- Flake recurrence: none across rendered nights' }
+  if ($allA.Count -gt 0) {
+    $sorted = @($allA | Sort-Object)
+    $p50 = $sorted[[math]::Floor($sorted.Count / 2)]
+    $lines += "- RunA test-seconds p50/median: $p50 (n=$($sorted.Count), max=$($sorted[-1]))"
+  }
+  else { $lines += '- RunA test-seconds: no measurements' }
+  $qo = 0; $qs = 0
+  try { $qo = @($Quarantine['Overdue']).Count } catch { }
+  try { $qs = @($Quarantine['DueSoon']).Count } catch { }
+  $lines += "- Quarantine now: $qo overdue, $qs due within 3 days"
+  $lines += ''
+  $lines += '## Environments'
+  $lines += ''
+  foreach ($r in $rows) {
+    $e = 'unknown'
+    try { $e = "OS $($r.env.os); PS $($r.env.powershell); dotnet $($r.env.dotnet); $($r.env.session); $($r.env.topology); $($r.env.dpi); $($r.env.adapters); $($r.env.settings)" } catch { }
+    $lines += "- $($r.day) $($r.stamp): $e"
+  }
+  return $lines
+}
+
+function Test-RedAcknowledged([string[]]$RedDays, [string[]]$AckDays) {
+  # Unacked-RED check (D00 T02 §17 item 3): every RED day needs its
+  # ack file (docs/nightly-evidence/ack-YYYY-MM-DD.md). Pure set
+  # difference; the run collects RED days from result files.
+  $un = @($RedDays | Where-Object { $AckDays -notcontains $_ } | Sort-Object -Unique)
+  if ($un.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Unacked = $un } }
+  return [pscustomobject]@{ Ok = $true; Unacked = @() }
 }
