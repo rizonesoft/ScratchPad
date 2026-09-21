@@ -2195,14 +2195,16 @@ def validate(graph, _args) -> int:
             for num, s in sorted(t.sections.items()):
                 if num not in t.verified_sections:
                     continue
-                chain = section_markers(t, num) or []
-                # Governing last marker only (fix-loop R4): notify
-                # reads plan_review_body, so a superseded marker's
+                # Governing body only (fix-loop R5): notify reads
+                # plan_review_body, which range stamps fan out past
+                # the section's own span, so in-span chain[-1:]
+                # disagrees on ranged sections. Same expression as
+                # the notify population: a superseded marker's
                 # owner never appears in a payload and must not warn.
-                for b in chain[-1:]:
-                    for o in graph.OWNER_RE.findall(b):
-                        if o != "?" and o not in _seen_owners:
-                            _seen_owners[o] = f"{t.path}:{s.line} §{num}"
+                _pb = (s.plan_review_body or "").strip()
+                for o in graph.OWNER_RE.findall(_pb):
+                    if o != "?" and o not in _seen_owners:
+                        _seen_owners[o] = f"{t.path}:{s.line} §{num}"
                 fm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
                 if not fm:
                     continue

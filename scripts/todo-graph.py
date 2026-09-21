@@ -15444,9 +15444,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             ),
             True,
         )
-        # Governing marker only (fix-loop R4): quinn names the
-        # superseded marker, ann the governing one; quinn stays
-        # unmapped yet must never warn.
+        # Governing body only (fix-loop R4/R5): §1 carries its
+        # own in-span marker naming quinn, then §2's range stamp
+        # re-verifies §1-2 with a marker naming ann; the range
+        # body governs, so unmapped quinn must never warn (an
+        # in-span chain[-1:] read would warn here).
         ol33b = root / "ol33b"
         (ol33b / "todo" / "90-ol33b").mkdir(parents=True)
         (ol33b / ".github").mkdir(parents=True)
@@ -15456,13 +15458,19 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "## Implementation Order\n\n"
             "| Order | Section | Deliverable | Depends On | Status |\n"
             "| :---: | :-----: | ----------- | ---------- | :----: |\n"
-            "|   1   |   §1    | Map one | -- |  [x]   |\n\n"
+            "|   1   |   §1    | Map one | -- |  [x]   |\n"
+            "|   2   |   §2    | Map two | -- |  [x]   |\n\n"
             "---\n\n## 1. Map one\n\n"
             '- [x] Did the thing\n- [x] Commit: `"selftest: ol33b"`\n\n'
             "**Test checkpoint:** `true`\n\n"
             "> **Verified:** 2026-09-14 | §1 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-ol33b-1.md\n"
             "> **Plan review:** GPT high, retry-owed (owner quinn, due 2099-01-01) class infra attempts 1\n"
+            "\n## 2. Map two\n\n"
+            '- [x] Did the thing\n- [x] Commit: `"selftest: ol33b"`\n\n'
+            "**Test checkpoint:** `true`\n\n"
+            "> **Verified:** 2026-09-14 | §1-2 | fixture range\n"
+            "> **Review:** round 1 -- Raw findings: docs/reviews/90-ol33b-1.md\n"
             "> **Plan review:** GPT high, retry-owed (owner ann, due 2099-01-01) class infra attempts 1\n",
             encoding="utf-8",
         )
