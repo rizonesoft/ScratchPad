@@ -5143,20 +5143,19 @@ def cmd_query(args) -> int:
                                         tgt_text
                                     )
                                 ]
+                                _rvalid = [
+                                    _r.lower()
+                                    for _r in _rtips
+                                    if re.fullmatch(r"[0-9a-fA-F]{40}", _r)
+                                ]
+                                if _rtips and (
+                                    len(_rvalid) != len(_rtips)
+                                    or len(set(_rvalid)) > 1
+                                ):
+                                    provable = False
+                                    fail_code = "resolution:unreviewed-tree"
+                                    break
                                 if _rtips:
-                                    _rvalid = [
-                                        _r.lower()
-                                        for _r in _rtips
-                                        if re.fullmatch(r"[0-9a-fA-F]{40}", _r)
-                                    ]
-                                    if len(_rvalid) != len(_rtips) or len(
-                                        set(_rvalid)
-                                    ) > 1:
-                                        provable = False
-                                        fail_code = (
-                                            "resolution:unreviewed-tree"
-                                        )
-                                        break
                                     _rtip_full = git_full_sha(_rvalid[0])
                                     if _rtip_full is None or not git_is_ancestor(
                                         tip, _rtip_full
@@ -5164,6 +5163,25 @@ def cmd_query(args) -> int:
                                         provable = False
                                         fail_code = (
                                             "resolution:unreviewed-tree"
+                                        )
+                                        break
+                                    # Live-tree preservation (D00 T01 S55
+                                    # item 2): the reviewed tree clears
+                                    # only while it is live. Any later
+                                    # commit voids the attestation (the
+                                    # unclearable row is the re-review
+                                    # demand), so reverts cannot hide
+                                    # behind tip-only evidence. Absent
+                                    # reads unbound; unprovable fails
+                                    # closed.
+                                    _head_full = git_full_sha("HEAD")
+                                    if (
+                                        _head_full is None
+                                        or _head_full.lower() != _rtip_full
+                                    ):
+                                        provable = False
+                                        fail_code = (
+                                            "resolution:regressed-tree"
                                         )
                                         break
                                 fixed = git_file_at(tip, tpath)
@@ -12218,7 +12236,7 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR87] [critical] Ambiguous proof path rejects -> filed §127\n"
             # D00 T01 §55 item 1: reviewed-tip containment pins.
             "- [D90-T07-S4-PR88] [critical] Reviewed tip equal clears -> filed §128\n"
-            "- [D90-T07-S4-PR89] [critical] Reviewed tip ancestor clears -> filed §129\n"
+            "- [D90-T07-S4-PR89] [critical] Reviewed tip ancestor regresses -> filed §129\n"
             "- [D90-T07-S4-PR90] [critical] Reviewed tip off-tree stays -> filed §130\n"
             "- [D90-T07-S4-PR91] [critical] Reviewed tip unresolving stays -> filed §131\n"
             "- [D90-T07-S4-PR92] [critical] Reviewed tip malformed stays -> filed §132\n"
@@ -13068,6 +13086,9 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
         canned_ancestors[("eee0002" + "0" * 33, "eee0002" + "0" * 33)] = True
         canned_ancestors[("eee0002" + "0" * 33, "d4e5f60" + "0" * 33)] = True
         canned_ancestors[("eee0002" + "0" * 33, "f7a1c90" + "0" * 33)] = False
+        # D00 T01 §55 item 2: the shared live tip (PR88 clears
+        # against it; PR89's ahead-of-HEAD tip regresses).
+        canned_full["HEAD"] = "eee0002" + "0" * 33
         # §31 item 5: the clearing fixes touched their proof files.
         canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
@@ -16570,14 +16591,17 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            # Covers item 2's clear path too: HEAD equals this tip.
             "clearance clears a reviewed tip equal to the fix tip",
             any("D90-T07-S4-PR88" in ln for ln in health_lines),
             False,
         )
         check(
-            "clearance clears a reviewed tip descended from the fix",
+            # Item 1 passes first (the emitted code proves it):
+            # only the live-tree leg fails this row.
+            "clearance fails a reviewed tip ahead of live HEAD",
             any("D90-T07-S4-PR89" in ln for ln in health_lines),
-            False,
+            True,
         )
         check(
             "clearance fails a reviewed tip off the fix tree",
@@ -17145,6 +17169,7 @@ proof D90-T07-S4-PR94 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR85": {"proof:ambiguous"},
             "D90-T07-S4-PR86": {"resolution:ambiguous-fix"},
             "D90-T07-S4-PR87": {"proof:ambiguous"},
+            "D90-T07-S4-PR89": {"resolution:regressed-tree"},
             "D90-T07-S4-PR90": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR91": {"resolution:unreviewed-tree"},
             "D90-T07-S4-PR92": {"resolution:unreviewed-tree"},
