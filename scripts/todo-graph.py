@@ -2423,6 +2423,10 @@ IDENTITY_RE = re.compile(r"\bidentity\s+([0-9a-fA-F]{12})\b")
 # `fix <base>..<tip>` proves the tip tree, base-to-tip ancestry, and a
 # touch inside the range. Shorts stay legal: git refuses ambiguous
 # ones, so resolution failure fails closed like any unprovable leg.
+# Shapes stay SHA-1 (7-40 hex; D00 T01 S54 item 1, review R1):
+# 64-hex tokens do not parse, and the canonical gate fails
+# non-sha1 repos closed, so hash adoption needs explicit shape
+# work, never silent acceptance.
 FIX_COMMIT_RE = re.compile(r"\bfix\s+([0-9a-fA-F]{7,40})(?:\.\.([0-9a-fA-F]{7,40}))?\b")
 # A clearance names its proof (D00 T01 §22 item 1): `proof
 # <finding-id> <path>[::<test>]` in the target section, resolved at
@@ -2893,13 +2897,18 @@ def canonical_commit_id(ref: str) -> tuple[str, str, str, str] | None:
     Type pins "commit" via the peel inside git_full_sha; repo
     plus algo ride along for evidence durability (D00-T01-S53-PR30).
     Legs compare the full SHA (one repo, one algo per run).
+    SHA-1-commit-only (D00 T01 S54 item 1, review R1): a
+    non-sha1 object format fails closed here instead of
+    clearing against token shapes the parser cannot read, so
+    hash adoption can never silently mis-resolve; 64-hex
+    acceptance is future work.
     """
     full = git_full_sha(ref)
     if full is None:
         return None
     algo = git_object_format()
     repo = git_repo_toplevel()
-    if algo is None or repo is None:
+    if algo != "sha1" or repo is None:
         return None
     return (repo, algo, "commit", full)
 
@@ -16396,6 +16405,22 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
             canonical_commit_id("badbeef"),
             None,
         )
+        _mock_format = git_object_format
+        globals()["git_object_format"] = lambda: "sha256"
+        try:
+            _sha256_closed = canonical_commit_id("eee0001")
+        finally:
+            globals()["git_object_format"] = _mock_format
+        check(
+            "canonical identity fails closed on a non-sha1 object format",
+            _sha256_closed,
+            None,
+        )
+        check(
+            "fix legs stay sha1-shaped pending hash adoption",
+            FIX_COMMIT_RE.search("fix " + "a" * 64),
+            None,
+        )
         check(
             "plan-health reads the superseding row as current",
             any("D90-T07-S57-PR2" in ln for ln in health_lines),
@@ -19450,6 +19475,21 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
         check("git gate runs probes on the required lane", git_probe_gate(True, True), "run")
         check("git gate skips honestly on optional lanes", git_probe_gate(False, False), "skip")
         check("git gate fails closed on the required lane", git_probe_gate(False, True), "fatal")
+        _real_which = shutil.which
+        try:
+            shutil.which = lambda *a, **k: None
+            check(
+                "required lane wiring fails closed without git",
+                git_probe_gate(shutil.which("git") is not None, True),
+                "fatal",
+            )
+            check(
+                "optional lane wiring skips honestly without git",
+                git_probe_gate(shutil.which("git") is not None, False),
+                "skip",
+            )
+        finally:
+            shutil.which = _real_which
         _probe_gate = git_probe_gate(shutil.which("git") is not None, _require_git)
         if _probe_gate == "fatal":
             # Required lane (D00 T01 S54 item 5, S53-PR28/PR29): git
@@ -19821,6 +19861,56 @@ proof D90-T07-S4-PR87 tests/other.py::test_clearance
                 )
             finally:
                 _etmp.cleanup()
+            # SHA-256 fail-closed proof (D00 T01 S54 item 1, review
+            # R1): a sha256 repository reports its format and
+            # canonical identity refuses every token there, so hash
+            # adoption can never silently mis-resolve. 64-hex
+            # acceptance is future work.
+            _stmp = tempfile.TemporaryDirectory(prefix="todo-graph-sha256-")
+            try:
+                _srepo = Path(_stmp.name)
+                _senv = dict(
+                    os.environ,
+                    HOME=_stmp.name,
+                    GIT_CONFIG_NOSYSTEM="1",
+                    GIT_AUTHOR_NAME="selftest",
+                    GIT_AUTHOR_EMAIL="selftest@example.invalid",
+                    GIT_COMMITTER_NAME="selftest",
+                    GIT_COMMITTER_EMAIL="selftest@example.invalid",
+                    GIT_AUTHOR_DATE="2026-01-02T03:04:05Z",
+                    GIT_COMMITTER_DATE="2026-01-02T03:04:05Z",
+                )
+
+                def _sgit(*args):
+                    import subprocess
+
+                    out = subprocess.run(
+                        ["git", *args],
+                        cwd=_stmp.name,
+                        env=_senv,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    if out.returncode != 0:
+                        raise RuntimeError(f"git {' '.join(args)}: {out.stderr.decode()[:200]}")
+                    return out.stdout.decode("utf-8", "replace").strip()
+
+                _sgit("init", "-q", "--object-format=sha256", ".")
+                (_srepo / "proof.txt").write_text("v1\n", encoding="utf-8", newline="\n")
+                _sgit("add", "proof.txt")
+                _sgit("commit", "-qm", "one")
+                _sc1 = _sgit("rev-parse", "HEAD")
+                _saved_srepo = REPO
+                globals()["REPO"] = _srepo
+                try:
+                    _sfmt = git_object_format()
+                    _sclosed = canonical_commit_id(_sc1)
+                finally:
+                    globals()["REPO"] = _saved_srepo
+                check("real git reports sha256 object format", _sfmt, "sha256")
+                check("real canonical identity fails closed on sha256", _sclosed, None)
+            finally:
+                _stmp.cleanup()
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.
