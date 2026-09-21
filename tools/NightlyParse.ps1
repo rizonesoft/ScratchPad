@@ -56,6 +56,14 @@ function Get-TranscriptFailures([string]$LogPath) {
   return $names
 }
 
+function Test-InteractiveCaptureNeeded([int]$Code, [bool]$Killed, [bool]$EnfOk, [int]$LeakedCount) {
+  # Interactive capture trigger matrix (D00 T02 §15 R4-F2): any red
+  # reason captures (suite code, kill, unclassifiable trx, leaked
+  # skips), so an enforcement-only red never lands a RED run with an
+  # empty Captures section. Green nights capture nothing.
+  return (($Code -ne 0) -or $Killed -or (-not $EnfOk) -or ($LeakedCount -gt 0))
+}
+
 function Get-NonQuarantineSkips([string]$TrxPath) {
   # The Interactive bar excuses quarantine plus capability skips only
   # (docs/testing.md): any other skip reds the leg. xUnit's exit code
@@ -162,7 +170,7 @@ function Get-LegSummary([string[]]$TrxPaths, [string[]]$LogPaths) {
   return [pscustomobject]@{ Passed = $p; FailedCount = $f; Failed = $failLines; Skipped = $skipLines; SkippedCount = $s; Assemblies = $asm }
 }
 
-function Test-CountConservation([string]$Leg, [string[]]$TrxPaths, [string[]]$LogPaths, [bool]$EnforceExpected) {
+function Test-CountConservation([string]$Leg, [string[]]$TrxPaths, [string[]]$LogPaths, [bool]$EnforceExpected, [string[]]$RunAAssemblies) {
   # Total conservation (D00 T02 §15 PR23): started equals
   # passed-plus-failed-plus-skipped-plus-other at trx level, and every
   # assembly row's Total equals its Failed-plus-Passed-plus-Skipped. Any
@@ -172,12 +180,14 @@ function Test-CountConservation([string]$Leg, [string[]]$TrxPaths, [string[]]$Lo
   # once every listed trx parses (a killed step's missing trx skips the
   # aggregate: the leg is already unproven without it). Completed legs
   # fail closed on missing assemblies: every expected assembly must
-  # report a row (update the set when the suite changes legitimately;
-  # an unknown leg name breaks rather than silently skipping). Returns
-  # Ok plus Breaks; the caller reds the run on any break.
+  # report a row (an unknown leg name breaks rather than silently
+  # skipping). The Run A set flows from the caller (single source: the
+  # runner's project list, D00 T02 §15 R4-F3); Run B plus Interactive
+  # are definitional UI-only singletons. Returns Ok plus Breaks; the
+  # caller reds the run on any break.
   $breaks = @()
   $expectedSets = @{
-    'Run A'       = @('Smoke.dll', 'Unit.dll', 'Protocol.dll', 'UI.dll')
+    'Run A'       = $RunAAssemblies
     'Run B'       = @('UI.dll')
     'Interactive' = @('UI.dll')
   }
@@ -258,7 +268,7 @@ function Test-SupervisorUnderLimit([string]$SupervisorPath, [string]$LimitText) 
   return [pscustomobject]@{ Ok = $true; Detail = "supervisor ${def}s under task ${lim}s" }
 }
 
-function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [string[]]$Failed, [bool]$Ran) {
+function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [string[]]$Failed, [bool]$Ran, [string]$SkipReason = '') {
   # Fourth-phase soak verdict (D00 T02 §15 PR7): per-iteration rows keep
   # the §14 mark vocabulary (proved, killed at cap: unproven, budget-cut
   # unproven) and gain a FAILED mark plus an aggregate verdict line, so
@@ -280,8 +290,11 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [
   $unproven = @()
   $failures = @()
   # -SkipSoak never executes an iteration: the empty shape prints only
-  # here, never from an all-failed ledger (D00 T02 §15 R2-F6).
-  if (-not $Ran) { return [pscustomobject]@{ Rows = @('(no soak iterations ran: -SkipSoak)'); Failed = $false; Failures = @() } }
+  # here, never from an all-failed ledger (D00 T02 §15 R2-F6). Forced
+  # skips name their reason instead of the flag (D00 T02 §15 R4-F6).
+  if (-not $Ran) {
+    if ($SkipReason -ne '') { return [pscustomobject]@{ Rows = @("(no soak iterations ran: $SkipReason)"); Failed = $false; Failures = @() } }
+    return [pscustomobject]@{ Rows = @('(no soak iterations ran: -SkipSoak)'); Failed = $false; Failures = @() } }
   foreach ($n in $names) {
     $st = Get-TrxSummary (Join-Path $TrxDir "$n.trx")
     if ($null -eq $st) {

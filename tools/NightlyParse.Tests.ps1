@@ -114,6 +114,11 @@ Assert ((Format-EnforcementVerdict $true @() $true) -eq '- Interactive (collecti
 Assert ((Format-EnforcementVerdict $true @('UI.BareSkip','UI.QuietSkip') $true) -eq '- Interactive (collection): RED (2 non-quarantine skips: UI.BareSkip, UI.QuietSkip)') 'enforce-red'
 Assert ((Format-EnforcementVerdict $false @() $true) -eq '- Interactive (collection): n/a (leg did not run)') 'enforce-norun'
 Assert ((Format-EnforcementVerdict $true @() $false) -eq '- Interactive (collection): UNPROVEN (trx missing or malformed: no skip classification)') 'enforce-unproven'
+Assert ((Test-InteractiveCaptureNeeded 1 $false $true 0) -eq $true) 'capture-matrix-code'
+Assert ((Test-InteractiveCaptureNeeded 0 $true $true 0) -eq $true) 'capture-matrix-killed'
+Assert ((Test-InteractiveCaptureNeeded 0 $false $false 0) -eq $true) 'capture-matrix-unproven'
+Assert ((Test-InteractiveCaptureNeeded 0 $false $true 2) -eq $true) 'capture-matrix-leaks'
+Assert ((Test-InteractiveCaptureNeeded 0 $false $true 0) -eq $false) 'capture-matrix-green-quiet'
 
 # Short hashes: known content, missing file.
 [System.IO.File]::WriteAllText((Join-Path $dir 'hash.txt'), 'abc')
@@ -145,29 +150,31 @@ Remove-Job -Job $stuck -Force
 $conTrx = '<TestRun><Results><UnitTestResult testName="UI.A" outcome="Passed" /><UnitTestResult testName="UI.B" outcome="Failed" /><UnitTestResult testName="UI.C" outcome="NotExecuted" /></Results></TestRun>'
 $conTrx | Set-Content -Path (Join-Path $dir 'ok.trx') -Encoding UTF8
 @('Passed!  - Failed:     1, Passed:     1, Skipped:     1, Total:     3, Duration: 1 s - UI.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'ok.log') -Encoding UTF8
-$conGreen = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $false
+$conGreen = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $false @()
 Assert ($conGreen.Ok -eq $true) 'conservation-green' ($conGreen.Breaks -join '|')
 $exoticTrx = '<TestRun><Results><UnitTestResult testName="UI.A" outcome="Passed" /><UnitTestResult testName="UI.B" outcome="Inconclusive" /></Results></TestRun>'
 $exoticTrx | Set-Content -Path (Join-Path $dir 'exotic.trx') -Encoding UTF8
-$conExotic = Test-CountConservation 'Fix' (Join-Path $dir 'exotic.trx') (Join-Path $dir 'missing.log') $false
+$conExotic = Test-CountConservation 'Fix' (Join-Path $dir 'exotic.trx') (Join-Path $dir 'missing.log') $false @()
 Assert (($conExotic.Ok -eq $false) -and (($conExotic.Breaks -join '') -like '*exotic outcomes (Inconclusive)*')) 'conservation-exotic' ($conExotic.Breaks -join '|')
 @('Passed!  - Failed:     1, Passed:     1, Skipped:     1, Total:     9, Duration: 1 s - UI.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'badrow.log') -Encoding UTF8
-$conRow = Test-CountConservation 'Fix' (Join-Path $dir 'missing.trx') (Join-Path $dir 'badrow.log') $false
+$conRow = Test-CountConservation 'Fix' (Join-Path $dir 'missing.trx') (Join-Path $dir 'badrow.log') $false @()
 Assert (($conRow.Ok -eq $false) -and (($conRow.Breaks -join '') -like '*1+1+1 != Total 9*')) 'conservation-row' ($conRow.Breaks -join '|')
 @('Passed!  - Failed:     0, Passed:     2, Skipped:     1, Total:     3, Duration: 1 s - UI.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'cross.log') -Encoding UTF8
-$conCross = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'cross.log') $false
+$conCross = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'cross.log') $false @()
 Assert (($conCross.Ok -eq $false) -and (($conCross.Breaks -join '') -like '*cross-level*')) 'conservation-cross' ($conCross.Breaks -join '|')
-$conVacuous = Test-CountConservation 'Fix' (Join-Path $dir 'missing.trx') (Join-Path $dir 'missing.log') $false
+$conVacuous = Test-CountConservation 'Fix' (Join-Path $dir 'missing.trx') (Join-Path $dir 'missing.log') $false @()
 Assert ($conVacuous.Ok -eq $true) 'conservation-vacuous'
-$conMulti = Test-CountConservation 'Fix' $trx $log $false
+$conMulti = Test-CountConservation 'Fix' $trx $log $false @()
 Assert ($conMulti.Ok -eq $true) 'conservation-multi' ($conMulti.Breaks -join '|')
-$conExpected = Test-CountConservation 'Run B' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $true
+$conExpected = Test-CountConservation 'Run B' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $true @()
 Assert ($conExpected.Ok -eq $true) 'conservation-expected-green' ($conExpected.Breaks -join '|')
 @('Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - Smoke.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'partial.log') -Encoding UTF8
-$conMissing = Test-CountConservation 'Run A' (Join-Path $dir 'missing.trx') (Join-Path $dir 'partial.log') $true
+$conMissing = Test-CountConservation 'Run A' (Join-Path $dir 'missing.trx') (Join-Path $dir 'partial.log') $true @('Smoke.dll', 'Unit.dll', 'Protocol.dll', 'UI.dll')
 Assert (($conMissing.Ok -eq $false) -and (($conMissing.Breaks -join '') -like '*UI.dll missing*')) 'conservation-missing' ($conMissing.Breaks -join '|')
-$conUnknown = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $true
+$conUnknown = Test-CountConservation 'Fix' (Join-Path $dir 'ok.trx') (Join-Path $dir 'ok.log') $true @()
 Assert (($conUnknown.Ok -eq $false) -and (($conUnknown.Breaks -join '') -like '*unknown leg*')) 'conservation-unknown-leg' ($conUnknown.Breaks -join '|')
+$conCustom = Test-CountConservation 'Run A' (Join-Path $dir 'missing.trx') (Join-Path $dir 'partial.log') $true @('Smoke.dll')
+Assert ($conCustom.Ok -eq $true) 'conservation-custom-set-green' ($conCustom.Breaks -join '|')
 
 # Quarantine windows: overdue, current, malformed, and clean ledgers.
 $ledgerLines = @(
@@ -220,6 +227,14 @@ $emptyDir = Join-Path $dir 'soakempty'
 $null = New-Item -ItemType Directory -Force -Path $emptyDir
 $empty = Format-SoakLedger $emptyDir @() @() @() $false
 Assert (($empty.Failed -eq $false) -and (($empty.Rows -join '') -like '*no soak iterations ran*')) 'soak-empty' ($empty.Rows -join '|')
+$forced = Format-SoakLedger $emptyDir @() @() @() $false 'build failure'
+Assert (($forced.Failed -eq $false) -and (($forced.Rows -join '') -like '*no soak iterations ran: build failure*')) 'soak-forced-reason' ($forced.Rows -join '|')
+foreach ($reasonCase in @(@('placement violation', 'soak-forced-placement'), @('past deadline at start', 'soak-forced-deadline'), @('population drift', 'soak-forced-drift'))) {
+  $forcedCase = Format-SoakLedger $emptyDir @() @() @() $false $reasonCase[0]
+  Assert (($forcedCase.Failed -eq $false) -and (($forcedCase.Rows -join '') -like "*no soak iterations ran: $($reasonCase[0])*")) $reasonCase[1] ($forcedCase.Rows -join '|')
+}
+$opSkip = Format-SoakLedger $emptyDir @() @() @() $false ''
+Assert (($opSkip.Failed -eq $false) -and (($opSkip.Rows -join '') -like '*no soak iterations ran: -SkipSoak*')) 'soak-operator-shape' ($opSkip.Rows -join '|')
 
 # Failed-without-trx plus exit-0-without-trx iterations land unproven
 # rows; an all-failed ledger never prints the empty shape.
@@ -283,12 +298,12 @@ $merged = Get-LegSummary @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir '
 Assert (($merged.Passed -eq 2) -and ($merged.FailedCount -eq 1) -and ($merged.SkippedCount -eq 1)) 'merge-sums' ("p=$($merged.Passed) f=$($merged.FailedCount) s=$($merged.SkippedCount)")
 Assert ((($merged.Failed -join "`n") -like '*Smoke.S2*smoke boom*') -and (($merged.Skipped -join "`n") -like '*Unit.U2*QUARANTINED*')) 'merge-lines' (($merged.Failed + $merged.Skipped) -join '|')
 Assert ($merged.Assemblies -eq 'Smoke.dll 1/1/0, Unit.dll 1/0/1') 'merge-assemblies' $merged.Assemblies
-$mergeCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log')) $false
+$mergeCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log')) $false @()
 Assert ($mergeCon.Ok -eq $true) 'merge-conservation-green' ($mergeCon.Breaks -join '|')
 @('Passed!  - Failed:     0, Passed:     9, Skipped:     1, Total:     10, Duration: 1 s - Unit.dll (net10.0)') | Set-Content -Path (Join-Path $dir 'merge-skew.out.log') -Encoding UTF8
-$skewCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-skew.out.log')) $false
+$skewCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'run-a-Unit.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-skew.out.log')) $false @()
 Assert (($skewCon.Ok -eq $false) -and (($skewCon.Breaks -join '') -like '*cross-level-aggregate*')) 'merge-conservation-skew' ($skewCon.Breaks -join '|')
-$killedCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'missing-step.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log')) $false
+$killedCon = Test-CountConservation 'Run A' @((Join-Path $dir 'run-a-Smoke.trx'), (Join-Path $dir 'missing-step.trx')) @((Join-Path $dir 'merge-Smoke.out.log'), (Join-Path $dir 'merge-Unit.out.log')) $false @()
 Assert (($killedCon.Ok -eq $true) -and ((($killedCon.Breaks -join '') -notlike '*cross-level-aggregate*'))) 'merge-conservation-killed-skips' ($killedCon.Breaks -join '|')
 
 # Suite-wide Primary guard: strays outside tests/UI fail closed with

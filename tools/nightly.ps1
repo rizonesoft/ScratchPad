@@ -465,6 +465,7 @@ function Test-LegBudget([int]$CapSeconds) {
 $budgetCut = @()
 $soakKilled = @()
 $soakFailed = @()
+$soakSkipReason = ''
 
 $day = Get-Date -Format 'yyyy-MM-dd'
 $stamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
@@ -498,6 +499,7 @@ if (-not $placement.Ok) {
   $SkipPrimary = $true
   $SkipFenced = $true
   $SkipSoak = $true
+  $soakSkipReason = 'placement violation'
   Write-Output "nightly: $placementError; no leg runs on a misplaced trait, report still lands"
 }
 $placementLine = if ($placementError -eq '') { "OK ($($placement.UiCount) Primary traits in tests/UI, none elsewhere)" } else { "VIOLATION: $placementError" }
@@ -579,7 +581,8 @@ try {
     $failed = $true
     $SkipDefault = $true; $SkipPrimary = $true; $SkipFenced = $true; $SkipSoak = $true
     $budgetCut += 'entire run (deadline passed at start)'
-    Write-Output 'nightly: deadline already passed at start; skipping builds and legs, landing the report'
+    $soakSkipReason = 'past deadline at start'
+  Write-Output 'nightly: deadline already passed at start; skipping builds and legs, landing the report'
   }
   try {
     if ($buildError -ne '') { throw $buildError }
@@ -596,6 +599,7 @@ try {
   } catch {
     $buildError = "$_"
     $failed = $true
+    $soakSkipReason = 'build failure'
     Write-Output "nightly: $buildError; no leg runs on a broken build, report still lands"
     $SkipDefault = $true
     $SkipPrimary = $true
@@ -634,6 +638,7 @@ try {
       $SkipPrimary = $true
       $SkipFenced = $true
       $SkipSoak = $true
+      $soakSkipReason = 'population drift'
       Write-Output "nightly: $populationLine; no leg runs on a drifted population, report still lands"
     }
   } else {
@@ -726,13 +731,13 @@ try {
         $interactiveRan = $true
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
-        if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
         $enf = Get-NonQuarantineSkips $trx
         $interactiveClassified = $enf.Ok
         $leaked = @($enf.Names)
         $interactiveLeaked = $leaked
         if (-not $enf.Ok) { Write-Host 'nightly: interactive trx missing or malformed (unproven: no skip classification)'; $failed = $true }
         elseif ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
+        if (Test-InteractiveCaptureNeeded $r.Code $r.Killed $enf.Ok $leaked.Count) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
       } finally {
         Stop-LegLog
       }
@@ -753,13 +758,13 @@ try {
         $interactiveRan = $true
         $interactiveKilled = $r.Killed
         if (($r.Code -ne 0) -or $r.Killed) { $failed = $true }
-        if (($r.Code -ne 0) -or $r.Killed) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
         $enf = Get-NonQuarantineSkips $trx
         $interactiveClassified = $enf.Ok
         $leaked = @($enf.Names)
         $interactiveLeaked = $leaked
         if (-not $enf.Ok) { Write-Host 'nightly: interactive trx missing or malformed (unproven: no skip classification)'; $failed = $true }
         elseif ($leaked.Count -gt 0) { Write-Host "nightly: interactive non-quarantine skips: $($leaked -join ', ')"; $failed = $true }
+        if (Test-InteractiveCaptureNeeded $r.Code $r.Killed $enf.Ok $leaked.Count) { $captureNotes += @(Invoke-FailureCapture 'interactive' (Join-Path $trxDir 'captures-interactive') $r.Killed) }
       } finally {
         Stop-LegLog
       }
@@ -794,7 +799,7 @@ try {
     [pscustomobject]@{ Leg = 'Interactive'; Trx = @((Join-Path $trxDir 'interactive.trx')); Logs = @((Join-Path $nightDir "$stamp-full.log")); Enforce = $completedI }
   )
   foreach ($leg in $conLegs) {
-    $con = Test-CountConservation $leg.Leg $leg.Trx $leg.Logs $leg.Enforce
+    $con = Test-CountConservation $leg.Leg $leg.Trx $leg.Logs $leg.Enforce @($runAProjects | ForEach-Object { "$_.dll" })
     if (-not $con.Ok) {
       $failed = $true
       $conservationNotes += @($con.Breaks | ForEach-Object { "- Conservation RED: $_" })
@@ -977,7 +982,7 @@ $report += ''
 # record.
 $report += '## Soak'
 $report += ''
-$soakLedger = Format-SoakLedger $trxDir $soakKilled $budgetCut $soakFailed (-not $SkipSoak)
+$soakLedger = Format-SoakLedger $trxDir $soakKilled $budgetCut $soakFailed (-not $SkipSoak) $soakSkipReason
 if ($soakLedger.Failed) { $failed = $true }
 $report += $soakLedger.Rows
 $report += ''

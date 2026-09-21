@@ -211,7 +211,7 @@ static int Kill(string[] rest)
         return Usage("kill --job <name>");
     }
 
-    nint hJob = Native.OpenJobObject(Native.JOB_OBJECT_TERMINATE, false, job);
+    nint hJob = Native.OpenJobObject(Native.JOB_OBJECT_TERMINATE | Native.JOB_OBJECT_QUERY, false, job);
     if (hJob == nint.Zero)
     {
         // Already closed (or never created): nothing left to kill.
