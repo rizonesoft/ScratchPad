@@ -13,6 +13,7 @@ import contextlib
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import secrets
 import shlex
@@ -238,7 +239,25 @@ def check_panel_output(text: str) -> tuple[bool, str]:
     return True, "four lenses, one verdict each"
 
 
-def next_run_id(todo_path: str, section: int, family: str, date: str, *texts: str) -> str:
+def clone_token() -> str:
+    """Eight hex chars from this checkout's path (D00 T01 §55 item 20).
+
+    Two clones mint different run IDs even when neither has seen the
+    other's claims. The same checkout keeps one token, so its own
+    `-rN` sequence still walks.
+    """
+    root = str(Path(__file__).resolve().parent.parent)
+    return hashlib.sha256(root.encode("utf-8")).hexdigest()[:8]
+
+
+def next_run_id(
+    todo_path: str,
+    section: int,
+    family: str,
+    date: str,
+    *texts: str,
+    clone: str = "",
+) -> str:
     """The canonical run ID for a review run (D00 T01 §20 item 1).
 
     The base is `<YYYYMMDD>-D<dom>-T<num>-S<section>-<family>`, derived
@@ -265,7 +284,11 @@ def next_run_id(todo_path: str, section: int, family: str, date: str, *texts: st
         raise ValueError(f"TODO path {todo_path!r} carries no domain/number")
     if not isinstance(section, int) or isinstance(section, bool) or section < 1:
         raise ValueError(f"section {section!r} is outside positive-int")
+    if clone and not re.fullmatch(r"[0-9a-f]{8}", clone):
+        raise ValueError(f"clone {clone!r} is outside 8 lowercase hex")
     base = f"{date}-D{dom}-T{num}-S{section}-{family}"
+    if clone:
+        base = f"{base}-c{clone}"
     taken = set()
     for text in texts:
         for rm in re.finditer(r"\brun\s+(\S+?)(?=[,;)]|\s|$)", text):
@@ -708,7 +731,16 @@ if __name__ == "__main__":
             sys.exit(2)
         texts = _read_scan_files(sys.argv[6:], "run-id")
         try:
-            print(next_run_id(sys.argv[2], section, sys.argv[4], sys.argv[5], *texts))
+            print(
+                next_run_id(
+                    sys.argv[2],
+                    section,
+                    sys.argv[4],
+                    sys.argv[5],
+                    *texts,
+                    clone=clone_token(),
+                )
+            )
         except ValueError as exc:
             print(f"run-id: {exc}", file=sys.stderr)
             sys.exit(2)
@@ -789,7 +821,15 @@ if __name__ == "__main__":
             print(f"run: cannot read the run ledger under {store}: {exc}", file=sys.stderr)
             sys.exit(1)
         try:
-            run_id = next_run_id(todo_path, run_section, family, date, *claim_texts, ledger_text)
+            run_id = next_run_id(
+                todo_path,
+                run_section,
+                family,
+                date,
+                *claim_texts,
+                ledger_text,
+                clone=clone_token(),
+            )
         except ValueError as exc:
             print(f"run: {exc}", file=sys.stderr)
             sys.exit(2)
@@ -846,7 +886,9 @@ if __name__ == "__main__":
             run_id, receipt = _record_run(
                 store,
                 run_id,
-                lambda ct: next_run_id(todo_path, run_section, family, date, *claim_texts, ct),
+                lambda ct: next_run_id(
+                    todo_path, run_section, family, date, *claim_texts, ct, clone=clone_token()
+                ),
                 lambda rid: {
                     "run": rid,
                     "kind": kind,

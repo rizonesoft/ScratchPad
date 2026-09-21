@@ -2216,8 +2216,12 @@ ROW_PARTS_RE = re.compile(
 # (never minted), and `-r0` is outside the shape (no leading zeros
 # anywhere in the suffix). Numbering restarts per day; the date keeps
 # runs distinct.
-RUN_ID_SHAPE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+(-r[1-9][0-9]*)?$")
-_RUN_BASE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+$")
+# Optional `-c<8 hex>` is the clone discriminator (D00 T01 §55 item 20).
+# Old IDs without it stay valid. `-rN` still follows it.
+RUN_ID_SHAPE_RE = re.compile(
+    r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+(-c[0-9a-f]{8})?(-r[1-9][0-9]*)?$"
+)
+_RUN_BASE_RE = re.compile(r"^\d{8}-D\d+-T\d+-S\d+-[a-z0-9]+(-c[0-9a-f]{8})?$")
 
 
 def normalize_run_id(run: str) -> str:
@@ -14721,6 +14725,8 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
                 RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-r0") is None
                 and RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-r01") is None
                 and RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-r1") is not None
+                and RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-c0123abcd") is not None
+                and RUN_ID_SHAPE_RE.match("20260920-D90-T07-S4-gpt-c0123abcd-r2") is not None
             ),
             True,
         )
@@ -21809,6 +21815,24 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "20260920-D90-T07-S4-gpt",
         )
         check(
+            "two clones mint different run ids",
+            rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "20260920", clone="0123abcd")
+            != rp.next_run_id("todo/90-x/TODO-07-y.md", 4, "gpt", "20260920", clone="abcd0123"),
+            True,
+        )
+        check(
+            "one clone still walks its own suffix",
+            rp.next_run_id(
+                "todo/90-x/TODO-07-y.md",
+                4,
+                "gpt",
+                "20260920",
+                "marker (run 20260920-D90-T07-S4-gpt-c0123abcd)",
+                clone="0123abcd",
+            ),
+            "20260920-D90-T07-S4-gpt-c0123abcd-r2",
+        )
+        check(
             "run-id walks past a claimed base to -r2",
             rp.next_run_id(
                 "todo/90-x/TODO-07-y.md",
@@ -21891,7 +21915,10 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             True,
         )
         _rid = root / "runid-scan.txt"
-        _rid.write_text("x (run 20260920-D90-T07-S4-gpt)\n", encoding="utf-8")
+        _rid.write_text(
+            f"x (run 20260920-D90-T07-S4-gpt-c{rp.clone_token()})\n",
+            encoding="utf-8",
+        )
         _runid = _sp.run(
             [
                 sys.executable,
@@ -21910,7 +21937,7 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check(
             "review_prompt run-id emits the next run",
             (_runid.returncode, _runid.stdout.strip()),
-            (0, "20260920-D90-T07-S4-gpt-r2"),
+            (0, f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}-r2"),
         )
         _runid_bad = _sp.run(
             [sys.executable, _rp_path, "run-id", "todo/90-x/TODO-07-y.md", "four", "gpt", "20260920"],
@@ -21941,7 +21968,7 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
                 _runid_missing.stdout.strip(),
                 "warning" in _runid_missing.stderr,
             ),
-            (0, "20260920-D90-T07-S4-gpt", True),
+            (0, f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}", True),
         )
         _runid_dir = _sp.run(
             [
@@ -22189,9 +22216,9 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             (
                 0,
                 True,
-                "run 20260920-D90-T07-S4-gpt",
+                f"run 20260920-D90-T07-S4-gpt-c{rp.clone_token()}",
                 _rwant.encode(),
-                ("20260920-D90-T07-S4-gpt", "panel", "sha256:" + _rdigest, True),
+                (f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}", "panel", "sha256:" + _rdigest, True),
                 True,
             ),
         )
@@ -22310,7 +22337,16 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
                 # repeated run walks past the ledger claim.
                 [json.loads(ln)["run"] for ln in _rfled] if len(_rfled) == 2 else [],
             ),
-            (1, True, True, True, ["20260920-D90-T07-S4-gpt", "20260920-D90-T07-S4-gpt-r2"]),
+            (
+                1,
+                True,
+                True,
+                True,
+                [
+                    f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}",
+                    f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}-r2",
+                ],
+            ),
         )
         _rnodash = _sp.run(
             [sys.executable, _rp_path, "run", "panel", str(_rprompt), "todo/90-x/TODO-07-y.md", "4", "gpt", "20260920"],
@@ -22434,7 +22470,14 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check(
             "concurrent review-runs ledger distinct run IDs",
             (_rp1.returncode, _rp2.returncode, sorted(json.loads(ln)["run"] for ln in _rrace_lines)),
-            (0, 0, ["20260920-D90-T07-S4-gpt", "20260920-D90-T07-S4-gpt-r2"]),
+            (
+                0,
+                0,
+                [
+                    f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}",
+                    f"20260920-D90-T07-S4-gpt-c{rp.clone_token()}-r2",
+                ],
+            ),
         )
         # Locked recording (D00 T01 §34 R2 record 1): eight threads
         # race the same base ID through _record_run; the ledger lock
