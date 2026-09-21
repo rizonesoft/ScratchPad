@@ -46,6 +46,7 @@ track: W0
 |   8   |   §8    | Position-proof health results | D00 T04 §6 |  [ ]   |
 |   9   |   §9    | Acceptance semantic version binding | D00 T04 §6 |  [ ]   |
 |  10   |  §10    | Section-52 sign-off residuals | D00 T01 §52 |  [ ]   |
+|  11   |  §11    | Section-52 plan-review residuals | D00 T01 §52 |  [ ]   |
 
 ---
 
@@ -208,3 +209,16 @@ Why this section exists: the §52 Opus sign-off returned 5 below-bar needs-atten
 - [ ] Commit: `"workspace: follow up section-52 sign-off residuals"`
 
 **Test checkpoint:** rule-30 locations read raw, every attempts token validates, the README legs read family-relative, the key-only boundary reads documented, and grandfathered notes never fire through siblings. Falsifiable by any shifted location, silent malformed token, absolute leg, undocumented FATAL, or sibling-fired grandfathered note.
+
+---
+
+## 11. Section-52 Plan-Review Residuals
+
+Why this section exists: the §52 plan review (`gpt-5.6-sol` high over §52 plus §28 plus §29 plus D00 T04 §10, one review dependent) returned 24 findings; 3 file here, 1 reworded in place, 3 duplicate earlier triage, 17 are rejected with reasons in the §52 findings file. The shipped rules hold but retry-owed counting stays family-absolute, §28's partial prose predates the flip, and dual-spelled rows lack an exactly-once pin. -> XREF: D00 T01 §52 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s52-2026-09-21-s11 D00-T01-S52-PR5 D00-T01-S52-PR6 D00-T01-S52-PR18 (`gpt-5.6-sol` high over §52 plus §28 plus §29 plus D00 T04 §10, 24 findings, 3 filed here, 1 reworded in place, 3 duplicates of D00-T01-S29-PR15 D00-T01-S29-PR2 D00-T01-S29-PR3, 17 rejected with reasons in the §52 findings file).
+
+- [ ] Retry-owed counts follow the owed rung: the per-line attempt semantics plus a flipped-family composite fixture pin the count to the same-family survivor's invocations (not always the fallback), so flipped composites describe consistent retry histories (PR5 D00-T01-S52-PR5). This item is a joiner from the §52 plan review. Done when: the corrected semantics plus fixture ship.
+- [ ] §28 gains a dated supersession note on its partial-rule item pointing at the family-relative rule, so the stamped historical prose stops directing readers to the retired absolute behavior (PR6 D00-T01-S52-PR6). This item is a joiner from the §52 plan review. Done when: the dated note reads on §28.
+- [ ] Dual-spelled rows pin exactly-once: rule 18 plus rule 31 share an exactly-once diagnostic fixture over a dual-spelled legacy row on a post-cutoff stamp, so overlapping retirement rules cannot produce duplicate or contradictory failures (PR18 D00-T01-S52-PR18). This item is a joiner from the §52 plan review. Done when: the fixture ships green.
+- [ ] Commit: `"workspace: follow up section-52 plan-review residuals"`
+
+**Test checkpoint:** retry-owed counts follow the owed rung, §28 carries its supersession note, and dual-spelled rows fire exactly once. Falsifiable by any family-absolute count, unnoted §28 prose, or double-fired dual row.
