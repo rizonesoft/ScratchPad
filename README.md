@@ -55,7 +55,7 @@ The xunit v2 line is pinned, reversing the §1 v3 default: v3 on MTP (`xunit.v3.
 4. `AGENTS.md` -- working rules.
 
 ```bash
-python3 scripts/todo-graph.py self-test      # the script's own contract, ~1s
+python3 scripts/todo-graph.py self-test      # the script's own contract, ~3 min
 python3 scripts/todo-graph.py validate       # structural + graph integrity of todo/
 python3 scripts/todo-graph.py query ready    # sections whose dependencies are met
 python3 scripts/todo-graph.py resolve 'D00 T01 §1'   # any section reference -> file, section, deps, status
