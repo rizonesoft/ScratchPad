@@ -2675,6 +2675,68 @@ def git_commit_touches(sha: str, repo_path: str) -> bool | None:
     return repo_path in out.stdout.decode("utf-8", "replace").splitlines()
 
 
+def git_range_merge_touches(base: str, tip: str, repo_path: str) -> bool | None:
+    """Whether a first-parent merge in base..tip changed a path against
+    its first parent, or None when unprovable.
+
+    Clean merges list no files under `log --name-only` (D00 T01 §31
+    item 7), so the comparison is `merge^1` against the merge. A
+    merge-carried change is evidentiary: a later cosmetic non-merge
+    touch cannot launder it (D00 T01 §55 item 6). The self-test
+    patches this name, never a repo.
+    """
+    try:
+        import subprocess
+
+        listed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "log",
+                "--merges",
+                "--first-parent",
+                "--pretty=%H",
+                f"{base}..{tip}",
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if listed.returncode != 0:
+        return None
+    shas = [
+        ln.strip()
+        for ln in listed.stdout.decode("utf-8", "replace").splitlines()
+        if ln.strip()
+    ]
+    for sha in shas:
+        try:
+            diff = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(REPO),
+                    "diff",
+                    "--name-only",
+                    f"{sha}^1",
+                    sha,
+                    "--",
+                    repo_path,
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+        except Exception:
+            return None
+        if diff.returncode != 0:
+            return None
+        if repo_path in diff.stdout.decode("utf-8", "replace").splitlines():
+            return True
+    return False
+
+
 def git_commit_ts(sha: str) -> int | None:
     """Committer time of a commit (unix epoch, offset-free), or None when
     unprovable.
@@ -5300,6 +5362,18 @@ def cmd_query(args) -> int:
                                     if not fix_postdates_review(touch_ts, rts, reviewer_day):
                                         provable = False
                                         fail_code = "chronology:range-touch-time"
+                                        break
+                                    # Range merge exclusion (D00 T01 S55
+                                    # item 6): a first-parent merge inside
+                                    # the range that changed this path
+                                    # against its first parent carried the
+                                    # remediation. A later cosmetic
+                                    # non-merge touch cannot clear it.
+                                    # Unprovable fails closed. Singles stay
+                                    # on resolution:merge-tip.
+                                    if git_range_merge_touches(base, tip, tpath) is not False:
+                                        provable = False
+                                        fail_code = "resolution:merge-range"
                                         break
                                 elif not git_commit_touches(tip, tpath):
                                     provable = False
@@ -10755,7 +10829,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12479,6 +12553,22 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-exec-red.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 143. Merge-carried range stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturemergerange D90-T07-S4-PR103 fix ac00001..ac00002
+
+proof D90-T07-S4-PR103 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §143 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -12649,6 +12739,8 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR100] [critical] Attested execution clears -> filed §140\n"
             "- [D90-T07-S4-PR101] [critical] Cosmetic command stays -> filed §141\n"
             "- [D90-T07-S4-PR102] [critical] Red execution stays -> filed §142\n"
+            # D00 T01 §55 item 6: range merge-exclusion pin.
+            "- [D90-T07-S4-PR103] [critical] Merge-carried range stays -> filed §143\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -13589,6 +13681,26 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
             canned_commit_hunks[(_esha, marker_todo.as_posix())] = [
                 (_espan_lines[0], _espan_lines[0] + 2)
             ]
+        # D00 T01 §55 item 6: a range that would otherwise clear, except
+        # a first-parent merge changed the target path. Default for
+        # every other range is False (the lambda), so existing pins
+        # stay on their own legs.
+        canned_range_merges = {}
+        for _msha in ("ac00001", "ac00002"):
+            canned_git[(_msha, marker_todo.as_posix())] = _mtxt
+            canned_touches[(_msha, marker_todo.as_posix())] = True
+            canned_git[(_msha, "tests/fix-proof.py")] = _proof_ok
+            canned_touches[(_msha, "tests/fix-proof.py")] = True
+            canned_ts[_msha] = _tss(d5, "12:00:00")
+            canned_full[_msha] = _msha + "0" * 33
+            canned_merges[_msha] = False
+            canned_ancestors[("aaa1111000000000000000000000000000000000", _msha)] = True
+        canned_ancestors[("ac00001", "ac00002")] = True
+        canned_fpchain[("ac00001", "ac00002")] = True
+        canned_range_touches[("ac00001", "ac00002", marker_todo.as_posix())] = True
+        canned_range_touches[("ac00001", "ac00002", "tests/fix-proof.py")] = True
+        canned_range_ts[("ac00001", "ac00002", marker_todo.as_posix())] = _tss(d5, "12:00:00")
+        canned_range_merges[("ac00001", "ac00002", marker_todo.as_posix())] = True
         # §31 item 5: the clearing fixes touched their proof files.
         canned_touches[("aaa1111000000000000000000000000000000000", "tests/fix-proof.py")] = True
         canned_touches[("eee0002", "tests/fix-proof.py")] = True
@@ -13669,7 +13781,7 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
         # setdefault. Runs here, after every canned_full entry.
         for _s in list(canned_full.values()):
             canned_full.setdefault(_s, _s)
-        for _dm in (canned_git, canned_touches, canned_ts, canned_ancestors, canned_range_touches, canned_resolves, canned_merges, canned_range_ts, canned_fpchain, canned_tree_modes, canned_commit_hunks, canned_range_hunks):
+        for _dm in (canned_git, canned_touches, canned_ts, canned_ancestors, canned_range_touches, canned_resolves, canned_merges, canned_range_ts, canned_fpchain, canned_tree_modes, canned_commit_hunks, canned_range_hunks, canned_range_merges):
             for _dk, _dv in list(_dm.items()):
                 _nk = tuple(_pad40(x) if isinstance(x, str) else x for x in _dk) if isinstance(_dk, tuple) else _pad40(_dk)
                 if _nk != _dk:
@@ -13690,6 +13802,7 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
         _real_git_treemode = git_tree_mode
         _real_git_comhunks = git_commit_hunk_lines
         _real_git_rangehunks = git_range_hunk_lines
+        _real_git_rangemerge = git_range_merge_touches
         globals()["git_file_at"] = lambda ref, p: canned_git.get((ref, p))
         globals()["git_commit_touches"] = lambda sha, p: canned_touches.get((sha, p))
         globals()["git_commit_ts"] = lambda sha: canned_ts.get(sha)
@@ -13705,6 +13818,7 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
         globals()["git_tree_mode"] = lambda ref, p: canned_tree_modes.get((ref, p))
         globals()["git_commit_hunk_lines"] = lambda sha, p: canned_commit_hunks.get((sha, p))
         globals()["git_range_hunk_lines"] = lambda a, b, p: canned_range_hunks.get((a, b, p))
+        globals()["git_range_merge_touches"] = lambda a, b, p: canned_range_merges.get((a, b, p), False)
         _live_marker = marker_todo.read_text(encoding="utf-8")
         canned_git[("HEAD", marker_todo.as_posix())] = (
             _live_marker.replace(
@@ -17185,6 +17299,11 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "clearance fails a merge-carried range",
+            any("D90-T07-S4-PR103" in ln for ln in health_lines),
+            True,
+        )
+        check(
             "hunk parser reads new-side ranges",
             _parse_unified_hunks("@@ -1,3 +10,4 @@\n@@ -20 +30 @@\n"),
             [(10, 14), (30, 31)],
@@ -17745,6 +17864,7 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR99": {"touch:hunk-span"},
             "D90-T07-S4-PR101": {"proof:unattested"},
             "D90-T07-S4-PR102": {"proof:unattested"},
+            "D90-T07-S4-PR103": {"resolution:merge-range"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
@@ -20304,6 +20424,7 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
         globals()["git_tree_mode"] = _real_git_treemode
         globals()["git_commit_hunk_lines"] = _real_git_comhunks
         globals()["git_range_hunk_lines"] = _real_git_rangehunks
+        globals()["git_range_merge_touches"] = _real_git_rangemerge
         # Real-git helper fixtures (D00 T01 §30 item 3): the six git
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
@@ -20457,6 +20578,9 @@ proof D90-T07-S4-PR102 tests/fix-proof.py::test_clearance
                     check("real git refuses a side-branch range touch", git_range_touches(_gc1, _gm1, "side.txt"), False)
                     check("real git proves a first-parent range touch", git_range_touches(_gc1, _gc2, "proof.txt"), True)
                     check("real git refuses an out-of-range touch", git_range_touches(_gc1, _gc2, "side.txt"), False)
+                    check("real git sees a merge-carried path", git_range_merge_touches(_gc1, _gm1, "side.txt"), True)
+                    check("real git sees no merge-carried path on a linear range", git_range_merge_touches(_gc1, _gc2, "proof.txt"), False)
+                    check("real git merge-range probe on a bad ref is unprovable", git_range_merge_touches("deadbee000000000000000000000000000000000", _gm1, "side.txt"), None)
                     check("real git resolves a commit", git_resolves(_gc1), True)
                     check("real git refuses a bad short", git_resolves("deadbee000000000000000000000000000000000"), False)
                     check("real git refuses an absent full hex", git_resolves("f" * 40), False)
