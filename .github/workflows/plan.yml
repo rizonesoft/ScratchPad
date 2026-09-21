@@ -2,6 +2,11 @@ name: plan-gates
 
 # Windows-only CI (operator decision 2026-09-19: ubuntu legs removed).
 # Bash steps run under the runner's Git Bash; python3 is the image Python.
+# Lane matrix (D00 T01 S54 item 5; windows-authoritative lanes plus lane
+# matrix per D00-T01-S53-PR28/PR29): plan-gates is the required Windows
+# lane (runs-on windows-2025): git present is designated and absence
+# fails the run (--require-git). Local runs and neutral hosts are
+# optional lanes: git absence skips the real-git probes honestly.
 
 on:
   push:
@@ -39,7 +44,7 @@ jobs:
           # fix-commit proofs, ancestry) cannot resolve on a shallow checkout.
           fetch-depth: 0
       - name: Self-test the TODO graph tool
-        run: python3 scripts/todo-graph.py self-test
+        run: python3 scripts/todo-graph.py self-test --require-git
       - name: Validate the TODO tree
         run: python3 scripts/todo-graph.py validate
       - name: Check plan projection is current

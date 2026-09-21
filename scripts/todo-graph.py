@@ -2839,6 +2839,86 @@ def git_full_sha(ref: str) -> str | None:
     return raw
 
 
+def git_object_format() -> str | None:
+    """The repo hash algorithm ("sha1"/"sha256"), or None when
+    unprovable. Canonical-identity leg (D00 T01 §54 item 1,
+    D00-T01-S53-PR30): a bare full SHA stays durable across
+    SHA-256 adoption only beside the algorithm that minted it.
+    Off-shape output reads None, never raises.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--show-object-format"],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    fmt = out.stdout.decode("utf-8", "replace").strip()
+    return fmt if fmt in ("sha1", "sha256") else None
+
+
+def git_repo_toplevel() -> str | None:
+    """The repo top-level path, or None when unprovable.
+    Canonical-identity leg (D00 T01 §54 item 1,
+    D00-T01-S53-PR30): the identity names its repository so
+    evidence survives migration. Empty output reads None,
+    never raises.
+    """
+    try:
+        import subprocess
+
+        out = subprocess.run(
+            ["git", "-C", str(REPO), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            timeout=30,
+        )
+    except Exception:
+        return None
+    if out.returncode != 0:
+        return None
+    top = out.stdout.decode("utf-8", "replace").strip()
+    return top or None
+
+
+def canonical_commit_id(ref: str) -> tuple[str, str, str, str] | None:
+    """(repo, algo, type, full-sha) for a fix ref, or None.
+    Canonicalize-at-capture (D00 T01 §54 item 1): clearance
+    resolves every fix token through here before any leg, so a
+    once-valid short SHA can never turn ambiguous downstream.
+    Type pins "commit" via the peel inside git_full_sha; repo
+    plus algo ride along for evidence durability (D00-T01-S53-PR30).
+    Legs compare the full SHA (one repo, one algo per run).
+    """
+    full = git_full_sha(ref)
+    if full is None:
+        return None
+    algo = git_object_format()
+    repo = git_repo_toplevel()
+    if algo is None or repo is None:
+        return None
+    return (repo, algo, "commit", full)
+
+
+def git_probe_gate(git_present: bool, require_git: bool) -> str:
+    """run/skip/fatal for the real-git probes (D00 T01 S54 item 5).
+
+    Lane matrix (S53-PR28/PR29): the required Windows lane
+    (plan-gates) designates git present and fails the run when
+    it is missing; local and neutral runs are optional lanes
+    that skip honestly where git is missing.
+    """
+    if git_present:
+        return "run"
+    if require_git:
+        return "fatal"
+    return "skip"
+
+
 def git_is_merge(sha: str) -> bool | None:
     """Whether a commit is a merge (two or more parents), or None when
     unprovable. The merge-exclusion leg (D00 T01 §31 item 7): the fix
@@ -4998,12 +5078,39 @@ def cmd_query(args) -> int:
                                     provable = False
                                     fail_code = "proof:back-link"
                                     break
-                                fm = FIX_COMMIT_RE.search(tgt_text)
-                                if fm is None:
+                                fms = list(FIX_COMMIT_RE.finditer(tgt_text))
+                                if not fms:
                                     provable = False
                                     fail_code = "resolution:missing-fix"
                                     break
-                                base, tip = fm.group(1), fm.group(2) or fm.group(1)
+                                # Token ambiguity rejects declared (D00 T01
+                                # S54 item 2): every fix token in the span
+                                # canonicalizes, and more than one distinct
+                                # (base, tip) identity fails closed, so
+                                # reordered metadata cannot silently change
+                                # what clears the row. Identical repeats
+                                # collapse: the first match governs the
+                                # legs below.
+                                _fix_ids = []
+                                for _fmm in fms:
+                                    _bb = canonical_commit_id(_fmm.group(1))
+                                    _tt = canonical_commit_id(
+                                        _fmm.group(2) or _fmm.group(1)
+                                    )
+                                    if _bb is None or _tt is None:
+                                        _fix_ids = None
+                                        break
+                                    _fix_ids.append((_bb[3], _tt[3]))
+                                if _fix_ids is None:
+                                    provable = False
+                                    fail_code = "resolution:unresolvable"
+                                    break
+                                if len(set(_fix_ids)) > 1:
+                                    provable = False
+                                    fail_code = "resolution:ambiguous-fix"
+                                    break
+                                fm = fms[0]
+                                base, tip = _fix_ids[0]
                                 if git_is_merge(tip) is not False:
                                     provable = False
                                     fail_code = "resolution:merge-tip"
@@ -5075,9 +5182,34 @@ def cmd_query(args) -> int:
                                         fixed_span[0] - 1:fixed_span[1] - 1
                                     ]
                                 )
-                                for pm in PROOF_RE.finditer(fixed_span_text):
-                                    if pm.group(1).lower() != lr.group(1).lower():
-                                        continue
+                                _same_proofs = [
+                                    pm
+                                    for pm in PROOF_RE.finditer(fixed_span_text)
+                                    if pm.group(1).lower() == lr.group(1).lower()
+                                ]
+                                # Same-ID proof ambiguity rejects declared
+                                # (D00 T01 S54 item 2): pointers disagreeing
+                                # on path or test fail closed instead of
+                                # letting one convenient pointer govern, so
+                                # reordered metadata cannot silently change
+                                # what clears the row. Identical repeats
+                                # collapse into the single pointer.
+                                if (
+                                    len(
+                                        {
+                                            (
+                                                pm.group(2).partition("::")[0],
+                                                pm.group(2).partition("::")[2],
+                                            )
+                                            for pm in _same_proofs
+                                        }
+                                    )
+                                    > 1
+                                ):
+                                    provable = False
+                                    fail_code = "proof:ambiguous"
+                                    break
+                                for pm in _same_proofs:
                                     ppath, _, pname = pm.group(2).partition("::")
                                     pbytes = git_file_at(tip, ppath)
                                     if pbytes is None:
@@ -7579,7 +7711,7 @@ Prose after the table.
 """
 
 
-def cmd_self_test(_args) -> int:
+def cmd_self_test(args) -> int:
     """Prove the graph's own contract against synthetic fixtures, in under a second.
 
     This exists so a run may edit this file as planned section work: the ban in
@@ -7593,6 +7725,8 @@ def cmd_self_test(_args) -> int:
     already owns that job.
     """
     import tempfile
+
+    _require_git = args is not None and bool(getattr(args, "require_git", False))
 
     cases: list[tuple[str, object, object]] = []
 
@@ -10224,6 +10358,12 @@ track: Z1
 |  119  |   §119  | Flipped cross-family retry carried fires | - |  [x]   |
 |  120  |   §120  | Flipped cross-family bare stays silent | - |  [x]   |
 |  121  |   §121  | Flipped same-family retry carried stays silent | - |  [x]   |
+|  122  |   §122  | Unresolvable capture fails fast | - |  [x]   |
+|  123  |   §123  | Full-token range clears | - |  [x]   |
+|  124  |   §124  | Ambiguous fix rejects | - |  [x]   |
+|  125  |   §125  | Ambiguous proof test rejects | - |  [x]   |
+|  126  |   §126  | Ambiguous fix reversed rejects | - |  [x]   |
+|  127  |   §127  | Ambiguous proof path rejects | - |  [x]   |
 
 ---
 
@@ -10276,7 +10416,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -11653,6 +11793,106 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
 > **Verified:** 2026-09-20 | §121 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health-flip4.md
 > **Plan review:** GPT high, filed §2, retry-owed owner ann due 2099-01-01 class infra attempts 2 and partial: opus rung attempts 1 (run 20260920-D90-T07-S121-gpt)
+
+## 122. Unresolvable capture fails fast
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureunresolvable D90-T07-S4-PR82 fix badbeef
+
+proof D90-T07-S4-PR82 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §122 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 123. Full-token range clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturefullrange D90-T07-S4-PR83 fix eee0001000000000000000000000000000000000..eee0002000000000000000000000000000000000
+
+proof D90-T07-S4-PR83 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §123 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 124. Ambiguous fix rejects
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureambigfixa D90-T07-S4-PR84 fix eee0001..eee0002
+-> SOURCE: fixtureambigfixb D90-T07-S4-PR84 fix fff0002
+
+proof D90-T07-S4-PR84 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §124 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 125. Ambiguous proof test rejects
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureambigprooft D90-T07-S4-PR85 fix eee0001..eee0002
+
+proof D90-T07-S4-PR85 tests/fix-proof.py::test_clearance
+proof D90-T07-S4-PR85 tests/fix-proof.py::test_other
+
+> **Verified:** __D5__ | §125 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 126. Ambiguous fix reversed rejects
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureambigfixc D90-T07-S4-PR86 fix fff0002
+-> SOURCE: fixtureambigfixd D90-T07-S4-PR86 fix eee0001..eee0002
+
+proof D90-T07-S4-PR86 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §126 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 127. Ambiguous proof path rejects
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixtureambigproofp D90-T07-S4-PR87 fix eee0001..eee0002
+
+proof D90-T07-S4-PR87 tests/fix-proof.py::test_clearance
+proof D90-T07-S4-PR87 tests/other.py::test_clearance
+
+> **Verified:** __D5__ | §127 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -11798,6 +12038,12 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             # branch, so the range is not linear although ancestry
             # holds and first-parent touches exist past it.
             "- [D90-T07-S4-PR81] [critical] Side-branch base stays -> filed §86\n"
+            "- [D90-T07-S4-PR82] [critical] Unresolvable capture fails fast -> filed §122\n"
+            "- [D90-T07-S4-PR83] [critical] Full-token range clears -> filed §123\n"
+            "- [D90-T07-S4-PR84] [critical] Ambiguous fix rejects -> filed §124\n"
+            "- [D90-T07-S4-PR85] [critical] Ambiguous proof test rejects -> filed §125\n"
+            "- [D90-T07-S4-PR86] [critical] Ambiguous fix reversed rejects -> filed §126\n"
+            "- [D90-T07-S4-PR87] [critical] Ambiguous proof path rejects -> filed §127\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -12532,7 +12778,13 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         canned_full["e5e6000000000000000000000000000000000000"] = "c5e6000000000000000000000000000000000000"
         canned_full["c5e6000000000000000000000000000000000000"] = "c5e6000000000000000000000000000000000000"
         canned_full["ca5e000000000000000000000000000000000000"] = "ca5e000000000000000000000000000000000000"
+        # PR17's fix resolves, then merge-tips (D00 T01 §54
+        # item 1): capture canonicalization fails unresolvable
+        # tokens before any leg, so the merge-tip pin needs a
+        # resolving merge instead of an uncanned miss.
+        canned_full["bbb2222"] = "bbb2222" + "0" * 33
         canned_merges = {s: False for s in _all_shas}
+        canned_merges["bbb2222"] = True
         canned_tree_modes = {}
         canned_range_ts = {
             ("eee0001", "eee0002", marker_todo.as_posix()): _tss(d5, "12:00:00"),
@@ -12683,6 +12935,25 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         # is its probe).
         for _rev in sorted(rev_dir.glob("90-*.md")):
             canned_tree_modes[("aaa1111000000000000000000000000000000000", f"docs/reviews/{_rev.name}")] = "100644"
+        # Dual-form aliasing (D00 T01 §54 item 1): capture
+        # canonicalizes fix tokens to full IDs before any leg, so
+        # every canned map serves the padded alias beside its
+        # short key (extends the §51 dual-forms precedent;
+        # raw-short callers keep working, canonicalized legs hit
+        # the full alias). Conflicts fail loud, never overwrite.
+        _pad40 = lambda s: s + "0" * (40 - len(s)) if re.fullmatch(r"[0-9a-fA-F]{7,39}", s or "") else s
+        # Idempotent like rev-parse: canonicalized legs re-resolve
+        # full IDs (strict leg), so every padded value maps to
+        # itself; the tag peel keeps its distinct mapping via
+        # setdefault. Runs here, after every canned_full entry.
+        for _s in list(canned_full.values()):
+            canned_full.setdefault(_s, _s)
+        for _dm in (canned_git, canned_touches, canned_ts, canned_ancestors, canned_range_touches, canned_resolves, canned_merges, canned_range_ts, canned_fpchain, canned_tree_modes):
+            for _dk, _dv in list(_dm.items()):
+                _nk = tuple(_pad40(x) if isinstance(x, str) else x for x in _dk) if isinstance(_dk, tuple) else _pad40(_dk)
+                if _nk != _dk:
+                    assert _nk not in _dm or _dm[_nk] == _dv, _nk
+                    _dm.setdefault(_nk, _dv)
         _real_git_file_at = git_file_at
         _real_git_touches = git_commit_touches
         _real_git_ts = git_commit_ts
@@ -12690,6 +12961,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         _real_git_range = git_range_touches
         _real_git_resolves = git_resolves
         _real_git_full = git_full_sha
+        _real_git_format = git_object_format
+        _real_git_top = git_repo_toplevel
         _real_git_merge = git_is_merge
         _real_git_rangets = git_range_touch_ts
         _real_git_fpchain = git_on_first_parent_chain
@@ -12701,6 +12974,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         globals()["git_range_touches"] = lambda a, b, p: canned_range_touches.get((a, b, p))
         globals()["git_resolves"] = lambda sha: canned_resolves.get(sha)
         globals()["git_full_sha"] = lambda ref: canned_full.get(ref)
+        globals()["git_object_format"] = lambda: "sha1"
+        globals()["git_repo_toplevel"] = lambda: str(root)
         globals()["git_is_merge"] = lambda sha: canned_merges.get(sha)
         globals()["git_range_touch_ts"] = lambda a, b, p: canned_range_ts.get((a, b, p))
         globals()["git_on_first_parent_chain"] = lambda a, b: canned_fpchain.get((a, b))
@@ -16077,6 +16352,51 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
+            "clearance fails an unresolvable capture at canonicalization",
+            any("D90-T07-S4-PR82" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance clears a full-token range",
+            any("D90-T07-S4-PR83" in ln for ln in health_lines),
+            False,
+        )
+        check(
+            "clearance fails an ambiguous fix",
+            any("D90-T07-S4-PR84" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails same-ID proofs disagreeing on test",
+            any("D90-T07-S4-PR85" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails a reversed ambiguous fix",
+            any("D90-T07-S4-PR86" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "clearance fails same-ID proofs disagreeing on path",
+            any("D90-T07-S4-PR87" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "canonical identity resolves a short to repo algo type full",
+            canonical_commit_id("eee0001"),
+            (str(root), "sha1", "commit", "eee0001" + "0" * 33),
+        )
+        check(
+            "canonical identity passes a full id through unchanged",
+            canonical_commit_id("eee0001" + "0" * 33),
+            (str(root), "sha1", "commit", "eee0001" + "0" * 33),
+        )
+        check(
+            "canonical identity fails an uncanned token closed",
+            canonical_commit_id("badbeef"),
+            None,
+        )
+        check(
             "plan-health reads the superseding row as current",
             any("D90-T07-S57-PR2" in ln for ln in health_lines),
             True,
@@ -16581,6 +16901,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "D90-T07-S4-PR79": {"proof:proof-touch"},
             "D90-T07-S4-PR80": {"resolution:merge-tip"},
             "D90-T07-S4-PR81": {"touch:first-parent-chain"},
+            "D90-T07-S4-PR82": {"resolution:unresolvable"},
+            "D90-T07-S4-PR84": {"resolution:ambiguous-fix"},
+            "D90-T07-S4-PR85": {"proof:ambiguous"},
+            "D90-T07-S4-PR86": {"resolution:ambiguous-fix"},
+            "D90-T07-S4-PR87": {"proof:ambiguous"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
             "PR5": {"resolution:unresolvable"},
@@ -16604,12 +16929,97 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
+            "plan-health text names the fix-less diagnostic",
+            any(
+                "D90-T07-S4-PR72" in ln and "failure resolution:missing-fix" in ln
+                for ln in health_lines
+            ),
+            True,
+        )
+        check(
             "plan-health text leaves uncleared-but-unrun rows codeless",
             any(
                 "D90-T07-S4-PR10" in ln and "failure" not in ln
                 for ln in health_lines
             ),
             True,
+        )
+        # Fixture-ID uniqueness (D00 T01 S54 item 6): fixed fixture
+        # addresses validate unique at build, so later growth cannot
+        # make tests exercise the wrong row or section. Scopes: row
+        # IDs per ledger block, section numbers per TODO file, and
+        # short-vs-full shadowing in the resolve map.
+        def _dupes(xs):
+            seen = set()
+            out = []
+            for x in xs:
+                if x in seen and x not in out:
+                    out.append(x)
+                seen.add(x)
+            return out
+
+        def _shadowed_keys(fullmap):
+            out = []
+            for k in fullmap:
+                if not (7 <= len(k) < 40) or not re.fullmatch(r"[0-9a-fA-F]+", k):
+                    continue
+                pad = k + "0" * (40 - len(k))
+                if pad in fullmap and fullmap[pad] != fullmap[k] and k not in out:
+                    out.append(k)
+            return sorted(out)
+
+        _live_row_dupes = []
+        for _rf in sorted(rev_dir.glob("*.md")):
+            # Intentional-malformed corpus excluded: its PR20 twin is
+            # the exercised behavior (the validator duplicate-ID rule
+            # fires on it exactly once), not a fixture address.
+            if _rf.name == "90-health-malformed.md":
+                continue
+            _rtext, _ = strip_fenced_code(_rf.read_text(encoding="utf-8"))
+            _bounds = [0] + [m.end() for m in PLAN_REVIEW_HEADING_RE.finditer(_rtext)]
+            _chunks = [
+                _rtext[_bounds[i]:_bounds[i + 1] if i + 1 < len(_bounds) else len(_rtext)]
+                for i in range(len(_bounds))
+            ]
+            for _ch in _chunks:
+                for _d in _dupes([m.group(1).lower() for m in LEDGER_ROW_RE.finditer(_ch)]):
+                    _live_row_dupes.append(f"{_rf.name}:{_d}")
+        check(
+            "fixture row IDs read unique per ledger block",
+            sorted(_live_row_dupes),
+            [],
+        )
+        check(
+            "fixture section numbers read unique",
+            _dupes(re.findall(r"^## (\d+)\.", marker_todo.read_text(encoding="utf-8"), re.M)),
+            [],
+        )
+        check(
+            "fixture resolve map shadows nowhere",
+            _shadowed_keys(canned_full),
+            [],
+        )
+        _syn_block = (
+            "Ledger:\n"
+            "- [D90-T07-S4-PR1] [critical] First -> filed §1\n"
+            "- [D90-T07-S4-PR1] [critical] Second -> filed §2\n"
+            "End of ledger\n"
+        )
+        check(
+            "fixture uniqueness spots a duplicated row ID",
+            _dupes([m.group(1).lower() for m in LEDGER_ROW_RE.finditer(_syn_block)]),
+            ["d90-t07-s4-pr1"],
+        )
+        check(
+            "fixture uniqueness spots a duplicated section",
+            _dupes(re.findall(r"^## (\d+)\.", "## 5. A\n\n## 5. B\n", re.M)),
+            ["5"],
+        )
+        _syn_full = {"abc1234": "abc1234" + "0" * 33, "abc1234" + "0" * 33: "ffff" + "0" * 36}
+        check(
+            "fixture uniqueness spots short-vs-full shadowing",
+            _shadowed_keys(_syn_full),
+            ["abc1234"],
         )
         # --- resolution legs with no shared-fixture row (D00 T01 §32) ---
         # Isolated root, one reviewer: a filed row naming an unverified
@@ -19024,6 +19434,8 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         globals()["git_range_touches"] = _real_git_range
         globals()["git_resolves"] = _real_git_resolves
         globals()["git_full_sha"] = _real_git_full
+        globals()["git_object_format"] = _real_git_format
+        globals()["git_repo_toplevel"] = _real_git_top
         globals()["git_is_merge"] = _real_git_merge
         globals()["git_range_touch_ts"] = _real_git_rangets
         globals()["git_on_first_parent_chain"] = _real_git_fpchain
@@ -19032,8 +19444,19 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
         # helpers run against a real temp repo (commits, a branch, a
         # merge, fixed timestamps, proof files), so command shapes
         # cannot regress unseen. Only REPO is patched (save/restore);
-        # the helpers run for real. Skips honestly when git is absent.
-        if shutil.which("git") is None:
+        # the helpers run for real. Skips honestly when git is absent,
+        # unless the required lane demands it (D00 T01 S54 item 5).
+        check("git gate runs probes when git is present", git_probe_gate(True, False), "run")
+        check("git gate runs probes on the required lane", git_probe_gate(True, True), "run")
+        check("git gate skips honestly on optional lanes", git_probe_gate(False, False), "skip")
+        check("git gate fails closed on the required lane", git_probe_gate(False, True), "fatal")
+        _probe_gate = git_probe_gate(shutil.which("git") is not None, _require_git)
+        if _probe_gate == "fatal":
+            # Required lane (D00 T01 S54 item 5, S53-PR28/PR29): git
+            # absence fails the run instead of skipping the clearance
+            # contract silently. Optional lanes skip honestly below.
+            check("required lane provides git", False, True)
+        if _probe_gate != "run":
             print("todo-graph self-test: SKIP real-git helper probes (no git)")
         else:
             _gtmp = tempfile.TemporaryDirectory(prefix="todo-graph-git-")
@@ -19112,6 +19535,15 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     _git("add", "plink")
                     _git("commit", "-qm", "link")
                     _gc4 = _git("rev-parse", "HEAD")
+                # Windows-characterization files (D00 T01 S54 item 7):
+                # a mixed-case name, a subdir file, and CRLF bytes.
+                (_grepo / "Case.TXT").write_text("case\n", encoding="utf-8", newline="\n")
+                (_grepo / "sub").mkdir(exist_ok=True)
+                (_grepo / "sub" / "sep.txt").write_text("sep\n", encoding="utf-8", newline="\n")
+                (_grepo / "crlf.txt").write_bytes(b"a\r\nb\r\n")
+                _git("add", "-A")
+                _git("commit", "-qm", "winpaths")
+                _gwin = _git("rev-parse", "HEAD")
                 _saved_repo = REPO
                 globals()["REPO"] = _grepo
                 try:
@@ -19159,6 +19591,13 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     check("real git full-sha on a tree is unprovable", git_full_sha(_tree), None)
                     check("real git full-sha peels a tag to its commit", git_full_sha("vone"), _gc1)
                     check("real git full-sha spells a short commit", git_full_sha(_gc1[:7]), _gc1)
+                    _gtop = git_repo_toplevel()
+                    check("real git reports sha1 object format", git_object_format(), "sha1")
+                    check("real git canonicalizes a short commit", canonical_commit_id(_gc1[:7]), (_gtop, "sha1", "commit", _gc1))
+                    check("real git canonicalizes a full commit", canonical_commit_id(_gc1), (_gtop, "sha1", "commit", _gc1))
+                    check("real git canonical identity peels a tag to its commit", canonical_commit_id("vone"), (_gtop, "sha1", "commit", _gc1))
+                    check("real git canonical identity fails a bad ref", canonical_commit_id("deadbee000000000000000000000000000000000"), None)
+                    check("real git canonical identity fails a blob", canonical_commit_id(_blob), None)
                     check("real git tree mode reads a file", git_tree_mode(_gc2, "proof.txt"), "100644")
                     check("real git tree mode misses a missing path", git_tree_mode(_gc2, "missing.txt"), None)
                     check("real git tree mode on a bad ref is unprovable", git_tree_mode("deadbee000000000000000000000000000000000", "proof.txt"), None)
@@ -19174,10 +19613,214 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
                     check("real git proves first-parent membership", git_on_first_parent_chain(_gc1, _gm1), True)
                     check("real git refuses a side-branch base", git_on_first_parent_chain(_gc3, _gm1), False)
                     check("real git chain probe on a bad ref is unprovable", git_on_first_parent_chain("deadbee000000000000000000000000000000000", _gm1), None)
+                    check("real git reads an exact-case path", git_file_at(_gwin, "Case.TXT"), "case\n")
+                    check("real git misses a wrong-case path", git_file_at(_gwin, "case.txt"), None)
+                    check("real git reads a forward-slash subdir path", git_file_at(_gwin, "sub/sep.txt"), "sep\n")
+                    check("real git misses a backslash path", git_file_at(_gwin, "sub\\sep.txt"), None)
+                    check("real git preserves CRLF bytes", git_file_at(_gwin, "crlf.txt"), "a\r\nb\r\n")
+                    try:
+                        import msvcrt
+                    except ImportError:
+                        msvcrt = None
+                    if msvcrt is None:
+                        check("real git reads under a working-tree lock: msvcrt unavailable", True, True)
+                    else:
+                        _lockf = open(_grepo / "Case.TXT", "r+b")
+                        try:
+                            msvcrt.locking(_lockf.fileno(), msvcrt.LK_NBLCK, 1)
+                            check("real git reads file bytes under a working-tree lock", git_file_at(_gwin, "Case.TXT"), "case\n")
+                            check("real git proves touches under a working-tree lock", git_commit_touches(_gwin, "Case.TXT"), True)
+                        finally:
+                            msvcrt.locking(_lockf.fileno(), msvcrt.LK_UNLCK, 1)
+                            _lockf.close()
                 finally:
                     globals()["REPO"] = _saved_repo
             finally:
                 _gtmp.cleanup()
+            # Query-level end-to-end clearance (D00 T01 S54 item 4): the
+            # public plan-health query runs over a complete temporary
+            # repository (commits, a branch, a merge, fixed timestamps,
+            # proof files) with real git and a real TODO tree, so
+            # composition, parsing, and reporting cannot regress while
+            # every helper stays green. Runs inside the git-present
+            # branch, so absence skips with the helper probes.
+            _etmp = tempfile.TemporaryDirectory(prefix="todo-graph-e2e-")
+            try:
+                _erepo = Path(_etmp.name)
+                _ebase_env = dict(
+                    os.environ,
+                    HOME=_etmp.name,
+                    GIT_CONFIG_NOSYSTEM="1",
+                    GIT_AUTHOR_NAME="selftest",
+                    GIT_AUTHOR_EMAIL="selftest@example.invalid",
+                    GIT_COMMITTER_NAME="selftest",
+                    GIT_COMMITTER_EMAIL="selftest@example.invalid",
+                )
+
+                def _egit(*args, date=None):
+                    import subprocess
+
+                    _eenv = dict(_ebase_env)
+                    if date is not None:
+                        _eenv["GIT_AUTHOR_DATE"] = date
+                        _eenv["GIT_COMMITTER_DATE"] = date
+                    out = subprocess.run(
+                        ["git", *args],
+                        cwd=_etmp.name,
+                        env=_eenv,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    if out.returncode != 0:
+                        raise RuntimeError(f"git {' '.join(args)}: {out.stderr.decode()[:200]}")
+                    return out.stdout.decode("utf-8", "replace").strip()
+
+                _egit("init", "-q", ".")
+                _ebranch = _egit("symbolic-ref", "--short", "HEAD")
+                (_erepo / "todo" / "90-e2e").mkdir(parents=True)
+                (_erepo / "docs" / "reviews").mkdir(parents=True)
+                (_erepo / "tests").mkdir(parents=True)
+                _e2e_index = (
+                    "# 90 E2e\n\n## TODOs\n\n| TODO | Title | Status |\n"
+                    "| ---- | ----- | :----: |\n"
+                    "| [TODO-90](./TODO-90-clearance.md) | Clearance | active |\n"
+                )
+                (_erepo / "todo" / "90-e2e" / "INDEX.md").write_text(
+                    _e2e_index, encoding="utf-8", newline="\n"
+                )
+                _egit("add", "-A")
+                _egit("commit", "-qm", "e2e stub", date="2026-01-01T08:00:00Z")
+                _ec0 = _egit("rev-parse", "HEAD")
+                _e2e_findings = (
+                    "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+                    "**adversarial: approve**\n**consistency: approve**\n"
+                    "**integration: approve**\n**record: approve**\n\n## Plan review\n\n"
+                    "Manifest: sections [D90 T90 §1]; dependents [none]; bytes 100; "
+                    "run 20260103-D90-T90-S1-gpt\n\n"
+                    "Ledger:\n"
+                    "- [D90-T90-S1-PR1] [critical] Real fix clears -> filed §2\n"
+                    "- [D90-T90-S1-PR2] [critical] Real merge tip stays -> filed §3\n"
+                    "End of ledger\n\n"
+                    f"Provenance: candidate {_ec0}; command true; exit 0; tool fixture; "
+                    "digest 0123456789abcdef; path docs/reviews/90-e2e-clean.md; "
+                    "run 20260103-D90-T90-S1-gpt\n"
+                )
+                (_erepo / "docs" / "reviews" / "90-e2e-clean.md").write_text(
+                    _e2e_findings, encoding="utf-8", newline="\n"
+                )
+                _e2e_head = (
+                    "---\nschema_version: 1\nid: e2e\ndomain: 90-e2e\nstatus: active\n"
+                    'title: "TODO-90 -- Clearance"\ntrack: Z1\n---\n\n# TODO-90 -- Clearance\n\n'
+                    "## Implementation Order\n\n"
+                    "| Order | Section | Deliverable | Depends On | Status |\n"
+                    "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+                    "| 1 | §1 | Reviewer files rows | - | [x] |\n"
+                    "| 2 | §2 | Real fix clears | - | [x] |\n"
+                    "| 3 | §3 | Real merge tip stays | - | [x] |\n"
+                    "\n## 1. Reviewer files rows\n\n"
+                    "- [x] Did the thing\n- [x] Commit: `\"selftest: e2e\"`\n\n"
+                    "**Test checkpoint:** `true`\n\n"
+                    "> **Verified:** 2026-01-01 | §1 | fixture\n"
+                    "> **Review:** round 1 -- Raw findings: docs/reviews/90-e2e-clean.md\n"
+                    "> **Plan review:** GPT high, filed §2, §3 (run 20260103-D90-T90-S1-gpt)\n"
+                    "> **Duration:** 2026-01-01T08:00:00Z to 2026-01-01T09:00:00Z\n"
+                    "\n## 2. Real fix clears\n\n"
+                    "- [x] Did the thing\n- [x] Commit: `\"selftest: e2e\"`\n\n"
+                    "**Test checkpoint:** `true`\n\n"
+                )
+                _e2e_s2_c1 = (
+                    "-> SOURCE: e2e D90-T90-S1-PR1\n\n"
+                    "proof D90-T90-S1-PR1 tests/e2e-proof.py::test_clearance\n\n"
+                    "> **Verified:** 2026-01-03 | §2 | fixture\n"
+                    "> **Review:** round 1 -- Raw findings: docs/reviews/90-e2e-clean.md\n"
+                    "> **Plan review:** GPT high, no findings\n"
+                    "> **Duration:** 2026-01-03T10:00:00Z to 2026-01-03T18:00:00Z\n"
+                )
+                _e2e_s3_tail = (
+                    "\n## 3. Real merge tip stays\n\n"
+                    "- [x] Did the thing\n- [x] Commit: `\"selftest: e2e\"`\n\n"
+                    "**Test checkpoint:** `true`\n\n"
+                    "-> SOURCE: e2e D90-T90-S1-PR2\n\n"
+                    "proof D90-T90-S1-PR2 tests/e2e-proof.py::test_clearance\n\n"
+                    "> **Verified:** 2026-01-03 | §3 | fixture\n"
+                    "> **Review:** round 1 -- Raw findings: docs/reviews/90-e2e-clean.md\n"
+                    "> **Plan review:** GPT high, no findings\n"
+                    "> **Duration:** 2026-01-03T10:00:00Z to 2026-01-03T18:00:00Z\n"
+                )
+                _e2e_target = _erepo / "todo" / "90-e2e" / "TODO-90-clearance.md"
+                _e2e_c1_text = _e2e_head + _e2e_s2_c1 + _e2e_s3_tail
+                _e2e_target.write_text(_e2e_c1_text, encoding="utf-8", newline="\n")
+                (_erepo / "tests" / "e2e-proof.py").write_text(
+                    "def test_clearance():\n    pass\n", encoding="utf-8", newline="\n"
+                )
+                _egit("add", "-A")
+                _egit("commit", "-qm", "e2e base", date="2026-01-01T10:00:00Z")
+                _ec1 = _egit("rev-parse", "HEAD")
+                _e2e_target.write_text(
+                    _e2e_c1_text.replace(
+                        "-> SOURCE: e2e D90-T90-S1-PR1\n",
+                        f"-> SOURCE: e2e D90-T90-S1-PR1 fix {_ec1}\n",
+                        1,
+                    ),
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                _egit("commit", "-qam", "e2e fix leg", date="2026-01-02T03:04:05Z")
+                _egit("checkout", "-qb", "side")
+                (_erepo / "side.txt").write_text("s\n", encoding="utf-8", newline="\n")
+                _egit("add", "side.txt")
+                _egit("commit", "-qm", "side", date="2026-01-02T04:00:00Z")
+                _egit("checkout", "-q", _ebranch)
+                _egit("merge", "--no-ff", "-qm", "merge", "side", date="2026-01-02T05:00:00Z")
+                _em1 = _egit("rev-parse", "HEAD")
+                _e2e_target.write_text(
+                    _e2e_target.read_text(encoding="utf-8").replace(
+                        "-> SOURCE: e2e D90-T90-S1-PR2\n",
+                        f"-> SOURCE: e2e D90-T90-S1-PR2 fix {_em1}\n",
+                        1,
+                    ),
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                _egit("commit", "-qam", "e2e merge leg", date="2026-01-02T06:00:00Z")
+                _saved_e2e_todo, TODO_DIR = TODO_DIR, _erepo / "todo"
+                _saved_e2e_repo = REPO
+                globals()["REPO"] = _erepo
+                try:
+                    _e2e_tbuf = _mio.StringIO()
+                    with _mctx.redirect_stdout(_e2e_tbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                        _e2e_rc = cmd_query(argparse.Namespace(what="plan-health"))
+                    _e2e_lines = _e2e_tbuf.getvalue().splitlines()
+                    _e2e_jbuf = _mio.StringIO()
+                    with _mctx.redirect_stdout(_e2e_jbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                        cmd_query(argparse.Namespace(what="plan-health", json=True))
+                    _e2e_json = json.loads(_e2e_jbuf.getvalue())
+                finally:
+                    TODO_DIR = _saved_e2e_todo
+                    globals()["REPO"] = _saved_e2e_repo
+                check("end-to-end clearance runs the public query clean", _e2e_rc, 0)
+                check(
+                    "end-to-end clearance clears the real fix",
+                    any("D90-T90-S1-PR1" in ln for ln in _e2e_lines),
+                    False,
+                )
+                check(
+                    "end-to-end clearance lists the real merge tip",
+                    any(
+                        "D90-T90-S1-PR2" in ln and "failure resolution:merge-tip" in ln
+                        for ln in _e2e_lines
+                    ),
+                    True,
+                )
+                _e2e_ids = {c["id"]: c.get("failure_code", "") for c in _e2e_json.get("criticals", [])}
+                check("end-to-end clearance JSON clears the real fix", "D90-T90-S1-PR1" in _e2e_ids, False)
+                check(
+                    "end-to-end clearance JSON codes the real merge tip",
+                    _e2e_ids.get("D90-T90-S1-PR2"),
+                    "resolution:merge-tip",
+                )
+            finally:
+                _etmp.cleanup()
         # Prompt construction and output validation (D00 T01 §17 items 5,
         # 14, 15): tag uniqueness, hostile-delimiter isolation, byte
         # canonicalization, and whole-output checks.
@@ -21889,6 +22532,13 @@ track: Z1
             < _planyml.index("python3 tools/notify_poster.py /tmp/notify.txt"),
             True,
         )
+        check(
+            "plan-gates designates git present on the required lane",
+            "scripts/todo-graph.py self-test --require-git" in _planyml
+            and _planyml.index('runs-on: windows-2025')
+            < _planyml.index("scripts/todo-graph.py self-test --require-git"),
+            True,
+        )
         # Push-path coverage (review R1): every operational input the
         # unattended job consumes triggers the workflow on push, so a
         # standalone heartbeat or mapping change still runs the gates.
@@ -21994,10 +22644,16 @@ def main() -> int:
         help="list acknowledged warnings (stamped pre-convention debt register, D00 T01 §38)",
     )
     wa.set_defaults(fn=cmd_warnings)
-    sub.add_parser(
+    st = sub.add_parser(
         "self-test",
         help="prove this script's own contract against fixtures (fast; run it after editing this file)",
-    ).set_defaults(fn=cmd_self_test)
+    )
+    st.add_argument(
+        "--require-git",
+        action="store_true",
+        help="fail when git is absent instead of skipping the real-git probes (required CI lane)",
+    )
+    st.set_defaults(fn=cmd_self_test)
     q = sub.add_parser(
         "query",
         help="ask the graph a question",
