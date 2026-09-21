@@ -209,13 +209,17 @@ if ($incidents.Count -eq 0) {
 $soakFailures = @($inputs | Where-Object { $_.Where -eq 'Soak' })
 
 # Verdict: red on any failure evidence; red without execution
-# evidence (no trx, no counts) since a silent run proves nothing.
+# evidence (no trx, no counts) since a silent run proves nothing; red
+# when a ran gated leg has no gate code, since an unproven gate is an
+# infrastructure verdict by the classifier's own rule (a failure-free
+# legacy run still reds: its foreground proof is unrecoverable).
 $trxCount = @(Get-ChildItem $RunDir -Filter '*.trx' -Recurse -ErrorAction SilentlyContinue).Count
 $anyCounts = ($null -ne $rowA) -or ($null -ne $rowB) -or ($null -ne $rowI)
 $verdict = 'green'
 if (-not $anyCounts -and ($trxCount -eq 0)) { $verdict = 'red' }
 elseif ((($null -ne $rowA) -and ($rowA.failed -gt 0)) -or (($null -ne $rowB) -and ($rowB.failed -gt 0)) -or (($null -ne $rowI) -and ($rowI.failed -gt 0))) { $verdict = 'red' }
 elseif ((($null -ne $rowA) -and ($null -ne $rowA.gate) -and ($rowA.gate -ne 0)) -or (($null -ne $rowB) -and ($null -ne $rowB.gate) -and ($rowB.gate -ne 0))) { $verdict = 'red' }
+elseif ((($null -ne $rowA) -and ($null -eq $rowA.gate)) -or (($null -ne $rowB) -and ($null -eq $rowB.gate))) { $verdict = 'red' }
 elseif ($soakVerdict -eq 'red') { $verdict = 'red' }
 
 # Scheduler-enabled reads true only on scheduler-parented launches (a
@@ -241,7 +245,7 @@ $result = [pscustomobject]@{
   scheduler = [pscustomobject]@{ voted = $false; faults = @(); enabled = $schedEnabled; lastRun = ''; lastResult = '' }
   tree = [pscustomobject]@{ start = 'unknown (predates §16)'; end = 'unknown (predates §16)'; stable = $null }
   recovered = 'none'; omissionOk = $true
-  timings = $timings; reserve = $null
+  timings = $timings; reserve = $null; consumed = $null
   env = $envBlock
   report = $reportFile[0].FullName
   note = "backfilled $(Get-Date -Format 'yyyy-MM-dd'): mechanical derivation (report rows, transcripts, trx); unknowns noted, never guessed"

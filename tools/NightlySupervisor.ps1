@@ -39,6 +39,14 @@ $supHeld = $false
 try { $supHeld = $supMutex.WaitOne(0) }
 catch [System.Threading.AbandonedMutexException] { $supHeld = $true }
 if (-not $supHeld) {
+  $supNightDir = Join-Path $Root 'build\nightly'
+  New-Item -ItemType Directory -Path $supNightDir -Force | Out-Null
+  $supStamp = Get-Date -Format 'yyyy-MM-dd-HHmmss'
+  $supId = "$supStamp-pid$PID"
+  Write-AtomicReport @("# Stood-down run: $supId", 'Status: stood-down', '', "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Kind: supervisor', '- Holder: another watcher holds Global\ScratchPadNightlySupervisor', '- Verdict: STOOD DOWN (not run; the holder owns the watch)') (Join-Path $supNightDir "loser-$supId.md")
+  $supState = Get-SchedulerState (Join-Path $PSScriptRoot 'tasks\nightly-ui.xml')
+  $supResult = [pscustomobject]@{ version = 1; stamp = $supStamp; day = (Get-Date -Format 'yyyy-MM-dd'); identity = $supId; verdict = 'stood-down'; exit = 0; reason = 'supervisor mutex held by another watcher'; kind = 'supervisor'; scheduler = [pscustomobject]@{ ok = $supState.Ok; enabled = $supState.Enabled; lastRun = "$($supState.LastRunTime)"; lastResult = $supState.LastResult } }
+  Write-AtomicReport @((ConvertTo-Json $supResult -Depth 5)) (Join-Path $supNightDir "loser-$supId.result.json")
   Write-Output 'supervisor: another watcher holds the lock; standing down (exit 0, nothing failed)'
   exit 0
 }

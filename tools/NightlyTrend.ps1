@@ -16,6 +16,7 @@ $results = @()
 $skipped = @()
 $paths = @()
 $paths += @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$paths += @(Get-ChildItem $NightDir -Filter 'loser-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $paths += @(Get-ChildItem (Join-Path $NightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 foreach ($p in ($paths | Sort-Object -Unique)) {
   $chk = Test-ResultFile $p
@@ -24,8 +25,7 @@ foreach ($p in ($paths | Sort-Object -Unique)) {
 }
 $quar = Test-QuarantineWindows $LedgerPath (Get-Date)
 $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3
-$odNames = @($quar.Overdue | ForEach-Object { $_.Test })
-$lines = Format-TrendTable $results @{ Overdue = $odNames; DueSoon = @($dueSoon) }
+$lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) }
 if ($skipped.Count -gt 0) {
   $lines += ''
   $lines += ("- Skipped invalid results: " + ($skipped -join '; '))

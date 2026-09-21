@@ -1220,6 +1220,7 @@ if (($treeStart.State -eq 'clean') -and ($treeEnd.State -eq 'clean')) { $treeLin
 elseif (($treeStart.State -eq $treeEnd.State) -and ($treeStart.Fingerprint -eq $treeEnd.Fingerprint) -and ($treeStart.Count -eq $treeEnd.Count)) { $treeLine = "stable ($($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint))" }
 else { $treeLine = "MUTATED (start $($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint), end $($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint))" }
 $reserveLeft = [int](($deadline - (Get-Date)).TotalSeconds)
+$consumedSecs = [int]((Get-Date) - $runStart).TotalSeconds
 $timLine = ((@($phaseTimes.Keys | Sort-Object | ForEach-Object { "$_=$($phaseTimes[$_])s" }) -join ' ') + " reserve=${reserveLeft}s")
 $dur = Test-PhaseDurations (Join-Path $PSScriptRoot 'nightly-baseline.json') $phaseTimes
 if (-not $dur.Ok) { $failed = $true }
@@ -1306,7 +1307,7 @@ $result = [pscustomobject]@{
   scheduler = [pscustomobject]@{ voted = $schedVoted; faults = @($schedFaults); enabled = $taskEnabledLive; lastRun = "$taskLastRun"; lastResult = $taskLastResult }
   tree = [pscustomobject]@{ start = "$($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint)"; end = "$($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint)"; stable = ($treeLine -notlike 'MUTATED*') }
   recovered = $recoveredLine; omissionOk = ($omissionError -eq '')
-  timings = $phaseTimes; reserve = $reserveLeft
+  timings = $phaseTimes; reserve = $reserveLeft; consumed = $consumedSecs
   env = Get-EnvironmentBlock "$env:SCRATCHPAD_INTERACTIVE_WINDOW"
   report = "build/nightly/morning-$stamp.md"
 }
@@ -1324,7 +1325,7 @@ $exitCode = if ($failed) { 1 } else { 0 }
 $redDays = @()
 foreach ($rf in @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue)) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and ("$($ro.verdict)" -eq 'red')) { $redDays += "$($ro.day)" } }
 foreach ($rf in @((Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue))) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and ("$($ro.verdict)" -eq 'red')) { $redDays += "$($ro.day)" } }
-$ackDays = @(Get-ChildItem (Join-Path $Root 'docs/nightly-acks') -Filter 'ack-*.md' -ErrorAction SilentlyContinue | ForEach-Object { if ($_.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') { $Matches[1] } })
+$ackDays = @(Get-ChildItem (Join-Path $Root 'docs/nightly-acks') -Filter 'ack-*.md' -ErrorAction SilentlyContinue | ForEach-Object { if (($_.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') -and (Test-AckFile $_.FullName $Matches[1]).Ok) { $Matches[1] } })
 $ackCheck = Test-RedAcknowledged $redDays $ackDays
 $report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { ($ackCheck.Unacked -join ', ') })"
 $report += "- Result: morning-$stamp.result.json (v1 machine-readable)"
@@ -1339,11 +1340,16 @@ if ((-not $Smoke) -and (-not $simMode)) {
   $ts = $legA.skipped + $legB.skipped + $legI.skipped
   $tLines = @("$tp passed, $tf failed, $ts skipped (legs Run A/B/Interactive)", "Trigger: $trigger")
   if (@($incidentLines).Count -gt 0) { $tLines += @($incidentLines | Select-Object -First 1) } else { $tLines += 'No failures' }
-  if (@($odNames).Count -gt 0) { $tLines += ("Overdue quarantine: " + ($odNames -join ', ')) }
+  $odLines = @()
+  try { $odLines = @($quar.Overdue | ForEach-Object { "$($_.Test) (due $($_.Due), $($_.Owner))" }) } catch { }
+  if ($odLines.Count -eq 0) { try { $odLines = @($odNames) } catch { } }
+  if (@($odLines).Count -gt 0) { $tLines += ("Overdue quarantine: " + ($odLines -join '; ')) }
   if (-not $ackCheck.Ok) { $tLines += ("Unacked REDs: " + ($ackCheck.Unacked -join ', ')) }
   $tLines += "Report: build/nightly/morning-$day.md"
   $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }
-  if (Send-NightlyToast "Nightly $day : $ww" $tLines) { Write-Output 'nightly: morning toast sent' } else { Write-Output 'nightly: morning toast failed (best-effort; report stands)' }
+  $clsOut = 'green'
+  try { $clsOut = (Classify-NightlyOutcome $result).Class } catch { }
+  if (Send-NightlyToast "Nightly $day : $ww ($clsOut)" $tLines) { Write-Output 'nightly: morning toast sent' } else { Write-Output 'nightly: morning toast failed (best-effort; report stands)' }
 }
 try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null; Write-Output 'nightly: trend rendered' } catch { Write-Output "nightly: trend render failed (best-effort): $_" }
 if ($exitCode -ne 0) { Write-Output 'nightly: RED (see above)'; exit 1 }

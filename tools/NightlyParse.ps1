@@ -1233,8 +1233,10 @@ public static class DpiProbe {
 function Test-ResultFile([string]$Path) {
   # Validates a versioned machine-readable result (D00 T02 §17 item
   # 6): JSON parses, version is 1, identity fields read, verdict is
-  # known, and green/red verdicts carry legs plus soak plus env.
-  # Stood-down and cancelled verdicts carry the minimal shape.
+  # known, and green/red verdicts carry shaped legs plus soak plus
+  # env (presence alone is not enough: an empty block would satisfy
+  # the readers with nothing). Stood-down and cancelled verdicts
+  # carry the minimal shape.
   $o = $null
   try { $o = Get-Content $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Ok = $false; Error = "result unreadable: $_" } }
   $v = -1
@@ -1248,6 +1250,13 @@ function Test-ResultFile([string]$Path) {
     foreach ($f in @('legs', 'soak', 'env', 'timings')) {
       if ($null -eq $o.$f) { return [pscustomobject]@{ Ok = $false; Error = "result missing $f" } }
     }
+    foreach ($leg in @('run-a', 'run-b', 'interactive')) {
+      $g = $null
+      try { $g = $o.legs.$leg } catch { }
+      if ($null -eq $g) { return [pscustomobject]@{ Ok = $false; Error = "result legs missing $leg" } }
+      try { if ($null -eq $g.ran) { return [pscustomobject]@{ Ok = $false; Error = "result legs.$leg missing ran" } } } catch { return [pscustomobject]@{ Ok = $false; Error = "result legs.$leg missing ran" } }
+    }
+    if (("$($o.soak.verdict)" -eq '') -or (@('green', 'red', 'skipped') -notcontains "$($o.soak.verdict)")) { return [pscustomobject]@{ Ok = $false; Error = 'result soak verdict unknown' } }
   }
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }
@@ -1351,14 +1360,15 @@ function Classify-NightlyOutcome($Result) {
   return [pscustomobject]@{ Class = 'infrastructure'; Route = 'red without a classified cause: route to a human' }
 }
 
-function Format-TrendTable($Results, [hashtable]$Quarantine) {
+function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = (Get-Date)) {
   # Renders nights as a Markdown trend (D00 T02 §17 items 2, 4, 9):
   # one row per run plus pass-rate, duration, quarantine-age, flake,
   # gate, budget-telemetry, and environment series. Pure over
   # result objects plus the quarantine snapshot
-  # (@{Overdue=@(); DueSoon=@()}); the trend script discovers both.
-  # Stood-down and cancelled verdicts render as marks, never
-  # numbers. Percentiles are median/max (tiny-n honest).
+  # (@{Overdue=@() overdue objects-or-names; DueSoon=@()}); the trend
+  # script discovers both. Stood-down and cancelled verdicts render
+  # as marks, never numbers. Percentiles are median/max (tiny-n
+  # honest). $Today anchors the oldest-overdue age; fixtures pin it.
   $rows = @($Results | Sort-Object { "$($_.day)-$($_.stamp)" })
   $lines = @('# Nightly trend', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | Flakes | Env |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   $allA = @()
@@ -1381,20 +1391,31 @@ function Format-TrendTable($Results, [hashtable]$Quarantine) {
       try { $f += [int]$o.failed } catch { }
       try { $s += [int]$o.skipped } catch { }
     }
-    $pass = if (($p + $f + $s) -gt 0) { "$p/$f/$s" } elseif ($anyRan) { 'unproven' } else { 'no legs ran' }
+    $tot = $p + $f + $s
+    if ($tot -gt 0) { $rate = [math]::Round((100 * $p) / $tot, 1); $pass = "$p/$f/$s ($rate%)" }
+    elseif ($anyRan) { $pass = 'unproven' }
+    else { $pass = 'no legs ran' }
     $ra = '-'
     try { if ($null -ne $r.legs.'run-a'.testSeconds) { $ra = "$($r.legs.'run-a'.testSeconds)"; $allA += [int]$r.legs.'run-a'.testSeconds } } catch { }
     $rb = '-'
     try { if ($null -ne $r.legs.'run-b'.testSeconds) { $rb = "$($r.legs.'run-b'.testSeconds)" } } catch { }
     $soak = '-'
-    try { $soak = "$($r.soak.verdict) $($r.soak.passed)/$($r.soak.failed)/$($r.soak.unproven)" } catch { }
+    try {
+      $soak = "$($r.soak.verdict)"
+      $fraw = $r.soak.failed
+      if ($fraw -is [array]) { $sfn = @($fraw | Where-Object { $_ -is [string] }); if ($sfn.Count -gt 0) { $soak += ' ' + ($sfn -join ',') } }
+      elseif (([int]$fraw) -gt 0) { $soak += " failed=$fraw" }
+      $skn = @($r.soak.killed | Where-Object { $null -ne $_ }).Count; $scn = @($r.soak.cut | Where-Object { $null -ne $_ }).Count
+      if ($skn -gt 0) { $soak += " killed=$skn" }
+      if ($scn -gt 0) { $soak += " cut=$scn" }
+    } catch { }
     $gates = '-'
     try { $gates = "$($r.legs.'run-a'.gate)/$($r.legs.'run-b'.gate)" } catch { }
     $res = '-'
     try { if ($null -ne $r.reserve) { $res = "$($r.reserve)s" } } catch { }
     $od = 0; $ds = 0
-    try { $od = @($r.quarantine.overdue).Count } catch { }
-    try { $ds = @($r.quarantine.dueSoon).Count } catch { }
+    try { $od = @($r.quarantine.overdue | Where-Object { $null -ne $_ }).Count } catch { }
+    try { $ds = @($r.quarantine.dueSoon | Where-Object { $null -ne $_ }).Count } catch { }
     $sf = 0
     try { $fv = $r.soak.failed; if ($fv -is [array]) { $sf = @($fv).Count } else { $sf = [int]$fv } } catch { }
     $envShort = 'unknown'
@@ -1424,13 +1445,69 @@ function Format-TrendTable($Results, [hashtable]$Quarantine) {
   }
   else { $lines += '- RunA test-seconds: no measurements' }
   $qo = 0; $qs = 0
-  try { $qo = @($Quarantine['Overdue']).Count } catch { }
-  try { $qs = @($Quarantine['DueSoon']).Count } catch { }
-  $lines += "- Quarantine now: $qo overdue, $qs due within 3 days"
+  try { $qo = @($Quarantine['Overdue'] | Where-Object { $null -ne $_ }).Count } catch { }
+  try { $qs = @($Quarantine['DueSoon'] | Where-Object { $null -ne $_ }).Count } catch { }
+  $oldest = ''
+  try {
+    $cands = @($Quarantine['Overdue'] | Where-Object { ($null -ne $_) -and ($null -ne $_.Due) })
+    $best = $null; $bestAge = -1
+    foreach ($c in $cands) {
+      $dd = [datetime]::MinValue
+      if (-not [datetime]::TryParse("$($c.Due)", [ref]$dd)) { continue }
+      $age = [int](($Today.Date - $dd.Date).TotalDays)
+      if ($age -gt $bestAge) { $bestAge = $age; $best = $c }
+    }
+    if ($null -ne $best) { $oldest = ", oldest $($bestAge)d: $($best.Test)" }
+  } catch { }
+  $lines += "- Quarantine now: $qo overdue$oldest, $qs due within 3 days"
+  $lines += ''
+  $lines += '## Budget'
+  $lines += ''
+  $ranked = @($allA | Sort-Object)
+  foreach ($r in $rows) {
+    if ((("$($r.verdict)") -eq 'stood-down') -or (("$($r.verdict)") -eq 'cancelled')) { continue }
+    $ph = 'no timings'
+    try {
+      $tp = @()
+      $tobj = $r.timings
+      if ($null -ne $tobj) {
+        $names = @()
+        if ($tobj -is [hashtable]) { try { $names = @($tobj.Keys) } catch { } }
+        else { try { $names = @($tobj.PSObject.Properties.Name) } catch { } }
+        foreach ($k in ($names | Sort-Object)) {
+          $vv = $null
+          try { $vv = $tobj.$k } catch { try { $vv = $tobj[$k] } catch { } }
+          if ($null -ne $vv) { $tp += "$k=${vv}s" }
+        }
+      }
+      if ($tp.Count -gt 0) { $ph = ($tp -join ' ') }
+    } catch { }
+    $bud = 'budget unknown'
+    try {
+      $used = $null; $left = $null
+      try { if ($null -ne $r.consumed) { $used = [int]$r.consumed } } catch { }
+      try { if ($null -ne $r.reserve) { $left = [int]$r.reserve } } catch { }
+      if (($null -ne $used) -and ($null -ne $left)) { $bud = "used ${used}s / left ${left}s (span $($used + $left)s)" }
+      elseif ($null -ne $used) { $bud = "used ${used}s / left unknown" }
+      elseif ($null -ne $left) { $bud = "used unknown / left ${left}s" }
+    } catch { }
+    $rk = 'RunA unranked'
+    try {
+      $mine = $null
+      try { if ($null -ne $r.legs.'run-a'.testSeconds) { $mine = [int]$r.legs.'run-a'.testSeconds } } catch { }
+      if (($null -ne $mine) -and ($ranked.Count -gt 0)) {
+        $pos = 1
+        foreach ($v in $ranked) { if ([int]$v -lt $mine) { $pos++ } else { break } }
+        $rk = "RunA rank $pos/$($ranked.Count)"
+      }
+    } catch { }
+    $lines += "- $($r.day) $($r.stamp): phases $ph; $bud; $rk"
+  }
   $lines += ''
   $lines += '## Environments'
   $lines += ''
   foreach ($r in $rows) {
+    if ((("$($r.verdict)") -eq 'stood-down') -or (("$($r.verdict)") -eq 'cancelled')) { continue }
     $e = 'unknown'
     try { $e = "OS $($r.env.os); PS $($r.env.powershell); dotnet $($r.env.dotnet); $($r.env.session); $($r.env.topology); $($r.env.dpi); $($r.env.adapters); $($r.env.settings)" } catch { }
     $lines += "- $($r.day) $($r.stamp): $e"
@@ -1446,4 +1523,18 @@ function Test-RedAcknowledged([string[]]$RedDays, [string[]]$AckDays) {
   $un = @($RedDays | Where-Object { $AckDays -notcontains $_ } | Sort-Object -Unique)
   if ($un.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Unacked = $un } }
   return [pscustomobject]@{ Ok = $true; Unacked = @() }
+}
+
+function Test-AckFile([string]$Path, [string]$Day) {
+  # Ack validity (D00 T02 §17 item 3): a sign-off names its owner plus
+  # its day and carries substance (failures plus cause cannot fit in
+  # 200 chars, so shorter files read unsigned, never acked). An empty
+  # or anonymous file must never suppress a RED.
+  if (-not (Test-Path $Path -PathType Leaf)) { return [pscustomobject]@{ Ok = $false; Error = 'ack missing' } }
+  $text = ''
+  try { $text = [string](Get-Content $Path -Raw -ErrorAction Stop) } catch { return [pscustomobject]@{ Ok = $false; Error = 'ack unreadable' } }
+  if ($text -notmatch 'Owner:\s*\S+') { return [pscustomobject]@{ Ok = $false; Error = 'ack names no owner' } }
+  if ($text -notmatch [regex]::Escape($Day)) { return [pscustomobject]@{ Ok = $false; Error = 'ack names no day' } }
+  if ($text.Length -lt 200) { return [pscustomobject]@{ Ok = $false; Error = 'ack too short to carry cause' } }
+  return [pscustomobject]@{ Ok = $true; Error = '' }
 }
