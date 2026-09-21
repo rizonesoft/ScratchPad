@@ -6861,6 +6861,41 @@ def _plan_state(todos: list[Todo]) -> dict[str, str]:
     return state
 
 
+def _plan_items(todos: list[Todo]) -> dict[str, int]:
+    """Map 'D05 T02 §3' -> the section's live checklist length."""
+    items: dict[str, int] = {}
+    for t in todos:
+        dom = t.domain.split("-")[0]
+        for num, s in t.sections.items():
+            if s.moved:
+                continue
+            items[f"D{dom} T{t.number} §{num}"] = s.items_total
+    return items
+
+
+PLAN_ITEM_TAIL_RE = re.compile(r"\|\s*(?P<n>\d+)\s*\|\s*$")
+_PLAN_SEP_CELL_RE = re.compile(r"^:?-+:?$")
+
+
+def _plan_header_counts_items(line: str) -> bool:
+    cells = [c.strip() for c in line.strip().strip("|").split("|")]
+    return any(c == "Items" for c in cells)
+
+
+def _rewrite_item_count(line: str, want: int) -> tuple[str, str | None]:
+    """Replace a row's trailing Items cell. Returns the line and a drift note."""
+    tm = PLAN_ITEM_TAIL_RE.search(line)
+    if tm is None:
+        return line, "missing"
+    got = int(tm.group("n"))
+    if got == want:
+        return line, None
+    return (
+        line[: tm.start("n")] + str(want) + line[tm.end("n") :],
+        f"{got}!={want}",
+    )
+
+
 def _in_progress_by_ref(todos: list[Todo]) -> dict[str, bool]:
     """Shipped-but-unstamped: Commit item ticked, no Verified stamp. D00 T06 §31."""
     flags: dict[str, bool] = {}
@@ -7400,6 +7435,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     So the plan's checkboxes are a projection of the Implementation Order
     tables, which `review-todo-section` is the only thing allowed to flip.
+    The Items cell is the same kind of projection: it is the section's
+    live checklist length, rewritten by `--sync` and refused by `--check`
+    when a later joiner leaves the printed count behind. Tables whose
+    last header is not `Items` (fixture Day columns) are left alone.
     `--check` is what CI runs; it fails when the projection has gone stale.
     """
     if not PLAN.exists():
@@ -7408,6 +7447,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     todos = load_todos()
     state = _plan_state(todos)
+    item_counts = _plan_items(todos)
+    items_table = False
 
     lines = PLAN.read_text(encoding="utf-8").splitlines()
     out: list[str] = []
@@ -7443,6 +7484,14 @@ def cmd_plan(args: argparse.Namespace) -> int:
             continue
         m = PLAN_ROW_RE.match(line)
         if not m:
+            if line.startswith("|"):
+                cells = [c.strip() for c in line.strip().strip("|").split("|")]
+                if _plan_header_counts_items(line):
+                    items_table = True
+                elif cells and all(_PLAN_SEP_CELL_RE.match(c) for c in cells):
+                    pass
+            elif line.strip():
+                items_table = False
             if pending_notes and not line.startswith("|"):
                 flush_notes(line)
             out.append(line)
@@ -7468,7 +7517,19 @@ def cmd_plan(args: argparse.Namespace) -> int:
         # Rebuilding would collapse the column padding on every sync, so the
         # file would be aligned exactly until the next time anything shipped --
         # which is the one moment nobody is looking at its whitespace.
-        out.append(line[: m.start("box")] + want + line[m.end("box") :])
+        line = line[: m.start("box")] + want + line[m.end("box") :]
+        if items_table:
+            want_n = item_counts.get(ref)
+            if want_n is not None:
+                rewritten, drift = _rewrite_item_count(line, want_n)
+                if drift == "missing":
+                    stale.append(f"{ref}: plan row has no Items count, graph says {want_n}")
+                elif drift is not None:
+                    stale.append(
+                        f"{ref}: plan says {drift.split('!=')[0]} items, graph says {want_n}"
+                    )
+                    line = rewritten
+        out.append(line)
 
     # A section listed TWICE is the failure this projection exists to prevent,
     # and it is not caught by any check above: both rows sync happily to the
@@ -7960,6 +8021,18 @@ def cmd_self_test(args) -> int:
         check("§2 row is open", ta.sections[2].status, " ")
         check("§2 counts three items", ta.sections[2].items_total, 3)
         check("§1 counts its done items", ta.sections[1].items_done, 2)
+        _item_row = "| [ ] | `D00 T01 §55` | Clearance causality follow-ups |  11   |"
+        _item_rewritten, _item_drift = _rewrite_item_count(_item_row, 30)
+        check("item count drift is named", _item_drift, "11!=30")
+        check(
+            "item count rewrite keeps the row and writes the live total",
+            _item_rewritten,
+            "| [ ] | `D00 T01 §55` | Clearance causality follow-ups |  30   |",
+        )
+        _item_same, _item_quiet = _rewrite_item_count(_item_rewritten, 30)
+        check("item count in sync is quiet", (_item_same, _item_quiet), (_item_rewritten, None))
+        check("Items header is detected", _plan_header_counts_items("| ✔ | Section | Deliverable | Items |"), True)
+        check("Days header is not an item count", _plan_header_counts_items("| ✔ | Section | Deliverable | Days |"), False)
         check("§2 has a Test checkpoint", ta.sections[2].has_test_checkpoint, True)
         # --- the Needs marker (D00 T07 §28) ---------------------------------
         check("§2 Needs parses to the closed-list key", ta.sections[2].needs, ["windows-host"])

@@ -368,7 +368,7 @@ is a complete instruction: nobody has to translate domain `00` and TODO `01` int
 
 `build/` is gitignored: the cache is always reproducible from the markdown.
 
-[`implementation-plan.md`](./implementation-plan.md) is the second derived artefact, and the only one that is committed: it is prose a person reads, so it cannot live in `build/`. Its boxes are a projection of the Implementation Order tables and **are never ticked by hand**; `plan --check` runs in CI so a stale projection fails the build instead of quietly misinforming whoever reads it next. Run `plan --sync` after any row flips.
+[`implementation-plan.md`](./implementation-plan.md) is the second derived artefact, and the only one that is committed: it is prose a person reads, so it cannot live in `build/`. Its boxes and its Items counts are a projection of the Implementation Order tables and **are never ticked or recounted by hand**; `plan --check` runs in CI so a stale box or a stale item count fails the build instead of quietly misinforming whoever reads it next. Run `plan --sync` after any row flips or any checklist grows.
 
 ### FATAL blocks; WARN is ratcheted
 
