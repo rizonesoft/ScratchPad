@@ -1887,10 +1887,12 @@ NONCOVER_FIX = {
 # successor still covers; the debt being gone obligates filing,
 # not renewing), `rejected` and `closed` terminate (a matched
 # record voids even when every leg passes). No outcome narrows;
-# narrowing rides a fresh waiver with a narrower target.
-# Mirrored row-for-row in todo/README.md's outcome matrix (the
-# self-test compares the two, so the doc cannot drift from the
-# code).
+# narrowing rides a fresh waiver with a narrower target plus a
+# same-target `closed` successor ending the broad scope (D00 T01
+# §53 item 11: succession stays same-target, so no link spans
+# the narrowing). Mirrored row-for-row in todo/README.md's
+# outcome matrix (the self-test compares the two, so the doc
+# cannot drift from the code).
 OUTCOME_MATRIX = {
     "renewed": ("continues", "next review at the successor's review date"),
     "remediated": ("continues", "file the row; the waiver covers until filed"),
@@ -4760,23 +4762,24 @@ def cmd_query(args) -> int:
                         # ("" when the target has no history), so
                         # risk never disappears across supersession:
                         # the reopened finding names the instruments
-                        # that covered it before. Cross-target
-                        # successors ride too (narrow dispositions
-                        # supersede across targets); a successor the
-                        # file never names reads "?" (the missing
-                        # link is the validator's FATAL, never a
-                        # query crash).
-                        _succ_of: dict[str, tuple[str, str]] = {}
+                        # that covered it before. Same-target
+                        # successors only (succession stays
+                        # same-target under the validator; a
+                        # cross-target or missing successor reads
+                        # "?", never a query crash).
+                        _succ_of: dict[str, tuple[str, str, str]] = {}
                         for _ht in _accs:
                             if _ht[7]:
-                                _succ_of[_ht[7]] = (_ht[10], _ht[12])
+                                _succ_of[_ht[7]] = (_ht[10], _ht[12], _ht[0].lower())
                         _link_parts = []
                         for _ht in _accs:
                             if _ht[9] != "finding" or _ht[0].lower() != lr.group(1).lower():
                                 continue
                             if _ht[10] not in _supd:
                                 continue
-                            _s = _succ_of.get(_ht[10], ("?", ""))
+                            _s = _succ_of.get(_ht[10], ("?", "", ""))
+                            if _s[2] != _ht[0].lower():
+                                _s = ("?", "?", "")
                             _link_parts.append(f"{_ht[10]} by {_s[0]} ({_s[1] or '?'})")
                         _supd_link = "; ".join(_link_parts)
                         if sev == "major" and disp in ("accepted", "deferred"):
@@ -5200,13 +5203,16 @@ def cmd_query(args) -> int:
         # reviewer closes it with one disposition, recorded as the
         # superseding outcome. RENEW (outcome renewed, same target):
         # the risk still holds, coverage continues, next review at
-        # the successor's date. NARROW (outcome renewed on a fresh
-        # waiver with a narrower target, superseding the broad
-        # record): the broad review closes but the broad finding
-        # goes uncovered until its row resolves, so narrow completes
-        # only with the broad remediation or filing. REVOKE
-        # (outcome rejected): the acceptance is withdrawn, the
-        # review closes, and the escalation returns to unhandled.
+        # the successor's date. NARROW (a fresh waiver on the
+        # narrower target plus a same-target superseder with outcome
+        # `closed` ending the broad scope: succession stays
+        # same-target, so the broad review closes through the closed
+        # head, never across targets): the narrowed target stays
+        # covered but the broad finding goes uncovered until its row
+        # resolves, so narrow completes only with the broad
+        # remediation or filing. REVOKE (outcome rejected): the
+        # acceptance is withdrawn, the review closes, and the
+        # escalation returns to unhandled.
         # Evidence: the closing record carries re-examination
         # evidence (grammar-required on every record); reusing the
         # predecessor's commit is sound only when the tree is
@@ -15346,6 +15352,10 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             _ol33_rc4, _ol33_out4 = _ol33_run()
             _ol33_map.unlink()
             _ol33_rc5, _ol33_out5 = _ol33_run()
+            _ol33_map.write_text('["ann", "yara"]', encoding="utf-8")
+            _ol33_rc6, _ol33_out6 = _ol33_run()
+            _ol33_map.write_text('{"yara": "yaragh", "xenia": "xeniagh"}', encoding="utf-8")
+            _ol33_rc7, _ol33_out7 = _ol33_run()
         finally:
             TODO_DIR = saved_ol33
         check(
@@ -15380,6 +15390,27 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check("a root without a mapping file stays silent", _ol33_rc5, 0)
+        check(
+            "a non-object mapping fires fatal",
+            (
+                _ol33_rc6 == 1
+                and sum(1 for ln in _ol33_out6 if "owner-login mapping is malformed" in ln) == 1
+            ),
+            True,
+        )
+        check(
+            "an unmapped marker owner warns",
+            (
+                _ol33_rc7 == 1
+                and sum(1 for ln in _ol33_out7 if "owner ann has no GitHub login mapping" in ln)
+                == 1
+                and sum(1 for ln in _ol33_out7 if "owner yara has no GitHub login mapping" in ln)
+                == 0
+                and sum(1 for ln in _ol33_out7 if "owner xenia has no GitHub login mapping" in ln)
+                == 0
+            ),
+            True,
+        )
         # --- composite residual states pin the sort-plus-join (D00 T01 §52 item 6)
         # Isolated root: §1's marker carries a run plus partial plus
         # retry-owed (grammar-legal composite), §2's a run plus a
@@ -17023,11 +17054,11 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         # Review dispositions (D00 T01 §53 item 11): one tree with a
-        # narrow chain (broad A1 overdue, superseded by renewed A2 on
-        # the narrowed target) and a revoke chain (A3 overdue,
-        # superseded by rejected A4). Both overdue reviews close;
-        # the narrowed target stays covered, the broad and revoked
-        # findings go uncovered, and the gate names them.
+        # narrow pair (broad A1 overdue, closed by same-target A2,
+        # plus fresh narrowed head A3) and a revoke chain (A4
+        # overdue, superseded by rejected A5). Both overdue reviews
+        # close; the narrowed target stays covered, the broad and
+        # revoked findings go uncovered, and the gate names them.
         _d0 = date.today().isoformat()
         _d_rec = (date.today() - timedelta(days=3)).isoformat()
         _d_over = (date.today() - timedelta(days=1)).isoformat()
@@ -17053,15 +17084,16 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "Manifest: sections [D90 T01 §1]; dependents [none]; bytes 100; run 20260920-D90-T01-S1-gpt\n\n"
             "Ledger:\n- [D90-T01-S1-PR1] [major] broad risk -> accepted\n- [D90-T01-S1-PR2] [major] narrowed risk -> accepted\n- [D90-T01-S1-PR3] [major] revoked risk -> accepted\nEnd of ledger\n"
             f"Risk accepted: D90-T01-S1-PR1; id A1; approver bob; owner bob; date {_d_rec}; expires {_d_far}; review {_d_over}; evidence c111111100000000000000000000000000000000; rationale broad risk under review\n"
-            f"Risk accepted: D90-T01-S1-PR2; id A2; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c222222200000000000000000000000000000000; supersedes A1; outcome renewed; rationale narrowed to PR2 at review\n"
-            f"Risk accepted: D90-T01-S1-PR3; id A3; approver bob; owner bob; date {_d_rec}; expires {_d_far}; review {_d_over}; evidence c333333300000000000000000000000000000000; rationale revoked risk under review\n"
-            f"Risk accepted: D90-T01-S1-PR3; id A4; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c444444400000000000000000000000000000000; supersedes A3; outcome rejected; rationale revoked at review, needs remediation\n",
+            f"Risk accepted: D90-T01-S1-PR1; id A2; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c222222200000000000000000000000000000000; supersedes A1; outcome closed; rationale broad scope closed at narrow review\n"
+            f"Risk accepted: D90-T01-S1-PR2; id A3; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c333333300000000000000000000000000000000; rationale narrowed head, fresh waiver\n"
+            f"Risk accepted: D90-T01-S1-PR3; id A4; approver bob; owner bob; date {_d_rec}; expires {_d_far}; review {_d_over}; evidence c444444400000000000000000000000000000000; rationale revoked risk under review\n"
+            f"Risk accepted: D90-T01-S1-PR3; id A5; approver bob; owner bob; date {_d0}; expires {_d_far}; review {_d_far}; evidence c555555500000000000000000000000000000000; supersedes A4; outcome rejected; rationale revoked at review, needs remediation\n",
             encoding="utf-8",
         )
         # Fresh canned evidence (the acc6 pattern): the narrowed
         # head covers only over bytes equal to the live record.
         _disp_live = (clean / "docs" / "reviews" / "90-clean.md").read_text(encoding="utf-8")
-        for _dsha in ("c1111111", "c2222222", "c3333333", "c4444444"):
+        for _dsha in ("c1111111", "c2222222", "c3333333", "c4444444", "c5555555"):
             canned_git[(_dsha + "0" * 32, "docs/reviews/90-clean.md")] = _disp_live
         saved_tree, TODO_DIR = TODO_DIR, clean / "todo"
         try:
@@ -17085,7 +17117,7 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             "narrow covers the narrowed target, broad goes uncovered",
             (
                 _disp_maj["D90-T01-S1-PR2"]["accepted_by"] != ""
-                and _disp_maj["D90-T01-S1-PR2"]["accepted_outcome"] == "renewed"
+                and _disp_maj["D90-T01-S1-PR2"]["accepted_outcome"] == ""
                 and _disp_maj["D90-T01-S1-PR1"]["accepted_by"] == ""
             ),
             True,
@@ -17099,10 +17131,10 @@ Backlink host for D90-T07-S92-PR6 (rule-19 probe).
             True,
         )
         check(
-            "dispositions link across targets and outcomes",
+            "dispositions link the closed scope and the revoked chain",
             (
-                _disp_maj["D90-T01-S1-PR1"]["superseded"] == "A1 by A2 (renewed)"
-                and _disp_maj["D90-T01-S1-PR3"]["superseded"] == "A3 by A4 (rejected)"
+                _disp_maj["D90-T01-S1-PR1"]["superseded"] == "A1 by A2 (closed)"
+                and _disp_maj["D90-T01-S1-PR3"]["superseded"] == "A4 by A5 (rejected)"
                 and _disp_maj["D90-T01-S1-PR2"]["superseded"] == ""
             ),
             True,
@@ -21587,6 +21619,12 @@ track: Z1
             check(
                 "heartbeat corrupt history fails closed",
                 _hb_p.returncode == 1 and "non-JSON" in _hb_p.stderr,
+                True,
+            )
+            _hb_p = _beat(_fresh_runs, "--now", "2026-09-21T04:30:00")
+            check(
+                "heartbeat naive --now reads UTC",
+                _hb_p.returncode == 0 and "1.5h ago" in _hb_p.stdout,
                 True,
             )
         _planyml = (saved_todo_dir.parent / ".github" / "workflows" / "plan.yml").read_text(

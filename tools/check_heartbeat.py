@@ -38,7 +38,10 @@ def fail(msg: str) -> int:
 
 
 def parse_now(text: str) -> datetime:
-    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+    dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    # Naive --now reads UTC (the job clock): arithmetic against
+    # offset-aware run stamps must never meet a naive datetime.
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 def main(argv: list | None = None) -> int:
