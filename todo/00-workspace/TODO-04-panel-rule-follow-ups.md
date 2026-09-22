@@ -54,7 +54,8 @@ track: W0
 |  16   |  §16    | Section-15 plan-review residuals | D00 T04 §15 |  [ ]   |
 |  17   |  §17    | Section-14 sign-off residuals | D00 T04 §14 |  [ ]   |
 |  18   |  §18    | Section-14 plan-review residuals | D00 T04 §14 |  [ ]   |
-|  19   |  §19    | Opus 5.5 reviewer re-pin | D00 T04 §15 |  [ ]   |
+|  19   |  §19    | Opus 5.5 reviewer re-pin | D00 T04 §15 |  [x]   |
+|  20   |  §20    | Section-19 plan-review residuals | D00 T04 §19 |  [ ]   |
 
 ---
 
@@ -332,11 +333,11 @@ Why this section exists: the panel spends uniform high effort on two models (`gp
 
 ## 16. Section-15 plan-review residuals
 
-Why this section exists: the §15 plan review (terra-high over §15 plus §14 plus T01 §35 plus T01 §37 plus T04 §1, 4 findings) returned 3 residuals that belong to the panel rules, and §1 sits at the 30-item sizing rule so they home here instead of joining it. -> XREF: D00 T04 §15 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s15-2026-09-22-t04 D00-T04-S15-PR1 D00-T04-S15-PR2 D00-T04-S15-PR3 (`gpt-5.6-terra` high over §15 plus §14 plus §35 plus §37 plus §1, 4 findings, 3 filed here, PR4 a premium win noted not filed, synthesis with reasons in the §15 findings file).
+Why this section exists: the §15 plan review (terra-high over §15 plus §14 plus T01 §35 plus T01 §37 plus T04 §1, 4 findings) returned 3 residuals that belong to the panel rules, and §1 sits at the 30-item sizing rule so they home here instead of joining it. -> XREF: D00 T04 §15 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s15-2026-09-22-t04 D00-T04-S15-PR1 D00-T04-S15-PR2 D00-T04-S15-PR3 (`gpt-5.6-terra` high over §15 plus §14 plus §35 plus §37 plus §1, 4 findings, 3 filed here, PR4 a premium win noted not filed, synthesis with reasons in the §15 findings file); -> SOURCE: plan-review-D00-T04-s19-2026-09-22-t04-s16 D00-T04-S19-PR4 D00-T04-S19-PR5 (accepted in the §19 stamp run: vocabulary alignment plus stamp-keyed boundary rewordings).
 
-- [ ] Post-rewire gpt-rung prose reads sol by gate: a date-scoped validator rule plus failure fixture rejects post-rewire Terra wording where the `gpt rung` sentence must name Sol with the stamp-date split, so the era split holds under self-test instead of by prose alone (PR1 D00-T04-S15-PR1). Done when: the rule plus fixtures ship with the cutover date.
+- [ ] Post-rewire gpt-rung prose reads sol by gate: a validator rule plus failure fixture rejects post-§15 Terra wording where the `gpt rung` sentence must name Sol, keyed on the §15 stamp rather than a bare date (same-day 2026-09-22 reviews sit on both sides of the rewire), so the era split holds under self-test instead of by prose alone (PR1 D00-T04-S15-PR1; PR5 D00-T04-S19-PR5: date boundary replaced). Done when: the rule plus fixtures ship keyed on the §15 stamp.
 - [ ] §35's all-Opus item carries the ladder supersession: a dated annotation records that the §15 ladder (sol, then terra, then opus per bulk round) supersedes the all-Opus fill sentence, so readers of the frozen checklist meet the current matrix instead of stale prose (PR2 D00-T04-S15-PR2, synthesized: the §15 skills name cross-fill plus parity; the residue is §35's frozen wording). Done when: the annotation reads on §35 with the §15 range.
-- [ ] Fallback sign-off records on the stamp: the opus-outage exception (terra-high fallback as governing sign-off) defines its stamp marker plus validator grammar, so a fallback-governed stamp reads distinctly from a normal sign-off instead of hiding in the record note alone (PR3 D00-T04-S15-PR3). Done when: the marker plus grammar plus fixtures ship.
+- [ ] Fallback sign-off records on the stamp: the Claude-outage exception (terra-high fallback as governing sign-off) defines its stamp marker plus validator grammar, so a fallback-governed stamp reads distinctly from a normal sign-off instead of hiding in the record note alone (PR3 D00-T04-S15-PR3; PR4 D00-T04-S19-PR4: vocabulary aligned to the post-cutover record words). Done when: the marker plus grammar plus fixtures ship.
 - [ ] Commit: `"workspace: file section-15 plan-review residuals"`
 
 **Test checkpoint:** post-rewire gpt-rung prose gates on sol, §35 reads the ladder supersession, and fallback sign-offs stamp distinctly. Falsifiable by any terra-named gpt rung passing post-rewire, any unannotated all-Opus read, or any fallback sign-off stamping silently.
@@ -376,3 +377,20 @@ Why this section exists: the panel's opus slots pin `claude-opus-5`, but the run
 - [ ] Commit: `"workspace: re-pin reviewers to opus 5.5"`
 
 **Test checkpoint:** every opus slot resolves the new id from the TOML, the retired id fires outside history, no skill command carries a literal pin, the rung mapping and record words are untouched, and self-test plus live validate read green. Falsifiable by any opus slot on the retired id, any literal pin passing, any renamed record word, or any red gate.
+**Noted 2026-09-22 (§20 filed):** plan-review residuals (CLI floor pre-dispatch check, per-slot argv fixtures) home in §20.
+
+> **Verified:** 2026-09-22 | §19 | self-test 1572/1572 (R1-F1 pin-injection fixture); live validate 0 fatal 1 warning (known owner-login mapping); Full panel (sol R1-R2 bulk, opus-5-5 R3 sign-off, opus-5-5 R4-R5 depth) over candidates 19363bd d23cc1e e2234d4 caad9ff 6b86bc9 f372a0d b3c724d b4cc7ed, R1-F1/F2 plus R2-F1/F2 plus R3-F1 plus R4-F1 fix-loop fixed; plan review 7 findings, 2 filed at §20, 2 accepted, 2 rejected, 1 win noted
+> **Review:** round 5 (FINAL), candidates 19363bd d23cc1e e2234d4 caad9ff 6b86bc9 f372a0d b3c724d b4cc7ed -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1 fix-loop d23cc1e, R2 fix-loop caad9ff, R3 fix-loop f372a0d, R4 record reorder b4cc7ed, R5 all-approve. Raw findings: docs/reviews/00-workspace/D00-T04-s19.md
+> **Plan review:** GPT medium, filed D00 T04 §20 (run 20260922-D00-T04-S19-codex-c7001fd6f-r3)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-case assertions); implementation edited the TOML, model set, fixtures, skills, README, and ticks (read back via self-test 1572/1572, live validate 0 fatal, probe 6/6, plan --check current); filings opened §20 plus §16 acceptances (read back via plan --check current)
+> **Duration:** 2026-09-22T17:50:29Z to 2026-09-22T18:48:54Z
+
+## 20. Section-19 plan-review residuals
+
+Why this section exists: the §19 plan review (sol-medium over §19 plus §15 plus §14 plus §16, 7 findings) returned 2 residuals that belong to the panel rules: a documented runner floor with no pre-dispatch enforcement, and per-slot argv coverage the re-pin left at two slots. -> XREF: D00 T04 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s19-2026-09-22-t04-s20 D00-T04-S19-PR1 D00-T04-S19-PR6 (`gpt-5.6-sol` medium over §19 plus §15 plus §14 plus §16, 7 findings, 2 filed here, 2 accepted in the stamp run, 2 rejected with reasons plus 1 win noted in the §19 findings file).
+
+- [ ] Slot dispatch rejects below-floor runners before dispatch: `run --slot` on a claude slot checks the CLI version against the documented 2.1.280 floor and fails the round over (or errors honestly) instead of dispatching a producer the runner cannot run, with fixtures pinning the check (PR1 D00-T04-S19-PR1). Done when: the pre-dispatch check plus fixtures ship.
+- [ ] Every moved slot carries an argv fixture: signoff, depth, cross-fill, plan-fallback, and arch-primary each pin argv resolving the new id with effort and timeout exactly matching pre-re-pin values, so a future re-pin diffs five pinned slots instead of two (PR6 D00-T04-S19-PR6). Done when: all five fixtures ship green.
+- [ ] Commit: `"workspace: file section-19 plan-review residuals"`
+
+**Test checkpoint:** below-floor runners never dispatch, and all five moved slots pin argv. Falsifiable by any dispatched below-floor run or any unpinned moved slot.
