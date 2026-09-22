@@ -105,6 +105,41 @@ public sealed partial class MainWindow : Window, IDisposable
         return true;
     }
 
+    // Background births (D00 T02 §18): the first visible rect has to already
+    // be the seeded one. AppWindow.MoveAndResize in the constructor does not
+    // stick on the HWND before the first show, so the show was painting the
+    // framework default on the primary. Later windows are pinned only when
+    // that seed is off the virtual screen; an on-screen seed keeps the stock
+    // cascade for the Primary placement set.
+    internal void PinBirthBeforeShow()
+    {
+        nint hwnd = WindowNative.GetWindowHandle(this);
+        if (hwnd == nint.Zero)
+        {
+            return;
+        }
+
+        ShellSettings live = SettingsStore.Shared.Current;
+        int width = Math.Max(100, live.Width);
+        int height = Math.Max(100, live.Height);
+        var untouched = new ShellSettings();
+        int x = live.X;
+        int y = live.Y;
+        if (x == untouched.X && y == untouched.Y)
+        {
+            // The 50,50 default is not a placement. One unseeded launch
+            // still showed there and the event log recorded the primary birth.
+            (x, y) = NativeMethods.OffScreenOrigin(width, height);
+        }
+        else if (!firstWindow && !NativeMethods.OutsideVirtualScreen(x, y, width, height))
+        {
+            return;
+        }
+
+        const uint noZOrderNoActivate = 0x0004 | 0x0010;
+        _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, x, y, width, height, noZOrderNoActivate);
+    }
+
     static class NativeMethods
     {
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
@@ -124,11 +159,167 @@ public sealed partial class MainWindow : Window, IDisposable
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetWindowPos(nint hWnd, nint after, int x, int y, int cx, int cy, uint flags);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern int GetSystemMetrics(int index);
+
+        internal delegate nint HookProc(int code, nint wParam, nint lParam);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint SetWindowsHookEx(int idHook, HookProc proc, nint module, uint threadId);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint CallNextHookEx(nint hook, int code, nint wParam, nint lParam);
+
+        [DllImport("kernel32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern int GetClassName(nint hwnd, char[] className, int maxCount);
+
+        internal static string ClassName(nint hwnd)
+        {
+            var buffer = new char[256];
+            int length = GetClassName(hwnd, buffer, buffer.Length);
+            return length <= 0 ? "?" : new string(buffer, 0, length);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct CbtCreateWnd
+        {
+            public nint CreateStruct;
+            public nint InsertAfter;
+        }
+
+        // Field order matches CREATESTRUCTW. Pointers stay aligned on x64.
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        internal struct CreateInfo
+        {
+            public nint CreateParams;
+            public nint Instance;
+            public nint Menu;
+            public nint Parent;
+            public int Height;
+            public int Width;
+            public int Y;
+            public int X;
+            public int Style;
+            public nint WindowName;
+            public nint ClassName;
+            public uint ExStyle;
+        }
+
+        internal static bool OutsideVirtualScreen(int x, int y, int width, int height)
+        {
+            const int smX = 76;
+            const int smY = 77;
+            const int smCx = 78;
+            const int smCy = 79;
+            int vx = GetSystemMetrics(smX);
+            int vy = GetSystemMetrics(smY);
+            long right = (long)x + width;
+            long bottom = (long)y + height;
+            long screenRight = (long)vx + GetSystemMetrics(smCx);
+            long screenBottom = (long)vy + GetSystemMetrics(smCy);
+            bool intersects = x < screenRight && vx < right && y < screenBottom && vy < bottom;
+            return !intersects;
+        }
+
+        // Whole window just past the virtual screen's right edge, or above
+        // it when that point does not fit in an int.
+        internal static (int X, int Y) OffScreenOrigin(int width, int height)
+        {
+            long right = (long)GetSystemMetrics(76) + GetSystemMetrics(78);
+            int top = GetSystemMetrics(77);
+            if (right <= int.MaxValue - width)
+            {
+                return ((int)right, top);
+            }
+
+            long above = (long)top - height;
+            return above >= int.MinValue ? (GetSystemMetrics(76), (int)above) : (GetSystemMetrics(76), top);
+        }
+    }
+
+    // WinUI creates the content bridge and the caption input sink at a
+    // default spot on the primary, then moves them. The creation hook
+    // writes the birth point into the CREATESTRUCT so the first show is
+    // already there. Background launches only.
+    internal static void InstallBirthHook() => BirthHook.Install();
+
+    static class BirthHook
+    {
+        const int WhCbt = 5;
+        const int HcbtCreateWnd = 3;
+
+        static NativeMethods.HookProc? proc;
+        static nint hook;
+        static int targetX;
+        static int targetY;
+
+        internal static void NoteTarget()
+        {
+            ShellSettings live = SettingsStore.Shared.Current;
+            var untouched = new ShellSettings();
+            int width = Math.Max(100, live.Width);
+            int height = Math.Max(100, live.Height);
+            if (live.X == untouched.X && live.Y == untouched.Y)
+            {
+                (targetX, targetY) = NativeMethods.OffScreenOrigin(width, height);
+                return;
+            }
+
+            targetX = live.X;
+            targetY = live.Y;
+        }
+
+        internal static void Install()
+        {
+            if (hook != nint.Zero)
+            {
+                return;
+            }
+
+            NoteTarget();
+            proc = OnCreate;
+            hook = NativeMethods.SetWindowsHookEx(WhCbt, proc, nint.Zero, NativeMethods.GetCurrentThreadId());
+        }
+
+        static nint OnCreate(int code, nint wParam, nint lParam)
+        {
+            if (code == HcbtCreateWnd)
+            {
+                try
+                {
+                    var created = Marshal.PtrToStructure<NativeMethods.CbtCreateWnd>(lParam);
+                    var info = Marshal.PtrToStructure<NativeMethods.CreateInfo>(created.CreateStruct);
+                    string name = NativeMethods.ClassName(wParam);
+                    if (name is "Microsoft.UI.Content.DesktopChildSiteBridge" or "InputNonClientPointerSource")
+                    {
+                        info.X = targetX;
+                        info.Y = targetY;
+                        Marshal.StructureToPtr(info, created.CreateStruct, false);
+                    }
+                }
+                catch (ArgumentException)
+                {
+                    // A malformed create struct must not take the process down.
+                }
+            }
+
+            return NativeMethods.CallNextHookEx(hook, code, wParam, lParam);
+        }
     }
 
     public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {
         this.firstWindow = firstWindow;
+        BirthHook.NoteTarget();
         InitializeComponent();
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;

@@ -39,6 +39,10 @@ public partial class App : Application
         }
 
         mainInstance.Activated += OnAppRedirected;
+        if (Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1")
+        {
+            MainWindow.InstallBirthHook();
+        }
         // D01 T01 §6: continue mode reopens the recorded window set; fresh
         // mode, an empty session, or a corrupt one opens one clean window.
         ShellSettings settings = SettingsStore.Shared.Current;
@@ -95,15 +99,21 @@ public partial class App : Application
     private static void ShowWindow(Window window)
     {
         if (window is MainWindow main
-            && Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1"
-            && main.ShowNoActivateForBackground())
+            && Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1")
         {
-            // Shown without ever activating: no launch flash, and the
-            // no-activate style keeps mid-test Invoke and dialog shows
-            // from stealing the foreground back. Minimize hides the pixels.
-            main.NoActivateForBackground();
-            main.MinimizeForBackground();
-            return;
+            // Pin before the show. ShowNoActivateForBackground shows as
+            // well as checking the handle, so the pin has to run first or
+            // the first visible event is the framework default.
+            main.PinBirthBeforeShow();
+            if (main.ShowNoActivateForBackground())
+            {
+                // Shown without ever activating: no launch flash, and the
+                // no-activate style keeps mid-test Invoke and dialog shows
+                // from stealing the foreground back. Minimize hides the pixels.
+                main.NoActivateForBackground();
+                main.MinimizeForBackground();
+                return;
+            }
         }
 
         window.Activate();
