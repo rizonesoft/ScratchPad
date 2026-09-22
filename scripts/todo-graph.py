@@ -22126,6 +22126,34 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             (_tree_pid.is_file(), _child_alive),
             (True, False),
         )
+        _gc = root / "artifact-store"
+        _gc.mkdir()
+        _kept = "ab" * 32
+        _orphan = "cd" * 32
+        (_gc / _kept).write_bytes(b"kept")
+        (_gc / _orphan).write_bytes(b"orphan")
+        (_gc / "ledger.jsonl").write_text(
+            json.dumps({"run": "r1", "digest": "sha256:" + _kept, "artifact": str(_gc / _kept)})
+            + "\n",
+            encoding="utf-8",
+        )
+        _gc_report = rp.gc_store(str(_gc), quota_bytes=1)
+        (_gc / "ledger.jsonl").write_text(
+            json.dumps({"run": "r1", "digest": "sha256:" + _kept, "artifact": str(_gc / _kept)})
+            + "\n{torn",
+            encoding="utf-8",
+        )
+        _torn_report = rp.read_ledger(str(_gc))
+        check(
+            "gc drops orphans, keeps the receipt, and a torn line is not a receipt",
+            (
+                _orphan in _gc_report["removed"] and not (_gc / _orphan).exists(),
+                (_gc / _kept).is_file(),
+                _gc_report["over_quota"] is True,
+                _torn_report[1] == ["trailing line has no newline"] and len(_torn_report[0]) == 1,
+            ),
+            (True, True, True, True),
+        )
         _ok, _why, _ = rp.collect_producer(
             [_PY, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe')"], b"", 30
         )

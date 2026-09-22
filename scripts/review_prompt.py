@@ -708,6 +708,82 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     return True, "".join(text_parts), info
 
 
+STORE_QUOTA_BYTES = 64 * 1024 * 1024
+
+
+def read_ledger(store: str) -> tuple[list[dict], list[str]]:
+    """Receipts plus torn-line notes (D00 T01 §55 item 25).
+
+    A file that does not end in a newline has a torn trailing line,
+    and that line is not a receipt. A line that is not one JSON
+    object with a string `run` is torn too. Complete lines still
+    count.
+    """
+    path = os.path.join(store, "ledger.jsonl")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = fh.read()
+    except FileNotFoundError:
+        return [], []
+    torn: list[str] = []
+    body = data
+    if body and not body.endswith("\n"):
+        torn.append("trailing line has no newline")
+        body = body[: body.rfind("\n") + 1] if "\n" in body else ""
+    receipts: list[dict] = []
+    for index, line in enumerate(body.splitlines(), start=1):
+        if not line.strip():
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            torn.append(f"line {index} is not json")
+            continue
+        if not isinstance(obj, dict) or not isinstance(obj.get("run"), str):
+            torn.append(f"line {index} is not a receipt")
+            continue
+        receipts.append(obj)
+    return receipts, torn
+
+
+def gc_store(store: str, quota_bytes: int = STORE_QUOTA_BYTES) -> dict:
+    """Drop unreferenced artifacts. Receipted ones stay.
+
+    An artifact is protected when a complete receipt names it, or
+    names its sha256 digest. Other 64-hex files are removed.
+    `over_quota` is true when protected bytes still exceed the
+    quota. Those files are not deleted.
+    """
+    receipts, torn = read_ledger(store)
+    if torn:
+        return {"removed": [], "torn": torn, "over_quota": False, "bytes": 0}
+    protected: set[str] = set()
+    for receipt in receipts:
+        artifact = receipt.get("artifact")
+        if isinstance(artifact, str) and artifact:
+            protected.add(os.path.basename(artifact))
+        digest = receipt.get("digest")
+        if isinstance(digest, str) and digest.startswith("sha256:"):
+            protected.add(digest.split(":", 1)[1])
+    removed: list[str] = []
+    if os.path.isdir(store):
+        for name in os.listdir(store):
+            if name in ("ledger.jsonl", "ledger.lock") or name in protected:
+                continue
+            if re.fullmatch(r"[0-9a-f]{64}", name) is None:
+                continue
+            path = os.path.join(store, name)
+            if os.path.isfile(path):
+                os.remove(path)
+                removed.append(name)
+    total = 0
+    for name in protected:
+        path = os.path.join(store, name)
+        if os.path.isfile(path):
+            total += os.path.getsize(path)
+    return {"removed": removed, "torn": torn, "over_quota": total > quota_bytes, "bytes": total}
+
+
 def _ledger_claims(store: str) -> tuple[str, set[str]]:
     """Claim text plus claimed run IDs from a review-run ledger (D00
     T01 §34 R1 integration 1): receipts feed the run-ID minter as
@@ -715,13 +791,13 @@ def _ledger_claims(store: str) -> tuple[str, set[str]]:
     receipt. A missing ledger is the first run (no claims); an
     unreadable one raises (minting blind would duplicate rows).
     """
-    path = os.path.join(store, "ledger.jsonl")
-    try:
-        with open(path, encoding="utf-8") as fh:
-            data = fh.read()
-    except FileNotFoundError:
-        return "", set()
-    ids = re.findall(r'"run"\s*:\s*"([^"]+)"', data)
+    receipts, torn = read_ledger(store)
+    # A missing final newline is an in-progress append. Complete lines
+    # still count. A finished line that is not a receipt is corrupt.
+    corrupt = [note for note in torn if note != "trailing line has no newline"]
+    if corrupt:
+        raise ValueError("torn ledger: " + "; ".join(corrupt))
+    ids = [receipt["run"] for receipt in receipts]
     return "".join(f"run {i}\n" for i in ids), set(ids)
 
 
@@ -905,6 +981,17 @@ if __name__ == "__main__":
             print(f"run: cannot read prompt file {prompt_path}: {exc}", file=sys.stderr)
             sys.exit(2)
         claim_texts = _read_scan_files(scans, "run")
+        try:
+            _store_report = gc_store(store)
+        except OSError as exc:
+            print(f"run: cannot collect the artifact store under {store}: {exc}", file=sys.stderr)
+            sys.exit(1)
+        if _store_report["over_quota"]:
+            print(
+                f"run: artifact store is over quota ({_store_report['bytes']} bytes) and receipted artifacts stay",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         try:
             ledger_text, _ = _ledger_claims(store)
         except (OSError, ValueError) as exc:
