@@ -23407,6 +23407,28 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             any(code == "panel-slots" for code, _msg in panel_wiring_problems(_pw_root)),
             True,
         )
+        _pw_ret = root / "panel-retired"
+        (_pw_ret / ".conclave").mkdir(parents=True)
+        _live_toml = (WORKSPACE / ".conclave" / "panel.toml").read_text(encoding="utf-8")
+        _bulk_at = _live_toml.index("[slot.bulk]")
+        _model_at = _live_toml.index('model = "gpt-6-sol"', _bulk_at)
+        _retired_toml = (
+            _live_toml[:_model_at]
+            + 'model = "gpt-5.6-sol"'
+            + _live_toml[_model_at + len('model = "gpt-6-sol"'):]
+        )
+        (_pw_ret / ".conclave" / "panel.toml").write_text(_retired_toml, encoding="utf-8")
+        check(
+            "a retired panel model fires",
+            panel_wiring_problems(_pw_ret),
+            [
+                (
+                    "panel-slots",
+                    "panel slot 'bulk' model 'gpt-5.6-sol' is outside "
+                    + ", ".join(rp.panel_slots.PANEL_MODELS),
+                )
+            ],
+        )
         _pw_bare = root / "panel-bare"
         _pw_bare.mkdir(parents=True)
         check("a missing panel TOML skips", panel_wiring_problems(_pw_bare), [])
@@ -23439,11 +23461,15 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "claude -p --model claude-opus-5 --effort high\n"
             "codex exec -m gpt-6-sol -c model_reasoning_effort=medium\n"
             "codex exec -m gpt-5.6-sol -c model_reasoning_effort=medium\n"
+            "claude -p --model claude-opus-5-5\n"
+            "claude -p --model claude-opus-5\n"
+            "codex exec -m gpt-6-sol\n"
+            "codex exec -m gpt-5.6-sol\n"
             "```\n",
             encoding="utf-8",
         )
         check(
-            "literal pins of either claude or sol id fire",
+            "literal pins of either claude or sol id fire, model-only lines included",
             [
                 msg
                 for code, msg in panel_wiring_problems(_pw_pin)
@@ -23454,6 +23480,10 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
                 ".claude/skills/review-todo-section/SKILL.md:3 pins a model or effort inside a command",
                 ".claude/skills/review-todo-section/SKILL.md:4 pins a model or effort inside a command",
                 ".claude/skills/review-todo-section/SKILL.md:5 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:6 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:7 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:8 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:9 pins a model or effort inside a command",
             ],
         )
         check(
