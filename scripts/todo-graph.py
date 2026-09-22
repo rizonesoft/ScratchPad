@@ -1138,7 +1138,7 @@ SEVERITY_MAP: dict[str, str] = {
 }
 # Clearance failure codes (D00 T01 §55 item 13). Stable names:
 # do not rename a member; add one only in the same change as its
-# assignment. Recount 2026-09-22: 24 codes. resolution:unresolvable
+# assignment. Recount 2026-09-22: 25 codes. resolution:unresolvable
 # is three sites, touch:range is two, and proof:proof-touch shares
 # its site with proof:loop. Consumers can check this tuple instead
 # of reading the query.
@@ -1154,6 +1154,7 @@ CLEARANCE_FAILURE_CODES = (
     "proof:loop",
     "proof:proof-touch",
     "proof:unattested",
+    "proof:untrusted",
     "resolution:ambiguous-fix",
     "resolution:merge-range",
     "resolution:merge-tip",
@@ -1209,6 +1210,16 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 # are not the candidate blob. Moving the day earlier means rehashing
 # those lines.
 PROVENANCE_DIGEST_CUTOFF = "20260921"
+# Receipt binding (D00 T01 §55 item 29). A provenance run dated
+# after this day clears the execution leg only when the candidate
+# commit holds docs/reviews/receipts/<run>.json. The working tree
+# and the local store do not count. Default 2026-09-22: that day,
+# because live lines have no committed receipt. Cost of moving it
+# earlier: those lines fail proof:untrusted until a receipt is
+# committed at their candidate. The trusted job is the plan-gates
+# workflow job. Cost of adding a job: extend this tuple.
+RECEIPT_RUN_CUTOFF = "20260922"
+TRUSTED_RECEIPT_JOBS = ("plan-gates",)
 # Stamps on or before this date predate the outage-note link rule and are
 # grandfathered (D00 T01 §52 item 1): outage markers without shaped
 # notes stay silent, so pre-rule records (including every fixture
@@ -3162,6 +3173,48 @@ def git_blob_sha256(ref: str, path: str) -> str | None:
     if out.returncode != 0:
         return None
     return hashlib.sha256(out.stdout).hexdigest()
+
+
+def receipt_trusted(run: str, candidate: str, digest: str) -> bool:
+    """Whether this execution record is bound to a pre-existing receipt.
+
+    D00 T01 §55 item 29. Clearance reads JSON from the candidate
+    commit and hashes the artifact blob in that same commit. It
+    does not read the working tree, and it does not launch the
+    provenance command or any command parsed from TODO or proof
+    text. A run on or before RECEIPT_RUN_CUTOFF stays on the
+    earlier attestation. A later run clears only when the receipt
+    names this run, a trusted CI job, this candidate, and a digest
+    equal to the artifact bytes.
+    """
+    if not run or run[:8] <= RECEIPT_RUN_CUTOFF:
+        return True
+    if RUN_ID_SHAPE_RE.match(run) is None:
+        return False
+    raw = git_file_at(candidate, f"docs/reviews/receipts/{run}.json")
+    if not raw:
+        return False
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(doc, dict):
+        return False
+    if doc.get("run") != run:
+        return False
+    if doc.get("job") not in TRUSTED_RECEIPT_JOBS:
+        return False
+    if str(doc.get("candidate", "")).lower() != candidate.lower():
+        return False
+    if str(doc.get("digest", "")).lower() != "sha256:" + digest.lower():
+        return False
+    art = doc.get("artifact")
+    if not isinstance(art, str) or provenance_path_issue(art) is not None:
+        return False
+    blob = git_file_at(candidate, art)
+    if not isinstance(blob, str):
+        return False
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest() == digest.lower()
 
 
 def git_full_sha(ref: str) -> str | None:
@@ -5827,6 +5880,11 @@ def cmd_query(args) -> int:
                                 # names this exact test, so a skip, a
                                 # red run, a pre-existing test, or a
                                 # cosmetic touch cannot clear.
+                                # Trusted receipts (D00 T01 §55 item 29):
+                                # a run after RECEIPT_RUN_CUTOFF also
+                                # needs a receipt in the candidate
+                                # commit. The command text is data.
+                                # This leg does not launch it.
                                 _execs = []
                                 _exec_src = ""
                                 _efm = FINDINGS_RE.search(tgt.review_body or "")
@@ -5874,9 +5932,22 @@ def cmd_query(args) -> int:
                                             is not None
                                         )
 
-                                    if not any(_attests(_ep) for _ep in _execs):
+                                    def _bound(_ep, _att=_attests):
+                                        if not _att(_ep):
+                                            return False
+                                        return receipt_trusted(
+                                            _ep.group(7),
+                                            _ep.group(1),
+                                            _ep.group(5),
+                                        )
+
+                                    if not any(_bound(_ep) for _ep in _execs):
                                         provable = False
-                                        fail_code = "proof:unattested"
+                                        fail_code = (
+                                            "proof:untrusted"
+                                            if any(_attests(_ep) for _ep in _execs)
+                                            else "proof:unattested"
+                                        )
                                         break
                                 cands = []
                                 for pln in text.splitlines():
@@ -11160,7 +11231,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147, §148, §149, §150 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147, §148, §149, §150, §151, §152, §153 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -13006,6 +13077,54 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 151. Bound receipt clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturereceiptok D90-T07-S4-PR110 fix d0c0001
+
+proof D90-T07-S4-PR110 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §151 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-receipt-ok.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 152. Fabricated receipt stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturereceiptfake D90-T07-S4-PR111 fix d0c0002
+
+proof D90-T07-S4-PR111 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §152 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-receipt-fake.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 153. Unlisted job stays
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturereceiptjob D90-T07-S4-PR112 fix d0c0003
+
+proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §153 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-receipt-job.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13188,6 +13307,9 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
             "- [D90-T07-S4-PR107] [critical] Row scoped fix B -> filed §148\n"
             "- [D90-T07-S4-PR108] [critical] Forged early date stays clear -> filed §149\n"
             "- [D90-T07-S4-PR109] [critical] Non-descendant stays -> filed §150\n"
+            "- [D90-T07-S4-PR110] [critical] Bound receipt clears -> filed §151\n"
+            "- [D90-T07-S4-PR111] [critical] Fabricated receipt stays -> filed §152\n"
+            "- [D90-T07-S4-PR112] [critical] Unlisted job stays -> filed §153\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -14269,6 +14391,74 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
         # is its probe).
         for _rev in sorted(rev_dir.glob("90-*.md")):
             canned_tree_modes[("aaa1111000000000000000000000000000000000", f"docs/reviews/{_rev.name}")] = "100644"
+        # D00 T01 §55 item 29: receipt pins. d0c0001 carries a bound
+        # receipt and clears. d0c0002 has no receipt in the candidate
+        # tree. d0c0003's receipt names a job outside the allowlist.
+        # Full passing profiles otherwise, so only the receipt leg
+        # decides. Hunk backfill below covers the new touches.
+        for _rsha in ("d0c0001", "d0c0002", "d0c0003"):
+            canned_git[(_rsha, marker_todo.as_posix())] = _mtxt
+            canned_touches[(_rsha, marker_todo.as_posix())] = True
+            canned_git[(_rsha, "tests/fix-proof.py")] = _proof_ok
+            canned_touches[(_rsha, "tests/fix-proof.py")] = True
+            canned_ts[_rsha] = _tss(d5, "12:00:00")
+            canned_full[_rsha] = _rsha + "0" * 33
+            canned_merges[_rsha] = False
+            canned_ancestors[(
+                "aaa1111000000000000000000000000000000000",
+                _rsha,
+            )] = True
+        _receipt_body = "receipt-artifact\n"
+        _receipt_digest = hashlib.sha256(_receipt_body.encode("utf-8")).hexdigest()
+        _rcand = "aaa1111000000000000000000000000000000000"
+        _receipt_runs = {
+            "ok": "20260923-D90-T07-S151-gpt",
+            "fake": "20260923-D90-T07-S152-gpt",
+            "job": "20260923-D90-T07-S153-gpt",
+        }
+
+        def _receipt_findings(_run: str) -> str:
+            return (
+                "# Review: fixture\n"
+                f"Provenance: candidate {_rcand}; command dotnet test --filter FullyQualifiedName~test_clearance; "
+                f"exit 0; tool fixture 1; digest {_receipt_digest}; path tests/receipt-artifact.txt; run {_run}\n"
+                "\n## Opus panel\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                "Sol outage: model error (fixture note)\n"
+            )
+
+        def _receipt_doc(_run: str, _job: str) -> str:
+            return json.dumps(
+                {
+                    "run": _run,
+                    "job": _job,
+                    "candidate": _rcand,
+                    "digest": "sha256:" + _receipt_digest,
+                    "artifact": "tests/receipt-artifact.txt",
+                }
+            )
+
+        (rev_dir / "90-receipt-ok.md").write_text(
+            _receipt_findings(_receipt_runs["ok"]), encoding="utf-8"
+        )
+        (rev_dir / "90-receipt-fake.md").write_text(
+            _receipt_findings(_receipt_runs["fake"]), encoding="utf-8"
+        )
+        (rev_dir / "90-receipt-job.md").write_text(
+            _receipt_findings(_receipt_runs["job"]), encoding="utf-8"
+        )
+        canned_git[(_rcand, "tests/receipt-artifact.txt")] = _receipt_body
+        canned_tree_modes[(_rcand, "tests/receipt-artifact.txt")] = "100644"
+        canned_blob_sha[(_rcand, "tests/receipt-artifact.txt")] = _receipt_digest
+        canned_git[(
+            _rcand,
+            f"docs/reviews/receipts/{_receipt_runs['ok']}.json",
+        )] = _receipt_doc(_receipt_runs["ok"], "plan-gates")
+        canned_git[(
+            _rcand,
+            f"docs/reviews/receipts/{_receipt_runs['job']}.json",
+        )] = _receipt_doc(_receipt_runs["job"], "local")
         # D00 T01 §55 item 4: hunk-span backfill. Every canned
         # target touch that passed file-level keeps passing at hunk
         # level (the whole-file sentinel intersects any span), so the
@@ -14336,6 +14526,26 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
         globals()["git_range_hunk_lines"] = lambda a, b, p: canned_range_hunks.get((a, b, p))
         globals()["git_range_merge_touches"] = lambda a, b, p: canned_range_merges.get((a, b, p), False)
         globals()["git_blob_sha256"] = lambda ref, p: canned_blob_sha.get((ref, p))
+        check(
+            "a bound receipt in the candidate tree is trusted",
+            receipt_trusted(_receipt_runs["ok"], _rcand, _receipt_digest),
+            True,
+        )
+        check(
+            "a missing receipt is not trusted",
+            receipt_trusted(_receipt_runs["fake"], _rcand, _receipt_digest),
+            False,
+        )
+        check(
+            "an unlisted job is not trusted",
+            receipt_trusted(_receipt_runs["job"], _rcand, _receipt_digest),
+            False,
+        )
+        check(
+            "a pre-cutoff run does not need a receipt",
+            receipt_trusted("20260921-D90-T07-S140-gpt", _rcand, "ab"),
+            True,
+        )
         _live_marker = marker_todo.read_text(encoding="utf-8")
         canned_git[("HEAD", marker_todo.as_posix())] = (
             _live_marker.replace(
@@ -17889,6 +18099,21 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "a bound receipt clears",
+            not any("D90-T07-S4-PR110" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "a fabricated receipt stays listed",
+            any("D90-T07-S4-PR111" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "an unlisted job stays listed",
+            any("D90-T07-S4-PR112" in ln for ln in health_lines),
+            True,
+        )
+        check(
             "two findings with their own fixes both clear",
             not any(
                 "D90-T07-S4-PR106" in ln or "D90-T07-S4-PR107" in ln
@@ -18459,6 +18684,8 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR102": {"proof:unattested"},
             "D90-T07-S4-PR103": {"resolution:merge-range"},
             "D90-T07-S4-PR109": {"ancestry:strict"},
+            "D90-T07-S4-PR111": {"proof:untrusted"},
+            "D90-T07-S4-PR112": {"proof:untrusted"},
             "D90-T07-S4-PR104": {"proof:loop"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
@@ -18479,6 +18706,18 @@ proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
             "clearance failures name their failed leg",
             {k: _codes.get(k, set()) for k in _want_codes},
             _want_codes,
+        )
+        _exec_slice = Path(__file__).read_text(encoding="utf-8").split(
+            "# Execution binding (D00 T01 S55 item 5):", 1
+        )[1].split("# Range-candidate join", 1)[0]
+        _receipt_slice = Path(__file__).read_text(encoding="utf-8").split(
+            "def receipt_trusted(", 1
+        )[1].split("\ndef ", 1)[0]
+        check(
+            "clearance does not execute plan text",
+            "subprocess" not in _exec_slice and "os.system" not in _exec_slice
+            and "subprocess" not in _receipt_slice and "os.system" not in _receipt_slice,
+            True,
         )
         check(
             "an accepted critical carries no failure code",
