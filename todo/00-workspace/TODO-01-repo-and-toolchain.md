@@ -975,6 +975,8 @@ Why this section exists: the panel regime §§9-14 built puts every round on Opu
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` green at the new quoted count with the mixed cases; the Sol-medium probe quoted passing; the skill carries the sequence, caps, command, matrix, and gate; live `validate` stays 0 fatal; live drives reverted clean. Cheaper substitute that fails: prose rules no review follows, or a record shape the query miscounts.
 
+- -> XREF: D00 T04 §14 -- panel record words move to Claude and GPT there (this section's regime keeps its shape, new words post-cutover)
+
 > **Verified:** 2026-09-18 | §35 | self-test 746/746 (+9: mixed-record silences §§37-39, fallback-membership JSON checks); live validate 0 fatal; mixed panel Sol R1+R2 plus Opus R3 sign-off over candidates 324eefc 4caf5e3 2eb0343; plan review 16 findings, 12 accepted at §§36-39 plus findings record, 4 rejected
 > **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 324eefc 4caf5e3 2eb0343 -- `adversarial` approve (R1 advisory-filing gap fixed) · `consistency` advisory (R1 skip-logic plus Light-escalation fixed; R2 failover scope fixed; R3 README staleness filed at D00 T01 §36) · `integration` approve · `record` approve (R1 probe-quote fixed). Raw findings: docs/reviews/00-workspace/D00-T01-s35.md
 > **Plan review:** GPT high, filed D00 T01 §36, D00 T01 §37, D00 T01 §38, D00 T01 §39 (run 20260918-D00-T01-S35-gpt)
@@ -1017,6 +1019,8 @@ Why this section exists: the eleventh live plan review (§35 plus §9 plus §14 
 - [x] Commit: `"workspace: harden panel rules per eleventh live round"`
 
 **Test checkpoint:** skipped Sol rounds fire, blocking round-5 leftovers stop the run, every panel finding carries a disposition, the all-Opus shape reads plainly, and the help guarantees the fallback definition. Cheaper substitute that fails: prose controls nobody checks.
+
+- -> XREF: D00 T04 §14 -- outage-note words move to Claude outage and GPT outage there (this section's rule keeps its shape, new words post-cutover)
 
 > **Verified:** 2026-09-19 | §37 | self-test 1045/1045 (+7: outage-rule pins, help-definition probe, R2 verdict-evidence pins §§44-45); live validate 0 fatal; Full panel Sol R1+R2 plus Opus R3 sign-off over candidates 3bb28dc 3310659 a242025c; plan review 26 findings, 9 filed at §39 plus §43 plus D00 T04 §1, 4 duplicates, 13 rejected
 > **Review:** rounds 1-3 (FINAL: Sol R1+R2, Opus R3 sign-off), candidates 3bb28dc 3310659 a242025c -- `adversarial` advisory (R1 colon-denial fixed; R2 empty-GPT shield fixed; R3 nothing-check false-fire filed at D00 T04 §1) · `consistency` needs-attention below bar (R2 table shape fixed; R3 verdict-evidence condition filed at D00 T04 §1) · `integration` approve · `record` approve (R2 premature tick fixed). Raw findings: docs/reviews/00-workspace/D00-T01-s37.md

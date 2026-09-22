@@ -442,6 +442,14 @@ def validate(graph, _args) -> int:
     # a superseded section of either family never validates the stamp.
     # The honesty limit is unchanged (a mislabeled heading defeats
     # forgetfulness, not forgery).
+    # Record words cut over on 2026-09-22 (D00 T04 §14): stamps dated
+    # after LABEL_CUTOVER write `Claude panel` plus the `Claude
+    # outage` fallback note and prove early rounds with a `GPT
+    # outage:` line; earlier stamps keep the legacy words and stay
+    # valid (D00 T01 §55, stamped cutover-day, is the named same-day
+    # grandfather). Era mismatch fires as a missing section or note,
+    # never as a distinct class: a post-cutover `Opus panel` heading
+    # simply matches nothing.
     # Grandfathering is date-bound like rule 8b/13 (cutoff declared
     # beside the others above): stamps on or before the rule's landing
     # date predate enforcement (§6 stamped 2026-09-17 without a panel and
@@ -461,27 +469,37 @@ def validate(graph, _args) -> int:
     # panel section, so a `##### Leftover notes` tail after the panel can
     # neither supply lens verdicts nor displace the record.
     PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
-    # Same level and word-boundary rules as the Opus heading: the fallback
+    # The label cutover (D00 T04 §14) pairs every signoff word: stamps
+    # dated after LABEL_CUTOVER write the Claude words, stamps on or
+    # before it keep the legacy words and stay valid. The GPT words
+    # never moved, so GPT_PANEL_HEADING_RE serves both eras.
+    CLAUDE_PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+Claude panel\b", re.IGNORECASE | re.MULTILINE)
+    # Same level and word-boundary rules as the signoff headings: the fallback
     # record differs in family, not in shape. Runs on the same stripped
     # text, so fenced `GPT panel` quotes are invisible for free.
     GPT_PANEL_HEADING_RE = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
     # The outage note is words, not a shape: the skill mandates the
-    # `Opus outage: <what>` line, and the rule checks the words survived
+    # era's `<family> outage: <what>` line, and the rule checks the words survived
     # transcription. Substring, not line-anchored: the note explains, it
     # does not authorize, so marker strictness would reject honest prose.
-    GPT_OUTAGE_RE = re.compile(r"opus outage", re.IGNORECASE)
-    # The Sol note is shaped, not bare words: the skill mandates
-    # `Sol outage: <what failed>`, so the colon plus failure text is
-    # required. Denials fail two ways: a "No Sol outage:" prefix
+    OPUS_OUTAGE_RE = re.compile(r"opus outage", re.IGNORECASE)
+    CLAUDE_OUTAGE_RE = re.compile(r"claude outage", re.IGNORECASE)
+    # The early-round note is shaped, not bare words: the skill mandates
+    # `<family> outage: <what failed>`, so the colon plus failure text is
+    # required. Denials fail two ways: a "No <family> outage:" prefix
     # (lookbehind) and a nothing-valued note (none, n/a, nothing,
     # never, not applicable). Free-form failures stay admissible --
     # honest prose ("CLI missing", "timed out") must never false-fire
     # -- so a creative falsehood ("no failure") still passes; the
     # rule forces an accounting, not honesty, and reviewers read the
-    # note. Case-insensitive like the Opus note; runs on stripped
+    # note. Case-insensitive like the signoff note; runs on stripped
     # text so fenced quotes never satisfy (D00 T01 §37, R1-F1).
     SOL_OUTAGE_RE = re.compile(
         r"(?<!\bno\s)sol outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
+        re.IGNORECASE,
+    )
+    GPT_OUTAGE_NOTE_RE = re.compile(
+        r"(?<!\bno\s)gpt outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
         re.IGNORECASE,
     )
     # Verdicts are line-anchored, never substring: the mandated shape puts
@@ -511,6 +529,13 @@ def validate(graph, _args) -> int:
                 continue
             stamp_day = s.stamped_on if s.stamped_on is not None else "undated"
             where = f"{t.path}:{s.line}: §{num} stamped {stamp_day}"
+            # Label era (D00 T04 §14): undated stamps fail closed into
+            # the new era, mirroring the Sol rule's None-or-after shape.
+            new_era = s.stamped_on is None or s.stamped_on > graph.LABEL_CUTOVER
+            signoff_re = CLAUDE_PANEL_HEADING_RE if new_era else PANEL_HEADING_RE
+            signoff_outage_re = CLAUDE_OUTAGE_RE if new_era else OPUS_OUTAGE_RE
+            early_outage_re = GPT_OUTAGE_NOTE_RE if new_era else SOL_OUTAGE_RE
+            signoff_words = "Claude panel" if new_era else "Opus panel"
             body = getattr(s, "review_body", None) or ""
             m = graph.FINDINGS_RE.search(body)
             if not m:
@@ -547,22 +572,27 @@ def validate(graph, _args) -> int:
                     f"opened at line {unbalanced}",
                 )
                 continue
-            heads = list(PANEL_HEADING_RE.finditer(text))
+            heads = list(signoff_re.finditer(text))
             gpt_heads = list(GPT_PANEL_HEADING_RE.finditer(text))
             if not heads and not gpt_heads:
                 flag(
                     "stamp-no-opus-panel",
-                    f"{where} findings {m.group(1)} carry no `Opus panel` section",
+                    f"{where} findings {m.group(1)} carry no `{signoff_words}` section"
+                    + (
+                        f" (record words cut over {graph.LABEL_CUTOVER}; stamps after that date use Claude/GPT words)"
+                        if new_era
+                        else ""
+                    ),
                 )
                 continue
             last_is_gpt = gpt_heads and (
                 not heads or gpt_heads[-1].start() > heads[-1].start()
             )
             if last_is_gpt:
-                # GPT fallback path: same verdict bar as the Opus panel,
-                # plus the Opus outage note that earns the fallback. Taken
+                # GPT fallback path: same verdict bar as the signoff panel,
+                # plus the era's outage note that earns the fallback. Taken
                 # when the last panel section of either family is GPT: a
-                # fallback round authorizes the stamp, so an Opus section
+                # fallback round authorizes the stamp, so a signoff section
                 # anywhere earlier never excuses a defective GPT last.
                 gpt = text[gpt_heads[-1].end():]
                 nxt = re.search(r"^#{1,6}\s+", gpt, re.MULTILINE)
@@ -579,10 +609,16 @@ def validate(graph, _args) -> int:
                         f"{where} findings {m.group(1)} GPT panel lacks verdicts for: "
                         + ", ".join(missing),
                     )
-                if not GPT_OUTAGE_RE.search(gpt):
+                _want_outage = "Claude outage" if new_era else "Opus outage"
+                if not signoff_outage_re.search(gpt):
                     flag(
                         "stamp-no-opus-panel",
-                        f"{where} findings {m.group(1)} GPT panel lacks the Opus outage note",
+                        f"{where} findings {m.group(1)} GPT panel lacks the {_want_outage} note"
+                        + (
+                            f" (record words cut over {graph.LABEL_CUTOVER})"
+                            if new_era
+                            else ""
+                        ),
                     )
                 continue
             # The LAST panel section of either family is the record (the
@@ -604,11 +640,11 @@ def validate(graph, _args) -> int:
                     f"{where} findings {m.group(1)} panel lacks verdicts for: "
                     + ", ".join(missing),
                 )
-            # Sol accountability on Opus-only records (D00 T01 §37 item
-            # 1): past the rule birthday an all-Opus review proves Sol
-            # was unreachable, or it ran Sol. A GPT heading alone
-            # proves no Sol round ran (R2-F1): only a GPT section
-            # carrying at least one lens verdict counts as Sol
+            # Early-round accountability on signoff-only records (D00 T01 §37 item
+            # 1, words cut over by D00 T04 §14): past the rule birthday an all-signoff
+            # review proves the early rounds were unreachable, or it ran them.
+            # A GPT heading alone proves no early round ran (R2-F1): only a GPT section
+            # carrying at least one lens verdict counts as early-round
             # evidence, so empty GPT sections neither satisfy rule 16
             # (early defects stay silent) nor shield this rule.
             # Stamps on or before 2026-09-19 predate the rule (s25 the
@@ -626,10 +662,17 @@ def validate(graph, _args) -> int:
                     break
             if heads and not _gpt_ran:
                 if s.stamped_on is None or s.stamped_on > "2026-09-19":
-                    if not SOL_OUTAGE_RE.search(text):
+                    _want_note = "GPT outage" if new_era else "Sol outage"
+                    _only = "Claude-only" if new_era else "Opus-only"
+                    if not early_outage_re.search(text):
                         flag(
                             "panel-sol-outage-missing",
-                            f"{where} findings {m.group(1)} Opus-only panel lacks the Sol outage line",
+                            f"{where} findings {m.group(1)} {_only} panel lacks the {_want_note} line"
+                            + (
+                                f" (record words cut over {graph.LABEL_CUTOVER})"
+                                if new_era
+                                else ""
+                            ),
                         )
 
     # 17. a stamp dated after the plan-review rule landed must carry the
@@ -675,7 +718,10 @@ def validate(graph, _args) -> int:
         except OSError:
             return None
         ftext, _u = graph.strip_fenced_code(ftext)
+        # Family ids stay stable across the label cutover (D00 T04 §14):
+        # both signoff spellings read "opus", the GPT spelling "gpt".
         panels = [(m.start(), "opus") for m in PANEL_HEADING_RE.finditer(ftext)]
+        panels += [(m.start(), "opus") for m in CLAUDE_PANEL_HEADING_RE.finditer(ftext)]
         panels += [(m.start(), "gpt") for m in GPT_PANEL_HEADING_RE.finditer(ftext)]
         if not panels:
             return None
@@ -688,6 +734,8 @@ def validate(graph, _args) -> int:
             if s.stamped_on is not None and s.stamped_on <= graph.PLAN_REVIEW_CUTOFF:
                 continue
             marker = getattr(s, "plan_review_body", None) or ""
+            # Label era rides the stamp like rule 16 (D00 T04 §14).
+            new_era = s.stamped_on is None or s.stamped_on > graph.LABEL_CUTOVER
             if not marker.strip():
                 stamp_day = s.stamped_on if s.stamped_on is not None else "undated"
                 flag(
@@ -769,10 +817,20 @@ def validate(graph, _args) -> int:
                     marker.lower(),
                 )
                 rung = prm.group(1) if prm else ""
-                if rung not in ("gpt rung", "opus rung"):
+                # The failed-rung vocabulary is era-scoped (D00 T04 §14):
+                # `claude rung` replaces `opus rung` on post-cutover
+                # stamps; the survivor mapping below keys families, so it
+                # reads both spellings through the same else branch.
+                known_rungs = ("gpt rung", "claude rung") if new_era else ("gpt rung", "opus rung")
+                if rung not in known_rungs:
                     flag(
                         "stamp-no-plan-review",
-                        f"{t.path}:{s.line}: §{num} partial names no known rung (gpt rung or opus rung)",
+                        f"{t.path}:{s.line}: §{num} partial names no known rung ({' or '.join(known_rungs)})"
+                        + (
+                            f" (record words cut over {graph.LABEL_CUTOVER})"
+                            if new_era
+                            else ""
+                        ),
                     )
                 else:
                     _survivor = "opus" if rung == "gpt rung" else "gpt"

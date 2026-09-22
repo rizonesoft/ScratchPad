@@ -882,7 +882,7 @@ def strip_fenced_code(text: str) -> tuple[str, int | None]:
 
     Moved out of rule 16 verbatim (D00 T01 §15): the plan-health query
     scans the same findings files, and two fence implementations would
-    drift back into the bugs §§10-11 fixed. The 45 panel cases prove the
+    drift back into the bugs §§10-11 fixed. The 55 panel cases prove the
     move changed nothing.
     """
     kept = []
@@ -1205,6 +1205,15 @@ def rule24_comment_legs(block: str) -> frozenset:
 # grandfathered (D00 T01 §15). Module-level, not in the validator, because
 # `query plan-health` needs the same boundary: one constant, no copies.
 PLAN_REVIEW_CUTOFF = "2026-09-18"
+# Record-label cutover (D00 T04 §14): stamps dated after this day
+# write `Claude panel`, `Claude outage`, `GPT outage`, and `claude
+# rung`; stamps on or before it keep the legacy `Opus panel`, `Opus
+# outage`, `Sol outage`, and `opus rung` words and stay valid. D00
+# T01 §55 (stamped 2026-09-22, new models under legacy words) is
+# the named same-day grandfather. Module-level beside the other
+# cutoffs: the validator's era-scoped legs read it from here, one
+# constant, no copies.
+LABEL_CUTOVER = "2026-09-22"
 # Digest recompute binds runs after this day (D00 T01 §55 item 7).
 # Lines through 20260921 stay attested: most post-20260919 digests
 # are not the candidate blob. Moving the day earlier means rehashing
@@ -1493,6 +1502,11 @@ def parse_bounded_int(text: str, maximum: int, minimum: int = 0) -> int | None:
 # "A<pred> by A<succ> (<outcome>)", "; "-joined in file order, ""
 # when the target has no history: the reopened finding names
 # what covered it before).
+# Label words (D00 T04 §14): no key changes, so no bump. The
+# `rung` value echoes record words (`opus rung` before the
+# cutover, `claude rung` after); fallback/outage lists carry
+# paths, never words. Queries read both eras; the cutover lives
+# in LABEL_CUTOVER.
 PLAN_HEALTH_SCHEMA = "plan-health/9"
 # Bare-partial persistence (D00 T01 §52 item 4): one failed rung
 # recurring across this many stamped reviews means the spare
@@ -1501,6 +1515,11 @@ PLAN_HEALTH_SCHEMA = "plan-health/9"
 # shared losses read as isolated outages; the third is the
 # pattern, and it gates lenient `--check` like any owed action.
 BARE_PARTIAL_RUNG_THRESHOLD = 3
+# Label words (D00 T04 §14): family ids (`Opus`/`GPT`), outage
+# keys (`sol`/`opus`), and outage lists stay stable across the
+# cutover, so no bump. The parser folds both word eras into
+# those ids; only text displays name the new words, with a
+# legacy-included legend. Cutover: LABEL_CUTOVER.
 TELEMETRY_SCHEMA = "telemetry/1"
 RISK_REGISTER_SCHEMA = "risk-register/1"
 RUN_SCHEMA = "run/1"
@@ -2676,7 +2695,7 @@ TELEMETRY_LINE_RE = re.compile(
     r"^Telemetry:\s*round\s+(\d+)\s*;\s*model\s+([^;]+?)\s*;\s*effort\s+([^;]+?)\s*;"
     r"\s*duration\s+([^;]+?)\s*;\s*outcome\s+([^;]+?)\s*;\s*tokens\s+([^;]+?)\s*$"
 )
-TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|GPT panel)\b(.*)$", re.IGNORECASE)
+TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|Claude panel|GPT panel)\b(.*)$", re.IGNORECASE)
 TELEMETRY_NEAR_RE = re.compile(r"^\s{0,3}[*>\-]?\s*Telemetry\s*:", re.IGNORECASE)
 TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
 TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
@@ -2691,8 +2710,8 @@ TELEMETRY_VERDICT_RE = re.compile(
     re.IGNORECASE,
 )
 TELEMETRY_DISP_RE = re.compile(r"^\|\s*(R\d+-F\d+)\s*\|\s*(fixed|live|filed)\s*\|\s*(.+?)\s*\|\s*$")
-TELEMETRY_SOL_RE = re.compile(r"sol outage:\s*(\S.*)$", re.IGNORECASE)
-TELEMETRY_OPUS_RE = re.compile(r"Opus outage\b\s*(.*)$")
+TELEMETRY_SOL_RE = re.compile(r"(sol|gpt) outage:\s*(\S.*)$", re.IGNORECASE)
+TELEMETRY_OPUS_RE = re.compile(r"(Opus|Claude) outage\b\s*(.*)$")
 # Denial vocabulary mirror for outage counting (D00 T01 §37 R1: the
 # validator owns enforcement; telemetry counts honest lines only).
 TELEMETRY_SOL_DENY_RE = re.compile(r"^(no\b|none\b|n/a\b|nothing\b|never\b|not applicable\b)", re.IGNORECASE)
@@ -3808,9 +3827,10 @@ def unmet_dependencies(
 def telemetry_parse(text: str) -> dict:
     """Parse one fence-stripped findings file into panel telemetry (D00 T01 §39).
 
-    Returns rounds in document order (each with its family, round
-    number, telemetry line when present, and transcribed verdicts),
-    honest Sol/Opus outage lines, disposition rows with their round
+    Returns rounds in document order (each with its stable family
+    id, record-word display label, round number, telemetry line
+    when present, and transcribed verdicts), honest outage lines
+    in both word eras with their written labels, disposition rows
     context, run IDs, and malformed Telemetry lines. Skip-and-report
     throughout: a malformed line counts, never parses and never fails.
     """
@@ -3854,9 +3874,14 @@ def telemetry_parse(text: str) -> dict:
                 while rn in used:
                     rn += 1
             cur_level = len(hm.group(1))
+            _panel_words = hm.group(2).lower()
+            # Family ids stay stable across the label cutover (D00 T04
+            # §14): both sign-off spellings bucket to `Opus`, and only
+            # the display label echoes record words.
             cur = {
                 "n": rn,
-                "family": "Opus" if hm.group(2).lower() == "opus panel" else "GPT",
+                "family": "Opus" if _panel_words in ("opus panel", "claude panel") else "GPT",
+                "label": {"opus panel": "Opus", "claude panel": "Claude"}.get(_panel_words, "GPT"),
                 "telemetry": None,
                 "verdicts": [],
             }
@@ -3903,13 +3928,14 @@ def telemetry_parse(text: str) -> dict:
             continue
         sm = TELEMETRY_SOL_RE.search(ln)
         if sm:
-            val = sm.group(1).strip()
+            val = sm.group(2).strip()
+            slab = "Sol" if sm.group(1).lower() == "sol" else "GPT"
             if val and not TELEMETRY_SOL_DENY_RE.match(val):
-                sol.append((val[:160], cur["n"] if cur else None))
+                sol.append((val[:160], cur["n"] if cur else None, slab))
             continue
         om = TELEMETRY_OPUS_RE.search(ln)
-        if om and om.group(1).strip():
-            opus.append((om.group(1).strip()[:160], cur["n"] if cur else None))
+        if om and om.group(2).strip():
+            opus.append((om.group(2).strip()[:160], cur["n"] if cur else None, om.group(1)))
             continue
         dm = TELEMETRY_DISP_RE.match(ln)
         if dm:
@@ -4549,31 +4575,33 @@ def cmd_query(args) -> int:
                 malformed_total += len(d["malformed"])
                 malformed_files.append(path)
             if d["sol"]:
-                sol_files.append((path, [(v, _affected(d, c)) for v, c in d["sol"]]))
+                sol_files.append((path, [(v, _affected(d, c)) for v, c, _lab in d["sol"]]))
             if d["opus"]:
-                opus_files.append((path, [(v, _affected(d, c)) for v, c in d["opus"]]))
+                opus_files.append((path, [(v, _affected(d, c)) for v, c, _lab in d["opus"]]))
 
         if not section_mode and not as_json:
             print("telemetry -- tree-wide panel rounds")
             print(f"rounds: {tel_n} with telemetry lines ({panel_n} panel sections total)")
             print(f"tokens: {tok_sum} known ({tok_unknown} rounds unknown)")
-            print(f"families (panel sections): GPT {gpt_n}, Opus {opus_n}")
-            print(f"families (telemetry rounds): GPT {fam_tel['GPT']}, Opus {fam_tel['Opus']}")
+            print(f"families (panel sections): GPT {gpt_n}, Claude {opus_n}")
+            print(f"families (telemetry rounds): GPT {fam_tel['GPT']}, Claude {fam_tel['Opus']}")
+            print("  (Claude buckets include legacy Opus-worded records; record words cut over 2026-09-22)")
             if outcomes:
                 print("outcomes (telemetry rounds): " + ", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())))
             else:
                 print("outcomes (telemetry rounds): (none)")
-            print("outages -- Sol-outage coverage (plan-health fallback untouched)")
-            print(f"  Sol outages: {len(sol_files)} reviews")
+            print("outages -- GPT-outage coverage, legacy Sol-worded included (plan-health fallback untouched)")
+            print(f"  GPT outages: {len(sol_files)} reviews")
             for _p, _outs in sol_files:
                 for _v, _ar in _outs:
                     _r = ", ".join(_ar) if _ar else "no runs recorded"
                     print(f"    {_p}: {_v} (runs: {_r})")
-            print(f"  Opus outages: {len(opus_files)} reviews")
+            print(f"  Claude outages: {len(opus_files)} reviews")
             for _p, _outs in opus_files:
                 for _v, _ar in _outs:
                     _r = ", ".join(_ar) if _ar else "no runs recorded"
                     print(f"    {_p}: {_v} (runs: {_r})")
+            print("  (buckets include legacy Sol/Opus-worded notes; record words cut over 2026-09-22)")
             print(f"reviews without telemetry: {no_tel} (past records read as unknown, not zero)")
             if malformed_total:
                 print(f"malformed telemetry lines skipped: {malformed_total} in {', '.join(malformed_files)}")
@@ -4593,7 +4621,7 @@ def cmd_query(args) -> int:
             att = d["rounds"][-1] if d["rounds"] else None
             if att is not None:
                 _tm = att["telemetry"]
-                att_txt = f"{att['family']} round {att['n']} (model {_tm['model'] if _tm else 'unrecorded'})"
+                att_txt = f"{att['label']} round {att['n']} (model {_tm['model'] if _tm else 'unrecorded'})"
             else:
                 att_txt = "no panel rounds"
             _head = f"telemetry {section_ref} -- {path}" if section_ref else f"telemetry {path}"
@@ -4604,12 +4632,12 @@ def cmd_query(args) -> int:
                 t = r["telemetry"]
                 if t is None:
                     _v = ", ".join(f"{a} {b}" for a, b in r["verdicts"]) or "no verdicts"
-                    lines.append(f"  R{r['n']} ({r['family']}): no telemetry line (verdicts: {_v})")
+                    lines.append(f"  R{r['n']} ({r['label']}): no telemetry line (verdicts: {_v})")
                 else:
                     _du = f"{t['duration']}s" if t["duration"] is not None else "unknown"
                     _tk = str(t["tokens"]) if t["tokens"] is not None else "unknown"
                     lines.append(
-                        f"  R{r['n']} ({r['family']}): model {t['model']}, effort {t['effort']}, "
+                        f"  R{r['n']} ({r['label']}): model {t['model']}, effort {t['effort']}, "
                         f"duration {_du}, outcome {t['outcome']}, tokens {_tk}"
                     )
             _got = [r for r in d["rounds"] if r["telemetry"]]
@@ -4626,18 +4654,19 @@ def cmd_query(args) -> int:
             _tot = (
                 f"totals: {len(_got)} telemetry rounds ({len(d['rounds'])} panel sections); "
                 f"tokens {_tsum} known ({_tunk} unknown); "
-                f"families GPT {_fam['GPT']}, Opus {_fam['Opus']}"
+                f"families GPT {_fam['GPT']}, Claude {_fam['Opus']}"
             )
             if _out:
                 _tot += "; outcomes " + ", ".join(f"{k} {v}" for k, v in sorted(_out.items()))
             lines.append(_tot)
+            lines.append("  (Claude buckets include legacy Opus-worded records; record words cut over 2026-09-22)")
             _oo = []
-            for _v, _c in d["sol"]:
+            for _v, _c, _lab in d["sol"]:
                 _ar = _affected(d, _c)
-                _oo.append(f"Sol outage: {_v} (runs: {', '.join(_ar) if _ar else 'none recorded'})")
-            for _v, _c in d["opus"]:
+                _oo.append(f"{_lab} outage: {_v} (runs: {', '.join(_ar) if _ar else 'none recorded'})")
+            for _v, _c, _lab in d["opus"]:
                 _ar = _affected(d, _c)
-                _oo.append(f"Opus outage: {_v} (runs: {', '.join(_ar) if _ar else 'none recorded'})")
+                _oo.append(f"{_lab} outage: {_v} (runs: {', '.join(_ar) if _ar else 'none recorded'})")
             lines.append(f"outages: {'; '.join(_oo)}" if _oo else "outages: none")
             if blockers:
                 lines.append("open blockers: " + ", ".join(f"{i} live ({finals[i][1]})" for i in blockers))
@@ -4672,8 +4701,8 @@ def cmd_query(args) -> int:
                     for r in d["rounds"]
                 ],
                 "outages": {
-                    "sol": [{"value": v, "runs": _affected(d, c)} for v, c in d["sol"]],
-                    "opus": [{"value": v, "runs": _affected(d, c)} for v, c in d["opus"]],
+                    "sol": [{"value": v, "runs": _affected(d, c)} for v, c, _lab in d["sol"]],
+                    "opus": [{"value": v, "runs": _affected(d, c)} for v, c, _lab in d["opus"]],
                 },
                 "runs": d["runs"],
                 "totals": {
@@ -5175,12 +5204,14 @@ def cmd_query(args) -> int:
                 if dep not in marked and dep in uncoverable:
                     uncovered.append((labels.get(dep, f"{dep[0]} §{dep[1]}"), labels.get(key, f"{key[0]} §{key[1]}")))
         gpt_heading_re = re.compile(r"^#{2,6}\s+GPT panel\b", re.IGNORECASE | re.MULTILINE)
-        # D00 T01 §35: planned GPT-early rounds under an Opus sign-off are
+        # D00 T01 §35: planned GPT-early rounds under a sign-off are
         # not fallback, so the leg mirrors rule 16's last-wins instead of
-        # matching any GPT heading. The Opus regex matches rule 16's
-        # PANEL_HEADING_RE verbatim (level 2+, word boundary).
-        opus_heading_re = re.compile(r"^#{2,6}\s+Opus panel\b", re.IGNORECASE | re.MULTILINE)
-        outage_re = re.compile(r"opus outage", re.IGNORECASE)
+        # matching any GPT heading. The signoff regex matches rule
+        # 16's era pair verbatim (level 2+, word boundary) and reads
+        # both eras: queries describe the mixed corpus, never
+        # prescribe words (D00 T04 §14).
+        signoff_heading_re = re.compile(r"^#{2,6}\s+(?:Opus|Claude) panel\b", re.IGNORECASE | re.MULTILINE)
+        outage_re = re.compile(r"(?:opus|claude) outage", re.IGNORECASE)
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
         fallback, outages, criticals, unreadable, stale = [], [], [], [], []
         majors, legacy = [], []
@@ -5222,9 +5253,9 @@ def cmd_query(args) -> int:
                 if unbalanced_opener is not None:
                     unreadable.append((m.group(1), unbalanced_opener))
                 gpt_heads = list(gpt_heading_re.finditer(text))
-                opus_heads = list(opus_heading_re.finditer(text))
+                signoff_heads = list(signoff_heading_re.finditer(text))
                 last_is_gpt = bool(gpt_heads) and (
-                    not opus_heads or gpt_heads[-1].start() > opus_heads[-1].start()
+                    not signoff_heads or gpt_heads[-1].start() > signoff_heads[-1].start()
                 )
                 if last_is_gpt:
                     fallback.append(m.group(1))
@@ -6880,7 +6911,7 @@ def cmd_query(args) -> int:
         print(f"fallback usage      {len(fallback_sorted)} findings with a GPT-last panel")
         for f in fallback_sorted:
             print(f"    {f}")
-        print(f"outages             {len(outages_sorted)} findings with an Opus outage note")
+        print(f"outages             {len(outages_sorted)} findings with a Claude outage note (legacy Opus-worded included)")
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
@@ -9871,6 +9902,16 @@ track: Z1
 |  43   |   §43   | Bare Sol outage without failure fires | - |  [x]   |
 |  44   |   §44   | Empty GPT-early plus Opus-last fires | - |  [x]   |
 |  45   |   §45   | Single-verdict GPT-early plus Opus-last stays silent | - |  [x]   |
+|  46   |   §46   | Claude-only with GPT outage note stays silent | - |  [x]   |
+|  47   |   §47   | Claude-only without GPT outage note fires | - |  [x]   |
+|  48   |   §48   | Cutover-day Opus-only with note stays silent | - |  [x]   |
+|  49   |   §49   | Post-cutover Opus-worded panel fires | - |  [x]   |
+|  50   |   §50   | GPT-last with Claude outage note stays silent | - |  [x]   |
+|  51   |   §51   | GPT-last with legacy outage note fires post-cutover | - |  [x]   |
+|  52   |   §52   | Cross-family claude-rung partial stays silent | - |  [x]   |
+|  53   |   §53   | Post-cutover opus-rung partial fires | - |  [x]   |
+|  54   |   §54   | Same-family gpt-rung partial with retry stays silent | - |  [x]   |
+|  55   |   §55   | Pre-cutover claude-rung partial fires | - |  [x]   |
 
 ---
 
@@ -10368,6 +10409,117 @@ track: Z1
 > **Verified:** 2026-09-20 | §45 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptsingle.md
 > **Plan review:** GPT high, no findings
+
+## 46. Claude-only with GPT outage note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §46 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudeonly.md
+> **Plan review:** GPT high, no findings
+
+## 47. Claude-only without GPT outage note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §47 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudenonote.md
+> **Plan review:** GPT high, no findings
+
+## 48. Cutover-day Opus-only with note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-22 | §48 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnoted.md
+> **Plan review:** GPT high, no findings
+
+## 49. Post-cutover Opus-worded panel fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §49 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnoted.md
+> **Plan review:** GPT high, no findings
+
+## 50. GPT-last with Claude outage note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §50 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptclaude.md
+> **Plan review:** GPT high, no findings
+
+## 51. GPT-last with legacy outage note fires post-cutover
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §51 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptclean.md
+> **Plan review:** GPT high, no findings
+
+## 52. Cross-family claude-rung partial stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §52 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudeonly.md
+> **Plan review:** GPT high, filed §2, partial: claude rung class infra attempts 1
+
+## 53. Post-cutover opus-rung partial fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §53 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudeonly.md
+> **Plan review:** GPT high, filed §2, partial: opus rung class infra attempts 1
+
+## 54. Same-family gpt-rung partial with retry stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §54 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudeonly.md
+> **Plan review:** GPT high, filed §2, retry-owed owner ann due 2099-01-01 class infra attempts 1 and partial: gpt rung attempts 1
+
+## 55. Pre-cutover claude-rung partial fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §55 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnoted.md
+> **Plan review:** GPT high, filed §2, partial: claude rung class infra attempts 1
+
 """,
             encoding="utf-8",
         )
@@ -10387,6 +10539,17 @@ track: Z1
             "# Review: Opus Panel Enforcement fixture\n\n## Opus panel\n\n"
             "**adversarial: approve**\n**consistency: advisory**\n"
             "**integration: needs-attention**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        # Era-clean copy (D00 T04 §14): the dynamic-stamp silence
+        # probes (§§2, 21, 25) point here; fixed-date users keep the
+        # legacy-worded 90-panel-clean.md above. Verdicts mirror it
+        # exactly; only the record words move.
+        (rev_dir / "90-panel-clean-claude.md").write_text(
+            "# Review: Claude Panel Enforcement fixture\n\n## Claude panel\n\n"
+            "**adversarial: approve**\n**consistency: advisory**\n"
+            "**integration: needs-attention**\n**record: approve**\n\n"
+            "GPT outage: model error (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-multi-stale.md").write_text(
@@ -10681,6 +10844,34 @@ track: Z1
             "## Opus panel (round 2)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        # Era-cutover fixtures (D00 T04 §14): new-word shapes for the
+        # post-cutover panel cases. The 90-panel-* loops below append
+        # provenance automatically; the Sol-note loop skips them (no
+        # `Opus panel` present), so the Claude-only file carries its
+        # `GPT outage:` note explicitly.
+        (rev_dir / "90-panel-claudeonly.md").write_text(
+            "# Review: fixture\n\n## Claude panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "GPT outage: no CLI on this box (fixture note)\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-claudenonote.md").write_text(
+            "# Review: fixture\n\n## Claude panel\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptclaude.md").write_text(
+            "# Review: fixture\n\n## Claude panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## GPT panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "Claude outage: model error (fixture note)\n",
             encoding="utf-8",
         )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -11060,9 +11251,74 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§45 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        check(
+            "post-cutover Claude-only with GPT note stays silent",
+            any("TODO-06-panel.md" in ln and "§46 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "post-cutover Claude-only without note names the GPT line",
+            any(
+                "TODO-06-panel.md" in ln and "§47 " in ln and "lacks the GPT outage line" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "cutover-day Opus-only with note stays silent",
+            any("TODO-06-panel.md" in ln and "§48 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "post-cutover Opus-worded panel names the Claude section",
+            any(
+                "TODO-06-panel.md" in ln and "§49 " in ln and "carry no `Claude panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "GPT-last with Claude outage note stays silent",
+            any("TODO-06-panel.md" in ln and "§50 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "GPT-last with legacy note names the Claude note post-cutover",
+            any(
+                "TODO-06-panel.md" in ln and "§51 " in ln and "lacks the Claude outage note" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "cross-family claude-rung partial stays silent",
+            any("TODO-06-panel.md" in ln and "§52 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "post-cutover opus-rung partial names no known rung",
+            any(
+                "TODO-06-panel.md" in ln and "§53 " in ln and "partial names no known rung" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "same-family gpt-rung partial with retry stays silent",
+            any("TODO-06-panel.md" in ln and "§54 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "pre-cutover claude-rung partial names no known rung",
+            any(
+                "TODO-06-panel.md" in ln and "§55 " in ln and "partial names no known rung" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
         # landed must carry the `Plan review:` completion marker. Own
-        # fixture TODO (the panel file's 45 sections stay untouched); all
+        # fixture TODO (the panel file's 55 sections stay untouched); all
         # three stamps point Review at the clean panel fixture so rule 16
         # stays silent and only the marker rule can fire. Runs before the
         # panel unlink below, while the clean fixture still exists.
@@ -11246,7 +11502,7 @@ proof D90-T07-S4-PR1 tests/fix-proof.py::test_clearance
 proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D2__ | §2 | fixture
-> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean-claude.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D2__T10:00:00Z to __D2__T13:00:00Z
 
@@ -11464,7 +11720,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 -> SOURCE: fixture-fix D90-T07-S4-PR17 fix bbb2222
 
 > **Verified:** __D5__ | §21 | fixture
-> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean-claude.md
 > **Plan review:** GPT high, no findings
 
 ## 22. Marker without run
@@ -11511,7 +11767,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 -> SOURCE: fixture-touch D90-T07-S4-PR24 fix ccc3333
 
 > **Verified:** __D5__ | §25 | fixture
-> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean.md
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-clean-claude.md
 > **Plan review:** GPT high, no findings
 
 ## 26. Outage rerun chained
@@ -13226,6 +13482,11 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         (rev_dir / "90-health.md").write_text(
             "# Review: fixture\n\n## GPT panel (round 1)\n\n"
             "Opus outage: CLI auth failure (exit 3).\n\n"
+            # Dual-era note (D00 T04 §14): §4 stamps dynamic-new and
+            # needs the Claude words; §11 stamps fixed-old and needs
+            # the Opus words. Both notes ride one file; each era
+            # reads its own, and plan-health lists the file once.
+            "Claude outage: CLI auth failure (exit 3).\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
             "## Plan review\n\n"
@@ -19032,6 +19293,21 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "plan-health --json keeps the new-word GPT-last file in fallback",
+            "docs/reviews/90-panel-gptclaude.md" in jdata.get("fallback", []),
+            True,
+        )
+        check(
+            "plan-health --json keeps the new-word outage file in outages",
+            "docs/reviews/90-panel-gptclaude.md" in jdata.get("outages", []),
+            True,
+        )
+        check(
+            "plan-health --json keeps Claude-only files out of fallback",
+            "docs/reviews/90-panel-claudeonly.md" in jdata.get("fallback", []),
+            False,
+        )
+        check(
             "plan-health --json retires retry_owed for degraded",
             "retry_owed" in jdata,
             False,
@@ -23964,8 +24240,25 @@ Opus outage model failure at sign-off
         check("telemetry heading without a number falls back to order", [_tb["rounds"][0]["n"]], [1])
         check("telemetry counts three malformed lines", len(_tb["malformed"]), 3)
         check("telemetry keeps the surviving line with its claimed round", _tb["rounds"][0]["telemetry"]["round"], 5)
-        check("telemetry counts honest Sol lines only", _tb["sol"], [("CLI missing before round 1", 1)])
-        check("telemetry counts Opus lines", _tb["opus"], [("model failure at sign-off", 1)])
+        check("telemetry counts honest Sol lines only", _tb["sol"], [("CLI missing before round 1", 1, "Sol")])
+        check("telemetry counts Opus lines", _tb["opus"], [("model failure at sign-off", 1, "Opus")])
+        _TEL_NEW = """## Claude panel (round 1)
+
+- `adversarial` approve
+- `consistency` approve
+- `integration` approve
+- `record` approve
+Claude outage model error (overloaded)
+GPT outage: CLI missing on this box
+"""
+        _tn = telemetry_parse(_TEL_NEW)
+        check(
+            "telemetry folds new words into stable families",
+            [(r["n"], r["family"], r["label"]) for r in _tn["rounds"]],
+            [(1, "Opus", "Claude")],
+        )
+        check("telemetry labels the GPT outage line", _tn["sol"], [("CLI missing on this box", 1, "GPT")])
+        check("telemetry labels the Claude outage line", _tn["opus"], [("model error (overloaded)", 1, "Claude")])
         _TEL_LIE = """## GPT panel (round 1)
 
 - `adversarial` needs-attention
@@ -24001,7 +24294,7 @@ Sol outage: CLI missing before round 2
         )
         check("telemetry closes context at same-level headings", _tc["disps"], [("R9-F9", "live", "elsewhere", None)])
         check("telemetry scopes runs to their round", _tc["round_runs"], {2: ["20260920-D90-T09-S9-opus"]})
-        check("telemetry scopes the outage to its round", _tc["sol"], [("CLI missing before round 2", 2)])
+        check("telemetry scopes the outage to its round", _tc["sol"], [("CLI missing before round 2", 2, "Sol")])
         check("telemetry keeps file-wide runs too", _tc["runs"], ["20260920-D90-T09-S9-gpt", "20260920-D90-T09-S9-opus"])
         _TEL_NOV = telemetry_parse(
             "## GPT panel (round 1)\n\nTelemetry: round 1; model m; effort e; duration 1s; outcome approve; tokens 1\n"
@@ -24066,6 +24359,7 @@ Sol outage: CLI missing before round 2
         (root / "todo" / "90-selftest").mkdir(parents=True, exist_ok=True)
         (root / "docs" / "reviews" / "90-tel-s1.md").write_text(_TEL_MD, encoding="utf-8")
         (_rev / "90-tel-bad.md").write_text(_TEL_BAD, encoding="utf-8")
+        (_rev / "90-tel-s2.md").write_text(_TEL_NEW, encoding="utf-8")
         (root / "todo" / "90-selftest" / "TODO-09-telemetry-ref.md").write_text(
             """---
 schema_version: 1
@@ -24123,6 +24417,29 @@ track: Z1
             "query telemetry section shows lineage and attestor",
             any("lineage: R1-F1" in ln for ln in _slines)
             and any("attestor: Opus round 2" in ln for ln in _slines),
+            True,
+        )
+        _nbuf = _tio.StringIO()
+        with _tctx.redirect_stdout(_nbuf), _tctx.redirect_stderr(_tio.StringIO()):
+            _ncode = cmd_query(
+                argparse.Namespace(what="telemetry", target=str(_rev / "90-tel-s2.md"))
+            )
+        _nlines = _nbuf.getvalue().splitlines()
+        check("query telemetry exits 0 on new-word records", _ncode, 0)
+        check(
+            "query telemetry echoes new record words per round",
+            any("R1 (Claude)" in ln for ln in _nlines),
+            True,
+        )
+        check(
+            "query telemetry echoes new outage labels",
+            any("Claude outage: model error (overloaded)" in ln for ln in _nlines)
+            and any("GPT outage: CLI missing on this box" in ln for ln in _nlines),
+            True,
+        )
+        check(
+            "query telemetry legends the legacy fold",
+            any("record words cut over 2026-09-22" in ln for ln in _nlines),
             True,
         )
         _rbuf = _tio.StringIO()
