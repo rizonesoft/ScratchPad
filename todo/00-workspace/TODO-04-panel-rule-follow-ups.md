@@ -50,7 +50,8 @@ track: W0
 |  12   |  §12    | Section-54 sign-off residuals | D00 T01 §54 |  [ ]   |
 |  13   |  §13    | Section-54 e2e and lane residuals | D00 T01 §54 |  [ ]   |
 |  14   |  §14    | Panel-label rename to Claude and GPT | -- |  [ ]   |
-|  15   |  §15    | Panel rewire: sol bulk, opus governs | -- |  [ ]   |
+|  15   |  §15    | Panel rewire: sol bulk, opus governs | -- |  [x]   |
+|  16   |  §16    | Section-15 plan-review residuals | D00 T04 §15 |  [ ]   |
 
 ---
 
@@ -299,6 +300,7 @@ Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `cla
 > **Started:** 2026-09-22T10:20:30Z
 
 Why this section exists: the panel spends uniform high effort on two models (`gpt-5.6-terra` breadth, `claude-sonnet-5` governance), so the cheapest rounds cost the most and the governing round is merely tied for strongest. Operator direction 2026-09-22 rewires the slots: `gpt-5.6-sol` at medium for bulk breadth (Full R1-R2, Light R1, plan-review primary), `claude-opus-5` at xhigh for every sign-off (Full R3, Light R2) and at high for depth (Full R4-R5, arch gate) with opus-medium plan fallback, `gpt-5.6-terra` at high narrowed to GPT-side redundancy (sign-off fallback, arch fallback), and `claude-sonnet-5` retired from the matrix. Every stamp stays governed by the unambiguous strongest round, tiers differ in breadth never governance, and spend follows blast radius. Both new pins are grounded on this machine 2026-09-22 (verbatim-echo probes, exit 0). Record words do not move: `GPT panel`, `Claude panel`, `gpt rung`, `claude rung`, and the outage lines are family-level since D00 T04 §14, so only runner commands, pins, and effort change; telemetry already names the producer. D00 T04 §14 round 3 is the first live user: it runs on the rewired panel after this section stamps, with §14 rounds 1-2 standing as recorded pre-rewire. That order is review-time sequencing, not an implementation need, so no plan edge runs either way. Pins live in `.conclave/panel.toml` (slot to model, effort, timeout); `run --slot` resolves producer argv from it, so a re-pin edits one file and skills name slots, never pins. -> XREF: D00 T04 §14 (round-3 sign-off is the first live user of the rewired panel; pre-rewire rounds stand).
+**Noted 2026-09-22 (§16 filed):** plan-review residuals (post-rewire gpt-rung era rule, §35 ladder annotation, fallback-sign-off stamp record) home in §16.
 
 - [x] Panel commands resolve slots from the TOML: `run --slot` gains slot resolution (codex/claude argv shapes, family derivation with mismatch refusal, slot timeouts, arch kind without checker); panel skill commands name bulk, signoff, depth, and failover slots with no literal pins. Done when: both skills run every panel slot through `--slot` and no skill command carries a model or effort literal. Done: `--slot` in `run` (argv shapes, family refusal, slot timeouts, arch unchecked); panel commands name slots; leg green.
 - [x] Plan-review plus arch commands move to slots with the rung mapping: plan-primary plus plan-fallback slots, arch-primary plus arch-fallback slots, and the `gpt rung` sentence names sol with the stamp-date split against pre-rewire terra. Done when: both skills state the moved slots and the era-split mapping. Done: plan-primary/fallback plus arch-primary/fallback slots; rung mapping era-split; grok arch off run-unchecked.
@@ -309,3 +311,20 @@ Why this section exists: the panel spends uniform high effort on two models (`gp
 - [ ] Commit: `"workspace: rewire panel to sol/opus tiered effort"`
 
 **Test checkpoint:** every skill command resolves its slot from the TOML (bulk sol-medium, signoff opus-xhigh, depth opus-high, terra-high sign-off/arch-fallback redundancy, medium outage fill, opus-medium plan fallback), models and efforts stay inside the closed sets, no command carries a literal pin, the rung mapping names sol with the stamp-date split, and self-test plus live validate read green. Falsifiable by any literal pin in a skill command, any unresolvable slot, any model or effort outside the sets, any terra-named gpt rung on a post-rewire review, or any red gate.
+
+> **Verified:** 2026-09-22 | §15 | self-test 1570/1570 (R2-F1 slot-command coverage leg plus fixture); live validate 0 fatal 1 warning (known owner-login mapping); Full panel (terra R1-R2 legacy, sonnet R3 sign-off) over candidates debff85 4c27455 74f2cbe 2d2694d, R1-F1 plus R2-F1 plus R2-F2 fix-loop fixed; plan review 4 findings, 3 filed at §16, 1 win noted
+> **Review:** round 3 (FINAL), candidates debff85 4c27455 74f2cbe 2d2694d -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1-F1 wording scope fixed 4c27455, R2-F1 failover commands plus coverage leg fixed 74f2cbe, R2-F2 disposition table fixed 74f2cbe. Raw findings: docs/reviews/00-workspace/D00-T04-s15.md
+> **Plan review:** GPT high, filed D00 T04 §16 (run 20260922-D00-T04-S15-codex-c7001fd6f-r4)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-case assertions); implementation edited the TOML, panel_slots, runners, validator, probe, skills, README, and ticks (read back via self-test 1570/1570, live validate 0 fatal, probe 6/6, plan --check current); filing opened §16 (read back via plan --check current)
+> **Duration:** 2026-09-22T10:20:30Z to 2026-09-22T14:11:35Z
+
+## 16. Section-15 plan-review residuals
+
+Why this section exists: the §15 plan review (terra-high over §15 plus §14 plus T01 §35 plus T01 §37 plus T04 §1, 4 findings) returned 3 residuals that belong to the panel rules, and §1 sits at the 30-item sizing rule so they home here instead of joining it. -> XREF: D00 T04 §15 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s15-2026-09-22-t04 D00-T04-S15-PR1 D00-T04-S15-PR2 D00-T04-S15-PR3 (`gpt-5.6-terra` high over §15 plus §14 plus §35 plus §37 plus §1, 4 findings, 3 filed here, PR4 a premium win noted not filed, synthesis with reasons in the §15 findings file).
+
+- [ ] Post-rewire gpt-rung prose reads sol by gate: a date-scoped validator rule plus failure fixture rejects post-rewire Terra wording where the `gpt rung` sentence must name Sol with the stamp-date split, so the era split holds under self-test instead of by prose alone (PR1 D00-T04-S15-PR1). Done when: the rule plus fixtures ship with the cutover date.
+- [ ] §35's all-Opus item carries the ladder supersession: a dated annotation records that the §15 ladder (sol, then terra, then opus per bulk round) supersedes the all-Opus fill sentence, so readers of the frozen checklist meet the current matrix instead of stale prose (PR2 D00-T04-S15-PR2, synthesized: the §15 skills name cross-fill plus parity; the residue is §35's frozen wording). Done when: the annotation reads on §35 with the §15 range.
+- [ ] Fallback sign-off records on the stamp: the opus-outage exception (terra-high fallback as governing sign-off) defines its stamp marker plus validator grammar, so a fallback-governed stamp reads distinctly from a normal sign-off instead of hiding in the record note alone (PR3 D00-T04-S15-PR3). Done when: the marker plus grammar plus fixtures ship.
+- [ ] Commit: `"workspace: file section-15 plan-review residuals"`
+
+**Test checkpoint:** post-rewire gpt-rung prose gates on sol, §35 reads the ladder supersession, and fallback sign-offs stamp distinctly. Falsifiable by any terra-named gpt rung passing post-rewire, any unannotated all-Opus read, or any fallback sign-off stamping silently.
