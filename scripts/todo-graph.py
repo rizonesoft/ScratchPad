@@ -602,8 +602,8 @@ def parse_todo(path: Path) -> Todo:
                     target.duration_raw = body.strip()
                     m = DURATION_BODY_RE.fullmatch(body.strip())
                     if m is not None:
-                        _mins = int(m.group("minutes"))
-                        if _mins > DURATION_MAX_MINUTES:
+                        _mins = parse_bounded_int(m.group("minutes"), DURATION_MAX_MINUTES)
+                        if _mins is None:
                             target.duration_malformed = True
                             continue
                         target.duration_minutes = _mins
@@ -1384,6 +1384,22 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # MAX_STAMP_COVERAGE before they are expanded.
 NOTIFY_HORIZON_MAX_DAYS = 3660
 DURATION_MAX_MINUTES = 5_256_000
+
+
+def parse_bounded_int(text: str, maximum: int, minimum: int = 0) -> int | None:
+    """ASCII digits only, at most 9, inside [minimum, maximum].
+
+    D00 T01 §55 item 24. Callers that used to write `int()` on a
+    user or file token use this. None means reject (exit 2 or
+    malformed), never overflow. The self-test pins the `int()`
+    call count so a new feeder cannot land unnoticed.
+    """
+    if not isinstance(text, str) or re.fullmatch(r"[0-9]{1,9}", text) is None:
+        return None
+    value = int(text)
+    if value < minimum or value > maximum:
+        return None
+    return value
 # Machine contract for `query plan-health --json` (D00 T01 §17 item 16,
 # §19 items 13-14): `schema` is `plan-health/<n>`, bumped on any
 # key-shape change. The report exits 0 (it is a reading, not a gate)
@@ -6565,13 +6581,14 @@ def cmd_query(args) -> int:
             # Length-capped like attempts (D00 T01 §34 item 6): past
             # the 4300-digit interpreter limit int() raises instead
             # of flagging, so longer runs exit 2 here.
-            if re.fullmatch(r"[0-9]{1,9}", _n) is None or int(_n) > NOTIFY_HORIZON_MAX_DAYS:
+            _horizon_days = parse_bounded_int(_n, NOTIFY_HORIZON_MAX_DAYS)
+            if _horizon_days is None:
                 print(
                     f"query notify: --within-days takes an integer from 0 through {NOTIFY_HORIZON_MAX_DAYS}, got {_n!r}",
                     file=sys.stderr,
                 )
                 return 2
-            _horizon = (_today_d + timedelta(days=int(_n))).isoformat()
+            _horizon = (_today_d + timedelta(days=_horizon_days)).isoformat()
             # Overdue re-notify (D00 T01 §53 item 5): every scheduled
             # run re-emits every unaccepted obligation in the window,
             # so the cadence is the job cadence (daily) and an ignored
@@ -20397,6 +20414,13 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             ),
             (True, 90),
         )
+        check("bounded int accepts the horizon maximum", parse_bounded_int("3660", 3660), 3660)
+        check("bounded int rejects an overflowing horizon", parse_bounded_int("999999999", 3660), None)
+        check("bounded int rejects non-ASCII digits", parse_bounded_int("²", 10), None)
+        _int_calls = 0
+        for _src in (WORKSPACE / "scripts" / "todo-graph.py", WORKSPACE / "scripts" / "todo-validate.py"):
+            _int_calls += len(re.findall(r"(?<![\w.])int\(", _src.read_text(encoding="utf-8")))
+        check("int() feeder count stays at the swept total", _int_calls, 81)
         _revs = _acc_json["reviews"]
         check(
             "reviews list due and overdue acceptances, never the superseded",
