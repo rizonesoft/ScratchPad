@@ -603,6 +603,9 @@ def parse_todo(path: Path) -> Todo:
                     m = DURATION_BODY_RE.fullmatch(body.strip())
                     if m is not None:
                         _mins = int(m.group("minutes"))
+                        if _mins > DURATION_MAX_MINUTES:
+                            target.duration_malformed = True
+                            continue
                         target.duration_minutes = _mins
                         target.duration_seconds = _mins * 60
                         continue
@@ -1373,6 +1376,14 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
 # week is long enough to file or defer, short enough to notice; changing
 # it is one constant.
 PLAN_REVIEW_OVERDUE_DAYS = 7
+# Notify lookahead and minute durations (D00 T01 §55 item 23).
+# A 9-digit horizon is grammatical and still overflows
+# date arithmetic (year 9999). Ten years is past any real
+# notice window. Ten years of minutes is past any real
+# section duration. Cover ranges are already capped at
+# MAX_STAMP_COVERAGE before they are expanded.
+NOTIFY_HORIZON_MAX_DAYS = 3660
+DURATION_MAX_MINUTES = 5_256_000
 # Machine contract for `query plan-health --json` (D00 T01 §17 item 16,
 # §19 items 13-14): `schema` is `plan-health/<n>`, bumped on any
 # key-shape change. The report exits 0 (it is a reading, not a gate)
@@ -6554,8 +6565,11 @@ def cmd_query(args) -> int:
             # Length-capped like attempts (D00 T01 §34 item 6): past
             # the 4300-digit interpreter limit int() raises instead
             # of flagging, so longer runs exit 2 here.
-            if re.fullmatch(r"[0-9]{1,9}", _n) is None:
-                print(f"query notify: --within-days takes a non-negative integer, got {_n!r}", file=sys.stderr)
+            if re.fullmatch(r"[0-9]{1,9}", _n) is None or int(_n) > NOTIFY_HORIZON_MAX_DAYS:
+                print(
+                    f"query notify: --within-days takes an integer from 0 through {NOTIFY_HORIZON_MAX_DAYS}, got {_n!r}",
+                    file=sys.stderr,
+                )
                 return 2
             _horizon = (_today_d + timedelta(days=int(_n))).isoformat()
             # Overdue re-notify (D00 T01 §53 item 5): every scheduled
@@ -20353,6 +20367,35 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "malformed --today and --within-days exit 2",
             rc_badtoday == 2 and rc_badwin == 2 and rc_longwin == 2,
             True,
+        )
+        with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+            rc_horizon = cmd_query(argparse.Namespace(what="notify", within_days="999999999"))
+        with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+            rc_over_horizon = cmd_query(argparse.Namespace(what="notify", within_days="3661"))
+        with _mctx.redirect_stdout(_mio.StringIO()), _mctx.redirect_stderr(_mio.StringIO()):
+            rc_max_horizon = cmd_query(argparse.Namespace(what="notify", within_days="3660"))
+        check(
+            "notify horizon above ten years exits 2 and the maximum does not",
+            rc_horizon == 2 and rc_over_horizon == 2 and rc_max_horizon == 0,
+            True,
+        )
+        _dur_big = root / "duration-max.md"
+        _dur_big.write_text(
+            "## 1. One\n\n> **Verified:** 2026-09-22 | §1 | fixture\n> **Duration:** 999999999m\n",
+            encoding="utf-8",
+        )
+        _dur_ok = root / "duration-ok.md"
+        _dur_ok.write_text(
+            "## 1. One\n\n> **Verified:** 2026-09-22 | §1 | fixture\n> **Duration:** 90m\n",
+            encoding="utf-8",
+        )
+        check(
+            "a duration past ten years is malformed and ninety minutes parses",
+            (
+                parse_todo(_dur_big).sections[1].duration_malformed,
+                parse_todo(_dur_ok).sections[1].duration_minutes,
+            ),
+            (True, 90),
         )
         _revs = _acc_json["reviews"]
         check(
