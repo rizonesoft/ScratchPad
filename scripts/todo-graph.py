@@ -23426,6 +23426,32 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             [msg for code, msg in panel_wiring_problems(_pw_cov) if code == "panel-slots"],
             [f"no skill runs --slot {name}" for name in rp.panel_slots.PANEL_SLOTS if name != "bulk"],
         )
+        _pw_pin = root / "panel-pinned"
+        (_pw_pin / ".conclave").mkdir(parents=True)
+        (_pw_pin / ".conclave" / "panel.toml").write_text(
+            (WORKSPACE / ".conclave" / "panel.toml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (_pw_pin / ".claude" / "skills" / "review-todo-section").mkdir(parents=True)
+        (_pw_pin / ".claude" / "skills" / "review-todo-section" / "SKILL.md").write_text(
+            "```bash\n"
+            "claude -p --model claude-opus-5-5 --effort high\n"
+            "claude -p --model claude-opus-5 --effort high\n"
+            "```\n",
+            encoding="utf-8",
+        )
+        check(
+            "literal pins of either claude id fire",
+            [
+                msg
+                for code, msg in panel_wiring_problems(_pw_pin)
+                if code == "panel-slots" and "pins a model or effort inside a command" in msg
+            ],
+            [
+                ".claude/skills/review-todo-section/SKILL.md:2 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:3 pins a model or effort inside a command",
+            ],
+        )
         check(
             "panel argv renders per runner",
             (
