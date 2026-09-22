@@ -3175,17 +3175,25 @@ def git_blob_sha256(ref: str, path: str) -> str | None:
     return hashlib.sha256(out.stdout).hexdigest()
 
 
-def receipt_trusted(run: str, candidate: str, digest: str) -> bool:
+def receipt_trusted(
+    run: str,
+    candidate: str,
+    digest: str,
+    reviewed: list[str] | None = None,
+) -> bool:
     """Whether this execution record is bound to a pre-existing receipt.
 
     D00 T01 §55 item 29. Clearance reads JSON from the candidate
-    commit and hashes the artifact blob in that same commit. It
-    does not read the working tree, and it does not launch the
-    provenance command or any command parsed from TODO or proof
-    text. A run on or before RECEIPT_RUN_CUTOFF stays on the
-    earlier attestation. A later run clears only when the receipt
-    names this run, a trusted CI job, this candidate, and a digest
-    equal to the artifact bytes.
+    commit and compares the digest to the raw blob hash in that
+    same commit (`git_blob_sha256`). It does not read the working
+    tree, and it does not launch the provenance command or any
+    command parsed from TODO or proof text. A run on or before
+    RECEIPT_RUN_CUTOFF stays on the earlier attestation. A later
+    run clears only when the receipt names this run, a trusted CI
+    job, this candidate, and a digest equal to the artifact blob.
+    When the filing review recorded candidates, this candidate
+    must be one of them: a receipt from some other commit cannot
+    clear the row.
     """
     if not run or run[:8] <= RECEIPT_RUN_CUTOFF:
         return True
@@ -3206,15 +3214,20 @@ def receipt_trusted(run: str, candidate: str, digest: str) -> bool:
         return False
     if str(doc.get("candidate", "")).lower() != candidate.lower():
         return False
+    if reviewed:
+        mine = git_full_sha(candidate)
+        if mine is None or not any(
+            (full := git_full_sha(rev)) is not None and full.lower() == mine.lower()
+            for rev in reviewed
+        ):
+            return False
     if str(doc.get("digest", "")).lower() != "sha256:" + digest.lower():
         return False
     art = doc.get("artifact")
     if not isinstance(art, str) or provenance_path_issue(art) is not None:
         return False
-    blob = git_file_at(candidate, art)
-    if not isinstance(blob, str):
-        return False
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest() == digest.lower()
+    got = git_blob_sha256(candidate, art)
+    return got is not None and got.lower() == digest.lower()
 
 
 def git_full_sha(ref: str) -> str | None:
@@ -5912,6 +5925,11 @@ def cmd_query(args) -> int:
                                         )
                                     ):
                                         _execs.append(_ep)
+                                cands = []
+                                for pln in text.splitlines():
+                                    pcm = PROVENANCE_RE.match(pln)
+                                    if pcm is not None:
+                                        cands.append(pcm.group(1))
                                 if _execs:
                                     def _attests(_ep, _pname=pname):
                                         if _ep.group(3) != "0":
@@ -5939,6 +5957,7 @@ def cmd_query(args) -> int:
                                             _ep.group(7),
                                             _ep.group(1),
                                             _ep.group(5),
+                                            cands,
                                         )
 
                                     if not any(_bound(_ep) for _ep in _execs):
@@ -5949,11 +5968,6 @@ def cmd_query(args) -> int:
                                             else "proof:unattested"
                                         )
                                         break
-                                cands = []
-                                for pln in text.splitlines():
-                                    pcm = PROVENANCE_RE.match(pln)
-                                    if pcm is not None:
-                                        cands.append(pcm.group(1))
                                 # Range-candidate join (D00 T01 S55
                                 # item 3): a range opens at or after
                                 # the reviewed candidate, so the
@@ -14544,6 +14558,35 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         check(
             "a pre-cutoff run does not need a receipt",
             receipt_trusted("20260921-D90-T07-S140-gpt", _rcand, "ab"),
+            True,
+        )
+        check(
+            "a receipt from another reviewed candidate is not trusted",
+            receipt_trusted(
+                _receipt_runs["ok"], _rcand, _receipt_digest, ["deadbee"]
+            ),
+            False,
+        )
+        _bin_run = "20260923-D90-T07-S154-gpt"
+        _bin_art = "tests/receipt-binary.bin"
+        _bin_digest = "ab" * 32
+        canned_git[(_rcand, _bin_art)] = "not-those-bytes\n"
+        canned_blob_sha[(_rcand, _bin_art)] = _bin_digest
+        canned_git[(
+            _rcand,
+            f"docs/reviews/receipts/{_bin_run}.json",
+        )] = json.dumps(
+            {
+                "run": _bin_run,
+                "job": "plan-gates",
+                "candidate": _rcand,
+                "digest": "sha256:" + _bin_digest,
+                "artifact": _bin_art,
+            }
+        )
+        check(
+            "a receipt digest binds the blob bytes",
+            receipt_trusted(_bin_run, _rcand, _bin_digest, [_rcand]),
             True,
         )
         _live_marker = marker_todo.read_text(encoding="utf-8")
