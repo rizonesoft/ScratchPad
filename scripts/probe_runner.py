@@ -1,13 +1,15 @@
-"""Bounded capability probe for the review-runner template.
+"""Bounded capability probe for the review-runner templates.
 
-The template is ``codex exec -m gpt-5.6-terra -c model_reasoning_effort=high
--s read-only -``. A CLI that drops those flags, or that again requires
-``--reasoning``, fails here before a review run starts. No model call.
+The templates come from ``.conclave/panel.toml`` (D00 T04 §15): one
+argv per codex slot, rendered by ``panel_slots``. A CLI that drops
+those flags, or that again requires ``--reasoning``, fails here before
+a review run starts. No model call.
 
-``--self-test`` is hermetic. ``--live`` asks the installed ``codex`` for
-``exec --help`` and for rejection of ``--reasoning``. A missing binary
-prints ``SKIP live probe`` and exits 0 so a runner without Codex stays
-honest. A present binary that fails the contract exits 1.
+``--self-test`` checks the TOML templates plus hermetic negatives.
+``--live`` asks the installed ``codex`` for ``exec --help`` and for
+rejection of ``--reasoning``. A missing binary prints ``SKIP live
+probe`` and exits 0 so a runner without Codex stays honest. A present
+binary that fails the contract exits 1.
 """
 
 from __future__ import annotations
@@ -16,17 +18,7 @@ import shutil
 import subprocess
 import sys
 
-TEMPLATE = [
-    "codex",
-    "exec",
-    "-m",
-    "gpt-5.6-terra",
-    "-c",
-    "model_reasoning_effort=high",
-    "-s",
-    "read-only",
-    "-",
-]
+import panel_slots
 
 REQUIRED_HELP = (
     "-c, --config",
@@ -44,21 +36,34 @@ def reasoning_rejected(code: int, text: str) -> bool:
     return code != 0 and "unexpected argument '--reasoning'" in text
 
 
-def template_ok(argv: list[str] = TEMPLATE) -> list[str]:
-    """Problems in the checked-in template. Empty means it matches."""
+def template_ok(argv: list[str], model: str, effort: str) -> list[str]:
+    """Problems in one codex template argv. Empty means it matches."""
     problems = []
     if "--reasoning" in argv:
         problems.append("template still passes --reasoning")
     if argv[:2] != ["codex", "exec"]:
         problems.append("template does not start with codex exec")
-    if "-m" not in argv or "gpt-5.6-terra" not in argv:
-        problems.append("template does not name gpt-5.6-terra")
-    if "model_reasoning_effort=high" not in argv:
-        problems.append("template does not set model_reasoning_effort=high")
+    if "-m" not in argv or model not in argv:
+        problems.append(f"template does not name {model}")
+    if f"model_reasoning_effort={effort}" not in argv:
+        problems.append(f"template does not set model_reasoning_effort={effort}")
     if "-s" not in argv or "read-only" not in argv:
         problems.append("template does not request the read-only sandbox")
     if argv[-1] != "-":
         problems.append("template does not read the prompt from stdin")
+    return problems
+
+
+def templates_ok() -> list[str]:
+    """Problems in the TOML's codex templates. Empty means all match."""
+    try:
+        slots = panel_slots.load_slots()
+    except panel_slots.PanelSlotsError as exc:
+        return [str(exc)]
+    problems = []
+    for name, argv in panel_slots.codex_templates(slots):
+        entry = slots[name]
+        problems.extend(f"{name}: {p}" for p in template_ok(argv, entry["model"], entry["effort"]))
     return problems
 
 
@@ -97,7 +102,7 @@ def live() -> int:
     except (OSError, subprocess.TimeoutExpired) as exc:
         print(f"FAIL live probe: {exc}")
         return 1
-    problems = template_ok() + judge(help_code, help_text, bad_code, bad_text)
+    problems = templates_ok() + judge(help_code, help_text, bad_code, bad_text)
     if problems:
         print("FAIL live probe")
         for problem in problems:
@@ -116,10 +121,12 @@ def self_test() -> int:
             print(f"FAIL {name}: got {got!r}, want {want!r}")
             failed += 1
 
-    check("template matches the contract", template_ok(), [])
-    drifted = list(TEMPLATE)
+    check("templates match the wiring", templates_ok(), [])
+    bulk = panel_slots.argv_for_slot("bulk")
+    drifted = list(bulk)
     drifted[drifted.index("-c")] = "--reasoning"
-    check("a --reasoning template is rejected", "--reasoning" in " ".join(template_ok(drifted)), True)
+    sol, med = panel_slots.load_slots()["bulk"]["model"], "medium"
+    check("a --reasoning template is rejected", "--reasoning" in " ".join(template_ok(drifted, sol, med)), True)
     good_help = "\n".join(REQUIRED_HELP)
     check("complete help passes", judge(0, good_help, 2, "error: unexpected argument '--reasoning' found"), [])
     check(

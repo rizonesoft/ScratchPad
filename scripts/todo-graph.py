@@ -37,6 +37,7 @@ import re
 import shutil
 import tempfile
 import sys
+import panel_slots
 from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -1135,6 +1136,11 @@ SEVERITY_MAP: dict[str, str] = {
     # a live doc reuses a retired title outside the pinned historical
     # records (D00 T01 §55 item 26).
     "retired-term": "fatal",
+    # a panel-slot wiring break: the TOML is missing, unparsable,
+    # outside the closed model/effort sets, missing a governed slot,
+    # or carrying an ungoverned one; or a skill command names an
+    # unresolvable slot or pins a model or effort literally (D00 T04 §15).
+    "panel-slots": "fatal",
 }
 # Clearance failure codes (D00 T01 §55 item 13). Stable names:
 # do not rename a member; add one only in the same change as its
@@ -1393,6 +1399,48 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
                 f"({len(runless)} provenance files, {ratchet_lines} ratchet lines remain)",
             )
         )
+    return problems
+
+_PANEL_SLOT_REF_RE = re.compile(r"--slot\s+([a-z0-9][a-z0-9-]*)")
+_PANEL_PIN_RE = re.compile(r"gpt-5\.6-(?:sol|terra)|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
+_PANEL_SKILLS = (
+    ".claude/skills/review-todo-section/SKILL.md",
+    ".grok/skills/review-todo-section/SKILL.md",
+)
+
+
+def panel_wiring_problems(root: Path) -> list[tuple[str, str]]:
+    """Panel-slot wiring problems (D00 T04 §15).
+
+    Each item is `(code, message)`. The TOML parses with closed sets;
+    skill commands name resolving slots and carry no literal pins.
+    Missing files skip (fixture roots predate the wiring); a present
+    but invalid TOML, an unresolvable slot, or a pinned command fails.
+    """
+    problems: list[tuple[str, str]] = []
+    toml = root / ".conclave" / "panel.toml"
+    skills = [root / rel for rel in _PANEL_SKILLS if (root / rel).is_file()]
+    if not toml.is_file():
+        if skills:
+            problems.append(("panel-slots", "panel slots file is missing but skills name slots"))
+        return problems
+    try:
+        slots = panel_slots.load_slots(str(toml))
+    except panel_slots.PanelSlotsError as exc:
+        return [("panel-slots", str(exc))]
+    for path in skills:
+        rel = path.relative_to(root).as_posix()
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for ref in _PANEL_SLOT_REF_RE.findall(text):
+            if ref not in slots:
+                problems.append(("panel-slots", f"{rel}: --slot {ref} resolves nowhere"))
+        in_fence = False
+        for lnum, line in enumerate(text.splitlines(), 1):
+            if line.strip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence and _PANEL_PIN_RE.search(line):
+                problems.append(("panel-slots", f"{rel}:{lnum} pins a model or effort inside a command"))
     return problems
 
 
@@ -23312,6 +23360,118 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "a past exemption deadline is overdue",
             any(code == "exemption-overdue" for code, _msg in exemption_problems(WORKSPACE, "2027-01-01")),
             True,
+        )
+        check(
+            "live panel wiring validates",
+            panel_wiring_problems(WORKSPACE),
+            [],
+        )
+        _pw_root = root / "panel-wiring"
+        (_pw_root / ".conclave").mkdir(parents=True)
+        (_pw_root / ".conclave" / "panel.toml").write_text(
+            '[slot.bulk]\nmodel = "gpt-5.6-sol"\neffort = "medium"\ntimeout = 600\n',
+            encoding="utf-8",
+        )
+        check(
+            "a short panel TOML fires",
+            any(code == "panel-slots" for code, _msg in panel_wiring_problems(_pw_root)),
+            True,
+        )
+        _pw_bare = root / "panel-bare"
+        _pw_bare.mkdir(parents=True)
+        check("a missing panel TOML skips", panel_wiring_problems(_pw_bare), [])
+        check(
+            "panel argv renders per runner",
+            (
+                rp.panel_slots.argv_for_slot("bulk", {"bulk": {"model": "gpt-5.6-sol", "effort": "medium", "timeout": 600, "family": "codex"}}),
+                rp.panel_slots.argv_for_slot("signoff", {"signoff": {"model": "claude-opus-5", "effort": "xhigh", "timeout": 600, "family": "claude"}}),
+            ),
+            (
+                ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium", "-s", "read-only", "-"],
+                ["claude", "-p", "--model", "claude-opus-5", "--effort", "xhigh", "--allowedTools", "Read"],
+            ),
+        )
+        _live_slots = rp.panel_slots.load_slots()
+        check(
+            "live bulk and signoff pins hold",
+            (_live_slots["bulk"], _live_slots["signoff"]),
+            (
+                {"model": "gpt-5.6-sol", "effort": "medium", "timeout": 600, "family": "codex"},
+                {"model": "claude-opus-5", "effort": "xhigh", "timeout": 600, "family": "claude"},
+            ),
+        )
+        _TEL_XH = telemetry_parse(
+            "## GPT panel (round 1)\n- `adversarial` approve\nTelemetry: round 1; model claude-opus-5; effort xhigh; duration 12s; outcome approve; tokens 100\n"
+        )
+        check(
+            "telemetry parses xhigh effort",
+            _TEL_XH["rounds"][0]["telemetry"]["effort"],
+            "xhigh",
+        )
+        check(
+            "producer binding parses rewired argv",
+            (
+                rp._producer_binding(["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium"]),
+                rp._producer_binding(["claude", "-p", "--model", "claude-opus-5", "--effort", "xhigh"]),
+            ),
+            (("gpt-5.6-sol", "medium"), ("claude-opus-5", "xhigh")),
+        )
+        _ps_rp = str(Path(__file__).with_name("review_prompt.py"))
+        _ps_store = root / "run-slot-store"
+        _ps_prompt = root / "run-slot-prompt.md"
+        _ps_prompt.write_text("hi\n", encoding="utf-8")
+        _ps_base = [
+            sys.executable, _ps_rp, "run", "panel", str(_ps_prompt), "todo/90-x/TODO-07-y.md", "4",
+            "codex", "20260922", "--store", str(_ps_store), "--candidate",
+            "aaa1111000000000000000000000000000000000",
+        ]
+        _ps_claude_base = [
+            sys.executable, _ps_rp, "run", "panel", str(_ps_prompt), "todo/90-x/TODO-07-y.md", "4",
+            "claude", "20260922", "--store", str(_ps_store), "--candidate",
+            "aaa1111000000000000000000000000000000000",
+        ]
+        _ps_unknown = _sp.run(_ps_base + ["--slot", "bogus-slot"], capture_output=True, text=True, timeout=30)
+        _ps_mismatch = _sp.run(_ps_claude_base + ["--slot", "bulk"], capture_output=True, text=True, timeout=30)
+        _ps_both = _sp.run(
+            _ps_base + ["--slot", "bulk", "--", sys.executable, "-c", "print('hi')"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        check(
+            "review-run refuses unknown slots, family mismatch, and slot-plus-producer",
+            (
+                _ps_unknown.returncode,
+                "unknown" in _ps_unknown.stderr,
+                _ps_mismatch.returncode,
+                "does not match" in _ps_mismatch.stderr,
+                _ps_both.returncode,
+                "no explicit producer" in _ps_both.stderr,
+            ),
+            (2, True, 2, True, 2, True),
+        )
+        _ps_arch = _sp.run(
+            _ps_base[:3]
+            + ["arch"]
+            + _ps_base[4:]
+            + ["--", sys.executable, "-c", "print('**architecture: approve**')"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        _ps_led = (
+            (_ps_store / "ledger.jsonl").read_text(encoding="utf-8").splitlines()
+            if (_ps_store / "ledger.jsonl").exists()
+            else []
+        )
+        check(
+            "review-run records arch rounds unchecked",
+            (
+                _ps_arch.returncode,
+                _ps_arch.stdout.splitlines()[0] if _ps_arch.stdout else "",
+                json.loads(_ps_led[-1])["checker"] if _ps_led else "",
+            ),
+            (0, "PASS arch verdict recorded unchecked", "none"),
         )
         _ex_root = root / "exempt-drift"
         (_ex_root / "docs" / "reviews" / "00-workspace").mkdir(parents=True)

@@ -1,0 +1,58 @@
+# Review-panel wiring: slot -> model, effort, timeout.
+# Single source of truth for panel pins. `review_prompt.py run --slot`
+# resolves producer argv from this file; the review skills name slots,
+# never pins. Models and efforts are closed sets (see the schema note at
+# PANEL_SLOTS in scripts/panel_slots.py): new producers arrive with probes
+# plus review. Effort `inherit` does not exist: every slot states its
+# effort concretely, and same-family failovers repeat the slot effort by
+# rule (see the outage-matrix prose in the review skills).
+
+[slot.bulk] # Full R1-R2, Light R1
+model = "gpt-5.6-sol"
+effort = "medium"
+timeout = 600
+
+[slot.signoff] # Full R3, Light R2: governs every stamp
+model = "claude-opus-5"
+effort = "xhigh"
+timeout = 600
+
+[slot.depth] # Full R4-R5, blocking findings only
+model = "claude-opus-5"
+effort = "high"
+timeout = 600
+
+[slot.bulk-fallback] # sol down: same family, silent, telemetry names terra
+model = "gpt-5.6-terra"
+effort = "medium"
+timeout = 600
+
+[slot.signoff-fallback] # opus down at sign-off: terra signs off once + Claude outage
+model = "gpt-5.6-terra"
+effort = "high"
+timeout = 600
+
+[slot.cross-fill] # both GPT down: opus fills bulk slots + GPT outage note
+model = "claude-opus-5"
+effort = "medium"
+timeout = 600
+
+[slot.plan-primary] # plan review, independent family
+model = "gpt-5.6-sol"
+effort = "medium"
+timeout = 900
+
+[slot.plan-fallback] # plan fallback, same family as the sign-off panel
+model = "claude-opus-5"
+effort = "medium"
+timeout = 900
+
+[slot.arch-primary] # architecture gate
+model = "claude-opus-5"
+effort = "high"
+timeout = 600
+
+[slot.arch-fallback] # opus gate down: terra attempt + Arch outage
+model = "gpt-5.6-terra"
+effort = "high"
+timeout = 900

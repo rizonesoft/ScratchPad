@@ -18,9 +18,12 @@ from pathlib import Path
 import re
 import secrets
 import shlex
+import shutil
 import subprocess
 import threading
 import time
+
+import panel_slots
 
 try:
     import fcntl
@@ -983,19 +986,22 @@ if __name__ == "__main__":
             print(f"run-id: {exc}", file=sys.stderr)
             sys.exit(2)
         sys.exit(0)
-    if len(sys.argv) >= 10 and sys.argv[1] == "run":
-        # run <panel|plan> <prompt-file> <todo-path> <section> <family>
+    if len(sys.argv) >= 9 and sys.argv[1] == "run":
+        # run <panel|plan|arch> <prompt-file> <todo-path> <section> <family>
         #   <YYYYMMDD> [--timeout S] [--store DIR] [--candidate SHA]
-        #   <scan-file>... -- <producer> [args...]
+        #   [--slot NAME] <scan-file>... [-- <producer> [args...]]
         # One atomic review run (D00 T01 §34 item 7): mint the run,
         # execute the producer bounded, validate its output, store the
         # bytes content-addressed, and append the run ledger. Prompt
         # and scans read strict (item 4: malformed bytes fail, never
         # corrupt); the receipt prints the run, the artifact, and a
         # Provenance line. Exit 0 PASS, 1 FAIL, 2 usage/setup.
+        # --slot (D00 T04 §15) resolves the producer from
+        # .conclave/panel.toml and asserts the family matches; arch
+        # runs record without an output check (no arch checker exists).
         kind = sys.argv[2]
-        if kind not in ("panel", "plan"):
-            print(f"run: kind {kind!r} is outside panel|plan", file=sys.stderr)
+        if kind not in ("panel", "plan", "arch"):
+            print(f"run: kind {kind!r} is outside panel|plan|arch", file=sys.stderr)
             sys.exit(2)
         prompt_path, todo_path = sys.argv[3], sys.argv[4]
         try:
@@ -1005,19 +1011,21 @@ if __name__ == "__main__":
             sys.exit(2)
         family, date = sys.argv[6], sys.argv[7]
         timeout: float = RUN_TIMEOUT_SECS
+        timeout_given = False
+        slot_name: str | None = None
         store = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "review-runs")
         receipt_dir = ""
         candidate = ""
         scans: list[str] = []
         rest = sys.argv[8:]
-        if "--" not in rest:
+        if "--" not in rest and "--slot" not in rest:
             print("run: want <scan-file>... -- <producer> [args...]", file=sys.stderr)
             sys.exit(2)
-        sep = rest.index("--")
-        pre, producer = rest[:sep], rest[sep + 1:]
-        if not producer:
-            print("run: no producer after --", file=sys.stderr)
-            sys.exit(2)
+        if "--" in rest:
+            sep = rest.index("--")
+            pre, producer = rest[:sep], rest[sep + 1:]
+        else:
+            pre, producer = rest, []
         i = 0
         while i < len(pre):
             if pre[i] == "--timeout" and i + 1 < len(pre):
@@ -1031,6 +1039,7 @@ if __name__ == "__main__":
                         file=sys.stderr,
                     )
                     sys.exit(2)
+                timeout_given = True
                 i += 2
             elif pre[i] == "--store" and i + 1 < len(pre):
                 store = pre[i + 1]
@@ -1041,12 +1050,43 @@ if __name__ == "__main__":
             elif pre[i] == "--receipt-dir" and i + 1 < len(pre):
                 receipt_dir = pre[i + 1]
                 i += 2
+            elif pre[i] == "--slot" and i + 1 < len(pre):
+                slot_name = pre[i + 1]
+                i += 2
+            elif pre[i] == "--slot":
+                print("run: --slot takes a slot name", file=sys.stderr)
+                sys.exit(2)
             elif pre[i].startswith("--"):
                 print(f"run: unknown option {pre[i]!r}", file=sys.stderr)
                 sys.exit(2)
             else:
                 scans.append(pre[i])
                 i += 1
+        if slot_name is not None:
+            if producer:
+                print("run: --slot takes no explicit producer", file=sys.stderr)
+                sys.exit(2)
+            try:
+                slots = panel_slots.load_slots()
+                producer = panel_slots.argv_for_slot(slot_name, slots)
+            except panel_slots.PanelSlotsError as exc:
+                print(f"run: {exc}", file=sys.stderr)
+                sys.exit(2)
+            want_family = slots[slot_name]["family"]
+            if family != want_family:
+                print(
+                    f"run: family {family!r} does not match slot {slot_name!r} family {want_family!r}",
+                    file=sys.stderr,
+                )
+                sys.exit(2)
+            if not timeout_given:
+                timeout = float(slots[slot_name]["timeout"])
+        if not producer:
+            print("run: no producer after --", file=sys.stderr)
+            sys.exit(2)
+        resolved = shutil.which(producer[0])
+        if resolved is not None:
+            producer = [resolved, *producer[1:]]
         try:
             with open(prompt_path, encoding="utf-8") as fh:
                 prompt_text = fh.read()
@@ -1128,9 +1168,12 @@ if __name__ == "__main__":
             sys.exit(1)
         verdict = ""
         if ok:
-            checker = check_panel_output if kind == "panel" else check_plan_output
-            passed, why = checker(payload)
-            verdict = ("PASS " if passed else "FAIL ") + why
+            if kind == "arch":
+                verdict = "PASS arch verdict recorded unchecked"
+            else:
+                checker = check_panel_output if kind == "panel" else check_plan_output
+                passed, why = checker(payload)
+                verdict = ("PASS " if passed else "FAIL ") + why
         else:
             verdict = "FAIL " + payload
         # Run uniqueness (D00 T01 §34 R1 integration 1, locked D00
@@ -1158,7 +1201,7 @@ if __name__ == "__main__":
                     "model": _producer_binding(_producer)[0],
                     "effort": _producer_binding(_producer)[1],
                     "producer": _producer,
-                    "checker": CHECKER_VERSION,
+                    "checker": CHECKER_VERSION if kind != "arch" else "none",
                     "dirty": _dirty_state(),
                 },
             )
@@ -1189,7 +1232,7 @@ if __name__ == "__main__":
     checkers = {"check-panel": check_panel_output, "check-plan": check_plan_output}
     if len(sys.argv) != 2 or sys.argv[1] not in checkers:
         print(
-            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>... | run <panel|plan> <prompt-file> <todo-path> <section> <family> <YYYYMMDD> [--timeout S] [--store DIR] [--candidate SHA] <scan-file>... -- <producer> [args...] | check-panel|check-plan < output.txt",
+            f"usage: {sys.argv[0]} tag <prefix> | fence <prefix> <title=path>... | run-id <todo-path> <section> <family> <YYYYMMDD> <scan-file>... | run <panel|plan|arch> <prompt-file> <todo-path> <section> <family> <YYYYMMDD> [--timeout S] [--store DIR] [--candidate SHA] [--slot NAME] <scan-file>... [-- <producer> [args...]] | check-panel|check-plan < output.txt",
             file=sys.stderr,
         )
         sys.exit(2)
