@@ -5519,19 +5519,27 @@ def cmd_query(args) -> int:
                                     provable = False
                                     fail_code = "proof:back-link"
                                     break
-                                fms = list(FIX_COMMIT_RE.finditer(tgt_text))
+                                fms = [
+                                    _fmm
+                                    for _fmm in FIX_COMMIT_RE.finditer(tgt_text)
+                                    if re.search(
+                                        r"\b" + re.escape(lr.group(1)) + r"\b",
+                                        tgt_text.splitlines()[
+                                            tgt_text[: _fmm.start()].count("\n")
+                                        ],
+                                    )
+                                ]
                                 if not fms:
                                     provable = False
                                     fail_code = "resolution:missing-fix"
                                     break
-                                # Token ambiguity rejects declared (D00 T01
-                                # S54 item 2): every fix token in the span
-                                # canonicalizes, and more than one distinct
-                                # (base, tip) identity fails closed, so
-                                # reordered metadata cannot silently change
-                                # what clears the row. Identical repeats
-                                # collapse: the first match governs the
-                                # legs below.
+                                # Token ambiguity is row-scoped (D00 T01
+                                # §55 item 27): a fix token counts only
+                                # when its own line names this finding,
+                                # the same way a proof line names its id.
+                                # Two findings in one section keep their
+                                # own commits. More than one distinct
+                                # identity on this row still fails closed.
                                 _fix_ids = []
                                 for _fmm in fms:
                                     _bb = canonical_commit_id(_fmm.group(1))
@@ -11116,7 +11124,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147, §148 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12910,6 +12918,26 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
 > **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 148. Two findings keep their own fixes
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: rowA D90-T07-S4-PR106 fix eee0001..eee0002
+
+proof D90-T07-S4-PR106 tests/fix-proof.py::test_clearance
+
+-> SOURCE: rowB D90-T07-S4-PR107 fix fff0002
+
+proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §148 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13087,6 +13115,9 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             # which also names the head, and they must not clear it.
             "- [D90-T07-S4-PR105] [critical] Obsolete amendment -> filed §147\n"
             "- [D90-T07-S4-PR104] [critical] Current head -> filed §147 supersedes D90-T07-S4-PR105 identity 017a43e06ea4 old tokens stay on the old id\n"
+            # D00 T01 §55 item 27: two findings, two commits, one section.
+            "- [D90-T07-S4-PR106] [critical] Row scoped fix A -> filed §148\n"
+            "- [D90-T07-S4-PR107] [critical] Row scoped fix B -> filed §148\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -17758,6 +17789,14 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             "an obsolete amendment does not clear the head",
             any("D90-T07-S4-PR104" in ln for ln in health_lines)
             and not any("D90-T07-S4-PR105" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "two findings with their own fixes both clear",
+            not any(
+                "D90-T07-S4-PR106" in ln or "D90-T07-S4-PR107" in ln
+                for ln in health_lines
+            ),
             True,
         )
         check(
