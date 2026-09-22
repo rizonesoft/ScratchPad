@@ -585,6 +585,17 @@ def validate(graph, _args) -> int:
                     ),
                 )
                 continue
+            # A post-cutover `Opus panel` section fires wherever it
+            # sits (D00 T04 §14 R1-F1): last-wins picks the governing
+            # section, but a legacy section is never valid post-cutover.
+            # Fences strip before the scan, so fenced raw outputs
+            # quoting old panels cannot trip this leg.
+            if new_era and (heads or gpt_heads) and PANEL_HEADING_RE.search(text):
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} findings {m.group(1)} carry a legacy `Opus panel` section"
+                    f" (record words cut over {graph.LABEL_CUTOVER}; post-cutover records use Claude/GPT words)",
+                )
             last_is_gpt = gpt_heads and (
                 not heads or gpt_heads[-1].start() > heads[-1].start()
             )

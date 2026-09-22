@@ -882,7 +882,7 @@ def strip_fenced_code(text: str) -> tuple[str, int | None]:
 
     Moved out of rule 16 verbatim (D00 T01 §15): the plan-health query
     scans the same findings files, and two fence implementations would
-    drift back into the bugs §§10-11 fixed. The 55 panel cases prove the
+    drift back into the bugs §§10-11 fixed. The 57 panel cases prove the
     move changed nothing.
     """
     kept = []
@@ -9912,6 +9912,8 @@ track: Z1
 |  53   |   §53   | Post-cutover opus-rung partial fires | - |  [x]   |
 |  54   |   §54   | Same-family gpt-rung partial with retry stays silent | - |  [x]   |
 |  55   |   §55   | Pre-cutover claude-rung partial fires | - |  [x]   |
+|  56   |   §56   | Mixed legacy-plus-new panel fires | - |  [x]   |
+|  57   |   §57   | Pre-cutover Claude-worded panel fires | - |  [x]   |
 
 ---
 
@@ -10520,6 +10522,28 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnoted.md
 > **Plan review:** GPT high, filed §2, partial: claude rung class infra attempts 1
 
+## 56. Mixed legacy-plus-new panel fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §56 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedlegacy.md
+> **Plan review:** GPT high, no findings
+
+## 57. Pre-cutover Claude-worded panel fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §57 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudenonote.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -10872,6 +10896,21 @@ track: Z1
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
             "Claude outage: model error (fixture note)\n",
+            encoding="utf-8",
+        )
+        # R1-F1 mixed fixture: a legacy round under a governing
+        # new-era round. The Sol-note loop below appends a `Sol
+        # outage:` line (the file carries an `Opus panel` heading);
+        # it is inert post-cutover (the GPT note governs) and keeps
+        # the file reusable for pre-cutover cases.
+        (rev_dir / "90-panel-mixedlegacy.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "## Claude panel (round 2)\n\n"
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+            "GPT outage: CLI missing on this box (fixture note)\n",
             encoding="utf-8",
         )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -11316,9 +11355,25 @@ track: Z1
             ),
             True,
         )
+        check(
+            "mixed legacy-plus-new panel names the legacy section",
+            any(
+                "TODO-06-panel.md" in ln and "§56 " in ln and "carry a legacy `Opus panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "pre-cutover Claude-worded panel names the missing Opus section",
+            any(
+                "TODO-06-panel.md" in ln and "§57 " in ln and "carry no `Opus panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
         # landed must carry the `Plan review:` completion marker. Own
-        # fixture TODO (the panel file's 55 sections stay untouched); all
+        # fixture TODO (the panel file's 57 sections stay untouched); all
         # three stamps point Review at the clean panel fixture so rule 16
         # stays silent and only the marker rule can fire. Runs before the
         # panel unlink below, while the clean fixture still exists.
