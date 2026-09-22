@@ -22657,6 +22657,32 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             ),
             (True, True, True, True),
         )
+        (_gc / "ledger.jsonl").write_text(
+            json.dumps({"run": "r1", "digest": "sha256:" + _kept, "artifact": str(_gc / _kept)})
+            + "\n",
+            encoding="utf-8",
+        )
+        _publishing = "ef" * 32
+        (_gc / _publishing).write_bytes(b"publishing")
+        import threading
+        _gc_box: dict[str, object] = {}
+
+        def _run_gc(_box=_gc_box, _store=str(_gc)) -> None:
+            _box["report"] = rp.gc_store(_store)
+
+        _hold = rp._held_ledger_lock(str(_gc))
+        _hold.__enter__()
+        _gc_thread = threading.Thread(target=_run_gc)
+        _gc_thread.start()
+        _gc_thread.join(0.3)
+        _gc_waited = _gc_thread.is_alive() and (_gc / _publishing).is_file()
+        _hold.__exit__(None, None, None)
+        _gc_thread.join(5)
+        check(
+            "gc waits for the ledger lock before deleting an unpublished artifact",
+            (_gc_waited, not (_gc / _publishing).is_file(), (_gc / _kept).is_file()),
+            (True, True, True),
+        )
         _ok, _why, _ = rp.collect_producer(
             [_PY, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe')"], b"", 30
         )

@@ -752,8 +752,16 @@ def gc_store(store: str, quota_bytes: int = STORE_QUOTA_BYTES) -> dict:
     An artifact is protected when a complete receipt names it, or
     names its sha256 digest. Other 64-hex files are removed.
     `over_quota` is true when protected bytes still exceed the
-    quota. Those files are not deleted.
+    quota. Those files are not deleted. The scan and the deletes
+    hold the ledger lock, the same lock a publisher holds across
+    renaming its artifact into place and appending the receipt, so
+    a concurrent run cannot delete a file that is about to be named.
     """
+    with _held_ledger_lock(store):
+        return _gc_store_locked(store, quota_bytes)
+
+
+def _gc_store_locked(store: str, quota_bytes: int) -> dict:
     receipts, torn = read_ledger(store)
     if torn:
         return {"removed": [], "torn": torn, "over_quota": False, "bytes": 0}
@@ -836,6 +844,17 @@ def _held_ledger_lock(store: str):
                 msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def _append_receipt(store: str, run_id: str, mint, build) -> tuple[str, dict]:
+    """Append one receipt. The caller holds the ledger lock."""
+    claims_text, ids = _ledger_claims(store)
+    if run_id in ids:
+        run_id = mint(claims_text)
+    receipt = build(run_id)
+    with open(os.path.join(store, "ledger.jsonl"), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(receipt, sort_keys=True) + "\n")
+    return run_id, receipt
+
+
 def _record_run(store: str, run_id: str, mint, build) -> tuple[str, dict]:
     """Finalize one run ID and append its receipt atomically: under
     the ledger lock the claims re-read, a taken ID re-mints once
@@ -843,13 +862,7 @@ def _record_run(store: str, run_id: str, mint, build) -> tuple[str, dict]:
     receipt appends. Returns the final ID plus receipt.
     """
     with _held_ledger_lock(store):
-        claims_text, ids = _ledger_claims(store)
-        if run_id in ids:
-            run_id = mint(claims_text)
-        receipt = build(run_id)
-        with open(os.path.join(store, "ledger.jsonl"), "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(receipt, sort_keys=True) + "\n")
-        return run_id, receipt
+        return _append_receipt(store, run_id, mint, build)
 
 
 if __name__ == "__main__":
@@ -1034,11 +1047,13 @@ if __name__ == "__main__":
             # concurrent runs storing identical bytes share the
             # digest, so a fixed temp name lets one rename steal the
             # other's file; distinct temps converge on one artifact.
+            # The temp name is not 64 hex, so garbage collection
+            # leaves it alone. The rename into the digest name happens
+            # under the ledger lock, beside the receipt append.
             tmp = f"{artifact}.tmp.{os.getpid()}"
             try:
                 with open(tmp, "wb") as fh:
                     fh.write(raw)
-                os.replace(tmp, artifact)
             except OSError:
                 try:
                     os.unlink(tmp)
@@ -1060,13 +1075,15 @@ if __name__ == "__main__":
         # ledger claims read before the producer ran; recording
         # re-checks under the lock and re-mints once when taken.
         try:
-            run_id, receipt = _record_run(
-                store,
-                run_id,
-                lambda ct: next_run_id(
-                    todo_path, run_section, family, date, *claim_texts, ct, clone=clone_token()
-                ),
-                lambda rid, _prompt=prompt_text, _producer=list(producer): {
+            with _held_ledger_lock(store):
+                os.replace(tmp, artifact)
+                run_id, receipt = _append_receipt(
+                    store,
+                    run_id,
+                    lambda ct: next_run_id(
+                        todo_path, run_section, family, date, *claim_texts, ct, clone=clone_token()
+                    ),
+                    lambda rid, _prompt=prompt_text, _producer=list(producer): {
                     "run": rid,
                     "kind": kind,
                     "digest": "sha256:" + digest,
