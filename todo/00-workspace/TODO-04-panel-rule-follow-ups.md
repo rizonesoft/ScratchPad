@@ -49,10 +49,11 @@ track: W0
 |  11   |  §11    | Section-52 plan-review residuals | D00 T01 §52 |  [ ]   |
 |  12   |  §12    | Section-54 sign-off residuals | D00 T01 §54 |  [ ]   |
 |  13   |  §13    | Section-54 e2e and lane residuals | D00 T01 §54 |  [ ]   |
-|  14   |  §14    | Panel-label rename to Claude and GPT | -- |  [ ]   |
+|  14   |  §14    | Panel-label rename to Claude and GPT | -- |  [x]   |
 |  15   |  §15    | Panel rewire: sol bulk, opus governs | -- |  [x]   |
 |  16   |  §16    | Section-15 plan-review residuals | D00 T04 §15 |  [ ]   |
 |  17   |  §17    | Section-14 sign-off residuals | D00 T04 §14 |  [ ]   |
+|  18   |  §18    | Section-14 plan-review residuals | D00 T04 §14 |  [ ]   |
 
 ---
 
@@ -286,8 +287,9 @@ Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `cla
 - -> XREF: D00 T04 §15 -- panel model rewire with tiered effort (round-3 sign-off runs the rewired panel; rounds 1-2 stand pre-rewire)
 **Noted 2026-09-22 (§15 filed):** panel slots move to sol-medium bulk and opus-xhigh sign-off at the §15 stamp; this section's review records the switch in its round-3 header.
 **Noted 2026-09-22 (§17 filed):** round-3 sign-off residuals (telemetry outage-label case policy, grok runner rules cutover reconcile) home in §17.
+**Noted 2026-09-22 (§18 filed):** plan-review residuals (Claude-outage payload shape, §15 Commit annotation) home in §18.
 
-- [x] Validator legs match the new words date-scoped: `Claude panel` headings, `Claude outage` lines, `GPT outage: <what failed>` lines, and `claude rung` markers validate on stamps dated after 2026-09-22, while the old words stay valid on pre-cutover stamps and wrong-shape-for-date records fire. Done when: the legs plus the cutover constant ship in `scripts/todo-validate.py` and `scripts/todo-graph.py` (heading, outage-note, rung, signoff-family, and telemetry legs). Done: legs plus `LABEL_CUTOVER` ship; self-test 1537/1537, live validate 0 fatal.
+- [x] Validator legs match the new words date-scoped: `Claude panel` headings, `Claude outage` lines, `GPT outage: <what failed>` lines, and `claude rung` markers validate on stamps dated after 2026-09-22, while the old words stay valid on pre-cutover stamps and wrong-shape-for-date records fire. Done when: the legs plus the cutover constant ship in `scripts/todo-validate.py` and `scripts/todo-graph.py` (heading, outage-note, rung, signoff-family, and telemetry legs). Done: legs plus `LABEL_CUTOVER` ship (post-cutover legacy fire plus pre-cutover new-word mirror); self-test 1571/1571, live validate 0 fatal (R5-F1: stamp-fixed re-quote plus mirror leg named).
 - [x] New-word and grandfather fixtures lock every leg: post-cutover PASS fixtures for each new word, pre-cutover old-word fixtures that stay silent, and wrong-shape-for-date FAIL fixtures, so the cutover holds under self-test. Done when: the fixtures ship and the self-test total grows with 0 failed. Done: §§46-58 plus telemetry and plan-health pins; 1537 to 1571 with 0 failed (R3-F1 mirror leg plus §58 fixture; R3-F5 range correction).
 - [x] README severity rows read dual-shape: the `stamp-no-opus-panel` and `panel-sol-outage-missing` rows (plus any other word-naming row) name both shapes with the cutover date, so the row-for-row self-test mirror holds. Done when: the rows name both shapes and self-test passes. Done: rows dual-shape with s55 grandfather; mirror holds at 1571/1571 (R4-F2 family: re-quoted at the reviewed tip).
 - [x] Both review skills record the new words: the `.claude` and `.grok` review skills write `Claude panel` headings, `Claude outage` and `GPT outage` notes, and `claude rung` markers on post-cutover reviews, with the cutover date stated. Done when: both skills name the new record words. Done: both skills name new words with cutover; legacy mentions era-qualified.
@@ -296,6 +298,12 @@ Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `cla
 - [ ] Commit: `"workspace: rename panel labels to Claude and GPT"`
 
 **Test checkpoint:** post-cutover records validate only with the new words, pre-cutover records stay silent with the old words, wrong-shape-for-date records fire, both skills name the new words, and §1 carries the coordination note, and queries read both eras with stable enums. Falsifiable by any new-word record firing, any old-word grandfather firing, any silent wrong-shape record, any skill naming retired words for new reviews, any query dropping a new-word record, or any missing §1 note.
+
+> **Verified:** 2026-09-22 | §14 | self-test 1571/1571 (R3-F1 mirror leg plus §58 fixture); live validate 0 fatal 1 warning (known owner-login mapping); Full panel (terra R1-R2, opus-xhigh R3 sign-off, opus-high R4-R5 depth) over candidates af565e3 207a6ee c66111d 3663ec8 c57eaad b338d6c, R1-F1/F2/F3 plus R2-F1/F2/F3 plus R3-F1/F3/F5 plus R4-F2 fix-loop fixed, R3-F2/R3-F4/R4-F1 filed at §17, R5-F1 stamp-fixed; plan review 8 findings, 2 filed at §18, 4 rejected, 2 wins noted
+> **Review:** round 5 (FINAL), candidates af565e3 207a6ee c66111d 3663ec8 c57eaad b338d6c -- `adversarial` approve · `consistency` approve · `integration` approve · `record` needs-attention (R5-F1 stamp-fixed); R1 fix-loop 207a6ee, R2 fix-loop c66111d, R3 fix-loop 3663ec8 with below-bar filings at §17, R4 fix-loop record with filing at §17, R5 record needs-attention stamp-fixed. Raw findings: docs/reviews/00-workspace/D00-T04-s14.md
+> **Plan review:** GPT medium, filed D00 T04 §18 (run 20260922-D00-T04-S14-codex-c7001fd6f-r4)
+> **CRUD:** applicable | self-test wrote fixture files under a temp root (unlinked after, read back via per-case assertions); implementation edited the validator, graph, fixtures, skills, queries, README, and ticks (read back via self-test 1571/1571, live validate 0 fatal, probe 6/6, plan --check current); filings opened §17 plus §18 (read back via plan --check current)
+> **Duration:** 2026-09-22T06:39:47Z to 2026-09-22T14:58:23Z
 
 ## 15. Panel rewire: sol bulk, opus governs
 
@@ -341,3 +349,13 @@ Why this section exists: the §14 round-3 sign-off (opus-xhigh over the §14 ran
 - [ ] Commit: `"workspace: file section-14 sign-off residuals"`
 
 **Test checkpoint:** telemetry outage labels read one case policy on both sides, no grok runner prose contradicts the cutover skill, and grandfathered records survive re-stamps. Falsifiable by any mixed-case outage line, any live `Opus panel` runner instruction, or any re-stamp firing on legacy rounds.
+
+## 18. Section-14 plan-review residuals
+
+Why this section exists: the §14 plan review (sol-medium over §14 plus §35 plus §37 plus §1 plus §15, 8 findings) returned 2 residuals that belong to the panel rules: a shaped-vs-bare outage-note asymmetry the rename carried forward, and a stamped section whose Commit line lacks the shipped-state annotation the §35 precedent requires. -> XREF: D00 T04 §14 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s14-2026-09-22-t04 D00-T04-S14-PR4 D00-T04-S14-PR6 (`gpt-5.6-sol` medium over §14 plus §35 plus §37 plus §1 plus §15, 8 findings, 2 filed here, 4 rejected with reasons plus 2 wins noted in the §14 findings file).
+
+- [ ] Claude-outage note carries the failure payload by gate: the GPT-outage note is shaped (`<family> outage: <what failed>`) while the Claude-outage leg matches bare words, so the Claude shape is defined (payload naming the failure, without false-firing honest prose) and enforced with fixtures pinning fire plus silence (PR4 D00-T04-S14-PR4). Done when: the shaped leg plus fixtures ship.
+- [ ] §15's unticked Commit item carries the shipped-state annotation: the shipped checklist stays immutable, so a dated note records that the Commit line never ticked with the range that shipped it, per the §35/§36 precedent (PR6 D00-T04-S14-PR6). Done when: the annotation reads on §15 with the shipped range.
+- [ ] Commit: `"workspace: file section-14 plan-review residuals"`
+
+**Test checkpoint:** Claude-outage notes gate on the failure payload, and §15's Commit line carries its shipped-state annotation. Falsifiable by any payload-less Claude note passing or any unannotated unticked Commit.
