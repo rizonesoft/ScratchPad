@@ -22025,6 +22025,40 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
             (_ok, _why, _info["returncode"] != 0),
             (False, "producer exceeded 1s wall clock", True),
         )
+        _tree_pid = root / "producer-child.pid"
+        _tree_parent = (
+            "import os,subprocess,sys,time,pathlib;"
+            "subprocess.Popen([sys.executable,'-c',"
+            "'import os,sys,time,pathlib; pathlib.Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)',"
+            "sys.argv[1]]);"
+            "time.sleep(60)"
+        )
+        rp.collect_producer([_PY, "-c", _tree_parent, str(_tree_pid)], b"", 2)
+        _child_alive = False
+        if _tree_pid.is_file():
+            _cpid = int(_tree_pid.read_text(encoding="utf-8").strip())
+            if os.name == "nt":
+                import ctypes
+
+                _k = ctypes.WinDLL("kernel32", use_last_error=True)
+                _k.OpenProcess.restype = ctypes.c_void_p
+                _k.OpenProcess.argtypes = [ctypes.c_uint, ctypes.c_int, ctypes.c_uint]
+                _k.CloseHandle.argtypes = [ctypes.c_void_p]
+                _h = _k.OpenProcess(0x1000, 0, _cpid)
+                _child_alive = bool(_h)
+                if _h:
+                    _k.CloseHandle(_h)
+            else:
+                try:
+                    os.kill(_cpid, 0)
+                    _child_alive = True
+                except OSError:
+                    _child_alive = False
+        check(
+            "a timeout kills the producer child",
+            (_tree_pid.is_file(), _child_alive),
+            (True, False),
+        )
         _ok, _why, _ = rp.collect_producer(
             [_PY, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe')"], b"", 30
         )

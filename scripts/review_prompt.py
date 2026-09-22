@@ -10,6 +10,7 @@ valid-looking row must not mask malformed trailing findings).
 
 import codecs
 import contextlib
+import ctypes
 import hashlib
 import json
 import os
@@ -408,6 +409,43 @@ def _read_scan_files(paths: list[str], prefix: str) -> list[str]:
     return texts
 
 
+def _bind_producer_job(proc: subprocess.Popen):
+    """Put the producer in a Windows Job Object, or None when unavailable.
+
+    Descendants stay in the job. `_terminate_producer_job` then kills
+    the tree (D00 T01 §55 item 22). A missing job still kills the
+    direct process.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    except (AttributeError, OSError):
+        return None
+    kernel.CreateJobObjectW.restype = ctypes.c_void_p
+    kernel.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+    kernel.AssignProcessToJobObject.restype = ctypes.c_int
+    kernel.AssignProcessToJobObject.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    kernel.TerminateJobObject.restype = ctypes.c_int
+    kernel.TerminateJobObject.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    job = kernel.CreateJobObjectW(None, None)
+    handle = getattr(proc, "_handle", None)
+    if not job or handle is None or not kernel.AssignProcessToJobObject(job, handle):
+        if job:
+            kernel.CloseHandle(job)
+        return None
+    return kernel, job
+
+
+def _terminate_producer_job(bound) -> None:
+    if not bound:
+        return
+    kernel, job = bound
+    kernel.TerminateJobObject(job, 1)
+    kernel.CloseHandle(job)
+
+
 def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tuple[bool, str, dict]:
     """Run one reviewer producer under streaming bounds (D00 T01 §34
     items 3-4): the prompt bytes feed stdin while stdout streams
@@ -493,8 +531,15 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
     feeder.start()
     reader.start()
     errout.start()
+    job = _bind_producer_job(proc)
 
     def _reap() -> int | None:
+        _terminate_producer_job(job)
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+            )
         try:
             proc.kill()
         except OSError:
