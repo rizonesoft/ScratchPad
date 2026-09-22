@@ -115,6 +115,15 @@ python3 scripts/review_prompt.py run panel /tmp/review-prompt.md <todo-path> <se
 ```
 
 (Pins resolve from `.conclave/panel.toml`: the depth slot runs `claude-opus-5` at high effort, operator direction 2026-09-22, in effect at the D00 T04 §15 stamp (sonnet-high before that). The model id shares the signoff slot's 2026-09-22 probe.)
+Failover rounds run the slot the outage matrix names, same prompt assembly, one command per rung (the family must match the slot or `run` refuses):
+
+```bash
+python3 scripts/review_prompt.py run panel /tmp/review-prompt.md <todo-path> <section> codex $(date -u +%Y%m%d) --slot bulk-fallback [<findings-file>]
+python3 scripts/review_prompt.py run panel /tmp/review-prompt.md <todo-path> <section> codex $(date -u +%Y%m%d) --slot signoff-fallback [<findings-file>]
+python3 scripts/review_prompt.py run panel /tmp/review-prompt.md <todo-path> <section> claude $(date -u +%Y%m%d) --slot cross-fill [<findings-file>]
+```
+
+(`bulk-fallback` re-runs a failed bulk round on terra at bulk effort; `signoff-fallback` runs the sign-off once on terra-high; `cross-fill` fills a bulk round on opus at bulk effort. Pins resolve from `.conclave/panel.toml` like every other slot.)
 The `run` subcommand wraps every slot atomically: `python3 scripts/review_prompt.py run <panel|plan|arch> <prompt-file> <todo-path> <section> <family> <YYYYMMDD> [--timeout S] [--store DIR] [--receipt-dir DIR] [--candidate SHA] [--slot NAME] <scan-file>... [-- <producer> [args...]]` mints the run, resolves `--slot` producer argv from `.conclave/panel.toml` (refusing family mismatch and slot-plus-producer with a naming diagnostic; the legacy `-- producer` form stays for tests and fixtures), executes the producer with the prompt on stdin under streaming byte, line, token (4096 chars), and wall-clock (slot timeout default) bounds plus strict UTF-8 and NUL rejection, validates the output with the matching checker (panel and plan; arch records unchecked), stores the bytes content-addressed under ignored `build/review-runs/`, appends the run ledger, and prints the verdict with a `Provenance:` line (exit 0 PASS, 1 FAIL, 2 usage). Any bound kills the producer mid-stream with a naming diagnostic; a nonzero producer exit fails even with well-shaped output.
 
 ### Panel depth tiers

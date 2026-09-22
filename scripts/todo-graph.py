@@ -1413,9 +1413,12 @@ def panel_wiring_problems(root: Path) -> list[tuple[str, str]]:
     """Panel-slot wiring problems (D00 T04 §15).
 
     Each item is `(code, message)`. The TOML parses with closed sets;
-    skill commands name resolving slots and carry no literal pins.
+    skill commands name resolving slots and carry no literal pins;
+    every governed slot runs through a skill command (R2-F1:
+    resolution alone lets an absent failover command pass).
     Missing files skip (fixture roots predate the wiring); a present
-    but invalid TOML, an unresolvable slot, or a pinned command fails.
+    but invalid TOML, an unresolvable slot, a pinned command, or an
+    unrun slot fails.
     """
     problems: list[tuple[str, str]] = []
     toml = root / ".conclave" / "panel.toml"
@@ -1428,12 +1431,15 @@ def panel_wiring_problems(root: Path) -> list[tuple[str, str]]:
         slots = panel_slots.load_slots(str(toml))
     except panel_slots.PanelSlotsError as exc:
         return [("panel-slots", str(exc))]
+    seen: set[str] = set()
     for path in skills:
         rel = path.relative_to(root).as_posix()
         text = path.read_text(encoding="utf-8", errors="replace")
         for ref in _PANEL_SLOT_REF_RE.findall(text):
             if ref not in slots:
                 problems.append(("panel-slots", f"{rel}: --slot {ref} resolves nowhere"))
+            else:
+                seen.add(ref)
         in_fence = False
         for lnum, line in enumerate(text.splitlines(), 1):
             if line.strip().startswith("```"):
@@ -1441,6 +1447,9 @@ def panel_wiring_problems(root: Path) -> list[tuple[str, str]]:
                 continue
             if in_fence and _PANEL_PIN_RE.search(line):
                 problems.append(("panel-slots", f"{rel}:{lnum} pins a model or effort inside a command"))
+    for name in panel_slots.PANEL_SLOTS:
+        if name not in seen:
+            problems.append(("panel-slots", f"no skill runs --slot {name}"))
     return problems
 
 
@@ -23380,6 +23389,22 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         _pw_bare = root / "panel-bare"
         _pw_bare.mkdir(parents=True)
         check("a missing panel TOML skips", panel_wiring_problems(_pw_bare), [])
+        _pw_cov = root / "panel-coverage"
+        (_pw_cov / ".conclave").mkdir(parents=True)
+        (_pw_cov / ".conclave" / "panel.toml").write_text(
+            (WORKSPACE / ".conclave" / "panel.toml").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        (_pw_cov / ".claude" / "skills" / "review-todo-section").mkdir(parents=True)
+        (_pw_cov / ".claude" / "skills" / "review-todo-section" / "SKILL.md").write_text(
+            "run panel --slot bulk\n",
+            encoding="utf-8",
+        )
+        check(
+            "an unrun panel slot fires",
+            [msg for code, msg in panel_wiring_problems(_pw_cov) if code == "panel-slots"],
+            [f"no skill runs --slot {name}" for name in rp.panel_slots.PANEL_SLOTS if name != "bulk"],
+        )
         check(
             "panel argv renders per runner",
             (
