@@ -3199,6 +3199,8 @@ def receipt_trusted(
         return True
     if RUN_ID_SHAPE_RE.match(run) is None:
         return False
+    if re.fullmatch(r"[0-9a-fA-F]{40}", candidate) is None:
+        return False
     raw = git_file_at(candidate, f"docs/reviews/receipts/{run}.json")
     if not raw:
         return False
@@ -3476,17 +3478,19 @@ def git_commit_hunk_lines(sha: str, repo_path: str) -> list[tuple[int, int]] | N
 
 
 def git_range_hunk_lines(base: str, tip: str, repo_path: str) -> list[tuple[int, int]] | None:
-    """Union of new-side hunk line ranges over the non-merge first-parent
-    commits in base..tip touching a path, or None when unprovable. The
-    range-shape hunk leg (D00 T01 S55 item 4): per-commit patches, not
-    the endpoint diff, so an edit a later commit reverted still counts
-    its hunk. Same linear-loop flags as git_range_touches; the
-    self-test patches this name, never a repo.
+    """Tip-relative new-side hunk ranges of base..tip, or None when
+    unprovable. Empty when no non-merge first-parent commit in the
+    range touched the path, so a side-branch edit merged in does not
+    count. The ranges come from `git diff base tip`, whose new side
+    is the tip, so an insertion ahead of the section cannot make an
+    intermediate hunk number look like it lands in the tip span. A
+    reverted edit is absent from the tip and does not intersect.
+    The self-test patches this name, never a repo.
     """
     try:
         import subprocess
 
-        out = subprocess.run(
+        touched = subprocess.run(
             [
                 "git",
                 "-C",
@@ -3494,10 +3498,28 @@ def git_range_hunk_lines(base: str, tip: str, repo_path: str) -> list[tuple[int,
                 "log",
                 "--no-merges",
                 "--first-parent",
-                "-p",
                 "--pretty=format:",
-                "--unified=0",
+                "--name-only",
                 f"{base}..{tip}",
+                "--",
+                repo_path,
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if touched.returncode != 0:
+            return None
+        if repo_path not in touched.stdout.decode("utf-8", "replace").splitlines():
+            return []
+        out = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "diff",
+                "--unified=0",
+                base,
+                tip,
                 "--",
                 repo_path,
             ],
@@ -5770,6 +5792,7 @@ def cmd_query(args) -> int:
                                         )
                                     except OSError:
                                         _cause_src = ""
+                                _cause_src, _ = strip_fenced_code(_cause_src)
                                 _cause_cands = []
                                 for _cpln in _cause_src.splitlines():
                                     _cpm = PROVENANCE_RE.match(_cpln)
