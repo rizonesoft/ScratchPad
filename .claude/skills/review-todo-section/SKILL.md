@@ -76,7 +76,7 @@ Run each lens as a separate pass over the candidate, recording findings in the f
 | `design` | On a surface: judge the RENDERED surface against the baseline or contract, never source alone. Screenshots or driven captures, not impressions. |
 | `record` | Is the record honest: does the stamp's evidence match what ran, do deferrals name owners, is the row flip earned? |
 
-Each lens ends in a verdict: `approve`, `needs-attention` (with findings), or `advisory` (noted, not blocking). Findings are fixed in the candidate and the affected lens re-runs: iterate until no lens reports anything the plan would fix, under the soft-3/hard-5 caps below (the early sequence always runs whole before the Opus sign-off, which always runs because it governs the stamp). A unit patched three rounds running is stopped and re-thought instead of patched again.
+Each lens ends in a verdict: `approve`, `needs-attention` (with findings), or `advisory` (noted, not blocking). Findings are fixed in the candidate and the affected lens re-runs: iterate until no lens reports anything the plan would fix, under the soft-3/hard-5 caps below (the early sequence always runs whole before the Claude sign-off, which always runs because it governs the stamp). A unit patched three rounds running is stopped and re-thought instead of patched again.
 
 ### The mixed panel
 

@@ -2711,7 +2711,9 @@ TELEMETRY_VERDICT_RE = re.compile(
 )
 TELEMETRY_DISP_RE = re.compile(r"^\|\s*(R\d+-F\d+)\s*\|\s*(fixed|live|filed)\s*\|\s*(.+?)\s*\|\s*$")
 TELEMETRY_SOL_RE = re.compile(r"(sol|gpt) outage:\s*(\S.*)$", re.IGNORECASE)
-TELEMETRY_OPUS_RE = re.compile(r"(Opus|Claude) outage\b\s*(.*)$")
+# Case-insensitive like the validator's outage legs (D00 T04 §14
+# R2-F2): a lowercase note that validates must count here too.
+TELEMETRY_OPUS_RE = re.compile(r"(Opus|Claude) outage\b\s*(.*)$", re.IGNORECASE)
 # Denial vocabulary mirror for outage counting (D00 T01 §37 R1: the
 # validator owns enforcement; telemetry counts honest lines only).
 TELEMETRY_SOL_DENY_RE = re.compile(r"^(no\b|none\b|n/a\b|nothing\b|never\b|not applicable\b)", re.IGNORECASE)
@@ -24366,6 +24368,12 @@ Sol outage: CLI missing before round 2
             "telemetry matches panel headings case-insensitively like the validator",
             [(r["n"], r["family"]) for r in _TEL_LC["rounds"]],
             [(4, "GPT")],
+        )
+        _TEL_LO = telemetry_parse("claude outage model error\n")
+        check(
+            "telemetry matches outage notes case-insensitively like the validator",
+            _TEL_LO["opus"],
+            [("model error", None, "claude")],
         )
         _TEL_RD = telemetry_parse(
             "run 20260920-D90-T09-S1-gpt\n\n## GPT panel (round 2)\n\nrun 20260920-D90-T09-S1-gpt\n"
