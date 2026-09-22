@@ -56,6 +56,7 @@ track: W0
 |  18   |  §18    | Section-14 plan-review residuals | D00 T04 §14 |  [ ]   |
 |  19   |  §19    | Opus 5.5 reviewer re-pin | D00 T04 §15 |  [x]   |
 |  20   |  §20    | Section-19 plan-review residuals | D00 T04 §19 |  [ ]   |
+|  21   |  §21    | GPT-6 sol reviewer re-pin | D00 T04 §19 |  [ ]   |
 
 ---
 
@@ -378,6 +379,7 @@ Why this section exists: the panel's opus slots pin `claude-opus-5`, but the run
 
 **Test checkpoint:** every opus slot resolves the new id from the TOML, the retired id fires outside history, no skill command carries a literal pin, the rung mapping and record words are untouched, and self-test plus live validate read green. Falsifiable by any opus slot on the retired id, any literal pin passing, any renamed record word, or any red gate.
 **Noted 2026-09-22 (§20 filed):** plan-review residuals (CLI floor pre-dispatch check, per-slot argv fixtures) home in §20.
+**Noted 2026-09-22 (§21 filed):** sol slots re-pin to `gpt-6-sol` at the §21 stamp; `gpt-5.6-sol` retires from the closed set, history keeps naming it.
 
 > **Verified:** 2026-09-22 | §19 | self-test 1572/1572 (R1-F1 pin-injection fixture); live validate 0 fatal 1 warning (known owner-login mapping); Full panel (sol R1-R2 bulk, opus-5-5 R3 sign-off, opus-5-5 R4-R5 depth) over candidates 19363bd d23cc1e e2234d4 caad9ff 6b86bc9 f372a0d b3c724d b4cc7ed, R1-F1/F2 plus R2-F1/F2 plus R3-F1 plus R4-F1 fix-loop fixed; plan review 7 findings, 2 filed at §20, 2 accepted, 2 rejected, 1 win noted
 > **Review:** round 5 (FINAL), candidates 19363bd d23cc1e e2234d4 caad9ff 6b86bc9 f372a0d b3c724d b4cc7ed -- `adversarial` approve · `consistency` approve · `integration` approve · `record` approve; R1 fix-loop d23cc1e, R2 fix-loop caad9ff, R3 fix-loop f372a0d, R4 record reorder b4cc7ed, R5 all-approve. Raw findings: docs/reviews/00-workspace/D00-T04-s19.md
@@ -394,3 +396,18 @@ Why this section exists: the §19 plan review (sol-medium over §19 plus §15 pl
 - [ ] Commit: `"workspace: file section-19 plan-review residuals"`
 
 **Test checkpoint:** below-floor runners never dispatch, and all five moved slots pin argv. Falsifiable by any dispatched below-floor run or any unpinned moved slot.
+
+## 21. GPT-6 sol reviewer re-pin
+
+> **Started:** 2026-09-22T18:53:21Z
+
+Why this section exists: the panel's sol slots pin `gpt-5.6-sol`, but GPT-6 sol released as `gpt-6-sol`, and operator direction 2026-09-22 re-pins the bulk reviewer to it. Both sol slots (bulk, plan-primary) move to the new id with efforts unchanged (medium); `gpt-5.6-sol` retires from the closed model set structurally, sonnet precedent, while telemetry and review history keep naming it. Terra pins stay: the fallback family is unchanged by this move. The pin is grounded on this machine 2026-09-22 (verbatim-echo probe at medium, exit 0; the unhyphenated `gpt6-sol` shape fails unknown-model). Record words do not move: slots, families, and outage lines are unchanged, so only the model id plus its citations change. -> XREF: D00 T04 §19 (second re-pin on its wiring; supersession noted there).
+
+- [x] TOML sol slots move to the new id: bulk and plan-primary name `gpt-6-sol` with their current efforts and timeouts untouched. Done when: no slot names the retired id. Done: both slots moved; efforts and timeouts untouched.
+- [x] Closed model set moves with structural retirement: `PANEL_MODELS` names the new id and excludes the retired one, and the skill-command pin detector still catches literal pins of either id. Done when: the set holds and a literal pin of either id fires. Done: set moved; detector matches both ids.
+- [x] Fixtures plus argv pins follow the id: per-runner argv, live slot pins, producer binding, and probe templates assert the new id where sol runs. Done when: the pins ship and the self-test total grows with 0 failed. Done: pins follow (probe templates read the TOML live); pin-injection fixture extended to both sol ids; live plan-primary pin added (1572 to 1573); provenance plus telemetry parser fixtures untouched (model-agnostic data).
+- [x] Skills cite the new probe at moved pins: both review skills name the new id with its probe date, replacing the sol-5.6 confirmations on moved slots. Done when: each moved pin cites its probe date. Done: both skills cite the 2026-09-22 gpt-6 probe; rung sentences era-split; outage notes name the new bulk producer.
+- [x] README plus §19 read the move: the `panel-slots` severity row names the new id, and §19 carries a dated supersession annotation (no checklist rewrite). Done when: the row names the new id and the annotation reads. Done: row moved; annotation reads.
+- [ ] Commit: `"workspace: re-pin reviewers to gpt-6 sol"`
+
+**Test checkpoint:** every sol slot resolves the new id from the TOML, the retired id fires outside history, no skill command carries a literal pin, the rung mapping and record words are untouched, and self-test plus live validate read green. Falsifiable by any sol slot on the retired id, any literal pin passing, any renamed record word, or any red gate.

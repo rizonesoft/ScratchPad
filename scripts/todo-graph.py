@@ -1403,7 +1403,7 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
     return problems
 
 _PANEL_SLOT_REF_RE = re.compile(r"--slot\s+([a-z0-9][a-z0-9-]*)")
-_PANEL_PIN_RE = re.compile(r"gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
+_PANEL_PIN_RE = re.compile(r"gpt-6-sol|gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
 _PANEL_SKILLS = (
     ".claude/skills/review-todo-section/SKILL.md",
     ".grok/skills/review-todo-section/SKILL.md",
@@ -23399,7 +23399,7 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         _pw_root = root / "panel-wiring"
         (_pw_root / ".conclave").mkdir(parents=True)
         (_pw_root / ".conclave" / "panel.toml").write_text(
-            '[slot.bulk]\nmodel = "gpt-5.6-sol"\neffort = "medium"\ntimeout = 600\n',
+            '[slot.bulk]\nmodel = "gpt-6-sol"\neffort = "medium"\ntimeout = 600\n',
             encoding="utf-8",
         )
         check(
@@ -23437,11 +23437,13 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "```bash\n"
             "claude -p --model claude-opus-5-5 --effort high\n"
             "claude -p --model claude-opus-5 --effort high\n"
+            "codex exec -m gpt-6-sol -c model_reasoning_effort=medium\n"
+            "codex exec -m gpt-5.6-sol -c model_reasoning_effort=medium\n"
             "```\n",
             encoding="utf-8",
         )
         check(
-            "literal pins of either claude id fire",
+            "literal pins of either claude or sol id fire",
             [
                 msg
                 for code, msg in panel_wiring_problems(_pw_pin)
@@ -23450,16 +23452,18 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             [
                 ".claude/skills/review-todo-section/SKILL.md:2 pins a model or effort inside a command",
                 ".claude/skills/review-todo-section/SKILL.md:3 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:4 pins a model or effort inside a command",
+                ".claude/skills/review-todo-section/SKILL.md:5 pins a model or effort inside a command",
             ],
         )
         check(
             "panel argv renders per runner",
             (
-                rp.panel_slots.argv_for_slot("bulk", {"bulk": {"model": "gpt-5.6-sol", "effort": "medium", "timeout": 600, "family": "codex"}}),
+                rp.panel_slots.argv_for_slot("bulk", {"bulk": {"model": "gpt-6-sol", "effort": "medium", "timeout": 600, "family": "codex"}}),
                 rp.panel_slots.argv_for_slot("signoff", {"signoff": {"model": "claude-opus-5-5", "effort": "xhigh", "timeout": 600, "family": "claude"}}),
             ),
             (
-                ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium", "-s", "read-only", "-"],
+                ["codex", "exec", "-m", "gpt-6-sol", "-c", "model_reasoning_effort=medium", "-s", "read-only", "-"],
                 ["claude", "-p", "--model", "claude-opus-5-5", "--effort", "xhigh", "--allowedTools", "Read"],
             ),
         )
@@ -23468,9 +23472,14 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "live bulk and signoff pins hold",
             (_live_slots["bulk"], _live_slots["signoff"]),
             (
-                {"model": "gpt-5.6-sol", "effort": "medium", "timeout": 600, "family": "codex"},
+                {"model": "gpt-6-sol", "effort": "medium", "timeout": 600, "family": "codex"},
                 {"model": "claude-opus-5-5", "effort": "high", "timeout": 600, "family": "claude"},
             ),
+        )
+        check(
+            "live plan-primary pin holds",
+            _live_slots["plan-primary"],
+            {"model": "gpt-6-sol", "effort": "medium", "timeout": 900, "family": "codex"},
         )
         _TEL_XH = telemetry_parse(
             "## GPT panel (round 1)\n- `adversarial` approve\nTelemetry: round 1; model claude-opus-5-5; effort xhigh; duration 12s; outcome approve; tokens 100\n"
@@ -23483,10 +23492,10 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         check(
             "producer binding parses rewired argv",
             (
-                rp._producer_binding(["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium"]),
+                rp._producer_binding(["codex", "exec", "-m", "gpt-6-sol", "-c", "model_reasoning_effort=medium"]),
                 rp._producer_binding(["claude", "-p", "--model", "claude-opus-5-5", "--effort", "xhigh"]),
             ),
-            (("gpt-5.6-sol", "medium"), ("claude-opus-5-5", "xhigh")),
+            (("gpt-6-sol", "medium"), ("claude-opus-5-5", "xhigh")),
         )
         _ps_rp = str(Path(__file__).with_name("review_prompt.py"))
         _ps_store = root / "run-slot-store"
