@@ -52,6 +52,7 @@ track: W0
 |  14   |  §14    | Panel-label rename to Claude and GPT | -- |  [ ]   |
 |  15   |  §15    | Panel rewire: sol bulk, opus governs | -- |  [x]   |
 |  16   |  §16    | Section-15 plan-review residuals | D00 T04 §15 |  [ ]   |
+|  17   |  §17    | Section-14 sign-off residuals | D00 T04 §14 |  [ ]   |
 
 ---
 
@@ -284,6 +285,7 @@ Why this section exists: the pre-record §54 plan review (unledgered) returned 2
 Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `claude-sonnet-5` sign-off (operator direction 2026-09-22; live since D00 T01 §55, whose stamp reads rounds 1-2 terra, rounds 3-5 sonnet), but every validator-matched record word still names the retired models: `Opus panel`, `Opus outage`, `opus rung`, and `Sol outage`. The four words move to `Claude panel`, `Claude outage`, `claude rung`, and `GPT outage` on stamps dated after 2026-09-22, with pre-cutover records grandfathered and `GPT panel` plus `gpt rung` unchanged as the still-accurate GPT-family words. -> XREF: D00 T01 §35 (the panel regime whose record words move); -> XREF: D00 T01 §37 (the outage-accountability rule whose note words move); -> XREF: D00 T04 §1 (open sibling naming the old note words; coordination note lands there).
 - -> XREF: D00 T04 §15 -- panel model rewire with tiered effort (round-3 sign-off runs the rewired panel; rounds 1-2 stand pre-rewire)
 **Noted 2026-09-22 (§15 filed):** panel slots move to sol-medium bulk and opus-xhigh sign-off at the §15 stamp; this section's review records the switch in its round-3 header.
+**Noted 2026-09-22 (§17 filed):** round-3 sign-off residuals (telemetry outage-label case policy, grok runner rules cutover reconcile) home in §17.
 
 - [x] Validator legs match the new words date-scoped: `Claude panel` headings, `Claude outage` lines, `GPT outage: <what failed>` lines, and `claude rung` markers validate on stamps dated after 2026-09-22, while the old words stay valid on pre-cutover stamps and wrong-shape-for-date records fire. Done when: the legs plus the cutover constant ship in `scripts/todo-validate.py` and `scripts/todo-graph.py` (heading, outage-note, rung, signoff-family, and telemetry legs). Done: legs plus `LABEL_CUTOVER` ship; self-test 1537/1537, live validate 0 fatal.
 - [x] New-word and grandfather fixtures lock every leg: post-cutover PASS fixtures for each new word, pre-cutover old-word fixtures that stay silent, and wrong-shape-for-date FAIL fixtures, so the cutover holds under self-test. Done when: the fixtures ship and the self-test total grows with 0 failed. Done: §§46-58 plus telemetry and plan-health pins; 1537 to 1571 with 0 failed (R3-F1 mirror leg plus §58 fixture; R3-F5 range correction).
@@ -328,3 +330,13 @@ Why this section exists: the §15 plan review (terra-high over §15 plus §14 pl
 - [ ] Commit: `"workspace: file section-15 plan-review residuals"`
 
 **Test checkpoint:** post-rewire gpt-rung prose gates on sol, §35 reads the ladder supersession, and fallback sign-offs stamp distinctly. Falsifiable by any terra-named gpt rung passing post-rewire, any unannotated all-Opus read, or any fallback sign-off stamping silently.
+
+## 17. Section-14 sign-off residuals
+
+Why this section exists: the §14 round-3 sign-off (opus-xhigh over the §14 range, 5 findings) returned 2 below-bar residuals that belong to the panel rules: a telemetry display case split needing a designed echo-vs-normalize decision rather than a fix-loop guess, and a stale grok runner rules file outside the candidate that contradicts the post-cutover skill and needs owner direction. -> XREF: D00 T04 §14 (filed from its round-3 sign-off); -> SOURCE: Opus-panel-D00-T04-s14-round-3 (candidate c66111d, round-3 consistency 1 plus integration 1; transcribed in docs/reviews/00-workspace/D00-T04-s14.md).
+
+- [ ] Telemetry outage labels share one case policy: the Sol-side label normalizes while the Opus-side label echoes raw case onto the same per-record `outages:` line, so one side is decided (normalize both or echo both per the record-words rule) and the self-test pins the decided policy instead of the divergence (R3-F2, record in the §14 findings file). Done when: the decided policy ships with fixtures pinning both sides.
+- [ ] Grok runner rules reconcile with the cutover: `.grok/rules/campaign-runner.md` pins pre-rewire models plus `Opus panel` headings while the grok review skill it hosts mandates post-cutover pins plus `Claude panel`, so the file is updated, retired, or scoped with owner direction and no live runner prose contradicts the skill (R3-F4, record in the §14 findings file). Done when: the reconcile ships with the owner decision recorded.
+- [ ] Commit: `"workspace: file section-14 sign-off residuals"`
+
+**Test checkpoint:** telemetry outage labels read one case policy on both sides, and no grok runner prose contradicts the cutover skill. Falsifiable by any mixed-case outage line or any live `Opus panel` runner instruction.
