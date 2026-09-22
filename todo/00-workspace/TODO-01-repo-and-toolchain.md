@@ -112,7 +112,7 @@ track: W0
 |  52   |   §52   | Partial-record and quorum follow-ups | §28 |  [x]   |
 |  53   |   §53   | Unattended notification and register follow-ups | §29 |  [x]   |
 |  54   |   §54   | Clearance fixture follow-ups | §30 |  [x]   |
-|  55   |   §55   | Clearance causality follow-ups | §31 |  [ ]   |
+|  55   |   §55   | Clearance causality follow-ups | §31 |  [x]   |
 
 ---
 
@@ -1434,6 +1434,13 @@ Why this section exists: the §31 plan review (`gpt-5.6-sol` high over §31 plus
 - [x] Ancestry gates causality first: candidate ancestry is the primary causality gate with author-controlled timestamps supplemental diagnostics only, so forged, equal, or non-monotonic Git dates cannot order fixes or touches (PR8 D00-T01-S54-PR8). This item is a joiner from the §54 plan review. Done when: the ancestry-primary rule ships with forged-date fixtures. Done: a reviewed candidate that is an ancestor of the fix tip skips the timestamp gate. §149's `c0ffee1` is dated before the review and descends from the candidate, so the early date does not fail it. §150's `c0ffee2` is dated after the review and does not descend, so the late date does not save it (`ancestry:strict`). Unprovable ancestry keeps the timestamp gate. Default 2026-09-22: a proven non-descendant stays on the existing strict leg. Cost of changing: a new failure code would rename the PR70 pin. Suite 1525/1525.
 - [x] Execution binds trusted receipts, never runs plan text: clearance validates pre-existing receipts bound to a trusted CI job identity, content-addressed artifacts, and an immutable candidate, and explicitly prohibits executing commands parsed from TODO or proof text, so clearance cannot become a code-execution boundary and fabricated JSON cannot satisfy the legs (PR11 D00-T01-S54-PR11, PR12 D00-T01-S54-PR12, two findings one item). This item is a joiner from the §54 plan review. Done when: the prohibition plus receipt-validation leg ships with fixtures. Done: a run dated after 20260922 clears only when the candidate commit holds `docs/reviews/receipts/<run>.json` naming the `plan-gates` job, that candidate, and a digest equal to the artifact blob in the same commit. The working tree does not count. The execution leg does not launch command text. §151 clears. §152 and §153 stay at `proof:untrusted`. Default 2026-09-22: the cutoff is the ship day and the trusted jobs are `plan-gates` and `review-runner`. `review_prompt.py run --receipt-dir` writes the receipt JSON and the artifact bytes. Cost of moving the cutoff earlier is committing receipts for older lines. Cost of adding a job is extending `TRUSTED_RECEIPT_JOBS`. Suite 1533/1533.
 - [x] Commit: `"workspace: follow up clearance causality per §31 plan review"`
+
+> **Verified:** 2026-09-22 | §55 | self-test 1537/1537 on 67ac72f
+> **Review:** rounds 1-2 terra, rounds 3-5 sonnet, candidate 67ac72fc8e4dc800f4a2c5cc69a3faec23fa9849 -- `adversarial` needs-attention (R5-F1 filed D00 T04 §1) · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T01-s55.md
+> **Plan review:** GPT high, filed D00 T04 §1 (run 20260922-D00-T01-S55-codex-c7001fd6f-r3)
+> **Reviewed-tip:** 67ac72fc8e4dc800f4a2c5cc69a3faec23fa9849
+> **CRUD:** applicable | self-test wrote temp repos and removed them; implementation edited scripts/todo-graph.py, scripts/review_prompt.py, scripts/todo-validate.py, scripts/probe_runner.py, plan-gates, README, and AGENTS.md (read back via self-test 1537/1537 and validate 0 fatal)
+> **Duration:** 2026-09-21T16:01:08Z to 2026-09-22T03:30:28Z
 
 **Test checkpoint:** reviews name trees, clearance re-opens, ranges join candidates, hunks bind sections, execution binds attested runs, merges stay excluded end to end, and provenance verifies. Falsifiable by any attested-but-absent tree, silent regression, or unverified byte.
 
