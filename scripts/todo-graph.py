@@ -1132,6 +1132,9 @@ SEVERITY_MAP: dict[str, str] = {
     "exemption-drift": "fatal",
     # today is past 2026-12-31 and an inventoried exemption remains.
     "exemption-overdue": "fatal",
+    # a live doc reuses a retired title outside the pinned historical
+    # records (D00 T01 §55 item 26).
+    "retired-term": "fatal",
 }
 # Clearance failure codes (D00 T01 §55 item 13). Stable names:
 # do not rename a member; add one only in the same change as its
@@ -1384,6 +1387,49 @@ PLAN_REVIEW_OVERDUE_DAYS = 7
 # MAX_STAMP_COVERAGE before they are expanded.
 NOTIFY_HORIZON_MAX_DAYS = 3660
 DURATION_MAX_MINUTES = 5_256_000
+
+
+# Exact retired titles (D00 T01 §55 item 26). Match is case-sensitive
+# and literal. Historical records are pinned by path, or by section
+# number inside a still-edited TODO file. A new use outside that
+# list fails validation.
+RETIRED_TERMS = ("headless Opus panel",)
+RETIRED_TERM_FILES = {
+    "docs/reviews/00-workspace/D00-T01-s35.md",
+    "docs/reviews/00-workspace/D00-T01-s36.md",
+}
+RETIRED_TERM_SECTIONS = {
+    "todo/00-workspace/TODO-01-repo-and-toolchain.md": frozenset({9, 36}),
+}
+
+
+def retired_term_hits(root: Path) -> list[str]:
+    """Live markdown lines that reuse a retired title."""
+    hits: list[str] = []
+    if not root.is_dir():
+        return hits
+    for path in root.rglob("*.md"):
+        rel = path.relative_to(root).as_posix()
+        if rel.startswith("build/") or "/build/" in rel:
+            continue
+        if rel in RETIRED_TERM_FILES:
+            continue
+        allowed = RETIRED_TERM_SECTIONS.get(rel, frozenset())
+        section = 0
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+        for lineno, line in enumerate(lines, start=1):
+            heading = re.match(r"^##\s+(\d+)\.", line)
+            if heading:
+                section = int(heading.group(1))
+            if section in allowed:
+                continue
+            for term in RETIRED_TERMS:
+                if term in line:
+                    hits.append(f"{rel}:{lineno}: retired term {term!r}")
+    return hits
 
 
 def parse_bounded_int(text: str, maximum: int, minimum: int = 0) -> int | None:
@@ -20417,10 +20463,25 @@ proof D90-T07-S4-PR105 tests/fix-proof.py::test_does_not_exist
         check("bounded int accepts the horizon maximum", parse_bounded_int("3660", 3660), 3660)
         check("bounded int rejects an overflowing horizon", parse_bounded_int("999999999", 3660), None)
         check("bounded int rejects non-ASCII digits", parse_bounded_int("²", 10), None)
+        check("live docs do not reuse the retired title", retired_term_hits(WORKSPACE), [])
+        _term_root = root / "retired-terms"
+        (_term_root / "docs").mkdir(parents=True)
+        (_term_root / "README.md").write_text("the headless Opus panel is back\n", encoding="utf-8")
+        check(
+            "a live doc that reuses the retired title fails",
+            any("README.md:1" in hit for hit in retired_term_hits(_term_root)),
+            True,
+        )
+        (_term_root / "docs" / "note.md").write_text("the Headless Opus panel is different\n", encoding="utf-8")
+        check(
+            "a case change does not match the retired title",
+            retired_term_hits(_term_root),
+            [hit for hit in retired_term_hits(_term_root) if hit.startswith("README.md:")],
+        )
         _int_calls = 0
         for _src in (WORKSPACE / "scripts" / "todo-graph.py", WORKSPACE / "scripts" / "todo-validate.py"):
             _int_calls += len(re.findall(r"(?<![\w.])int\(", _src.read_text(encoding="utf-8")))
-        check("int() feeder count stays at the swept total", _int_calls, 81)
+        check("int() feeder count stays at the swept total", _int_calls, 82)
         _revs = _acc_json["reviews"]
         check(
             "reviews list due and overdue acceptances, never the superseded",

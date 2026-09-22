@@ -2312,6 +2312,8 @@ def validate(graph, _args) -> int:
     _today = datetime.now(timezone.utc).date().isoformat()
     for _ecode, _emsg in graph.exemption_problems(graph.WORKSPACE, _today):
         flag(_ecode, _emsg)
+    for _hit in graph.retired_term_hits(graph.WORKSPACE):
+        flag("retired-term", _hit)
 
     # 33. owner-to-login mapping validated (D00 T01 §53 item 3): the
     # poster assigns mapped owners, so the mapping file must parse
