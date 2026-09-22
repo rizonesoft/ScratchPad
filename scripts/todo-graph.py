@@ -1216,10 +1216,13 @@ PROVENANCE_DIGEST_CUTOFF = "20260921"
 # and the local store do not count. Default 2026-09-22: that day,
 # because live lines have no committed receipt. Cost of moving it
 # earlier: those lines fail proof:untrusted until a receipt is
-# committed at their candidate. The trusted job is the plan-gates
-# workflow job. Cost of adding a job: extend this tuple.
+# committed at their candidate. Trusted jobs are the plan-gates
+# workflow job and review-runner, which `review_prompt.py run`
+# records. `--receipt-dir docs/reviews/receipts` writes the pair
+# the candidate commit carries. Cost of adding a job: extend this
+# tuple.
 RECEIPT_RUN_CUTOFF = "20260922"
-TRUSTED_RECEIPT_JOBS = ("plan-gates",)
+TRUSTED_RECEIPT_JOBS = ("plan-gates", "review-runner")
 # Stamps on or before this date predate the outage-note link rule and are
 # grandfathered (D00 T01 §52 item 1): outage markers without shaped
 # notes stay silent, so pre-rule records (including every fixture
@@ -22682,6 +22685,24 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "gc waits for the ledger lock before deleting an unpublished artifact",
             (_gc_waited, not (_gc / _publishing).is_file(), (_gc / _kept).is_file()),
             (True, True, True),
+        )
+        _pub = root / "receipt-pub"
+        _pub_raw = b"panel-bytes\n"
+        _pub_run = "20260923-D90-T07-S155-gpt"
+        _pub_cand = "a" * 40
+        _pub_doc = rp.publish_receipt(str(_pub), _pub_run, rp.receipt_job(), _pub_cand, _pub_raw)
+        _pub_disk = json.loads((_pub / f"{_pub_run}.json").read_text(encoding="utf-8"))
+        check(
+            "publish_receipt writes the pair clearance reads",
+            (
+                (_pub / f"{_pub_run}.out").read_bytes() == _pub_raw,
+                _pub_disk == _pub_doc,
+                _pub_doc["job"] == rp.receipt_job(),
+                _pub_doc["digest"] == "sha256:" + hashlib.sha256(_pub_raw).hexdigest(),
+                _pub_doc["artifact"] == f"docs/reviews/receipts/{_pub_run}.out",
+                _pub_doc["candidate"] == _pub_cand,
+            ),
+            (True, True, True, True, True, True),
         )
         _ok, _why, _ = rp.collect_producer(
             [_PY, "-c", "import sys; sys.stdout.buffer.write(b'\\xff\\xfe')"], b"", 30

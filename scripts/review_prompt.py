@@ -844,6 +844,65 @@ def _held_ledger_lock(store: str):
                 msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def receipt_job() -> str:
+    """The CI job that produced this run, or the local runner name.
+
+    `plan-gates` is set only when that GitHub job is the caller.
+    Every other run records `review-runner`, which clearance also
+    trusts once the receipt and its bytes are in the candidate
+    commit. A hand-typed job outside those two names does not.
+    """
+    if os.environ.get("GITHUB_JOB") == "plan-gates":
+        return "plan-gates"
+    return "review-runner"
+
+
+def publish_receipt(directory: str, run_id: str, job: str, candidate: str, raw: bytes) -> dict:
+    """Write the receipt pair a candidate commit can carry.
+
+    `<run>.out` is the producer bytes. `<run>.json` names that
+    file at `docs/reviews/receipts/`, which is the path clearance
+    reads from the candidate tree. The directory argument is
+    where the pair is written; pass `docs/reviews/receipts` to
+    land them on that path.
+    """
+    os.makedirs(directory, exist_ok=True)
+    digest = hashlib.sha256(raw).hexdigest()
+    out_name = f"{run_id}.out"
+    out_path = os.path.join(directory, out_name)
+    tmp = f"{out_path}.tmp.{os.getpid()}"
+    try:
+        with open(tmp, "wb") as fh:
+            fh.write(raw)
+        os.replace(tmp, out_path)
+    except OSError:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    doc = {
+        "run": run_id,
+        "job": job,
+        "candidate": candidate,
+        "digest": "sha256:" + digest,
+        "artifact": f"docs/reviews/receipts/{out_name}",
+    }
+    json_path = os.path.join(directory, f"{run_id}.json")
+    jtmp = f"{json_path}.tmp.{os.getpid()}"
+    try:
+        with open(jtmp, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(json.dumps(doc, sort_keys=True) + "\n")
+        os.replace(jtmp, json_path)
+    except OSError:
+        try:
+            os.unlink(jtmp)
+        except OSError:
+            pass
+        raise
+    return doc
+
+
 def _append_receipt(store: str, run_id: str, mint, build) -> tuple[str, dict]:
     """Append one receipt. The caller holds the ledger lock."""
     claims_text, ids = _ledger_claims(store)
@@ -947,6 +1006,7 @@ if __name__ == "__main__":
         family, date = sys.argv[6], sys.argv[7]
         timeout: float = RUN_TIMEOUT_SECS
         store = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "build", "review-runs")
+        receipt_dir = ""
         candidate = ""
         scans: list[str] = []
         rest = sys.argv[8:]
@@ -977,6 +1037,9 @@ if __name__ == "__main__":
                 i += 2
             elif pre[i] == "--candidate" and i + 1 < len(pre):
                 candidate = pre[i + 1]
+                i += 2
+            elif pre[i] == "--receipt-dir" and i + 1 < len(pre):
+                receipt_dir = pre[i + 1]
                 i += 2
             elif pre[i].startswith("--"):
                 print(f"run: unknown option {pre[i]!r}", file=sys.stderr)
@@ -1102,6 +1165,12 @@ if __name__ == "__main__":
         except (OSError, ValueError) as exc:
             print(f"run: cannot record the run under {store}: {exc}", file=sys.stderr)
             sys.exit(1)
+        if receipt_dir:
+            try:
+                publish_receipt(receipt_dir, run_id, receipt_job(), candidate, raw)
+            except OSError as exc:
+                print(f"run: cannot publish the receipt under {receipt_dir}: {exc}", file=sys.stderr)
+                sys.exit(1)
         try:
             shown = os.path.relpath(artifact, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
             if shown.startswith(".."):
