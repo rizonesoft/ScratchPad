@@ -50,6 +50,7 @@ track: W0
 |  12   |  §12    | Section-54 sign-off residuals | D00 T01 §54 |  [ ]   |
 |  13   |  §13    | Section-54 e2e and lane residuals | D00 T01 §54 |  [ ]   |
 |  14   |  §14    | Panel-label rename to Claude and GPT | -- |  [ ]   |
+|  15   |  §15    | Panel rewire: sol bulk, opus governs | -- |  [ ]   |
 
 ---
 
@@ -280,6 +281,8 @@ Why this section exists: the pre-record §54 plan review (unledgered) returned 2
 > **Started:** 2026-09-22T06:39:47Z
 
 Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `claude-sonnet-5` sign-off (operator direction 2026-09-22; live since D00 T01 §55, whose stamp reads rounds 1-2 terra, rounds 3-5 sonnet), but every validator-matched record word still names the retired models: `Opus panel`, `Opus outage`, `opus rung`, and `Sol outage`. The four words move to `Claude panel`, `Claude outage`, `claude rung`, and `GPT outage` on stamps dated after 2026-09-22, with pre-cutover records grandfathered and `GPT panel` plus `gpt rung` unchanged as the still-accurate GPT-family words. -> XREF: D00 T01 §35 (the panel regime whose record words move); -> XREF: D00 T01 §37 (the outage-accountability rule whose note words move); -> XREF: D00 T04 §1 (open sibling naming the old note words; coordination note lands there).
+- -> XREF: D00 T04 §15 -- panel model rewire with tiered effort (round-3 sign-off runs the rewired panel; rounds 1-2 stand pre-rewire)
+**Noted 2026-09-22 (§15 filed):** panel slots move to sol-medium bulk and opus-xhigh sign-off at the §15 stamp; this section's review records the switch in its round-3 header.
 
 - [x] Validator legs match the new words date-scoped: `Claude panel` headings, `Claude outage` lines, `GPT outage: <what failed>` lines, and `claude rung` markers validate on stamps dated after 2026-09-22, while the old words stay valid on pre-cutover stamps and wrong-shape-for-date records fire. Done when: the legs plus the cutover constant ship in `scripts/todo-validate.py` and `scripts/todo-graph.py` (heading, outage-note, rung, signoff-family, and telemetry legs). Done: legs plus `LABEL_CUTOVER` ship; self-test 1537/1537, live validate 0 fatal.
 - [x] New-word and grandfather fixtures lock every leg: post-cutover PASS fixtures for each new word, pre-cutover old-word fixtures that stay silent, and wrong-shape-for-date FAIL fixtures, so the cutover holds under self-test. Done when: the fixtures ship and the self-test total grows with 0 failed. Done: §§46-55 plus telemetry and plan-health pins; 1537 to 1557 with 0 failed.
@@ -290,3 +293,17 @@ Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `cla
 - [ ] Commit: `"workspace: rename panel labels to Claude and GPT"`
 
 **Test checkpoint:** post-cutover records validate only with the new words, pre-cutover records stay silent with the old words, wrong-shape-for-date records fire, both skills name the new words, and §1 carries the coordination note, and queries read both eras with stable enums. Falsifiable by any new-word record firing, any old-word grandfather firing, any silent wrong-shape record, any skill naming retired words for new reviews, any query dropping a new-word record, or any missing §1 note.
+
+## 15. Panel rewire: sol bulk, opus governs
+
+Why this section exists: the panel spends uniform high effort on two models (`gpt-5.6-terra` breadth, `claude-sonnet-5` governance), so the cheapest rounds cost the most and the governing round is merely tied for strongest. Operator direction 2026-09-22 rewires the slots: `gpt-5.6-sol` at medium for bulk breadth (Full R1-R2, Light R1, plan-review primary), `claude-opus-5` at xhigh for every sign-off (Full R3, Light R2) and at high for depth (Full R4-R5, arch gate) with opus-medium plan fallback, `gpt-5.6-terra` at high narrowed to GPT-side redundancy (sign-off fallback, arch fallback), and `claude-sonnet-5` retired from the matrix. Every stamp stays governed by the unambiguous strongest round, tiers differ in breadth never governance, and spend follows blast radius. Both new pins are grounded on this machine 2026-09-22 (verbatim-echo probes, exit 0). Record words do not move: `GPT panel`, `Claude panel`, `gpt rung`, `claude rung`, and the outage lines are family-level since D00 T04 §14, so only runner commands, pins, and effort change; telemetry already names the producer. D00 T04 §14 round 3 is the first live user: it runs on the rewired panel after this section stamps, with §14 rounds 1-2 standing as recorded pre-rewire. That order is review-time sequencing, not an implementation need, so no plan edge runs either way. -> XREF: D00 T04 §14 (round-3 sign-off is the first live user of the rewired panel; pre-rewire rounds stand).
+
+- [ ] Panel runners move to the rewired pins in both review skills: sol-medium bulk for Full R1-R2 plus Light R1, opus-xhigh sign-off for Full R3 plus Light R2, opus-high depth for Full R4-R5, terra-high sign-off fallback, and slot effort on outage fill. Done when: every panel runner block plus tier line in both skills names the table and no slot cites a retired pin.
+- [ ] Plan-review plus arch runners move with the rung mapping: sol-medium plan primary with opus-medium fallback, opus-high arch gate with terra-high fallback, and the `gpt rung` sentence names sol with the stamp-date split against pre-rewire terra. Done when: both skills state the moved runners and the era-split mapping.
+- [ ] Effort prose admits three levels: bulk medium, deep plus fallback high, sign-off xhigh, with the per-slot pins stated where the effort is pinned. Done when: both skills state per-slot effort and no uniform-effort sentence survives unqualified.
+- [ ] Probe evidence grounds the new pins: the 2026-09-22 verbatim-echo probes (sol-medium exit 0, opus-xhigh exit 0) are cited at the pins they confirm, replacing the terra/sonnet-high confirmations on moved slots. Done when: each new pin cites its probe date.
+- [ ] Sonnet retires from the matrix: no slot assigns `claude-sonnet-5`; surviving mentions are historical or era-qualified only. Done when: no runner block assigns sonnet.
+- [ ] Telemetry plus fixtures hold the new levels: medium, high, and xhigh parse where effort is enumerated, with fixtures pinning each level plus the retired-pin absence. Done when: the fixtures ship and the self-test total grows with 0 failed.
+- [ ] Commit: `"workspace: rewire panel to sol/opus tiered effort"`
+
+**Test checkpoint:** every slot runs its table pin (sol-medium bulk, opus-xhigh sign-off, opus-high depth, terra-high redundancy, opus-medium plan fallback), telemetry parses medium, high, and xhigh, no runner assigns sonnet, the rung mapping names sol with the stamp-date split, and self-test plus live validate read green. Falsifiable by any slot on a retired pin, any unparsed effort level, any sonnet runner assignment, any terra-named gpt rung on a post-rewire review, or any red gate.
