@@ -54,6 +54,7 @@ track: W0
 |  16   |  §16    | Section-15 plan-review residuals | D00 T04 §15 |  [ ]   |
 |  17   |  §17    | Section-14 sign-off residuals | D00 T04 §14 |  [ ]   |
 |  18   |  §18    | Section-14 plan-review residuals | D00 T04 §14 |  [ ]   |
+|  19   |  §19    | Opus 5.5 reviewer re-pin | D00 T04 §15 |  [ ]   |
 
 ---
 
@@ -311,6 +312,7 @@ Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `cla
 
 Why this section exists: the panel spends uniform high effort on two models (`gpt-5.6-terra` breadth, `claude-sonnet-5` governance), so the cheapest rounds cost the most and the governing round is merely tied for strongest. Operator direction 2026-09-22 rewires the slots: `gpt-5.6-sol` at medium for bulk breadth (Full R1-R2, Light R1, plan-review primary), `claude-opus-5` at xhigh for every sign-off (Full R3, Light R2) and at high for depth (Full R4-R5, arch gate) with opus-medium plan fallback, `gpt-5.6-terra` at high narrowed to GPT-side redundancy (sign-off fallback, arch fallback), and `claude-sonnet-5` retired from the matrix. Every stamp stays governed by the unambiguous strongest round, tiers differ in breadth never governance, and spend follows blast radius. Both new pins are grounded on this machine 2026-09-22 (verbatim-echo probes, exit 0). Record words do not move: `GPT panel`, `Claude panel`, `gpt rung`, `claude rung`, and the outage lines are family-level since D00 T04 §14, so only runner commands, pins, and effort change; telemetry already names the producer. D00 T04 §14 round 3 is the first live user: it runs on the rewired panel after this section stamps, with §14 rounds 1-2 standing as recorded pre-rewire. That order is review-time sequencing, not an implementation need, so no plan edge runs either way. Pins live in `.conclave/panel.toml` (slot to model, effort, timeout); `run --slot` resolves producer argv from it, so a re-pin edits one file and skills name slots, never pins. -> XREF: D00 T04 §14 (round-3 sign-off is the first live user of the rewired panel; pre-rewire rounds stand).
 **Noted 2026-09-22 (§16 filed):** plan-review residuals (post-rewire gpt-rung era rule, §35 ladder annotation, fallback-sign-off stamp record) home in §16.
+**Noted 2026-09-22 (§19 filed):** opus slots re-pin to `claude-opus-5-5` at the §19 stamp (CLI 2.1.280+); `claude-opus-5` retires from the closed set, history keeps naming it.
 
 - [x] Panel commands resolve slots from the TOML: `run --slot` gains slot resolution (codex/claude argv shapes, family derivation with mismatch refusal, slot timeouts, arch kind without checker); panel skill commands name bulk, signoff, depth, and failover slots with no literal pins. Done when: both skills run every panel slot through `--slot` and no skill command carries a model or effort literal. Done: `--slot` in `run` (argv shapes, family refusal, slot timeouts, arch unchecked); panel commands name slots; leg green.
 - [x] Plan-review plus arch commands move to slots with the rung mapping: plan-primary plus plan-fallback slots, arch-primary plus arch-fallback slots, and the `gpt rung` sentence names sol with the stamp-date split against pre-rewire terra. Done when: both skills state the moved slots and the era-split mapping. Done: plan-primary/fallback plus arch-primary/fallback slots; rung mapping era-split; grok arch off run-unchecked.
@@ -359,3 +361,18 @@ Why this section exists: the §14 plan review (sol-medium over §14 plus §35 pl
 - [ ] Commit: `"workspace: file section-14 plan-review residuals"`
 
 **Test checkpoint:** Claude-outage notes gate on the failure payload, and §15's Commit line carries its shipped-state annotation. Falsifiable by any payload-less Claude note passing or any unannotated unticked Commit.
+
+## 19. Opus 5.5 reviewer re-pin
+
+> **Started:** 2026-09-22T17:50:29Z
+
+Why this section exists: the panel's opus slots pin `claude-opus-5`, but the runner fleet moved on: `claude models` on the updated CLI (2.1.280) lists Opus 5.5 as `claude-opus-5-5` (the 5.5 entry reads disabled below 2.1.280), and operator direction 2026-09-22 re-pins the reviewer to it. All five opus slots (signoff, depth, cross-fill, plan-fallback, arch-primary) move to the new id with efforts unchanged (signoff stays high per the operator edit in 0648563); `claude-opus-5` retires from the closed model set structurally, sonnet precedent, while telemetry and review history keep naming it. The pin is grounded on this machine 2026-09-22 (verbatim-echo probe, exit 0). Record words do not move: slots, families, and outage lines are unchanged, so only the model id plus its citations change. -> XREF: D00 T04 §15 (re-pins its wiring; supersession noted there).
+
+- [x] TOML opus slots move to the new id: signoff, depth, cross-fill, plan-fallback, and arch-primary name `claude-opus-5-5` with their current efforts and timeouts untouched. Done when: no slot names the retired id. Done: five slots moved; efforts and timeouts untouched.
+- [x] Closed model set moves with structural retirement: `PANEL_MODELS` names the new id and excludes the retired one, and the skill-command pin detector still catches literal pins of either id. Done when: the set holds and a literal pin of either id fires. Done: set moved; detector matches both ids.
+- [x] Fixtures plus argv pins follow the id: per-runner argv, live slot pins, producer binding, and probe templates assert the new id where opus runs. Done when: the pins ship and the self-test total grows with 0 failed. Done: pins follow (live signoff high per operator edit); Implementer fixture untouched (unrelated parser data).
+- [x] Skills cite the new probe at moved pins: both review skills name the new id with its probe date, replacing the opus-5 confirmations on moved slots. Done when: each moved pin cites its probe date. Done: both skills cite the 2026-09-22 5-5 probe plus the CLI 2.1.280 floor; rung sentences era-split three ways.
+- [x] README plus §15 read the move: the `panel-slots` severity row names the new id, and §15 carries a dated supersession annotation (no checklist rewrite). Done when: the row names the new id and the annotation reads. Done: row moved; annotation reads.
+- [ ] Commit: `"workspace: re-pin reviewers to opus 5.5"`
+
+**Test checkpoint:** every opus slot resolves the new id from the TOML, the retired id fires outside history, no skill command carries a literal pin, the rung mapping and record words are untouched, and self-test plus live validate read green. Falsifiable by any opus slot on the retired id, any literal pin passing, any renamed record word, or any red gate.

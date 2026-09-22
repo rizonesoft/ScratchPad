@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import tomllib
 
-PANEL_MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "claude-opus-5")
+PANEL_MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "claude-opus-5-5")
 PANEL_EFFORTS = ("medium", "high", "xhigh")
 PANEL_SLOTS = (
     "bulk",

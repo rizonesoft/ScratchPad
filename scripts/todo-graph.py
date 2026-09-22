@@ -1403,7 +1403,7 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
     return problems
 
 _PANEL_SLOT_REF_RE = re.compile(r"--slot\s+([a-z0-9][a-z0-9-]*)")
-_PANEL_PIN_RE = re.compile(r"gpt-5\.6-(?:sol|terra)|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
+_PANEL_PIN_RE = re.compile(r"gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
 _PANEL_SKILLS = (
     ".claude/skills/review-todo-section/SKILL.md",
     ".grok/skills/review-todo-section/SKILL.md",
@@ -23430,11 +23430,11 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "panel argv renders per runner",
             (
                 rp.panel_slots.argv_for_slot("bulk", {"bulk": {"model": "gpt-5.6-sol", "effort": "medium", "timeout": 600, "family": "codex"}}),
-                rp.panel_slots.argv_for_slot("signoff", {"signoff": {"model": "claude-opus-5", "effort": "xhigh", "timeout": 600, "family": "claude"}}),
+                rp.panel_slots.argv_for_slot("signoff", {"signoff": {"model": "claude-opus-5-5", "effort": "xhigh", "timeout": 600, "family": "claude"}}),
             ),
             (
                 ["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium", "-s", "read-only", "-"],
-                ["claude", "-p", "--model", "claude-opus-5", "--effort", "xhigh", "--allowedTools", "Read"],
+                ["claude", "-p", "--model", "claude-opus-5-5", "--effort", "xhigh", "--allowedTools", "Read"],
             ),
         )
         _live_slots = rp.panel_slots.load_slots()
@@ -23443,11 +23443,11 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             (_live_slots["bulk"], _live_slots["signoff"]),
             (
                 {"model": "gpt-5.6-sol", "effort": "medium", "timeout": 600, "family": "codex"},
-                {"model": "claude-opus-5", "effort": "xhigh", "timeout": 600, "family": "claude"},
+                {"model": "claude-opus-5-5", "effort": "high", "timeout": 600, "family": "claude"},
             ),
         )
         _TEL_XH = telemetry_parse(
-            "## GPT panel (round 1)\n- `adversarial` approve\nTelemetry: round 1; model claude-opus-5; effort xhigh; duration 12s; outcome approve; tokens 100\n"
+            "## GPT panel (round 1)\n- `adversarial` approve\nTelemetry: round 1; model claude-opus-5-5; effort xhigh; duration 12s; outcome approve; tokens 100\n"
         )
         check(
             "telemetry parses xhigh effort",
@@ -23458,9 +23458,9 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "producer binding parses rewired argv",
             (
                 rp._producer_binding(["codex", "exec", "-m", "gpt-5.6-sol", "-c", "model_reasoning_effort=medium"]),
-                rp._producer_binding(["claude", "-p", "--model", "claude-opus-5", "--effort", "xhigh"]),
+                rp._producer_binding(["claude", "-p", "--model", "claude-opus-5-5", "--effort", "xhigh"]),
             ),
-            (("gpt-5.6-sol", "medium"), ("claude-opus-5", "xhigh")),
+            (("gpt-5.6-sol", "medium"), ("claude-opus-5-5", "xhigh")),
         )
         _ps_rp = str(Path(__file__).with_name("review_prompt.py"))
         _ps_store = root / "run-slot-store"

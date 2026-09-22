@@ -13,12 +13,12 @@ effort = "medium"
 timeout = 600
 
 [slot.signoff] # Full R3, Light R2: governs every stamp
-model = "claude-opus-5"
+model = "claude-opus-5-5"
 effort = "high"
 timeout = 600
 
 [slot.depth] # Full R4-R5, blocking findings only
-model = "claude-opus-5"
+model = "claude-opus-5-5"
 effort = "high"
 timeout = 600
 
@@ -33,7 +33,7 @@ effort = "high"
 timeout = 600
 
 [slot.cross-fill] # both GPT down: opus fills bulk slots + GPT outage note
-model = "claude-opus-5"
+model = "claude-opus-5-5"
 effort = "medium"
 timeout = 600
 
@@ -43,12 +43,12 @@ effort = "medium"
 timeout = 900
 
 [slot.plan-fallback] # plan fallback, same family as the sign-off panel
-model = "claude-opus-5"
+model = "claude-opus-5-5"
 effort = "medium"
 timeout = 900
 
 [slot.arch-primary] # architecture gate
-model = "claude-opus-5"
+model = "claude-opus-5-5"
 effort = "high"
 timeout = 600
 
