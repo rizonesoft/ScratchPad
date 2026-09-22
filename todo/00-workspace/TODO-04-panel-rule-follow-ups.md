@@ -56,7 +56,8 @@ track: W0
 |  18   |  §18    | Section-14 plan-review residuals | D00 T04 §14 |  [ ]   |
 |  19   |  §19    | Opus 5.5 reviewer re-pin | D00 T04 §15 |  [x]   |
 |  20   |  §20    | Section-19 plan-review residuals | D00 T04 §19 |  [ ]   |
-|  21   |  §21    | GPT-6 sol reviewer re-pin | D00 T04 §19 |  [ ]   |
+|  21   |  §21    | GPT-6 sol reviewer re-pin | D00 T04 §19 |  [x]   |
+|  22   |  §22    | Section-21 review residuals | D00 T04 §21 |  [ ]   |
 
 ---
 
@@ -315,6 +316,7 @@ Why this section exists: the panel runs `gpt-5.6-terra` early rounds with a `cla
 Why this section exists: the panel spends uniform high effort on two models (`gpt-5.6-terra` breadth, `claude-sonnet-5` governance), so the cheapest rounds cost the most and the governing round is merely tied for strongest. Operator direction 2026-09-22 rewires the slots: `gpt-5.6-sol` at medium for bulk breadth (Full R1-R2, Light R1, plan-review primary), `claude-opus-5` at xhigh for every sign-off (Full R3, Light R2) and at high for depth (Full R4-R5, arch gate) with opus-medium plan fallback, `gpt-5.6-terra` at high narrowed to GPT-side redundancy (sign-off fallback, arch fallback), and `claude-sonnet-5` retired from the matrix. Every stamp stays governed by the unambiguous strongest round, tiers differ in breadth never governance, and spend follows blast radius. Both new pins are grounded on this machine 2026-09-22 (verbatim-echo probes, exit 0). Record words do not move: `GPT panel`, `Claude panel`, `gpt rung`, `claude rung`, and the outage lines are family-level since D00 T04 §14, so only runner commands, pins, and effort change; telemetry already names the producer. D00 T04 §14 round 3 is the first live user: it runs on the rewired panel after this section stamps, with §14 rounds 1-2 standing as recorded pre-rewire. That order is review-time sequencing, not an implementation need, so no plan edge runs either way. Pins live in `.conclave/panel.toml` (slot to model, effort, timeout); `run --slot` resolves producer argv from it, so a re-pin edits one file and skills name slots, never pins. -> XREF: D00 T04 §14 (round-3 sign-off is the first live user of the rewired panel; pre-rewire rounds stand).
 **Noted 2026-09-22 (§16 filed):** plan-review residuals (post-rewire gpt-rung era rule, §35 ladder annotation, fallback-sign-off stamp record) home in §16.
 **Noted 2026-09-22 (§19 filed):** opus slots re-pin to `claude-opus-5-5` at the §19 stamp (CLI 2.1.280+); `claude-opus-5` retires from the closed set, history keeps naming it.
+**Noted 2026-09-22 (§21 plan review PR1):** the xhigh sign-off effort above is the §15-stamp state; operator edit 0648563 plus the §19 re-pin run sign-off at high. Live pins and efforts read from `.conclave/panel.toml`, never this checkpoint.
 
 - [x] Panel commands resolve slots from the TOML: `run --slot` gains slot resolution (codex/claude argv shapes, family derivation with mismatch refusal, slot timeouts, arch kind without checker); panel skill commands name bulk, signoff, depth, and failover slots with no literal pins. Done when: both skills run every panel slot through `--slot` and no skill command carries a model or effort literal. Done: `--slot` in `run` (argv shapes, family refusal, slot timeouts, arch unchecked); panel commands name slots; leg green.
 - [x] Plan-review plus arch commands move to slots with the rung mapping: plan-primary plus plan-fallback slots, arch-primary plus arch-fallback slots, and the `gpt rung` sentence names sol with the stamp-date split against pre-rewire terra. Done when: both skills state the moved slots and the era-split mapping. Done: plan-primary/fallback plus arch-primary/fallback slots; rung mapping era-split; grok arch off run-unchecked.
@@ -401,7 +403,7 @@ Why this section exists: the §19 plan review (sol-medium over §19 plus §15 pl
 
 > **Started:** 2026-09-22T18:53:21Z
 
-Why this section exists: the panel's sol slots pin `gpt-5.6-sol`, but GPT-6 sol released as `gpt-6-sol`, and operator direction 2026-09-22 re-pins the bulk reviewer to it. Both sol slots (bulk, plan-primary) move to the new id with efforts unchanged (medium); `gpt-5.6-sol` retires from the closed model set structurally, sonnet precedent, while telemetry and review history keep naming it. Terra pins stay: the fallback family is unchanged by this move. The pin is grounded on this machine 2026-09-22 (verbatim-echo probe at medium, exit 0; the unhyphenated `gpt6-sol` shape fails unknown-model). Record words do not move: slots, families, and outage lines are unchanged, so only the model id plus its citations change. -> XREF: D00 T04 §19 (second re-pin on its wiring; supersession noted there).
+Why this section exists: the panel's sol slots pin `gpt-5.6-sol`, but GPT-6 sol released as `gpt-6-sol`, and operator direction 2026-09-22 re-pins the bulk reviewer to it. Both sol slots (bulk, plan-primary) move to the new id with efforts unchanged (medium); `gpt-5.6-sol` retires from the closed model set structurally, sonnet precedent, while telemetry and review history keep naming it. Terra pins stay: the fallback family is unchanged by this move. The pin is grounded on this machine 2026-09-22 (verbatim-echo probe at medium, exit 0; the unhyphenated `gpt6-sol` shape fails unknown-model). Record words do not move: slots, families, and outage lines are unchanged, so only the model id plus its citations change. -> XREF: D00 T04 §19 (second re-pin on its wiring; supersession noted there). -> XREF: D00 T04 §22 (R4 advisory filed there).
 
 - [x] TOML sol slots move to the new id: bulk and plan-primary name `gpt-6-sol` with their current efforts and timeouts untouched. Done when: no slot names the retired id. Done: both slots moved; efforts and timeouts untouched.
 - [x] Closed model set moves with structural retirement: `PANEL_MODELS` names the new id and excludes the retired one, and the skill-command pin detector still catches literal pins of either id. Done when: the set holds and a literal pin of either id fires. Done: set moved; detector matches both ids.
@@ -411,3 +413,19 @@ Why this section exists: the panel's sol slots pin `gpt-5.6-sol`, but GPT-6 sol 
 - [ ] Commit: `"workspace: re-pin reviewers to gpt-6 sol"`
 
 **Test checkpoint:** every sol slot resolves the new id from the TOML, the retired id fires outside history, no skill command carries a literal pin, the rung mapping and record words are untouched, and self-test plus live validate read green. Falsifiable by any sol slot on the retired id, any literal pin passing, any renamed record word, or any red gate.
+
+> **Verified:** 2026-09-22 | §21 | self-test 1574/1574 (R3-F1 model-only pin lines plus R3-F2 retired-model fixture); live validate 0 fatal 1 warning (known owner-login mapping); Full panel (sol R1-R2 bulk, opus-5-5 R3 sign-off, opus-5-5 R4 depth) over candidates 6003d8d 5931567, R3-F1/F2/F3 fix-loop fixed, R4-A1 filed at §22; plan review 4 findings, 3 accepted in stamp run, 1 rejected
+> **Review:** round 4 (FINAL), candidates 6003d8d 5931567 -- `adversarial` advisory (filed at D00 T04 §22) · `consistency` approve · `integration` approve · `record` approve; R1-R2 all-approve, R3 fix-loop 5931567, R4 confirms fixes plus advisory filed. Raw findings: docs/reviews/00-workspace/D00-T04-s21.md
+> **Plan review:** GPT medium, filed nothing: PR1 PR2 PR3 accepted in stamp run, PR4 rejected (run 20260922-D00-T04-S21-codex-c7001fd6f-r3)
+> **CRUD:** applicable | self-test wrote fixture files under temp roots (unlinked after, read back via per-case assertions); implementation edited the TOML, model set, fixtures, skills, README, and ticks (read back via self-test 1574/1574, live validate 0 fatal, probe 6/6 plus live ok, plan --check current); filings opened §22 (read back via plan --check current)
+> **Duration:** 2026-09-22T18:53:21Z to 2026-09-22T20:29:55Z
+
+## 22. Section-21 review residuals
+
+Why this section exists: the §21 depth round returned an advisory (R4-A1) on the pin-injection fixture the §21 fix loop strengthened: the `claude-opus-5-5` detector alternative has no falsifier because `claude-(?:opus|sonnet)-5` matches its prefix, so its model-only line never goes silent, and the `terra` branch of the sol family alternative has no fixture line at all. The §21 sol pins are fully covered, so the advisory filed here instead of re-rounding. -> XREF: D00 T04 §21 (review advisory filed here); -> SOURCE: Claude-panel-D00-T04-s21-round-4 (candidate 5931567, round-4 adversarial advisory; transcribed in docs/reviews/00-workspace/D00-T04-s21.md).
+
+- [ ] Terra branch gains a fixture line: the pin-injection fixture carries a `gpt-5.6-terra` model-only line, so deleting the terra branch fails the check. Done when: the line ships and its branch deletion breaks green.
+- [ ] Exact-ID matching resolves the 5-5 overlap: the detector anchors ids so `claude-opus-5-5` owns a model-only line only its alternative matches, and deleting either claude alternative fails the check. Done when: each claude alternative has a falsifier.
+- [ ] Commit: `"workspace: close section-21 fixture residuals"`
+
+**Test checkpoint:** every detector alternative has a falsifier, and the self-test total grows with 0 failed. Falsifiable by any alternative deletable green or any red gate.
