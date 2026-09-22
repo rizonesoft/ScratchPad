@@ -5689,7 +5689,43 @@ def cmd_query(args) -> int:
                                     fail_code = "touch:hunk-span"
                                     break
                                 fix_ts = git_commit_ts(tip)
-                                if not fix_postdates_review(fix_ts, rts, reviewer_day):
+                                # Ancestry is the causality gate (D00 T01
+                                # §55 item 28). A reviewed candidate that
+                                # is an ancestor of the fix tip decides
+                                # the order. Timestamps apply only when
+                                # that ancestry is unprovable, so a forged
+                                # commit date cannot pass or fail the row.
+                                _cause_src = ""
+                                _cfm = FINDINGS_RE.search(tgt.review_body or "")
+                                if _cfm:
+                                    try:
+                                        _cause_src = (TODO_DIR.parent / _cfm.group(1)).read_text(
+                                            encoding="utf-8"
+                                        )
+                                    except OSError:
+                                        _cause_src = ""
+                                _cause_cands = []
+                                for _cpln in _cause_src.splitlines():
+                                    _cpm = PROVENANCE_RE.match(_cpln)
+                                    if _cpm:
+                                        _cause_cands.append(_cpm.group(1))
+                                _ordered = None
+                                for _cc in _cause_cands:
+                                    _rel = git_is_ancestor(_cc, tip)
+                                    if _rel is True:
+                                        _ordered = True
+                                        break
+                                    if _rel is False and _ordered is None:
+                                        _ordered = False
+                                # A proven descendant skips the timestamp
+                                # gate: a forged early date cannot fail it.
+                                # A proven non-descendant does not skip, and
+                                # the strict leg below still fails it, so a
+                                # late date cannot save it. Unprovable
+                                # ancestry keeps the timestamp gate.
+                                if _ordered is not True and not fix_postdates_review(
+                                    fix_ts, rts, reviewer_day
+                                ):
                                     provable = False
                                     fail_code = "chronology:recency"
                                     break
@@ -11124,7 +11160,7 @@ proof D90-T07-S4-PR2 tests/fix-proof.py::test_clearance
 
 > **Verified:** __D4__ | §4 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-health.md
-> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147, §148 (run 20260920-D90-T07-S4-gpt)
+> **Plan review:** GPT high, filed §2, §21, §25, §48, §49, §50, §51, §52, §53, §54, §55, §56, §76, §77, §78, §79, §80, §81, §82, §83, §84, §85, §86, §122, §123, §124, §125, §126, §127, §128, §129, §130, §131, §132, §133, §134, §135, §136, §137, §138, §139, §140, §141, §142, §143, §147, §148, §149, §150 (run 20260920-D90-T07-S4-gpt)
 > **Duration:** __D4__T10:00:00Z to __D4__T12:00:00Z
 
 ## 5. Unbalanced findings probe
@@ -12938,6 +12974,38 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 149. Forged early date still clears
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturecauseok D90-T07-S4-PR108 fix c0ffee1
+
+proof D90-T07-S4-PR108 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §149 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 150. A late date cannot save a non-descendant
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+-> SOURCE: fixturecausebad D90-T07-S4-PR109 fix c0ffee2
+
+proof D90-T07-S4-PR109 tests/fix-proof.py::test_clearance
+
+> **Verified:** __D5__ | §150 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-exec-ok.md
+> **Plan review:** GPT high, no findings
+> **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -13118,6 +13186,8 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             # D00 T01 §55 item 27: two findings, two commits, one section.
             "- [D90-T07-S4-PR106] [critical] Row scoped fix A -> filed §148\n"
             "- [D90-T07-S4-PR107] [critical] Row scoped fix B -> filed §148\n"
+            "- [D90-T07-S4-PR108] [critical] Forged early date stays clear -> filed §149\n"
+            "- [D90-T07-S4-PR109] [critical] Non-descendant stays -> filed §150\n"
             "End of ledger\n"
             "\n```\nWorked example (not live):\n- [PR9] [critical] Fenced example -> accepted demo\n```\n",
             encoding="utf-8",
@@ -13785,6 +13855,8 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             "fff0003",
             "b000001",
             "f000001",
+            "c0ffee1",
+            "c0ffee2",
         ):
             canned_git[(_sha, marker_todo.as_posix())] = _mtxt
             canned_touches[(_sha, marker_todo.as_posix())] = True
@@ -13800,6 +13872,8 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             "fff0003",
             "b000001",
             "f000001",
+            "c0ffee1",
+            "c0ffee2",
         ):
             canned_git[(_sha, "tests/fix-proof.py")] = _proof_ok
         canned_ts = {
@@ -13816,7 +13890,16 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             # §30: `f000001` passes every leg, so PR71 stays only for
             # the proof/row ID mismatch (its proof names PR90).
             "f000001": _tss(d5, "12:00:00"),
+            # §55 item 28: c0ffee1 is dated before the review and is a
+            # descendant of the candidate, so the date cannot fail it.
+            # c0ffee2 is dated after the review and is not a descendant,
+            # so the date cannot save it. Both tokens are hex: the fix
+            # regex accepts only [0-9a-f].
+            "c0ffee1": _tss(d1, "12:00:00"),
+            "c0ffee2": _tss(d5, "12:00:00"),
         }
+        for _gsha in ("c0ffee1", "c0ffee2"):
+            canned_touches[(_gsha, "tests/fix-proof.py")] = True
         # Base-exclusion canary: the eee0003 base touched the file, but
         # the range leg never consults it, so PR66 stays listed. If a
         # later change lets base touches clear ranges, this row clears
@@ -13839,6 +13922,8 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             ("c19c190000000000000000000000000000000000", "f19f190000000000000000000000000000000000"): False,
             ("c20c200000000000000000000000000000000000", "1209200000000000000000000000000000000000"): True,
             ("ca5e000000000000000000000000000000000000", "c5e6000000000000000000000000000000000000"): True,
+            ("aaa1111000000000000000000000000000000000", "c0ffee1"): True,
+            ("aaa1111000000000000000000000000000000000", "c0ffee2"): False,
         }
         # §23 provenance candidates: the migration's uniform candidate
         # resolves, the badprov typo resolves to nothing, and anything
@@ -13866,6 +13951,8 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             "1209200000000000000000000000000000000000",
             "ccc3333",
             "dang1111000000000000000000000000000000000",
+            "c0ffee1",
+            "c0ffee2",
             "fff0001",
             "ddd0001",
             "ddd0002",
@@ -17792,6 +17879,16 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "a forged early date does not fail a descendant fix",
+            not any("D90-T07-S4-PR108" in ln for ln in health_lines),
+            True,
+        )
+        check(
+            "a late date does not save a non-descendant fix",
+            any("D90-T07-S4-PR109" in ln for ln in health_lines),
+            True,
+        )
+        check(
             "two findings with their own fixes both clear",
             not any(
                 "D90-T07-S4-PR106" in ln or "D90-T07-S4-PR107" in ln
@@ -18361,6 +18458,7 @@ proof D90-T07-S4-PR107 tests/fix-proof.py::test_clearance
             "D90-T07-S4-PR101": {"proof:unattested"},
             "D90-T07-S4-PR102": {"proof:unattested"},
             "D90-T07-S4-PR103": {"resolution:merge-range"},
+            "D90-T07-S4-PR109": {"ancestry:strict"},
             "D90-T07-S4-PR104": {"proof:loop"},
             "D90-T07-S4-PR24": {"touch:single"},
             "D90-T07-S4-PR17": {"resolution:merge-tip"},
