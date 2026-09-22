@@ -596,6 +596,19 @@ def validate(graph, _args) -> int:
                     f"{where} findings {m.group(1)} carry a legacy `Opus panel` section"
                     f" (record words cut over {graph.LABEL_CUTOVER}; post-cutover records use Claude/GPT words)",
                 )
+            # A pre-cutover `Claude panel` section fires wherever it
+            # sits (D00 T04 §14 R3-F1): the R1-F1 leg's mirror.
+            # Pre-cutover the signoff regex sees Opus heads only, so
+            # without this a mixed file validates its superseded Opus
+            # slice and stays silent about the governing new-word
+            # section. Fences strip before the scan, so fenced raw
+            # outputs quoting new panels cannot trip this leg.
+            if not new_era and (heads or gpt_heads) and CLAUDE_PANEL_HEADING_RE.search(text):
+                flag(
+                    "stamp-no-opus-panel",
+                    f"{where} findings {m.group(1)} carry a new-word `Claude panel` section"
+                    f" (record words cut over {graph.LABEL_CUTOVER}; pre-cutover records use Opus/GPT words)",
+                )
             last_is_gpt = gpt_heads and (
                 not heads or gpt_heads[-1].start() > heads[-1].start()
             )

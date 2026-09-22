@@ -1010,13 +1010,14 @@ SEVERITY_MAP: dict[str, str] = {
     "moved-target-missing": "fatal",
     "pending-control-contract": "fatal",
     # a stamp dated after the Opus-panel rule landed whose findings carry no
-    # panel verdicts reads as reviewed evidence while verifying nothing --
-    # the same lie as a malformed stamp, so the same severity (D00 T01 §9).
+    # panel verdicts (Opus panel through the 2026-09-22 cutover, Claude panel
+    # after) reads as reviewed evidence while verifying nothing -- the same
+    # lie as a malformed stamp, so the same severity (D00 T01 §9).
     "stamp-no-opus-panel": "fatal",
     # an Opus-only review past the rule birthday with no Sol-outage
-    # accountability reads as a planned-mixed record while Sol never
-    # ran: skipped rounds cannot pass silently, so the note (or the
-    # Sol run) is mechanical (D00 T01 §37).
+    # accountability (Claude-only with GPT-outage post-cutover) reads as
+    # a planned-mixed record while Sol never ran: skipped rounds cannot
+    # pass silently, so the note (or the Sol run) is mechanical (D00 T01 §37).
     "panel-sol-outage-missing": "fatal",
     # an outage marker whose (rung, event-day) key resolves to no
     # findings-file outage note, an outage note no marker keys, or a
@@ -4532,10 +4533,10 @@ def cmd_query(args) -> int:
     if what == "telemetry":
         # Panel telemetry over findings records (D00 T01 §39): tree-wide
         # round counts, token sums, and family splits from Telemetry
-        # lines, Sol-outage coverage beside (never inside) the
-        # fallback-compat leg, and a per-section one-view panel
-        # summary. Past records without lines read as unknown, never
-        # zero; malformed lines count, never parse.
+        # lines, GPT-outage coverage (legacy Sol-worded included) beside
+        # (never inside) the fallback-compat leg, and a per-section
+        # one-view panel summary. Past records without lines read as
+        # unknown, never zero; malformed lines count, never parse.
         target = (getattr(args, "target", None) or "").strip()
         as_json = getattr(args, "json", False)
 
@@ -9973,6 +9974,7 @@ track: Z1
 |  55   |   §55   | Pre-cutover claude-rung partial fires | - |  [x]   |
 |  56   |   §56   | Mixed legacy-plus-new panel fires | - |  [x]   |
 |  57   |   §57   | Pre-cutover Claude-worded panel fires | - |  [x]   |
+|  58   |   §58   | Pre-cutover mixed panel fires | - |  [x]   |
 
 ---
 
@@ -10601,6 +10603,17 @@ track: Z1
 
 > **Verified:** 2026-09-20 | §57 | fixture
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudenonote.md
+> **Plan review:** GPT high, no findings
+
+## 58. Pre-cutover mixed panel fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §58 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedlegacy.md
 > **Plan review:** GPT high, no findings
 
 """,
@@ -11430,9 +11443,17 @@ track: Z1
             ),
             True,
         )
+        check(
+            "pre-cutover mixed panel names the new-word section",
+            any(
+                "TODO-06-panel.md" in ln and "§58 " in ln and "carry a new-word `Claude panel` section" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
         # Rule 17 (D00 T01 §15): a stamp dated after the plan-review rule
         # landed must carry the `Plan review:` completion marker. Own
-        # fixture TODO (the panel file's 57 sections stay untouched); all
+        # fixture TODO (the panel file's 58 sections stay untouched); all
         # three stamps point Review at the clean panel fixture so rule 16
         # stays silent and only the marker rule can fire. Runs before the
         # panel unlink below, while the clean fixture still exists.
