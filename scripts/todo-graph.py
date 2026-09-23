@@ -20,8 +20,7 @@ Format spec: todo/README.md
 A campaign may edit this file when the inflight section already names it
 (Build order or dirty list). That is planned section work, not a mid-run
 self-improvement. The intelligence hook allows that path (INT-0012); the
-four verify commands in `.grok/skills/run-phase/SKILL.md` still run before
-staging.
+section's gates still run before staging.
 """
 
 from __future__ import annotations
@@ -1406,7 +1405,6 @@ _PANEL_SLOT_REF_RE = re.compile(r"--slot\s+([a-z0-9][a-z0-9-]*)")
 _PANEL_PIN_RE = re.compile(r"gpt-6-sol|gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
 _PANEL_SKILLS = (
     ".claude/skills/review-todo-section/SKILL.md",
-    ".grok/skills/review-todo-section/SKILL.md",
 )
 
 

@@ -173,6 +173,8 @@ Before the checkpoint, account for **every control, menu item, dialog, and state
 
 Execute the checkpoint command and read the output. Quote the result in the commit body. If the checkpoint cannot run (no Windows host, missing fixture), the section is not done: record what ran, what did not, and why, and stop without a stamp. A checkpoint half-run is not evidence. Ship with debt instead of waiting for quiet time: record Interactive skips as `Night-owed` with the collector owning them, and flip the same session (never-park: quiet time never holds a flip).
 
+UI proof follows the gate card `.claude/skills/process-todo-section/gates.md` (focus-free default run, focus-free Primary placement run); `docs/testing.md` wins where they disagree.
+
 Then run the section's other owed gates: warnings clean, analysis clean, `validate` clean. Run the affected tests, not only the new ones: `dotnet test --filter` on the touched suites.
 
 ### 7. Commit, push, hand to review

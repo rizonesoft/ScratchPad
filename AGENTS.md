@@ -38,6 +38,7 @@ The lifecycle is: capture, author, validate the plan and source claims, record `
 - **Output discipline:** bound every command (`dotnet test --filter`, `tail`/`head`, field extraction, `>/dev/null`). Keep full logs in ignored scratch.
 - **Act, then report:** complete authorized work and report evidence. Explicit operator stop instructions take effect immediately.
 - **Writes are serial:** one session owns the working tree. Check `git status` before building over unfamiliar work.
+- **Claude Code is the only writer** (operator decision 2026-09-23): Muse, Grok, and other harnesses do not edit, commit, or run campaigns in this repo. Codex and other models take part only as headless review producers through `.conclave/panel.toml`.
 - **User data first:** atomic writes, readback, skip-and-report, confirmed destructive paths. Checkpoints prove the failure path too.
 - **Parity is proven:** captures for Notepad surfaces, ACP schema and docs for protocol behavior. No artifact, no claim.
 - **Consent gates agents:** deny-by-default, exactly-once answers, diff review, undoable apply.
