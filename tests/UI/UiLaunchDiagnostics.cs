@@ -39,6 +39,41 @@ internal static class UiLaunchDiagnostics
 
     internal static string RedactArgs(string args) => SecretValue.Replace(args, "$1$2***");
 
+    // Launch-log retention (D00 T02 §18 C-A1): daily launches
+    // files prune past 30 days, mirroring the bundle retention
+    // (same data types, same rule).
+    internal static void PruneOldLaunches(string diagnosticsRoot, int retentionDays = 30)
+    {
+        if (!Directory.Exists(diagnosticsRoot))
+        {
+            return;
+        }
+
+        foreach (string file in Directory.EnumerateFiles(diagnosticsRoot, "launches-*.jsonl"))
+        {
+            string name = Path.GetFileNameWithoutExtension(file);
+            if (name.Length > "launches-".Length
+                && DateTime.TryParseExact(
+                    name["launches-".Length..],
+                    "yyyyMMdd",
+                    null,
+                    System.Globalization.DateTimeStyles.None,
+                    out DateTime day)
+                && (DateTime.UtcNow.Date - day).TotalDays > retentionDays)
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Best-effort retention; a locked file waits for
+                    // the next launch instead of breaking this one.
+                }
+            }
+        }
+    }
+
     internal static void Record(
         string testId,
         string args,
@@ -49,6 +84,7 @@ internal static class UiLaunchDiagnostics
         int seedY,
         bool expectWindow = true)
     {
+        PruneOldLaunches(Path.GetDirectoryName(LogPath())!);
         nint hwnd = nint.Zero;
         int[]? bounds = null;
         long[] lineage = [];

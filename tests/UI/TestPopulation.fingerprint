@@ -40,6 +40,7 @@ run-a:
   UI.JumpListTaskTests.RecentTaskArgsOpenTheFile
   UI.JumpListTaskTests.TaskbarCarriesNewNotePinnedAndRecent
   UI.LaunchDiagnosticsTests.ForcedFailureQuotesAllSeven
+  UI.LaunchDiagnosticsTests.PruneOldLaunchesKeepsFresh
   UI.LaunchDiagnosticsTests.RedactArgsShapes
   UI.LaunchDiagnosticsTests.SuccessRecordQuotesFields
   UI.LaunchDropsTests.DefaultSeedPreservesDrops
@@ -187,8 +188,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 181
-run-a-cases: 231
+run-a-methods: 182
+run-a-cases: 234
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

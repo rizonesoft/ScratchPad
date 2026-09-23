@@ -263,7 +263,18 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             long above = (long)top - height;
-            return above >= int.MinValue ? (GetSystemMetrics(76), (int)above) : (GetSystemMetrics(76), top);
+            if (above < int.MinValue)
+            {
+                // Fail-closed (D00 T02 §18 C-C1): no on-screen
+                // fallback exists, mirroring the suite-side throw.
+                // Unreachable for rect screens (pinching both axes
+                // needs a width past int range), so a throw here
+                // names a broken screen read, never a real layout.
+                throw new InvalidOperationException(
+                    $"no off-screen birth for virtual origin ({GetSystemMetrics(76)},{top}) window {width}x{height}");
+            }
+
+            return (GetSystemMetrics(76), (int)above);
         }
     }
 

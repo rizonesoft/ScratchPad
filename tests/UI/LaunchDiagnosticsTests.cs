@@ -97,6 +97,31 @@ public sealed class LaunchDiagnosticsTests
         throw new InvalidOperationException($"no record for {testName}");
     }
 
+    [Fact]
+    public void PruneOldLaunchesKeepsFresh()
+    {
+        // C-A1: daily launch logs prune past 30 days like bundles.
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string old = Path.Combine(dir, "launches-20200101.jsonl");
+            string fresh = Path.Combine(dir, $"launches-{DateTime.UtcNow:yyyyMMdd}.jsonl");
+            string other = Path.Combine(dir, "notes.txt");
+            File.WriteAllText(old, "{}");
+            File.WriteAllText(fresh, "{}");
+            File.WriteAllText(other, "{}");
+            UiLaunchDiagnostics.PruneOldLaunches(dir);
+            Assert.False(File.Exists(old));
+            Assert.True(File.Exists(fresh));
+            Assert.True(File.Exists(other));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     static void CloseAll(Application app, UIA3Automation automation)
     {
         foreach (var window in app.GetAllTopLevelWindows(automation))

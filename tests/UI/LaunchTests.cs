@@ -301,11 +301,15 @@ public sealed class LaunchTests
         // off-screen unconditionally. Night-owed (D00-T02-S18-N1):
         // foreground steal, runs in the collector window.
         string? saved = Environment.GetEnvironmentVariable(UiLaunch.BackgroundVariable);
+        // Clear before seeding (D00 T02 §18 C-I1): SeedFresh
+        // maps defaults off-screen when the flag reads 1, so
+        // seeding first would test the wrong setup under an
+        // inherited flag.
+        Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, null);
         SessionData.Delete();
         SeedFresh();
         try
         {
-            Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, null);
             using var app = UiLaunch.LaunchApp();
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
