@@ -122,6 +122,8 @@ Why this section exists: the README's strongest claim is agents inside Notepad, 
 
 **Groomed 2026-09-23:** -> XREF: D05 T01 §3 (the rendered agent panel this media captures).
 
+**Groomed 2026-09-23:** Sequence: the prerequisite D05 T01 §3 (the rendered agent panel) sits in phase 3; `process-plan` parks this row until it ships while §1-§4 ship the rest of the README now. Splitting the panel into phase 0 would build the AI surface early, so the edge stands (a groom default).
+
 - [ ] The agent panel is captured beside the editor as a light and dark pair (`docs/assets/readme-agent-panel-light.png`, `-dark.png`), with provenance in `docs/assets/captures.md`, closing §1 item 3. Done when: both files exist and the panel and editor read in one frame
 - [ ] A short animated demo (under 15 seconds, under 5 MB, WebP or GIF) shows select text, ask the agent, review the diff, apply, and undo. Done when: the file plays inline on github.com and stays inside the §4 budget
 - [ ] The README places the demo directly under the feature grid with alt text describing each step. Done when: the §3 check passes with the new media

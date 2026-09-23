@@ -197,7 +197,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T04 §24` | Section-23 sign-off residuals                   |   5   |
 | [x] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
 | [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   6   |
-| [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   3   |
+| [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   4   |
 | [ ] | `D00 T05 §2`  | Run-guard proof                                 |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
@@ -313,8 +313,8 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D03 T01 §4` | Session create and load                      |   5   |
 | [ ] | `D03 T01 §5` | Prompt turns with streaming updates          |   6   |
 | [ ] | `D03 T01 §6` | Cancellation and timeouts                    |   5   |
-| [ ] | `D03 T01 §7` | Fault survival: crashes and malformed output |   5   |
 | [ ] | `D03 T01 §8` | Session list, resume, close, delete          |   4   |
+| [ ] | `D03 T01 §7` | Fault survival: crashes and malformed output |   5   |
 | [ ] | `D03 T01 §9` | Modes and config options                     |   3   |
 | [ ] | `D03 T02 §1` | Permission request handling                  |   5   |
 | [ ] | `D03 T02 §2` | File-system methods with scoped roots        |   6   |
@@ -389,6 +389,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | :-: | ------------- | ------------------------------------- | :---: |
 | [ ] | `D07 T01 §9`  | Dynamic version scheme                |   5   |
 | [ ] | `D07 T01 §10` | Product identity registry             |   5   |
+| [ ] | `D07 T01 §13` | User-guide backfill                   |   3   |
 | [ ] | `D07 T01 §11` | Help content pipeline                 |   5   |
 | [ ] | `D07 T01 §1`  | MSIX package build                    |   7   |
 | [ ] | `D07 T01 §2`  | Clean-machine install test            |   5   |
@@ -396,7 +397,6 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D07 T01 §4`  | Release checklist                     |   4   |
 | [ ] | `D07 T01 §5`  | First signed release                  |   4   |
 | [ ] | `D07 T01 §12` | Guide web publishing and link switch  |   3   |
-| [ ] | `D07 T01 §13` | User-guide backfill                   |   3   |
 | [ ] | `D07 T01 §6`  | Store and WinGet distribution         |   4   |
 | [ ] | `D07 T01 §7`  | Share target registration             |   4   |
 | [ ] | `D07 T01 §8`  | Inno Setup installer and distribution |   7   |

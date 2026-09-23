@@ -47,6 +47,7 @@ Why this section exists: the runner loop ships rows and writes closeouts but no 
 
 - [ ] `process-phase` Step 4 runs file closeout: per touched file whose rows are all `[x]`, invoke `process-todo-file` after the all-green confirm and before writing the closeout, so the closeout reports file completions. Done when: the step names the invocation with its trigger.
 - [ ] `process-plan` closeout carries the same line: chained runs end there, not in the phase, so the plan closeout closes fully-shipped touched files the same way. Done when: the step names the invocation with its trigger.
+- [ ] `resolve` stops naming a script that does not exist: its `needs` line says "plan-gate.py host-probe decides" (`scripts/todo-graph.py`), but `plan-gate.py` is deferred and absent, so the line names the live decider (the `resolve` runnable-here verdict plus `query ready`) until plan-gate.py lands. Done when: the printed line names only existing tools and a self-test pins it (Groomed 2026-09-23.)
 - [ ] Commit: `"workspace: wire file closeout into runner closeouts"`
 
 **Test checkpoint:** both closeout steps name `process-todo-file` with the fully-shipped trigger; grep proves the lines; a walkthrough over the current tree names the files that would close. Falsifiable by any closeout text missing the invocation.
