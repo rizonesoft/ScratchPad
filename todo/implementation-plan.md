@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **110 of 290 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **111 of 290 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -143,7 +143,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §15` | Nightly enforcement and count hardening         |  27   |
 | [ ] | `D00 T02 §16` | Verify timer-fired completion and green         |  17   |
 | [x] | `D00 T02 §17` | Nightly notify plus trend surface               |  10   |
-| [ ] | `D00 T02 §18` | Central launch hardening and evidence           |  10   |
+| [x] | `D00 T02 §18` | Central launch hardening and evidence           |  10   |
 | [ ] | `D00 T02 §19` | Night-debt due dates and escalation             |   3   |
 | [ ] | `D00 T02 §20` | Accelerator sweep sign-off polish               |   3   |
 | [ ] | `D00 T02 §21` | Accelerator sweep follow-ups                    |  12   |
