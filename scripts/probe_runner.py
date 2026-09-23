@@ -36,7 +36,7 @@ REQUIRED_HELP = (
 # Flags the Grok template passes (panel_slots.argv_for_slot); the live
 # help must still name each one.
 GROK_REQUIRED_HELP = (
-    "--model",
+    "-m, --model",
     "--reasoning-effort",
     "--output-format",
     "--permission-mode",
@@ -103,12 +103,14 @@ def templates_ok() -> list[str]:
     for name in sorted(slots):
         if slots[name]["family"] != "grok":
             continue
-        try:
-            argv = panel_slots.argv_for_slot(name, slots)
-        except panel_slots.PanelSlotsError as exc:
-            problems.append(f"{name}: {exc}")
-            continue
-        problems.extend(f"{name}: {p}" for p in grok_template_ok(argv, slots[name]["effort"]))
+        # The template's shape needs no model cache: an alias renders
+        # with a stand-in id, so a host without the Grok CLI still
+        # checks the wiring (R1-F2).
+        entry = dict(slots[name])
+        if entry["model"] == panel_slots.GROK_LATEST:
+            entry["model"] = "grok-0.0"
+        argv = panel_slots.argv_for_slot(name, {name: entry})
+        problems.extend(f"{name}: {p}" for p in grok_template_ok(argv, entry["effort"]))
     return problems
 
 
@@ -138,16 +140,18 @@ def _run(argv: list[str]) -> tuple[int, str]:
 
 
 def live() -> int:
+    # Each CLI leg skips or runs on its own (R1-F2): a host missing one
+    # CLI still proves the other.
+    problems = templates_ok()
     if shutil.which("codex") is None:
         print("SKIP live probe: codex not on PATH")
-        return 0
-    try:
-        help_code, help_text = _run(["codex", "exec", "--help"])
-        bad_code, bad_text = _run(["codex", "exec", "--reasoning", "high", "--help"])
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"FAIL live probe: {exc}")
-        return 1
-    problems = templates_ok() + judge(help_code, help_text, bad_code, bad_text)
+    else:
+        try:
+            help_code, help_text = _run(["codex", "exec", "--help"])
+            bad_code, bad_text = _run(["codex", "exec", "--reasoning", "high", "--help"])
+            problems.extend(judge(help_code, help_text, bad_code, bad_text))
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            problems.append(f"codex probe failed: {exc}")
     grok = panel_slots.grok_binary()
     if grok == "grok" and shutil.which("grok") is None:
         print("SKIP live grok probe: grok CLI not found")
