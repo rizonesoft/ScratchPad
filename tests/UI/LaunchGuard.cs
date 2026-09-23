@@ -47,7 +47,12 @@ internal static class LaunchGuard
 
     internal static IReadOnlyList<string> FindViolations(string source, string fileName)
     {
-        if (fileName.EndsWith("UiLaunch.cs", StringComparison.Ordinal))
+        // Exact sanctioned-path exemption (D00 T02 §18 R1-F1): only
+        // the central helper's own relative path skips the scan. A
+        // suffix match would exempt MyUiLaunch.cs or a nested
+        // same-name file, and separators normalize so no caller
+        // spelling slips past. Fail-closed: anything else scans.
+        if (fileName.Replace('\\', '/').Equals("tests/UI/UiLaunch.cs", StringComparison.Ordinal))
         {
             return [];
         }
@@ -137,6 +142,15 @@ internal static class LaunchGuard
                 if (name == "Start" && IsProcessReceiver(receiver))
                 {
                     violations.Add(At(invocation, "direct-launch", $"{receiver}.Start launches outside UiLaunch"));
+                }
+                else if (name == "Start"
+                    && access.Expression is ObjectCreationExpressionSyntax creation
+                    && IsProcessType(creation.Type))
+                {
+                    // Inline construction (D00 T02 §18 R1-F4): new
+                    // Process().Start() has no declared name for the
+                    // ProcessNames check, so the creation type trips it.
+                    violations.Add(At(invocation, "direct-launch", "new Process().Start launches outside UiLaunch"));
                 }
                 else if (name == "Launch" && IsApplicationReceiver(receiver))
                 {

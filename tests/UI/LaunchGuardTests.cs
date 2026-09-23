@@ -4,8 +4,9 @@ namespace UI;
 
 // D00 T02 §18 item 6: the launch guard fails planted bypasses and
 // passes the migrated tree. Each bypass shape the item names
-// (direct, alias, wrapper, renamed, instance, per-file, static
-// using, reflection, P/Invoke) trips at least one violation; the
+// (direct, alias, wrapper, renamed, instance, inline-new,
+// per-file, static-using, reflection, P/Invoke) trips at least one
+// violation; the sanctioned helper path stays exempt.
 // live tests/UI tree scans clean.
 public sealed class LaunchGuardTests
 {
@@ -17,6 +18,7 @@ public sealed class LaunchGuardTests
     [InlineData("using A = FlaUI.Core.Application; class Q { void M() { A.Launch(\"e\", \"a\"); } }")]
     [InlineData("class Q { void MyLauncher() { FlaUI.Core.Application.Launch(\"e\", \"a\"); } }")]
     [InlineData("class Q { void M() { var p = new System.Diagnostics.Process(); p.Start(); } }")]
+    [InlineData("class Q { void M() { new System.Diagnostics.Process().Start(); } }")]
     [InlineData("class Q { void LaunchApp() {} }")]
     [InlineData("class Q { void SeedSettings() {} }")]
     [InlineData("using static System.Diagnostics.Process; class Q { void M() { Start(\"x\"); } }")]
@@ -43,6 +45,23 @@ public sealed class LaunchGuardTests
         Assert.Empty(LaunchGuard.FindViolations(snippet, "clean.cs"));
     }
 
+    [Theory]
+    [InlineData("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/UiLaunch.cs", true)]
+    [InlineData("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/MyUiLaunch.cs", false)]
+    [InlineData("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/Sub/Helper.cs", false)]
+    public void ExemptionAppliesOnlyToTheSanctionedPath(string snippet, string fileName, bool clean)
+    {
+        ArgumentNullException.ThrowIfNull(fileName);
+        if (clean)
+        {
+            Assert.Empty(LaunchGuard.FindViolations(snippet, fileName));
+        }
+        else
+        {
+            Assert.NotEmpty(LaunchGuard.FindViolations(snippet, fileName));
+        }
+    }
+
     [Fact]
     public void LiveTreeScansClean()
     {
@@ -54,9 +73,10 @@ public sealed class LaunchGuardTests
 
         Assert.NotNull(dir);
         var failures = new List<string>();
-        foreach (string file in Directory.EnumerateFiles(Path.Combine(dir!, "tests", "UI"), "*.cs"))
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(dir!, "tests", "UI"), "*.cs", SearchOption.AllDirectories))
         {
-            foreach (string violation in LaunchGuard.FindViolations(File.ReadAllText(file), Path.GetFileName(file)))
+            string rel = Path.GetRelativePath(dir!, file).Replace(Path.DirectorySeparatorChar, '/');
+            foreach (string violation in LaunchGuard.FindViolations(File.ReadAllText(file), rel))
             {
                 failures.Add(violation);
             }

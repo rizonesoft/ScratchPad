@@ -3,12 +3,15 @@ using Xunit;
 
 namespace UI;
 
-// D00 T02 §18 item 4: explicit geometry always wins over background
-// seeding, in every seeding shape. Full, partial, and degenerate
-// rects all survive SeedSettings untouched under
-// SCRATCHPAD_BACKGROUND=1; the string-seeded path (SeedSettingsFile)
-// applies the same rule. Untouched defaults still seed off-screen,
-// and foreground defaults stay at the cascade origin.
+// D00 T02 §18 item 4: explicit geometry wins over background
+// seeding, in every seeding shape. Full, partial, and
+// degenerate rects survive SeedSettings untouched under
+// SCRATCHPAD_BACKGROUND=1; the string-seeded path
+// (SeedSettingsFile) applies the same rule. Default-valued
+// explicit rects (50,50) map off-screen like untouched
+// defaults (R1-F3: the store carries no explicitness flag,
+// and background births must stay off-screen), and
+// foreground defaults stay at the cascade origin.
 [Collection("UI tests")]
 public sealed class SeedPrecedenceTests
 {
@@ -21,6 +24,27 @@ public sealed class SeedPrecedenceTests
             ShellSettings loaded = ShellSettings.Load();
             Assert.Equal(100, loaded.X);
             Assert.Equal(200, loaded.Y);
+        });
+    }
+
+    [Fact]
+    public void ExplicitDefaultValuedGeometrySeedsOffScreen()
+    {
+        // Degenerate explicit (D00 T02 §18 R1-F3): values equal
+        // to the 50,50 defaults map off-screen in background
+        // mode, exactly like untouched defaults. The store
+        // carries no explicitness flag, and background births
+        // must stay off-screen, so the seeder maps rather than
+        // honors an on-screen value here; the mapping is
+        // protective, and this pin fails a future leak.
+        WithBackground(() =>
+        {
+            UiLaunch.SeedSettings(new ShellSettings { X = 50, Y = 50, WhatsNewSeen = true });
+            ShellSettings loaded = ShellSettings.Load();
+            UiLaunch.ScreenBounds screen = UiLaunch.ReadVirtualScreen();
+            Assert.False(
+                UiLaunch.WindowIntersects(screen, loaded.X, loaded.Y, loaded.Width, loaded.Height),
+                $"seeded {loaded.X},{loaded.Y} intersects the virtual screen");
         });
     }
 
