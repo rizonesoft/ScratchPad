@@ -257,7 +257,7 @@ def _producer_binding(argv: list[str]) -> tuple[str, str]:
             model = argv[i + 1]
             i += 2
             continue
-        if arg == "--effort" and i + 1 < len(argv):
+        if arg in ("--effort", "--reasoning-effort") and i + 1 < len(argv):
             effort = argv[i + 1]
             i += 2
             continue
@@ -1073,6 +1073,10 @@ if __name__ == "__main__":
                 print(f"run: {exc}", file=sys.stderr)
                 sys.exit(2)
             want_family = slots[slot_name]["family"]
+            # `slot` takes the family from the TOML (D00 T04 §25), so
+            # skill commands name neither models nor families.
+            if family == "slot":
+                family = want_family
             if family != want_family:
                 print(
                     f"run: family {family!r} does not match slot {slot_name!r} family {want_family!r}",
@@ -1081,12 +1085,30 @@ if __name__ == "__main__":
                 sys.exit(2)
             if not timeout_given:
                 timeout = float(slots[slot_name]["timeout"])
+        if family == "slot":
+            print("run: family `slot` needs --slot", file=sys.stderr)
+            sys.exit(2)
         if not producer:
             print("run: no producer after --", file=sys.stderr)
             sys.exit(2)
+        # Grok reads its prompt from a file, never stdin (D00 T04 §25):
+        # the slot argv carries PROMPT_TOKEN for the prompt path, and the
+        # CLI installs under ~/.grok/bin rather than on PATH.
+        producer = [
+            os.path.abspath(prompt_path) if a == panel_slots.PROMPT_TOKEN else a for a in producer
+        ]
         resolved = shutil.which(producer[0])
+        if resolved is None and producer[0] == "grok":
+            resolved = panel_slots.grok_binary()
         if resolved is not None:
             producer = [resolved, *producer[1:]]
+        # The model that actually ran (grok-latest resolves at argv time),
+        # printed beside the run so the record names it.
+        ran_model = None
+        for _flag in ("-m", "--model"):
+            if _flag in producer[:-1]:
+                ran_model = producer[producer.index(_flag) + 1]
+                break
         try:
             with open(prompt_path, encoding="utf-8") as fh:
                 prompt_text = fh.read()
@@ -1223,6 +1245,8 @@ if __name__ == "__main__":
         command = shlex.join(sys.argv).replace(";", " ").replace("\n", " ")
         print(verdict)
         print(f"run {run_id}")
+        if ran_model:
+            print(f"model {ran_model}")
         print(f"artifact {shown}")
         print(
             f"Provenance: candidate {candidate}; command `{command}`; exit {0 if verdict.startswith('PASS') else 1}; "

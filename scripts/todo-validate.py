@@ -576,6 +576,61 @@ def validate(graph, _args) -> int:
                     f"opened at line {unbalanced}",
                 )
                 continue
+            if s.stamped_on is None or s.stamped_on > graph.FALLBACK_FAMILY_CUTOVER:
+                # Six-slot era (D00 T04 §25): families come from the
+                # TOML. The governing last section is the primary
+                # family's panel, or the fallback family's with a
+                # `<primary> outage:` line; the writer never reviews.
+                _w = graph.panel_era_words()
+                _labels = [_w["primary"], _w["fallback"]]
+                _p25_heads = list(
+                    re.finditer(
+                        r"^#{2,6}\s+(" + "|".join(re.escape(x) for x in _labels) + r") panel\b",
+                        text,
+                        re.IGNORECASE | re.MULTILINE,
+                    )
+                )
+                _writer_words = [_w["writer"]] + (["Opus"] if _w["writer_family"] == "claude" else [])
+                if re.search(
+                    r"^#{2,6}\s+(" + "|".join(re.escape(x) for x in _writer_words) + r") panel\b",
+                    text,
+                    re.IGNORECASE | re.MULTILINE,
+                ):
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} carry a writer-family `{_w['writer']} panel` section"
+                        f" (the writer never reviews after {graph.FALLBACK_FAMILY_CUTOVER})",
+                    )
+                if not _p25_heads:
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} carry no `{_w['primary']} panel` or `{_w['fallback']} panel` section",
+                    )
+                    continue
+                _last = text[_p25_heads[-1].end():]
+                _nxt = re.search(r"^#{1,6}\s+", _last, re.MULTILINE)
+                if _nxt:
+                    _last = _last[:_nxt.start()]
+                _miss = [lens for lens in PANEL_LENSES if not PANEL_VERDICT_RES[lens].search(_last)]
+                if _miss:
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} {_p25_heads[-1].group(1)} panel lacks verdicts for: "
+                        + ", ".join(_miss),
+                    )
+                if _p25_heads[-1].group(1).lower() == _w["fallback"].lower():
+                    _note = re.compile(
+                        r"(?<!\bno\s)" + re.escape(_w["primary"])
+                        + r" outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
+                        re.IGNORECASE,
+                    )
+                    if not _note.search(text):
+                        flag(
+                            "stamp-no-opus-panel",
+                            f"{where} findings {m.group(1)} {_w['fallback']} panel governs without the "
+                            f"{_w['primary']} outage note (fallback era after {graph.FALLBACK_FAMILY_CUTOVER})",
+                        )
+                continue
             heads = list(signoff_re.finditer(text))
             gpt_heads = list(GPT_PANEL_HEADING_RE.finditer(text))
             if not heads and not gpt_heads:
@@ -889,6 +944,12 @@ def validate(graph, _args) -> int:
                 # stamps; the survivor mapping below keys families, so it
                 # reads both spellings through the same else branch.
                 known_rungs = ("gpt rung", "claude rung") if new_era else ("gpt rung", "opus rung")
+                _p25 = s.stamped_on is None or s.stamped_on > graph.FALLBACK_FAMILY_CUTOVER
+                if _p25:
+                    # Six-slot era (D00 T04 §25): both rungs come from
+                    # the TOML and both are independent of the writer.
+                    _w = graph.panel_era_words()
+                    known_rungs = (_w["primary_rung"], _w["fallback_rung"])
                 if rung not in known_rungs:
                     flag(
                         "stamp-no-plan-review",
@@ -899,6 +960,18 @@ def validate(graph, _args) -> int:
                             else ""
                         ),
                     )
+                elif _p25:
+                    if has_retry:
+                        flag(
+                            "stamp-no-plan-review",
+                            f"{t.path}:{s.line}: §{num} partial run owes no retry after {graph.FALLBACK_FAMILY_CUTOVER} "
+                            "(both rungs are independent of the writer; drop retry-owed)",
+                        )
+                    elif graph.OWNER_RE.search(marker) or graph.DUE_RE.search(marker):
+                        flag(
+                            "stamp-no-plan-review",
+                            f"{t.path}:{s.line}: §{num} complete partial run carries accountability fields with nothing owed",
+                        )
                 else:
                     _survivor = "opus" if rung == "gpt rung" else "gpt"
                     # After the sign-off cutover quorum measures the
@@ -2894,11 +2967,22 @@ def validate(graph, _args) -> int:
                 # token, and an optional `-rN` (D00 T04 §23: the
                 # legacy-only parse never matched a minted run).
                 fsuf = re.search(
-                    r"-(gpt|opus|codex|claude)(?:-c[0-9a-f]{8})?(?:-r\d+)?$", rm.group(1).lower()
+                    r"-(gpt|opus|codex|claude|grok)(?:-c[0-9a-f]{8})?(?:-r\d+)?$", rm.group(1).lower()
                 )
                 if fsuf:
                     revfam = {"codex": "gpt", "claude": "opus"}.get(fsuf.group(1), fsuf.group(1))
             if revfam is None:
+                continue
+            if s.stamped_on is None or s.stamped_on > graph.FALLBACK_FAMILY_CUTOVER:
+                # Six-slot era (D00 T04 §25): only a writer-family review
+                # lacks independence; the writer comes from the TOML.
+                _wf = graph.panel_era_words()["writer_family"]
+                if revfam == {"claude": "opus", "codex": "gpt"}.get(_wf, _wf):
+                    flag(
+                        "quorum-same-family",
+                        f"{t.path}:{s.line}: §{num} writer-family {revfam} review met no independent pass "
+                        "(quorum is one pass from outside the writer family)",
+                    )
                 continue
             # After the sign-off cutover the independent pass is measured
             # against the writer family (claude, id "opus"), like rule

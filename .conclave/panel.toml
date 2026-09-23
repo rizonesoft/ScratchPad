@@ -3,9 +3,14 @@
 # resolves producer argv from this file; the review skills name slots,
 # never pins. Models and efforts are closed sets (see the schema note at
 # PANEL_SLOTS in scripts/panel_slots.py): new producers arrive with probes
-# plus review. Effort `inherit` does not exist: every slot states its
-# effort concretely, and same-family failovers repeat the slot effort by
-# rule (see the outage-matrix prose in the review skills).
+# plus review; `grok-latest` is the one alias, resolved at run time to
+# the newest cached Grok (D00 T04 §25). Effort `inherit` does not exist:
+# every slot states its effort concretely.
+
+# The writer family never reviews (AGENTS.md: Claude Code is the only
+# writer); the validator reads it here instead of naming it in code.
+[panel]
+writer = "claude"
 
 [slot.bulk] # Full R1-R2, Light R1
 model = "gpt-6-sol"
@@ -17,23 +22,8 @@ model = "gpt-6-sol"
 effort = "high"
 timeout = 600
 
-[slot.depth] # Full R4-R5, blocking findings only; GPT like the sign-off
+[slot.depth] # Full R4-R5, blocking findings only
 model = "gpt-6-sol"
-effort = "high"
-timeout = 600
-
-[slot.bulk-fallback] # sol down: same family, silent, telemetry names terra
-model = "gpt-5.6-terra"
-effort = "medium"
-timeout = 600
-
-[slot.signoff-fallback] # sol down at sign-off or depth: same family, silent, telemetry names terra
-model = "gpt-5.6-terra"
-effort = "high"
-timeout = 600
-
-[slot.cross-fill] # both GPT down: opus fills any panel round, sign-off included, + GPT outage note naming sol and terra
-model = "claude-opus-5-5"
 effort = "high"
 timeout = 600
 
@@ -42,17 +32,12 @@ model = "gpt-6-sol"
 effort = "medium"
 timeout = 900
 
-[slot.plan-fallback] # plan fallback, same family as the writer: owes retry-owed
-model = "claude-opus-5-5"
-effort = "medium"
-timeout = 900
-
-[slot.arch-primary] # architecture gate, GPT like the sign-off
+[slot.arch-primary] # architecture gate
 model = "gpt-6-sol"
 effort = "high"
 timeout = 600
 
-[slot.arch-fallback] # sol gate down: terra attempt + Arch outage
-model = "gpt-5.6-terra"
+[slot.fallback] # sol down in any role: newest Grok fills it + GPT outage note; both down, no stamp (D00 T04 §25)
+model = "grok-latest"
 effort = "high"
 timeout = 900

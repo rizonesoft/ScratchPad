@@ -1230,6 +1230,31 @@ LABEL_CUTOVER = "2026-09-22"
 # stamps fail closed into the new era, like LABEL_CUTOVER. Cost of
 # moving it: every stamp in the moved window changes regime.
 SIGNOFF_FAMILY_CUTOVER = "2026-09-22"
+# Fallback-family cutover (D00 T04 §25): stamps dated after this day
+# read the six-slot panel. The families come from .conclave/panel.toml
+# (primary = the signoff slot, fallback = the fallback slot, writer =
+# [panel] writer), never from code: the governing last section is the
+# primary family's panel, or the fallback family's panel with a
+# `<primary label> outage:` line; any writer-family section fires; both
+# plan-review rungs are independent of the writer, so nothing owes
+# `retry-owed`. Stamps on or before it keep the rules they were stamped
+# under. Undated stamps fail closed into the new era.
+FALLBACK_FAMILY_CUTOVER = "2026-09-23"
+
+
+def panel_era_words() -> dict[str, str]:
+    """Live family words for the post-§25 era: labels, rungs, writer."""
+    fams = panel_slots.panel_families()
+    label = panel_slots.FAMILY_LABELS
+    rung = panel_slots.FAMILY_RUNGS
+    return {
+        "primary": label.get(fams["primary"], fams["primary"]),
+        "fallback": label.get(fams["fallback"], fams["fallback"]),
+        "writer": label.get(fams["writer"], fams["writer"]),
+        "primary_rung": rung.get(fams["primary"], fams["primary"] + " rung"),
+        "fallback_rung": rung.get(fams["fallback"], fams["fallback"] + " rung"),
+        "writer_family": fams["writer"],
+    }
 # Digest recompute binds runs after this day (D00 T01 §55 item 7).
 # Lines through 20260921 stay attested: most post-20260919 digests
 # are not the candidate blob. Moving the day earlier means rehashing
@@ -1412,7 +1437,7 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
     return problems
 
 _PANEL_SLOT_REF_RE = re.compile(r"--slot\s+([a-z0-9][a-z0-9-]*)")
-_PANEL_PIN_RE = re.compile(r"gpt-6-sol|gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|--effort|model_reasoning_effort")
+_PANEL_PIN_RE = re.compile(r"gpt-6-sol|gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|grok-(?:latest|\d)|--effort|--reasoning-effort|model_reasoning_effort")
 _PANEL_SKILLS = (
     ".claude/skills/review-todo-section/SKILL.md",
 )
@@ -2761,7 +2786,7 @@ TELEMETRY_LINE_RE = re.compile(
     r"^Telemetry:\s*round\s+(\d+)\s*;\s*model\s+([^;]+?)\s*;\s*effort\s+([^;]+?)\s*;"
     r"\s*duration\s+([^;]+?)\s*;\s*outcome\s+([^;]+?)\s*;\s*tokens\s+([^;]+?)\s*$"
 )
-TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|Claude panel|GPT panel)\b(.*)$", re.IGNORECASE)
+TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|Claude panel|GPT panel|Grok panel)\b(.*)$", re.IGNORECASE)
 TELEMETRY_NEAR_RE = re.compile(r"^\s{0,3}[*>\-]?\s*Telemetry\s*:", re.IGNORECASE)
 TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
 TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
@@ -3948,8 +3973,8 @@ def telemetry_parse(text: str) -> dict:
             # the display label echoes record words.
             cur = {
                 "n": rn,
-                "family": "Opus" if _panel_words in ("opus panel", "claude panel") else "GPT",
-                "label": {"opus panel": "Opus", "claude panel": "Claude"}.get(_panel_words, "GPT"),
+                "family": {"opus panel": "Opus", "claude panel": "Opus", "grok panel": "Grok"}.get(_panel_words, "GPT"),
+                "label": {"opus panel": "Opus", "claude panel": "Claude", "grok panel": "Grok"}.get(_panel_words, "GPT"),
                 "telemetry": None,
                 "verdicts": [],
             }
@@ -5283,6 +5308,15 @@ def cmd_query(args) -> int:
         # After the sign-off cutover GPT governs (D00 T04 §23): the
         # fallback is a Claude last section and its note is `GPT outage`.
         gpt_outage_re = re.compile(r"(?:sol|gpt) outage:", re.IGNORECASE)
+        # Post-§25 membership reads the TOML's families (D00 T04 §25):
+        # fallback is a fallback-family last section, outages are the
+        # primary family's outage lines.
+        _pw = panel_era_words()
+        _p25_head_re = re.compile(
+            r"^#{2,6}\s+(" + re.escape(_pw["primary"]) + "|" + re.escape(_pw["fallback"]) + r") panel\b",
+            re.IGNORECASE | re.MULTILINE,
+        )
+        _p25_outage_re = re.compile(re.escape(_pw["primary"]) + r" outage:", re.IGNORECASE)
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
         fallback, outages, criticals, unreadable, stale = [], [], [], [], []
         majors, legacy = [], []
@@ -5328,7 +5362,13 @@ def cmd_query(args) -> int:
                 last_is_gpt = bool(gpt_heads) and (
                     not signoff_heads or gpt_heads[-1].start() > signoff_heads[-1].start()
                 )
-                if s.stamped_on is None or s.stamped_on > SIGNOFF_FAMILY_CUTOVER:
+                if s.stamped_on is None or s.stamped_on > FALLBACK_FAMILY_CUTOVER:
+                    _p25_heads = list(_p25_head_re.finditer(text))
+                    if _p25_heads and _p25_heads[-1].group(1).lower() == _pw["fallback"].lower():
+                        fallback.append(m.group(1))
+                    if _p25_outage_re.search(text):
+                        outages.append(m.group(1))
+                elif s.stamped_on > SIGNOFF_FAMILY_CUTOVER:
                     if signoff_heads and not last_is_gpt:
                         fallback.append(m.group(1))
                     if gpt_outage_re.search(text):
@@ -9999,6 +10039,14 @@ track: Z1
 |  63   |   §63   | Post-cutover minted codex run stays independent | - |  [x]   |
 |  64   |   §64   | Pre-cutover minted GPT/GPT run fires quorum | - |  [x]   |
 |  65   |   §65   | Claude-last with a sol-only GPT note fires | - |  [x]   |
+|  66   |   §66   | Six-slot GPT-only record governs silently | - |  [x]   |
+|  67   |   §67   | Grok-last with the GPT outage note stays silent | - |  [x]   |
+|  68   |   §68   | Grok-last without the GPT outage note fires | - |  [x]   |
+|  69   |   §69   | Six-slot writer-family Claude section fires | - |  [x]   |
+|  70   |   §70   | Six-slot gpt-rung partial owes no retry | - |  [x]   |
+|  71   |   §71   | Six-slot partial with retry-owed fires | - |  [x]   |
+|  72   |   §72   | Six-slot claude plan-review run fires quorum | - |  [x]   |
+|  73   |   §73   | Six-slot grok plan-review run stays independent | - |  [x]   |
 
 ---
 
@@ -10717,6 +10765,94 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudesolonly.md
 > **Plan review:** GPT high, no findings
 
+## 66. Six-slot GPT-only record governs silently
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §66 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** GPT high, no findings
+
+## 67. Grok-last with the GPT outage note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §67 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-groklast.md
+> **Plan review:** GPT high, no findings
+
+## 68. Grok-last without the GPT outage note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §68 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-groknonote.md
+> **Plan review:** GPT high, no findings
+
+## 69. Six-slot writer-family Claude section fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §69 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudeonly.md
+> **Plan review:** GPT high, no findings
+
+## 70. Six-slot gpt-rung partial owes no retry
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §70 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** Grok high, filed §2, partial: gpt rung class infra attempts 1
+
+## 71. Six-slot partial with retry-owed fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §71 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** Grok high, filed §2, retry-owed owner ann due 2099-01-01 class infra attempts 1 and partial: gpt rung attempts 1
+
+## 72. Six-slot claude plan-review run fires quorum
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §72 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** Claude medium, no findings (run 20260924-D90-T06-S72-claude-c0123abcd)
+
+## 73. Six-slot grok plan-review run stays independent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-24 | §73 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** Grok high, no findings (run 20260924-D90-T06-S73-grok-c0123abcd)
+
 """,
             encoding="utf-8",
         )
@@ -10738,15 +10874,16 @@ track: Z1
             "**integration: needs-attention**\n**record: approve**\n",
             encoding="utf-8",
         )
-        # Era-clean copy (D00 T04 §14): the dynamic-stamp silence
-        # probes (§§2, 21, 25) point here; fixed-date users keep the
-        # legacy-worded 90-panel-clean.md above. Verdicts mirror it
-        # exactly; only the record words move.
+        # Era-clean copy (D00 T04 §14, re-shaped by §25): the
+        # dynamic-stamp silence probes (§§2, 21, 25) point here and
+        # stamp in the future, so they read the six-slot era, where the
+        # clean record is the primary family's panel and the writer
+        # never reviews. Fixed-date users keep the legacy-worded
+        # 90-panel-clean.md above. Verdicts mirror it exactly.
         (rev_dir / "90-panel-clean-claude.md").write_text(
-            "# Review: Claude Panel Enforcement fixture\n\n## Claude panel\n\n"
+            "# Review: GPT Panel Enforcement fixture\n\n## GPT panel\n\n"
             "**adversarial: approve**\n**consistency: advisory**\n"
-            "**integration: needs-attention**\n**record: approve**\n\n"
-            "GPT outage: gpt-6-sol model error; gpt-5.6-terra model error (fixture note)\n",
+            "**integration: needs-attention**\n**record: approve**\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-multi-stale.md").write_text(
@@ -11082,6 +11219,17 @@ track: Z1
         # failed, so a note naming sol alone does not earn it.
         (rev_dir / "90-panel-claudesolonly.md").write_text(
             "# Review: fixture\n\n## Claude panel\n\n" + _v4 + "GPT outage: gpt-6-sol model error (fixture note)\n",
+            encoding="utf-8",
+        )
+        # Six-slot era fixtures (D00 T04 §25): the fallback family's
+        # panel governs only beside the primary family's outage line.
+        (rev_dir / "90-panel-groklast.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n" + _v4 + "## Grok panel (round 2)\n\n" + _v4
+            + "GPT outage: model error (fixture note)\n",
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-groknonote.md").write_text(
+            "# Review: fixture\n\n## Grok panel\n\n" + _v4,
             encoding="utf-8",
         )
         (rev_dir / "90-panel-gptonly.md").write_text(
@@ -11547,6 +11695,47 @@ track: Z1
                 for ln in panel_out
             ),
             True,
+        )
+        # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "six-slot GPT-only record governs silently",
+            any("TODO-06-panel.md" in ln and "§66 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "six-slot Grok-last with the GPT outage note stays silent",
+            any("TODO-06-panel.md" in ln and "§67 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "six-slot Grok-last without the GPT outage note fires",
+            any("TODO-06-panel.md" in ln and "§68 " in ln and 'Grok panel governs without the GPT outage note' in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "six-slot writer-family Claude section fires",
+            any("TODO-06-panel.md" in ln and "§69 " in ln and 'writer-family `Claude panel` section' in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "six-slot gpt-rung partial owes no retry and stays silent",
+            any("TODO-06-panel.md" in ln and "§70 " in ln and ("retry" in ln or "rung" in ln) for ln in panel_out),
+            False,
+        )
+        check(
+            "six-slot partial with retry-owed fires",
+            any("TODO-06-panel.md" in ln and "§71 " in ln and 'partial run owes no retry after' in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "six-slot claude plan-review run fires quorum",
+            any("TODO-06-panel.md" in ln and "§72 " in ln and 'writer-family opus review met no independent pass' in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "six-slot grok plan-review run stays independent",
+            any("TODO-06-panel.md" in ln and "§73 " in ln and 'met no independent pass' in ln for ln in panel_out),
+            False,
         )
         check(
             "cutover-day GPT-last without the Opus note still fires",
@@ -19631,6 +19820,14 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             True,
         )
         check(
+            "plan-health --json counts a six-slot Grok-last file as fallback and its GPT outage note",
+            (
+                "docs/reviews/90-panel-groklast.md" in jdata.get("fallback", []),
+                "docs/reviews/90-panel-groklast.md" in jdata.get("outages", []),
+            ),
+            (True, True),
+        )
+        check(
             "plan-health --json counts the post-cutover GPT outage note in outages",
             "docs/reviews/90-panel-claudeonly.md" in jdata.get("outages", []),
             True,
@@ -23699,23 +23896,87 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
                 {"model": "gpt-6-sol", "effort": "high", "timeout": 600, "family": "codex"},
             ),
         )
-        # GPT governs when Claude implements (D00 T04 §23): every
-        # governing slot is codex, and Claude only fills a double
-        # GPT outage.
+        # Six slots (D00 T04 §25): five sol primaries plus one Grok
+        # fallback on a different provider; Claude never reviews.
         check(
-            "live governing slots are GPT",
-            {_n: _live_slots[_n]["family"] for _n in ("signoff", "depth", "arch-primary", "signoff-fallback", "arch-fallback")},
-            {"signoff": "codex", "depth": "codex", "arch-primary": "codex", "signoff-fallback": "codex", "arch-fallback": "codex"},
+            "live primaries are GPT and the one fallback is Grok",
+            {_n: _live_slots[_n]["family"] for _n in rp.panel_slots.PANEL_SLOTS},
+            {"bulk": "codex", "signoff": "codex", "depth": "codex", "plan-primary": "codex", "arch-primary": "codex", "fallback": "grok"},
         )
         check(
-            "live cross-fill fills at high",
-            _live_slots["cross-fill"],
-            {"model": "claude-opus-5-5", "effort": "high", "timeout": 600, "family": "claude"},
+            "live fallback pins the newest Grok at high",
+            _live_slots["fallback"],
+            {"model": "grok-latest", "effort": "high", "timeout": 900, "family": "grok"},
+        )
+        # grok-latest resolves to the newest grok-<major>.<minor> in the
+        # CLI cache: numeric order, suffixed variants never win, and a
+        # missing cache names itself.
+        _gk_dir = root / "grok-cache"
+        _gk_dir.mkdir(parents=True, exist_ok=True)
+        _gk = _gk_dir / "models_cache.json"
+
+        def _gk_resolve(names):
+            _gk.write_text(json.dumps({"models": {n: {} for n in names}}), encoding="utf-8")
+            return rp.panel_slots.resolve_grok_latest(str(_gk))
+
+        check(
+            "grok-latest picks the newest cached Grok, numerically, never a variant",
+            (
+                _gk_resolve(["grok-4.5", "grok-4.7", "grok-4.7-build-fast", "grok-4.6"]),
+                _gk_resolve(["grok-4.7", "grok-4.8", "grok-4.9-build-fast"]),
+                _gk_resolve(["grok-4.8", "grok-4.10"]),
+            ),
+            ("grok-4.7", "grok-4.8", "grok-4.10"),
+        )
+        try:
+            rp.panel_slots.resolve_grok_latest(str(_gk_dir / "missing.json"))
+            _gk_missing = ""
+        except rp.panel_slots.PanelSlotsError as _gk_exc:
+            _gk_missing = str(_gk_exc)
+        check("a missing Grok cache fails naming itself", "does not exist" in _gk_missing, True)
+        _gk_resolve(["grok-4.7", "grok-4.8"])
+        _gk_slots = {"fallback": {"model": "grok-latest", "effort": "high", "timeout": 900, "family": "grok"}}
+        check(
+            "the Grok argv resolves the model and carries the prompt file",
+            (
+                rp.panel_slots.argv_for_slot("fallback", _gk_slots, prompt_path="p.md", grok_cache=str(_gk)),
+                rp.panel_slots.argv_for_slot("fallback", _gk_slots, grok_cache=str(_gk))[-1],
+            ),
+            (
+                [
+                    "grok", "-m", "grok-4.8", "--reasoning-effort", "high", "--output-format", "plain",
+                    "--permission-mode", "plan", "--no-subagents", "--disable-web-search", "--tools", "Read",
+                    "--prompt-file", "p.md",
+                ],
+                rp.panel_slots.PROMPT_TOKEN,
+            ),
+        )
+        check(
+            "producer binding reads the Grok effort flag",
+            rp._producer_binding(["grok", "-m", "grok-4.8", "--reasoning-effort", "high"]),
+            ("grok-4.8", "high"),
+        )
+        _pw_old = root / "panel-old-slot"
+        (_pw_old / ".conclave").mkdir(parents=True)
+        (_pw_old / ".conclave" / "panel.toml").write_text(
+            (WORKSPACE / ".conclave" / "panel.toml").read_text(encoding="utf-8")
+            + '\n[slot.cross-fill]\nmodel = "gpt-6-sol"\neffort = "high"\ntimeout = 600\n',
+            encoding="utf-8",
+        )
+        check(
+            "a retired slot fires as ungoverned",
+            panel_wiring_problems(_pw_old),
+            [("panel-slots", "panel slots file carries ungoverned slots: cross-fill")],
         )
         check(
             "live plan-primary pin holds",
             _live_slots["plan-primary"],
             {"model": "gpt-6-sol", "effort": "medium", "timeout": 900, "family": "codex"},
+        )
+        check(
+            "telemetry buckets Grok panel rounds as the Grok family",
+            [(r["family"], r["label"]) for r in telemetry_parse("## Grok panel (round 1)\n- `adversarial` approve\n")["rounds"]],
+            [("Grok", "Grok")],
         )
         _TEL_XH = telemetry_parse(
             "## GPT panel (round 1)\n- `adversarial` approve\nTelemetry: round 1; model claude-opus-5-5; effort xhigh; duration 12s; outcome approve; tokens 100\n"
