@@ -167,6 +167,11 @@ Native.WinEventProc onEvent = (hook, eventType, hwnd, idObject, idChild, threadI
             return;
         }
 
+        // Off-screen births log nothing (D00 T02 §18 R2-F4): the
+        // event stream covers on-screen-passing windows only, so
+        // off-screen rests carry no placement claim (the census
+        // covers them). Hook-loss windows report uncovered, never
+        // silently absent.
         if (!IntersectsAnyMonitor(bounds, monitors))
         {
             return;

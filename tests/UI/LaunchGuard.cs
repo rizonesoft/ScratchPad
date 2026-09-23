@@ -309,6 +309,27 @@ internal static class LaunchGuard
             }
         }
 
+        // Assignment aliases (D00 T02 §18 R2-F3): `var alias = p;`
+        // carries the Process-ness of p. Iterate to a fixpoint so
+        // chains (alias-of-alias) resolve; the loop is bounded by
+        // the declarator count. Coalesce, ternary, and field flows
+        // stay outside the syntax-plus-alias boundary by design.
+        bool added;
+        do
+        {
+            added = false;
+            foreach (VariableDeclaratorSyntax declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+            {
+                if (declarator.Initializer?.Value is IdentifierNameSyntax source
+                    && names.Contains(source.Identifier.Text)
+                    && names.Add(declarator.Identifier.Text))
+                {
+                    added = true;
+                }
+            }
+        }
+        while (added);
+
         return names;
     }
 

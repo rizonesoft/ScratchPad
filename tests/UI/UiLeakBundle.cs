@@ -16,7 +16,8 @@ namespace UI;
 // arguments pass the item-7 redactor; titles truncate to 64 chars
 // then redact; screenshots stay under the ignored test-output tree
 // (never uploaded) and scale to 1600 px; no memory dumps are ever
-// captured; event slices cap at 50 lines; lineage carries numbers
+// captured; event slices cap at 50 lines and scrub titles; lineage
+// carries numbers only
 // only; bundle date-dirs older than 30 days prune on capture.
 internal static class UiLeakBundle
 {
@@ -28,10 +29,49 @@ internal static class UiLeakBundle
 
     static readonly System.Text.Json.JsonSerializerOptions Indented = new() { WriteIndented = true };
 
+    // PW_RENDERFULLCONTENT (window-only paint, occluders excluded).
+    const uint PrintFullContent = 2;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    static extern nint GetWindowDC(nint hwnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    static extern int ReleaseDC(nint hwnd, nint hdc);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = true)]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    static extern bool PrintWindow(nint hwnd, nint hdcBlt, uint flags);
+
     internal static string ScrubTitle(string title)
     {
         string cut = title.Length > MaxTitleChars ? title[..MaxTitleChars] : title;
         return UiLaunchDiagnostics.RedactArgs(cut);
+    }
+
+    // Event-line scrub (D00 T02 §18 R2-F1): gate lines carry raw
+    // window titles past the class token, and slices embed the
+    // lines whole. Scrub the title tail only, so hwnd, pid,
+    // bounds, and class stay actionable. Lines without a class
+    // token scrub whole (fail-closed: structure yields to
+    // redaction on malformed input).
+    internal static string ScrubEventLine(string line)
+    {
+        const string marker = " class=";
+        int at = line.IndexOf(marker, StringComparison.Ordinal);
+        if (at < 0)
+        {
+            return ScrubTitle(line);
+        }
+
+        int titleAt = line.IndexOf(' ', at + marker.Length);
+        if (titleAt < 0)
+        {
+            return line;
+        }
+
+        return line[..(titleAt + 1)] + ScrubTitle(line[(titleAt + 1)..]);
     }
 
     internal static (int Width, int Height) ScaleToCap(int width, int height)
@@ -80,7 +120,7 @@ internal static class UiLeakBundle
         bool visible2 = hwnd != nint.Zero && UiLaunchDiagnostics.IsVisible(hwnd);
         string secondTs = DateTime.UtcNow.ToString("o");
 
-        string? shot = bounds is not null && visible ? Screenshot(dir, bounds) : null;
+        string? shot = bounds is not null && visible ? Screenshot(dir, hwnd, bounds) : null;
         var record = new Dictionary<string, object?>
         {
             ["schema"] = Schema,
@@ -139,25 +179,54 @@ internal static class UiLeakBundle
         return null;
     }
 
-    static string? Screenshot(string dir, int[] bounds)
+    static string? Screenshot(string dir, nint hwnd, int[] bounds)
     {
         int width = Math.Max(1, bounds[2] - bounds[0]);
         int height = Math.Max(1, bounds[3] - bounds[1]);
         (int w, int h) = ScaleToCap(width, height);
         try
         {
-            using var full = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-            using (var graphics = Graphics.FromImage(full))
+            // Window-only capture (D00 T02 §18 R2-F1):
+            // PrintWindow paints the window's own pixels, so an
+            // occluding app never lands in the bundle.
+            // Fail-closed: any failure yields no screenshot
+            // rather than a screen capture.
+            nint dc = GetWindowDC(hwnd);
+            if (dc == nint.Zero)
             {
-                graphics.CopyFromScreen(bounds[0], bounds[1], 0, 0, full.Size);
+                return null;
             }
 
-            using var shot = w == width && h == height
-                ? full
-                : new Bitmap(full, new Size(w, h));
-            string path = Path.Combine(dir, "leak.png");
-            shot.Save(path, ImageFormat.Png);
-            return "leak.png";
+            try
+            {
+                using var full = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                using (var graphics = Graphics.FromImage(full))
+                {
+                    nint hdc = graphics.GetHdc();
+                    try
+                    {
+                        if (!PrintWindow(hwnd, hdc, PrintFullContent))
+                        {
+                            return null;
+                        }
+                    }
+                    finally
+                    {
+                        graphics.ReleaseHdc(hdc);
+                    }
+                }
+
+                using var shot = w == width && h == height
+                    ? full
+                    : new Bitmap(full, new Size(w, h));
+                string path = Path.Combine(dir, "leak.png");
+                shot.Save(path, ImageFormat.Png);
+                return "leak.png";
+            }
+            finally
+            {
+                _ = ReleaseDC(hwnd, dc);
+            }
         }
         catch (Exception ex) when (ex is ArgumentException or System.ComponentModel.Win32Exception or OutOfMemoryException)
         {
@@ -180,7 +249,7 @@ internal static class UiLeakBundle
             if (line.StartsWith("EVENT ", StringComparison.Ordinal)
                 && (line.Contains(token, StringComparison.Ordinal) || line.Contains(pidToken, StringComparison.Ordinal)))
             {
-                hits.Add(line);
+                hits.Add(ScrubEventLine(line));
             }
         }
 

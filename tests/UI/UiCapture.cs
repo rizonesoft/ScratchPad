@@ -130,7 +130,14 @@ internal static class UiCapture
             UiForeground.Background(window, fgBefore);
 
             var scale = DisplayScale();
-            if (!Place(window, 10000, 10000, (int)Math.Round(tolerance.CanonicalWidth * scale), (int)Math.Round(tolerance.CanonicalHeight * scale)))
+            // Derived off-screen origins (D00 T02 §18 R2-F2 family):
+            // the fixed 10000 point could sit on a sufficiently
+            // large display, so golden captures derive past the
+            // virtual screen like every other background window.
+            int firstW = (int)Math.Round(tolerance.CanonicalWidth * scale);
+            int firstH = (int)Math.Round(tolerance.CanonicalHeight * scale);
+            (int firstX, int firstY) = UiLaunch.DeriveOffScreenOrigin(UiLaunch.ReadVirtualScreen(), firstW, firstH);
+            if (!Place(window, firstX, firstY, firstW, firstH))
             {
                 throw new InvalidOperationException("app window refused placement");
             }
@@ -145,7 +152,10 @@ internal static class UiCapture
             var actual = WindowDpi(window) / 96.0;
             if (Math.Abs(actual - scale) > 0.001)
             {
-                if (!Place(window, 10000, 10000, (int)Math.Round(tolerance.CanonicalWidth * actual), (int)Math.Round(tolerance.CanonicalHeight * actual)))
+                int secondW = (int)Math.Round(tolerance.CanonicalWidth * actual);
+                int secondH = (int)Math.Round(tolerance.CanonicalHeight * actual);
+                (int secondX, int secondY) = UiLaunch.DeriveOffScreenOrigin(UiLaunch.ReadVirtualScreen(), secondW, secondH);
+                if (!Place(window, secondX, secondY, secondW, secondH))
                 {
                     throw new InvalidOperationException("app window refused DPI-corrected placement");
                 }

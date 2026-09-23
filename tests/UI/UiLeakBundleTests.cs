@@ -98,6 +98,32 @@ public sealed class UiLeakBundleTests
     }
 
     [Fact]
+    public void EventSlicesScrubTitles()
+    {
+        // R2-F1: slice titles scrub like bundle titles while
+        // hwnd, pid, bounds, and class stay actionable.
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string log = Path.Combine(dir, "gate.log");
+            File.WriteAllLines(log, ["EVENT 12345 pid=99999 primary [10 10 100 100] SHOW class=WinUIDesktopWin32WindowClass --password hunter2 notes"]);
+            string path = UiLeakBundle.Capture(99999, (nint)12345, "UiLeakBundleTests:Scrub", string.Empty, log);
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            string[] slices = [.. document.RootElement.GetProperty("eventSlices").EnumerateArray().Select(e => e.GetString()!)];
+            string only = Assert.Single(slices);
+            Assert.Contains(" 12345 ", only, StringComparison.Ordinal);
+            Assert.Contains("class=WinUIDesktopWin32WindowClass", only, StringComparison.Ordinal);
+            Assert.Contains("--password ***", only, StringComparison.Ordinal);
+            Assert.DoesNotContain("hunter2", only, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void RetentionPrunesOldBundles()
     {
         string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

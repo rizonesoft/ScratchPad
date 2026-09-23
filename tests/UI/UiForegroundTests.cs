@@ -23,7 +23,10 @@ public sealed class UiForegroundTests
         {
             new UiForeground.SuiteDisplay(true, new Rectangle(0, 0, 2560, 1440), new Rectangle(0, 0, 2560, 1400)),
         };
-        Assert.Equal((10000, 10000), UiForeground.PickSuiteOrigin(displays));
+        (int x, int y) = UiForeground.PickSuiteOrigin(displays);
+        Assert.Equal((3460, 0), (x, y));
+        var screen = new UiLaunch.ScreenBounds(0, 0, 2560, 1440);
+        Assert.False(UiLaunch.WindowIntersects(screen, x, y, UiForeground.PlacementWidth, UiForeground.PlacementHeight));
     }
 
     [Fact]

@@ -86,7 +86,7 @@ internal static class UiForeground
                 Length = Marshal.SizeOf<Native.WindowPlacement>(),
                 Flags = 0,
                 ShowCmd = 4,
-                NormalPosition = new Native.Rect { Left = x, Top = y, Right = x + 900, Bottom = y + 650 },
+                NormalPosition = new Native.Rect { Left = x, Top = y, Right = x + PlacementWidth, Bottom = y + PlacementHeight },
             };
             if (!Native.SetWindowPlacement(hwnd, ref placement))
             {
@@ -104,12 +104,24 @@ internal static class UiForeground
 
     internal sealed record SuiteDisplay(bool Primary, Rectangle Bounds, Rectangle WorkingArea);
 
+    // Placement size shared with Show (D00 T02 §18 R2-F2): the
+    // single-monitor derivation needs the window rect to clear the
+    // screen, and Show places exactly this size.
+    internal const int PlacementWidth = 900;
+    internal const int PlacementHeight = 650;
+
     internal static (int X, int Y) PickSuiteOrigin(IEnumerable<SuiteDisplay> displays)
     {
-        SuiteDisplay? second = displays.Where(d => !d.Primary).OrderByDescending(d => d.Bounds.Width * d.Bounds.Height).FirstOrDefault();
+        List<SuiteDisplay> list = displays.ToList();
+        SuiteDisplay? second = list.Where(d => !d.Primary).OrderByDescending(d => d.Bounds.Width * d.Bounds.Height).FirstOrDefault();
         if (second is null)
         {
-            return (10000, 10000);
+            // Single monitor (D00 T02 §18 R2-F2): derive past the
+            // primary's own edges instead of the fixed 10000 point,
+            // which a sufficiently large display could contain.
+            SuiteDisplay primary = list.First(d => d.Primary);
+            var screen = new UiLaunch.ScreenBounds(primary.Bounds.X, primary.Bounds.Y, primary.Bounds.Width, primary.Bounds.Height);
+            return UiLaunch.DeriveOffScreenOrigin(screen, PlacementWidth, PlacementHeight);
         }
 
         return (second.WorkingArea.X, second.WorkingArea.Y);
