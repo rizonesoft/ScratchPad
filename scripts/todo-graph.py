@@ -4636,10 +4636,11 @@ def cmd_query(args) -> int:
                 return d["round_runs"].get(ctx, [])
             return d["runs"]
 
-        tel_n = panel_n = gpt_n = opus_n = 0
+        tel_n = panel_n = gpt_n = opus_n = grok_n = 0
         tok_sum = tok_unknown = mismatch = 0
         outcomes: dict[str, int] = {}
-        fam_tel = {"GPT": 0, "Opus": 0}
+        # Grok is the six-slot fallback family (D00 T04 §25, R2-F2).
+        fam_tel = {"GPT": 0, "Opus": 0, "Grok": 0}
         malformed_total = 0
         malformed_files: list[str] = []
         no_tel = 0
@@ -4650,6 +4651,7 @@ def cmd_query(args) -> int:
             panel_n += len(d["rounds"])
             gpt_n += sum(1 for r in d["rounds"] if r["family"] == "GPT")
             opus_n += sum(1 for r in d["rounds"] if r["family"] == "Opus")
+            grok_n += sum(1 for r in d["rounds"] if r["family"] == "Grok")
             got = [r for r in d["rounds"] if r["telemetry"]]
             if d["rounds"] and not got:
                 no_tel += 1
@@ -4676,8 +4678,8 @@ def cmd_query(args) -> int:
             print("telemetry -- tree-wide panel rounds")
             print(f"rounds: {tel_n} with telemetry lines ({panel_n} panel sections total)")
             print(f"tokens: {tok_sum} known ({tok_unknown} rounds unknown)")
-            print(f"families (panel sections): GPT {gpt_n}, Claude {opus_n}")
-            print(f"families (telemetry rounds): GPT {fam_tel['GPT']}, Claude {fam_tel['Opus']}")
+            print(f"families (panel sections): GPT {gpt_n}, Claude {opus_n}, Grok {grok_n}")
+            print(f"families (telemetry rounds): GPT {fam_tel['GPT']}, Claude {fam_tel['Opus']}, Grok {fam_tel['Grok']}")
             print("  (Claude buckets include legacy Opus-worded records; record words cut over 2026-09-22)")
             if outcomes:
                 print("outcomes (telemetry rounds): " + ", ".join(f"{k} {v}" for k, v in sorted(outcomes.items())))
@@ -4739,6 +4741,7 @@ def cmd_query(args) -> int:
             _fam = {
                 "GPT": sum(1 for r in _got if r["family"] == "GPT"),
                 "Opus": sum(1 for r in _got if r["family"] == "Opus"),
+                "Grok": sum(1 for r in _got if r["family"] == "Grok"),
             }
             _out: dict[str, int] = {}
             for r in _got:
@@ -4747,7 +4750,7 @@ def cmd_query(args) -> int:
             _tot = (
                 f"totals: {len(_got)} telemetry rounds ({len(d['rounds'])} panel sections); "
                 f"tokens {_tsum} known ({_tunk} unknown); "
-                f"families GPT {_fam['GPT']}, Claude {_fam['Opus']}"
+                f"families GPT {_fam['GPT']}, Claude {_fam['Opus']}, Grok {_fam['Grok']}"
             )
             if _out:
                 _tot += "; outcomes " + ", ".join(f"{k} {v}" for k, v in sorted(_out.items()))
@@ -4834,7 +4837,7 @@ def cmd_query(args) -> int:
                     "panel_sections": panel_n,
                     "tokens_known": tok_sum,
                     "tokens_unknown_rounds": tok_unknown,
-                    "families_sections": {"GPT": gpt_n, "Opus": opus_n},
+                    "families_sections": {"GPT": gpt_n, "Opus": opus_n, "Grok": grok_n},
                     "families_telemetry": fam_tel,
                     "outcomes": outcomes,
                     "sol_outages": [
@@ -7025,10 +7028,10 @@ def cmd_query(args) -> int:
             if gone:
                 bits.append(f"removed: {', '.join(gone)}")
             print(f"    {f}  {'; '.join(bits)}")
-        print(f"fallback usage      {len(fallback_sorted)} findings with a fallback-last panel (GPT-last through {SIGNOFF_FAMILY_CUTOVER}, Claude-last after)")
+        print(f"fallback usage      {len(fallback_sorted)} findings with a fallback-last panel (GPT-last through {SIGNOFF_FAMILY_CUTOVER}, Claude-last through {FALLBACK_FAMILY_CUTOVER}, the TOML fallback family last after)")
         for f in fallback_sorted:
             print(f"    {f}")
-        print(f"outages             {len(outages_sorted)} findings with a sign-off outage note (Claude outage through {SIGNOFF_FAMILY_CUTOVER}, GPT outage after; legacy Opus-worded included)")
+        print(f"outages             {len(outages_sorted)} findings with a sign-off outage note (Claude outage through {SIGNOFF_FAMILY_CUTOVER}, the primary family's outage after; legacy Opus-worded included)")
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
@@ -25201,6 +25204,22 @@ track: Z1
 **Test checkpoint:** `true`
 """,
             encoding="utf-8",
+        )
+        (_rev / "90-tel-grok.md").write_text(
+            "# Review: fixture\n\n## Grok panel (round 1)\n\n- `adversarial` approve\n- `consistency` approve\n"
+            "- `integration` approve\n- `record` approve\n\n"
+            "Telemetry: round 1; model grok-4.7; effort high; duration 30s; outcome approve; tokens 900\n",
+            encoding="utf-8",
+        )
+        _gbuf = _tio.StringIO()
+        with _tctx.redirect_stdout(_gbuf), _tctx.redirect_stderr(_tio.StringIO()):
+            _gcode = cmd_query(
+                argparse.Namespace(what="telemetry", target=str(_rev / "90-tel-grok.md"))
+            )
+        check(
+            "query telemetry counts a Grok round with Telemetry in its own bucket (R2-F2)",
+            (_gcode, any("Grok 1" in ln for ln in _gbuf.getvalue().splitlines())),
+            (0, True),
         )
         _sbuf = _tio.StringIO()
         with _tctx.redirect_stdout(_sbuf), _tctx.redirect_stderr(_tio.StringIO()):
