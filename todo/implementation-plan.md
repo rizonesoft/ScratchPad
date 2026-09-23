@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **109 of 280 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **110 of 280 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -193,7 +193,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T04 §22` | Section-21 review residuals                     |   3   |
 | [x] | `D00 T04 §23` | Implementer-independent panel: GPT governs      |   9   |
 | [ ] | `D00 T04 §24` | Section-23 sign-off residuals                   |   5   |
-| [ ] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
+| [x] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
 | [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   5   |
 | [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |

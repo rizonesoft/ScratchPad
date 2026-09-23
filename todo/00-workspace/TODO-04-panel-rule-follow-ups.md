@@ -60,7 +60,7 @@ track: W0
 |  22   |  §22    | Section-21 review residuals | D00 T04 §21 |  [ ]   |
 |  23   |  §23    | Implementer-independent panel: GPT governs | D00 T04 §21 |  [x]   |
 |  24   |  §24    | Section-23 sign-off residuals | D00 T04 §23 |  [ ]   |
-|  25   |  §25    | Simplified panel: sol primaries, Grok fallback | D00 T04 §23 |  [ ]   |
+|  25   |  §25    | Simplified panel: sol primaries, Grok fallback | D00 T04 §23 |  [x]   |
 |  26   |  §26    | Section-25 sign-off residuals | D00 T04 §25 |  [ ]   |
 
 ---
@@ -489,6 +489,13 @@ Why this section exists: operator direction 2026-09-23 calls the ten-slot panel 
 - [ ] Commit: `"workspace: simplify the panel to sol primaries plus a Grok fallback"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` prints a larger total with 0 failed; `python3 scripts/todo-graph.py validate` prints 0 fatal; `python3 scripts/probe_runner.py --self-test` prints 0 failed; `python3 -c "import panel_slots; ..."` from `scripts/` lists exactly six slots with `fallback` resolving to the newest cached Grok. Falsifiable by a seventh slot loading, a variant or older Grok winning resolution, a post-cutover Claude section passing, a Grok-last record passing without the `GPT outage` line, a post-cutover survivor owing `retry-owed`, or any red gate.
+
+> **Verified:** 2026-09-23 | §25 | self-test 1600/1600 (six-slot fixtures §66-§73, Grok resolution, Grok telemetry bucket, live six-slot pins); live validate 0 fatal 1 warning (known owner-login mapping); probe self-test 9/9, live ok with the Grok help leg; live Grok echo probe 402 balance exhausted (operator-owned, fallback availability unproven); stamp dated 2026-09-23 reads the D00 T04 §23 rules, the six-slot rules bind stamps after it; Full panel all-GPT through the six-slot commands (bulk R1-R2, signoff R3) over candidates 57f2fee 62f9f57 e6fdc7e, R1-F1..F4 plus R2-F1/F2 fix-loop fixed, R3-A1 plus R3-F1 filed at §26; plan review 8 findings, 5 filed at §24 and §26, 3 accepted
+> **Review:** round 3 (FINAL), candidates 57f2fee 62f9f57 e6fdc7e -- `adversarial` approve · `consistency` advisory (filed at D00 T04 §26) · `integration` approve · `record` needs-attention (filed at D00 T04 §26); R1 fix-loop 62f9f57, R2 fix-loop e6fdc7e, R3 below-bar findings filed without re-rounding. Raw findings: docs/reviews/00-workspace/D00-T04-s25.md
+> **Plan review:** GPT medium, filed D00 T04 §24, D00 T04 §26 (run 20260923-D00-T04-S25-codex-c7001fd6f-r4)
+> **CRUD:** applicable | self-test wrote fixture files and Grok caches under temp roots (unlinked after, read back via per-case assertions); implementation edited the TOML, slots module, runner, probe, validator, graph queries, fixtures, review skill, README, and ticks (read back via self-test 1600/1600, live validate 0 fatal, probe 9/9 plus live ok, plan --check current); filings opened §26 and amended §24 (read back via plan --check current)
+> **Duration:** 2026-09-23T16:58:45Z to 2026-09-23T18:34:14Z
+> **Reviewed-tip:** e6fdc7e494be4b4af5f92ae7299f366f95ca5905
 
 ## 26. Section-25 sign-off residuals
 
