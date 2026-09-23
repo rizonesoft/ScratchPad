@@ -58,7 +58,7 @@ track: W0
 |  20   |  §20    | Section-19 plan-review residuals | D00 T04 §19 |  [ ]   |
 |  21   |  §21    | GPT-6 sol reviewer re-pin | D00 T04 §19 |  [x]   |
 |  22   |  §22    | Section-21 review residuals | D00 T04 §21 |  [ ]   |
-|  23   |  §23    | Implementer-independent panel: GPT governs | D00 T04 §21 |  [ ]   |
+|  23   |  §23    | Implementer-independent panel: GPT governs | D00 T04 §21 |  [x]   |
 |  24   |  §24    | Section-23 sign-off residuals | D00 T04 §23 |  [ ]   |
 
 ---
@@ -449,6 +449,13 @@ Why this section exists: Claude Code became the only writer on 2026-09-23 (`AGEN
 - [ ] Commit: `"workspace: GPT governs the panel when Claude implements"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` prints a larger total with 0 failed; `python3 scripts/todo-graph.py validate` prints 0 fatal; `python3 scripts/probe_runner.py --live` prints `probe ok`; every governing slot resolves to `gpt-6-sol`; and this section's own findings file validates with a GPT-last panel and no `Claude outage` line. Falsifiable by a new-era Claude-last record without `GPT outage` passing, a new-era GPT-last record demanding `Claude outage`, any old-era record changing verdict, a claude plan-review survivor passing without `retry-owed`, or any red gate.
+
+> **Verified:** 2026-09-23 | §23 | self-test 1584/1584 (sign-off era fixtures §59-§65 plus live governing-slot pins); live validate 0 fatal 1 warning (known owner-login mapping); probe self-test 6/6, live ok; gpt-6-sol high echo probe exit 0; Full panel all-GPT (sol-medium R1-R2 bulk, sol-high R3 sign-off) over candidates 4742153 4f533e7 5fe2768, R1-F1/F2/F3 plus R2-F1 fix-loop fixed, R3-F1/F2/F3 filed at §24; plan review 6 findings, 2 filed at §24, 4 rejected
+> **Review:** round 3 (FINAL), candidates 4742153 4f533e7 5fe2768 -- `adversarial` approve · `consistency` needs-attention (filed at D00 T04 §24) · `integration` needs-attention (filed at D00 T04 §24) · `record` approve; R1 fix-loop 4f533e7, R2 fix-loop 5fe2768, R3 below-bar findings filed without re-rounding. Raw findings: docs/reviews/00-workspace/D00-T04-s23.md
+> **Plan review:** GPT medium, filed D00 T04 §24 (run 20260923-D00-T04-S23-codex-c7001fd6f-r4)
+> **CRUD:** applicable | self-test wrote fixture files under temp roots (unlinked after, read back via per-case assertions); implementation edited the TOML, slot parity, validator rules 16/21/32, plan-health, fixtures, review skill, README, and ticks (read back via self-test 1584/1584, live validate 0 fatal, probe 6/6 plus live ok, plan --check current); filings opened §24 (read back via plan --check current)
+> **Duration:** 2026-09-23T09:00:50Z to 2026-09-23T10:45:53Z
+> **Reviewed-tip:** 5fe276822309a4b0001d6f8e864f8df340aae8c4
 
 ## 24. Section-23 sign-off residuals
 
