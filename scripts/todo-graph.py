@@ -1220,6 +1220,16 @@ PLAN_REVIEW_CUTOFF = "2026-09-18"
 # cutoffs: the validator's era-scoped legs read it from here, one
 # constant, no copies.
 LABEL_CUTOVER = "2026-09-22"
+# Sign-off family cutover (D00 T04 §23): Claude Code became the only
+# writer on 2026-09-23 and runs on the model that governed the panel,
+# so stamps dated after this day are governed by the GPT family (sol
+# signs off, runs depth and arch) and a Claude-last record passes only
+# with a `GPT outage` line; plan-review quorum measures the survivor
+# against the writer family (claude), not the sign-off family. Stamps
+# on or before it keep the Claude-governs rules and stay valid. Undated
+# stamps fail closed into the new era, like LABEL_CUTOVER. Cost of
+# moving it: every stamp in the moved window changes regime.
+SIGNOFF_FAMILY_CUTOVER = "2026-09-22"
 # Digest recompute binds runs after this day (D00 T01 §55 item 7).
 # Lines through 20260921 stay attested: most post-20260919 digests
 # are not the candidate blob. Moving the day earlier means rehashing
@@ -5270,6 +5280,9 @@ def cmd_query(args) -> int:
         # prescribe words (D00 T04 §14).
         signoff_heading_re = re.compile(r"^#{2,6}\s+(?:Opus|Claude) panel\b", re.IGNORECASE | re.MULTILINE)
         outage_re = re.compile(r"(?:opus|claude) outage", re.IGNORECASE)
+        # After the sign-off cutover GPT governs (D00 T04 §23): the
+        # fallback is a Claude last section and its note is `GPT outage`.
+        gpt_outage_re = re.compile(r"(?:sol|gpt) outage:", re.IGNORECASE)
         head_re = re.compile(r"^#{1,6}\s+", re.MULTILINE)
         fallback, outages, criticals, unreadable, stale = [], [], [], [], []
         majors, legacy = [], []
@@ -5315,10 +5328,16 @@ def cmd_query(args) -> int:
                 last_is_gpt = bool(gpt_heads) and (
                     not signoff_heads or gpt_heads[-1].start() > signoff_heads[-1].start()
                 )
-                if last_is_gpt:
-                    fallback.append(m.group(1))
-                if outage_re.search(text):
-                    outages.append(m.group(1))
+                if s.stamped_on is None or s.stamped_on > SIGNOFF_FAMILY_CUTOVER:
+                    if signoff_heads and not last_is_gpt:
+                        fallback.append(m.group(1))
+                    if gpt_outage_re.search(text):
+                        outages.append(m.group(1))
+                else:
+                    if last_is_gpt:
+                        fallback.append(m.group(1))
+                    if outage_re.search(text):
+                        outages.append(m.group(1))
                 for h in PLAN_REVIEW_HEADING_RE.finditer(text):
                     sec = text[h.end():]
                     nxt = head_re.search(sec)
@@ -6966,10 +6985,10 @@ def cmd_query(args) -> int:
             if gone:
                 bits.append(f"removed: {', '.join(gone)}")
             print(f"    {f}  {'; '.join(bits)}")
-        print(f"fallback usage      {len(fallback_sorted)} findings with a GPT-last panel")
+        print(f"fallback usage      {len(fallback_sorted)} findings with a fallback-last panel (GPT-last through {SIGNOFF_FAMILY_CUTOVER}, Claude-last after)")
         for f in fallback_sorted:
             print(f"    {f}")
-        print(f"outages             {len(outages_sorted)} findings with a Claude outage note (legacy Opus-worded included)")
+        print(f"outages             {len(outages_sorted)} findings with a sign-off outage note (Claude outage through {SIGNOFF_FAMILY_CUTOVER}, GPT outage after; legacy Opus-worded included)")
         for f in outages_sorted:
             print(f"    {f}")
         print(f"unresolved critical {len(criticals_sorted)}")
@@ -9973,6 +9992,12 @@ track: Z1
 |  56   |   §56   | Mixed legacy-plus-new panel fires | - |  [x]   |
 |  57   |   §57   | Pre-cutover Claude-worded panel fires | - |  [x]   |
 |  58   |   §58   | Pre-cutover mixed panel fires | - |  [x]   |
+|  59   |   §59   | GPT rounds then Claude-last without GPT note fires | - |  [x]   |
+|  60   |   §60   | Cutover-day GPT-last without Opus note fires | - |  [x]   |
+|  61   |   §61   | Post-cutover GPT-only governs silently | - |  [x]   |
+|  62   |   §62   | Post-cutover claude plan-review run fires quorum | - |  [x]   |
+|  63   |   §63   | Post-cutover minted codex run stays independent | - |  [x]   |
+|  64   |   §64   | Pre-cutover minted GPT/GPT run fires quorum | - |  [x]   |
 
 ---
 
@@ -10614,6 +10639,72 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-mixedlegacy.md
 > **Plan review:** GPT high, no findings
 
+## 59. GPT rounds then Claude-last without GPT note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §59 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptthenclaude.md
+> **Plan review:** GPT high, no findings
+
+## 60. Cutover-day GPT-last without Opus note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-22 | §60 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptlastnonote.md
+> **Plan review:** GPT high, no findings
+
+## 61. Post-cutover GPT-only governs silently
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §61 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** GPT high, no findings
+
+## 62. Post-cutover claude plan-review run fires quorum
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §62 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** Claude medium, no findings (run 20260923-D90-T06-S62-claude-c0123abcd)
+
+## 63. Post-cutover minted codex run stays independent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §63 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
+> **Plan review:** GPT medium, no findings (run 20260923-D90-T06-S63-codex-c0123abcd-r2)
+
+## 64. Pre-cutover minted GPT/GPT run fires quorum
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-21 | §64 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptlastopus.md
+> **Plan review:** GPT medium, no findings (run 20260921-D90-T06-S64-codex-c0123abcd)
+
 """,
             encoding="utf-8",
         )
@@ -10956,6 +11047,31 @@ track: Z1
             "# Review: fixture\n\n## Claude panel\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n",
+            encoding="utf-8",
+        )
+        # Sign-off family cutover fixtures (D00 T04 §23): GPT governs
+        # stamps after SIGNOFF_FAMILY_CUTOVER, so a GPT-only record is
+        # the planned shape and a Claude last section is the double-GPT
+        # outage fill that needs the `GPT outage` line even when GPT
+        # rounds ran first.
+        _v4 = (
+            "**adversarial: approve**\n**consistency: approve**\n"
+            "**integration: approve**\n**record: approve**\n\n"
+        )
+        (rev_dir / "90-panel-gptthenclaude.md").write_text(
+            "# Review: fixture\n\n## GPT panel (round 1)\n\n" + _v4 + "## Claude panel (round 2)\n\n" + _v4,
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptlastnonote.md").write_text(
+            "# Review: fixture\n\n## Opus panel (round 1)\n\n" + _v4 + "## GPT panel (round 2)\n\n" + _v4,
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptonly.md").write_text(
+            "# Review: fixture\n\n## GPT panel\n\n" + _v4,
+            encoding="utf-8",
+        )
+        (rev_dir / "90-panel-gptlastopus.md").write_text(
+            "# Review: fixture\n\n## GPT panel\n\n" + _v4 + "Opus outage: model error (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-gptclaude.md").write_text(
@@ -11368,7 +11484,7 @@ track: Z1
         check(
             "post-cutover Claude-only without note names the GPT line",
             any(
-                "TODO-06-panel.md" in ln and "§47 " in ln and "lacks the GPT outage line" in ln
+                "TODO-06-panel.md" in ln and "§47 " in ln and "governs without the GPT outage note" in ln
                 for ln in panel_out
             ),
             True,
@@ -11391,12 +11507,50 @@ track: Z1
             any("TODO-06-panel.md" in ln and "§50 " in ln and "FATAL" in ln for ln in panel_out),
             False,
         )
+        # GPT governs after the sign-off cutover (D00 T04 §23): a GPT
+        # last section needs no Claude note, so §51 turned silent.
         check(
-            "GPT-last with legacy note names the Claude note post-cutover",
+            "GPT-last post-cutover governs without a Claude note",
+            any("TODO-06-panel.md" in ln and "§51 " in ln and "outage note" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "GPT rounds then Claude-last without the GPT note fires post-cutover",
             any(
-                "TODO-06-panel.md" in ln and "§51 " in ln and "lacks the Claude outage note" in ln
+                "TODO-06-panel.md" in ln and "§59 " in ln and "governs without the GPT outage note" in ln
                 for ln in panel_out
             ),
+            True,
+        )
+        check(
+            "cutover-day GPT-last without the Opus note still fires",
+            any(
+                "TODO-06-panel.md" in ln and "§60 " in ln and "lacks the Opus outage note" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "post-cutover GPT-only record governs silently",
+            any(
+                "TODO-06-panel.md" in ln and "§61 " in ln and ("stamp-no-opus-panel" in ln or "panel-sol-outage-missing" in ln)
+                for ln in panel_out
+            ),
+            False,
+        )
+        check(
+            "post-cutover claude plan-review run fires quorum",
+            any("TODO-06-panel.md" in ln and "§62 " in ln and "met no independent pass" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "post-cutover minted codex run stays independent",
+            any("TODO-06-panel.md" in ln and "§63 " in ln and "met no independent pass" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "pre-cutover minted GPT/GPT run fires quorum",
+            any("TODO-06-panel.md" in ln and "§64 " in ln and "met no independent pass" in ln for ln in panel_out),
             True,
         )
         check(
@@ -15079,18 +15233,22 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             ),
             True,
         )
+        # §4 stamps in the dynamic future, past the sign-off cutover
+        # (D00 T04 §23): quorum measures the writer family (claude), so
+        # its GPT review is the independent pass. The pre-cutover firing
+        # path is pinned by panel §64.
         check(
-            "same-family sign-off plus review fires quorum",
+            "post-cutover GPT sign-off plus GPT review is independent",
             any(
                 "TODO-07-marker.md" in ln and "§4 " in ln and "met no independent pass" in ln
                 for ln in marker_out
             ),
-            True,
+            False,
         )
         check(
-            "§4 fires exactly six times (17b x2 on §99 targets, 18 lifecycle x1, 19 backlink x1, PR25 hollow trigger x1, quorum-same-family x1; 16, 17a, 20 silent)",
+            "§4 fires exactly five times (17b x2 on §99 targets, 18 lifecycle x1, 19 backlink x1, PR25 hollow trigger x1; 16, 17a, 20, quorum-same-family silent post-cutover)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§4 " in ln and "FATAL" in ln),
-            6,
+            5,
         )
         check(
             "composite line with one count fires the arity leg",
@@ -18927,10 +19085,12 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         # item 5). Exact-assertion: the probe fails on any rewording,
         # so help and schema drift loud together.
         _ph_def = (
-            "plan-health fallback membership is GPT-last: only records whose last panel "
-            "section is GPT count as fallback (planned GPT-early rounds under an Opus "
-            "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/9 shape stable."
+            "plan-health fallback membership is the non-governing family last: through "
+            "2026-09-22 only records whose last panel section is GPT count as fallback "
+            "(planned GPT-early rounds under a Claude sign-off are not fallback), after it "
+            "only records whose last panel section is Claude count (GPT governs, D00 T04 "
+            "section 23); this membership rule is the compat guarantee holding the plan-health/9 "
+            "shape stable."
         )
         _ph_buf = _mio.StringIO()
         _ph_argv = sys.argv
@@ -19420,25 +19580,34 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "docs/reviews/90-panel-gptlastbad.md" in jdata.get("fallback", []),
             True,
         )
+        # Post-cutover records are GPT-governed (D00 T04 §23): GPT last
+        # is the planned sign-off, Claude last is the fallback, and the
+        # outage note that earns it is `GPT outage`. The pre-cutover
+        # GPT-last membership stays pinned by 90-panel-gptlastbad.md.
         check(
-            "plan-health --json keeps the lone GPT fallback file",
+            "plan-health --json leaves the post-cutover GPT-governed file out of fallback",
             "docs/reviews/90-health.md" in jdata.get("fallback", []),
-            True,
-        )
-        check(
-            "plan-health --json keeps the new-word GPT-last file in fallback",
-            "docs/reviews/90-panel-gptclaude.md" in jdata.get("fallback", []),
-            True,
-        )
-        check(
-            "plan-health --json keeps the new-word outage file in outages",
-            "docs/reviews/90-panel-gptclaude.md" in jdata.get("outages", []),
-            True,
-        )
-        check(
-            "plan-health --json keeps Claude-only files out of fallback",
-            "docs/reviews/90-panel-claudeonly.md" in jdata.get("fallback", []),
             False,
+        )
+        check(
+            "plan-health --json leaves the new-word GPT-last file out of fallback",
+            "docs/reviews/90-panel-gptclaude.md" in jdata.get("fallback", []),
+            False,
+        )
+        check(
+            "plan-health --json leaves a Claude-outage-only post-cutover file out of outages",
+            "docs/reviews/90-panel-gptclaude.md" in jdata.get("outages", []),
+            False,
+        )
+        check(
+            "plan-health --json counts post-cutover Claude-last files as fallback",
+            "docs/reviews/90-panel-claudeonly.md" in jdata.get("fallback", []),
+            True,
+        )
+        check(
+            "plan-health --json counts the post-cutover GPT outage note in outages",
+            "docs/reviews/90-panel-claudeonly.md" in jdata.get("outages", []),
+            True,
         )
         check(
             "plan-health --json retires retry_owed for degraded",
@@ -23501,8 +23670,21 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             (_live_slots["bulk"], _live_slots["signoff"]),
             (
                 {"model": "gpt-6-sol", "effort": "medium", "timeout": 600, "family": "codex"},
-                {"model": "claude-opus-5-5", "effort": "high", "timeout": 600, "family": "claude"},
+                {"model": "gpt-6-sol", "effort": "high", "timeout": 600, "family": "codex"},
             ),
+        )
+        # GPT governs when Claude implements (D00 T04 §23): every
+        # governing slot is codex, and Claude only fills a double
+        # GPT outage.
+        check(
+            "live governing slots are GPT",
+            {_n: _live_slots[_n]["family"] for _n in ("signoff", "depth", "arch-primary", "signoff-fallback", "arch-fallback")},
+            {"signoff": "codex", "depth": "codex", "arch-primary": "codex", "signoff-fallback": "codex", "arch-fallback": "codex"},
+        )
+        check(
+            "live cross-fill fills at high",
+            _live_slots["cross-fill"],
+            {"model": "claude-opus-5-5", "effort": "high", "timeout": 600, "family": "claude"},
         )
         check(
             "live plan-primary pin holds",
@@ -25655,10 +25837,12 @@ def main() -> int:
         # membership is the compat guarantee holding the plan-health/9
         # shape stable (D00 T01 §37 item 5). Pinned verbatim by probe.
         description=(
-            "plan-health fallback membership is GPT-last: only records whose last panel "
-            "section is GPT count as fallback (planned GPT-early rounds under an Opus "
-            "sign-off are not fallback); this membership rule is the compat guarantee "
-            "holding the plan-health/9 shape stable."
+            "plan-health fallback membership is the non-governing family last: through "
+            "2026-09-22 only records whose last panel section is GPT count as fallback "
+            "(planned GPT-early rounds under a Claude sign-off are not fallback), after it "
+            "only records whose last panel section is Claude count (GPT governs, D00 T04 "
+            "section 23); this membership rule is the compat guarantee holding the plan-health/9 "
+            "shape stable."
         ),
     )
     q.add_argument(

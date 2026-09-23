@@ -536,6 +536,10 @@ def validate(graph, _args) -> int:
             signoff_outage_re = CLAUDE_OUTAGE_RE if new_era else OPUS_OUTAGE_RE
             early_outage_re = GPT_OUTAGE_NOTE_RE if new_era else SOL_OUTAGE_RE
             signoff_words = "Claude panel" if new_era else "Opus panel"
+            # Governing family (D00 T04 §23): after the sign-off cutover
+            # GPT governs and a Claude last section is the double-GPT
+            # outage fill, so the two families swap which one needs a note.
+            gpt_governs = s.stamped_on is None or s.stamped_on > graph.SIGNOFF_FAMILY_CUTOVER
             body = getattr(s, "review_body", None) or ""
             m = graph.FINDINGS_RE.search(body)
             if not m:
@@ -612,6 +616,25 @@ def validate(graph, _args) -> int:
             last_is_gpt = gpt_heads and (
                 not heads or gpt_heads[-1].start() > heads[-1].start()
             )
+            if last_is_gpt and gpt_governs:
+                # GPT governs (D00 T04 §23): a GPT last section is the
+                # planned sign-off, so it needs its verdicts and no note.
+                gpt = text[gpt_heads[-1].end():]
+                nxt = re.search(r"^#{1,6}\s+", gpt, re.MULTILINE)
+                if nxt:
+                    gpt = gpt[:nxt.start()]
+                missing = [
+                    lens
+                    for lens in PANEL_LENSES
+                    if not PANEL_VERDICT_RES[lens].search(gpt)
+                ]
+                if missing:
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} GPT panel lacks verdicts for: "
+                        + ", ".join(missing),
+                    )
+                continue
             if last_is_gpt:
                 # GPT fallback path: same verdict bar as the signoff panel,
                 # plus the era's outage note that earns the fallback. Taken
@@ -664,6 +687,19 @@ def validate(graph, _args) -> int:
                     f"{where} findings {m.group(1)} panel lacks verdicts for: "
                     + ", ".join(missing),
                 )
+            if gpt_governs:
+                # A Claude last section after the sign-off cutover is the
+                # double-GPT outage fill (D00 T04 §23): it earns the
+                # stamp only with the `GPT outage` line naming what
+                # failed. That one note also covers early rounds, so the
+                # early-round leg below would only repeat it.
+                if not early_outage_re.search(text):
+                    flag(
+                        "stamp-no-opus-panel",
+                        f"{where} findings {m.group(1)} Claude panel governs without the GPT outage note"
+                        f" (GPT governs stamps after {graph.SIGNOFF_FAMILY_CUTOVER})",
+                    )
+                continue
             # Early-round accountability on signoff-only records (D00 T01 §37 item
             # 1, words cut over by D00 T04 §14): past the rule birthday an all-signoff
             # review proves the early rounds were unreachable, or it ran them.
@@ -858,7 +894,15 @@ def validate(graph, _args) -> int:
                     )
                 else:
                     _survivor = "opus" if rung == "gpt rung" else "gpt"
-                    if _survivor == (signoff_family(s) or "opus"):
+                    # After the sign-off cutover quorum measures the
+                    # writer family (claude, id "opus"), not the sign-off
+                    # family: GPT now signs off, and a GPT survivor is
+                    # still the independent pass (D00 T04 §23).
+                    if s.stamped_on is None or s.stamped_on > graph.SIGNOFF_FAMILY_CUTOVER:
+                        _quorum_ref = "opus"
+                    else:
+                        _quorum_ref = signoff_family(s) or "opus"
+                    if _survivor == _quorum_ref:
                         if not has_retry:
                             flag(
                                 "stamp-no-plan-review",
@@ -2838,18 +2882,30 @@ def validate(graph, _args) -> int:
             revfam = None
             rm = graph.RUN_ID_RE.search(body)
             if rm:
-                fsuf = re.search(r"-(gpt|opus)(-r\d+)?$", rm.group(1).lower())
+                # Legacy runs end `-gpt`/`-opus`; slot-minted runs end
+                # `-codex`/`-claude`, an optional `-c<8 hex>` clone
+                # token, and an optional `-rN` (D00 T04 §23: the
+                # legacy-only parse never matched a minted run).
+                fsuf = re.search(
+                    r"-(gpt|opus|codex|claude)(?:-c[0-9a-f]{8})?(?:-r\d+)?$", rm.group(1).lower()
+                )
                 if fsuf:
-                    revfam = fsuf.group(1)
+                    revfam = {"codex": "gpt", "claude": "opus"}.get(fsuf.group(1), fsuf.group(1))
             if revfam is None:
                 continue
-            panfam = signoff_family(s)
+            # After the sign-off cutover the independent pass is measured
+            # against the writer family (claude, id "opus"), like rule
+            # 21's survivor (D00 T04 §23).
+            if s.stamped_on is None or s.stamped_on > graph.SIGNOFF_FAMILY_CUTOVER:
+                panfam = "opus"
+            else:
+                panfam = signoff_family(s)
             if panfam is None:
                 continue
             if panfam == revfam:
                 flag(
                     "quorum-same-family",
-                    f"{t.path}:{s.line}: §{num} {panfam} sign-off panel plus {revfam} review met no independent pass "
+                    f"{t.path}:{s.line}: §{num} {panfam} reference family plus {revfam} review met no independent pass "
                     "(quorum is one second-family pass; owes retry-owed)",
                 )
 

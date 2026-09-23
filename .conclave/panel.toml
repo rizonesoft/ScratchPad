@@ -12,13 +12,13 @@ model = "gpt-6-sol"
 effort = "medium"
 timeout = 600
 
-[slot.signoff] # Full R3, Light R2: governs every stamp
-model = "claude-opus-5-5"
+[slot.signoff] # Full R3, Light R2: governs every stamp; GPT, independent of the Claude writer (D00 T04 §23)
+model = "gpt-6-sol"
 effort = "high"
 timeout = 600
 
-[slot.depth] # Full R4-R5, blocking findings only
-model = "claude-opus-5-5"
+[slot.depth] # Full R4-R5, blocking findings only; GPT like the sign-off
+model = "gpt-6-sol"
 effort = "high"
 timeout = 600
 
@@ -27,32 +27,32 @@ model = "gpt-5.6-terra"
 effort = "medium"
 timeout = 600
 
-[slot.signoff-fallback] # opus down at sign-off: terra signs off once + Claude outage
+[slot.signoff-fallback] # sol down at sign-off or depth: same family, silent, telemetry names terra
 model = "gpt-5.6-terra"
 effort = "high"
 timeout = 600
 
-[slot.cross-fill] # both GPT down: opus fills bulk slots + GPT outage note
-model = "claude-opus-5-5"
-effort = "medium"
-timeout = 600
-
-[slot.plan-primary] # plan review, independent family
-model = "gpt-6-sol"
-effort = "medium"
-timeout = 900
-
-[slot.plan-fallback] # plan fallback, same family as the sign-off panel
-model = "claude-opus-5-5"
-effort = "medium"
-timeout = 900
-
-[slot.arch-primary] # architecture gate
+[slot.cross-fill] # both GPT down: opus fills any round, sign-off included, + GPT outage note
 model = "claude-opus-5-5"
 effort = "high"
 timeout = 600
 
-[slot.arch-fallback] # opus gate down: terra attempt + Arch outage
+[slot.plan-primary] # plan review, independent of the Claude writer
+model = "gpt-6-sol"
+effort = "medium"
+timeout = 900
+
+[slot.plan-fallback] # plan fallback, same family as the writer: owes retry-owed
+model = "claude-opus-5-5"
+effort = "medium"
+timeout = 900
+
+[slot.arch-primary] # architecture gate, GPT like the sign-off
+model = "gpt-6-sol"
+effort = "high"
+timeout = 600
+
+[slot.arch-fallback] # sol gate down: terra attempt + Arch outage
 model = "gpt-5.6-terra"
 effort = "high"
 timeout = 900

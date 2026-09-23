@@ -33,7 +33,9 @@ PANEL_SLOTS = (
     "arch-primary",
     "arch-fallback",
 )
-EFFORT_PARITY = (("bulk-fallback", "bulk"), ("cross-fill", "bulk"))
+# cross-fill is cross-family and fills any round, sign-off included, so
+# it pins its own effort (high) instead of repeating bulk (D00 T04 §23).
+EFFORT_PARITY = (("bulk-fallback", "bulk"),)
 
 
 class PanelSlotsError(ValueError):
