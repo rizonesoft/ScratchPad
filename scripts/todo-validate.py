@@ -690,13 +690,20 @@ def validate(graph, _args) -> int:
             if gpt_governs:
                 # A Claude last section after the sign-off cutover is the
                 # double-GPT outage fill (D00 T04 §23): it earns the
-                # stamp only with the `GPT outage` line naming what
-                # failed. That one note also covers early rounds, so the
-                # early-round leg below would only repeat it.
-                if not early_outage_re.search(text):
+                # stamp only with a `GPT outage` line naming both GPT
+                # producers (sol and terra), since the fill is owed only
+                # when the whole GPT ladder failed (R1-F1). That one note
+                # also covers early rounds, so the early-round leg below
+                # would only repeat it.
+                _both = any(
+                    re.search(r"\bsol\b", _ln, re.IGNORECASE) and re.search(r"\bterra\b", _ln, re.IGNORECASE)
+                    for _ln in text.splitlines()
+                    if early_outage_re.search(_ln)
+                )
+                if not _both:
                     flag(
                         "stamp-no-opus-panel",
-                        f"{where} findings {m.group(1)} Claude panel governs without the GPT outage note"
+                        f"{where} findings {m.group(1)} Claude panel governs without a GPT outage note naming sol and terra"
                         f" (GPT governs stamps after {graph.SIGNOFF_FAMILY_CUTOVER})",
                     )
                 continue

@@ -9998,6 +9998,7 @@ track: Z1
 |  62   |   §62   | Post-cutover claude plan-review run fires quorum | - |  [x]   |
 |  63   |   §63   | Post-cutover minted codex run stays independent | - |  [x]   |
 |  64   |   §64   | Pre-cutover minted GPT/GPT run fires quorum | - |  [x]   |
+|  65   |   §65   | Claude-last with a sol-only GPT note fires | - |  [x]   |
 
 ---
 
@@ -10705,6 +10706,17 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptlastopus.md
 > **Plan review:** GPT medium, no findings (run 20260921-D90-T06-S64-codex-c0123abcd)
 
+## 65. Claude-last with a sol-only GPT note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-23 | §65 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-claudesolonly.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -10734,7 +10746,7 @@ track: Z1
             "# Review: Claude Panel Enforcement fixture\n\n## Claude panel\n\n"
             "**adversarial: approve**\n**consistency: advisory**\n"
             "**integration: needs-attention**\n**record: approve**\n\n"
-            "GPT outage: model error (fixture note)\n",
+            "GPT outage: gpt-6-sol model error; gpt-5.6-terra model error (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-multi-stale.md").write_text(
@@ -11040,7 +11052,7 @@ track: Z1
             "# Review: fixture\n\n## Claude panel\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
-            "GPT outage: no CLI on this box (fixture note)\n",
+            "GPT outage: gpt-6-sol no CLI on this box; gpt-5.6-terra no CLI on this box (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-claudenonote.md").write_text(
@@ -11064,6 +11076,12 @@ track: Z1
         )
         (rev_dir / "90-panel-gptlastnonote.md").write_text(
             "# Review: fixture\n\n## Opus panel (round 1)\n\n" + _v4 + "## GPT panel (round 2)\n\n" + _v4,
+            encoding="utf-8",
+        )
+        # R1-F1: the fill is owed only when the whole GPT ladder
+        # failed, so a note naming sol alone does not earn it.
+        (rev_dir / "90-panel-claudesolonly.md").write_text(
+            "# Review: fixture\n\n## Claude panel\n\n" + _v4 + "GPT outage: gpt-6-sol model error (fixture note)\n",
             encoding="utf-8",
         )
         (rev_dir / "90-panel-gptonly.md").write_text(
@@ -11096,7 +11114,7 @@ track: Z1
             "## Claude panel (round 2)\n\n"
             "**adversarial: approve**\n**consistency: approve**\n"
             "**integration: approve**\n**record: approve**\n\n"
-            "GPT outage: CLI missing on this box (fixture note)\n",
+            "GPT outage: gpt-6-sol CLI missing; gpt-5.6-terra CLI missing (fixture note)\n",
             encoding="utf-8",
         )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -11484,7 +11502,7 @@ track: Z1
         check(
             "post-cutover Claude-only without note names the GPT line",
             any(
-                "TODO-06-panel.md" in ln and "§47 " in ln and "governs without the GPT outage note" in ln
+                "TODO-06-panel.md" in ln and "§47 " in ln and "naming sol and terra" in ln
                 for ln in panel_out
             ),
             True,
@@ -11517,7 +11535,15 @@ track: Z1
         check(
             "GPT rounds then Claude-last without the GPT note fires post-cutover",
             any(
-                "TODO-06-panel.md" in ln and "§59 " in ln and "governs without the GPT outage note" in ln
+                "TODO-06-panel.md" in ln and "§59 " in ln and "naming sol and terra" in ln
+                for ln in panel_out
+            ),
+            True,
+        )
+        check(
+            "Claude-last with a sol-only GPT note fires post-cutover",
+            any(
+                "TODO-06-panel.md" in ln and "§65 " in ln and "naming sol and terra" in ln
                 for ln in panel_out
             ),
             True,
