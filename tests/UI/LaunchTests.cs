@@ -291,6 +291,47 @@ public sealed class LaunchTests
         }
     }
 
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
+    public void ForegroundDefaultsLandOnScreen()
+    {
+        // Regression (D00 T02 §18 R3-F1): a foreground first-window
+        // birth with untouched defaults must land on-screen. Fresh
+        // profiles saw nothing when BirthOrigin mapped defaults
+        // off-screen unconditionally. Night-owed (D00-T02-S18-N1):
+        // foreground steal, runs in the collector window.
+        string? saved = Environment.GetEnvironmentVariable(UiLaunch.BackgroundVariable);
+        SessionData.Delete();
+        SeedFresh();
+        try
+        {
+            Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, null);
+            using var app = UiLaunch.LaunchApp();
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                nint hwnd = window.Properties.NativeWindowHandle.Value;
+                int[]? rect = UiLaunchDiagnostics.WindowRect(hwnd);
+                Assert.NotNull(rect);
+                UiLaunch.ScreenBounds screen = UiLaunch.ReadVirtualScreen();
+                Assert.True(
+                    UiLaunch.WindowIntersects(screen, rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1]),
+                    $"foreground birth at {rect[0]},{rect[1]} misses the virtual screen");
+            }
+            finally
+            {
+                CloseAll(app, automation);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, saved);
+            SessionData.Delete();
+        }
+    }
+
     [Fact(Skip = "QUARANTINED 2026-09-20 D01-T01-S4 locked-file-null")]
     public void LockedFileReportsLocked()
     {

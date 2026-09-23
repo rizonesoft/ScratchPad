@@ -18,7 +18,7 @@ namespace UI;
 // (never uploaded) and scale to 1600 px; no memory dumps are ever
 // captured; event slices cap at 50 lines and scrub titles; lineage
 // carries numbers only
-// only; bundle date-dirs older than 30 days prune on capture.
+// bundle date-dirs older than 30 days prune on capture.
 internal static class UiLeakBundle
 {
     internal const string Schema = "leak-bundle/1";

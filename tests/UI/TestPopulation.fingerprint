@@ -45,6 +45,7 @@ run-a:
   UI.LaunchDropsTests.DefaultSeedPreservesDrops
   UI.LaunchDropsTests.OptInLaunchDrainsBeforeActivation
   UI.LaunchDropsTests.OptInSeedDrainsExactlyOnce
+  UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath
   UI.LaunchGuardTests.LegitimateShapesPassTheGuard
   UI.LaunchGuardTests.LiveTreeScansClean
   UI.LaunchGuardTests.PlantedBypassFailsTheGuard
@@ -118,6 +119,7 @@ run-a:
   UI.ReloadTests.KeepHoldsBufferAndDirties
   UI.ReloadTests.LockedReloadRoutesThroughUnlock
   UI.ReloadTests.UntitledAndIdenticalWritesNeverPrompt
+  UI.SeedPrecedenceTests.ExplicitDefaultValuedGeometrySeedsOffScreen
   UI.SeedPrecedenceTests.ForegroundDefaultsStayAtCascadeOrigin
   UI.SeedPrecedenceTests.FullExplicitGeometryWins
   UI.SeedPrecedenceTests.MalformedExplicitGeometryWins
@@ -178,14 +180,15 @@ run-a:
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
   UI.UiLeakBundleTests.EventSlicesFillFromGateLog
+  UI.UiLeakBundleTests.EventSlicesScrubTitles
   UI.UiLeakBundleTests.RetentionPrunesOldBundles
   UI.UiLeakBundleTests.ScaleToCapPinsDimensions
   UI.UiLeakBundleTests.ScrubTitleShapes
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 178
-run-a-cases: 224
+run-a-methods: 181
+run-a-cases: 231
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -201,6 +204,7 @@ interactive:
   UI.AcceleratorTests.ChordCtrlShiftNOpensSecondWindow
   UI.AcceleratorTests.ChordCtrlShiftXOpensExport
   UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
+  UI.LaunchTests.ForegroundDefaultsLandOnScreen
   UI.LaunchTests.MissingFileOfferEnterAcceptsAsYes
   UI.MenuBarTests.AccessKeysOpenEachMenu
   UI.MenuBarTests.FileMenuLiveAcceleratorsWork
@@ -229,5 +233,5 @@ interactive:
   UI.TabBarTests.NumberShortcutsCoverMiddlePositions
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
-interactive-methods: 35
-interactive-cases: 35
+interactive-methods: 36
+interactive-cases: 36

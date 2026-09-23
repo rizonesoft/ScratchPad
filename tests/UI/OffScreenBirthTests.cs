@@ -100,11 +100,11 @@ public sealed class OffScreenBirthTests
     }
 
     // D00 T02 §18 item 2 (K1): the suite places before the show, so
-    // the backgrounded re-show restores directly on the suite display
+    // the backgrounded re-show lands directly on the suite display
     // and no frame paints at the birth spot. The flash itself is
     // sub-millisecond (below any maintained assertion; the proof gate
     // photographs it), so this guards the mechanism end-state: after
-    // Background, the restored rect sits at the suite origin. Size is
+    // Background, the placed rect sits at the suite origin. Size is
     // app-owned post-show layout, not asserted. Reads agree only on
     // the pinned 100%-secondary topology, like the placer itself.
     [Fact]

@@ -88,7 +88,12 @@ public sealed partial class MainWindow : Window, IDisposable
     static (int X, int Y) BirthOrigin(ShellSettings live, int width, int height)
     {
         var untouched = new ShellSettings();
-        if (live.X == untouched.X && live.Y == untouched.Y)
+        // Background-only mapping (D00 T02 §18 R3-F1): foreground
+        // first windows keep stored geometry as written, so fresh
+        // profiles land on-screen. The flag reads fresh per call
+        // (tests flip it; no cache).
+        if (live.X == untouched.X && live.Y == untouched.Y
+            && Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1")
         {
             return NativeMethods.OffScreenOrigin(width, height);
         }

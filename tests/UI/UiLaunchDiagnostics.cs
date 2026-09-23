@@ -14,7 +14,8 @@ namespace UI;
 // hwndLineage (owner chain outward from the window, [] when none),
 // bounds ([left,top,right,bottom] or null), monitor (device name of
 // the bounds, "unknown" without a window), move (seeded-offscreen,
-// explicit-kept, unseeded-defaults, headless, or launch-failed),
+// explicit-kept, unseeded-defaults, headless, tool, shell, or
+// launch-failed),
 // seedX/seedY (the geometry the seed chose, 0/0 when unseeded). The
 // move pairs seed to launch by call order (consumed once, reset
 // after each launch); every UI test seeds before it launches, so

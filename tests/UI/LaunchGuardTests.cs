@@ -7,7 +7,7 @@ namespace UI;
 // (direct, alias, wrapper, renamed, instance, inline-new,
 // per-file, static-using, reflection, P/Invoke) trips at least one
 // violation; the sanctioned helper path stays exempt.
-// live tests/UI tree scans clean.
+// The live tests/UI tree scans clean.
 public sealed class LaunchGuardTests
 {
     [Theory]

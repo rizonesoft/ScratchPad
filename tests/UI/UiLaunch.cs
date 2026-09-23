@@ -161,9 +161,6 @@ internal static class UiLaunch
         }
     }
 
-    // Shell launch (D00 T02 §18 item 6): protocol and URL probes that
-    // need shell execution. The caller owns the process (attach plus
-    // dispose); the launch itself stays in the one home.
     // Tool runs (D00 T02 §18 item 8): gate and probe subprocesses.
     // The caller owns the process (wait plus dispose); the start
     // itself stays in the one home, so the guard sees no bypass.
@@ -191,6 +188,9 @@ internal static class UiLaunch
         }
     }
 
+    // Shell launch (D00 T02 §18 item 6): protocol and URL probes that
+    // need shell execution. The caller owns the process (attach plus
+    // dispose); the launch itself stays in the one home.
     internal static Process? ShellLaunch(
         string url,
         [CallerMemberName] string? member = null,
