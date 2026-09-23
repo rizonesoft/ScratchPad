@@ -70,9 +70,10 @@ internal static class UiForeground
         // millisecond transient via the seen-twice rule, but the §18
         // event stream photographs it (probed 2026-09-23: 237x39 at
         // physical (0,2049) on first-window mains). SetWindowPlacement
-        // sets the restore target while minimized, so the show lands
-        // directly on the suite display and no frame paints at the
-        // birth spot. Size stays 900x650, the show-then-move size.
+        // moves the never-minimized window to the suite display
+        // (placement, not a restore, so no slide) and the show lands
+        // there; no frame paints at the birth spot. Size stays 900x650,
+        // the show-then-move size.
         // Thread awareness (UiDpi pattern): testhost is DPI-unaware, so
         // coordinates go through physical pixels explicitly.
         nint previous = UiDpi.Enter();

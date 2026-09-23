@@ -57,8 +57,8 @@ public sealed partial class MainWindow : Window, IDisposable
     // activate otherwise). UIA patterns dispatch on no-activate windows
     // (spiked for no-activate shows; this makes the state persistent).
     // WinUI Activate forces the foreground past the style, so background
-    // launches never call it: they stay hidden until the suite places
-    // and shows them no-activate (D00 T02 §18, born hidden).
+    // launches never call it: they paint off-screen and the suite places
+    // them on the suite display (D00 T02 §18).
     internal void NoActivateForBackground()
     {
         nint hwnd = WindowNative.GetWindowHandle(this);
