@@ -194,7 +194,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T04 §23` | Implementer-independent panel: GPT governs      |   9   |
 | [ ] | `D00 T04 §24` | Section-23 sign-off residuals                   |   5   |
 | [ ] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
-| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   3   |
+| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   5   |
 | [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
