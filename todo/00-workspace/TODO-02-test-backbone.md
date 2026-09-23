@@ -64,6 +64,7 @@ track: W0
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [ ]   |
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [ ]   |
+|   26  |   §26   | Sibling sweep narrowing | §18 |  [ ]   |
 
 ---
 
@@ -581,6 +582,7 @@ Why this section exists: §11 landed the central helper with off-screen birth, b
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §13 -- items 2/9 attribution residual lands in item 7 (mechanism only); per-path token semantics narrow out per the §13 record.
+- -> XREF: D00 T02 §26 -- R3-F2 sibling-sweep narrowing filed forward (below-bar sign-off finding; latent, background-only).
 
 - [x] Every Run A suite-mix delta against the §8 162/3/0 baseline is reconciled test by test in this section, naming the filter or quarantine behind each delta. The reconciliation pins the same filter, build, and counting unit as §15's current method, case, and assembly totals, so `162/3/0`, `150/167`, and `535/0/14` compare like with like. Done when: no delta lacks a cause. (D00-T02-S11-PR1.) (Pin per D00-T02-S17-PR31.) Done: every figure uses Run A filter `Category!=Interactive&Category!=Primary`. `162/3/0` is UI.dll passed/skipped/failed on 2026-09-19 (165 cases). `151/14/0` is that same unit on 2026-09-20. `150/167` is the fingerprint's Run A methods/cases, a discovery count, not a pass/fail result. `535/0/14` is passed/failed/skipped across Smoke, Unit, Protocol, and UI, the §15 four-trx merge. Its UI slice is the 151 passed, 0 failed, 14 skipped above; the other 384 passed cases are the three non-UI assemblies, with no skips and no failures in that merge. Eleven passes became skips, each a 2026-09-20 `Fact(Skip)` quarantine: `WindowCloseWithDirtyTabsIsSilentAndRestores` (dirty-close-com-timeout), `LockedFileReportsLocked` (locked-file-null), `DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost` (locked-ghost-zero-tabs), `DirtyReloadDiscardsEdits` (dirty-reload-zero-tabs), `DirtyKeepPreservesEdits` (dirty-keep-null), `MultiWindowSessionRestoresBothWindows` (multiwindow-single-empty), `CorruptSettingsShowsNoticeAndRestoresDefaults` (settings-corrupt-dialog-null), `RestoreDontSaveReplacesBuffer` (snapshot-dontsave-dialog-null), `RestoreCancelKeepsBuffer` (snapshot-cancel-dialog-null), `RestoreSaveWritesThenRestores` (snapshot-save-dialog-null), `RestoreSaveFailureAbortsWithWorkPreserved` (snapshot-savefailure-dialog-null). The original three skips stayed: `WindowChromeIconMatchesAsset` (chrome-icon-uia-timeout, 2026-09-17), `MissingFileOfferYesBindsTabAndSaveCreates` (save-prompt-dialog-null, 2026-09-17), `PrintFlagPrintsThenCloses` (PrinterFact capability skip). Two Run A cases landed after the 165-case total, which is why discovery now reads 167 cases: `NightlyPartitionTests.EveryUiTestBelongsToExactlyOneNightlyLeg` and `QuietHoursTests.PrimarySetSizeIsPinned`.
 - [x] Initial window placement is proven by event, not just by polling census: a placement-event log quotes bounds per event-covered window on a full run. Done when: the event log plus the census agree with zero primary births. (D00-T02-S11-PR2.) Done: placement-event log quotes per-covered-window bounds with a class= column plus a MONITORS line (mains first-wins, popups rest-wins per K2, off-screen births omitted by rule) (gate is all-physical pixels: primary 0,0,3840,2160; box is 150pct primary, 100pct secondary). Run A proof 2026-09-23-065449: 210/0/14, gate exit 0, flagged=0, census=202 primary=0, events=201 event-primary=0 uncovered=7 uncovered-primary=0 mismatch=0 expect=secondary, no overrun. Zero primary births agreed by both streams; uncovered is hook-loss on secondary rests only (reported, not fatal). Path: backgrounded mains paint off-screen (never minimized: no park slot, no restore slide); suite places before show (SetWindowPlacement); popups read rest-wins; off-screen rests carry no placement claim. Probed dead ends (kept out): CBT CREATESTRUCT rewrite (re-park ~1ms), in-context WinEvent hook (1428, no module handle), out-of-context self-hook (races gate), DWM transition disable (S_OK but slides persist; slide is not that transition), born-hidden (WinUI quits hidden-only, exit 0). Instrument limits, stated honestly: async first-observed bounds; sub-hook sub-poll flashes invisible; hook drops a few fast windows per run (reported uncovered).
@@ -721,6 +723,20 @@ Why this section exists: the §17 plan review returned 37 findings; 10 file here
 - [ ] Commit: `"workspace: follow up trend and telemetry"`
 
 **Test checkpoint:** Denominators rule, series filter, nights group, fixtures pin, tails read, regressions alert, history outlives retention, env validates, backfills cite, secrets redact. Cheaper substitute that fails: a prettier slope over untrusted numbers.
+
+## 26. Sibling Sweep Narrowing
+
+Why this section exists: the §18 sign-off (R3-F2) found SiblingPin.Sweep pinning every non-main top-level window in the process, not just the constructor-born helpers its comment claims, so opening a second background window can move the first window's live popups and dialogs off-screen mid-test. The sweep runs background-only (App.ShowWindow gates PinBirthBeforeShow on SCRATCHPAD_BACKGROUND=1) and no test fails from it, so the sign-off filed it below-bar instead of blocking the stamp. This section narrows the sweep to its claimed scope with a red/green multi-window pin. -> SOURCE: panel-D00-T02-s18-2026-09-23 D00-T02-S18-R3-F2 (sign-off finding; filed once, this section).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §18 -- filed from its sign-off (R3-F2 below-bar; the sweep it narrows shipped there).
+
+- [ ] SiblingPin.Sweep pins only constructor-born helpers: snapshot top-level handles at MainWindow construction and sweep the diff at pin time, or limit PinSibling by owner chain to unowned and this-owned windows; a probe on a two-window background run picks the mechanism that leaves foreign helpers untouched. Done when: a second background window birth leaves the first window's live popup and dialog positions untouched.
+- [ ] A multi-window background test pins the narrowing: two background windows plus a live helper on the first, birth the second, assert the helper never moved. Done when: the test reds on the current sweep and greens on the fix.
+- [ ] Commit: `"workspace: narrow the sibling sweep to constructor-born helpers"`
+
+**Test checkpoint:** Narrowing pinned red/green; full Run A still green with zero primary births (no regression in background births).
 
 ## Verification
 
