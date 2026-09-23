@@ -13,9 +13,9 @@ namespace UI;
 // Background moves each window to the secondary monitor (off-screen on
 // single-monitor boxes) and re-shows it no-activate before driving:
 // UIA, menu Invoke, and ValuePattern all dispatch there (spiked), no
-// window is ever activated and none dwells on the primary (a millisecond
-// birth transient at the cascade, below the census poll, is excluded by
-// the seen-twice rule), and PrintWindow still captures for goldens.
+// window is ever activated and none paints at the birth spot (placement
+// lands before the show, D00 T02 §18), and PrintWindow still captures
+// for goldens.
 internal static class UiForeground
 {
     internal static nint Capture() => Native.GetForegroundWindow();
@@ -63,34 +63,36 @@ internal static class UiForeground
             return;
         }
 
-        // Show first, then move: SetWindowPos on a minimized window is
-        // silently ignored (spiked twice: hidden-minimized ignores moves
-        // exactly like minimized, so no pre-show ordering avoids the
-        // restore), while a visible window obeys. The restore paints at
-        // the birth cascade (50,50 on the primary), so the move fires
-        // immediately with no settle between: the flash lasts the move
-        // latency (milliseconds), and the settle sleep runs after the
-        // window is already on the suite display. A 250 ms sleep sat
-        // between show and move before R2 and dwelled 61 visible flashes
-        // on the primary per full run (census-caught); sub-poll
-        // transients are what the seen-twice rule exists to exclude.
-        // Stays as the safety net under D00 T02 §11: seeded first
-        // windows birth off-screen and never reach the cascade, but
-        // redirect-created windows and direct launches still do, so
-        // show-then-move with sleep-after-move keeps covering them.
+        // Placement before show (D00 T02 §18): SetWindowPos on a
+        // minimized window is silently ignored (spiked twice), so the
+        // old show-then-move restored at the birth spot and flashed
+        // there for the move latency. The §8 census excused the
+        // millisecond transient via the seen-twice rule, but the §18
+        // event stream photographs it (probed 2026-09-23: 237x39 at
+        // physical (0,2049) on first-window mains). SetWindowPlacement
+        // sets the restore target while minimized, so the show lands
+        // directly on the suite display and no frame paints at the
+        // birth spot. Size stays 900x650, the show-then-move size.
         // Thread awareness (UiDpi pattern): testhost is DPI-unaware, so
         // coordinates go through physical pixels explicitly.
         nint previous = UiDpi.Enter();
         try
         {
-            Show(window);
             (int x, int y) = SuiteDisplayOrigin();
             nint hwnd = window.Properties.NativeWindowHandle.Value;
-            if (!Native.SetWindowPos(hwnd, nint.Zero, x, y, 900, 650, 0x0010))
+            var placement = new Native.WindowPlacement
             {
-                throw new InvalidOperationException($"UiForeground: SetWindowPos failed for {hwnd} (Win32 error {Marshal.GetLastWin32Error()})");
+                Length = Marshal.SizeOf<Native.WindowPlacement>(),
+                Flags = 0,
+                ShowCmd = 4,
+                NormalPosition = new Native.Rect { Left = x, Top = y, Right = x + 900, Bottom = y + 650 },
+            };
+            if (!Native.SetWindowPlacement(hwnd, ref placement))
+            {
+                throw new InvalidOperationException($"UiForeground: SetWindowPlacement failed for {hwnd} (Win32 error {Marshal.GetLastWin32Error()})");
             }
 
+            Show(window);
             Thread.Sleep(250);
         }
         finally
@@ -176,5 +178,37 @@ internal static class UiForeground
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool ShowWindow(nint hWnd, int cmdShow);
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Point
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Rect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct WindowPlacement
+        {
+            public int Length;
+            public int Flags;
+            public int ShowCmd;
+            public Point MinPosition;
+            public Point MaxPosition;
+            public Rect NormalPosition;
+        }
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetWindowPlacement(nint hWnd, ref WindowPlacement placement);
     }
 }

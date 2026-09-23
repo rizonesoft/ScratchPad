@@ -39,10 +39,7 @@ public partial class App : Application
         }
 
         mainInstance.Activated += OnAppRedirected;
-        if (Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1")
-        {
-            MainWindow.InstallBirthHook();
-        }
+
         // D01 T01 §6: continue mode reopens the recorded window set; fresh
         // mode, an empty session, or a corrupt one opens one clean window.
         ShellSettings settings = SettingsStore.Shared.Current;
@@ -92,28 +89,23 @@ public partial class App : Application
     }
 
     // Single show funnel (D00 T02 §8): test runs export
-    // SCRATCHPAD_BACKGROUND=1 so every window starts minimized with no
-    // flash and no foreground steal; the suite moves each window
-    // off-screen and shows it no-activate before driving. Unset means
-    // stock behavior: activate exactly as before.
+    // SCRATCHPAD_BACKGROUND=1 so every window paints off-screen with
+    // no flash and no foreground steal; the suite places each window
+    // on the suite display before driving. Unset means stock behavior:
+    // activate exactly as before. Visible but never minimized
+    // (D00 T02 §18): hidden-only apps quit (WinUI lifecycle), and the
+    // minimized park slot plus the restore slide photographed start
+    // frames on the primary, so the minimized state no longer exists
+    // on this path at all.
     private static void ShowWindow(Window window)
     {
         if (window is MainWindow main
             && Environment.GetEnvironmentVariable("SCRATCHPAD_BACKGROUND") == "1")
         {
-            // Pin before the show. ShowNoActivateForBackground shows as
-            // well as checking the handle, so the pin has to run first or
-            // the first visible event is the framework default.
-            main.PinBirthBeforeShow();
-            if (main.ShowNoActivateForBackground())
-            {
-                // Shown without ever activating: no launch flash, and the
-                // no-activate style keeps mid-test Invoke and dialog shows
-                // from stealing the foreground back. Minimize hides the pixels.
-                main.NoActivateForBackground();
-                main.MinimizeForBackground();
-                return;
-            }
+            bool pinned = main.PinBirthBeforeShow();
+            main.NoActivateForBackground();
+            main.ShowOffScreenForBackground(pinned);
+            return;
         }
 
         window.Activate();

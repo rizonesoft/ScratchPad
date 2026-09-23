@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using FlaUI.Core;
 using Notepad.Core;
@@ -37,31 +39,205 @@ internal static class UiLaunch
         return appPath;
     }
 
-    internal static Application LaunchApp() => Application.Launch(AppExePath());
+    // Last seed decision, consumed once by the next launch record
+    // (D00 T02 §18 item 7): every UI test seeds before it launches,
+    // so call-order pairing is exact in-suite; the UI collection
+    // runs serial, so no lock is needed.
+    static (string Move, int X, int Y)? _lastSeed;
 
-    internal static Application LaunchAppWithArgs(string args, bool drainLaunchDrops = false)
+    static string TestId(string? member, string? file) =>
+        $"{(file is null ? "unknown" : Path.GetFileName(file))}:{member ?? "unknown"}";
+
+    static (string Move, int X, int Y) TakeSeed()
+    {
+        (string Move, int X, int Y) seed = _lastSeed ?? ("unseeded-defaults", 0, 0);
+        _lastSeed = null;
+        return seed;
+    }
+
+    static Application LaunchRecorded(
+        Func<Application> launch,
+        string args,
+        string? member,
+        string? file)
+    {
+        (string move, int x, int y) = TakeSeed();
+        string testId = TestId(member, file);
+        try
+        {
+            Application app = launch();
+            UiLaunchDiagnostics.Record(testId, args, app.ProcessId, null, move, x, y);
+            return app;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string first = ex.Message.Split(["\r\n", "\n"], StringSplitOptions.None)[0];
+            UiLaunchDiagnostics.Record(testId, args, null, $"{ex.GetType().Name}: {first}", "launch-failed", 0, 0);
+            throw;
+        }
+    }
+
+    internal static Application LaunchApp(
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null) =>
+        LaunchRecorded(() => Application.Launch(AppExePath()), string.Empty, member, file);
+
+    internal static Application LaunchAppWithArgs(
+        string args,
+        bool drainLaunchDrops = false,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
     {
         if (drainLaunchDrops)
         {
             LaunchDrops.Drain();
         }
 
-        return Application.Launch(AppExePath(), args);
+        return LaunchRecorded(() => Application.Launch(AppExePath(), args), args, member, file);
     }
 
-    // Background birth (D00 T02 §11 item 2): under
-    // SCRATCHPAD_BACKGROUND=1 the first window restores persisted
-    // geometry unclamped (MainWindow.RestoreGeometry), so seeding
-    // off-screen births it where no census line can call it primary.
-    // Explicit geometry always wins: any X/Y the caller set survives,
-    // so Primary premises (which seed on-primary rects) are untouched.
-    // §18 item 3 replaces the fixed point with a virtual-screen derivation.
+    // Explicit-exe launch (D00 T02 §18 item 6): tests that derive the
+    // executable themselves (registered open commands, capture paths)
+    // still launch through the one home, so the guard sees no bypass.
+    internal static Application LaunchAppWithExe(
+        string exe,
+        string args,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null) =>
+        LaunchRecorded(() => Application.Launch(exe, args), args, member, file);
+
+    // Headless runs (D00 T02 §18 item 6): flag and registration probes
+    // that need exit codes (plus stderr) without a window. The two
+    // per-file RunHeadless copies delegate here.
+    internal static int RunHeadless(
+        string args,
+        TimeSpan timeout,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
+    {
+        (string _, int x, int y) = TakeSeed();
+        string testId = TestId(member, file);
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(AppExePath(), args) { UseShellExecute = false });
+            Assert.NotNull(process);
+            Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
+            UiLaunchDiagnostics.Record(testId, args, process.Id, null, "headless", x, y, expectWindow: false);
+            return process.ExitCode;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string first = ex.Message.Split(["\r\n", "\n"], StringSplitOptions.None)[0];
+            UiLaunchDiagnostics.Record(testId, args, null, $"{ex.GetType().Name}: {first}", "launch-failed", 0, 0, expectWindow: false);
+            throw;
+        }
+    }
+
+    internal static (int Exit, string Stderr) RunHeadlessCapture(
+        string args,
+        TimeSpan timeout,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
+    {
+        (string _, int x, int y) = TakeSeed();
+        string testId = TestId(member, file);
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(AppExePath(), args)
+            {
+                UseShellExecute = false,
+                RedirectStandardError = true,
+            });
+            Assert.NotNull(process);
+            Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
+            UiLaunchDiagnostics.Record(testId, args, process.Id, null, "headless", x, y, expectWindow: false);
+            return (process.ExitCode, process.StandardError.ReadToEnd());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string first = ex.Message.Split(["\r\n", "\n"], StringSplitOptions.None)[0];
+            UiLaunchDiagnostics.Record(testId, args, null, $"{ex.GetType().Name}: {first}", "launch-failed", 0, 0, expectWindow: false);
+            throw;
+        }
+    }
+
+    // Shell launch (D00 T02 §18 item 6): protocol and URL probes that
+    // need shell execution. The caller owns the process (attach plus
+    // dispose); the launch itself stays in the one home.
+    // Tool runs (D00 T02 §18 item 8): gate and probe subprocesses.
+    // The caller owns the process (wait plus dispose); the start
+    // itself stays in the one home, so the guard sees no bypass.
+    // No window is ever expected, hence no first-window wait.
+    internal static Process RunTool(
+        string exe,
+        string args,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
+    {
+        TakeSeed();
+        string testId = TestId(member, file);
+        try
+        {
+            Process? process = Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false });
+            Assert.NotNull(process);
+            UiLaunchDiagnostics.Record(testId, args, process.Id, null, "tool", 0, 0, expectWindow: false);
+            return process;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string first = ex.Message.Split(["\r\n", "\n"], StringSplitOptions.None)[0];
+            UiLaunchDiagnostics.Record(testId, args, null, $"{ex.GetType().Name}: {first}", "launch-failed", 0, 0, expectWindow: false);
+            throw;
+        }
+    }
+
+    internal static Process? ShellLaunch(
+        string url,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
+    {
+        (string _, int x, int y) = TakeSeed();
+        string testId = TestId(member, file);
+        try
+        {
+            Process? process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            UiLaunchDiagnostics.Record(testId, url, process?.Id, null, "shell", x, y);
+            return process;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            string first = ex.Message.Split(["\r\n", "\n"], StringSplitOptions.None)[0];
+            UiLaunchDiagnostics.Record(testId, url, null, $"{ex.GetType().Name}: {first}", "launch-failed", 0, 0);
+            throw;
+        }
+    }
+
+    // Background birth (D00 T02 §11 item 2, derivation D00 T02 §18
+    // item 3): under SCRATCHPAD_BACKGROUND=1 the first window
+    // restores persisted geometry unclamped
+    // (MainWindow.RestoreGeometry), so seeding off-screen births it
+    // where no census line can call it primary. The point derives
+    // from the virtual screen (never the old fixed 10000, which a
+    // very-wide topology can contain), sized for this window with
+    // overflow-safe placement. Explicit geometry always wins: any
+    // X/Y the caller set survives, so Primary premises (which seed
+    // on-primary rects) are untouched.
     static void SeedBackgroundGeometry(ShellSettings settings)
     {
         if (IsBackground() && settings.X == Untouched.X && settings.Y == Untouched.Y)
         {
-            settings.X = 10000;
-            settings.Y = 10000;
+            (int x, int y) = DeriveOffScreenOrigin(ReadVirtualScreen(), settings.Width, settings.Height);
+            settings.X = x;
+            settings.Y = y;
+            _lastSeed = ("seeded-offscreen", x, y);
+        }
+        else if (settings.X != Untouched.X || settings.Y != Untouched.Y)
+        {
+            _lastSeed = ("explicit-kept", settings.X, settings.Y);
+        }
+        else
+        {
+            _lastSeed = ("unseeded-defaults", settings.X, settings.Y);
         }
     }
 

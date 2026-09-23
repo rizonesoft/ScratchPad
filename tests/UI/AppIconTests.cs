@@ -36,7 +36,7 @@ public sealed class AppIconTests
     public void WindowChromeIconMatchesAsset()
     {
         nint fgBefore = UiForeground.Capture();
-        using var app = Application.Launch(UiLaunch.AppExePath(), string.Empty);
+        using var app = UiLaunch.LaunchAppWithArgs(string.Empty);
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);

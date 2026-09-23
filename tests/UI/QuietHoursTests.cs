@@ -201,6 +201,6 @@ public sealed class QuietHoursTests
         }
 
         members.Sort(StringComparer.Ordinal);
-        Assert.True(members.Count == 2, $"Primary set size drifted (want 2): {string.Join(", ", members)}");
+        Assert.True(members.Count == 4, $"Primary set size drifted (want 4): {string.Join(", ", members)}");
     }
 }

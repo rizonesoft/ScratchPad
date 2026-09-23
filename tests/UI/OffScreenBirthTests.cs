@@ -99,6 +99,50 @@ public sealed class OffScreenBirthTests
         }
     }
 
+    // D00 T02 §18 item 2 (K1): the suite places before the show, so
+    // the backgrounded re-show restores directly on the suite display
+    // and no frame paints at the birth spot. The flash itself is
+    // sub-millisecond (below any maintained assertion; the proof gate
+    // photographs it), so this guards the mechanism end-state: after
+    // Background, the restored rect sits at the suite origin. Size is
+    // app-owned post-show layout, not asserted. Reads agree only on
+    // the pinned 100%-secondary topology, like the placer itself.
+    [Fact]
+    public void BackgroundRestoreLandsOnTheSuiteDisplay()
+    {
+        Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, "1");
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
+        using var app = UiLaunch.LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
+        try
+        {
+            UiForeground.Background(window, fgBefore);
+            nint previous = UiDpi.Enter();
+            try
+            {
+                nint hwnd = window.Properties.NativeWindowHandle.Value;
+                var placement = new WindowPlacement { Length = Marshal.SizeOf<WindowPlacement>() };
+                Assert.True(Native.GetWindowPlacement(hwnd, ref placement), "GetWindowPlacement failed");
+                var normal = placement.NormalPosition;
+                (int x, int y) = UiForeground.SuiteDisplayOrigin();
+                Assert.InRange(normal.Left, x - 8, x + 8);
+                Assert.InRange(normal.Top, y - 8, y + 8);
+            }
+            finally
+            {
+                UiDpi.Exit(previous);
+            }
+        }
+        finally
+        {
+            UiForeground.Restore(fgBefore, window.Properties.NativeWindowHandle.ValueOrDefault);
+            CloseApp(app, window);
+        }
+    }
+
     static (int X, int Y) AssertOutside(UiLaunch.ScreenBounds screen, int width, int height)
     {
         (int x, int y) = UiLaunch.DeriveOffScreenOrigin(screen, width, height);

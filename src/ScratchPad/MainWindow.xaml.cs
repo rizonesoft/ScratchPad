@@ -52,24 +52,13 @@ public sealed partial class MainWindow : Window, IDisposable
     // on first activation (D01 T01 §6). Once per tab instance.
     private readonly HashSet<Guid> missingNotice = new();
 
-    // Background-test support (D00 T02 §8): minimizes immediately after
-    // Activate so the window never paints and never steals foreground.
-    // The suite moves it off-screen and re-shows it no-activate.
-    internal void MinimizeForBackground()
-    {
-        if (AppWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.Minimize();
-        }
-    }
-
     // Background-test support (D00 T02 §8): WS_EX_NOACTIVATE so the window
     // can never take the foreground mid-test (menu Invoke and dialog shows
-    // activate otherwise, and restore-once-at-start cannot hold for a whole
-    // test). UIA patterns dispatch on no-activate windows (spiked for
-    // no-activate shows; this makes the state persistent). Paired with
-    // ShowNoActivateForBackground: WinUI Activate forces the foreground
-    // past the style, so background launches never call it.
+    // activate otherwise). UIA patterns dispatch on no-activate windows
+    // (spiked for no-activate shows; this makes the state persistent).
+    // WinUI Activate forces the foreground past the style, so background
+    // launches never call it: they stay hidden until the suite places
+    // and shows them no-activate (D00 T02 §18, born hidden).
     internal void NoActivateForBackground()
     {
         nint hwnd = WindowNative.GetWindowHandle(this);
@@ -89,10 +78,37 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    // Shows without ever activating (background launches only): the
-    // handle must exist (false before first show), so the caller falls
-    // back to Activate when this reports it cannot.
-    internal bool ShowNoActivateForBackground()
+    // Single rule for unseeded background births (D00 T02 §18): the
+    // untouched 50,50 default is not a placement, so it maps to an
+    // off-screen origin. PinBirth, RestoreGeometry, and the sibling target
+    // share it: the pin and the framework state must agree, or a post-show
+    // layout pushes the HWND back to the default (probed 2026-09-23: an
+    // unseeded main drifted to (50,50) mid-run and the placement log kept
+    // it). Explicit seeds stay as written.
+    static (int X, int Y) BirthOrigin(ShellSettings live, int width, int height)
+    {
+        var untouched = new ShellSettings();
+        if (live.X == untouched.X && live.Y == untouched.Y)
+        {
+            return NativeMethods.OffScreenOrigin(width, height);
+        }
+
+        return (live.X, live.Y);
+    }
+
+    // Background births (D00 T02 §18): the window paints off-screen,
+    // never minimized: the minimized park slot plus the restore slide
+    // photographed start frames on the primary (probed 2026-09-23),
+    // and no per-HWND transition switch covers that slide. The
+    // position pin below is best effort (ShowOffScreenForBackground
+    // re-moves synchronously, and the suite placement is
+    // load-bearing); the sibling sweep is not: helpers born before
+    // the main park at the framework default on the primary unless
+    // swept here. Later windows keep the stock cascade only for an
+    // on-screen explicit seed (the Primary placement set); unseeded
+    // maps off-screen first, so backgrounded seconds pin. Returns
+    // whether the pin landed (the caller only moves pinned windows).
+    internal bool PinBirthBeforeShow()
     {
         nint hwnd = WindowNative.GetWindowHandle(this);
         if (hwnd == nint.Zero)
@@ -100,21 +116,47 @@ public sealed partial class MainWindow : Window, IDisposable
             return false;
         }
 
-        const int showNoActivate = 4;
-        _ = NativeMethods.ShowWindow(hwnd, showNoActivate);
+        ShellSettings live = SettingsStore.Shared.Current;
+        int width = Math.Max(100, live.Width);
+        int height = Math.Max(100, live.Height);
+        (int x, int y) = BirthOrigin(live, width, height);
+        if (!firstWindow && !NativeMethods.OutsideVirtualScreen(x, y, width, height))
+        {
+            return false;
+        }
+
+        const uint noZOrderNoActivate = 0x0004 | 0x0010;
+        if (!NativeMethods.SetWindowPos(hwnd, nint.Zero, x, y, width, height, noZOrderNoActivate))
+        {
+            throw new InvalidOperationException($"background launch could not pin the birth rect; refusing an unpinned test window (win32 {Marshal.GetLastWin32Error()})");
+        }
+
+        // Siblings born before the main (helpers arrive during the
+        // constructor) never surface on their own: sweep once here, where
+        // the main pin just landed.
+        SiblingPin.Sweep();
         return true;
     }
 
-    // Background births (D00 T02 §18): the first visible rect has to already
-    // be the seeded one. AppWindow.MoveAndResize in the constructor does not
-    // stick on the HWND before the first show, so the show was painting the
-    // framework default on the primary. Later windows are pinned only when
-    // that seed is off the virtual screen; an on-screen seed keeps the stock
-    // cascade for the Primary placement set.
-    internal void PinBirthBeforeShow()
+    // Shows a backgrounded window visible but never minimized (D00 T02
+    // §18): WinUI quits hidden-only apps (probed 2026-09-23: clean
+    // exit 0 with no shown window), so the window must paint
+    // somewhere, and minimized would resurrect the park slot plus the
+    // restore slide. The show-move pair below runs in one tick at the
+    // pinned target: the rect never rests on the primary (a
+    // nanosecond transient, below the gate's hook floor). Not pinned
+    // (stock cascade) shows wherever the OS puts it and never moves.
+    internal void ShowOffScreenForBackground(bool pinned)
     {
         nint hwnd = WindowNative.GetWindowHandle(this);
         if (hwnd == nint.Zero)
+        {
+            throw new InvalidOperationException("background launch could not show: no window handle before first show");
+        }
+
+        const int showNoActivate = 4;
+        _ = NativeMethods.ShowWindow(hwnd, showNoActivate);
+        if (!pinned)
         {
             return;
         }
@@ -122,26 +164,14 @@ public sealed partial class MainWindow : Window, IDisposable
         ShellSettings live = SettingsStore.Shared.Current;
         int width = Math.Max(100, live.Width);
         int height = Math.Max(100, live.Height);
-        var untouched = new ShellSettings();
-        int x = live.X;
-        int y = live.Y;
-        if (x == untouched.X && y == untouched.Y)
-        {
-            // The 50,50 default is not a placement. One unseeded launch
-            // still showed there and the event log recorded the primary birth.
-            (x, y) = NativeMethods.OffScreenOrigin(width, height);
-        }
-        else if (!firstWindow && !NativeMethods.OutsideVirtualScreen(x, y, width, height))
-        {
-            return;
-        }
-
+        (int x, int y) = BirthOrigin(live, width, height);
         const uint noZOrderNoActivate = 0x0004 | 0x0010;
         _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, x, y, width, height, noZOrderNoActivate);
     }
 
     static class NativeMethods
     {
+
         [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern nint GetWindowLong(nint hWnd, int nIndex);
@@ -155,7 +185,7 @@ public sealed partial class MainWindow : Window, IDisposable
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern nint SetWindowLong(nint hWnd, int nIndex, nint dwNewLong);
 
-        [DllImport("user32.dll")]
+        [DllImport("user32.dll", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool SetWindowPos(nint hWnd, nint after, int x, int y, int cx, int cy, uint flags);
@@ -164,19 +194,30 @@ public sealed partial class MainWindow : Window, IDisposable
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern int GetSystemMetrics(int index);
 
-        internal delegate nint HookProc(int code, nint wParam, nint lParam);
+        [StructLayout(LayoutKind.Sequential)]
+        internal struct Rect
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        internal delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        internal static extern nint SetWindowsHookEx(int idHook, HookProc proc, nint module, uint threadId);
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool EnumWindows(EnumWindowsProc callback, nint lParam);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        internal static extern nint CallNextHookEx(nint hook, int code, nint wParam, nint lParam);
+        internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
 
-        [DllImport("kernel32.dll")]
+        [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        internal static extern uint GetCurrentThreadId();
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool GetWindowRect(nint hWnd, out Rect rect);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -187,31 +228,6 @@ public sealed partial class MainWindow : Window, IDisposable
             var buffer = new char[256];
             int length = GetClassName(hwnd, buffer, buffer.Length);
             return length <= 0 ? "?" : new string(buffer, 0, length);
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        internal struct CbtCreateWnd
-        {
-            public nint CreateStruct;
-            public nint InsertAfter;
-        }
-
-        // Field order matches CREATESTRUCTW. Pointers stay aligned on x64.
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-        internal struct CreateInfo
-        {
-            public nint CreateParams;
-            public nint Instance;
-            public nint Menu;
-            public nint Parent;
-            public int Height;
-            public int Width;
-            public int Y;
-            public int X;
-            public int Style;
-            public nint WindowName;
-            public nint ClassName;
-            public uint ExStyle;
         }
 
         internal static bool OutsideVirtualScreen(int x, int y, int width, int height)
@@ -246,80 +262,87 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    // WinUI creates the content bridge and the caption input sink at a
-    // default spot on the primary, then moves them. The creation hook
-    // writes the birth point into the CREATESTRUCT so the first show is
-    // already there. Background launches only.
-    internal static void InstallBirthHook() => BirthHook.Install();
-
-    static class BirthHook
+    // Background births (D00 T02 §18): helper top-levels (IME hosts,
+    // the GDI hook window) are parked by the framework at its default
+    // spot on the primary. A CREATESTRUCT rewrite does not survive:
+    // probed 2026-09-23, the creation hook fired and rewrote correctly,
+    // but the framework re-parked within a millisecond of creation. A
+    // post-creation WinEvent hook cannot close it either: in-context
+    // install fails without a module handle (same probe: 1428 on every
+    // scope), and an out-of-context self-hook races the gate it serves
+    // (the gate registers first, so it always queries first). So the pin
+    // is a single synchronous sweep: at main-pin time, every non-main
+    // top-level of this process moves to the noted seed, before any
+    // out-of-context observer queries. The sweep cannot see child windows
+    // (the input sink is one: it never appears in EnumWindows), and it
+    // cannot cover late runtime popups; the gate excludes children by
+    // construction instead (see ForegroundLog), and runtime popups are
+    // owned separately. Mains are excluded by class: the suite positions
+    // mains legitimately after attach, and yanking them would break
+    // tests. Siblings always park off-screen, even under an on-screen
+    // Primary seed: only mains take on-screen seeds. Background launches
+    // only.
+    static class SiblingPin
     {
-        const int WhCbt = 5;
-        const int HcbtCreateWnd = 3;
+        // WinUI top-level class. A rename breaks Primary loudly: swept
+        // mains would dodge the suite's on-screen plant.
+        const string MainClass = "WinUIDesktopWin32WindowClass";
 
-        static NativeMethods.HookProc? proc;
-        static nint hook;
         static int targetX;
         static int targetY;
 
         internal static void NoteTarget()
         {
             ShellSettings live = SettingsStore.Shared.Current;
-            var untouched = new ShellSettings();
             int width = Math.Max(100, live.Width);
             int height = Math.Max(100, live.Height);
-            if (live.X == untouched.X && live.Y == untouched.Y)
+            if (!NativeMethods.OutsideVirtualScreen(live.X, live.Y, width, height))
             {
                 (targetX, targetY) = NativeMethods.OffScreenOrigin(width, height);
                 return;
             }
 
-            targetX = live.X;
-            targetY = live.Y;
+            (targetX, targetY) = BirthOrigin(live, width, height);
         }
 
-        internal static void Install()
+        internal static void Sweep()
         {
-            if (hook != nint.Zero)
+            uint pid = (uint)Environment.ProcessId;
+            _ = NativeMethods.EnumWindows((hwnd, unused) =>
+            {
+                _ = unused;
+                _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint windowPid);
+                if (windowPid == pid)
+                {
+                    PinSibling(hwnd);
+                }
+
+                return true;
+            }, nint.Zero);
+        }
+
+        static void PinSibling(nint hwnd)
+        {
+            if (NativeMethods.ClassName(hwnd) == MainClass)
             {
                 return;
             }
 
-            NoteTarget();
-            proc = OnCreate;
-            hook = NativeMethods.SetWindowsHookEx(WhCbt, proc, nint.Zero, NativeMethods.GetCurrentThreadId());
-        }
-
-        static nint OnCreate(int code, nint wParam, nint lParam)
-        {
-            if (code == HcbtCreateWnd)
+            if (NativeMethods.GetWindowRect(hwnd, out NativeMethods.Rect bounds)
+                && bounds.Left == targetX && bounds.Top == targetY)
             {
-                try
-                {
-                    var created = Marshal.PtrToStructure<NativeMethods.CbtCreateWnd>(lParam);
-                    var info = Marshal.PtrToStructure<NativeMethods.CreateInfo>(created.CreateStruct);
-                    string name = NativeMethods.ClassName(wParam);
-                    if (name is "Microsoft.UI.Content.DesktopChildSiteBridge" or "InputNonClientPointerSource")
-                    {
-                        info.X = targetX;
-                        info.Y = targetY;
-                        Marshal.StructureToPtr(info, created.CreateStruct, false);
-                    }
-                }
-                catch (ArgumentException)
-                {
-                    // A malformed create struct must not take the process down.
-                }
+                return;
             }
 
-            return NativeMethods.CallNextHookEx(hook, code, wParam, lParam);
+            const uint noSizeNoZOrderNoActivate = 0x0001 | 0x0004 | 0x0010;
+            _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, targetX, targetY, 0, 0, noSizeNoZOrderNoActivate);
         }
     }
 
     public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {
         this.firstWindow = firstWindow;
-        BirthHook.NoteTarget();
+        SiblingPin.NoteTarget();
         InitializeComponent();
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;
@@ -1210,7 +1233,8 @@ public sealed partial class MainWindow : Window, IDisposable
         ShellSettings live = SettingsStore.Shared.Current;
         int width = Math.Max(100, live.Width);
         int height = Math.Max(100, live.Height);
-        AppWindow.MoveAndResize(new RectInt32(live.X, live.Y, width, height));
+        (int x, int y) = BirthOrigin(live, width, height);
+        AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
     }
 
     void OnSettingsChanged(object? sender, EventArgs e)

@@ -570,7 +570,7 @@ public sealed class LaunchTests
         try
         {
             string? def = DefaultPrinterName();
-            (int exit, string stderr) = RunHeadlessCapture($"/p \"{file}\"", TimeSpan.FromMinutes(2));
+            (int exit, string stderr) = UiLaunch.RunHeadlessCapture($"/p \"{file}\"", TimeSpan.FromMinutes(2));
             if (def is null)
             {
                 Assert.Equal(2, exit);
@@ -605,7 +605,7 @@ public sealed class LaunchTests
         SeedFresh();
         try
         {
-            (int exit, string stderr) = RunHeadlessCapture($"/pt \"{file}\" \"NoSuchPrinter8\"", TimeSpan.FromSeconds(30));
+            (int exit, string stderr) = UiLaunch.RunHeadlessCapture($"/pt \"{file}\" \"NoSuchPrinter8\"", TimeSpan.FromSeconds(30));
             Assert.Equal(2, exit);
             Assert.Contains("NoSuchPrinter8", stderr, StringComparison.Ordinal);
             Assert.False(File.Exists(Path.ChangeExtension(file, ".pdf")), "failure must write nothing");
@@ -632,7 +632,7 @@ public sealed class LaunchTests
             string exe = command[..firstSpace].Trim('"');
             string args = command[(firstSpace + 1)..].Replace("%1", file, StringComparison.Ordinal);
             nint fgBefore = UiForeground.Capture();
-            using var app = Application.Launch(exe, args);
+            using var app = UiLaunch.LaunchAppWithExe(exe, args);
             using var automation = new UIA3Automation();
             var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
             UiForeground.Background(window, fgBefore);
@@ -657,18 +657,18 @@ public sealed class LaunchTests
     [Fact]
     public void AssociationVerbsCycleCleanly()
     {
-        RunHeadless("/unregister-associations", TimeSpan.FromSeconds(20));
+        UiLaunch.RunHeadless("/unregister-associations", TimeSpan.FromSeconds(20));
         Dictionary<string, string?> before = SnapshotDefaults();
         try
         {
-            Assert.Equal(0, RunHeadless("/register-associations", TimeSpan.FromSeconds(20)));
+            Assert.Equal(0, UiLaunch.RunHeadless("/register-associations", TimeSpan.FromSeconds(20)));
             foreach (string ext in FileAssociation.ClaimedExtensions)
             {
                 Assert.Equal(FileAssociation.ProgId, ReadDefault(FileAssociation.ExtensionKey(ext)));
             }
 
             Assert.False(string.IsNullOrEmpty(ReadDefault($@"Software\Classes\{FileAssociation.ProgId}\shell\open\command")));
-            Assert.Equal(0, RunHeadless("/unregister-associations", TimeSpan.FromSeconds(20)));
+            Assert.Equal(0, UiLaunch.RunHeadless("/unregister-associations", TimeSpan.FromSeconds(20)));
             Dictionary<string, string?> after = SnapshotDefaults();
             Assert.Equal(before, after);
             Assert.False(KeyExists($@"Software\Classes\{FileAssociation.ProgId}"));
@@ -676,7 +676,7 @@ public sealed class LaunchTests
         }
         finally
         {
-            RunHeadless("/unregister-associations", TimeSpan.FromSeconds(20));
+            UiLaunch.RunHeadless("/unregister-associations", TimeSpan.FromSeconds(20));
         }
     }
 
@@ -689,25 +689,6 @@ public sealed class LaunchTests
     [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
     static extern void SetCurrentProcessExplicitAppUserModelID(string appId);
 
-    static int RunHeadless(string args, TimeSpan timeout)
-    {
-        using var process = Process.Start(new ProcessStartInfo(UiLaunch.AppExePath(), args) { UseShellExecute = false });
-        Assert.NotNull(process);
-        Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
-        return process.ExitCode;
-    }
-
-    static (int Exit, string Stderr) RunHeadlessCapture(string args, TimeSpan timeout)
-    {
-        using var process = Process.Start(new ProcessStartInfo(UiLaunch.AppExePath(), args)
-        {
-            UseShellExecute = false,
-            RedirectStandardError = true,
-        });
-        Assert.NotNull(process);
-        Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
-        return (process.ExitCode, process.StandardError.ReadToEnd());
-    }
 
     static string? DefaultPrinterName()
     {

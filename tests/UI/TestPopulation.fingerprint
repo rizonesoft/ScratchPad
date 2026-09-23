@@ -29,6 +29,7 @@ run-a:
   UI.ExportTests.ExportMarkdownWritesConvertedFile
   UI.ExportTests.ExportPlainStripsMarkers
   UI.ExportTests.UntitledShowsSaveFirstNote
+  UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
   UI.GoldenComparisonTests.FreshCaptureMatchesGolden
   UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
   UI.GoldenComparisonTests.TenPixelShiftFailsComparison
@@ -38,6 +39,15 @@ run-a:
   UI.JumpListTaskTests.PinTaskArgsOpenTheFile
   UI.JumpListTaskTests.RecentTaskArgsOpenTheFile
   UI.JumpListTaskTests.TaskbarCarriesNewNotePinnedAndRecent
+  UI.LaunchDiagnosticsTests.ForcedFailureQuotesAllSeven
+  UI.LaunchDiagnosticsTests.RedactArgsShapes
+  UI.LaunchDiagnosticsTests.SuccessRecordQuotesFields
+  UI.LaunchDropsTests.DefaultSeedPreservesDrops
+  UI.LaunchDropsTests.OptInLaunchDrainsBeforeActivation
+  UI.LaunchDropsTests.OptInSeedDrainsExactlyOnce
+  UI.LaunchGuardTests.LegitimateShapesPassTheGuard
+  UI.LaunchGuardTests.LiveTreeScansClean
+  UI.LaunchGuardTests.PlantedBypassFailsTheGuard
   UI.LaunchTests.AssociationVerbsCycleCleanly
   UI.LaunchTests.BareSecondLaunchOpensNewWindow
   UI.LaunchTests.DoubleClickCommandOpensTab
@@ -80,6 +90,13 @@ run-a:
   UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI.MultiWindowTests.WindowsKeepIndependentTabs
   UI.NightlyPartitionTests.EveryUiTestBelongsToExactlyOneNightlyLeg
+  UI.OffScreenBirthTests.BackgroundRestoreLandsOnTheSuiteDisplay
+  UI.OffScreenBirthTests.NegativeOriginKeepsTheWindowOutside
+  UI.OffScreenBirthTests.ObservedBirthMatchesTheDerivedPoint
+  UI.OffScreenBirthTests.OverflowDoesNotWrapIntoTheScreen
+  UI.OffScreenBirthTests.StackedMonitorsKeepTheWindowOutside
+  UI.OffScreenBirthTests.VeryWideScreenRejectsTheOldFixedPoint
+  UI.OffScreenBirthTests.WindowSizeStaysOutsideOnTheLeftFallback
   UI.ProtocolHandlerTests.LinkOpensTheCarriedFile
   UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow
   UI.ProtocolHandlerTests.ProtocolVerbsCycleCleanly
@@ -101,6 +118,12 @@ run-a:
   UI.ReloadTests.KeepHoldsBufferAndDirties
   UI.ReloadTests.LockedReloadRoutesThroughUnlock
   UI.ReloadTests.UntitledAndIdenticalWritesNeverPrompt
+  UI.SeedPrecedenceTests.ForegroundDefaultsStayAtCascadeOrigin
+  UI.SeedPrecedenceTests.FullExplicitGeometryWins
+  UI.SeedPrecedenceTests.MalformedExplicitGeometryWins
+  UI.SeedPrecedenceTests.PartialExplicitGeometryWins
+  UI.SeedPrecedenceTests.StringSeededExplicitGeometryWins
+  UI.SeedPrecedenceTests.UntouchedDefaultsSeedOffScreen
   UI.SessionRestoreTests.CleanProfileRestoresWithContinueDefault
   UI.SessionRestoreTests.FreshModeStartsNewWindowAndDiscardsSession
   UI.SessionRestoreTests.MissingFileNotifiesOnActivationAndDropsFromSnapshot
@@ -154,15 +177,22 @@ run-a:
   UI.UiForegroundTests.LargestSecondaryWins
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI.UiLeakBundleTests.EventSlicesFillFromGateLog
+  UI.UiLeakBundleTests.RetentionPrunesOldBundles
+  UI.UiLeakBundleTests.ScaleToCapPinsDimensions
+  UI.UiLeakBundleTests.ScrubTitleShapes
+  UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 150
-run-a-cases: 167
+run-a-methods: 178
+run-a-cases: 224
 run-b:
+  UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
   UI.MultiWindowTests.MenuNewWindowOpensSecondWindowAtCascade
-run-b-methods: 2
-run-b-cases: 2
+  UI.UiLeakBundleTests.ForcedLeakQuotesFullBundle
+run-b-methods: 4
+run-b-cases: 4
 interactive:
   UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
   UI.AcceleratorTests.ChordCtrlShiftGOpensStats

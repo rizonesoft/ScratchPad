@@ -1045,7 +1045,7 @@ public sealed partial class TabBar : UserControl
             return;
         }
 
-        var flyout = new MenuFlyout();
+        var flyout = new MenuFlyout { ShouldConstrainToRootBounds = true };
         flyout.Items.Add(FlyoutItem("New tab", NewTab));
         flyout.Items.Add(FlyoutItem("Close tab", () => _ = RequestCloseAsync(tab)));
         flyout.Items.Add(FlyoutItem("Close other tabs", () => _ = CloseOthersAsync(tab)));

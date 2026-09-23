@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
     <PackageReference Include="FlaUI.Core" Version="5.0.0" />
     <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="10.0.12" />
@@ -32,6 +33,13 @@
       <Output TaskParameter="TargetOutputs" ItemName="AppTargetPath" />
     </MSBuild>
     <WriteLinesToFile File="$(OutputPath)apppath.txt" Lines="@(AppTargetPath)" Overwrite="true" />
+  </Target>
+
+  <Target Name="ResolveForegroundLogPath" BeforeTargets="Build" DependsOnTargets="PrepareForBuild">
+    <MSBuild Projects="..\..\tools\ForegroundLog\ForegroundLog.csproj" Targets="GetTargetPath" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="ForegroundLogTargetPath" />
+    </MSBuild>
+    <WriteLinesToFile File="$(OutputPath)fglogpath.txt" Lines="@(ForegroundLogTargetPath)" Overwrite="true" />
   </Target>
 
 </Project>

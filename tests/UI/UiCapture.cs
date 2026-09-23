@@ -110,23 +110,14 @@ internal static class UiCapture
 
     static Bitmap CaptureInner(Tolerance tolerance, Action<Window>? prepare = null)
     {
-        var appPath = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "apppath.txt")).Trim();
-        if (appPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-        {
-            appPath = Path.ChangeExtension(appPath, ".exe");
-        }
-
-        if (!File.Exists(appPath))
-        {
-            throw new InvalidOperationException($"app missing at {appPath}");
-        }
+        string appPath = UiLaunch.AppExePath();
 
         // Captures must be machine-independent: no first-run dialog, dark Mica
         // even on light-system machines. First-run has its own driven test.
         new Notepad.Core.ShellSettings { WhatsNewSeen = true, Theme = "dark" }.Save();
 
         nint fgBefore = UiForeground.Capture();
-        using var app = Application.Launch(appPath);
+        using var app = UiLaunch.LaunchAppWithExe(appPath, string.Empty);
         try
         {
             using var automation = new UIA3Automation();

@@ -20,25 +20,25 @@ public sealed class ProtocolHandlerTests
     [Fact]
     public void ProtocolVerbsCycleCleanly()
     {
-        RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
+        UiLaunch.RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
         (string? Default, string? Command) before = SnapshotScheme();
         try
         {
-            Assert.Equal(0, RunHeadless("/register-protocol", TimeSpan.FromSeconds(20)));
+            Assert.Equal(0, UiLaunch.RunHeadless("/register-protocol", TimeSpan.FromSeconds(20)));
             Assert.Equal(ProtocolAssociation.Description, ReadDefault(ProtocolAssociation.SchemeKey));
             Assert.NotNull(ReadString(ProtocolAssociation.SchemeKey, "URL Protocol"));
             string? command = ReadString(ProtocolAssociation.SchemeKey + @"\shell\open\command", string.Empty);
             Assert.NotNull(command);
             Assert.Contains(".exe", command, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("%1", command, StringComparison.Ordinal);
-            Assert.Equal(0, RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20)));
+            Assert.Equal(0, UiLaunch.RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20)));
             Assert.Equal(before, SnapshotScheme());
             Assert.False(KeyExists(ProtocolAssociation.SchemeKey));
             Assert.False(KeyExists(ProtocolAssociation.BackupKey));
         }
         finally
         {
-            RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
+            UiLaunch.RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
         }
     }
 
@@ -108,12 +108,12 @@ public sealed class ProtocolHandlerTests
         string file = Path.Combine(dir, "shell26.txt");
         File.WriteAllText(file, "shell bytes");
         SeedFresh();
-        Assert.Equal(0, RunHeadless("/register-protocol", TimeSpan.FromSeconds(20)));
+        Assert.Equal(0, UiLaunch.RunHeadless("/register-protocol", TimeSpan.FromSeconds(20)));
         try
         {
             string url = ProtocolAssociation.Scheme + "://" + Uri.EscapeDataString(file);
             nint fgBefore = UiForeground.Capture();
-            using var process = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            using var process = UiLaunch.ShellLaunch(url);
             Assert.NotNull(process);
             using var app = Application.Attach(process.Id);
             using var automation = new UIA3Automation();
@@ -134,7 +134,7 @@ public sealed class ProtocolHandlerTests
         {
             SessionData.Delete();
             DeleteDir(dir);
-            RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
+            UiLaunch.RunHeadless("/unregister-protocol", TimeSpan.FromSeconds(20));
         }
     }
 
@@ -156,13 +156,6 @@ public sealed class ProtocolHandlerTests
         return key is not null;
     }
 
-    static int RunHeadless(string args, TimeSpan timeout)
-    {
-        using var process = Process.Start(new ProcessStartInfo(UiLaunch.AppExePath(), args) { UseShellExecute = false });
-        Assert.NotNull(process);
-        Assert.True(process.WaitForExit(timeout), $"headless run timed out: {args}");
-        return process.ExitCode;
-    }
 
     static void SeedFresh() => UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh }, drainLaunchDrops: true);
 
