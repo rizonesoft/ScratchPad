@@ -23,6 +23,8 @@ depends_on: []
 - -> XREF: D00 T03 §2 -- the agent-side companion that produces the README, screenshots, and CI job this file consumes.
 - -> XREF: D00 T01 §42 -- the `Requires: operator` mark gating this file's rows; §§1-4 carry the mark once §42 ships.
 
+**Groomed 2026-09-23:** Inputs corrected: D00 T01 §42 shipped and §§1-4 already carry `**Requires:** operator`.
+
 ## Outcome
 
 - The repo page shows a description, topics, and a social preview image.
@@ -41,7 +43,7 @@ depends_on: []
 |   1   |   §1    | About bar, topics, social preview set | D00 T03 §2 |  [ ]   |
 |   2   |   §2    | Branch protection with required checks | D00 T03 §3 |  [ ]   |
 |   3   |   §3    | Cold-reader pass with gaps filed | D00 T03 §2 |  [ ]   |
-|   4   |   §4    | Demo clip recorded and embedded | §1 |  [ ]   |
+|   4   |   §4    | Demo clip recorded and embedded | §1, D05 T01 §3 |  [ ]   |
 
 ---
 
@@ -79,6 +81,8 @@ Why this section exists: the About bar is the repo's thirty-second pitch and the
 Why this section exists: `main` currently accepts anything, including a force-push. The rule below needs the real check names, which only exist once the §3 CI job has run, so the first item collects them from a live Actions run rather than guessing. -> SOURCE: operator-readme-brief-2026-09-18-t99-s2.
 
 **Manual:** operator-only -- branch rules need owner admin clicks; agents hold no GitHub credentials by design (AGENTS.md Credentials).
+
+**Groomed 2026-09-23:** Job names corrected: the per-push jobs are `build-windows` and `plan-gates` plus the D00 T03 §3 lane; `soak-windows` is schedule or dispatch only (soak.yml:8-10), so requiring it would block every push. Decision recorded as a default: AGENTS.md makes `main` trunk-based with direct pushes, so protection blocks force-push and deletion only and does not require a pull request (cost of changing: move the writer to PRs).
 
 - [ ] The exact check names are collected from a live run. Done when: you hold the list of check names from the newest `main` run.
   1. Open `https://github.com/rizonesoft/ScratchPad/actions` and click the newest completed run on `main`.
@@ -129,6 +133,8 @@ Why this section exists: the best README test is a stranger following it in a cl
 Why this section exists: a playing demo beats a static screenshot for the premium feel, and recording one needs a human driving the app. The operator records a short clip with a free recorder, uploads it, and embeds it under the hero line. -> SOURCE: operator-readme-brief-2026-09-18-t99-s4.
 
 **Manual:** operator-only -- needs a human driving the app on a display machine plus the owner's session for the upload.
+
+**Groomed 2026-09-23:** The demo clip opens the agent panel, so it waits on D05 T01 §3.
 
 - [ ] ScreenToGif is installed from the Microsoft Store. Done when: the app launches.
   1. Open the Microsoft Store on the Windows machine, search `ScreenToGif`, and install it.

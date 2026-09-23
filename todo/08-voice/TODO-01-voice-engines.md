@@ -24,6 +24,8 @@ track: V1
 - [OpenRouter audio docs](https://openrouter.ai/docs) -- the `/audio/speech` and `/audio/transcriptions` endpoints §4 calls
 - [`08-voice/TODO-02-voice-surface.md`](./TODO-02-voice-surface.md) -- the surface consuming these engines
 
+**Groomed 2026-09-23:** License corrected: GitHub reports `hexgrad/kokoro` as Apache-2.0 and Hugging Face reports `hexgrad/Kokoro-82M` and `onnx-community/Kokoro-82M-v1.0-ONNX` as apache-2.0; read every "Kokoro (MIT)" claim here as Kokoro-82M (Apache-2.0, ONNX).
+
 ## Outcome
 
 - Any text synthesizes to speech offline through the embedded voice.
@@ -52,10 +54,13 @@ Why this section exists: the voice is the product surface of read-aloud. A small
 
 **Decided 2026-09-14:** Kokoro-82M (MIT, ONNX) through the ONNX Runtime NuGet package: the best small offline open voice that embeds in a desktop app. Alternative recorded: the Windows platform voice (zero dependencies, download-on-demand Natural voices, not open-source). Cost of changing voices: re-pin the model plus re-record the fixture clips; the synth API stays.
 
+**Groomed 2026-09-23:** Model placement corrected: the pin manifest (URL plus SHA) lives under `resources/voices/kokoro/`; model bytes provision into app data and are never committed (matches the first-run fetch and §2's no-models-in-git rule).
+
 - [ ] The ONNX Runtime plus the pinned hashed Kokoro-82M model live under `resources/voices/kokoro/`. Done when: the model loads offline from the pinned bytes.
 - [ ] `src/Notepad.Core/SpeechSynth.cs` synthesizes text to WAV with voice and rate params. Done when: the fixture clips render deterministically.
 - [ ] First-run model fetch is pinned by URL plus SHA into app data with progress. Done when: the fetch contract is tested with a mocked transport.
 - [ ] Synthesis meets the CPU-only budget on long documents. Done when: the perf test measures it.
+- [ ] Long-document synthesis is cancellable mid-stream and emits sentence boundaries with timing, so D08 T02 §1 can pause, stop, and follow sentences. Done when: a cancel stops within one sentence and the timing list matches the sentence count (Groomed 2026-09-23.)
 - [ ] Commit: `"voice: embed Kokoro TTS"`
 
 **Test checkpoint:** `dotnet test --filter SpeechSynth` green on synth and perf fixtures. Cheaper substitute that fails: cloud TTS as the only path.
@@ -65,6 +70,8 @@ Why this section exists: the voice is the product surface of read-aloud. A small
 Why this section exists: WAV is the engine lingua franca but MP3 is what users keep. One transcode path serves export and the transcriber's file input, and one provision flow fetches every model byte.
 
 **Needs:** Windows host (build/test)
+
+**Groomed 2026-09-23:** Placement corrected: `Notepad.Core` targets plain `net10.0` (in `Notepad.Neutral.slnf`) and WinRT `MediaTranscoder` needs a Windows TFM, so `AudioTranscode` is an interface in Notepad.Core with the MediaTranscoder implementation in `src/ScratchPad` (`net10.0-windows10.0.19041.0`).
 
 - [ ] `src/Notepad.Core/AudioTranscode.cs` transcodes WAV to MP3 and decodes MP3 and M4A to WAV through the platform MediaTranscoder. Done when: round-trip fixtures pass.
 - [ ] `tools/provision-voices.ps1` fetches every pinned model by URL plus SHA, mirroring `tools/provision.ps1`. Done when: a clean machine provisions and verifies.
@@ -93,6 +100,7 @@ Why this section exists: local is the default but choice beats dogma. One interf
 - [ ] The OpenRouter route calls `/audio/speech` and `/audio/transcriptions` with the same voice ids where they exist. Done when: the fixtures pass against a mocked transport.
 - [ ] The key arrives only via callback and is never stored or logged here. Done when: the key-handling fixtures pass.
 - [ ] Every cloud call carries a per-send consent token the engine refuses to skip. Done when: the refusal fixtures pass.
+- [ ] Cloud errors map to distinct results: bad or expired key (401), rate limit (429), and oversized upload each carry their own error, never a silent fall back to local. Done when: each status is driven against a stub (Groomed 2026-09-23.)
 - [ ] Commit: `"voice: add the provider interface"`
 
 **Test checkpoint:** Interface, cloud-shape, key-handling, and consent fixtures green. Cheaper substitute that fails: the key in a config file.

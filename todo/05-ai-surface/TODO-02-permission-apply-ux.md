@@ -21,6 +21,8 @@ track: A3
 - [ACP agent plan](https://agentclientprotocol.com/protocol/v1/agent-plan) -- plan display during turns
 - -> XREF: D04 T02 §1 -- session auth this UX gates; the consent contract below is what auth prompts render through
 
+**Groomed 2026-09-23:** Chrome corrected: no shared panel, transcript, or input styles exist (`src/ScratchPad/App.xaml` merges only `XamlControlsResources`, and D01 T01 §14 recorded the same); follow the code-built dialog pattern (ExportDialog, WhatsNewDialog), and D05 T01 §1 defines the AI styles once in its contract.
+
 ## Outcome
 
 - Every permission prompt shows kind, scope, and risk with allow, deny, and scope choices.
@@ -35,16 +37,17 @@ track: A3
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Permission prompt surface | D05 T01 §1, D03 T02 §1 |  [ ]   |
-|   2   |   §2    | Tool-call and plan display | D05 T01 §2 |  [ ]   |
-|   3   |   §3    | Diff review | §1 |  [ ]   |
+|   1   |   §1    | Permission prompt surface | D05 T01 §1, D03 T02 §1, D03 T02 §4 |  [ ]   |
+|   2   |   §2    | Tool-call and plan display | D05 T01 §2, D03 T02 §3 |  [ ]   |
+|   3   |   §3    | Diff review | §1, D03 T02 §2 |  [ ]   |
 |   4   |   §4    | Apply to editor through undo | §3, D02 T01 §4 |  [ ]   |
-|   5   |   §5    | Elicitation forms | §1 |  [ ]   |
-|   6   |   §6    | Selection actions: explain, rewrite, summarize | §3, §4 |  [ ]   |
+|   5   |   §5    | Elicitation forms | §1, D03 T02 §6 |  [ ]   |
+|   6   |   §6    | Selection actions: explain, rewrite, summarize | §3, §4, D04 T02 §1, D04 T02 §5 |  [ ]   |
 |   7   |   §7    | Document actions: translate, extract, summarize | §1, D01 T01 §2 |  [ ]   |
 |   8   |   §8    | Continue writing with ghost drafts | §1, §4, D02 T01 §3 |  [ ]   |
 |   9   |   §9    | Agent title suggestions for untitled tabs | §6, D01 T01 §22 |  [ ]   |
 
+|  10   |  §10    | Grants and audit viewer | §1, D03 T02 §4, D03 T02 §5 |  [ ]   |
 ---
 
 ## 1. Permission Prompt Surface
@@ -58,6 +61,8 @@ Why this section exists: consent the user does not understand is not consent. Th
 **Treatment:** In-panel prompt per the contract. Cheaper substitute that fails the checkpoint: allow/deny with no scope shown.
 
 **Chrome:** Consume the shared prompt styles. Do not invent a second prompt treatment.
+
+**Groomed 2026-09-23:** Permission shape corrected: ACP agents supply the options (kinds `allow_once`, `allow_always`, `reject_once`, `reject_always`) and the client answers `selected` plus `optionId` or `cancelled`; render the agent's options by kind and record how allow_always and reject_always persist against D03 T02 §4's no-cross-session rule. Timeout and dismiss select a reject option; a turn cancel answers every pending prompt `cancelled`, exactly once.
 
 - [ ] `src/ScratchPad/PermissionPrompt.xaml` renders kind, scope, risk summary, and allow/deny/scope choices per the `D03 T02 §1` contract. Done when: the contract test passes against the real prompt. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5).
 - [ ] Timeout and dismiss count as deny, visibly. Done when: both are driven.
@@ -82,6 +87,7 @@ Why this section exists: users must see what the agent is doing while it does it
 - [ ] Tool calls render pending, running, awaiting-permission, done, failed, and denied states. Done when: each is driven.
 - [ ] Plans render with step states as the agent reports them. Done when: the plan fixtures pass.
 - [ ] Failed and denied calls show cause with the next step visible. Done when: both are driven.
+- [ ] Tool-call content renders both kinds ACP sends: `terminal` (live output, with a user kill through `terminal/kill`) and `diff` (`oldText`/`newText`). Done when: a loopback turn with each kind renders and the kill reaches the agent (Groomed 2026-09-23.)
 - [ ] Commit: `"ai-surface: display tool calls and plans"`
 
 **Test checkpoint:** State matrix and plan fixtures driven against scripted turns. Cheaper substitute that fails: states asserted without rendering.
@@ -101,6 +107,7 @@ Why this section exists: no agent edit reaches the buffer unseen. The diff shows
 - [ ] Proposed edits render as diffs against the current buffer with hunk accept/reject. Done when: the hunk matrix is driven.
 - [ ] Diffs rebase honestly when the buffer changed since the proposal; stale hunks are marked, never silently applied. Done when: the staleness test passes.
 - [ ] Large diffs virtualize within the perf budget. Done when: the budget is measured in the local run on the dev box. **Corrected 2026-09-17 (groom):** was "measured in CI"; CI runs no suites since 2026-09-17.
+- [ ] Agent file writes route through review: an `fs/write_text_file` or tool-call `diff` against an open tab opens this review, and a closed file gets a backup plus an undo entry, so no agent write bypasses diff review. Done when: both paths are driven and each undoes (Groomed 2026-09-23.)
 - [ ] Commit: `"ai-surface: review agent edits as diffs"`
 
 **Test checkpoint:** Hunk matrix, staleness, and perf driven. Cheaper substitute that fails: whole-file accept with no hunk granularity.
@@ -113,6 +120,7 @@ Why this section exists: applying is a write, and writes go through the editor's
 - [ ] Partial accept applies exactly the accepted hunks, nothing more. Done when: the partiality test passes.
 - [ ] Apply conflicts (buffer changed under the hunk) refuse with the conflict shown, never overwrite. Done when: the conflict test passes.
 - [ ] Every apply marks the tab dirty through the `D01 T01 §2` model. Done when: the dirty test passes.
+- [ ] Apply is exactly-once: a repeated or racing Apply click applies the change once. Done when: a double-click drive leaves one change and one undo step (Groomed 2026-09-23.)
 - [ ] Commit: `"ai-surface: apply reviewed edits through undo"`
 
 **Test checkpoint:** Apply, partial, conflict, dirty, and undo-restores tests green. Cheaper substitute that fails: apply that writes the buffer directly.
@@ -128,6 +136,10 @@ Why this section exists: agents ask structured questions mid-turn. The forms ren
 **Treatment:** Schema-driven forms per the contract. Cheaper substitute that fails the checkpoint: free text for every question.
 
 **Chrome:** Consume the shared form styles. Do not invent a second form treatment.
+
+**Groomed 2026-09-23:** -> XREF: D03 T02 §6 (answers `elicitation/create` exactly once; this section renders the form).
+
+**Groomed 2026-09-23:** Elicitation shape corrected: the three answers are `accept`, `decline`, and `cancel` (dismissed without choosing), so dismiss answers `cancel`, distinct from `decline`; URL mode opens out of band with consent; `clientCapabilities.elicitation` advertises form and url.
 
 - [ ] Elicitation schemas render as typed forms (text, choice, confirmation) with validation. Done when: each field kind is driven.
 - [ ] Dismiss counts as the schema's default or as decline, visibly and exactly once. Done when: both are driven.
@@ -149,6 +161,8 @@ Why this section exists: this is the answer to Notepad's subscription-gated Writ
 **Chrome:** Consume the shared menu and diff styles. Do not invent a second action treatment.
 
 **Groomed 2026-09-13:** Notepad audit: committed shortcuts, rewrite presets, summarize lengths, the Write flow, the off-switch, the no-Microsoft-AI-stack and privacy stances, and streaming proposals are now explicit (Write was named in scope but had no items).
+
+**Groomed 2026-09-23:** Toggle corrected: a disabled Writing tools card already exists (`SettingsCardWritingTools`, `SettingsWritingToolsToggle` in `SettingsPage.xaml`), and D01 T02 §3 assigns it to this item; enable and bind it as the AI master toggle instead of adding a card.
 
 - [ ] Explain, rewrite, and summarize appear on the selection context menu and Edit menu with committed shortcuts. Done when: each entry point is driven.
 - [ ] Each action needs no Microsoft account, subscription, or credit: it uses the tab's connected agent or reports honestly that none is connected. Done when: the no-agent and no-network cases are driven.
@@ -234,6 +248,18 @@ Why this section exists: the first-line default (D01 T01 §22) is a starting poi
 - [ ] Commit: `"ai-surface: suggest tab titles"`
 
 **Test checkpoint:** round-trip, title-only apply, and explicit-only are all driven in the room. Cheaper substitute that fails: a title that edits the note.
+
+## 10. Grants and Audit Viewer
+
+Why this section exists: nothing lists or revokes remembered allow_always and reject_always choices, D03 T02 §4 revocation has no UI, and D03 T02 §5 says the UI surfaces the grant log where this file designs it, with no item doing so (groom 2026-09-23). -> XREF: D03 T02 §4 (grants and revocation), D03 T02 §5 (the audit log).
+
+**Groomed 2026-09-23:** -> XREF: D05 T03 §6 (the AI settings group links to this viewer and hosts the master toggle).
+
+- [ ] A viewer lists live grants and remembered choices per agent and session, and revoking one takes effect on the next request. Done when: revoke is driven and the next request prompts again
+- [ ] The viewer shows the D03 T02 §5 audit log with filtering by agent and outcome, read-only. Done when: a seeded log renders and filters
+- [ ] Commit: `"ai-surface: grants and audit viewer"`
+
+**Test checkpoint:** list, revoke, and audit rendering driven against seeded grants. Cheaper substitute that fails: a viewer that shows grants but cannot revoke them.
 
 ## Verification
 

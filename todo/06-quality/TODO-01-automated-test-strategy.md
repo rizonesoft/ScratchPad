@@ -31,6 +31,8 @@ track: Q1
 
 **Adjacency:** all=not-applicable (test strategy with no user-facing feature surface; the suites it defines live with their features)
 
+**Groomed 2026-09-23:** CI scope corrected: `build.yml` runs no `dotnet test` since the 2026-09-17 operator decision (its header), so every "CI fails the run" or "green in CI" claim here reads as the §1-placed run (local full or nightly) failing or passing.
+
 ## Implementation Order
 
 | Order | Section | Deliverable | Depends On | Status |
@@ -47,6 +49,8 @@ track: Q1
 ## 1. Strategy Doc with Layers and Bars
 
 Why this section exists: "automatic and complete" without a written definition is a slogan. The doc makes it a bar with owners.
+
+**Groomed 2026-09-23:** Done-when corrected: the Linux bar is retired (the correction on the same item), so item 4 is done when `dotnet test src/Notepad.Neutral.slnf` is green on Windows with the WindowsPath rule stated.
 
 - [ ] `docs/test-strategy.md` defines the layers (unit, integration, UI, protocol, perf), each with owner, suite location, and bar. Done when: every layer names all three.
 - [ ] The doc defines what "complete" means per layer (behavior coverage, not line coverage alone). Done when: each definition is falsifiable.
@@ -71,6 +75,8 @@ Why this section exists: floors that CI does not enforce are wishes. Measure per
 ## 3. Notepad Parity UI Suites
 
 Why this section exists: the clone claim is proven surface by surface, automatically, on every run.
+
+**Groomed 2026-09-23:** Corrected: `PollThemeSide` now calls `UiCapture.PrintCapture`, which enters UiDpi and uses PrintWindow full content (MainWindowTests.cs:146, UiCapture.cs:218), so the DPI half is fixed; the vacuous dark and system pass still stands, so add a non-black guard.
 
 - [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
 - [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
@@ -107,6 +113,8 @@ Why this section exists: budgets nobody measures are decorations. The perf tests
 Why this section exists: the quarantine procedure from `D00 T02 §5` needs an operator: triage cadence, fix windows, and escalation. Mass-failure runs need the same operator with a different verdict: a runner incident, not N test quarantines.
 
 - -> XREF: D00 T02 §7 -- the incident-triage item is filed from its round-4 run; its review record carries the incident evidence.
+
+**Groomed 2026-09-23:** Already written: docs/soak-and-quarantine.md "Fix-or-remove window" (7 days, day-3 note, auto-RED past due through D00 T02 §15); the strategy doc cites it.
 
 - [ ] The flake policy sets triage cadence, fix window, and escalation for quarantined tests. Done when: the policy is written in the strategy doc.
 - [ ] A quarantined test is retried on its schedule and either reinstated or removed with a recorded decision. Done when: the lifecycle is demonstrated once for real.

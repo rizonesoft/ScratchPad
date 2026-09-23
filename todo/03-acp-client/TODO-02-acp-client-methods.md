@@ -39,16 +39,19 @@ track: A1
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Permission request handling | D03 T01 §5 |  [ ]   |
-|   2   |   §2    | File-system methods with scoped roots | §1 |  [ ]   |
+|   2   |   §2    | File-system methods with scoped roots | §1, D02 T01 §2, D02 T01 §4 |  [ ]   |
 |   3   |   §3    | Terminal execution | §1 |  [ ]   |
 |   4   |   §4    | Grant scope and revocation | §2, §3 |  [ ]   |
 |   5   |   §5    | Grant audit log | §4 |  [ ]   |
 
+|  6   |  §6    | Elicitation requests | §1 |  [ ]   |
 ---
 
 ## 1. Permission Request Handling
 
 Why this section exists: `session/request_permission` is the safety boundary of the whole product. Deny-by-default, prompt faithfully, answer exactly once.
+
+**Groomed 2026-09-23:** Spec shape corrected: `session/request_permission` is answered with `outcome: selected` carrying an agent-supplied `optionId` (kinds `allow_once`, `allow_always`, `reject_once`, `reject_always`) or `outcome: cancelled`; deny maps to a reject option, and every pending request answers `cancelled` on `session/cancel`.
 
 - [ ] `src/Notepad.Acp/Permissions.cs` answers `session/request_permission` with allow, deny, or escalate-to-user per policy. Done when: the policy matrix is tested.
 - [ ] Deny is the default for unknown kinds, timed-out prompts, and any ambiguity. Done when: each default-deny case is tested.
@@ -62,10 +65,13 @@ Why this section exists: `session/request_permission` is the safety boundary of 
 
 Why this section exists: the agent reads and writes through the client. Scoped roots are what keep a prompt-injection from reading the disk.
 
+**Groomed 2026-09-23:** Spec shape corrected: the schema has exactly `fs/read_text_file` (sessionId, absolute path, optional 1-based `line` and `limit`) and `fs/write_text_file`, advertised through `clientCapabilities.fs`; there are no sibling read methods, and write is offered.
+
 - [ ] `fs/read_text_file` (and sibling read methods) serve only paths under the session's roots. Done when: escape attempts (`..`, symlinks, UNC) are refused in tests.
 - [ ] Write methods (where the schema offers them) require a permission grant naming the path. Done when: ungranted writes are refused in tests.
 - [ ] Reads outside the open document's directory require their own grant, recorded in the audit log. Done when: the boundary is tested.
 - [ ] Binary and oversized files are refused with a structured error, never truncated silently. Done when: the refusal tests pass.
+- [ ] Reads of a path open in a tab serve the live buffer (unsaved changes included, per the spec), and writes to an open tab land as one undoable edit routed through D05 T02 review; writes to closed files keep a backup. Done when: an open-tab read returns unsaved text and an open-tab write undoes in one step (Groomed 2026-09-23.)
 - [ ] Commit: `"acp-client: scope file-system methods to session roots"`
 
 **Test checkpoint:** Escape, ungranted-write, boundary, and binary refusal tests green. Cheaper substitute that fails: serving the whole disk because the roots were "too fiddly".
@@ -73,6 +79,8 @@ Why this section exists: the agent reads and writes through the client. Scoped r
 ## 3. Terminal Execution
 
 Why this section exists: agents run commands. Each run is consented, captured, bounded, and killable.
+
+**Groomed 2026-09-23:** Spec shape corrected: `terminal/create` carries the agent's own absolute `cwd`, args, env, and `outputByteLimit` (output past the limit truncates from the start on a character boundary); the agent owns timeouts through `wait_for_exit` and `kill`; methods are create, output, wait_for_exit, kill, release. A client ceiling timeout is extra policy; the cwd must sit inside the scoped roots.
 
 - [ ] Terminal methods execute with the session's working directory and a committed timeout and output cap. Done when: the bounds are tested.
 - [ ] Every execution requires a permission grant naming the command. Done when: ungranted execution is refused in tests.
@@ -103,6 +111,16 @@ Why this section exists: every grant and denial is a security event. The log mak
 - [ ] Commit: `"acp-client: log every grant and denial"`
 
 **Test checkpoint:** Schema, append-only, and export tests green. Cheaper substitute that fails: logging to a debug console nobody can open.
+
+## 6. Elicitation Requests
+
+Why this section exists: `elicitation/create` is an agent-to-client request that needs exactly one answer (`accept`, `decline`, or `cancel`), with an `elicitation/complete` notification and a `clientCapabilities.elicitation` advertisement (form and url modes), and no D03 section answers it (groom 2026-09-23). -> XREF: D05 T02 §5 (the form UI this wire feeds). -> XREF: D03 T01 §5 (routing sends elicitation here).
+
+- [ ] `elicitation/create` reaches D05 T02 §5 and is answered exactly once with accept, decline, or cancel; a turn cancel answers `cancel`. Done when: the loopback proves exactly-once under a racing cancel
+- [ ] URL-mode elicitation opens out of band only after consent, and `elicitation/complete` closes the pending form. Done when: the loopback drives both modes
+- [ ] Commit: `"acp-client: answer elicitation requests"`
+
+**Test checkpoint:** exactly-once answers under cancel and both modes driven on the loopback. Cheaper substitute that fails: treating elicitation as a session update.
 
 ## Verification
 

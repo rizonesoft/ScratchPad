@@ -4,7 +4,7 @@ id: menus-settings-status
 domain: 01-notepad-core
 status: draft
 title: "TODO-02 -- Menus, Settings and Status"
-depends_on: ["winui-app-spine"]
+depends_on: []
 track: N1
 ---
 
@@ -25,11 +25,15 @@ track: N1
 >
 > **Corrected 2026-09-17 (groom):** §§13-14 have shipped and stamped since (rename completion, title-bar icon) and §16 (quarantine the MenuBarTests flakes) was filed. Open work is §§5-12, §15, §16; since 2026-09-17 the suites proving them run locally on the dev box, not in CI.
 
+**Groomed 2026-09-23:** Sequence fix: the file-level `depends_on: ["winui-app-spine"]` held this whole file until every spine section shipped, and D01 T01 §33-§35 (F1 help, pinned-tab regressions, quarantines, filed after the spine shipped) reopened it: 53 sections sat blocked, and D01 T01 §33 (needs D07 T01 §11) and §35 (needs D01 T02 §16) deadlocked against it. The file-level edge is dropped; every real prerequisite stays a section-level Depends On row, so no row moved and no cycle remains.
+
 ## Inputs
 
 - `resources/baseline/` captures of menus, settings, and status bar, plus the §5 spec-constructed print goldens. **Corrected 2026-09-17 (groom):** was "and print dialog"; per the §5 validation no dialog capture is owed (Page Setup and Print are OS dialogs §5 binds but does not build).
 - [`01-notepad-core/TODO-01-winui-app-spine.md`](./TODO-01-winui-app-spine.md) -- the shell and tab model these surfaces hang off
 - -> XREF: D05 T03 §3 -- slash commands versus palette split; the palette lists without reimplementing
+
+**Groomed 2026-09-23:** Current state corrected: §17 is also open, so the open work is §§5-12, §15, §16, §17 (plus the new §18).
 
 ## Outcome
 
@@ -65,6 +69,7 @@ track: N1
 |  16   |   §16   | Quarantine the MenuBarTests flakes | §1 |  [ ]   |
 |  17   |   §17   | About panel identity rows | D07 T01 §10 |  [ ]   |
 
+|  18   |  §18    | Fix-or-remove MenuBarTests flakes | §16 |  [ ]   |
 ---
 
 ## 1. Menu Bar with All Items and Enablement
@@ -227,6 +232,8 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 
 **Corrected 2026-09-17 (§5 validation):** the seed carried no `Needs` although printing, the OS dialogs, and PDF output are Windows-only; every sibling declares it.
 
+**Groomed 2026-09-23:** Recorded: commit 3e59883 landed the print engine (`src/ScratchPad/PrintService.cs`, `PrintFailureDialog.cs`, `src/Notepad.Core/PrintCodes.cs`, `PrintWrap.cs` with unit tests), the page-setup keys (docs/settings-schema.md:22-26), and `/p` `/pt` routing (tests/UI/LaunchTests.cs:603-655); `PrintSeam.cs` was deleted in that commit, so its absorption note is moot. Still owed: the local golden under `resources/baseline/print/` (the CI bootstrap was deleted in c2c2362), menu enablement (MenuBar.xaml:43-44 still `IsEnabled="False"`), and the page-setup persistence and cancel drives.
+
 - [ ] `src/ScratchPad/PrintService.cs` renders the active document with Notepad's header/footer codes, margins, and wrap. Done when: print-to-PDF matches the golden output. **Corrected 2026-09-17 (§5 validation):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4). **Recorded 2026-09-16:** D01 T02 §1 ships File > Print and File > Page setup disabled; this section enables both through the `MenuCommands` registry and drives them on landing. PrintSeam.cs (D01 T01 §8) absorbs here per its header; the render engine is the implementer's choice with reasons (must print-to-PDF headless on the dev box. **Corrected 2026-09-17 (groom):** was "headless on CI"; CI runs no suites since 2026-09-17).
 - [ ] Page setup persists per Notepad's behavior. Done when: the persistence is driven. **Decided 2026-09-17 (§5 validation):** behavior means the Page Setup dialog set (header, footer, margins, orientation, paper) surviving restarts and applying to prints, persisted in the §2 store (same file, new keys, schema-doc rows); stock's own storage location is not probed (default, costs one migrator if stock parity ever demands its exact keys).
 - [ ] Print failure (no printer, cancelled dialog) reports and changes nothing. Done when: both paths are driven. **Decided 2026-09-17 (§5 validation):** no-printer drives through `/pt` to a bogus printer (in-tree precedent `NoSuchPrinter8`); cancel drives through UIA dismiss of the OS dialog.
@@ -264,6 +271,7 @@ Why this section exists: writers calibrate difficulty. A click computes grade le
 - [ ] Flesch-Kincaid grade computes locally over the buffer. Done when: fixtures match reference values.
 - [ ] Clicking the status area computes and shows the score. Done when: driven.
 - [ ] The score never recomputes unprompted and never touches the network. Done when: the negative tests pass.
+- [ ] The readability score reuses `TextStats.Compute` (TotalWords, TotalSentences; src/Notepad.Core/TextStats.cs) instead of a second counter, handles an empty or sentence-free buffer, and never shows a stale score after edits. Done when: an empty buffer and an edit after scoring are driven (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: show reading level on demand"`
 
 **Test checkpoint:** Computation, display, and the on-demand rule driven. Cheaper substitute that fails: a score that phones home.
@@ -282,11 +290,14 @@ Why this section exists: every command in one fuzzy list: menu items, agent acti
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Registry corrected: a command registry already exists (the `commands` dictionary in src/ScratchPad/MenuBar.xaml.cs:39-80); the palette enumerates it plus the D05 T02 §6 actions, with no second registry. Sequence: the prerequisite D05 T02 §6 (selection actions) sits in a later phase (phase 3); its own dependencies are inside D05 T02, so it is runnable as soon as its phase is reached, and `process-plan` parks this row until it ships. Splitting it into this phase would duplicate the work (and D01 T01 sits at its 55-section cap), so the edge stands as recorded (a groom default; cost of changing: a duplicate section).
+
 - [ ] `src/ScratchPad/CommandRegistry.cs` names every §1 menu item plus the D05 T02 §6 selection actions with shortcuts. Done when: the registry test enumerates them. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as §§1/3/4/5).
 - [ ] The palette lists fuzzy-matched entries with shortcuts shown. Done when: driven.
 - [ ] Invoking from the palette equals invoking from the menu. Done when: the equivalence test passes.
 - [ ] The slash-command overlap resolves per the D05 T03 §3 XREF with no double implementation. Done when: the split is recorded and tested.
 - [ ] Every §1 item and D05 T02 §6 action appears or names why not. Done when: the audit passes.
+- [ ] The palette shows an empty-result state, keeps disabled menu commands disabled, and dismisses on Esc. Done when: each is driven (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: add the command palette"`
 
 **Test checkpoint:** Registry, UI, equivalence, and audit driven. Cheaper substitute that fails: a palette that lists half the app.
@@ -305,10 +316,13 @@ Why this section exists: writers watch length as they type. Words, reading time,
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Corrected: the document character count is already a live stock segment shipped by §4 (StatusSegments.cs:47-82), and §4 defines no latency bar; words and reading time join that segment, and typing latency is measured with and without the new fields.
+
 - [ ] Words and characters update live as the user types. Done when: every keystroke updates them under host drive.
 - [ ] Reading time updates live beside the counts. Done when: the estimate tracks the words.
 - [ ] Recompute is debounced off the keystroke path. Done when: rapid typing shows one recompute per pause.
 - [ ] Typing benchmarks prove counts never block input. Done when: latency matches §4's bar without the fields.
+- [ ] Word and reading-time counts reuse `TextStats.Compute` rather than a second word counter. Done when: the status counts match the Stats dialog on a fixture (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: count live in the status bar"`
 
 **Test checkpoint:** live counts, reading time, debounce, and non-blocking input are all driven in the room. Cheaper substitute that fails: counts that lag a paragraph behind.
@@ -333,6 +347,7 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 - [ ] Preview applies live before commit. Done when: hovering previews and leaving restores.
 - [ ] The chosen accent persists across restarts through §2. Done when: relaunch keeps it.
 - [ ] Stock dark and light stay default and untouched. Done when: a fresh install shows system themes.
+- [ ] A revert-to-system-accent action restores the default after a custom accent. Done when: revert is driven and the system accent returns (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: theme the accents"`
 
 **Test checkpoint:** gallery, preview, persistence, and untouched defaults are all driven in the room. Cheaper substitute that fails: themes that need a restart to apply.
@@ -354,6 +369,7 @@ Why this section exists: a word goal with a thin progress line for the session. 
 - [ ] A session goal sets from the status bar. Done when: the set path is driven.
 - [ ] The thin line fills from the live count. Done when: typing moves the line under host drive.
 - [ ] The goal and progress vanish with the session. Done when: relaunch shows no goal.
+- [ ] The goal can be cleared or changed, and invalid input is refused with a message. Done when: clear, change, and an invalid value are driven (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: goal the session"`
 
 **Test checkpoint:** set, fill, and session-death are all driven in the room. Cheaper substitute that fails: a goal that follows you home.
@@ -462,6 +478,8 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 - -> XREF: D01 T02 §10 -- accent themes compose with this finetune; this section preserves the accent coloring §10 themes.
 - -> XREF: D00 T01 §13 -- the environment gate's first proving instance; this section's display-session requirement is what the marker names.
 
+**Groomed 2026-09-23:** Requires corrected: the black-frame evidence was WSL-era; this dev box has stock Notepad 11.2607.14.0 installed, UI captures run locally (UiCapture.cs:216-231), and `resolve` reports runnable here, so the display-session requirement is met on the dev box.
+
 - [ ] Same-machine stock-versus-app palette probes are captured and their sampled values recorded. Done when: the A/B numbers are quoted per surface.
 - [ ] Chrome brushes match stock within tolerance with the Mica backdrop and accent-conditional rules untouched. Done when: per-surface deltas are quoted and the Mica plus accent drives stay green.
 - [ ] Dark, light, and system themes are all driven. Done when: the theme matrix passes.
@@ -508,15 +526,27 @@ Why this section exists: the shipped Settings About panel (D01 T02 §3) shows na
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Sequence: the prerequisite D07 T01 §10 (product identity registry) sits in a later phase (phase 4); its own dependencies are none, so it is runnable as soon as its phase is reached, and `process-plan` parks this row until it ships. Splitting it into this phase would duplicate the work (and D01 T01 sits at its 55-section cap), so the edge stands as recorded (a groom default; cost of changing: a duplicate section).
+
 - [ ] `src/ScratchPad/SettingsPage.xaml` renders copyright, publisher, links, and logo rows in the About panel from the §10 registry. Done when: each row's text matches the registry and no identity string is hardcoded in the page.
 - [ ] Each link row invokes the system launcher with its registry URL. Done when: the invoked URI per row matches the registry with the launcher seam mocked.
 - [ ] The logo renders at most 48px tall in both themes with the theme-correct asset. Done when: the capture comparison shows the cap holding on light and dark goldens.
 - [ ] The GitHub and X link rows render their registry brand icons at row height. Done when: the capture comparison shows both icons on light and dark goldens.
 - [ ] The name and version rows read exactly as D01 T02 §3 shipped them. Done when: the row texts are byte-identical to the shipped golden strings.
 - [ ] `docs/user-guide/settings.md` documents the new rows. Done when: the guide names every row and its source.
+- [ ] A launcher failure from an identity row shows an honest error instead of failing silently. Done when: a failing launch is driven (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: add the About identity rows"`
 
 **Test checkpoint:** UI drive proves every row from the registry with launcher URIs matched; capture comparison passes both themes; guide updated. Cheaper substitute that fails: rows that render but read pasted strings.
+
+## 18. Fix-or-Remove the MenuBarTests Flakes
+
+Why this section exists: §16 quarantines five MenuBarTests flakes and hands their fix-or-remove window to the owners, but D01 T02 §1 is stamped, so nobody owns the window (groom 2026-09-23). -> XREF: D01 T01 §35 (the sibling quarantine owner).
+
+- [ ] Each of the five quarantined MenuBarTests is fixed and un-skipped, or removed with its behavior covered elsewhere, inside its window. Done when: the quarantine list drops all five
+- [ ] Commit: `"menus: fix or remove the MenuBarTests flakes"`
+
+**Test checkpoint:** the five tests pass unskipped in the owed runs, or their removal records the covering test. Cheaper substitute that fails: extending the quarantine.
 
 ## Verification
 

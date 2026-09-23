@@ -28,11 +28,13 @@ track: Q1
 
 **Adjacency:** all=not-applicable (protocol conformance with no user-facing feature surface)
 
+**Groomed 2026-09-23:** CI scope corrected: `build.yml` runs no `dotnet test` (operator decision 2026-09-17), so checkpoint claims of "green in CI" read as the local or nightly run.
+
 ## Implementation Order
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Scripted agent library | D00 T02 §4 |  [ ]   |
+|   1   |   §1    | Scripted agent library | D00 T02 §4, D03 T01 §6, D03 T02 §3 |  [ ]   |
 |   2   |   §2    | Schema pin and drift detection | §1 |  [ ]   |
 |   3   |   §3    | Version matrix (v1 and v2) | §1 |  [ ]   |
 |   4   |   §4    | Adapter compatibility schedule | §3, D04 T01 §5 |  [ ]   |
@@ -43,9 +45,13 @@ track: Q1
 
 Why this section exists: one loopback is not coverage. The library scripts every method, notification, and fault the protocol defines.
 
+**Groomed 2026-09-23:** Path corrected: script data already lives in `tests/Protocol/Scripts/prompt-turn.json` (copied through Protocol.csproj:25); extend `tests/Protocol/Scripts/` rather than adding `tests/Fixtures/AcpScripts/`.
+
 - [ ] `tests/Fixtures/AcpScripts/` covers every client and agent method with happy-path scripts. Done when: each method has a passing script.
 - [ ] Fault scripts cover malformed messages, dropped responses, slow streams, and mid-turn crashes. Done when: each fault has a passing script.
 - [ ] Scripts are data (driven by the loopback), not code, so adding one needs no harness change. Done when: a new script is added without touching the fixture.
+- [ ] Scripts cover cancellation and timeouts: cancel mid-stream, the cancel-versus-completion race, a permission answered `cancelled`, and a request timeout. Done when: each script runs against the D03 T01 §6 client (Groomed 2026-09-23.)
+- [ ] Method coverage is not vacuous: the harness fails when a client method it lists (fs, terminal, permission) has no implementation behind it. Done when: removing one method fails the harness (Groomed 2026-09-23.)
 - [ ] Commit: `"quality: build the scripted agent library"`
 
 **Test checkpoint:** Full script library green in CI; a new script added without fixture changes. Cheaper substitute that fails: three golden-path scripts called coverage.

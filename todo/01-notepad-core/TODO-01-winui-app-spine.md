@@ -33,6 +33,8 @@ track: N1
 >
 > **Corrected 2026-09-17 (groom):** §32 (quarantine the AppIcon and Launch flakes) was filed and shipped since. Open: still none; every section is stamped or moved. File closeout belongs to `process-todo-file`, not this groom.
 
+**Groomed 2026-09-23:** Current state corrected: §§33-35 were filed after the spine shipped, so the open sections are §§33-35, not none.
+
 ## Inputs
 
 - `resources/baseline/` captures of the Notepad main window and tab bar (owned by `D00 T02 §3`)
@@ -88,7 +90,7 @@ track: N1
 |  31   |   §32   | Quarantine the AppIcon and Launch CI flakes | §7, §11 |  [x]   |
 |  32   |   §33   | F1 context help | D07 T01 §11 |  [ ]   |
 |  33   |   §34   | Pinned-tab close regressions | §13 |  [ ]   |
-|  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9, D01 T01 §34, D01 T02 §16 |  [ ]   |
+|  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9, D01 T01 §34, D01 T02 §16, D00 T02 §5 |  [ ]   |
 
 ---
 
@@ -1006,6 +1008,8 @@ Why this section exists: F1 summons the guide page for the focused surface. Deli
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Sequence: the prerequisite D07 T01 §11 (help content pipeline) sits in a later phase (phase 4); its own dependencies are none at the section level, with its help pages owed by D07 T01 §13, so it is runnable as soon as its phase is reached, and `process-plan` parks this row until it ships. Splitting it into this phase would duplicate the work (and D01 T01 sits at its 55-section cap), so the edge stands as recorded (a groom default; cost of changing: a duplicate section).
+
 - [ ] F1 at window level resolves the focused surface through the §11 map with the help-home default for unmapped surfaces. Done when: a drive proves a mapped surface, an unmapped surface, and no-focus.
 - [ ] Each resolution invokes the system launcher with the configured base plus local fallback on failure. Done when: the invoked URI per case matches with the seam mocked and a forced-failure probe falls back.
 - [ ] The guide documents the F1 behavior on the keyboard-behavior page, or a new `docs/user-guide/keyboard.md` if none exists. Done when: the page names F1, the default, and the fallback.
@@ -1032,6 +1036,8 @@ Why this section exists: two §13 drives fail deterministically in the night run
 - -> XREF: D00 T02 §16 -- post-fix green needs this section's red resolutions (item 3).
 - -> SOURCE: night-triage-2026-09-20 (`UI.PinnedTabsTests.SingleCloseStillClosesPinned`: `Assert.NotNull` (`PinnedTabsTests.cs:213`); `UI.PinnedTabsTests.CloseRightSkipsPinned`: `Assert.NotNull` in `WaitForPin` (`PinnedTabsTests.cs:339`); both red in the 02:30 `ui-interactive.trx` (24 passed, 3 failed, 1 skipped) and red again in the re-run `interactive.trx` (24 passed, 3 failed, 1 skipped); counts quoted in `docs/reviews/00-workspace/D00-T02-s9.md`). -> SOURCE: plan-review-D00-T02-s9-2026-09-20-s34 D00-T02-S9-PR28 D00-T02-S9-PR29 (visible-oracle plus leg corrections from the §9 plan review).
 
+**Groomed 2026-09-23:** Leg corrected: both tests are `[InteractiveFact]` with `Category=Interactive` (tests/UI/PinnedTabsTests.cs:147-149, 193-195, fenced in 67f2f21), Run A filters `Category!=Interactive` (docs/testing.md:49), and the reds came from `ui-interactive.trx`; so the Done-when is: the test passes in the room and in the quiet-window Interactive collection with the visible outcome asserted.
+
 - [ ] `SingleCloseStillClosesPinned` passes: the NotNull cause is quoted and fixed in app or test, and single-close closes exactly the pinned tab it was invoked on (PR28). Done when: the test passes in the room and in a full default run with the visible outcome asserted (PR29: default leg — the failures reproduced backgrounded, so no Interactive leg is owed).
 - [ ] `CloseRightSkipsPinned` passes: the NotNull cause is quoted and fixed in app or test, and close-right skips every pinned tab (PR28). Done when: the test passes in the room and in a full default run with the visible outcome asserted (PR29: default leg — the failures reproduced backgrounded, so no Interactive leg is owed).
 - [ ] Commit: `"notepad-core: fix the pinned-tab close regressions"`
@@ -1051,6 +1057,10 @@ Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (re
 - -> XREF: D00 T02 §9 -- filed from its R3 review; the triage quarantined these 7.
 - -> XREF: D00 T02 §5 -- the procedure this section executes per test.
 
+**Groomed 2026-09-23:** Scope widened: the quarantine list and skips cover 15 tests; this section owns the 7 it names, and item below now owns the other 8, whose owners were all stamped.
+
+**Groomed 2026-09-23:** -> XREF: D01 T02 §18 (owns the five MenuBarTests flakes this section does not).
+
 - [ ] `MultiWindowSessionRestoresBothWindows` (D01 T01 §6, `multiwindow-single-empty`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
 - [ ] `DirtyReloadDiscardsEdits` (D01 T01 §21, `dirty-reload-zero-tabs`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
 - [ ] `LockedFileReportsLocked` (D01 T01 §4, `locked-file-null`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
@@ -1059,6 +1069,7 @@ Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (re
 - [ ] `WindowCloseWithDirtyTabsIsSilentAndRestores` (D01 T01 §7, `dirty-close-com-timeout`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
 - [ ] `QuitAndRelaunchRestoresTabsContentsAndCarets` (D01 T01 §6, `quit-relaunch-mismatch`) is fixed with a passing soak behind the un-skip, or removed with its decision row. Done when: the Skip is gone with green proof quoted, or the removal row is quoted.
 - [ ] A full UI run is green with every window closed by fix or removal decision. Done when: the run plus each decision is quoted.
+- [ ] The other 8 quarantined tests get fix-or-remove decisions inside their windows: `ctxmenu-name-race` (TabBarTests.cs:397, due 2026-09-22, overdue), `chrome-icon-uia-timeout` and `save-prompt-dialog-null` (due 2026-09-24), the four `snapshot-*` tests and `settings-corrupt-dialog-null` (due 2026-09-27), per docs/soak-and-quarantine.md. Done when: each is fixed and un-skipped, or removed with its behavior covered elsewhere, and the quarantine list drops it (Groomed 2026-09-23.)
 - [ ] Commit: `"notepad-core: fix-or-remove the night-triage quarantines"`
 
 **Test checkpoint:** All seven windows closed by fix (un-skipped, soak-green) or removal (decision row with replacement coverage or accepted risk) (PR26); full UI run green. Cheaper substitute that fails: removals without rows, or fixes without soak proof.

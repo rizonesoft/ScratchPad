@@ -49,6 +49,8 @@ Why this section exists: the UI is thin; the engine carries the semantics. Langu
 
 **Decided 2026-09-14:** Nuspell (LGPL, Hunspell-dictionary-compatible) behind the engine: the best maintained open-source spellchecker, with every locale's LibreOffice/Mozilla dictionaries reusable. Embedded via a C-ABI interop layer; corpus agreement with Notepad stays the acceptance. Alternative recorded: the Windows platform spellchecker (zero dependencies, exact-Notepad behavior, not open-source). Cost of changing engines: rewrite `src/Notepad.Core/SpellEngine.cs` plus dictionary shipping; fixtures stay.
 
+**Groomed 2026-09-23:** Reference fixed: "the §-buffer" is the D02 T01 §2 buffer. Risk recorded: stock uses the Windows spellchecker while this section uses Nuspell, so word-for-word agreement with stock is restated as agreement on an agreed fixture corpus.
+
 - [ ] `src/Notepad.Core/SpellEngine.cs` checks the §-buffer in the system language with Notepad's word-breaking rules. Done when: the fixture corpus agrees with Notepad word for word.
 - [ ] The engine is Nuspell behind `src/Notepad.Core/SpellEngine.cs`, running fully offline on bundled Hunspell-compatible dictionaries. Done when: the corpus checks with no network and no system spell service.
 - [ ] Suggestions rank as Notepad ranks them for the fixture corpus. Done when: top suggestions match on every fixture.
@@ -76,6 +78,7 @@ Why this section exists: the red squiggle is the surface users see. It must rend
 - [ ] Clicking offers suggestions with ignore and add-to-dictionary, as Notepad's. Done when: each action is driven.
 - [ ] Applying a suggestion is one undo unit. Done when: apply-then-undo fixtures pass.
 - [ ] Shift+F10 on a misspelled word opens its suggestions as Notepad's. Done when: the key is driven. Source: https://www.bleepingcomputer.com/news/microsoft/notepad-finally-gets-spellcheck-autocorrect-for-all-windows-11-users/
+- [ ] Add-to-dictionary words persist in a named store (default: the Windows user dictionary, as stock), read back, and can be removed; the scope of ignore is stated. Done when: add, remove, and ignore are driven and survive a relaunch where stated (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: render squiggles and suggestions"`
 
 **Test checkpoint:** Render, menu actions, and undo grouping driven; capture comparison passes. Cheaper substitute that fails: suggestions that bypass undo.
@@ -105,10 +108,13 @@ Why this section exists: Notepad lets users disable spelling globally or per fil
 
 **Groomed 2026-09-13:** Notepad audit: the temporary per-file context toggle is now explicit.
 
+**Groomed 2026-09-23:** Cards already exist: `SettingsCardSpellCheck` and `SettingsCardAutocorrect` sit disabled in SettingsPage.xaml with owner comments naming this item; enable and bind them to new D01 T02 §2 keys (the store is D01 T02 §2, not this file's §2).
+
 - [ ] The settings page carries the spelling toggles bound to the §2 store with Notepad's file-type list. Done when: each toggle is driven.
 - [ ] Toggling takes effect on open buffers immediately, as Notepad's. Done when: the live-effect test passes.
 - [ ] New file types default as Notepad defaults them. Done when: the default is recorded and tested.
 - [ ] The context menu offers a temporary spellcheck toggle for the current file only. Done when: the toggle is driven and does not touch the store. Source: https://www.bleepingcomputer.com/news/microsoft/notepad-finally-gets-spellcheck-autocorrect-for-all-windows-11-users/
+- [ ] Autocorrect switches off when spellcheck is off, matching the stock subtitle. Done when: turning spellcheck off disables autocorrect (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: toggle spelling globally and per file type"`
 
 **Test checkpoint:** Toggles, live effect, and defaults driven; capture comparison passes. Cheaper substitute that fails: toggles that need a restart.

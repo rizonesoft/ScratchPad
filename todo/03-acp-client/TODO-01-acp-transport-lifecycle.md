@@ -17,6 +17,8 @@ track: A1
 >
 > **Corrected 2026-09-14:** the project shells (`src/Notepad.Acp/`, `src/Notepad.Agents/`), the loopback fixture, and the Protocol suite (8/8) exist since D00 T02 §4; what is missing is the real client, which this file builds.
 
+**Groomed 2026-09-23:** §1 is parked mid-write at 5a6ee6b (`src/Notepad.Acp/JsonRpc.cs`: codec plus `PendingRequestRegistry`, 7 JsonRpc facts), so "no protocol code exists" is stale; the Protocol suite counts 15 facts. The v1 schema now carries `session/list`, `session/resume`, `session/close`, `session/delete` (gated by `sessionCapabilities.*`), `session/set_mode`, and `session/set_config_option`; §8 and §9 own them on the wire.
+
 ## Inputs
 
 - [ACP protocol overview](https://agentclientprotocol.com/protocol/v1/overview) -- methods, notifications, message flow
@@ -44,8 +46,10 @@ track: A1
 |   4   |   §4    | Session create and load | §3 |  [ ]   |
 |   5   |   §5    | Prompt turns with streaming updates | §4 |  [ ]   |
 |   6   |   §6    | Cancellation and timeouts | §5 |  [ ]   |
-|   7   |   §7    | Fault survival: crashes and malformed output | §5 |  [ ]   |
+|   7   |   §7    | Fault survival: crashes and malformed output | §5, §8 |  [ ]   |
 
+|  8   |  §8    | Session list, resume, close, delete | §4 |  [ ]   |
+|  9   |  §9    | Modes and config options | §5 |  [ ]   |
 ---
 
 ## 1. JSON-RPC Message Layer
@@ -84,6 +88,7 @@ Why this section exists: every connection begins with `initialize`. Versions and
 - [ ] The client honors the agent's answered version (v1 peer stays v1) and records the negotiated surface. Done when: v1-only and v2-capable peers are both tested.
 - [ ] Unknown capabilities and fields are ignored forward-compatibly, never rejected. Done when: the tolerance fixtures pass.
 - [ ] A failed or timed-out `initialize` surfaces a structured error, not a hang. Done when: the failure is tested.
+- [ ] The `initialize` clientCapabilities advertise only what ships (`fs.readTextFile`/`fs.writeTextFile` from D03 T02 §2, `terminal` from D03 T02 §3, `auth.terminal` from D04 T02 §1, `elicitation` from D03 T02 §6), and prompt content blocks are restricted to the agent's `promptCapabilities` (image, audio, embeddedContext). Done when: a loopback proves an unbuilt capability is never advertised and a disallowed block is refused before send (Groomed 2026-09-23.)
 - [ ] Commit: `"acp-client: negotiate initialize and capabilities"`
 
 **Test checkpoint:** Negotiation matrix green against scripted peers; unknown-field tolerance proven; failure structured. Cheaper substitute that fails: assuming v1 and crashing on anything else.
@@ -95,6 +100,7 @@ Why this section exists: sessions are the unit of conversation. Create and load 
 - [ ] `session/new` creates a session and returns its handle with the working directory and options applied. Done when: the loopback proves the params.
 - [ ] `session/load` resumes where the agent advertises `loadSession`, and reports unsupported cleanly where it does not. Done when: both peers are tested.
 - [ ] Session handles are tracked with exactly one owner; double-close and use-after-close are impossible by construction. Done when: the lifetime tests pass.
+- [ ] `session/new`, load, and resume carry `mcpServers` and `additionalDirectories`; the default is empty `mcpServers` and the scoped roots of D03 T02 §2 as directories, recorded as a default with its cost. Done when: the loopback asserts the params (Groomed 2026-09-23.)
 - [ ] Commit: `"acp-client: create and load sessions"`
 
 **Test checkpoint:** Create and load matrix green, including unsupported-load honesty and lifetime tests. Cheaper substitute that fails: assuming load support everywhere.
@@ -103,10 +109,13 @@ Why this section exists: sessions are the unit of conversation. Create and load 
 
 Why this section exists: the prompt turn is the core loop. Updates stream to the UI contract as they arrive, and the turn ends with a stop reason.
 
+**Groomed 2026-09-23:** Routing corrected: tool calls and plan updates route to D03 T02 and D05 T01; `elicitation/create` is an agent-to-client request owned by D03 T02 §6, not a `session/update` variant.
+
 - [ ] `session/prompt` sends the user message with content blocks per the schema. Done when: the loopback records exact params.
 - [ ] `session/update` notifications dispatch to the transcript contract (`D05 T01 §1`) in arrival order. Done when: an out-of-order script still renders in order.
 - [ ] The turn ends with the agent's stop reason recorded; every reason maps to UI-visible state. Done when: each reason is tested.
 - [ ] Tool calls, elicitations, and plan updates during the turn route to their owners (`D03 T02`, `D05 T02`). Done when: each routes in the test.
+- [ ] Every `session/update` variant routes to an owner: `available_commands_update` to D05 T03 §3, `usage_update` to D05 T03 §5, `session_info_update`, `agent_thought_chunk`, and `user_message_chunk` (history replay on load or resume) to D05 T01; unknown variants are logged and tolerated. Done when: the loopback emits each variant and an unknown one without a fault (Groomed 2026-09-23.)
 - [ ] Commit: `"acp-client: drive prompt turns with streaming updates"`
 
 **Test checkpoint:** Scripted multi-update turns render in order with stop reasons; tool-call routing proven. Cheaper substitute that fails: waiting for the full turn before showing anything.
@@ -118,6 +127,7 @@ Why this section exists: users cancel, agents stall. Both must end the turn clea
 - [ ] `session/cancel` interrupts a running turn; the client treats the race (cancel vs completion) deterministically. Done when: the race matrix is tested.
 - [ ] Response timeouts are committed per method with the values recorded; a timeout never orphans a session. Done when: each timeout is tested.
 - [ ] After cancel or timeout the session accepts the next prompt. Done when: the reuse test passes.
+- [ ] `$/cancel_request` works both directions (error `-32800`): the agent cancelling a pending permission, fs, or terminal request closes it exactly once, and the client cancels its own slow requests. Done when: both directions are driven on the loopback (Groomed 2026-09-23.)
 - [ ] Commit: `"acp-client: cancel turns and time out cleanly"`
 
 **Test checkpoint:** Cancel race matrix and timeout matrix green; session reuse proven. Cheaper substitute that fails: cancel that kills the agent process.
@@ -129,9 +139,31 @@ Why this section exists: agents are separate processes that can die or misbehave
 - [ ] Agent crash mid-turn surfaces a structured error with the captured stderr tail attached. Done when: the crash fixtures pass.
 - [ ] Malformed JSON, non-message stdout lines, and protocol violations end the turn with diagnostics, never a hang or crash. Done when: each fault is tested.
 - [ ] Restart-after-crash offers a clean session without losing the transcript shown so far. Done when: the recovery is tested.
+- [ ] After an agent crash or restart the prior session reattaches through `session/resume` or `session/load` per capability, else the clean-session path runs. Done when: the loopback proves reattach and the fallback (Groomed 2026-09-23.)
 - [ ] Commit: `"acp-client: survive crashes and malformed output"`
 
 **Test checkpoint:** Crash, malformed, and violation fixtures all green with diagnostics; recovery tested. Cheaper substitute that fails: a client that exits when the agent does.
+
+## 8. Session List, Resume, Close, and Delete
+
+Why this section exists: the v1 schema carries `session/list`, `session/resume` (no replay), `session/close`, and `session/delete`, each gated by `sessionCapabilities.*`, and D04 T02 §2-§4 set policy for them with no wire owner (groom 2026-09-23). -> XREF: D04 T02 §2, D04 T02 §3, D04 T02 §4 (the policy sections that consume these calls). -> XREF: D03 T01 §7 (crash reattach uses resume).
+
+- [ ] `session/list` returns the agent's sessions where advertised and reports unsupported cleanly. Done when: both peers are tested
+- [ ] `session/resume` reattaches without replay where advertised; `session/load` (§4) stays the replay path. Done when: the loopback proves both and the capability choice
+- [ ] `session/close` releases one session where advertised, and `session/delete` removes it where advertised; the process stops only when its last session closes (D04 T02 §4). Done when: a two-session loopback closes one and keeps the other live
+- [ ] Commit: `"acp-client: session list, resume, close, delete"`
+
+**Test checkpoint:** list, resume, close, and delete matrix green on the loopback, including unsupported-capability honesty and a sibling session surviving a close. Cheaper substitute that fails: killing the process on close.
+
+## 9. Modes and Config Options
+
+Why this section exists: `session/set_mode` with `current_mode_update` and `session/set_config_option` with `config_option_update` are how a client switches agent modes and models, and D05 T03 §3 `/model` has no wire owner (groom 2026-09-23). -> XREF: D05 T03 §3 (the command surface that drives these calls).
+
+- [ ] `session/set_mode` sends only advertised modes and applies `current_mode_update` from either side. Done when: the loopback switches modes both directions
+- [ ] `session/set_config_option` sends only advertised options and applies `config_option_update`. Done when: the loopback proves a model switch and an agent-initiated change
+- [ ] Commit: `"acp-client: modes and config options"`
+
+**Test checkpoint:** mode and config changes both directions on the loopback, plus refusal of unadvertised values. Cheaper substitute that fails: sending free-text model ids.
 
 ## Verification
 

@@ -4,7 +4,7 @@ id: editing-surface
 domain: 02-editor
 status: draft
 title: "TODO-01 -- Editing Surface"
-depends_on: ["winui-app-spine"]
+depends_on: []
 track: N2
 ---
 
@@ -15,10 +15,14 @@ track: N2
 > [!IMPORTANT]
 > **Current state:** The `D01 T01` shell hosts a placeholder where this surface goes. No buffer, no caret handling, no undo. This file settles the hosting contract first, then builds the surface behind it.
 
+**Groomed 2026-09-23:** Sequence fix: the file-level `depends_on: ["winui-app-spine"]` held this whole file until every spine section shipped, and D01 T01 §33-§35 (F1 help, pinned-tab regressions, quarantines, filed after the spine shipped) reopened it: 53 sections sat blocked, and D01 T01 §33 (needs D07 T01 §11) and §35 (needs D01 T02 §16) deadlocked against it. The file-level edge is dropped; every real prerequisite stays a section-level Depends On row, so no row moved and no cycle remains.
+
 ## Inputs
 
 - `resources/baseline/` captures of the editor area, caret, selection, and context menu
 - -> XREF: D01 T01 §1 -- the shell that hosts this surface; the hosting contract below is the interface it consumes
+
+**Groomed 2026-09-23:** Current state corrected: the placeholder is `TabBar`'s per-tab WinUI `TextBox` (`TabBar.ContentFor`, `SetBoxText`, `SetSelectionStart`; src/ScratchPad/TabBar.xaml.cs), which already gives native caret, undo, and clipboard but no Notepad-grade buffer; §1 replaces it. Registry named: "the `MenuCommands` registry" is the `commands` dictionary in `src/ScratchPad/MenuBar.xaml.cs` (lines 39-80), driven through `AppMenuBar.SetEnabled(automationId, bool)`; no type is named MenuCommands.
 
 ## Outcome
 
@@ -35,7 +39,7 @@ track: N2
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Hosting contract with the shell | D01 T01 §1 |  [ ]   |
-|   2   |   §2    | Text buffer and caret model | §1 |  [ ]   |
+|   2   |   §2    | Text buffer and caret model | §1, D01 T01 §4 |  [ ]   |
 |   3   |   §3    | Rendering, selection, clipboard | §2 |  [ ]   |
 |   4   |   §4    | Undo and redo | §2 |  [ ]   |
 |   5   |   §5    | Zoom and word wrap | §3 |  [ ]   |
@@ -64,6 +68,7 @@ Why this section exists: the shell and the surface evolve separately, so their b
 - [ ] Lifetime and threading rules are recorded: who owns the buffer, which thread edits, how the shell observes. Done when: the rules are written and the placeholder honors them.
 - [ ] The placeholder surface implements the interface so the shell runs end to end before the real surface lands. Done when: the app runs with the placeholder and all shell tests pass.
 - [ ] AI edits are declared as future consumers of this same interface, never as a second edit path. Done when: the declaration is recorded here.
+- [ ] Every `ContentFor`/`SetBoxText` caller (107 uses across 5 src files) and the `TabContentBox` UI tests migrate to `IEditorSurface`, and the Stats, Snapshots, and Export `ITextProvider` seams (TextStats.cs, StatsDialog.cs, D01 T01 §16 and §18) rebind to the real buffer. Done when: no caller touches the TextBox directly and the three features read the buffer (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: settle the shell hosting contract"`
 
 **Test checkpoint:** Shell tests green against the placeholder; an interface-conformance test fails if any method is unimplemented. Cheaper substitute that fails: the shell reaching into surface internals.
@@ -82,6 +87,7 @@ Why this section exists: the buffer is the source of truth for every character. 
 - [ ] End-of-paragraph selection follows Notepad: mouse drag and Shift+End exclude the EOP character, Shift+RightArrow and next-line extension include it, matching what Delete removes; with wrap off the caret follows typed spaces. Done when: the EOP fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
 - [ ] Alt+X converts preceding hex into its Unicode character and Ctrl+} jumps between matching brackets, as Notepad's RichEdit engine does. Done when: both fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
 - [ ] The Unicode-controls display mode (menu entry in §6) renders bidi RLO/LRO and ZWJ as zero-width glyphs and splits ZWJ emoji sequences for arrow-key navigation and Alt+X inspection. Done when: the mode fixtures pass. Source: https://devblogs.microsoft.com/math-in-office/windows-11-notepad/
+- [ ] Enter inserts the document's detected line ending (stock sets it as the typed default), so typing never mixes endings. Done when: Enter in a CRLF, LF, and CR document inserts that ending (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: add the text buffer and caret model"`
 
 **Test checkpoint:** `dotnet test --filter TextBuffer` green across movement, selection, and edge-case fixtures. Cheaper substitute that fails: caret math that works on ASCII and breaks on real text.
@@ -109,6 +115,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 - [ ] Dragging selected text moves or copies it per Notepad's modifiers, recorded from the capture. Done when: move and copy drags are driven.
 - [ ] Ctrl+click selects the paragraph under the cursor. Done when: the gesture is driven. Source: https://techlasi.com/savvy/get-help-with-notepad-in-windows-complete-guide-for-2025/
 - [ ] Double-click selects the word alone with no trailing space, as Win11 changed it. Done when: the gesture is driven. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
+- [ ] Paste normalizes line endings to the document's ending. Done when: pasting LF text into a CRLF document stores CRLF (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: render the surface with selection and clipboard"`
 
 **Test checkpoint:** Capture comparison passes; clipboard round-trips driven; gestures driven; accessibility checks pass. Cheaper substitute that fails: rendering asserted without comparing to the capture.
@@ -139,6 +146,8 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 
 **Groomed 2026-09-13:** Notepad audit: exact zoom keys, the wrap-on line/column rule, and the F5 time/date insert are now explicit.
 
+**Groomed 2026-09-23:** Corrections: (1) Word wrap persistence already exists (`ShellSettings.WordWrap`, default true, written live by the settings page) but the TextBox hardcodes `TextWrapping.NoWrap`, so the item is to consume the key live and have View > Word wrap write it; `docs/settings-schema.md` names D02 T01 §4 as the consumer and should name §5. (2) Zoom accelerators are bound to the numpad `Add`/`Subtract` only (MenuBar.xaml); bind the main-row plus and minus keys too and drive both. (3) The store has only `ZoomDefault` for fresh tabs; record whether the live level persists (default: per-tab, session-only, ZoomDefault seeds new tabs; cost one int key).
+
 - [ ] Zoom steps, shortcuts, and limits match Notepad; the level persists through the settings store. Done when: each step is driven and persistence proven.
 - [ ] Word wrap toggles per Notepad with the choice persisted; wrapped and unwrapped caret math both hold. Done when: the wrap fixtures pass.
 - [ ] The status bar zoom readout stays in sync (with `D01 T02 §4`). Done when: the sync is driven.
@@ -162,6 +171,8 @@ Why this section exists: right-click is a surface too. The context menu must car
 **Chrome:** Consume the shared menu styles. Do not invent a second context treatment.
 
 **Groomed 2026-09-13:** Notepad audit: the compact layout specifics with AI, Spelling, and Unicode-controls routing are now explicit.
+
+**Groomed 2026-09-23:** Already present: the Define with Bing handler exists (`OnEditDefineBing`, MenuBar.xaml), so the context entry only routes to it.
 
 - [ ] The context menu carries Notepad's items in order with correct enablement. Done when: the capture comparison passes item by item.
 - [ ] Each item routes to the same handler as its menu/shortcut twin. Done when: no handler exists twice.
@@ -196,6 +207,8 @@ Why this section exists: selections get reshaped constantly: case fixed, lines s
 **Chrome:** Consume the shared menu styles. Do not invent a second utility treatment.
 
 **Needs:** Windows host (build/test)
+
+**Groomed 2026-09-23:** Menu exposure corrected: D01 T02 §1 has shipped; add entries to MenuBar.xaml with shortcuts clear of the taken Ctrl+Shift+G/H/E/X/L/T/N/S/W, and D01 T02 §6 audits them.
 
 - [ ] Case conversion (upper, lower, title, sentence) transforms the selection. Done when: each mode is driven on fixtures.
 - [ ] Sort lines orders the selected lines. Done when: ascending and descending both driven.
@@ -263,6 +276,8 @@ Why this section exists: the TextFX drawer: six small tools on the selection or 
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Menu exposure corrected: D01 T02 §1 has shipped; add entries to MenuBar.xaml with shortcuts clear of the taken Ctrl+Shift+G/H/E/X/L/T/N/S/W, and D01 T02 §6 audits them.
+
 - [ ] JSON and XML pretty print plus minify run on the selection. Done when: all four are driven on fixtures.
 - [ ] Base64, URL, and HTML-entity encode and decode run on the selection. Done when: round-trips pass.
 - [ ] Whitespace normalization (trailing spaces, blank runs, mixed tabs) runs one command each. Done when: each is driven.
@@ -293,6 +308,7 @@ Why this section exists: marked lines with next/previous jumps that persist per 
 - [ ] A menu lists the file's bookmarks and jumps on click. Done when: the list matches the marks.
 - [ ] Marks persist per file path across restarts. Done when: relaunch keeps them.
 - [ ] Untitled (pathless) files hold marks for the session only. Done when: the session rule is driven.
+- [ ] Bookmarks offer clear-all, name their persistence store, and survive a rename or move of the file. Done when: clear-all is driven and a renamed file keeps its bookmarks (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: bookmark lines"`
 
 **Test checkpoint:** jumps, menu list, persistence, and the untitled rule are all driven in the room. Cheaper substitute that fails: bookmarks by line number that never adjust.
@@ -337,6 +353,7 @@ Why this section exists: a pasted URL becomes a titled link, pasted code becomes
 - [ ] Title fetch times out to URL-as-text with no hang. Done when: the slow-network path is driven.
 - [ ] Code-shaped pastes become fenced blocks per the recorded heuristic. Done when: fixtures pass and the heuristic is recorded.
 - [ ] Uncertain pastes stay plain. Done when: the negative fixtures pass.
+- [ ] Smart paste has an off switch and a plain-paste escape, undo returns to the raw paste in one step, and network title fetch sits behind its own toggle. Done when: each path is driven (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: paste smart"`
 
 **Test checkpoint:** link, fetch fallback, fence, and fail-plain are all driven in the room. Cheaper substitute that fails: paste that rewrites what you copied.
@@ -355,10 +372,13 @@ Why this section exists: URLs in the text are interactive: detected, styled, hov
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Parity corrected: stock RichEdit has autoURL detection enabled (devblogs, the source cited for §2), so this is parity, not a new build; capture-first records its styling and Ctrl+click behavior.
+
 - [ ] URLs detect and style under host drive. Done when: fixtures cover bare, wrapped, and trailing-punctuation URLs.
 - [ ] Hover shows the pointer and the target URL. Done when: the hover path is driven.
 - [ ] Ctrl+click opens the URL through the OS shell. Done when: the open path is driven.
 - [ ] Plain click still places the caret on a link. Done when: caret placement on links is driven.
+- [ ] Ctrl+click has one precedence rule across paragraph select (§3), URL open (here), and link open (D02 T04 §2), and every URL open passes the shared post-CVE scheme gate. Done when: each Ctrl+click target is driven and a disallowed scheme is refused (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: link the URLs"`
 
 **Test checkpoint:** detection, hover, open, and caret preservation are all driven in the room. Cheaper substitute that fails: links that open on any click.
@@ -381,6 +401,7 @@ Why this section exists: writers compare passages and work two notes at once. St
 - [ ] Split two different files side by side. Done when: each pane shows its file with independent dirty state.
 - [ ] Panes scroll and edit independently under host drive. Done when: scroll position and caret do not leak across panes.
 - [ ] Keyboard focus moves between panes and is announced. Done when: the shortcut moves focus both ways with UIA announcement.
+- [ ] Split view has an unsplit and close-pane action. Done when: unsplit returns to one pane with the caret kept (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: split the view"`
 
 **Test checkpoint:** splits on one buffer and two files, independence, and focus moves are all driven in the room. Cheaper substitute that fails: panes sharing one caret.
@@ -420,6 +441,8 @@ Why this section exists: copy-as puts Markdown, HTML, or plain text on the clipb
 
 **Needs:** Windows host (build/test)
 
+**Groomed 2026-09-23:** Menu exposure corrected: D01 T02 §1 has shipped; add entries to MenuBar.xaml with shortcuts clear of the taken Ctrl+Shift+G/H/E/X/L/T/N/S/W, and D01 T02 §6 audits them. Already present: `FormatConverter.ToHtmlFragment`, `ToMarkdown`, and `ToPlainText` exist for copy-as.
+
 - [ ] Copy-as places Markdown, HTML, and plain text on the clipboard. Done when: all three formats paste correctly.
 - [ ] Menu entries with shortcuts expose copy-as through D01 T02 §1. Done when: the audit names them.
 - [ ] Clipboard carries both the format and plain-text fallback. Done when: pasting into plain and rich targets both work.
@@ -445,6 +468,7 @@ Why this section exists: two tabs, side by side, word-level change marks. Review
 - [ ] Word-level change marks render on both sides. Done when: fixtures match exactly.
 - [ ] The pair hosts in a D02 T01 §16 split. Done when: panes show the pair under host drive.
 - [ ] Marks are display-only; editing either side re-marks live. Done when: re-marking is driven.
+- [ ] Diff view has an exit and unpair action. Done when: exit restores both tabs unchanged (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: diff two tabs"`
 
 **Test checkpoint:** pairing, word marks, split hosting, and live re-mark are all driven in the room. Cheaper substitute that fails: a diff of screenshots.

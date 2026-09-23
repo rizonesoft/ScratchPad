@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **110 of 280 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **110 of 288 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -153,7 +153,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §25` | Trend and telemetry follow-ups                  |  11   |
 | [ ] | `D00 T02 §26` | Sibling sweep narrowing                         |   3   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                      |   5   |
-| [ ] | `D00 T03 §2`  | README rewrite plus repo-face files             |   8   |
+| [ ] | `D00 T03 §2`  | README rewrite plus repo-face files             |   9   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record       |   5   |
 | [x] | `D00 T01 §42` | Requires operator vocabulary                    |   5   |
 | [x] | `D00 T01 §43` | Findings count touch-up                         |   5   |
@@ -190,12 +190,13 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T04 §19` | Opus 5.5 reviewer re-pin                        |   6   |
 | [ ] | `D00 T04 §20` | Section-19 plan-review residuals                |   3   |
 | [x] | `D00 T04 §21` | GPT-6 sol reviewer re-pin                       |   6   |
-| [ ] | `D00 T04 §22` | Section-21 review residuals                     |   3   |
+| [ ] | `D00 T04 §22` | Section-21 review residuals                     |   4   |
 | [x] | `D00 T04 §23` | Implementer-independent panel: GPT governs      |   9   |
 | [ ] | `D00 T04 §24` | Section-23 sign-off residuals                   |   5   |
 | [x] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
-| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   5   |
+| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   6   |
 | [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   3   |
+| [ ] | `D00 T05 §2`  | Run-guard proof                                 |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
 | [ ] | `D00 T08 §1`  | Poster and delivery hardening                   |  12   |
@@ -224,17 +225,18 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §15` | Chrome color finetune against stock                                 |   5   |
 | [ ] | `D01 T02 §5`  | Print path                                                          |   6   |
 | [ ] | `D01 T02 §6`  | Menu and shortcut completeness audit                                |   4   |
-| [ ] | `D01 T02 §7`  | Reading level in the status bar                                     |   4   |
-| [ ] | `D01 T02 §8`  | Command palette                                                     |   6   |
-| [ ] | `D01 T02 §9`  | Live counts in the status bar                                       |   5   |
-| [ ] | `D01 T02 §10` | Custom accent themes                                                |   5   |
-| [ ] | `D01 T02 §11` | Session word goal                                                   |   4   |
+| [ ] | `D01 T02 §7`  | Reading level in the status bar                                     |   5   |
+| [ ] | `D01 T02 §8`  | Command palette                                                     |   7   |
+| [ ] | `D01 T02 §9`  | Live counts in the status bar                                       |   6   |
+| [ ] | `D01 T02 §10` | Custom accent themes                                                |   6   |
+| [ ] | `D01 T02 §11` | Session word goal                                                   |   5   |
 | [ ] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
 | [ ] | `D01 T02 §16` | Quarantine the MenuBarTests flakes                                  |   7   |
-| [ ] | `D01 T02 §17` | About panel identity rows                                           |   7   |
-| [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   5   |
-| [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |   9   |
-| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  10   |
+| [ ] | `D01 T02 §17` | About panel identity rows                                           |   8   |
+| [ ] | `D01 T02 §18` | Fix-or-remove MenuBarTests flakes                                   |   2   |
+| [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   6   |
+| [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |  10   |
+| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  11   |
 | [ ] | `D02 T01 §4`  | Undo and redo                                                       |   5   |
 | [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   7   |
 | [ ] | `D02 T01 §6`  | Context menu and mouse behaviors                                    |   5   |
@@ -243,14 +245,14 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D02 T01 §9`  | Synonym picker                                                      |   5   |
 | [ ] | `D02 T01 §10` | Readability heatmap                                                 |   4   |
 | [ ] | `D02 T01 §11` | Text utilities: format, encode, normalize, slugify, inspect, tables |   9   |
-| [ ] | `D02 T01 §12` | Bookmarked lines                                                    |   5   |
+| [ ] | `D02 T01 §12` | Bookmarked lines                                                    |   6   |
 | [ ] | `D02 T01 §13` | Column selection                                                    |   5   |
-| [ ] | `D02 T01 §14` | Smart paste                                                         |   5   |
-| [ ] | `D02 T01 §15` | Clickable URLs                                                      |   5   |
-| [ ] | `D02 T01 §16` | Split view                                                          |   5   |
+| [ ] | `D02 T01 §14` | Smart paste                                                         |   6   |
+| [ ] | `D02 T01 §15` | Clickable URLs                                                      |   6   |
+| [ ] | `D02 T01 §16` | Split view                                                          |   6   |
 | [ ] | `D02 T01 §17` | Distraction-free focus mode                                         |   4   |
 | [ ] | `D02 T01 §18` | Copy as Markdown, HTML, plain text                                  |   4   |
-| [ ] | `D02 T01 §19` | Side-by-side tab diff                                               |   5   |
+| [ ] | `D02 T01 §19` | Side-by-side tab diff                                               |   6   |
 | [ ] | `D02 T02 §1`  | Search engine over the buffer                                       |   6   |
 | [ ] | `D02 T02 §2`  | Find bar UI                                                         |   7   |
 | [ ] | `D02 T02 §3`  | Replace mode                                                        |   4   |
@@ -278,13 +280,13 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §32` | Quarantine the AppIcon and Launch CI flakes                         |   4   |
 | [ ] | `D01 T01 §33` | F1 context help                                                     |   4   |
 | [ ] | `D01 T01 §34` | Pinned-tab close regressions                                        |   3   |
-| [ ] | `D01 T01 §35` | Fix-or-remove the night-triage quarantines                          |   9   |
+| [ ] | `D01 T01 §35` | Fix-or-remove the night-triage quarantines                          |  10   |
 | [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   6   |
-| [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   5   |
+| [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   6   |
 | [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |
-| [ ] | `D02 T03 §4`  | Global and per-file-type toggles                                    |   5   |
-| [ ] | `D02 T04 §1`  | Format model over the buffer                                        |   4   |
-| [ ] | `D02 T04 §2`  | Toolbar: inline styles and lists                                    |   9   |
+| [ ] | `D02 T03 §4`  | Global and per-file-type toggles                                    |   6   |
+| [ ] | `D02 T04 §1`  | Format model over the buffer                                        |   5   |
+| [ ] | `D02 T04 §2`  | Toolbar: inline styles and lists                                    |  10   |
 | [ ] | `D02 T04 §3`  | Markdown syntax and source fidelity                                 |   8   |
 | [ ] | `D02 T04 §4`  | Tables by toolbar and syntax                                        |   4   |
 | [ ] | `D02 T04 §5`  | Formatting toggle and plain-text safety                             |   5   |
@@ -305,16 +307,19 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | :-: | ------------ | -------------------------------------------- | :---: |
 | [ ] | `D03 T01 §1` | JSON-RPC message layer                       |   5   |
 | [ ] | `D03 T01 §2` | Stdio subprocess transport                   |   5   |
-| [ ] | `D03 T01 §3` | Initialize and capability negotiation        |   5   |
-| [ ] | `D03 T01 §4` | Session create and load                      |   4   |
-| [ ] | `D03 T01 §5` | Prompt turns with streaming updates          |   5   |
-| [ ] | `D03 T01 §6` | Cancellation and timeouts                    |   4   |
-| [ ] | `D03 T01 §7` | Fault survival: crashes and malformed output |   4   |
+| [ ] | `D03 T01 §3` | Initialize and capability negotiation        |   6   |
+| [ ] | `D03 T01 §4` | Session create and load                      |   5   |
+| [ ] | `D03 T01 §5` | Prompt turns with streaming updates          |   6   |
+| [ ] | `D03 T01 §6` | Cancellation and timeouts                    |   5   |
+| [ ] | `D03 T01 §7` | Fault survival: crashes and malformed output |   5   |
+| [ ] | `D03 T01 §8` | Session list, resume, close, delete          |   4   |
+| [ ] | `D03 T01 §9` | Modes and config options                     |   3   |
 | [ ] | `D03 T02 §1` | Permission request handling                  |   5   |
-| [ ] | `D03 T02 §2` | File-system methods with scoped roots        |   5   |
+| [ ] | `D03 T02 §2` | File-system methods with scoped roots        |   6   |
 | [ ] | `D03 T02 §3` | Terminal execution                           |   5   |
 | [ ] | `D03 T02 §4` | Grant scope and revocation                   |   4   |
 | [ ] | `D03 T02 §5` | Grant audit log                              |   4   |
+| [ ] | `D03 T02 §6` | Elicitation requests                         |   3   |
 | [ ] | `D03 T03 §1` | Per-connection version selection             |   4   |
 | [ ] | `D03 T03 §2` | v2 lifecycle behind flags                    |   5   |
 | [ ] | `D03 T03 §3` | v1 regression lock                           |   4   |
@@ -323,7 +328,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D04 T01 §3` | Launch health checks                         |   4   |
 | [ ] | `D04 T01 §4` | Missing-agent guidance                       |   4   |
 | [ ] | `D04 T01 §5` | Adapter compatibility record                 |   4   |
-| [ ] | `D04 T02 §1` | Authenticate and logout                      |   5   |
+| [ ] | `D04 T02 §1` | Authenticate and logout                      |   6   |
 | [ ] | `D04 T02 §2` | Session list and create                      |   4   |
 | [ ] | `D04 T02 §3` | Session resume and delete                    |   4   |
 | [ ] | `D04 T02 §4` | Session close and cleanup                    |   4   |
@@ -332,47 +337,49 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 3 -- AI surface and quality: panel, consent, conformance
 
-|  ✔  | Section      | Deliverable                                     | Items |
-| :-: | ------------ | ----------------------------------------------- | :---: |
-| [ ] | `D05 T01 §1` | Panel shell and transcript contract             |   4   |
-| [ ] | `D05 T01 §2` | Streaming transcript rendering                  |   5   |
-| [ ] | `D05 T01 §3` | Input, send, and stop                           |   4   |
-| [ ] | `D05 T01 §4` | Turn states and cancellation UX                 |   4   |
-| [ ] | `D05 T01 §5` | Agent picker and history                        |   4   |
-| [ ] | `D05 T01 §6` | Panel and editor coexistence                    |   4   |
-| [ ] | `D05 T01 §7` | Chat export to Markdown                         |   4   |
-| [ ] | `D05 T02 §1` | Permission prompt surface                       |   5   |
-| [ ] | `D05 T02 §2` | Tool-call and plan display                      |   4   |
-| [ ] | `D05 T02 §3` | Diff review                                     |   4   |
-| [ ] | `D05 T02 §4` | Apply to editor through undo                    |   5   |
-| [ ] | `D05 T02 §5` | Elicitation forms                               |   4   |
-| [ ] | `D05 T02 §6` | Selection actions: explain, rewrite, summarize  |  14   |
-| [ ] | `D05 T02 §7` | Document actions: translate, extract, summarize |   7   |
-| [ ] | `D05 T02 §8` | Continue writing with ghost drafts              |   6   |
-| [ ] | `D05 T02 §9` | Agent title suggestions for untitled tabs       |   4   |
-| [ ] | `D06 T01 §1` | Strategy doc with layers and bars               |   5   |
-| [ ] | `D06 T01 §2` | Coverage floors enforced in CI                  |   5   |
-| [ ] | `D06 T01 §3` | Notepad parity UI suites                        |   5   |
-| [ ] | `D06 T01 §4` | AI surface UI suites                            |   4   |
-| [ ] | `D06 T01 §5` | Perf budgets enforced in CI                     |   4   |
-| [ ] | `D06 T01 §6` | Flake policy and quarantine operation           |   5   |
-| [ ] | `D06 T02 §1` | Scripted agent library                          |   4   |
-| [ ] | `D06 T02 §2` | Schema pin and drift detection                  |   4   |
-| [ ] | `D06 T02 §3` | Version matrix (v1 and v2)                      |   4   |
-| [ ] | `D06 T02 §4` | Adapter compatibility schedule                  |   5   |
-| [ ] | `D05 T03 §1` | Agent status bar                                |   5   |
-| [ ] | `D05 T03 §2` | Per-tab pane with document context              |   5   |
-| [ ] | `D05 T03 §3` | Slash commands                                  |   5   |
-| [ ] | `D05 T03 §4` | Agent management panel                          |   4   |
-| [ ] | `D05 T03 §5` | Token usage display                             |   4   |
-| [ ] | `D08 T01 §1` | Kokoro TTS embedded                             |   5   |
-| [ ] | `D08 T01 §2` | Audio transcode and provisioning                |   4   |
-| [ ] | `D08 T01 §3` | Whisper STT embedded                            |   5   |
-| [ ] | `D08 T01 §4` | Provider interface with OpenRouter              |   5   |
-| [ ] | `D08 T02 §1` | Read-aloud UI with MP3                          |   5   |
-| [ ] | `D08 T02 §2` | Dictate and transcribe UI                       |   5   |
-| [ ] | `D08 T02 §3` | Provider settings and consent                   |   5   |
-| [ ] | `D08 T02 §4` | Voice menus and shortcuts                       |   4   |
+|  ✔  | Section       | Deliverable                                     | Items |
+| :-: | ------------- | ----------------------------------------------- | :---: |
+| [ ] | `D05 T01 §1`  | Panel shell and transcript contract             |   4   |
+| [ ] | `D05 T01 §2`  | Streaming transcript rendering                  |   5   |
+| [ ] | `D05 T01 §3`  | Input, send, and stop                           |   4   |
+| [ ] | `D05 T01 §4`  | Turn states and cancellation UX                 |   4   |
+| [ ] | `D05 T01 §5`  | Agent picker and history                        |   5   |
+| [ ] | `D05 T01 §6`  | Panel and editor coexistence                    |   4   |
+| [ ] | `D05 T01 §7`  | Chat export to Markdown                         |   4   |
+| [ ] | `D05 T02 §1`  | Permission prompt surface                       |   5   |
+| [ ] | `D05 T02 §2`  | Tool-call and plan display                      |   5   |
+| [ ] | `D05 T02 §3`  | Diff review                                     |   5   |
+| [ ] | `D05 T02 §4`  | Apply to editor through undo                    |   6   |
+| [ ] | `D05 T02 §5`  | Elicitation forms                               |   4   |
+| [ ] | `D05 T02 §6`  | Selection actions: explain, rewrite, summarize  |  14   |
+| [ ] | `D05 T02 §7`  | Document actions: translate, extract, summarize |   7   |
+| [ ] | `D05 T02 §8`  | Continue writing with ghost drafts              |   6   |
+| [ ] | `D05 T02 §9`  | Agent title suggestions for untitled tabs       |   4   |
+| [ ] | `D05 T02 §10` | Grants and audit viewer                         |   3   |
+| [ ] | `D06 T01 §1`  | Strategy doc with layers and bars               |   5   |
+| [ ] | `D06 T01 §2`  | Coverage floors enforced in CI                  |   5   |
+| [ ] | `D06 T01 §3`  | Notepad parity UI suites                        |   5   |
+| [ ] | `D06 T01 §4`  | AI surface UI suites                            |   4   |
+| [ ] | `D06 T01 §5`  | Perf budgets enforced in CI                     |   4   |
+| [ ] | `D06 T01 §6`  | Flake policy and quarantine operation           |   5   |
+| [ ] | `D06 T02 §1`  | Scripted agent library                          |   6   |
+| [ ] | `D06 T02 §2`  | Schema pin and drift detection                  |   4   |
+| [ ] | `D06 T02 §3`  | Version matrix (v1 and v2)                      |   4   |
+| [ ] | `D06 T02 §4`  | Adapter compatibility schedule                  |   5   |
+| [ ] | `D05 T03 §1`  | Agent status bar                                |   5   |
+| [ ] | `D05 T03 §2`  | Per-tab pane with document context              |   5   |
+| [ ] | `D05 T03 §3`  | Slash commands                                  |   6   |
+| [ ] | `D05 T03 §4`  | Agent management panel                          |   5   |
+| [ ] | `D05 T03 §5`  | Token usage display                             |   4   |
+| [ ] | `D05 T03 §6`  | AI settings group                               |   3   |
+| [ ] | `D08 T01 §1`  | Kokoro TTS embedded                             |   6   |
+| [ ] | `D08 T01 §2`  | Audio transcode and provisioning                |   4   |
+| [ ] | `D08 T01 §3`  | Whisper STT embedded                            |   5   |
+| [ ] | `D08 T01 §4`  | Provider interface with OpenRouter              |   6   |
+| [ ] | `D08 T02 §1`  | Read-aloud UI with MP3                          |   5   |
+| [ ] | `D08 T02 §2`  | Dictate and transcribe UI                       |   5   |
+| [ ] | `D08 T02 §3`  | Provider settings and consent                   |   5   |
+| [ ] | `D08 T02 §4`  | Voice menus and shortcuts                       |   4   |
 
 ### Phase 4 -- Release: packaging, install, update
 
@@ -381,15 +388,16 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D07 T01 §9`  | Dynamic version scheme                |   5   |
 | [ ] | `D07 T01 §10` | Product identity registry             |   5   |
 | [ ] | `D07 T01 §11` | Help content pipeline                 |   5   |
-| [ ] | `D07 T01 §1`  | MSIX package build                    |   5   |
-| [ ] | `D07 T01 §2`  | Clean-machine install test            |   4   |
+| [ ] | `D07 T01 §1`  | MSIX package build                    |   7   |
+| [ ] | `D07 T01 §2`  | Clean-machine install test            |   5   |
 | [ ] | `D07 T01 §3`  | Update channel with rollback          |   5   |
 | [ ] | `D07 T01 §4`  | Release checklist                     |   4   |
 | [ ] | `D07 T01 §5`  | First signed release                  |   4   |
 | [ ] | `D07 T01 §12` | Guide web publishing and link switch  |   3   |
+| [ ] | `D07 T01 §13` | User-guide backfill                   |   3   |
 | [ ] | `D07 T01 §6`  | Store and WinGet distribution         |   4   |
 | [ ] | `D07 T01 §7`  | Share target registration             |   4   |
-| [ ] | `D07 T01 §8`  | Inno Setup installer and distribution |   6   |
+| [ ] | `D07 T01 §8`  | Inno Setup installer and distribution |   7   |
 
 ### Phase 99 -- Manual: operator-only steps
 

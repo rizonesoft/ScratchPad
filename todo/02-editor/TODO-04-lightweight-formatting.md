@@ -21,6 +21,8 @@ track: N2
 - [`02-editor/TODO-01-editing-surface.md`](./TODO-01-editing-surface.md) -- the surface being formatted
 - [`01-notepad-core/TODO-02-menus-settings-status.md`](../01-notepad-core/TODO-02-menus-settings-status.md) -- §2 owns the formatting toggle
 
+**Groomed 2026-09-23:** Registry named: "the `MenuCommands` registry" is the `commands` dictionary in `src/ScratchPad/MenuBar.xaml.cs` (lines 39-80), driven through `AppMenuBar.SetEnabled(automationId, bool)`; no type is named MenuCommands.
+
 ## Outcome
 
 - The formatting toolbar offers Notepad's styles with identical behavior.
@@ -36,7 +38,7 @@ track: N2
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Format model over the buffer | D02 T01 §2 |  [ ]   |
+|   1   |   §1    | Format model over the buffer | D02 T01 §2, D01 T01 §18 |  [ ]   |
 |   2   |   §2    | Toolbar: inline styles and lists | §1 |  [ ]   |
 |   3   |   §3    | Markdown syntax and source fidelity | §1 |  [ ]   |
 |   4   |   §4    | Tables by toolbar and syntax | §2, §3 |  [ ]   |
@@ -51,6 +53,7 @@ Why this section exists: formatting is data on top of the buffer, not a second b
 - [ ] `src/Notepad.Core/FormatModel.cs` represents Notepad's styles as annotations on the §2 buffer. Done when: the model fixtures pass. **Recorded 2026-09-16:** D01 T02 §1 ships File > New Markdown tab disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] The supported syntax is exactly Notepad's (no extra Markdown dialect). Done when: the syntax list is recorded from the source and tested.
 - [ ] Annotations survive edits, undo, and save/load without drifting from the text. Done when: the stability fixtures pass.
+- [ ] `FormatConverter` extends to the recorded syntax list (nested lists, strikethrough, tables) so export, copy-as, and print keep them. Done when: each construct round-trips through the three converters (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: add the format model"`
 
 **Test checkpoint:** `dotnet test --filter FormatModel` green on model, syntax, and stability fixtures. Cheaper substitute that fails: formatting stored as HTML nobody can diff.
@@ -77,6 +80,7 @@ Why this section exists: the toolbar is the surface. Bold, italic, lists, nested
 - [ ] Links insert through the toolbar or Ctrl+K with anchor text, and Ctrl+click opens them in the default browser; hand-typed Markdown link syntax works too, and editing or removing a link is recorded from the capture. Done when: insert, open, edit, and remove are driven. Source: https://www.windowslatest.com/2025/07/02/windows-11-notepads-rich-text-formatting-markdown-is-now-available/
 - [ ] Link opening gates schemes as Notepad does post-CVE-2026-20841: http/https open directly, every other scheme warns and requires confirmation. Done when: adversarial fixtures (file, ms-appinstaller, custom schemes) pass. Source: https://www.ghacks.net/2026/02/12/windows-11-notepad-bug-let-markdown-links-run-files-without-warning/
 - [ ] Clear Formatting strips styles, hyperlinks, and headings from the selection (or the document with no selection) through the toolbar button, Ctrl+Space, and the Edit menu. Done when: all three paths are driven. Source: https://allthings.how/how-to-remove-text-formatting-in-notepad-on-windows-11/ **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Clear Formatting disabled; this section enables it through the `MenuCommands` registry as part of the Edit-menu path.
+- [ ] Stock shortcuts Ctrl+B, Ctrl+I, and Ctrl+Shift+X apply bold, italic, and strikethrough, and Tools > Export's Ctrl+Shift+X is rebound with the move recorded. Done when: each shortcut is driven and Export keeps a free shortcut (Groomed 2026-09-23.)
 - [ ] Commit: `"editor: build the formatting toolbar"`
 
 **Test checkpoint:** Toolbar, nesting, and undo driven; capture comparison passes. Cheaper substitute that fails: styles that apply but never show active.
@@ -124,6 +128,8 @@ Why this section exists: tables are the newest formatting surface. Both entry pa
 Why this section exists: formatting is optional in Notepad, and plain text must stay plain. The toggle and the safety net live here.
 
 **Groomed 2026-09-13:** Notepad audit: the on-by-default value and the disable confirmation are now explicit.
+
+**Groomed 2026-09-23:** Card already exists: `SettingsCardFormatting` sits disabled in SettingsPage.xaml with an owner comment naming this item, and no key exists yet (settings-schema.md); enable and bind it to a new formatting key.
 
 - [ ] The settings page carries the formatting toggle bound to the store. Done when: the toggle is driven.
 - [ ] With formatting off, the toolbar hides and all syntax stays literal. Done when: the off-state fixtures pass.

@@ -4,7 +4,7 @@ id: chat-panel
 domain: 05-ai-surface
 status: draft
 title: "TODO-01 -- Chat Panel"
-depends_on: ["winui-app-spine", "acp-transport-lifecycle"]
+depends_on: ["acp-transport-lifecycle"]
 track: A3
 ---
 
@@ -15,11 +15,15 @@ track: A3
 > [!IMPORTANT]
 > **Current state:** No AI surface exists. `D03 T01 §5` streams updates to the transcript contract settled in §1 here; the shell hosts the panel per `D01 T01 §1`.
 
+**Groomed 2026-09-23:** Sequence fix: the file-level dependency on `winui-app-spine` held this whole file until every spine section shipped, and D01 T01 §33-§35 (F1 help, pinned-tab regressions, quarantines, filed after the spine shipped) reopened it: 53 sections sat blocked, and D01 T01 §33 (needs D07 T01 §11) and §35 (needs D01 T02 §16) deadlocked against it. The file-level edge is dropped; every real prerequisite stays a section-level Depends On row, so no row moved and no cycle remains.
+
 ## Inputs
 
 - [ACP prompt turn](https://agentclientprotocol.com/protocol/v1/prompt-turn) -- the conversation flow being rendered
 - [ACP content](https://agentclientprotocol.com/protocol/v1/content) -- the content blocks being rendered
 - -> XREF: D03 T01 §5 -- the prompt-turn stream this panel renders; the transcript contract below is what it delivers to
+
+**Groomed 2026-09-23:** Chrome corrected: no shared panel, transcript, or input styles exist (`src/ScratchPad/App.xaml` merges only `XamlControlsResources`, and D01 T01 §14 recorded the same); follow the code-built dialog pattern (ExportDialog, WhatsNewDialog), and D05 T01 §1 defines the AI styles once in its contract.
 
 ## Outcome
 
@@ -37,9 +41,9 @@ track: A3
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Panel shell and transcript contract | D01 T01 §1, D03 T01 §5 |  [ ]   |
 |   2   |   §2    | Streaming transcript rendering | §1 |  [ ]   |
-|   3   |   §3    | Input, send, and stop | §1 |  [ ]   |
+|   3   |   §3    | Input, send, and stop | §1, D03 T01 §6 |  [ ]   |
 |   4   |   §4    | Turn states and cancellation UX | §2, §3 |  [ ]   |
-|   5   |   §5    | Agent picker and history | §1 |  [ ]   |
+|   5   |   §5    | Agent picker and history | §1, D04 T01 §3, D04 T02 §3 |  [ ]   |
 |   6   |   §6    | Panel and editor coexistence | §2, §3 |  [ ]   |
 |   7   |   §7    | Chat export to Markdown | §1, D01 T01 §5 |  [ ]   |
 
@@ -137,6 +141,7 @@ Why this section exists: users switch agents and revisit conversations. The pick
 - [ ] The picker lists detected agents with health state from `D04 T01 §3`; unhealthy agents are unselectable with cause. Done when: the picker matrix is driven.
 - [ ] History lists past turns per session and restores the transcript on selection. Done when: the restore is driven.
 - [ ] Switching agents mid-conversation is either supported with clear semantics or refused with a reason, never silently destructive. Done when: the behavior is tested.
+- [ ] Transcripts persist locally with atomic writes and readback when the agent lacks `session/load`, and history offers delete (through D04 T02 §3, confirmed) and clear. Done when: a restart restores a transcript without agent replay and delete removes it after confirmation (Groomed 2026-09-23.)
 - [ ] Commit: `"ai-surface: add the agent picker and history"`
 
 **Test checkpoint:** Picker, history restore, and switch semantics driven. Cheaper substitute that fails: history that restores the wrong transcript.

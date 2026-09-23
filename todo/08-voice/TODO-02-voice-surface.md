@@ -40,7 +40,7 @@ track: V1
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Read-aloud UI with MP3 | D08 T01 §1, D08 T01 §2, D02 T01 §2 |  [ ]   |
-|   2   |   §2    | Dictate and transcribe UI | D08 T01 §3, D02 T01 §2 |  [ ]   |
+|   2   |   §2    | Dictate and transcribe UI | D08 T01 §3, D02 T01 §2, D02 T01 §4 |  [ ]   |
 |   3   |   §3    | Provider settings and consent | D08 T01 §4, D01 T02 §2 |  [ ]   |
 |   4   |   §4    | Voice menus and shortcuts | §1, §2, D01 T02 §1 |  [ ]   |
 
@@ -103,6 +103,8 @@ Why this section exists: the key and the cloud choice are the trust surface. The
 **Chrome:** Consume the shared settings styles. Do not invent a second secret-field treatment.
 
 **Needs:** Windows host (build/test)
+
+**Groomed 2026-09-23:** Error honesty widened: besides a dead cloud, the surface shows the 401, 429, and oversized-upload results from D08 T01 §4 with their own messages.
 
 - [ ] The provider radio and key field persist with the key only in the platform store. Done when: the settings are driven and the key appears in no log or file.
 - [ ] Every cloud send confirms first with a decline path. Done when: accept and decline are driven.

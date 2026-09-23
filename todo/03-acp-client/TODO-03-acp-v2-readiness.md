@@ -54,6 +54,8 @@ Why this section exists: one connection speaks exactly one negotiated version. S
 
 Why this section exists: v2 restructures the prompt lifecycle (acceptance responses, upsert state updates). Each piece lands behind its own flag.
 
+**Groomed 2026-09-23:** Removed-surface list corrected per the v2 migration guide: v2 connections also omit `session/load` (replaced by `session/resume` with `replayFrom`) and the SSE MCP transport, rename `authenticate`/`logout` to `auth/login`/`auth/logout`, require message ids, and nest capability objects under `capabilities.session`; absence of each is tested.
+
 - [ ] `session/prompt` acceptance and `state_update` completion are implemented per the v2 schema. Done when: the v2 loopback drives a full turn.
 - [ ] Upsert semantics (omitted means unchanged, null clears, chunks append) are implemented and tested per the guide. Done when: the upsert fixtures pass.
 - [ ] Removed v1 surfaces (client fs, terminal execution, session modes) are absent on v2 connections, with MCP as the documented replacement path. Done when: the absence is tested, not assumed.

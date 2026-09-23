@@ -4,7 +4,7 @@ id: packaging-and-update
 domain: 07-release
 status: draft
 title: "TODO-01 -- Packaging and Update"
-depends_on: ["winui-app-spine"]
+depends_on: []
 track: R1
 ---
 
@@ -14,6 +14,8 @@ track: R1
 
 > [!IMPORTANT]
 > **Current state:** No packaging exists. The app builds per `D00 T01 §2`; this file turns the build into something a user can install.
+
+**Groomed 2026-09-23:** Sequence fix: the file-level dependency on `winui-app-spine` held this whole file until every spine section shipped, and D01 T01 §33-§35 (F1 help, pinned-tab regressions, quarantines, filed after the spine shipped) reopened it: 53 sections sat blocked, and D01 T01 §33 (needs D07 T01 §11) and §35 (needs D01 T02 §16) deadlocked against it. The file-level edge is dropped; every real prerequisite stays a section-level Depends On row, so no row moved and no cycle remains.
 
 ## Inputs
 
@@ -35,6 +37,8 @@ track: R1
 
 **Adjacency rationale:** Update notifications are the notifications; rollback is the reversal; the release log is project evidence, not a user-facing audit trail.
 
+**Groomed 2026-09-23:** Clean-machine proof corrected: VM testing retired on 2026-09-14 (D00 T01 §8 and D01 T01 §10 Moved notes), `build.yml` says release tests run manually on a clean system, and CI builds and launches only (operator decision 2026-09-17, push to main, no tag trigger). Read every "clean VM in CI" claim here as: driven on a clean Windows 11 system (Windows Sandbox when available), recorded manually, owed as Night-owed when interactive. Adjacency corrected: D01 T02 §2 shipped with no update-preference key, so settings is applicable at §3, which owns that key.
+
 ## Implementation Order
 
 | Order | Section | Deliverable | Depends On | Status |
@@ -46,12 +50,13 @@ track: R1
 |   5   |   §5    | First signed release | §4 |  [ ]   |
 |   6   |   §6    | Store and WinGet distribution | §1 |  [ ]   |
 |   7   |   §7    | Share target registration | §1, D01 T01 §24 |  [ ]   |
-|   8   |   §8    | Inno Setup installer and distribution | §1 |  [ ]   |
+|   8   |   §8    | Inno Setup installer and distribution | §1, D01 T01 §8 |  [ ]   |
 |   9   |   §9    | Dynamic version scheme | D00 T01 §2 |  [ ]   |
 |  10   |   §10   | Product identity registry | -- |  [ ]   |
-|  11   |   §11   | Help content pipeline | -- |  [ ]   |
+|  11   |   §11   | Help content pipeline | §13 |  [ ]   |
 |  12   |   §12   | Guide web publishing and link switch | §5 |  [ ]   |
 
+|  13   |  §13    | User-guide backfill | -- |  [ ]   |
 ---
 
 ## 1. MSIX Package Build
@@ -62,10 +67,14 @@ Why this section exists: the package is the product as the user meets it. It bui
 
 - -> XREF: D01 T02 §13 -- the rename this packaging pins (exe, AppId, ProgId, URL scheme); §13 lands first so identity is final.
 
+**Groomed 2026-09-23:** Packaging choice owed here: no section chose one, `ScratchPad.csproj` sets `WindowsPackageType=None` and `EnableMsixTooling=false`, and no .wapproj exists; choose single-project MSIX or a packaging project and flip those properties for the packaged build only. D01 T02 §13 has shipped, so identity is final.
+
 - [ ] CI builds a signed MSIX from the §-chosen packaging project. Done when: the artifact downloads from the run.
 - [ ] Package identity (name, publisher, version from the build) is pinned and recorded. Done when: the identity doc exists.
 - [ ] Capabilities requested are the minimum the app needs, each justified. Done when: the justification is written.
 - [ ] The package builds for x64 and ARM64 as Notepad ships natively since v11.2204; the architecture matrix is recorded and each arch installs on its VM. Done when: both arch installs are driven. Source: https://www.xda-developers.com/windows-11-notepad-arm64-native-support-media-player-update/
+- [ ] The certificate story is recorded: certificate source, CI secret handling (credential store, never in arguments or logs), timestamping, and rotation. Done when: the doc names each and a signed test build verifies (Groomed 2026-09-23.)
+- [ ] The manifest declares file-type associations and the protocol, replacing the registry path of `FileAssociationRegistrar` and `ProtocolAssociation` for packaged installs, and AppData virtualization is accounted for. Done when: a packaged install opens associated files and the protocol (Groomed 2026-09-23.)
 - [ ] Commit: `"release: build the MSIX package"`
 
 **Test checkpoint:** Signed MSIX artifact in CI with pinned identity and justified capabilities. Cheaper substitute that fails: a zip of the build folder.
@@ -77,6 +86,7 @@ Why this section exists: install must work where nothing of ours has ever been. 
 - [ ] Install on a clean Windows 11 VM succeeds with no prerequisites beyond the documented ones. Done when: the automated test passes.
 - [ ] First launch after install opens to the expected state with no errors. Done when: the launch test passes.
 - [ ] Uninstall removes the app, associations, and settings with nothing orphaned. Done when: the uninstall test passes.
+- [ ] Uninstall has a stated data policy for `%LOCALAPPDATA%\ScratchPad` (session.json with unsaved buffers, snapshots, templates) with a keep-or-remove choice, and the legacy `IntelligentNotepad` folder's retention is stated rather than claimed as nothing orphaned. Done when: both choices are driven and the folder states match the policy (Groomed 2026-09-23.)
 - [ ] Commit: `"release: test clean-machine install"`
 
 **Test checkpoint:** Install, launch, and uninstall tests green on a clean VM in CI. Cheaper substitute that fails: install tested on the dev machine.
@@ -86,6 +96,8 @@ Why this section exists: install must work where nothing of ours has ever been. 
 Why this section exists: updates must arrive and must be survivable. A failed update rolls back to a working app, never to a brick.
 
 **Groomed 2026-09-13:** Notepad audit: the post-update What's New notes surface is now explicit.
+
+**Groomed 2026-09-23:** What's New already exists (`WhatsNewDialog.cs`, D01 T01 §1) with hardcoded stock copy; narrow item 4 to feeding release notes into that dialog.
 
 - [ ] The update channel (store or self-hosted, chosen here) delivers updates with the choice recorded. Done when: the choice and its rationale are written.
 - [ ] A failed or interrupted update produces a rollback to the previous working version. Done when: the rollback test passes.
@@ -98,6 +110,8 @@ Why this section exists: updates must arrive and must be survivable. A failed up
 ## 4. Release Checklist
 
 Why this section exists: releases are proven, not declared. The checklist names every proof and blocks the release until each is green. -> SOURCE: operator-finding-2026-09-19-release-acceptance (required list omitted update/rollback proof and an explicit docs-present leg; filed 2026-09-19).
+
+**Groomed 2026-09-23:** CI scope corrected: CI proves build plus launch only, so the checklist runs locally against the candidate tag; add a tag trigger to `build.yml`.
 
 - [ ] `docs/release-checklist.md` requires: green suites, clean secret scan, current compatibility record, current docs with help content shipped (§11) and guide links resolved (§12), clean install test, and update/rollback proof (§3 tests green on the candidate). Done when: each item names its proof.
 - [ ] The checklist runs as a CI gate on the release branch or tag. Done when: a probe gap blocks the release (reverted immediately).
@@ -158,6 +172,7 @@ Why this section exists: MSIX plus Store plus WinGet (§§1-6) covers the manage
 - [ ] The setup exe is signed under the §1 certificate story with SHA-256 checksums published beside the artifact. Done when: the signature verifies on a stock machine and the checksum file ships with the release.
 - [ ] CI builds the setup exe on the release tag and attaches it to the release page draft. Done when: the artifact downloads from the run and the draft carries it with checksums.
 - [ ] First launch after setup install opens to the expected state with settings working and no errors. Done when: the launch test passes on the clean VM.
+- [ ] MSIX and Inno installs coexist or switch without splitting data or associations, Inno users get an update and rollback path, and share target's need for package identity is stated for Inno installs. Done when: a switch between flavors keeps settings and associations, and the Inno update path is driven (Groomed 2026-09-23.)
 - [ ] Commit: `"release: ship the Inno Setup installer"`
 
 **Test checkpoint:** Signed setup exe artifact in CI with §1 identity; clean-VM install, launch, and uninstall green; checksums published on the release draft. Cheaper substitute that fails: an unsigned exe on a release page.
@@ -165,6 +180,8 @@ Why this section exists: MSIX plus Store plus WinGet (§§1-6) covers the manage
 ## 9. Dynamic Version Scheme
 
 Why this section exists: the only version source is the release tag. A tag-derived versioner computes SemVer from the tag plus height at build time, so releasing is tagging and no hand-edited version string can drift between the assembly, the About panel, the installer, and the feed. The stub `0.0.0` default (D00 T01 §2) retires to tagless local builds only. Operator-confirmed 2026-09-19: the scheme stays as filed.
+
+**Groomed 2026-09-23:** Second version source found: `SettingsPage.xaml.cs` `AppVersion()` reads `GetName().Version` with a `"0.0.0.0"` literal fallback; route it through `NotepadCore.Version`, remove the literal, and bind the About version row in the agreement test.
 
 - [ ] `docs/release-versioning.md` records the scheme: tag shape `vMAJOR.MINOR.PATCH`, SemVer with height plus sha past the tag, Win32 four-part file version with the CI run number as fourth part, channel rule (tag on main reads stable, everything else reads preview), tagless local builds read `0.0.0-preview+<sha>`. Done when: every rule above is stated with an example string each.
 - [ ] A tag-derived versioner (MinVer, version pinned with lockfile) wires into `Directory.Build.props` so assembly, file, and informational versions stamp from the tag at build time. Done when: a build under a synthetic tag reports that tag from the binary and an untagged build reports the preview shape.
@@ -178,6 +195,8 @@ Why this section exists: the only version source is the release tag. A tag-deriv
 
 Why this section exists: the product's legal and brand strings live in exactly one machine-readable place. The About panel (D01 T02 §17), the installers (§§1, 8), and the headers below all render from it, so identity can never disagree with itself. The app name is final (D01 T02 §13 shipped); this section owns everything around it. Operator-confirmed 2026-09-19: GPL-3.0-or-later (SPDX `GPL-3.0-or-later`).
 
+**Groomed 2026-09-23:** Already present: `resources/rizonesoft-logo-{dark,light}.{svg,png}` exist; `resources/brand/` does not yet.
+
 - [ ] `resources/brand/identity.json` carries the product name, publisher `Rizonetech (Pty) Ltd`, copyright `© [build-year] Rizonetech (Pty) Ltd. All rights reserved` with the build-year substitution rule, and the operator-confirmed link slots: project home `https://rizonesoft.com`, corporate `https://rizonetech.com`, GitHub `https://github.com/rizonesoft/`, X `https://x.com/DerickPayneDev`, repository `https://github.com/rizonesoft/ScratchPad`, support (confirmed at build time). Done when: the file parses, every slot holds an `https://` URL, and a malformed-URL probe is red.
 - [ ] The brand assets verify: `resources/rizonesoft-logo-dark.svg`, `resources/rizonesoft-logo-light.svg`, and their PNG mates exist with the registry recording the About cap of 48px tall (auto width, about 172px at the wordmark ratio); the social icons `resources/brand/github-mark.svg` and `resources/brand/x-logo.svg` are sourced from the official brand kits or Simple Icons with their license noted in the registry. Done when: a presence test names every file and the cap, and a missing-asset probe is red.
 - [ ] `docs/product-identity.md` records the rules the JSON cannot carry: the 48px About cap with its reason (small lockup, operator direction 2026-09-19), the About row list for D01 T02 §17 (copyright, publisher, project plus corporate plus social links with brand icons, logo placement; the version row stays as D01 T02 §3 shipped it), and the source-header template (copyright line, SPDX `GPL-3.0-or-later`, and the standard "version 3 or any later version" grant line). Done when: each rule names its consumer section.
@@ -189,6 +208,8 @@ Why this section exists: the product's legal and brand strings live in exactly o
 ## 11. Help Content Pipeline
 
 Why this section exists: the per-section `docs/user-guide/` pages are the help source, and this section turns them into shippable offline help. Operator direction 2026-09-19 picked browser-based local HTML over an in-app viewer (parity-pure: no new chrome) with F1 context help (D01 T01 §33) opening it. Web publishing is deferred to §12; in-app only for v1.
+
+**Groomed 2026-09-23:** Help source missing: `docs/user-guide/` does not exist and git tracks no guide pages although many user-facing sections shipped; this section depends on the §13 backfill, and its missing-page probe must fail today.
 
 - [ ] A build step renders `docs/user-guide/*.md` to HTML under the package content dir with a pinned Markdown renderer. Done when: every guide page renders with stable anchors and a missing-page probe is red.
 - [ ] A surface map binds surface ids to page plus anchor with a help-home default for unmapped surfaces. Done when: the map validates against the rendered TOC and an unknown-surface probe reads the default.
@@ -207,6 +228,16 @@ Why this section exists: this is the remembered afterwards. Operator direction 2
 - [ ] Commit: `"release: publish the guide and switch help links to web"`
 
 **Test checkpoint:** Published pages match packaged content; F1 reads web online and local offline. Cheaper substitute that fails: web pages without the base flip, or the flip without fallback.
+
+## 13. User-Guide Backfill
+
+Why this section exists: the README requires a `docs/user-guide/` page per user-facing section, yet the folder does not exist while many user-facing sections have shipped, so §11's help source and D01 T01 §33's F1 help have nothing to show (groom 2026-09-23). -> XREF: D07 T01 §11 (the pipeline that consumes these pages).
+
+- [ ] `docs/user-guide/` holds one page per shipped user-facing section, each naming its section ref. Done when: a probe lists shipped user-facing sections without a page and prints none
+- [ ] The probe runs in `validate` or the plan gates so a new user-facing section without its page fails. Done when: removing one page fails the probe
+- [ ] Commit: `"release: backfill the user guide"`
+
+**Test checkpoint:** the missing-page probe passes over the shipped tree and fails when a page is removed. Cheaper substitute that fails: a table of contents with no per-section pages.
 
 ## Verification
 

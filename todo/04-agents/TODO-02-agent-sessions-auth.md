@@ -15,6 +15,8 @@ track: A2
 > [!IMPORTANT]
 > **Current state:** `D04 T01` launches agents; nothing here manages their sessions. `D03 T01 §4` owns the wire calls; this file owns the policy around them.
 
+**Groomed 2026-09-23:** Wire ownership corrected: D03 T01 §4 owns `session/new` and `session/load`; D03 T01 §8 owns `session/list`, `session/resume`, `session/close`, and `session/delete`.
+
 ## Inputs
 
 - [ACP session setup](https://agentclientprotocol.com/protocol/v1/session-setup) -- create and load
@@ -37,9 +39,9 @@ track: A2
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Authenticate and logout | D04 T01 §3 |  [ ]   |
-|   2   |   §2    | Session list and create | §1 |  [ ]   |
-|   3   |   §3    | Session resume and delete | §2 |  [ ]   |
-|   4   |   §4    | Session close and cleanup | §2 |  [ ]   |
+|   2   |   §2    | Session list and create | §1, D03 T01 §8 |  [ ]   |
+|   3   |   §3    | Session resume and delete | §2, D03 T01 §8 |  [ ]   |
+|   4   |   §4    | Session close and cleanup | §2, D03 T01 §8 |  [ ]   |
 |   5   |   §5    | Session log | §4 |  [ ]   |
 |   6   |   §6    | Per-file sidecar instructions | §2, D01 T01 §4 |  [ ]   |
 
@@ -49,10 +51,13 @@ track: A2
 
 Why this section exists: auth state must be explicit and credentials must never touch our files. The platform store owns secrets; we own state.
 
+**Groomed 2026-09-23:** Auth shape corrected per the ACP authentication page: `authMethods` types are `agent` (default: the agent holds its own credentials) and `terminal` (the client runs the agent interactively, advertised through `clientCapabilities.auth.terminal`); the trigger is an `auth_required` error, and `logout` is gated by `agentCapabilities.auth.logout`. Only secrets the app itself holds go to the platform credential store.
+
 - [ ] `authenticate` runs where the agent requires it, with the flow's prompts routed through the permission contract. Done when: the auth matrix passes.
 - [ ] `logout` ends the authenticated state where the agent offers it, and reports unsupported cleanly where it does not. Done when: both are tested.
 - [ ] Credentials live in the platform credential store; none appear in settings files, logs, or crash dumps. Done when: a secret-scan test proves it.
 - [ ] Auth state (in, out, unknown) is queryable and shown honestly in the UI contract. Done when: the state test passes.
+- [ ] `auth_required` from `session/new` or `session/prompt` mid-session re-enters the auth flow, and after logout active sessions expect auth errors without a crash. Done when: the loopback drives both paths (Groomed 2026-09-23.)
 - [ ] Commit: `"agents: authenticate and log out cleanly"`
 
 **Test checkpoint:** Auth matrix green; secret scan clean; state explicit. Cheaper substitute that fails: credentials in a config file.
@@ -60,6 +65,8 @@ Why this section exists: auth state must be explicit and credentials must never 
 ## 2. Session List and Create
 
 Why this section exists: the session list is the user's map of conversations. Create is exactly-once; the list never shows ghosts.
+
+**Groomed 2026-09-23:** -> XREF: D03 T01 §8 (owns `session/list`, `session/resume`, `session/close`, and `session/delete` on the wire for §2-§4).
 
 - [ ] Session create issues one `session/new` per user action with idempotency on retry. Done when: the retry test proves one session, not two.
 - [ ] The list reflects the agent's sessions with no ghosts after crash or restart. Done when: the reconciliation test passes.
@@ -72,6 +79,8 @@ Why this section exists: the session list is the user's map of conversations. Cr
 
 Why this section exists: resume must restore context faithfully, and delete must actually delete, including server-side where the protocol offers it.
 
+**Groomed 2026-09-23:** Resume and delete corrected: resume uses `session/resume` or `session/load` per capability, and delete calls `session/delete` where `sessionCapabilities.delete` is advertised (wire in D03 T01 §8).
+
 - [ ] Resume loads the session with its history intact, or reports honestly when the agent cannot. Done when: both are tested.
 - [ ] Delete removes the session locally and calls the protocol delete where offered, with confirmation first. Done when: the delete matrix passes.
 - [ ] A deleted session never reappears on rescan or restart. Done when: the permanence test passes.
@@ -82,6 +91,8 @@ Why this section exists: resume must restore context faithfully, and delete must
 ## 4. Session Close and Cleanup
 
 Why this section exists: closing ends the conversation's resources: process, grants, temp state. Nothing lingers to surprise the next session.
+
+**Groomed 2026-09-23:** Close corrected: close sends `session/close` where advertised and stops the process only when its last session closes, since §2 allows concurrent sessions on one agent.
 
 - [ ] Close terminates the agent process (or detaches, per the agent's model) and releases the transport. Done when: no process or handle leaks in tests.
 - [ ] The session can revoke its grants at close. Done when: the expiry test passes.

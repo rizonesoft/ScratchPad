@@ -80,6 +80,8 @@ Why this section exists: a spawned agent that cannot handshake is not launched. 
 
 Why this section exists: most users will have no agent installed. Guidance turns that into a five-minute setup, not a dead end.
 
+**Groomed 2026-09-23:** Package facts dated 2026-09-23: the adapters now publish as `@agentclientprotocol/claude-agent-acp` (0.81.1; `@zed-industries/claude-agent-acp` stalled at 0.23.1) and `@agentclientprotocol/codex-acp` (1.13.1; the zed package sits at 0.16.0), and the GitHub repo redirects to `agentclientprotocol/claude-agent-acp`; install guidance names the current packages and records the date.
+
 - [ ] Each supported agent has install guidance (where to get it, how to verify) shown when missing. Done when: the guidance is tested for accuracy on a clean VM.
 - [ ] Guidance never installs or downloads anything itself; it links and instructs. Done when: the boundary is recorded and tested.
 - [ ] After install, rescan picks the agent up with no restart. Done when: the flow is tested.

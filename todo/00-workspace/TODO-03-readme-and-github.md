@@ -24,6 +24,8 @@ track: W0
 - [`global.json`](../../global.json) -- SDK pin `10.0.400` for the toolchain badge.
 - -> XREF: D99 T01 §1 -- the operator-only companion (About bar, branch protection, taste pass, demo clip); it consumes this file's screenshots, README, and CI job.
 
+**Groomed 2026-09-23:** Current state corrected: `.github/` holds `workflows/` (`build.yml`, `plan.yml`, `soak.yml`) plus `owner-logins.json`; there are no issue or PR templates.
+
 ## Outcome
 
 - The README follows the full structure (purpose, badges, screenshot, audience, quick start, configuration, usage, troubleshooting, docs and contributing, status and license) and every command in it runs verbatim.
@@ -72,6 +74,7 @@ Why this section exists: the current README has voice but no structure a strange
 - [ ] `README.md` ends with documentation links (every `docs/*.md` entry point), a contributing pointer, project status (active build, pre-release), and a license link to `LICENSE`. Done when: no link 404s and the status reads as experimental-or-maintained honestly.
 - [ ] `CONTRIBUTING.md` tells a contributor where work lives (`todo/`, the `process-todo-section` flow), the one-command build, and the gates before a PR (tests, `validate`, `plan --check`). Done when: a newcomer can go from clone to first PR without asking a question the file should answer.
 - [ ] `.github/ISSUE_TEMPLATE/bug_report.md`, `.github/ISSUE_TEMPLATE/feature_request.md`, and `.github/PULL_REQUEST_TEMPLATE.md` exist with the fields the project needs (repro steps and build for bugs, plan ref for PRs). Done when: GitHub offers both templates on a new issue.
+- [ ] README's Deferred and Layout sections match the shipped tree: the review scripts (`scripts/review_prompt.py`, `panel_slots.py`, `probe_runner.py`) ship and leave Deferred, and Layout lists `tools/`, `.claude/`, and `.conclave/`. Done when: each README path exists and each shipped top-level folder is listed (Groomed 2026-09-23.)
 - [ ] Commit: `"workspace: rewrite README and land repo-face files (D00 T03 §2)"`
 
 **Test checkpoint:** the README headings appear in the specified order, every badge URL returns 200, every internal link resolves to a file that exists, and the issue templates render on a new-issue dry run. Cheaper substitute that fails: a README whose links were never clicked.

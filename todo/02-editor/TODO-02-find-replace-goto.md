@@ -20,6 +20,8 @@ track: N2
 - `resources/baseline/` captures of the find bar, replace mode, and go-to dialog
 - [`02-editor/TODO-01-editing-surface.md`](./TODO-01-editing-surface.md) -- the buffer and caret model being searched
 
+**Groomed 2026-09-23:** Registry named: "the `MenuCommands` registry" is the `commands` dictionary in `src/ScratchPad/MenuBar.xaml.cs` (lines 39-80), driven through `AppMenuBar.SetEnabled(automationId, bool)`; no type is named MenuCommands.
+
 ## Outcome
 
 - Find, find next/previous, replace, and replace-all match Notepad including options and counts.
@@ -48,6 +50,8 @@ track: N2
 Why this section exists: the UI is thin; the engine carries the semantics. Case, whole-word, direction, wrap, and counting are settled and tested here.
 
 **Groomed 2026-09-13:** Notepad audit: the wrap scope rule and the absent direction control are now explicit.
+
+**Groomed 2026-09-23:** Options corrected: stock exposes Match case and Wrap around plus next and previous; this section's own later items (no Up/Down direction control) and §2 (no whole-word toggle) govern, so read item 1 without case-whole-word-direction.
 
 - [ ] `src/Notepad.Core/SearchEngine.cs` finds matches with Notepad's options: case, whole word, direction, wrap-around. Done when: the option-matrix fixtures pass.
 - [ ] Match counting matches Notepad's count exactly on the fixture corpus. Done when: every count agrees.
@@ -123,6 +127,8 @@ Why this section exists: small surface, exact behavior. Validation, errors, and 
 ## 5. Options Persistence and Edge Cases
 
 Why this section exists: find options persist across sessions in Notepad, and the edge cases (huge files, huge match counts) must not hang the bar.
+
+**Groomed 2026-09-23:** Contradiction resolved toward the source: §2 says options are remembered within the session and this section says they survive relaunch; the cited source (build 17713) says only that values are remembered. Record from a live probe whether they survive relaunch; the default is session-only with no store key (cost of changing: one bool pair).
 
 - [ ] Find options persist through the settings store with Notepad's scope. Done when: quit and relaunch keeps them.
 - [ ] Huge match counts render and perform within the committed budget. Done when: the perf test measures it.
