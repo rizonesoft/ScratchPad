@@ -20,6 +20,8 @@ public sealed class LaunchGuardTests
     [InlineData("class Q { void M() { var p = new System.Diagnostics.Process(); p.Start(); } }")]
     [InlineData("class Q { void M() { new System.Diagnostics.Process().Start(); } }")]
     [InlineData("class Q { void M() { var p = new System.Diagnostics.Process(); var alias = p; alias.Start(); } }")]
+    [InlineData("using P = System.Diagnostics.Process; class Q { void M() { P p = new(); p.Start(); } }")]
+    [InlineData("using P = System.Diagnostics.Process; class Q { void M() { var q = new P(); q.Start(); } }")]
     [InlineData("class Q { void LaunchApp() {} }")]
     [InlineData("class Q { void SeedSettings() {} }")]
     [InlineData("using static System.Diagnostics.Process; class Q { void M() { Start(\"x\"); } }")]

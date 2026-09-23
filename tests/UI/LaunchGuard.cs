@@ -122,7 +122,7 @@ internal static class LaunchGuard
             return expanded is "Process"
                 || expanded.EndsWith(".Process", StringComparison.Ordinal)
                 || processAliases.Contains(expanded)
-                || ProcessNames(root).Contains(expanded);
+                || ProcessNames().Contains(expanded);
         }
 
         bool IsApplicationReceiver(string receiver)
@@ -131,6 +131,101 @@ internal static class LaunchGuard
             return expanded is "Application"
                 || expanded.EndsWith(".Application", StringComparison.Ordinal)
                 || appAliases.Contains(expanded);
+        }
+
+        // Names declared Process-typed in this file (locals, parameters,
+        // fields), so instance Starts on them trip the direct-launch
+        // rule. Scope-blind by design: a second type sharing the name in
+        // one file is rarer than the bypass it would hide.
+        HashSet<string> ProcessNames()
+        {
+            var names = new HashSet<string>(Ordinal);
+            foreach (VariableDeclaratorSyntax declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+            {
+                if (declarator.Parent is VariableDeclarationSyntax declaration
+                    && (IsProcessType(declaration.Type) || IsProcessCreation(declarator.Initializer?.Value)))
+                {
+                    names.Add(declarator.Identifier.Text);
+                }
+            }
+
+            foreach (ParameterSyntax parameter in root.DescendantNodes().OfType<ParameterSyntax>())
+            {
+                if (parameter.Type is not null && IsProcessType(parameter.Type))
+                {
+                    names.Add(parameter.Identifier.Text);
+                }
+            }
+
+            foreach (BaseFieldDeclarationSyntax field in root.DescendantNodes().OfType<BaseFieldDeclarationSyntax>())
+            {
+                if (IsProcessType(field.Declaration.Type))
+                {
+                    foreach (VariableDeclaratorSyntax declarator in field.Declaration.Variables)
+                    {
+                        names.Add(declarator.Identifier.Text);
+                    }
+                }
+            }
+
+            // Assignment aliases (D00 T02 §18 R2-F3): `var alias = p;`
+        // carries the Process-ness of p. Iterate to a fixpoint so
+        // chains (alias-of-alias) resolve; the loop is bounded by
+        // the declarator count. Coalesce, ternary, and field flows
+        // stay outside the syntax-plus-alias boundary by design.
+        bool added;
+        do
+        {
+            added = false;
+            foreach (VariableDeclaratorSyntax declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
+            {
+                if (declarator.Initializer?.Value is IdentifierNameSyntax source
+                    && names.Contains(source.Identifier.Text)
+                    && names.Add(declarator.Identifier.Text))
+                {
+                    added = true;
+                }
+            }
+        }
+        while (added);
+
+        return names;
+        }
+
+        bool IsProcessCreation(ExpressionSyntax? value) =>
+            value is ObjectCreationExpressionSyntax creation && IsProcessType(creation.Type);
+
+        bool IsProcessType(TypeSyntax? type)
+        {
+            // Using-alias expansion (D00 T02 §18 PR2): a
+            // declarator type written through `using P =
+            // ...Process` is still a Process. Chained aliases
+            // resolve to a fixpoint; the loop is bounded by the
+            // alias count. Cross-file global aliases stay outside
+            // the syntax-plus-alias boundary by design.
+            string text = type?.ToString() ?? string.Empty;
+            string resolved = text;
+            for (int i = 0; i <= namespaceAliases.Count; i++)
+            {
+                int dot = resolved.IndexOf('.', StringComparison.Ordinal);
+                string first = dot < 0 ? resolved : resolved[..dot];
+                if (processAliases.Contains(first.TrimEnd('?')))
+                {
+                    return true;
+                }
+
+                if (!namespaceAliases.TryGetValue(first, out string? expanded))
+                {
+                    break;
+                }
+
+                resolved = dot < 0 ? expanded : expanded + resolved[dot..];
+            }
+
+            return resolved is "Process"
+                || resolved is "Process?"
+                || resolved.EndsWith(".Process", StringComparison.Ordinal)
+                || resolved.EndsWith(".Process?", StringComparison.Ordinal);
         }
 
         foreach (InvocationExpressionSyntax invocation in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
@@ -272,76 +367,5 @@ internal static class LaunchGuard
         }
 
         return false;
-    }
-
-    // Names declared Process-typed in this file (locals, parameters,
-    // fields), so instance Starts on them trip the direct-launch
-    // rule. Scope-blind by design: a second type sharing the name in
-    // one file is rarer than the bypass it would hide.
-    static HashSet<string> ProcessNames(SyntaxNode root)
-    {
-        var names = new HashSet<string>(Ordinal);
-        foreach (VariableDeclaratorSyntax declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
-        {
-            if (declarator.Parent is VariableDeclarationSyntax declaration
-                && (IsProcessType(declaration.Type) || IsProcessCreation(declarator.Initializer?.Value)))
-            {
-                names.Add(declarator.Identifier.Text);
-            }
-        }
-
-        foreach (ParameterSyntax parameter in root.DescendantNodes().OfType<ParameterSyntax>())
-        {
-            if (parameter.Type is not null && IsProcessType(parameter.Type))
-            {
-                names.Add(parameter.Identifier.Text);
-            }
-        }
-
-        foreach (BaseFieldDeclarationSyntax field in root.DescendantNodes().OfType<BaseFieldDeclarationSyntax>())
-        {
-            if (IsProcessType(field.Declaration.Type))
-            {
-                foreach (VariableDeclaratorSyntax declarator in field.Declaration.Variables)
-                {
-                    names.Add(declarator.Identifier.Text);
-                }
-            }
-        }
-
-        // Assignment aliases (D00 T02 §18 R2-F3): `var alias = p;`
-        // carries the Process-ness of p. Iterate to a fixpoint so
-        // chains (alias-of-alias) resolve; the loop is bounded by
-        // the declarator count. Coalesce, ternary, and field flows
-        // stay outside the syntax-plus-alias boundary by design.
-        bool added;
-        do
-        {
-            added = false;
-            foreach (VariableDeclaratorSyntax declarator in root.DescendantNodes().OfType<VariableDeclaratorSyntax>())
-            {
-                if (declarator.Initializer?.Value is IdentifierNameSyntax source
-                    && names.Contains(source.Identifier.Text)
-                    && names.Add(declarator.Identifier.Text))
-                {
-                    added = true;
-                }
-            }
-        }
-        while (added);
-
-        return names;
-    }
-
-    static bool IsProcessCreation(ExpressionSyntax? value) =>
-        value is ObjectCreationExpressionSyntax creation && IsProcessType(creation.Type);
-
-    static bool IsProcessType(TypeSyntax? type)
-    {
-        string text = type?.ToString() ?? string.Empty;
-        return text is "Process"
-            || text is "Process?"
-            || text.EndsWith(".Process", StringComparison.Ordinal)
-            || text.EndsWith(".Process?", StringComparison.Ordinal);
     }
 }
