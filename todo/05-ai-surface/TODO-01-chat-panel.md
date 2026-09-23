@@ -100,6 +100,8 @@ Why this section exists: input is the user's voice. Send, stop, multiline, and h
 
 **Chrome:** Consume the shared input styles. Do not invent a second input treatment.
 
+**Groomed 2026-09-23:** -> XREF: D00 T03 §5 (the README agent showcase waits on this section's rendered panel).
+
 - [ ] The input box sends on Enter, newlines on Shift+Enter, and recalls history on Up. Done when: the keyboard flow is driven.
 - [ ] Send is disabled exactly when no session can take a prompt, with the reason visible. Done when: the enablement matrix is driven.
 - [ ] Stop cancels the running turn through `D03 T01 §6` and the panel reflects the cancelled state. Done when: the stop flow is driven.

@@ -53,6 +53,8 @@ Why this section exists: the About bar is the repo's thirty-second pitch and the
 
 **Manual:** operator-only -- needs the owner's logged-in browser session; agents hold no GitHub credentials by design (AGENTS.md Credentials).
 
+**Groomed 2026-09-23:** -> XREF: D00 T03 §4 (produces the social preview image and the premium README this operator step applies and signs off).
+
 - [ ] The About description is set to the README one-liner. Done when: the repo page shows the description under the repo name.
   1. Open `https://github.com/rizonesoft/ScratchPad` in a browser where you are logged in as the owner.
   2. On the right side, find the `About` heading and click the gear icon beside it.
