@@ -4168,7 +4168,12 @@ def night_debts(todos: list["Todo"], today_d):
             except ValueError:
                 age = None
         if o["due"]:
-            due = o["due"]
+            # A malformed override (2026-02-30) falls back to the default
+            # window instead of dating the debt with an impossible day.
+            try:
+                due = datetime.fromisoformat(o["due"]).date().isoformat()
+            except ValueError:
+                pass
         overdue = bool(due) and c is None and today_d.isoformat() > due
         out.append(
             {
@@ -25358,7 +25363,9 @@ track: Z1
             "**Test checkpoint:** `true`\n\n"
             "**Night-owed:** D90-T01-S1-N1 (3 Interactive, collector Nightly UI 02:30, owed 2026-09-15)\n"
             "**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19)\n"
-            "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30)\n\n"
+            "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30)\n"
+            "**Night-owed:** D90-T01-S1-N4 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-17)\n"
+            "**Night-owed:** D90-T01-S1-N5 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19, due 2026-02-30)\n\n"
             "## 2. Collected work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
@@ -25428,6 +25435,16 @@ track: Z1
         check(
             "an explicit due token overrides the default window",
             any("D90-T01-S1-N3" in ln and "due 2026-09-30" in ln and "OVERDUE" not in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "a debt on its due day is not yet overdue",
+            any("D90-T01-S1-N4" in ln and "due 2026-09-20" in ln and "OVERDUE" not in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "a malformed due token falls back to the default window",
+            any("D90-T01-S1-N5" in ln and "due 2026-09-22" in ln and "2026-02-30" not in ln for ln in _ndlines),
             True,
         )
         check(

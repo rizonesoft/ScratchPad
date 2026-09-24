@@ -619,7 +619,7 @@ Why this section exists: open night debt carries age but no absolute due date an
 
 - [x] Every open debt carries an absolute due date plus an escalation (rerun the review or record risk acceptance), readable where the debt lists. Done when: N1 quotes its due plus escalation. (D00-T02-S11-PR17.) Done: due = owed date (else the owning stamp) plus `NIGHT_DEBT_DUE_NIGHTS` = 3 (a recorded default: three missed nightly windows means the collection failed; cost of changing: one constant), overridden by a `due YYYY-MM-DD` token; live `query night-debt` 2026-09-24 reads `D00-T02-S8-N1 ... age 5n due 2026-09-22 ... OVERDUE escalate operator: rerun the collection (tools/nightly.ps1) or record risk acceptance`.
 - [x] `query night-debt` (or `query summary`) surfaces overdue debt with its escalation. Done when: a fixture pins the overdue line. (D00-T02-S11-PR17.) Done: both queries print due plus the OVERDUE escalation; fixtures pin the overdue line in each, a debt inside its window with no escalation, and an explicit due override; self-test 1599 to 1603, 0 failed.
-- [ ] Commit: `"workspace: give night debt due dates"`
+- [x] Commit: `"workspace: give night debt due dates"`
 
 **Test checkpoint:** N1 quotes due plus escalation, and the overdue fixture pins the line. Cheaper substitute that fails: age alone with no date anyone owes.
 
