@@ -11,7 +11,10 @@ run-a:
   UI.BackupTests.FailedSaveStillWritesSibling
   UI.BackupTests.RotationEvictsOldestSeededSibling
   UI.BackupTests.SaveWritesSiblingWithPreSaveBytes
+  UI.BindingManifestTests.AKeyTheManifestCannotBindCreditsNothing
+  UI.BindingManifestTests.AnXrefAloneDoesNotOweTheChordTest
   UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
+  UI.BindingManifestTests.DuplicateWithAnUnresolvedOwnerFails
   UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
   UI.BindingManifestTests.KeyHandlingOutsideTheTwoHomesFails
   UI.BindingManifestTests.LiveSourceHasNoUndeclaredKeyHandling
@@ -24,6 +27,7 @@ run-a:
   UI.BindingManifestTests.PlantedEnabledButExemptCommandFails
   UI.BindingManifestTests.PlantedOsReservedChordFails
   UI.BindingManifestTests.PlantedUndeclaredBindingFails
+  UI.BindingManifestTests.ReservedChordsMatchWhateverSpellingTheyAreDeclaredIn
   UI.BindingManifestTests.WrongKeyMutationFailsTheGate
   UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser
   UI.ChromeTests.FullStripParksAddButtonLeftOfCaption
@@ -196,12 +200,15 @@ run-a:
   UI.UiForegroundTests.LargestSecondaryWins
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
-  UI.UiInputFunnelTests.FocusInAnotherProcessFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
   UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
-  UI.UiInputFunnelTests.MatchingForegroundAndFocusSendsOnce
+  UI.UiInputFunnelTests.MatchingWindowAndFocusSendsOnce
   UI.UiInputFunnelTests.OnlyTheFunnelTouchesTheKeyboard
   UI.UiInputFunnelTests.PreconditionSettlingWithinTheWaitStillSends
   UI.UiInputFunnelTests.StuckModifierIsReleasedAndFailsLoud
+  UI.UiInputFunnelTests.TheAppsOtherWindowFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.ThrowingSenderStillReleasesModifiersAndKeepsItsFailure
   UI.UiLeakBundleTests.EventSlicesFillFromGateLog
   UI.UiLeakBundleTests.EventSlicesScrubTitles
   UI.UiLeakBundleTests.RetentionPrunesOldBundles
@@ -210,8 +217,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 204
-run-a-cases: 257
+run-a-methods: 211
+run-a-cases: 264
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

@@ -248,7 +248,18 @@ internal static class BindingManifest
             return found;
         }
 
-        string scan = relPath == TabSourcePath ? StripMethod(text, "AddTabAccelerators", "AddAccel") : text;
+        string scan = text;
+        if (relPath == TabSourcePath)
+        {
+            // Only the AddAccel helper may touch KeyboardAccelerator, only
+            // in its sanctioned shape (built from its own parameters), and
+            // only AddTabAccelerators may call it: a direct Add inside
+            // AddTabAccelerators, a literal key in the helper, or a call
+            // from anywhere else would bind a chord the inventory never sees.
+            found.AddRange(TabHomeProblems(text));
+            scan = StripMethod(text, "AddAccel");
+        }
+
         foreach (string token in new[] { "KeyboardAccelerator", "KeyDown", "KeyUp", "PreviewKey", "AccessKey=", "ProcessKeyboardAccelerators", "CharacterReceived" })
         {
             foreach (string line in scan.Split('\n'))
@@ -258,6 +269,38 @@ internal static class BindingManifest
                 {
                     found.Add($"{relPath}: undeclared key handling ({token}) outside the menu bar and AddTabAccelerators: {code.Trim()}");
                 }
+            }
+        }
+
+        return found;
+    }
+
+    static List<string> TabHomeProblems(string source)
+    {
+        var found = new List<string>();
+        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToList();
+        MethodDeclarationSyntax? helper = methods.FirstOrDefault(m => m.Identifier.Text == "AddAccel");
+        if (helper is null)
+        {
+            found.Add($"{TabSourcePath}: the AddAccel helper is gone; the programmatic bindings cannot be derived");
+            return found;
+        }
+
+        string body = new string(helper.ToString().Where(c => !char.IsWhiteSpace(c)).ToArray());
+        if (!body.Contains("newKeyboardAccelerator{Key=key,Modifiers=modifiers}", StringComparison.Ordinal)
+            || Regex.Count(body, "KeyboardAccelerator\\b") != 1)
+        {
+            found.Add($"{TabSourcePath}: AddAccel no longer builds exactly one accelerator from its own key and modifiers parameters");
+        }
+
+        foreach (InvocationExpressionSyntax call in root.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Where(c => c.Expression is IdentifierNameSyntax { Identifier.Text: "AddAccel" }))
+        {
+            string? caller = call.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault()?.Identifier.Text;
+            if (caller != "AddTabAccelerators")
+            {
+                found.Add($"{TabSourcePath}: AddAccel is called from {caller ?? "outside a method"}, not AddTabAccelerators");
             }
         }
 
