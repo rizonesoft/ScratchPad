@@ -65,6 +65,7 @@ track: W0
 |  25   |  §25    | Simplified panel: sol primaries, Grok fallback | D00 T04 §23 |  [x]   |
 |  26   |  §26    | Section-25 sign-off residuals | D00 T04 §25 |  [ ]   |
 
+|  27   |  §27    | Self-test determinism on Windows | -- |  [ ]   |
 ---
 
 ## 1. Sol-Note and Disposition Follow-Ups
@@ -528,3 +529,14 @@ Why this section exists: the §25 round-3 sign-off (`signoff` slot, `gpt-6-sol` 
 - [ ] Commit: `"workspace: close section-25 sign-off residuals"`
 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` grows with 0 failed and `python3 scripts/todo-graph.py validate` prints 0 fatal. Falsifiable by an exact Grok pin failing to load, a variant pin loading, or a post-cutover `retry-owed` marker passing.
+
+## 27. Self-Test Determinism on Windows
+
+Why this section exists: `python3 scripts/todo-graph.py self-test` is the gate every section in this tree runs, and on 2026-09-23 and 2026-09-24 it failed intermittently on this Windows host, then passed on an immediate rerun: "locked recording keeps racing runs distinct" recorded a `PermissionError(13, 'Permission denied')` and lost one of eight racing run ids, and "optional lane CLI skips honestly without git" failed once while its child run passed alone (1519/0). An intermittent red in the shared gate trains runners to rerun until green, which is how a real regression slips through (filed from the 2026-09-24 Phase 0 run).
+
+- [ ] The locked-recording race reproduces on demand (a loop of the racing-writers case), and the recorder retries a Windows sharing violation on the ledger or store file with a bounded backoff instead of losing a run id. Done when: 200 consecutive runs of the case pass on this host
+- [ ] The optional-lane child check reports its child's failing case in the parent's message, so an intermittent red names its cause. Done when: a forced child failure prints the child's FAIL line
+- [ ] The full self-test passes 5 consecutive times on this host with no rerun. Done when: five runs in a row read 0 failed
+- [ ] Commit: `"workspace: make the self-test deterministic on Windows"`
+
+**Test checkpoint:** the racing-writers loop passes 200 times and five consecutive full self-tests read 0 failed. Cheaper substitute that fails: marking the case flaky and skipping it.
