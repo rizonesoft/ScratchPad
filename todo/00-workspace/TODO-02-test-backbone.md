@@ -635,11 +635,13 @@ Why this section exists: open night debt carries age but no absolute due date an
 
 ## 20. Accelerator Sweep Sign-Off Polish
 
+> **Started:** 2026-09-24T19:45:46Z
+
 Why this section exists: the §12 Opus sign-off left two advisories that file instead of re-rounding: a dead foreground capture in the N chord test, and the audit doc missing its trailing newline. -> SOURCE: Opus-panel-D00-T02-s12-round-3 (candidates `ae8b8c1` `4fe8166` `0b38dd2`, round-3 consistency advisory R3-F1 plus record advisory R3-F2; transcribed in `docs/reviews/00-workspace/D00-T02-s12.md`).
 
-- [ ] The dead `fgBefore` capture in `AcceleratorTests.ChordCtrlShiftNOpensSecondWindow` is removed (or paired with a restore if a funnel call belongs there). Done when: no capture in the file lacks its restore. (D00-T02-S12-R3-F1.)
-- [ ] `docs/ui-input-audit.md` ends with its trailing newline. Done when: the diff marker is gone. (D00-T02-S12-R3-F2.)
-- [ ] Commit: `"workspace: polish the accelerator sweep sign-off"`
+- [x] The dead `fgBefore` capture in `AcceleratorTests.ChordCtrlShiftNOpensSecondWindow` is removed (or paired with a restore if a funnel call belongs there). Done when: no capture in the file lacks its restore. (D00-T02-S12-R3-F1.) Done: the capture line is gone from `ChordCtrlShiftNOpensSecondWindow` (the one foreground-run chord test, which never backgrounds); `AcceleratorTests.cs` now reads 5 `UiForeground.Capture` and 5 `UiForeground.Background(window, fgBefore)`, one pair per backgrounded test.
+- [x] `docs/ui-input-audit.md` ends with its trailing newline. Done when: the diff marker is gone. (D00-T02-S12-R3-F2.) Done: the file ends with its newline; `git diff` no longer prints `\ No newline at end of file`.
+- [x] Commit: `"workspace: polish the accelerator sweep sign-off"`
 
 **Test checkpoint:** Dead capture gone and trailing newline restored. Cheaper substitute that fails: leaving either for a drive-by.
 

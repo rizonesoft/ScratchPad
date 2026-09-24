@@ -27,7 +27,6 @@ public sealed class AcceleratorTests
         // off-screen); foreground-forced passes (2 windows, 2 s). Collector
         // confirmation Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
-        nint fgBefore = UiForeground.Capture();
         using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
