@@ -4166,10 +4166,11 @@ def night_debts(todos: list["Todo"], today_d):
                 continue
             try:
                 base_d = datetime.fromisoformat(base).date()
-            except ValueError:
+                # 9999-12-31 parses but overflows the window: undatable.
+                due = (base_d + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
+            except (ValueError, OverflowError):
                 continue
             age = max(0, (today_d - base_d).days)
-            due = (base_d + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
             break
         if o["due"]:
             # A malformed override (2026-02-30) falls back to the default
@@ -25372,7 +25373,8 @@ track: Z1
             "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30)\n"
             "**Night-owed:** D90-T01-S1-N4 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-17)\n"
             "**Night-owed:** D90-T01-S1-N5 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19, due 2026-02-30)\n"
-            "**Night-owed:** D90-T01-S1-N6 (1 Interactive, collector Nightly UI 02:30, owed 2026-13-01)\n\n"
+            "**Night-owed:** D90-T01-S1-N6 (1 Interactive, collector Nightly UI 02:30, owed 2026-13-01)\n"
+            "**Night-owed:** D90-T01-S1-N7 (1 Interactive, collector Nightly UI 02:30, owed 9999-12-31)\n\n"
             "## 2. Collected work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
@@ -25457,6 +25459,11 @@ track: Z1
         check(
             "an undatable open debt fails closed as overdue",
             any("D90-T01-S1-N6" in ln and "due ?" in ln and "OVERDUE escalate operator" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "an owed date whose window overflows fails closed instead of crashing",
+            any("D90-T01-S1-N7" in ln and "due ?" in ln and "OVERDUE escalate operator" in ln for ln in _ndlines),
             True,
         )
         check(
