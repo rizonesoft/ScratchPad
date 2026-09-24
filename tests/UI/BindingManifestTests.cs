@@ -1,0 +1,225 @@
+using System.Text.RegularExpressions;
+using Xunit;
+using Xunit.Abstractions;
+
+namespace UI;
+
+// D00 T02 §21: the binding manifest guard over the live tree, plus one
+// planted mutation per rule proving the rule can fail: an undeclared
+// binding, a wrong-key covering test, an unaudited conflict, an
+// OS-reserved chord, an access-key collision, an enabled command riding
+// a disabled exemption, an owner that no longer owes the chord, an
+// exemption without an approver, key handling outside the two homes,
+// and a mismatched menu label. Pure text in, problems out: no launch.
+public sealed class BindingManifestTests(ITestOutputHelper output)
+{
+    [Fact]
+    public void LiveTreeManifestIsClean()
+    {
+        var (inputs, parse) = LiveInputs();
+        Assert.Empty(parse);
+        var problems = BindingManifest.Check(inputs);
+        foreach (string line in BindingManifest.Matrix(inputs.Declarations))
+        {
+            output.WriteLine(line);
+        }
+
+        Assert.Empty(problems);
+    }
+
+    [Fact]
+    public void LiveTreeDeclaresFortyFourBindings()
+    {
+        // 31 menu-bar accelerators plus 13 programmatic tab bindings
+        // (the §12 sweep's census); a change here is a new or dropped
+        // binding, which the audit table must follow.
+        var (inputs, _) = LiveInputs();
+        Assert.Equal(31, inputs.Declarations.Count(d => d.Source == BindingManifest.MenuXamlPath));
+        Assert.Equal(13, inputs.Declarations.Count(d => d.Source == BindingManifest.TabSourcePath));
+    }
+
+    [Fact]
+    public void CtrlEDuplicateSurfacesInTheMatrix()
+    {
+        var (inputs, _) = LiveInputs();
+        string row = Assert.Single(BindingManifest.Matrix(inputs.Declarations), l => l.StartsWith("Ctrl+E:", StringComparison.Ordinal));
+        Assert.Contains("MenuEditSearchBing", row, StringComparison.Ordinal);
+        Assert.Contains("MenuEditDefineBing", row, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PlantedUndeclaredBindingFails()
+    {
+        var (inputs, _) = LiveInputs(xaml => xaml.Replace(
+            "<MenuFlyoutItem x:Name=\"MenuFileExit\" Text=\"Exit\" AutomationProperties.AutomationId=\"MenuFileExit\" Click=\"OnFileExit\" />",
+            "<MenuFlyoutItem x:Name=\"MenuFileExit\" Text=\"Exit\" AutomationProperties.AutomationId=\"MenuFileExit\" Click=\"OnFileExit\"><MenuFlyoutItem.KeyboardAccelerators><KeyboardAccelerator Modifiers=\"Control\" Key=\"Q\" /></MenuFlyoutItem.KeyboardAccelerators></MenuFlyoutItem>",
+            StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("Ctrl+Q -> MenuFileExit is declared but has no audit row", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void WrongKeyMutationFailsTheGate()
+    {
+        var (inputs, _) = LiveInputs(testSource: (cls, src) => cls == "AcceleratorTests"
+            ? src.Replace("VirtualKeyShort.KEY_G, withControl: true, withShift: true", "VirtualKeyShort.KEY_F, withControl: true, withShift: true", StringComparison.Ordinal)
+            : src);
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("AcceleratorTests.ChordCtrlShiftGOpensStats does not press Ctrl+Shift+G", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PlantedConflictFails()
+    {
+        var (inputs, _) = LiveInputs(tabSource: src => src.Replace(
+            "AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);",
+            "AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);\n        AddAccel(scope, VirtualKey.N, VirtualKeyModifiers.Control, bar.NewTab);",
+            StringComparison.Ordinal));
+        var problems = BindingManifest.Check(inputs);
+        Assert.Contains(problems, p => p.StartsWith("conflict: Ctrl+N is declared by", StringComparison.Ordinal));
+        Assert.DoesNotContain(problems, p => p.StartsWith("conflict: Ctrl+E", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PlantedOsReservedChordFails()
+    {
+        var (inputs, _) = LiveInputs(xaml => xaml.Replace("Modifiers=\"Control,Shift\" Key=\"L\"", "Modifiers=\"Menu\" Key=\"F4\"", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(inputs), p => p == "conflict: Alt+F4 (MenuToolsLock) is OS-reserved");
+    }
+
+    [Fact]
+    public void PlantedAccessKeyCollisionFails()
+    {
+        var (inputs, _) = LiveInputs(xaml => xaml.Replace("Title=\"Tools\" AccessKey=\"T\"", "Title=\"Tools\" AccessKey=\"F\"", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(inputs), p => p.StartsWith("conflict: access key F is shared by", StringComparison.Ordinal));
+        var (alt, _) = LiveInputs(xaml => xaml.Replace("Modifiers=\"Control,Shift\" Key=\"L\"", "Modifiers=\"Menu\" Key=\"V\"", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(alt), p => p.StartsWith("conflict: Alt+V (MenuToolsLock) collides with the MenuView access key", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PlantedEnabledButExemptCommandFails()
+    {
+        var (inputs, _) = LiveInputs(runtime: src => src + "\nMenuRegion.SetEnabled(\"MenuEditUndo\", true);\n");
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("Ctrl+Z -> MenuEditUndo: exempt as disabled but the command is enabled", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void OwnerThatNoLongerOwesTheChordFails()
+    {
+        var (inputs, _) = LiveInputs(section: (reference, s) => reference == "D02 T01 §4" ? (s.Found, s.Open, s.Body.Replace("Ctrl+Z", "Ctrl-Z", StringComparison.Ordinal)) : s);
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("owner D02 T01 §4's checklist does not owe the Ctrl+Z chord test", StringComparison.Ordinal));
+        var (stamped, _) = LiveInputs(section: (reference, s) => reference == "D02 T01 §4" ? (s.Found, false, s.Body) : s);
+        Assert.Contains(BindingManifest.Check(stamped), p => p.Contains("owner D02 T01 §4 is stamped", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ExemptionWithoutApproverOrKnownClassFails()
+    {
+        var (inputs, _) = LiveInputs(audit: md => Regex.Replace(md, "\\| disabled \\| (.*?) \\| operator \\| D02 T01 §4 \\|", "| disabled | $1 | - | D02 T01 §4 |"));
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("Ctrl+Z -> MenuEditUndo: exemption class disabled names no approver", StringComparison.Ordinal));
+        var (cls, _) = LiveInputs(audit: md => md.Replace("| duplicate |", "| shrug |", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(cls), p => p.Contains("class 'shrug' is outside the taxonomy", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void KeyHandlingOutsideTheTwoHomesFails()
+    {
+        Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D { void M() { box.KeyDown += OnKey; } }"));
+        Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs", "class W { void Other() { root.KeyboardAccelerators.Add(a); } }"));
+        Assert.Empty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs",
+            "class W { static void AddTabAccelerators() { AddAccel(); } static void AddAccel() { var a = new KeyboardAccelerator(); } }"));
+    }
+
+    [Fact]
+    public void LiveSourceHasNoUndeclaredKeyHandling()
+    {
+        string root = RepoRoot();
+        var found = new List<string>();
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "src"), "*.*", SearchOption.AllDirectories)
+            .Where(f => (f.EndsWith(".cs", StringComparison.Ordinal) || f.EndsWith(".xaml", StringComparison.Ordinal))
+                && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal)))
+        {
+            string rel = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '/');
+            found.AddRange(BindingManifest.UndeclaredKeyHandling(rel, File.ReadAllText(file)));
+        }
+
+        Assert.Empty(found);
+    }
+
+    [Fact]
+    public void MismatchedMenuLabelFails()
+    {
+        var expected = new Dictionary<string, string>(StringComparer.Ordinal) { ["MenuFileSave"] = "Ctrl+S", ["MenuViewZoomIn"] = BindingManifest.ExpectedLabel("Ctrl+Plus") };
+        Assert.Empty(LabelMismatches(expected, new Dictionary<string, string>(StringComparer.Ordinal) { ["MenuFileSave"] = "Ctrl+S", ["MenuViewZoomIn"] = "Ctrl++" }));
+        Assert.Equal(
+            ["MenuFileSave: displays 'Ctrl+Shift+S', manifest says 'Ctrl+S'"],
+            LabelMismatches(expected, new Dictionary<string, string>(StringComparer.Ordinal) { ["MenuFileSave"] = "Ctrl+Shift+S", ["MenuViewZoomIn"] = "Ctrl++" }));
+    }
+
+    internal static List<string> LabelMismatches(Dictionary<string, string> expected, Dictionary<string, string> seen) =>
+        expected.Where(e => seen.TryGetValue(e.Key, out string? s) && !string.Equals(s, e.Value, StringComparison.Ordinal))
+            .Select(e => $"{e.Key}: displays '{seen[e.Key]}', manifest says '{e.Value}'")
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToList();
+
+    internal static string RepoRoot()
+    {
+        string? dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir, "tests", "UI")))
+        {
+            dir = Path.GetDirectoryName(dir);
+        }
+
+        Assert.NotNull(dir);
+        return dir!;
+    }
+
+    // The live inputs, each source optionally mutated for a plant.
+    static (BindingManifest.Inputs Inputs, List<string> Parse) LiveInputs(
+        Func<string, string>? xaml = null,
+        Func<string, string>? tabSource = null,
+        Func<string, string>? runtime = null,
+        Func<string, string>? audit = null,
+        Func<string, string, string>? testSource = null,
+        Func<string, (bool Found, bool Open, string Body), (bool Found, bool Open, string Body)>? section = null)
+    {
+        string root = RepoRoot();
+        string xamlText = File.ReadAllText(Path.Combine(root, BindingManifest.MenuXamlPath));
+        string tabText = File.ReadAllText(Path.Combine(root, BindingManifest.TabSourcePath));
+        xamlText = xaml?.Invoke(xamlText) ?? xamlText;
+        tabText = tabSource?.Invoke(tabText) ?? tabText;
+        var parse = new List<string>();
+        var decls = BindingManifest.ParseMenuXaml(xamlText, out var accessKeys, out var p1);
+        parse.AddRange(p1);
+        decls.AddRange(BindingManifest.ParseTabAccelerators(tabText, out var p2));
+        parse.AddRange(p2);
+        var sources = Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+            .Select(File.ReadAllText).ToList();
+        string joined = string.Join("\n", sources);
+        var enabled = BindingManifest.RuntimeEnabled([runtime?.Invoke(joined) ?? joined]);
+        string auditText = File.ReadAllText(Path.Combine(root, "docs", "ui-input-audit.md"));
+        auditText = audit?.Invoke(auditText) ?? auditText;
+        var rows = BindingManifest.ParseAudit(auditText, out var p3);
+        parse.AddRange(p3);
+        var byClass = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(root, "tests", "UI"), "*.cs"))
+        {
+            string text = File.ReadAllText(file);
+            foreach (Match m in Regex.Matches(text, "\\bclass (\\w+)"))
+            {
+                byClass.TryAdd(m.Groups[1].Value, text);
+            }
+        }
+
+        return (new BindingManifest.Inputs(
+            decls,
+            accessKeys,
+            enabled,
+            rows,
+            cls => byClass.TryGetValue(cls, out string? src) ? (testSource?.Invoke(cls, src) ?? src) : null,
+            reference =>
+            {
+                var s = BindingManifest.ReadSection(root, reference);
+                return section?.Invoke(reference, s) ?? s;
+            }), parse);
+    }
+}

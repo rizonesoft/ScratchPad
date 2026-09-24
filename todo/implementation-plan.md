@@ -235,7 +235,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T02 §13` | ScratchPad rename completion                                        |   6   |
 | [x] | `D01 T02 §14` | Title-bar icon beside the tabs                                      |   5   |
 | [ ] | `D01 T02 §15` | Chrome color finetune against stock                                 |   5   |
-| [ ] | `D01 T02 §5`  | Print path                                                          |   6   |
+| [ ] | `D01 T02 §5`  | Print path                                                          |   7   |
 | [ ] | `D01 T02 §6`  | Menu and shortcut completeness audit                                |   4   |
 | [ ] | `D01 T02 §7`  | Reading level in the status bar                                     |   5   |
 | [ ] | `D01 T02 §8`  | Command palette                                                     |   7   |
@@ -248,9 +248,9 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §18` | Fix-or-remove MenuBarTests flakes                                   |   2   |
 | [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   6   |
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |  10   |
-| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  11   |
-| [ ] | `D02 T01 §4`  | Undo and redo                                                       |   5   |
-| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   7   |
+| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  12   |
+| [ ] | `D02 T01 §4`  | Undo and redo                                                       |   6   |
+| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   8   |
 | [ ] | `D02 T01 §6`  | Context menu and mouse behaviors                                    |   5   |
 | [ ] | `D02 T01 §7`  | Large-file behavior and budget                                      |   5   |
 | [ ] | `D02 T01 §8`  | Selection utilities: case, sort, dedupe                             |   6   |
@@ -266,9 +266,9 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D02 T01 §18` | Copy as Markdown, HTML, plain text                                  |   4   |
 | [ ] | `D02 T01 §19` | Side-by-side tab diff                                               |   6   |
 | [ ] | `D02 T02 §1`  | Search engine over the buffer                                       |   6   |
-| [ ] | `D02 T02 §2`  | Find bar UI                                                         |   7   |
-| [ ] | `D02 T02 §3`  | Replace mode                                                        |   4   |
-| [ ] | `D02 T02 §4`  | Go-to-line dialog                                                   |   4   |
+| [ ] | `D02 T02 §2`  | Find bar UI                                                         |   8   |
+| [ ] | `D02 T02 §3`  | Replace mode                                                        |   5   |
+| [ ] | `D02 T02 §4`  | Go-to-line dialog                                                   |   5   |
 | [ ] | `D02 T02 §5`  | Options persistence and edge cases                                  |   4   |
 | [ ] | `D02 T02 §6`  | Find across all open tabs                                           |   5   |
 | [x] | `D01 T01 §9`  | Multi-window with open-in mode                                      |   5   |

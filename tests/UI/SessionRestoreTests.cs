@@ -65,12 +65,12 @@ public sealed class SessionRestoreTests
                     SelectTab(window, 1);
                     Thread.Sleep(400);
                     ContentBox(window).Focus();
-                    Keyboard.Type("Q");
+                    UiInput.Type(ContentBox(window), "Q");
                     Assert.Equal(8, ContentBox(window).Text.IndexOf('Q', StringComparison.Ordinal));
                     SelectTab(window, 2);
                     Thread.Sleep(400);
                     ContentBox(window).Focus();
-                    Keyboard.Type("Q");
+                    UiInput.Type(ContentBox(window), "Q");
                     Assert.Equal(4, ContentBox(window).Text.IndexOf('Q', StringComparison.Ordinal));
 
                     // Reposition every caret from the end, then quit.
@@ -596,15 +596,12 @@ public sealed class SessionRestoreTests
         var box = ContentBox(window);
         box.Focus();
         Thread.Sleep(150);
-        using (Keyboard.Pressing(VirtualKeyShort.CONTROL))
-        {
-            Keyboard.Press(VirtualKeyShort.END);
-        }
+        UiInput.PressKey(box, VirtualKeyShort.END, withControl: true);
 
         Thread.Sleep(100);
         for (int i = 0; i < back; i++)
         {
-            Keyboard.Press(VirtualKeyShort.LEFT);
+            UiInput.PressKey(box, VirtualKeyShort.LEFT);
             Thread.Sleep(50);
         }
 
@@ -619,7 +616,7 @@ public sealed class SessionRestoreTests
         Thread.Sleep(400);
         ContentBox(window).Focus();
         Thread.Sleep(150);
-        Keyboard.Type(marker);
+        UiInput.Type(ContentBox(window), marker);
         Thread.Sleep(200);
         Assert.Equal(want, ContentBox(window).Text.IndexOf(marker[0], StringComparison.Ordinal));
     }

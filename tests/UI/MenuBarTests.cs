@@ -253,17 +253,14 @@ public sealed class MenuBarTests
                 Thread.Sleep(150);
                 foreach (var (key, menu, first) in cases)
                 {
-                    using (Keyboard.Pressing(VirtualKeyShort.ALT))
-                    {
-                        Keyboard.Press(key);
-                    }
+                    UiInput.PressKey(window, key, withAlt: true);
 
                     var item = Retry.WhileNull(
                         () => window.FindFirstDescendant(cf => cf.ByAutomationId(first)),
                         TimeSpan.FromSeconds(5),
                         TimeSpan.FromMilliseconds(250)).Result;
                     Assert.NotNull(item);
-                    Keyboard.Press(VirtualKeyShort.ESCAPE);
+                    UiInput.PressKey(window, VirtualKeyShort.ESCAPE);
                     Thread.Sleep(350);
                     Assert.Null(window.FindFirstDescendant(cf => cf.ByAutomationId(first)));
                 }
@@ -586,7 +583,7 @@ public sealed class MenuBarTests
                 Thread.Sleep(200);
                 edit.Text = dir;
                 Thread.Sleep(300);
-                Keyboard.Press(VirtualKeyShort.ENTER);
+                UiInput.PressKey(edit, VirtualKeyShort.ENTER);
                 var first = Retry.WhileNull(
                     () =>
                     {
@@ -608,10 +605,7 @@ public sealed class MenuBarTests
                 select.Select();
                 first.Focus();
                 Thread.Sleep(200);
-                using (Keyboard.Pressing(VirtualKeyShort.SHIFT))
-                {
-                    Keyboard.Press(VirtualKeyShort.DOWN);
-                }
+                UiInput.PressKey(first, VirtualKeyShort.DOWN, withShift: true);
 
                 Thread.Sleep(300);
                 ClickDialogButton(dialog, "Open");
@@ -1696,7 +1690,7 @@ public sealed class MenuBarTests
             })
             .Where(n => n.Length > 0)
             .ToList();
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        UiInput.PressKey(modal, VirtualKeyShort.ESCAPE);
         Thread.Sleep(350);
         return names;
     }

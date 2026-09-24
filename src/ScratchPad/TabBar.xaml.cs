@@ -427,18 +427,12 @@ public sealed partial class TabBar : UserControl
     public void CyclePrevious() => Cycle(-1);
 
     // Ctrl+1..8 select positionally; Ctrl+9 selects the last tab (probed).
-    // Out-of-range numbers are no-ops.
+    // Out-of-range numbers are no-ops; the mapping lives in TabModel.
     public void GotoNumber(int number)
     {
-        if (Model is not TabModel model || model.Tabs.Count == 0)
+        if (Model is TabModel model)
         {
-            return;
-        }
-
-        int index = number >= 9 ? model.Tabs.Count - 1 : number - 1;
-        if (index >= 0 && index < model.Tabs.Count)
-        {
-            model.ActiveTab = model.Tabs[index];
+            _ = model.GotoNumber(number);
         }
     }
 

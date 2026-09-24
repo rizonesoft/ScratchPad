@@ -311,8 +311,26 @@ sealed partial class MainWindow : IMenuHost
 
     void IMenuHost.DefineBing() => LaunchBing(BingSearch.DefineUrl(ActiveSelection()));
 
+    // Test seam (D00 T02 §21 item 4): with SCRATCHPAD_TEST_LAUNCH_CAPTURE
+    // naming a file, the URI is appended there and no browser opens, so
+    // the UI suite pins both Bing commands end to end without escaping
+    // the app. Unset (every real launch), the launcher runs as before.
     static void LaunchBing(Uri url)
     {
+        string? capture = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE");
+        if (!string.IsNullOrEmpty(capture))
+        {
+            try
+            {
+                File.AppendAllText(capture, url.AbsoluteUri + "\n");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            return;
+        }
+
         _ = Launcher.LaunchUriAsync(url);
     }
 

@@ -191,14 +191,22 @@ public sealed class TabBarTests
         }
     }
 
-    [InteractiveFact]
+    [InteractiveTheory]
     [Trait("Category", "Interactive")]
-    public void NumberShortcutsCoverMiddlePositions()
+    [InlineData(VirtualKeyShort.KEY_2, 1)]
+    [InlineData(VirtualKeyShort.KEY_4, 3)]
+    [InlineData(VirtualKeyShort.KEY_5, 4)]
+    [InlineData(VirtualKeyShort.KEY_6, 5)]
+    [InlineData(VirtualKeyShort.KEY_7, 6)]
+    [InlineData(VirtualKeyShort.KEY_8, 7)]
+    public void NumberShortcutsCoverMiddlePositions(VirtualKeyShort key, int position)
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
-        // Covers Ctrl+2/4/5/6/7/8; Ctrl+1/3/9 ride
-        // NumberShortcutsAndReopenMatchNotepad. Foreground confirmation
-        // Night-owed D00-T02-S12-N1.
+        // One case per number (D00 T02 §21 item 2) so each reports alone:
+        // Ctrl+2/4/5/6/7/8 here; Ctrl+1/3/9 ride
+        // NumberShortcutsAndReopenMatchNotepad. The first press lands on
+        // tab 1 so every case proves a change of selection. Foreground
+        // confirmation Night-owed D00-T02-S21-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         using var app = UiLaunch.LaunchApp();
         using var automation = new UIA3Automation();
@@ -227,18 +235,10 @@ public sealed class TabBarTests
                 WaitForTabName(window, i, TabAccessibilityName.For($"POS{i}", isDirty: true));
             }
 
-            UiInput.Press(window, VirtualKeyShort.KEY_2, withControl: true);
-            Assert.Equal("POS1", WaitForContent(window, "POS1"));
-            UiInput.Press(window, VirtualKeyShort.KEY_4, withControl: true);
-            Assert.Equal("POS3", WaitForContent(window, "POS3"));
-            UiInput.Press(window, VirtualKeyShort.KEY_5, withControl: true);
-            Assert.Equal("POS4", WaitForContent(window, "POS4"));
-            UiInput.Press(window, VirtualKeyShort.KEY_6, withControl: true);
-            Assert.Equal("POS5", WaitForContent(window, "POS5"));
-            UiInput.Press(window, VirtualKeyShort.KEY_7, withControl: true);
-            Assert.Equal("POS6", WaitForContent(window, "POS6"));
-            UiInput.Press(window, VirtualKeyShort.KEY_8, withControl: true);
-            Assert.Equal("POS7", WaitForContent(window, "POS7"));
+            SelectTab(window, 0);
+            Assert.Equal("POS0", WaitForContent(window, "POS0"));
+            UiInput.Press(window, key, withControl: true);
+            Assert.Equal($"POS{position}", WaitForContent(window, $"POS{position}"));
         }
         finally
         {
@@ -447,7 +447,7 @@ public sealed class TabBarTests
         Assert.NotNull(WaitForMenuItem(window, "Close tab"));
         Assert.NotNull(WaitForMenuItem(window, "Close other tabs"));
         Assert.NotNull(WaitForMenuItem(window, "Close tabs to the right"));
-        Keyboard.Press(VirtualKeyShort.ESCAPE);
+        UiInput.PressKey(window, VirtualKeyShort.ESCAPE);
         Thread.Sleep(300);
 
         // Close-right hits the dirty CCC tab, so the prompt appears and

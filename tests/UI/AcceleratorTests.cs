@@ -49,8 +49,10 @@ public sealed class AcceleratorTests
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
         // Backgrounded+forced passes (StatsDialog opens in 1 s), so this
-        // fence rests on interruption (Press steals the operator
-        // foreground), not on background failure. Foreground confirmation
+        // fence rests on the interruption-risk exception of the
+        // fence-with-proof rule (docs/testing.md): Press steals the operator
+        // foreground, so it stays fenced though it passes backgrounded.
+        // Foreground confirmation
         // Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
@@ -76,8 +78,10 @@ public sealed class AcceleratorTests
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
         // Backgrounded+forced passes (SnapshotsDialog opens), so this
-        // fence rests on interruption (Press steals the operator
-        // foreground), not on background failure. Foreground confirmation
+        // fence rests on the interruption-risk exception of the
+        // fence-with-proof rule (docs/testing.md): Press steals the operator
+        // foreground, so it stays fenced though it passes backgrounded.
+        // Foreground confirmation
         // Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
@@ -130,8 +134,10 @@ public sealed class AcceleratorTests
     {
         // Fenced: physical chord dispatch IS the point (D00 T02 §12).
         // Backgrounded+forced passes (ExportDialog opens), so this
-        // fence rests on interruption (Press steals the operator
-        // foreground), not on background failure. Foreground confirmation
+        // fence rests on the interruption-risk exception of the
+        // fence-with-proof rule (docs/testing.md): Press steals the operator
+        // foreground, so it stays fenced though it passes backgrounded.
+        // Foreground confirmation
         // Night-owed D00-T02-S12-N1.
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
@@ -192,6 +198,68 @@ public sealed class AcceleratorTests
             () => app.GetAllTopLevelWindows(automation).Length == expected,
             TimeSpan.FromSeconds(10));
         return app.GetAllTopLevelWindows(automation).Length;
+    }
+
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
+    public void ChordCtrlEOpensBingSearch()
+    {
+        // Fenced: physical chord dispatch IS the point (D00 T02 §21).
+        // Ctrl+E is declared twice (Search with Bing and Define with Bing,
+        // stock parity); the chord must reach Search. The launcher seam
+        // captures the URI, so no browser opens. Foreground confirmation
+        // Night-owed D00-T02-S21-N1.
+        string capture = Path.Combine(Path.GetTempPath(), $"scratchpad-chord-e-{Guid.NewGuid():N}.txt");
+        string? prior = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE");
+        Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE", capture);
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        try
+        {
+            using var app = UiLaunch.LaunchApp();
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                var box = Retry.WhileNull(
+                    () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(250)).Result;
+                Assert.NotNull(box);
+                UiInput.AppendText(box, "ctrl e");
+                UiInput.SelectAllText(box);
+                UiInput.Press(window, VirtualKeyShort.KEY_E, withControl: true);
+                string want = BingSearch.SearchUrl("ctrl e").AbsoluteUri;
+                var deadline = DateTime.UtcNow.AddSeconds(10);
+                string[] got = [];
+                while (DateTime.UtcNow < deadline && got.Length == 0)
+                {
+                    got = File.Exists(capture) ? File.ReadAllLines(capture).Where(l => l.Length > 0).ToArray() : [];
+                    Thread.Sleep(200);
+                }
+
+                Assert.Equal([want], got);
+            }
+            finally
+            {
+                if (!app.HasExited)
+                {
+                    app.Kill();
+                }
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE", prior);
+            try
+            {
+                File.Delete(capture);
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup; the assertion already ran.
+            }
+        }
     }
 
     static void CloseApp(Application app, Window? window)

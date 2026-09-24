@@ -239,9 +239,13 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 - [ ] Print failure (no printer, cancelled dialog) reports and changes nothing. Done when: both paths are driven. **Decided 2026-09-17 (§5 validation):** no-printer drives through `/pt` to a bogus printer (in-tree precedent `NoSuchPrinter8`); cancel drives through UIA dismiss of the OS dialog.
 - [ ] Header and footer codes &l, &c, &r, &d, &t, &f, and &p render as Notepad's, defaulting to header &f and footer Page &p; custom codes re-enter each print and an empty box prints nothing. Done when: print-to-PDF fixtures cover every code. Source: https://support.microsoft.com/en-gb/topic/how-to-use-notepad-to-create-a-log-file-dd228763-76de-a7a7-952b-d5ae203c4e12
 - [ ] Command-line printing (/P, /PT) routed from D01 T01 §8 completes through this path. Done when: print-then-close is driven.
+- [ ] The physical-chord test for Ctrl+P (File > Print) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `owner-owed` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
 - [ ] Commit: `"notepad-core: add the print path"`
 
 **Test checkpoint:** Print-to-PDF matches golden output byte-for-byte (modulo timestamps); failure paths driven. Cheaper substitute that fails: a print button that screenshots the window.
+
+- -> XREF: D00 T02 §21 -- the binding manifest guard holds this section's Ctrl+P chord exemption open until the chord test above lands.
+
 
 ## 6. Menu and Shortcut Completeness Audit
 

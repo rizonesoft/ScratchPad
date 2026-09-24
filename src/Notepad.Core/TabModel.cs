@@ -36,6 +36,35 @@ public sealed class TabModel : INotifyPropertyChanged
         }
     }
 
+    // Ctrl+1..8 select positionally and Ctrl+9 selects the last tab
+    // (recorded live from Notepad, D01 T01 §3); numbers past the tab
+    // count are no-ops, and re-selecting the active tab changes nothing.
+    // Edges pinned by D00 T02 §21 item 3.
+    public static int? NumberShortcutIndex(int number, int count)
+    {
+        if (count <= 0 || number < 1 || number > 9)
+        {
+            return null;
+        }
+
+        int index = number == 9 ? count - 1 : number - 1;
+        return index < count ? index : null;
+    }
+
+    // Applies a number shortcut; returns whether the active tab changed.
+    public bool GotoNumber(int number)
+    {
+        if (NumberShortcutIndex(number, Tabs.Count) is not int index)
+        {
+            return false;
+        }
+
+        Tab target = Tabs[index];
+        bool changed = !ReferenceEquals(ActiveTab, target);
+        ActiveTab = target;
+        return changed;
+    }
+
     public Tab NewTab()
     {
         var tab = new Tab();

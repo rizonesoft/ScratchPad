@@ -69,7 +69,7 @@ public sealed class QuietHoursTests
         {
             foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static))
             {
-                if (!method.GetCustomAttributes().Any(a => a is InteractiveFactAttribute or HookFactAttribute))
+                if (!method.GetCustomAttributes().Any(a => a is InteractiveFactAttribute or InteractiveTheoryAttribute or HookFactAttribute))
                 {
                     continue;
                 }
@@ -110,7 +110,7 @@ public sealed class QuietHoursTests
                     continue;
                 }
 
-                if (!method.GetCustomAttributes().Any(a => a is InteractiveFactAttribute or HookFactAttribute))
+                if (!method.GetCustomAttributes().Any(a => a is InteractiveFactAttribute or InteractiveTheoryAttribute or HookFactAttribute))
                 {
                     missing.Add($"{type.Name}.{method.Name}");
                 }

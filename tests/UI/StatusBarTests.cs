@@ -65,14 +65,14 @@ public sealed class StatusBarTests
         try
         {
             ContentBox(window).Focus();
-            Keyboard.Type("a");
+            UiInput.Type(ContentBox(window), "a");
             WaitForSegmentName(window, "StatusCount", "1 character");
-            Keyboard.Press(VirtualKeyShort.ENTER);
+            UiInput.PressKey(window, VirtualKeyShort.ENTER);
             WaitForSegmentName(window, "StatusCount", "2 characters");
             WaitForSegmentName(window, "StatusLineColumn", "Line 2,\nColumn 1");
             UiInput.Press(window, VirtualKeyShort.HOME, withControl: true);
             WaitForSegmentName(window, "StatusLineColumn", "Line 1,\nColumn 1");
-            Keyboard.Press(VirtualKeyShort.RIGHT);
+            UiInput.PressKey(window, VirtualKeyShort.RIGHT);
             WaitForSegmentName(window, "StatusLineColumn", "Line 1,\nColumn 2");
         }
         finally

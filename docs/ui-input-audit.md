@@ -215,53 +215,81 @@ Element `.Click()`/`.DoubleClick()`/`.RightClick()` move the real cursor, so the
 
 ## Accelerator binding sweep (D00 T02 §12 item 1)
 
-Swept 2026-09-20: every `KeyboardAccelerator` declared in `src/ScratchPad/MenuBar.xaml` (31 declarations) plus the 13 programmatic tab accelerators in `src/ScratchPad/MainWindow.xaml.cs` `AddTabAccelerators` (no other key handling in `src/`: no `KeyDown`/`PreviewKeyDown` handlers, no other XAML accelerators) against physical-press coverage in `tests/UI` (`UiInput.Press` plus `Keyboard.Press` call sites). **Corrected 2026-09-20 (§12 review R1):** was 31 XAML only; the sweep missed the 13 programmatic tab bindings. A binding is covered only by a test pressing the physical chord; menu-Invoke tests assert the command, not the binding.
+Swept 2026-09-20: every `KeyboardAccelerator` declared in `src/ScratchPad/MenuBar.xaml` (31 declarations) plus the 13 programmatic tab accelerators in `src/ScratchPad/MainWindow.xaml.cs` `AddTabAccelerators` against physical-press coverage in `tests/UI`. **Corrected 2026-09-20 (§12 review R1):** was 31 XAML only; the sweep missed the 13 programmatic tab bindings. A binding is covered only by a test pressing the physical chord; menu-Invoke tests assert the command, not the binding.
 
-| Binding | Command | Covering test or none |
-| ------- | ------- | --------------------- |
-| Ctrl+N | File: New tab | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
-| Ctrl+Shift+N | File: New window | none (restored by §12 item 2) |
-| Ctrl+O | File: Open | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
-| Ctrl+S | File: Save | `MenuBarTests.FileSaveOnUntitledOpensSaveAs` |
-| Ctrl+Shift+S | File: Save as | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
-| Ctrl+Alt+S | File: Save all | `MenuBarTests.FileSaveAllWalksDirtyTabs` |
-| Ctrl+P | File: Print (disabled) | none: command disabled (pending-owner per D01 T02 §1); no dispatch to assert until it ships |
-| Ctrl+W | File: Close tab | `TabBarTests.ThreeTabsSwitchAndClose` |
-| Ctrl+Shift+W | File: Close window | `MenuBarTests.FileMenuLiveAcceleratorsWork` |
-| Ctrl+Z | Edit: Undo (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+X | Edit: Cut (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+C | Edit: Copy (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+V | Edit: Paste (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Delete | Edit: Delete (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+E | Edit: Search with Bing | none: effect escapes the app (`Launcher.LaunchUriAsync` opens the system browser); URL shape unit-pinned by `BingSearchTests` |
-| Ctrl+E | Edit: Define with Bing | none: same chord as Search with Bing (duplicate declaration); same browser-launch reason; URL shape unit-pinned by `BingSearchTests` |
-| Ctrl+F | Edit: Find (disabled) | none: command disabled; no dispatch to assert until it ships |
-| F3 | Edit: Find next (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Shift+F3 | Edit: Find previous (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+H | Edit: Replace (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+G | Edit: Go to (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+A | Edit: Select all (disabled) | none: command disabled; no dispatch to assert until it ships |
-| F5 | Edit: Time/Date (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+Plus | View: Zoom in (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+Minus | View: Zoom out (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+0 | View: Restore default zoom (disabled) | none: command disabled; no dispatch to assert until it ships |
-| Ctrl+Shift+G | Tools: Statistics | none (restored by §12 item 2) |
-| Ctrl+Shift+H | Tools: Snapshots | none (restored by §12 item 2) |
-| Ctrl+Shift+E | Tools: Templates | none (restored by §12 item 2) |
-| Ctrl+Shift+X | Tools: Export | none (restored by §12 item 2) |
-| Ctrl+Shift+L | Tools: Lock file | none (restored by §12 item 2) |
-| Ctrl+T | Tabs: new tab (programmatic) | `TabBarTests`, `PinnedTabsTests` |
-| Ctrl+Tab | Tabs: cycle next (programmatic) | `TabBarTests.ThreeTabsSwitchAndClose` |
-| Ctrl+Shift+Tab | Tabs: cycle previous (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
-| Ctrl+Shift+T | Tabs: reopen last (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
-| Ctrl+1 | Tabs: goto 1 (programmatic) | `TabBarTests.ThreeTabsSwitchAndClose` |
-| Ctrl+2 | Tabs: goto 2 (programmatic) | none (restored by §12 item 2) |
-| Ctrl+3 | Tabs: goto 3 (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
-| Ctrl+4 | Tabs: goto 4 (programmatic) | none (restored by §12 item 2) |
-| Ctrl+5 | Tabs: goto 5 (programmatic) | none (restored by §12 item 2) |
-| Ctrl+6 | Tabs: goto 6 (programmatic) | none (restored by §12 item 2) |
-| Ctrl+7 | Tabs: goto 7 (programmatic) | none (restored by §12 item 2) |
-| Ctrl+8 | Tabs: goto 8 (programmatic) | none (restored by §12 item 2) |
-| Ctrl+9 | Tabs: goto last (programmatic) | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` |
+**Guarded since 2026-09-24 (D00 T02 §21):** this table is no longer a one-time sweep. `tests/UI/BindingManifest.cs` derives the binding inventory from source (the menu XAML plus `AddTabAccelerators`, the number loop expanded to its bounds), and `BindingManifestTests.LiveTreeManifestIsClean` fails the default suite when a declared binding has no row, a row has no declaration, a covered row's test does not press its chord (Roslyn reads the test body, Theory keys included), an exemption falls outside the taxonomy below, or the conflict matrix finds an unaudited duplicate, an OS-reserved chord, or an access-key collision. Any key handling in `src/` outside the two homes fails `LiveSourceHasNoUndeclaredKeyHandling`. The Command cell's backticked id is the machine key: a menu AutomationId, or `Tabs.<method>` for the programmatic bindings. **Corrected 2026-09-24 (§21):** the §12 table still read `none (restored by §12 item 2)` on eleven rows the restoration had covered; the guard would have failed them, and they now name their tests.
 
-Pressed but not app-declared (framework or control behavior, outside the sweep; covering tests named so a future declaration does not double-cover): Ctrl+Home/Ctrl+End (caret moves in `StatusBarTests`/`SessionRestoreTests`), Alt+letter access keys (`MenuBarTests.AccessKeysOpenEachMenu`). **Corrected 2026-09-20 (§12 review R1):** was including tab chords as framework; Ctrl+T, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+Shift+T, and Ctrl+1..9 are app-declared in `AddTabAccelerators` and now ride the table above.
+| Binding | Command | Class | Coverage or reason | Approver | Owner |
+| ------- | ------- | ----- | ------------------ | -------- | ----- |
+| Ctrl+N | File: New tab (`MenuFileNewTab`) | covered | `MenuBarTests.FileMenuLiveAcceleratorsWork` | - | - |
+| Ctrl+Shift+N | File: New window (`MenuFileNewWindow`) | covered | `AcceleratorTests.ChordCtrlShiftNOpensSecondWindow` | - | - |
+| Ctrl+O | File: Open (`MenuFileOpen`) | covered | `MenuBarTests.FileMenuLiveAcceleratorsWork` | - | - |
+| Ctrl+S | File: Save (`MenuFileSave`) | covered | `MenuBarTests.FileSaveOnUntitledOpensSaveAs` | - | - |
+| Ctrl+Shift+S | File: Save as (`MenuFileSaveAs`) | covered | `MenuBarTests.FileMenuLiveAcceleratorsWork` | - | - |
+| Ctrl+Alt+S | File: Save all (`MenuFileSaveAll`) | covered | `MenuBarTests.FileSaveAllWalksDirtyTabs` | - | - |
+| Ctrl+P | File: Print (`MenuFilePrint`) | owner-owed | enabled at runtime since the print engine landed (`MainWindow.xaml.cs` SetEnabled); the physical-chord test is owed by the print section | operator | D01 T02 §5 |
+| Ctrl+W | File: Close tab (`MenuFileCloseTab`) | covered | `TabBarTests.ThreeTabsSwitchAndClose` | - | - |
+| Ctrl+Shift+W | File: Close window (`MenuFileCloseWindow`) | covered | `MenuBarTests.FileMenuLiveAcceleratorsWork` | - | - |
+| Ctrl+Z | Edit: Undo (`MenuEditUndo`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §4 |
+| Ctrl+X | Edit: Cut (`MenuEditCut`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §3 |
+| Ctrl+C | Edit: Copy (`MenuEditCopy`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §3 |
+| Ctrl+V | Edit: Paste (`MenuEditPaste`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §3 |
+| Delete | Edit: Delete (`MenuEditDelete`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §3 |
+| Ctrl+E | Edit: Search with Bing (`MenuEditSearchBing`) | covered | `AcceleratorTests.ChordCtrlEOpensBingSearch` (URI through the launcher seam; `BingLaunchTests` pins both Bing URIs focus-free) | - | - |
+| Ctrl+E | Edit: Define with Bing (`MenuEditDefineBing`) | duplicate | second declaration of Ctrl+E for stock parity (both stock items display Ctrl+E); the chord reaches Search with Bing, and Define runs from its menu item (`BingLaunchTests`) | operator | D01 T02 §1 |
+| Ctrl+F | Edit: Find (`MenuEditFind`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T02 §2 |
+| F3 | Edit: Find next (`MenuEditFindNext`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T02 §2 |
+| Shift+F3 | Edit: Find previous (`MenuEditFindPrevious`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T02 §2 |
+| Ctrl+H | Edit: Replace (`MenuEditReplace`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T02 §3 |
+| Ctrl+G | Edit: Go to (`MenuEditGoTo`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T02 §4 |
+| Ctrl+A | Edit: Select all (`MenuEditSelectAll`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §3 |
+| F5 | Edit: Time/Date (`MenuEditTimeDate`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |
+| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |
+| Ctrl+Minus | View: Zoom out (`MenuViewZoomOut`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |
+| Ctrl+0 | View: Restore default zoom (`MenuViewZoomRestore`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |
+| Ctrl+Shift+G | Tools: Statistics (`MenuToolsStats`) | covered | `AcceleratorTests.ChordCtrlShiftGOpensStats` | - | - |
+| Ctrl+Shift+H | Tools: Snapshots (`MenuToolsSnapshots`) | covered | `AcceleratorTests.ChordCtrlShiftHOpensSnapshots` | - | - |
+| Ctrl+Shift+E | Tools: Templates (`MenuToolsTemplates`) | covered | `AcceleratorTests.ChordCtrlShiftEOpensTemplates` | - | - |
+| Ctrl+Shift+X | Tools: Export (`MenuToolsExport`) | covered | `AcceleratorTests.ChordCtrlShiftXOpensExport` | - | - |
+| Ctrl+Shift+L | Tools: Lock file (`MenuToolsLock`) | covered | `AcceleratorTests.ChordCtrlShiftLOpensLock` | - | - |
+| Ctrl+T | Tabs: new tab (`Tabs.NewTab`) | covered | `TabBarTests.ThreeTabsSwitchAndClose` | - | - |
+| Ctrl+Tab | Tabs: cycle next (`Tabs.CycleNext`) | covered | `TabBarTests.ThreeTabsSwitchAndClose` | - | - |
+| Ctrl+Shift+Tab | Tabs: cycle previous (`Tabs.CyclePrevious`) | covered | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` | - | - |
+| Ctrl+Shift+T | Tabs: reopen last (`Tabs.ReopenLast`) | covered | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` | - | - |
+| Ctrl+1 | Tabs: goto 1 (`Tabs.GotoNumber(1)`) | covered | `TabBarTests.ThreeTabsSwitchAndClose` | - | - |
+| Ctrl+2 | Tabs: goto 2 (`Tabs.GotoNumber(2)`) | covered | `TabBarTests.NumberShortcutsCoverMiddlePositions` | - | - |
+| Ctrl+3 | Tabs: goto 3 (`Tabs.GotoNumber(3)`) | covered | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` | - | - |
+| Ctrl+4 | Tabs: goto 4 (`Tabs.GotoNumber(4)`) | covered | `TabBarTests.NumberShortcutsCoverMiddlePositions` | - | - |
+| Ctrl+5 | Tabs: goto 5 (`Tabs.GotoNumber(5)`) | covered | `TabBarTests.NumberShortcutsCoverMiddlePositions` | - | - |
+| Ctrl+6 | Tabs: goto 6 (`Tabs.GotoNumber(6)`) | covered | `TabBarTests.NumberShortcutsCoverMiddlePositions` | - | - |
+| Ctrl+7 | Tabs: goto 7 (`Tabs.GotoNumber(7)`) | covered | `TabBarTests.NumberShortcutsCoverMiddlePositions` | - | - |
+| Ctrl+8 | Tabs: goto 8 (`Tabs.GotoNumber(8)`) | covered | `TabBarTests.NumberShortcutsCoverMiddlePositions` | - | - |
+| Ctrl+9 | Tabs: goto last (`Tabs.GotoNumber(9)`) | covered | `TabBarTests.NumberShortcutsAndReopenMatchNotepad` | - | - |
+
+### Exemption taxonomy (D00 T02 §21 item 10)
+
+Every row that is not `covered` carries one class, an approver, and a follow-up owner; the guard refuses a class outside this list or an exemption without an approver.
+
+| Class | Meaning | Guard rule | Follow-up owner |
+| ----- | ------- | ---------- | --------------- |
+| `covered` | a named test presses the physical chord and asserts the dispatch | each named `Class.Method` exists and its body presses the row's chord | none |
+| `disabled` | the command ships disabled (`IsEnabled="False"`) and nothing enables it at runtime | fails the moment the command is enabled in XAML or through `SetEnabled(..., true)`: an enabled command cannot ride this class (D00 T02 §21 item 12) | the section that enables the command; its open checklist must name the chord and `D00 T02 §21`, and a stamped owner fails the row |
+| `owner-owed` | the command is live but its physical-chord test has not landed | fails if the command is disabled (then it is `disabled`) | the open section that owes the chord test, named the same way |
+| `duplicate` | a second declaration of a chord another command owns | fails unless another command declares the same chord; the matrix admits one unaudited owner per chord | the menu-structure owner that chose the duplicate |
+
+Approver: `operator` on every exemption, under the single-operator trust model (a name binds a human to the follow-up; nothing authenticates it). Cost of changing it: an approver registry, turning this column into a lookup.
+
+**§12 reasons reclassified 2026-09-24:** the §12 sweep left 18 written reasons. Fifteen `command disabled; no dispatch to assert until it ships` rows (Ctrl+Z, Ctrl+X, Ctrl+C, Ctrl+V, Delete, Ctrl+F, F3, Shift+F3, Ctrl+H, Ctrl+G, Ctrl+A, F5, Ctrl+Plus, Ctrl+Minus, Ctrl+0) classify `disabled` with their enabling owners. Ctrl+P's `command disabled (pending-owner per D01 T02 §1)` was stale: the print engine enables it at runtime, so it classifies `owner-owed` under D01 T02 §5. Search with Bing's `effect escapes the app` classifies `covered` now that the launcher seam captures the URI. Define with Bing's `same chord as Search with Bing` classifies `duplicate`.
+
+### Conflict matrix (D00 T02 §21 item 8)
+
+`BindingManifest.Conflicts` groups every declared chord across the menu bar and the root tab bindings: each chord has exactly one unaudited owner, no chord is OS-reserved (Alt+F4, Alt+Tab, Alt+Shift+Tab, Alt+Esc, Alt+Space, Ctrl+Esc, Ctrl+Alt+Delete, Ctrl+Shift+Esc, Ctrl+Alt+Tab, F1, F10, Shift+F10), the four menu access keys (F, E, V, T) are distinct, and no Alt+letter binding shadows an access key. Context routing: both homes are window-global (menu-bar accelerators and `AddTabAccelerators` on the window root fire from any focus, the editor included); no dialog, the editor, or the tab strip declares its own bindings, and the undeclared-key-handling scan keeps it that way. The one duplicate today is Ctrl+E (Search with Bing owns it; Define with Bing is the audited `duplicate`). `LiveTreeManifestIsClean` prints the full matrix to the test output.
+
+### Framework chords (D00 T02 §21 item 5)
+
+Pressed by tests but not declared by the app: the framework or a control owns the behavior, so the manifest does not list them. Each names its owner, so a future app declaration of the same chord lands in the table above instead of double-covering.
+
+| Chord | Behavior | Pressed by | Owner |
+| ----- | -------- | ---------- | ----- |
+| Ctrl+Home, Ctrl+End | caret to document start or end (TextBox built-in) | `StatusBarTests`, `SessionRestoreTests` | D02 T01 §2 (text buffer and caret model) |
+| Alt+F, Alt+E, Alt+V, Alt+T | open a menu through its access key (MenuBarItem built-in) | `MenuBarTests.AccessKeysOpenEachMenu` | D01 T02 §1 (menu bar) |

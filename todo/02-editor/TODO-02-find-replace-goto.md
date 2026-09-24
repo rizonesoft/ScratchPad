@@ -82,9 +82,13 @@ Why this section exists: the find bar is the surface users touch. It must place,
 - [ ] The bar exposes exactly Match case and Wrap around under More options; no whole-word toggle and no Up/Down direction radio appear. Done when: the capture comparison confirms the set. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
 - [ ] F3 finds next and Shift+F3 finds previous through the bar. Done when: both keys are driven.
 - [ ] The bar remembers entered values and option states across openings within the session, and opening it with a selection autofills the search field. Done when: memory and autofill are driven. Source: https://blogs.windows.com/windows-insider/2018/07/11/announcing-windows-10-insider-preview-build-17713/
+- [ ] The physical-chord test for Ctrl+F, F3, and Shift+F3 (Edit > Find, Find next, Find previous) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
 - [ ] Commit: `"editor: build the find bar"`
 
 **Test checkpoint:** UI drive walks find, next/previous, options, no-match, and wrap; capture comparison passes. Cheaper substitute that fails: the bar tested without the counter.
+
+- -> XREF: D00 T02 §21 -- the binding manifest guard holds this section's Ctrl+F, F3, and Shift+F3 chord exemption open until the chord test above lands.
+
 
 ## 3. Replace Mode
 
@@ -101,9 +105,13 @@ Why this section exists: replace mutates through undo. The mode must match Notep
 - [ ] Replace and replace-all honor the §1 options and report Notepad's count. Done when: the count fixtures pass. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Replace disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] Every replace is one undo unit per Notepad's grouping. Done when: undo-after-replace fixtures pass.
 - [ ] Replace-all across a dirty buffer keeps dirty semantics exact. Done when: the dirty fixtures pass.
+- [ ] The physical-chord test for Ctrl+H (Edit > Replace) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
 - [ ] Commit: `"editor: add replace mode"`
 
 **Test checkpoint:** Replace and replace-all driven with counts; undo grouping proven. Cheaper substitute that fails: replace that bypasses undo.
+
+- -> XREF: D00 T02 §21 -- the binding manifest guard holds this section's Ctrl+H chord exemption open until the chord test above lands.
+
 
 ## 4. Go-to-Line Dialog
 
@@ -120,9 +128,13 @@ Why this section exists: small surface, exact behavior. Validation, errors, and 
 - [ ] `src/ScratchPad/GoToDialog.xaml` validates with Notepad's errors (non-numeric, out of range, wrap-mode restriction). Done when: each error is driven. **Corrected 2026-09-17 (groom):** the seed path `src/Notepad/` never existed (same seed error as D01 T02 §§1/3/4/5). **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Go to disabled; this section enables it through the `MenuCommands` registry and drives it on landing.
 - [ ] Valid input lands the caret exactly (line, column rules as Notepad's). Done when: the landing fixtures pass.
 - [ ] The dialog remembers nothing it should not and persists nothing. Done when: the behavior is recorded and tested.
+- [ ] The physical-chord test for Ctrl+G (Edit > Go to) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
 - [ ] Commit: `"editor: add go-to-line"`
 
 **Test checkpoint:** Errors and landings driven; capture comparison passes. Cheaper substitute that fails: validation that clamps instead of reporting.
+
+- -> XREF: D00 T02 §21 -- the binding manifest guard holds this section's Ctrl+G chord exemption open until the chord test above lands.
+
 
 ## 5. Options Persistence and Edge Cases
 

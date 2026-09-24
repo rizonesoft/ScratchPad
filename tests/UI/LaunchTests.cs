@@ -271,7 +271,7 @@ public sealed class LaunchTests
                         break;
                     }
 
-                    Keyboard.Press(VirtualKeyShort.RETURN);
+                    UiInput.PressKey(window, VirtualKeyShort.RETURN);
                     Thread.Sleep(500);
                 }
 

@@ -11,6 +11,21 @@ run-a:
   UI.BackupTests.FailedSaveStillWritesSibling
   UI.BackupTests.RotationEvictsOldestSeededSibling
   UI.BackupTests.SaveWritesSiblingWithPreSaveBytes
+  UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
+  UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
+  UI.BindingManifestTests.KeyHandlingOutsideTheTwoHomesFails
+  UI.BindingManifestTests.LiveSourceHasNoUndeclaredKeyHandling
+  UI.BindingManifestTests.LiveTreeDeclaresFortyFourBindings
+  UI.BindingManifestTests.LiveTreeManifestIsClean
+  UI.BindingManifestTests.MismatchedMenuLabelFails
+  UI.BindingManifestTests.OwnerThatNoLongerOwesTheChordFails
+  UI.BindingManifestTests.PlantedAccessKeyCollisionFails
+  UI.BindingManifestTests.PlantedConflictFails
+  UI.BindingManifestTests.PlantedEnabledButExemptCommandFails
+  UI.BindingManifestTests.PlantedOsReservedChordFails
+  UI.BindingManifestTests.PlantedUndeclaredBindingFails
+  UI.BindingManifestTests.WrongKeyMutationFailsTheGate
+  UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser
   UI.ChromeTests.FullStripParksAddButtonLeftOfCaption
   UI.ChromeTests.ZeroTabsCentersAddButton
   UI.DirtyPromptTests.CancelKeepsTabExactly
@@ -89,6 +104,7 @@ run-a:
   UI.MenuBarTests.ToolsMenuInvokesSnapshots
   UI.MenuBarTests.ToolsMenuInvokesStats
   UI.MenuBarTests.ToolsMenuInvokesTemplates
+  UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
   UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI.MultiWindowTests.WindowsKeepIndependentTabs
   UI.NightlyPartitionTests.EveryUiTestBelongsToExactlyOneNightlyLeg
@@ -180,6 +196,12 @@ run-a:
   UI.UiForegroundTests.LargestSecondaryWins
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI.UiInputFunnelTests.FocusInAnotherProcessFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.MatchingForegroundAndFocusSendsOnce
+  UI.UiInputFunnelTests.OnlyTheFunnelTouchesTheKeyboard
+  UI.UiInputFunnelTests.PreconditionSettlingWithinTheWaitStillSends
+  UI.UiInputFunnelTests.StuckModifierIsReleasedAndFailsLoud
   UI.UiLeakBundleTests.EventSlicesFillFromGateLog
   UI.UiLeakBundleTests.EventSlicesScrubTitles
   UI.UiLeakBundleTests.RetentionPrunesOldBundles
@@ -188,8 +210,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 182
-run-a-cases: 234
+run-a-methods: 204
+run-a-cases: 257
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -198,6 +220,7 @@ run-b:
 run-b-methods: 4
 run-b-cases: 4
 interactive:
+  UI.AcceleratorTests.ChordCtrlEOpensBingSearch
   UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
   UI.AcceleratorTests.ChordCtrlShiftGOpensStats
   UI.AcceleratorTests.ChordCtrlShiftHOpensSnapshots
@@ -234,5 +257,5 @@ interactive:
   UI.TabBarTests.NumberShortcutsCoverMiddlePositions
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
-interactive-methods: 36
-interactive-cases: 36
+interactive-methods: 37
+interactive-cases: 37
