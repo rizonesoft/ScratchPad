@@ -4063,13 +4063,22 @@ def telemetry_parse(text: str) -> dict:
     }
 
 
+# Night debt comes due this many nights after its base date (the owed
+# date, else the owning stamp) unless the line names `due YYYY-MM-DD`
+# (D00 T02 §19). The collector runs every night at 02:30, so three
+# missed quiet windows means the collection failed rather than waited.
+# A recorded default; cost of changing it: this one constant.
+NIGHT_DEBT_DUE_NIGHTS = 3
+NIGHT_DEBT_ESCALATION = "rerun the collection (tools/nightly.ps1) or record risk acceptance"
+
+
 def _parse_owed_paren(paren: str):
-    """Split a Night-owed paren into (count, filter, owed-date).
+    """Split a Night-owed paren into (count, filter, owed-date, due-date).
 
     Lenient by design: debt is informational (D00 T02 §10 item 3),
     so an unparseable chunk yields None, never a fatal.
     """
-    count, filt, owed = None, "", None
+    count, filt, owed, due = None, "", None, None
     chunks = [c.strip() for c in paren.split(",")]
     if chunks:
         m = re.match(r"(\d+)\s+(.+)", chunks[0])
@@ -4079,7 +4088,10 @@ def _parse_owed_paren(paren: str):
         m = re.match(r"owed\s+(\d{4}-\d{2}-\d{2})\Z", c)
         if m:
             owed = m.group(1)
-    return count, filt, owed
+        m = re.match(r"due\s+(\d{4}-\d{2}-\d{2})\Z", c)
+        if m:
+            due = m.group(1)
+    return count, filt, owed, due
 
 
 def _parse_collected_paren(paren: str):
@@ -4123,7 +4135,7 @@ def night_debts(todos: list["Todo"], today_d):
                 continue
             om = NIGHT_OWED_RE.search(ln)
             if om and DEBT_ID_RE.match(om.group(1)):
-                count, filt, owed_on = _parse_owed_paren(om.group(2))
+                count, filt, owed_on, due_on = _parse_owed_paren(om.group(2))
                 sec = t.sections.get(num)
                 owed[om.group(1)] = {
                     "file": t.path,
@@ -4131,6 +4143,7 @@ def night_debts(todos: list["Todo"], today_d):
                     "count": count,
                     "filter": filt,
                     "owed": owed_on,
+                    "due": due_on,
                     "stamp": sec.stamped_on if sec is not None else None,
                 }
                 continue
@@ -4146,11 +4159,17 @@ def night_debts(todos: list["Todo"], today_d):
         c = collected.get(did)
         base = o["owed"] or o["stamp"]
         age = None
+        due = None
         if base:
             try:
-                age = max(0, (today_d - datetime.fromisoformat(base).date()).days)
+                base_d = datetime.fromisoformat(base).date()
+                age = max(0, (today_d - base_d).days)
+                due = (base_d + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
             except ValueError:
                 age = None
+        if o["due"]:
+            due = o["due"]
+        overdue = bool(due) and c is None and today_d.isoformat() > due
         out.append(
             {
                 "id": did,
@@ -4160,6 +4179,8 @@ def night_debts(todos: list["Todo"], today_d):
                 "filter": o["filter"],
                 "owed": o["owed"],
                 "age": age,
+                "due": due,
+                "overdue": overdue,
                 "last_log": c["log"] if c else None,
                 "open": c is None,
             }
@@ -4260,7 +4281,8 @@ def cmd_query(args) -> int:
             _age = f"{d['age']}n" if d["age"] is not None else "?n"
             print(
                 f"    {d['file']} {d['id']} {d['section']} count {d['count']}"
-                f" filter {d['filter']} age {_age} last-log {d['last_log'] or 'none'}"
+                f" filter {d['filter']} age {_age} due {d['due'] or '?'} last-log {d['last_log'] or 'none'}"
+                + (f" OVERDUE escalate operator: {NIGHT_DEBT_ESCALATION}" if d["overdue"] else "")
             )
         return 0
 
@@ -6655,7 +6677,8 @@ def cmd_query(args) -> int:
                 _age = f"{d['age']}n" if d["age"] is not None else "?n"
                 print(
                     f"    {d['id']}  {d['section']}  count {d['count']}"
-                    f"  age {_age}  last log {d['last_log'] or 'none'}"
+                    f"  age {_age}  due {d['due'] or '?'}  last log {d['last_log'] or 'none'}"
+                    + (f"  OVERDUE escalate operator: {NIGHT_DEBT_ESCALATION}" if d["overdue"] else "")
                 )
             _od_owners = sorted(set(od_by_owner) | set(_rv_by_owner))
             print(f"overdue owners      {len(_od_owners)}")
@@ -25325,7 +25348,9 @@ track: Z1
             "|   2   |   §2    | Collected work | -- |  [ ]   |\n\n---\n\n## 1. Owed work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
-            "**Night-owed:** D90-T01-S1-N1 (3 Interactive, collector Nightly UI 02:30, owed 2026-09-15)\n\n"
+            "**Night-owed:** D90-T01-S1-N1 (3 Interactive, collector Nightly UI 02:30, owed 2026-09-15)\n"
+            "**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19)\n"
+            "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30)\n\n"
             "## 2. Collected work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
@@ -25374,6 +25399,32 @@ track: Z1
         check(
             "query night-debt names file plus filter for the collector",
             any("TODO-01-night.md" in ln and "filter Interactive" in ln for ln in _ndlines),
+            True,
+        )
+        # D00 T02 §19: absolute due date plus escalation on every open debt.
+        check(
+            "query night-debt dates an overdue debt and names its escalation",
+            any(
+                "D90-T01-S1-N1" in ln and "due 2026-09-18" in ln
+                and "OVERDUE escalate operator: rerun the collection" in ln
+                and "risk acceptance" in ln
+                for ln in _ndlines
+            ),
+            True,
+        )
+        check(
+            "query night-debt dates a debt inside its window without escalating",
+            any("D90-T01-S1-N2" in ln and "due 2026-09-22" in ln and "OVERDUE" not in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "an explicit due token overrides the default window",
+            any("D90-T01-S1-N3" in ln and "due 2026-09-30" in ln and "OVERDUE" not in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "query summary surfaces overdue night debt with its escalation",
+            any("D90-T01-S1-N1" in ln and "OVERDUE escalate operator" in ln for ln in _ndsumlines),
             True,
         )
         check("a 5-night-old open debt validates clean", _vdcode, 0)
