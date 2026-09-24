@@ -30,7 +30,9 @@ import shutil
 import tomllib
 
 GROK_LATEST = "grok-latest"
-PANEL_MODELS = ("gpt-6-sol", GROK_LATEST)
+# gpt-6-sol stays in the set so the primary can be re-pinned back to it
+# by TOML edit alone (operator direction 2026-09-24).
+PANEL_MODELS = ("gpt-6-astra", "gpt-6-sol", GROK_LATEST)
 PANEL_EFFORTS = ("medium", "high", "xhigh")
 PANEL_SLOTS = (
     "bulk",

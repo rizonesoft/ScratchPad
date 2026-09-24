@@ -7,37 +7,42 @@
 # the newest cached Grok (D00 T04 §25). Effort `inherit` does not exist:
 # every slot states its effort concretely.
 
+# Primary pin: gpt-6-astra (operator direction 2026-09-24). To switch
+# back, replace every `gpt-6-astra` below with `gpt-6-sol`; both are in
+# PANEL_MODELS, so no code change is needed:
+#   sed -i 's/^model = "gpt-6-astra"/model = "gpt-6-sol"/' .conclave/panel.toml
+
 # The writer family never reviews (AGENTS.md: Claude Code is the only
 # writer); the validator reads it here instead of naming it in code.
 [panel]
 writer = "claude"
 
 [slot.bulk] # Full R1-R2, Light R1
-model = "gpt-6-sol"
+model = "gpt-6-astra"
 effort = "medium"
 timeout = 600
 
 [slot.signoff] # Full R3, Light R2: governs every stamp; GPT, independent of the Claude writer (D00 T04 §23)
-model = "gpt-6-sol"
+model = "gpt-6-astra"
 effort = "high"
 timeout = 600
 
 [slot.depth] # Full R4-R5, blocking findings only
-model = "gpt-6-sol"
+model = "gpt-6-astra"
 effort = "high"
 timeout = 600
 
 [slot.plan-primary] # plan review, independent of the Claude writer
-model = "gpt-6-sol"
+model = "gpt-6-astra"
 effort = "medium"
 timeout = 900
 
 [slot.arch-primary] # architecture gate
-model = "gpt-6-sol"
+model = "gpt-6-astra"
 effort = "high"
 timeout = 600
 
-[slot.fallback] # sol down in any role: newest Grok fills it + GPT outage note; both down, no stamp (D00 T04 §25)
+[slot.fallback] # primary GPT down in any role: newest Grok fills it + GPT outage note; both down, no stamp (D00 T04 §25)
 model = "grok-latest"
 effort = "high"
 timeout = 900

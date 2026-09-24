@@ -1436,7 +1436,7 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
     return problems
 
 _PANEL_SLOT_REF_RE = re.compile(r"--slot\s+([a-z0-9][a-z0-9-]*)")
-_PANEL_PIN_RE = re.compile(r"gpt-6-sol|gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|grok-(?:latest|\d)|--effort|--reasoning-effort|model_reasoning_effort")
+_PANEL_PIN_RE = re.compile(r"gpt-6-(?:sol|astra)|gpt-5\.6-(?:sol|terra)|claude-opus-5-5|claude-(?:opus|sonnet)-5|grok-(?:latest|\d)|--effort|--reasoning-effort|model_reasoning_effort")
 _PANEL_SKILLS = (
     ".claude/skills/review-todo-section/SKILL.md",
 )
@@ -23826,11 +23826,11 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         (_pw_ret / ".conclave").mkdir(parents=True)
         _live_toml = (WORKSPACE / ".conclave" / "panel.toml").read_text(encoding="utf-8")
         _bulk_at = _live_toml.index("[slot.bulk]")
-        _model_at = _live_toml.index('model = "gpt-6-sol"', _bulk_at)
+        _model_m = re.compile(r'model = "[^"]*"').search(_live_toml, _bulk_at)
         _retired_toml = (
-            _live_toml[:_model_at]
+            _live_toml[:_model_m.start()]
             + 'model = "gpt-5.6-sol"'
-            + _live_toml[_model_at + len('model = "gpt-6-sol"'):]
+            + _live_toml[_model_m.end():]
         )
         (_pw_ret / ".conclave" / "panel.toml").write_text(_retired_toml, encoding="utf-8")
         check(
@@ -23913,15 +23913,23 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             ),
         )
         _live_slots = rp.panel_slots.load_slots()
+        # The primary GPT pin is operator-switchable by TOML edit (sol or
+        # astra); the tests below hold effort, timeout, and family fixed.
+        _primary = _live_slots["signoff"]["model"]
+        check(
+            "live primary pin is a governed GPT model",
+            (_primary in rp.panel_slots.PANEL_MODELS, _primary.startswith("gpt-")),
+            (True, True),
+        )
         check(
             "live bulk and signoff pins hold",
             (_live_slots["bulk"], _live_slots["signoff"]),
             (
-                {"model": "gpt-6-sol", "effort": "medium", "timeout": 600, "family": "codex"},
-                {"model": "gpt-6-sol", "effort": "high", "timeout": 600, "family": "codex"},
+                {"model": _primary, "effort": "medium", "timeout": 600, "family": "codex"},
+                {"model": _primary, "effort": "high", "timeout": 600, "family": "codex"},
             ),
         )
-        # Six slots (D00 T04 §25): five sol primaries plus one Grok
+        # Six slots (D00 T04 §25): five GPT primaries plus one Grok
         # fallback on a different provider; Claude never reviews.
         check(
             "live primaries are GPT and the one fallback is Grok",
@@ -23996,7 +24004,7 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         check(
             "live plan-primary pin holds",
             _live_slots["plan-primary"],
-            {"model": "gpt-6-sol", "effort": "medium", "timeout": 900, "family": "codex"},
+            {"model": _primary, "effort": "medium", "timeout": 900, "family": "codex"},
         )
         check(
             "telemetry buckets Grok panel rounds as the Grok family",
