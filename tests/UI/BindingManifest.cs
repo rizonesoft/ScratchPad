@@ -259,6 +259,13 @@ internal static class BindingManifest
             found.AddRange(TabHomeProblems(text));
             scan = StripMethod(text, "AddAccel");
         }
+        else if (Regex.IsMatch(text, "\\bAddAccel\\b"))
+        {
+            // R4-F1: the helper is private to MainWindow's partials, so a
+            // reference from any other file (another partial included) is
+            // a binding path the inventory never derives.
+            found.Add($"{relPath}: references AddAccel outside {TabSourcePath}; only direct calls in AddTabAccelerators are derived");
+        }
 
         foreach (string token in new[] { "KeyboardAccelerator", "KeyDown", "KeyUp", "PreviewKey", "AccessKey=", "ProcessKeyboardAccelerators", "CharacterReceived" })
         {
@@ -275,6 +282,9 @@ internal static class BindingManifest
         return found;
     }
 
+    internal const string SanctionedHelperBody =
+        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{action();args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
+
     static List<string> TabHomeProblems(string source)
     {
         var found = new List<string>();
@@ -287,9 +297,11 @@ internal static class BindingManifest
             return found;
         }
 
-        string body = new string(helper.ToString().Where(c => !char.IsWhiteSpace(c)).ToArray());
-        if (!body.Contains("newKeyboardAccelerator{Key=key,Modifiers=modifiers}", StringComparison.Ordinal)
-            || Regex.Count(body, "KeyboardAccelerator\\b") != 1)
+        // R4-F1: the helper body must be exactly the sanctioned text
+        // (whitespace aside), so no statement can re-key or re-modify the
+        // accelerator after construction or add a second one.
+        string body = new string((helper.Body?.ToString() ?? string.Empty).Where(c => !char.IsWhiteSpace(c)).ToArray());
+        if (body != SanctionedHelperBody)
         {
             found.Add($"{TabSourcePath}: AddAccel no longer builds exactly one accelerator from its own key and modifiers parameters");
         }

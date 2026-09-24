@@ -162,7 +162,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     {
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D { void M() { box.KeyDown += OnKey; } }"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs", "class W { void Other() { root.KeyboardAccelerators.Add(a); } }"));
-        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; scope.KeyboardAccelerators.Add(accel); }";
+        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { action(); args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
         const string Tab = BindingManifest.TabSourcePath;
         Assert.Empty(BindingManifest.UndeclaredKeyHandling(Tab,
             "class W { static void AddTabAccelerators(UIElement scope) { AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, N); } " + Helper + " }"));
@@ -193,6 +193,15 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.Contains(BindingManifest.UndeclaredKeyHandling(Tab,
             "class MainWindow { static void AddTabAccelerators(UIElement scope) { MainWindow.AddAccel(scope, VirtualKey.Q, VirtualKeyModifiers.Control, N); } " + Helper + " }"),
             p => p.Contains("AddAccel is referenced from AddTabAccelerators as `MainWindow.AddAccel`", StringComparison.Ordinal));
+
+        // R4-F1: a reference from another MainWindow partial, and a helper
+        // that re-keys the accelerator after construction, both fail.
+        Assert.Contains(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.Menu.cs",
+            "partial class MainWindow { void Wire(UIElement root) { AddAccel(root, VirtualKey.Q, VirtualKeyModifiers.Control, N); } }"),
+            p => p.Contains("references AddAccel outside", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.UndeclaredKeyHandling(Tab,
+            "class W { static void AddTabAccelerators(UIElement scope) { } " + Helper.Replace("scope.KeyboardAccelerators.Add(accel);", "accel.Key = VirtualKey.Q; scope.KeyboardAccelerators.Add(accel);", StringComparison.Ordinal) + " }"),
+            p => p.Contains("AddAccel no longer builds exactly one accelerator", StringComparison.Ordinal));
     }
 
     [Fact]
