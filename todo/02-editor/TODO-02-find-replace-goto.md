@@ -64,7 +64,7 @@ Why this section exists: the UI is thin; the engine carries the semantics. Case,
 
 ## 2. Find Bar UI
 
-Why this section exists: the find bar is the surface users touch. It must place, behave, and count like Notepad's.
+Why this section exists: the find bar is the surface users touch. It must place, behave, and count like Notepad's. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d02t02s2 D00-T02-S21-PR23 (find tab and focus contract from the D00 T02 §21 plan review).
 
 **Fidelity:** Notepad find bar -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Placement, options, match counter, and keyboard flow match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/find-bar/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
@@ -83,6 +83,7 @@ Why this section exists: the find bar is the surface users touch. It must place,
 - [ ] F3 finds next and Shift+F3 finds previous through the bar. Done when: both keys are driven.
 - [ ] The bar remembers entered values and option states across openings within the session, and opening it with a selection autofills the search field. Done when: memory and autofill are driven. Source: https://blogs.windows.com/windows-insider/2018/07/11/announcing-windows-10-insider-preview-build-17713/
 - [ ] The physical-chord test for Ctrl+F, F3, and Shift+F3 (Edit > Find, Find next, Find previous) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] Find, replace, and go-to share one tab contract: the bar targets the active tab at invocation, follows a tab switch or dismisses as the capture shows, returns focus to the editor on close, and keeps its state per window. Done when: a tab-switch fixture proves the target and focus return. (D00-T02-S21-PR23.)
 - [ ] Commit: `"editor: build the find bar"`
 
 **Test checkpoint:** UI drive walks find, next/previous, options, no-match, and wrap; capture comparison passes. Cheaper substitute that fails: the bar tested without the counter.
@@ -92,7 +93,7 @@ Why this section exists: the find bar is the surface users touch. It must place,
 
 ## 3. Replace Mode
 
-Why this section exists: replace mutates through undo. The mode must match Notepad's replace, replace-all, and count reporting.
+Why this section exists: replace mutates through undo. The mode must match Notepad's replace, replace-all, and count reporting. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d02t02s3 D00-T02-S21-PR24 (replace-all edge cases from the D00 T02 §21 plan review).
 
 **Fidelity:** Notepad replace mode -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Layout and count reporting match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/find-bar/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
@@ -106,6 +107,7 @@ Why this section exists: replace mutates through undo. The mode must match Notep
 - [ ] Every replace is one undo unit per Notepad's grouping. Done when: undo-after-replace fixtures pass.
 - [ ] Replace-all across a dirty buffer keeps dirty semantics exact. Done when: the dirty fixtures pass.
 - [ ] The physical-chord test for Ctrl+H (Edit > Replace) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] Replace-all covers zero matches (no dirty flag, no undo entry, count 0), identical replacement (no dirty flag), and undo-to-clean after a replace-all. Done when: the three fixtures pass. (D00-T02-S21-PR24.)
 - [ ] Commit: `"editor: add replace mode"`
 
 **Test checkpoint:** Replace and replace-all driven with counts; undo grouping proven. Cheaper substitute that fails: replace that bypasses undo.
@@ -115,7 +117,7 @@ Why this section exists: replace mutates through undo. The mode must match Notep
 
 ## 4. Go-to-Line Dialog
 
-Why this section exists: small surface, exact behavior. Validation, errors, and landing must match Notepad's.
+Why this section exists: small surface, exact behavior. Validation, errors, and landing must match Notepad's. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d02t02s4 D00-T02-S21-PR25 (go-to wrap rule from the D00 T02 §21 plan review).
 
 **Fidelity:** Notepad go-to dialog -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Layout, validation, and error text match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/goto/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
@@ -129,6 +131,7 @@ Why this section exists: small surface, exact behavior. Validation, errors, and 
 - [ ] Valid input lands the caret exactly (line, column rules as Notepad's). Done when: the landing fixtures pass.
 - [ ] The dialog remembers nothing it should not and persists nothing. Done when: the behavior is recorded and tested.
 - [ ] The physical-chord test for Ctrl+G (Edit > Go to) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] The go-to availability rule under word wrap is the one D02 T01 §5 records from the baseline (no second statement), with logical-line navigation pinned. Done when: both sections cite the same captured rule. (D00-T02-S21-PR25.)
 - [ ] Commit: `"editor: add go-to-line"`
 
 **Test checkpoint:** Errors and landings driven; capture comparison passes. Cheaper substitute that fails: validation that clamps instead of reporting.

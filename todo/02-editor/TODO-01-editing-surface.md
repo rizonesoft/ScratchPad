@@ -94,7 +94,7 @@ Why this section exists: the buffer is the source of truth for every character. 
 
 ## 3. Rendering, Selection, Clipboard
 
-Why this section exists: the surface must look and select like Notepad, and the clipboard must round-trip through the platform.
+Why this section exists: the surface must look and select like Notepad, and the clipboard must round-trip through the platform. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d02t01s3 D00-T02-S21-PR20 (clipboard format precedence from the D00 T02 §21 plan review).
 
 **Fidelity:** Notepad editor area -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Font rendering, caret shape, selection color, and margins match the capture. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/editor/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
@@ -117,6 +117,7 @@ Why this section exists: the surface must look and select like Notepad, and the 
 - [ ] Double-click selects the word alone with no trailing space, as Win11 changed it. Done when: the gesture is driven. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/
 - [ ] Paste normalizes line endings to the document's ending. Done when: pasting LF text into a CRLF document stores CRLF (Groomed 2026-09-23.)
 - [ ] The physical-chord test for Ctrl+X, Ctrl+C, Ctrl+V, Delete, and Ctrl+A (Edit > Cut, Copy, Paste, Delete, and Select all) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] Paste reads Unicode plain text first (CF_UNICODETEXT before CF_TEXT) with the precedence written, and multilingual text plus emoji round-trip through cut, copy, and paste without loss. Done when: a round-trip fixture with CJK, RTL, and emoji passes. (D00-T02-S21-PR20.)
 - [ ] Commit: `"editor: render the surface with selection and clipboard"`
 
 **Test checkpoint:** Capture comparison passes; clipboard round-trips driven; gestures driven; accessibility checks pass. Cheaper substitute that fails: rendering asserted without comparing to the capture.
@@ -126,13 +127,14 @@ Why this section exists: the surface must look and select like Notepad, and the 
 
 ## 4. Undo and Redo
 
-Why this section exists: undo is the user's memory. Its grouping and limits must match Notepad's, or trust in the surface breaks.
+Why this section exists: undo is the user's memory. Its grouping and limits must match Notepad's, or trust in the surface breaks. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d02t01s4 D00-T02-S21-PR21 (redo binding from the D00 T02 §21 plan review).
 
 - [ ] `src/Notepad.Core/UndoStack.cs` groups edits as Notepad groups them (typing bursts, single operations). Done when: the grouping fixtures pass. **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Undo disabled (stock has no Redo item); this section enables Undo through the `MenuCommands` registry and drives it on landing.
 - [ ] Undo and redo limits, and the dirty-flag interaction (undo-to-clean clears dirty), match Notepad. Done when: the fixtures pass.
 - [ ] Undo across save boundaries behaves as Notepad's. Done when: the save-interaction fixtures pass.
 - [ ] Redo clears exactly when Notepad clears it. Done when: the fixtures pass.
 - [ ] The physical-chord test for Ctrl+Z (Edit > Undo) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] Redo's user-facing invocation (Ctrl+Y and Ctrl+Shift+Z, as the capture shows) is recorded and declared, so it enters the D00 T02 §21 binding inventory with a chord test. Done when: the capture names the redo chords and the manifest lists them. (D00-T02-S21-PR21.)
 - [ ] Commit: `"editor: add undo and redo"`
 
 **Test checkpoint:** `dotnet test --filter UndoStack` green across grouping, dirty, save, and redo-clear fixtures. Cheaper substitute that fails: per-keystroke undo that technically works and feels nothing like Notepad.
@@ -142,7 +144,7 @@ Why this section exists: undo is the user's memory. Its grouping and limits must
 
 ## 5. Zoom and Word Wrap
 
-Why this section exists: zoom and wrap are small, visible, and easy to get subtly wrong. Match Notepad exactly, including persistence.
+Why this section exists: zoom and wrap are small, visible, and easy to get subtly wrong. Match Notepad exactly, including persistence. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d02t01s5 D00-T02-S21-PR22 D00-T02-S21-PR25 (zoom persistence and wrap rule from the D00 T02 §21 plan review).
 
 **Fidelity:** Notepad zoom and wrap behaviors -- stock crops filed flat under `resources/baseline/stock/` with `-n11.2607.14.0-win25h2` names. Zoom levels, wrap toggle placement, and status-bar readout match. **Corrected 2026-09-17 (groom):** the seed dir `resources/baseline/editor/` never existed (same seed error as D01 T02 §§1/3/4); this section's capture-first drive files the crops per the D01 T02 §4 precedent.
 
@@ -163,6 +165,7 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 - [ ] The line/column readout with wrap on follows Notepad's logical-versus-visual rule recorded from the capture. Done when: the wrap-on fixtures pass.
 - [ ] F5 inserts the current time and date at the caret; the exact format is recorded from the capture. Done when: the insert is driven and matches the capture. Source: https://www.anoopcnair.com/latest-features-of-notepad-in-windows-11/ **Recorded 2026-09-16:** D01 T02 §1 ships Edit > Time/Date disabled; this section enables it through the `MenuCommands` registry and drives the shared insert on landing.
 - [ ] The physical-chord test for F5, Ctrl+Plus, Ctrl+Minus, and Ctrl+0 (Edit > Time/Date and View > Zoom in, Zoom out, Restore default zoom) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `disabled` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] Zoom persistence is one contract (session-only per tab, or stored), chosen from the capture and tested across tab switch, new tab, and restart; the go-to availability rule under word wrap is shared with D02 T02 §4 from one baseline. Done when: the chosen contract reads and both fixtures pass. (D00-T02-S21-PR22, D00-T02-S21-PR25.)
 - [ ] Commit: `"editor: match zoom and word wrap"`
 
 **Test checkpoint:** Steps, shortcuts, persistence, and wrap math all driven; capture comparison passes. Cheaper substitute that fails: zoom that works but with different steps than Notepad.

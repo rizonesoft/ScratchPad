@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **113 of 300 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **114 of 301 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -146,13 +146,14 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §18` | Central launch hardening and evidence                     |  10   |
 | [x] | `D00 T02 §19` | Night-debt due dates and escalation                       |   3   |
 | [x] | `D00 T02 §20` | Accelerator sweep sign-off polish                         |   3   |
-| [ ] | `D00 T02 §21` | Accelerator sweep follow-ups                              |  13   |
+| [x] | `D00 T02 §21` | Accelerator sweep follow-ups                              |  13   |
 | [ ] | `D00 T02 §22` | Nightly evidence hardening follow-ups                     |   8   |
 | [ ] | `D00 T02 §23` | Nightly acknowledgement hardening                         |   6   |
 | [ ] | `D00 T02 §24` | Notify follow-ups                                         |  15   |
 | [ ] | `D00 T02 §25` | Trend and telemetry follow-ups                            |  11   |
 | [ ] | `D00 T02 §26` | Sibling sweep narrowing                                   |   3   |
 | [ ] | `D00 T02 §27` | Night-debt escalation lifecycle                           |   8   |
+| [ ] | `D00 T02 §28` | Binding guard and funnel hardening                        |  11   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
@@ -205,7 +206,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                                  |   9   |
 | [ ] | `D00 T08 §1`  | Poster and delivery hardening                             |  12   |
 | [ ] | `D00 T08 §2`  | Notification governance and premium views                 |  12   |
-| [ ] | `D00 T09 §1`  | Hotkey-conflict preflight and environment-blocked outcome |   9   |
+| [ ] | `D00 T09 §1`  | Hotkey-conflict preflight and environment-blocked outcome |  14   |
 | [ ] | `D00 T09 §2`  | Control channel and nightly-ctl CLI                       |   8   |
 | [ ] | `D00 T09 §3`  | Operator-presence yield                                   |   7   |
 | [ ] | `D00 T09 §4`  | Toast action buttons                                      |   4   |
@@ -235,7 +236,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T02 §13` | ScratchPad rename completion                                        |   6   |
 | [x] | `D01 T02 §14` | Title-bar icon beside the tabs                                      |   5   |
 | [ ] | `D01 T02 §15` | Chrome color finetune against stock                                 |   5   |
-| [ ] | `D01 T02 §5`  | Print path                                                          |   7   |
+| [ ] | `D01 T02 §5`  | Print path                                                          |   9   |
 | [ ] | `D01 T02 §6`  | Menu and shortcut completeness audit                                |   4   |
 | [ ] | `D01 T02 §7`  | Reading level in the status bar                                     |   5   |
 | [ ] | `D01 T02 §8`  | Command palette                                                     |   7   |
@@ -248,9 +249,9 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §18` | Fix-or-remove MenuBarTests flakes                                   |   2   |
 | [ ] | `D02 T01 §1`  | Hosting contract with the shell                                     |   6   |
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |  10   |
-| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  12   |
-| [ ] | `D02 T01 §4`  | Undo and redo                                                       |   6   |
-| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   8   |
+| [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  13   |
+| [ ] | `D02 T01 §4`  | Undo and redo                                                       |   7   |
+| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   9   |
 | [ ] | `D02 T01 §6`  | Context menu and mouse behaviors                                    |   5   |
 | [ ] | `D02 T01 §7`  | Large-file behavior and budget                                      |   5   |
 | [ ] | `D02 T01 §8`  | Selection utilities: case, sort, dedupe                             |   6   |
@@ -266,9 +267,9 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D02 T01 §18` | Copy as Markdown, HTML, plain text                                  |   4   |
 | [ ] | `D02 T01 §19` | Side-by-side tab diff                                               |   6   |
 | [ ] | `D02 T02 §1`  | Search engine over the buffer                                       |   6   |
-| [ ] | `D02 T02 §2`  | Find bar UI                                                         |   8   |
-| [ ] | `D02 T02 §3`  | Replace mode                                                        |   5   |
-| [ ] | `D02 T02 §4`  | Go-to-line dialog                                                   |   5   |
+| [ ] | `D02 T02 §2`  | Find bar UI                                                         |   9   |
+| [ ] | `D02 T02 §3`  | Replace mode                                                        |   6   |
+| [ ] | `D02 T02 §4`  | Go-to-line dialog                                                   |   6   |
 | [ ] | `D02 T02 §5`  | Options persistence and edge cases                                  |   4   |
 | [ ] | `D02 T02 §6`  | Find across all open tabs                                           |   5   |
 | [x] | `D01 T01 §9`  | Multi-window with open-in mode                                      |   5   |

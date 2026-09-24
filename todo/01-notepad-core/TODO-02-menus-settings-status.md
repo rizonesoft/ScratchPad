@@ -216,7 +216,7 @@ Why this section exists: the status bar is always visible, so any staleness is a
 
 > **Started:** 2026-09-17T17:55:00Z
 
-Why this section exists: Notepad prints. The slice is small but must be exact: headers, footers, margins, and wrapping as Notepad does them.
+Why this section exists: Notepad prints. The slice is small but must be exact: headers, footers, margins, and wrapping as Notepad does them. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-d01t02s5 D00-T02-S21-PR17 D00-T02-S21-PR18 D00-T02-S21-PR19 (print enablement, parity owner, and cancel normalization from the D00 T02 §21 plan review).
 
 **Fidelity:** Notepad print output and dialog -- `resources/baseline/print/`. Header/footer codes and layout match. **Corrected 2026-09-17 (§5 validation):** the seed dir never existed and no stock print artifacts are capturable from a window-station-less session (Server CI runners ship classic notepad, not 11.x); this section creates the dir holding spec-constructed PDF goldens with a provenance README instead. No dialog capture is owed: Page Setup and Print are OS dialogs this section binds but does not build. **Decided 2026-09-17 (§5 validation):** byte-for-byte can only mean self-consistency (two PDF engines never byte-match), so the checkpoint's golden is constructed from the documented code spec plus Page Setup defaults, and parity lives in item 4's per-code coverage; a Win11 session diffing our PDF against stock's stays unfiled future work (cost: one capture session).
 
@@ -240,6 +240,8 @@ Why this section exists: Notepad prints. The slice is small but must be exact: h
 - [ ] Header and footer codes &l, &c, &r, &d, &t, &f, and &p render as Notepad's, defaulting to header &f and footer Page &p; custom codes re-enter each print and an empty box prints nothing. Done when: print-to-PDF fixtures cover every code. Source: https://support.microsoft.com/en-gb/topic/how-to-use-notepad-to-create-a-log-file-dd228763-76de-a7a7-952b-d5ae203c4e12
 - [ ] Command-line printing (/P, /PT) routed from D01 T01 §8 completes through this path. Done when: print-then-close is driven.
 - [ ] The physical-chord test for Ctrl+P (File > Print) lands in `tests/UI/AcceleratorTests.cs` when this section's command is live, and the `docs/ui-input-audit.md` rows move from `owner-owed` to `covered` naming it. Done when: `BindingManifestTests.LiveTreeManifestIsClean` passes with those rows covered. Owed under the D00 T02 §21 exemption rule: the binding manifest guard holds the rows open against this section until it lands.
+- [ ] The section text reconciles with the tree: the print engine already enables File > Print and Page setup at runtime (`MainWindow.xaml.cs`), so the recorded `ships disabled` note is corrected, and stock-parity evidence (a captured stock print) is distinguished from the spec-constructed self-consistency goldens with an owner for the stock comparison. Done when: the corrected note and the parity owner read. (D00-T02-S21-PR17, D00-T02-S21-PR18.)
+- [ ] Cancellation is a benign outcome distinct from print failure (no error dialog, nothing changed), and PDF golden comparison names its normalization (timestamps, producer metadata, object ids). Done when: cancel and failure drive separately and the normalization is written beside the goldens. (D00-T02-S21-PR19.)
 - [ ] Commit: `"notepad-core: add the print path"`
 
 **Test checkpoint:** Print-to-PDF matches golden output byte-for-byte (modulo timestamps); failure paths driven. Cheaper substitute that fails: a print button that screenshots the window.

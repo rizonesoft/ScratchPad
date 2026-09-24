@@ -61,13 +61,14 @@ track: W0
 |   18  |   §18   | Central launch hardening and evidence | §11 |  [x]   |
 |   19  |   §19   | Night-debt due dates and escalation | §10 |  [x]   |
 |   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [x]   |
-|   21  |   §21   | Accelerator sweep follow-ups | §12 |  [ ]   |
+|   21  |   §21   | Accelerator sweep follow-ups | §12 |  [x]   |
 |   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [ ]   |
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [ ]   |
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [ ]   |
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [ ]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
+|   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
 
 ---
 
@@ -678,6 +679,13 @@ Why this section exists: the §12 plan review returned 22 findings; 11 file here
 
 **Night-owed:** D00-T02-S21-N1 (37 Interactive, collector Nightly UI 02:30, owed 2026-09-24). The split number theory, the Ctrl+E chord test, and every Interactive test moved onto the checked funnel run in the next quiet window; focus-free proofs are green and the stamp does not wait.
 
+> **Verified:** 2026-09-24 | §21 | binding manifest guard live (44 bindings derived from source, audit table six-column with taxonomy, conflict matrix, owner obligations in seven sections) with every rule planted and failing; checked input funnel on every physical key with focus-loss, wrong-window, mid-string, throwing-sender, and stuck-modifier plants; Bing URIs pinned focus-free through the launch capture seam; number edges pinned on `TabModel`; rendered menu labels match the manifest; UI default 251/0/14 with ForegroundLog exit 0 (primary=0, event-primary=0), placement 4/4 with --expect-primary exit 0, Unit 361/0, guard suite 81/0; Interactive 37 skipped and carried as Night-owed D00-T02-S21-N1
+> **Review:** round 5 (FINAL, hard cap), candidates `bc5df8d` `7e61a90` `ca5a5fc` `425d8dc` `421f4b5` `d21ae60` -- GPT R1-R2 bulk needs-attention (R1-F1..F7, R2-F1..F2 fixed), GPT R3 sign-off needs-attention (R3-F1 fixed, same guard-bypass family, swept), GPT R4 depth needs-attention (R4-F1 fixed, family swept across every src file), GPT R5 depth governing: `adversarial` needs-attention · `consistency` approve · `integration` approve · `record` approve, R5-F1 (below bar: covering methods must be discoverable) fixed in `d21ae60` and re-gated at the stamp (no sixth round past the cap) (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s21.md
+> **Plan review:** GPT medium, filed D00 T02 §28, D00 T09 §1, D01 T02 §5, D02 T01 §3, D02 T01 §4, D02 T01 §5, D02 T02 §2, D02 T02 §3, D02 T02 §4 (run 20260924-D00-T02-S21-codex-c7001fd6f-r6)
+> **CRUD:** not-applicable | test harness, audit doc, and a test-only launch capture seam; the app's number-shortcut mapping moves into the model unchanged; no user record is created, updated, or deleted
+> **Duration:** 2026-09-24T19:57:18Z to 2026-09-24T21:28:42Z
+> **Reviewed-tip:** d21ae605e6d882577fadb64956e03a00ee43371b
+
 - -> XREF: D01 T02 §5 -- owes the physical-chord test for Ctrl+P under this section's exemption rule (item 12); the guard fails its rows once that section stamps without it.
 - -> XREF: D02 T01 §3 -- owes the physical-chord test for Ctrl+X, Ctrl+C, Ctrl+V, Delete, and Ctrl+A under this section's exemption rule (item 12); the guard fails its rows once that section stamps without it.
 - -> XREF: D02 T01 §4 -- owes the physical-chord test for Ctrl+Z under this section's exemption rule (item 12); the guard fails its rows once that section stamps without it.
@@ -685,6 +693,7 @@ Why this section exists: the §12 plan review returned 22 findings; 11 file here
 - -> XREF: D02 T02 §2 -- owes the physical-chord test for Ctrl+F, F3, and Shift+F3 under this section's exemption rule (item 12); the guard fails its rows once that section stamps without it.
 - -> XREF: D02 T02 §3 -- owes the physical-chord test for Ctrl+H under this section's exemption rule (item 12); the guard fails its rows once that section stamps without it.
 - -> XREF: D02 T02 §4 -- owes the physical-chord test for Ctrl+G under this section's exemption rule (item 12); the guard fails its rows once that section stamps without it.
+- -> XREF: D00 T02 §28 -- owns the hardening this section's plan review filed (command outcome, routing, focus target, seam isolation, accessible text).
 - -> XREF: D00 T09 §1 -- owns run-time conflicts with other apps' global hotkeys (probe, skip with reason, owed proof); consumes this section's per-press focus assert when it lands.
 
 ## 22. Nightly Evidence Hardening Follow-Ups
@@ -803,6 +812,28 @@ Why this section exists: §19 gave every open night debt a due date and an OVERD
 - [ ] Commit: `"workspace: give night-debt escalation a lifecycle"`
 
 **Test checkpoint:** The mixed-debt fixture agrees across all three surfaces, an overdue debt names owner plus response-by, an accepted debt reads accepted not collected, and a two-red debt escalates as red-repeat; `validate` still exits 0 with overdue debt present. Cheaper substitute that fails: more text on the OVERDUE line with no owner, state, or follow-up.
+
+## 28. Binding Guard and Funnel Hardening
+
+Why this section exists: the §21 plan review returned 25 findings against the binding manifest guard, the checked input funnel, and their neighbors; 10 file here, 5 on D00 T09 §1, 8 on the owner sections, and 2 are rejected with reasons in the §21 findings file. The guard proves every declared chord has a pressing test; it does not yet prove the right command ran, that routing holds per surface, or that the funnel's focus target is the intended control. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-s28 D00-T02-S21-PR2 D00-T02-S21-PR3 D00-T02-S21-PR4 D00-T02-S21-PR6 D00-T02-S21-PR7 D00-T02-S21-PR8 D00-T02-S21-PR14 D00-T02-S21-PR15 D00-T02-S21-PR16 D00-T02-S21-PR17 (command outcome, routing, duplicate dispatch, layout, focus target, chord interruption, seam isolation, accessible text, enablement states, and print reconciliation from the §21 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §21 -- filed from its plan review; hardens the guard and funnel it shipped.
+
+- [ ] Each covering test asserts an observable command outcome, and a wrong-handler mutation (the chord routed to a different command) fails coverage. Done when: a planted handler swap fails the guard or the covering test. (D00-T02-S21-PR2.)
+- [ ] Context routing is exercised, not only recorded: window-global chords are pressed from the editor, the tab strip, an open menu, and a modal dialog, and each lands on (or is suppressed by) the surface the matrix names. Done when: a routing test per surface passes. (D00-T02-S21-PR3.)
+- [ ] The Ctrl+E duplicate names its winner (Search with Bing) and proves exactly-once dispatch: one press yields exactly one captured URI. Done when: the chord test asserts a single capture line. (D00-T02-S21-PR4.)
+- [ ] Keyboard layout, AltGr, and main-row versus numpad identity get representative cases (a non-US layout, AltGr chords, NumPad digits and plus/minus), so labels and physical input agree beyond US English. Done when: the layout cases read with their expected dispatch. (D00-T02-S21-PR6.)
+- [ ] Each press binds to its expected focus target (the editor, a named field), not only to an app-owned element, so a test cannot pass typing into the wrong control. Done when: a planted focus on the wrong control fails the precondition. (D00-T02-S21-PR7.)
+- [ ] Focus change during a multi-key chord is defined: modifier ownership (the funnel never releases a modifier the operator holds) and interruption between key-down and key-up abort cleanly. Done when: fixtures pin both. (D00-T02-S21-PR8.)
+- [ ] The launch capture seam is test-only by construction (activated only with the test-run marker as well as the variable), cleans up after itself, and a write failure fails loud instead of silently suppressing the launch. Done when: an unset marker launches normally and a failing write reports. (D00-T02-S21-PR14.)
+- [ ] Accessible names and descriptions are asserted beside `AcceleratorKey`, so assistive-technology output matches the manifest. Done when: the label test checks name plus accelerator on every bound item. (D00-T02-S21-PR15.)
+- [ ] Disabled exemptions are checked across representative enablement states (fresh window, file open, selection present), and fail as soon as a command is usable in any of them, before its owner closes. Done when: a state-conditional enablement plant fails. (D00-T02-S21-PR16.)
+- [ ] The Ctrl+P owner-owed row stays consistent with D01 T02 §5 once that section reconciles its enablement text, and the guard checks the owner's text does not still claim the command ships disabled. Done when: the row and the owner agree. (D00-T02-S21-PR17.)
+- [ ] Commit: `"workspace: harden the binding guard and input funnel"`
+
+**Test checkpoint:** Wrong-handler plant fails, routing per surface passes, Ctrl+E dispatches once, layout cases read, wrong-control focus fails, chord interruption aborts cleanly, seam is test-only, accessible text checked, state-conditional enablement fails the exemption. Cheaper substitute that fails: more rows in the audit table with no behavior proven.
 
 ## Verification
 
