@@ -59,7 +59,7 @@ track: W0
 |   16  |   §16   | Verify timer-fired completion and green | §9, §13, §14, §15, D01 T01 §34, D01 T02 §16 |  [ ]   |
 |   17  |   §17   | Nightly notify plus trend surface | §9 |  [x]   |
 |   18  |   §18   | Central launch hardening and evidence | §11 |  [x]   |
-|   19  |   §19   | Night-debt due dates and escalation | §10 |  [ ]   |
+|   19  |   §19   | Night-debt due dates and escalation | §10 |  [x]   |
 |   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [ ]   |
 |   21  |   §21   | Accelerator sweep follow-ups | §12 |  [ ]   |
 |   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [ ]   |
@@ -67,6 +67,7 @@ track: W0
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [ ]   |
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [ ]   |
+|   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
 
 ---
 
@@ -623,6 +624,15 @@ Why this section exists: open night debt carries age but no absolute due date an
 
 **Test checkpoint:** N1 quotes due plus escalation, and the overdue fixture pins the line. Cheaper substitute that fails: age alone with no date anyone owes.
 
+- -> XREF: D00 T02 §27 -- owns the escalation lifecycle this section's plan review filed (owner, acceptance, red-repeat, window semantics, override audit, report parity).
+
+> **Verified:** 2026-09-24 | §19 | live `query night-debt` 2026-09-24 dates every open debt and escalates D00-T02-S8-N1 (due 2026-09-22) plus D00-T02-S12-N1 (due 2026-09-23) as `OVERDUE escalate operator: rerun the collection (tools/nightly.ps1) or record risk acceptance`, while D00-T02-S18-N1 (due 2026-09-26) stays unescalated; eight night-debt fixtures pin overdue, in-window, override, due-day boundary, malformed override, undatable, overflow, and the summary line; self-test 1608 cases, 0 failed; validate 0 fatal
+> **Review:** round 4, candidates `817e0bd` `292eb33` `e3d0594` `4a73eec` `c3bfd77` -- GPT R1-R2 needs-attention (R1-F1, R1-F2, R2-F1 fixed), GPT R3 sign-off needs-attention (R3-F1 stamp-evidence mismatch fixed), GPT R4 depth governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s19.md
+> **Plan review:** GPT medium, filed D00 T02 §27 (run 20260924-D00-T02-S19-codex-c7001fd6f-r5)
+> **CRUD:** not-applicable | read-only query output over TODO text; no record is created, updated, or deleted
+> **Duration:** 2026-09-24T00:35:40Z to 2026-09-24T19:38:43Z
+> **Reviewed-tip:** c3bfd77116b8d71debc6b35891ef153c2f796005
+
 ## 20. Accelerator Sweep Sign-Off Polish
 
 Why this section exists: the §12 Opus sign-off left two advisories that file instead of re-rounding: a dead foreground capture in the N chord test, and the audit doc missing its trailing newline. -> SOURCE: Opus-panel-D00-T02-s12-round-3 (candidates `ae8b8c1` `4fe8166` `0b38dd2`, round-3 consistency advisory R3-F1 plus record advisory R3-F2; transcribed in `docs/reviews/00-workspace/D00-T02-s12.md`).
@@ -755,6 +765,23 @@ Why this section exists: the §18 sign-off (R3-F2) found SiblingPin.Sweep pinnin
 - [ ] Commit: `"workspace: narrow the sibling sweep to constructor-born helpers"`
 
 **Test checkpoint:** Narrowing pinned red/green; full Run A still green with zero primary births (no regression in background births).
+
+## 27. Night-Debt Escalation Lifecycle
+
+Why this section exists: §19 gave every open night debt a due date and an OVERDUE escalation line, but the §19 plan review found the escalation is a print, not a lifecycle: it names no owner, response deadline, or acknowledgement; risk acceptance has no schema or effect on debt state; a rerun that stays red can satisfy the escalation forever; the three-night window leaves timezone and inclusivity implicit; a malformed or extended due override is silent; and the morning report does not carry the same obligations as the queries. This section turns the escalation into tracked, accountable work without changing §10's information-only gate contract (debt never blocks validate, stamps, or plan progression). -> SOURCE: plan-review-D00-T02-s19-2026-09-24-s27 D00-T02-S19-PR1 D00-T02-S19-PR2 D00-T02-S19-PR3 D00-T02-S19-PR4 D00-T02-S19-PR5 D00-T02-S19-PR7 D00-T02-S19-PR8 (escalation owner, risk-acceptance lifecycle, red-rerun follow-up, window semantics, override audit, morning-report parity, and fixture coverage from the §19 plan review).
+
+- -> XREF: D00 T02 §19 -- filed from its plan review; hardens the due-date escalation §19 shipped.
+
+- [ ] An OVERDUE debt names an accountable owner (the owning section's stamp owner, else `operator`), a response deadline, and an acknowledgement record, so the escalation produces a trackable action. Done when: an overdue fixture quotes owner plus response-by date and an acknowledged fixture drops the escalation. (D00-T02-S19-PR1.)
+- [ ] Night-debt risk acceptance has a schema (approver, expiry, rationale) reusing the findings-file `Risk accepted:` grammar, and an accepted debt reads `accepted` in both queries, distinct from collected proof, so acceptance never implies the tests passed. Done when: an accepted fixture reads accepted with its expiry and an expired acceptance re-escalates. (D00-T02-S19-PR2.)
+- [ ] A collection that ran red resets the due window once and then escalates as `red-repeat` with a follow-up deadline, so a rerun cannot leave the debt red indefinitely while satisfying the escalation. Done when: a two-red fixture escalates as red-repeat. (D00-T02-S19-PR3.)
+- [ ] The due window's semantics are written and pinned: dates are the operator's local calendar day, the due day itself is not overdue, and the window counts collector nights (02:30) not wall days. Done when: `docs/testing.md` states the rule and fixtures pin a debt owed after 02:30 plus the due-day boundary. (D00-T02-S19-PR4.)
+- [ ] A malformed `due` token surfaces as a warning line in `query night-debt` naming the token and the fallback, and an override later than the default window must carry a `reason <text>` chunk, so errors or quiet extensions cannot postpone accountability. Done when: fixtures pin the malformed warning and a reason-less extension flagged. (D00-T02-S19-PR5.)
+- [ ] The §10 morning report's debt block carries due, overdue age, owner, and next action from the same `night_debts` source as the queries, so the daily triage surface and the queries never disagree. Done when: a stub run's report quotes the overdue line matching `query night-debt`. (D00-T02-S19-PR7.)
+- [ ] A mixed-debt fixture (legacy stamp-dated, owed-dated, override, collected, accepted, undatable) reads identically across `query night-debt`, `query summary`, and the morning report. Done when: one fixture proves all three surfaces agree line for line. (D00-T02-S19-PR8.)
+- [ ] Commit: `"workspace: give night-debt escalation a lifecycle"`
+
+**Test checkpoint:** The mixed-debt fixture agrees across all three surfaces, an overdue debt names owner plus response-by, an accepted debt reads accepted not collected, and a two-red debt escalates as red-repeat; `validate` still exits 0 with overdue debt present. Cheaper substitute that fails: more text on the OVERDUE line with no owner, state, or follow-up.
 
 ## Verification
 
