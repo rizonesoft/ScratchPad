@@ -387,6 +387,17 @@ internal static class BindingManifest
 
     // Chords a test method presses through UiInput.Press, including a
     // Theory's key parameter expanded from its InlineData rows.
+    // R5-F1: a covering method must be one xUnit discovers: an attribute
+    // whose name ends in Fact or Theory (Fact, Theory, InteractiveFact,
+    // InteractiveTheory, PrimaryFact, HookFact, and the like).
+    internal static bool IsDiscoverableTest(string source, string method) =>
+        CSharpSyntaxTree.ParseText(source).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
+            .Where(m => m.Identifier.Text == method)
+            .Any(m => m.AttributeLists.SelectMany(l => l.Attributes)
+                .Select(a => a.Name.ToString().Split('.')[^1])
+                .Any(n => n.EndsWith("Fact", StringComparison.Ordinal) || n.EndsWith("Theory", StringComparison.Ordinal)
+                    || n.EndsWith("FactAttribute", StringComparison.Ordinal) || n.EndsWith("TheoryAttribute", StringComparison.Ordinal)));
+
     internal static HashSet<string> PressedChords(string source, string method)
     {
         var chords = new HashSet<string>(StringComparer.Ordinal);
@@ -548,6 +559,11 @@ internal static class BindingManifest
                     {
                         problems.Add($"{at}: covering class {cls} does not exist in tests/UI");
                         continue;
+                    }
+
+                    if (!IsDiscoverableTest(src, method))
+                    {
+                        problems.Add($"{at}: {cls}.{method} carries no test attribute (Fact or Theory family), so it never runs and covers nothing");
                     }
 
                     var pressed = PressedChords(src, method);

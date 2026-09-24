@@ -13,6 +13,7 @@ run-a:
   UI.BackupTests.SaveWritesSiblingWithPreSaveBytes
   UI.BindingManifestTests.AKeyTheManifestCannotBindCreditsNothing
   UI.BindingManifestTests.AnXrefAloneDoesNotOweTheChordTest
+  UI.BindingManifestTests.CoveringMethodThatNeverRunsFails
   UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
   UI.BindingManifestTests.DuplicateWithAnUnresolvedOwnerFails
   UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
@@ -217,8 +218,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 211
-run-a-cases: 264
+run-a-methods: 212
+run-a-cases: 265
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

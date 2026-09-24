@@ -67,6 +67,18 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void CoveringMethodThatNeverRunsFails()
+    {
+        // R5-F1: strip the gate attribute from the G chord test; the press
+        // is still in its body, but nothing discovers the method.
+        var (inputs, _) = LiveInputs(testSource: (cls, src) => cls == "AcceleratorTests"
+            ? src.Replace("    [InteractiveFact]\r\n    [Trait(\"Category\", \"Interactive\")]\r\n    public void ChordCtrlShiftGOpensStats()", "    public void ChordCtrlShiftGOpensStats()", StringComparison.Ordinal)
+                .Replace("    [InteractiveFact]\n    [Trait(\"Category\", \"Interactive\")]\n    public void ChordCtrlShiftGOpensStats()", "    public void ChordCtrlShiftGOpensStats()", StringComparison.Ordinal)
+            : src);
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("AcceleratorTests.ChordCtrlShiftGOpensStats carries no test attribute", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void PlantedConflictFails()
     {
         var (inputs, _) = LiveInputs(tabSource: src => src.Replace(
