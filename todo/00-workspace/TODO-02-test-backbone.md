@@ -60,7 +60,7 @@ track: W0
 |   17  |   §17   | Nightly notify plus trend surface | §9 |  [x]   |
 |   18  |   §18   | Central launch hardening and evidence | §11 |  [x]   |
 |   19  |   §19   | Night-debt due dates and escalation | §10 |  [x]   |
-|   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [ ]   |
+|   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [x]   |
 |   21  |   §21   | Accelerator sweep follow-ups | §12 |  [ ]   |
 |   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [ ]   |
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [ ]   |
@@ -645,9 +645,16 @@ Why this section exists: the §12 Opus sign-off left two advisories that file in
 
 **Test checkpoint:** Dead capture gone and trailing newline restored. Cheaper substitute that fails: leaving either for a drive-by.
 
+> **Verified:** 2026-09-24 | §20 | `AcceleratorTests.cs` reads 5 `UiForeground.Capture` against 5 `UiForeground.Background(window, fgBefore)` (the dead N-chord capture gone); `docs/ui-input-audit.md` ends with its newline (no diff marker); `dotnet build tests/UI/UI.csproj` 0 warnings 0 errors; validate 0 fatal
+> **Review:** round 2, candidate `ec1a678` -- Light panel on gpt-6-astra: GPT R1 bulk approve, GPT R2 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve. Raw findings: docs/reviews/00-workspace/D00-T02-s20.md
+> **Plan review:** GPT medium, filed D00 T02 §21 (run 20260924-D00-T02-S20-codex-c7001fd6f-r3)
+> **CRUD:** not-applicable | test-body cleanup plus doc whitespace; no record is created, updated, or deleted
+> **Duration:** 2026-09-24T19:45:46Z to 2026-09-24T19:50:37Z
+> **Reviewed-tip:** ec1a678cb3c4c954d3cf0205fa4b52c886c6d228
+
 ## 21. Accelerator Sweep Follow-Ups
 
-Why this section exists: the §12 plan review returned 22 findings; 11 file here, 10 are rejected with reasons in the §12 findings file, 1 duplicates D00-T02-S11-PR17. The sweep is complete and the restoration fenced; what remains is hardening the fence rule, the coverage proof, and the binding inventory around it. -> SOURCE: plan-review-D00-T02-s12-2026-09-20-s21 D00-T02-S12-PR2 D00-T02-S12-PR8 D00-T02-S12-PR9 D00-T02-S12-PR11 D00-T02-S12-PR12 D00-T02-S12-PR13 D00-T02-S12-PR14 D00-T02-S12-PR15 D00-T02-S12-PR16 D00-T02-S12-PR18 D00-T02-S12-PR20 (fence, diagnostics, edges, launcher, framework, drift, metadata, collision, focus, taxonomy, and display-text findings from the §12 plan review).
+Why this section exists: the §12 plan review returned 22 findings; 11 file here, 10 are rejected with reasons in the §12 findings file, 1 duplicates D00-T02-S11-PR17. The sweep is complete and the restoration fenced; what remains is hardening the fence rule, the coverage proof, and the binding inventory around it. -> SOURCE: plan-review-D00-T02-s12-2026-09-20-s21 D00-T02-S12-PR2 D00-T02-S12-PR8 D00-T02-S12-PR9 D00-T02-S12-PR11 D00-T02-S12-PR12 D00-T02-S12-PR13 D00-T02-S12-PR14 D00-T02-S12-PR15 D00-T02-S12-PR16 D00-T02-S12-PR18 D00-T02-S12-PR20 (fence, diagnostics, edges, launcher, framework, drift, metadata, collision, focus, taxonomy, and display-text findings from the §12 plan review). -> SOURCE: plan-review-D00-T02-s20-2026-09-24-s21 D00-T02-S20-PR6 (disabled-command exemption expiry from the §20 plan review).
 
 **Needs:** Windows host (build/test)
 
@@ -662,6 +669,7 @@ Why this section exists: the §12 plan review returned 22 findings; 11 file here
 - [ ] Physical-input tests assert the HWND plus focus precondition immediately before each press and verify cleanup after. Done when: a focus-loss mutation fails loud instead of escaping keystrokes. (D00-T02-S12-PR16.)
 - [ ] The written-reason escape gains a reason taxonomy with approver plus follow-up owner. Done when: the taxonomy reads and the 18 §12 reasons classify under it. (D00-T02-S12-PR18.)
 - [ ] Menu-displayed shortcut text is checked against the binding manifest plus accessible descriptions. Done when: a mismatched label fails the check. (D00-T02-S12-PR20.)
+- [ ] Every disabled-command chord exemption in `docs/ui-input-audit.md` (Ctrl+P, Ctrl+Z, Ctrl+X, Ctrl+C, Ctrl+V today) names the section that enables its command, and that section's checklist owes the physical-chord test, so a temporary exclusion cannot outlive the command being enabled. Done when: each disabled row names its enabling section and a planted enabled-but-exempt command fails the check. (D00-T02-S20-PR6.)
 - [ ] Commit: `"workspace: follow up the accelerator sweep"`
 
 **Test checkpoint:** Exception named, numbers split, edges pinned, launcher intercepted, framework chords owned, manifest guards, metadata gates, conflicts surface, focus asserts, taxonomy classifies, labels match. Cheaper substitute that fails: the §12 table alone with no follow-through.
