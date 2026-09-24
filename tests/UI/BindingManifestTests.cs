@@ -120,6 +120,44 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void ReservedChordsMatchWhateverSpellingTheyAreDeclaredIn()
+    {
+        var (shiftTab, _) = LiveInputs(xaml => xaml.Replace("Modifiers=\"Control,Shift\" Key=\"L\"", "Modifiers=\"Menu,Shift\" Key=\"Tab\"", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(shiftTab), p => p == "conflict: Shift+Alt+Tab (MenuToolsLock) is OS-reserved");
+        var (esc, _) = LiveInputs(xaml => xaml.Replace("Modifiers=\"Control,Shift\" Key=\"L\"", "Modifiers=\"Control\" Key=\"Escape\"", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(esc), p => p == "conflict: Ctrl+Esc (MenuToolsLock) is OS-reserved");
+    }
+
+    [Fact]
+    public void DuplicateWithAnUnresolvedOwnerFails()
+    {
+        var (inputs, _) = LiveInputs(audit: md => md.Replace("| operator | D01 T02 §1 |", "| operator | D98 T07 §41 |", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("Ctrl+E -> MenuEditDefineBing: duplicate names owner 'D98 T07 §41'", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnXrefAloneDoesNotOweTheChordTest()
+    {
+        var (inputs, _) = LiveInputs(section: (reference, s) => reference == "D02 T01 §4"
+            ? (s.Found, s.Open, string.Join('\n', s.Body.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
+                .Where(l => !(l.StartsWith("- [ ] ", StringComparison.Ordinal) && l.Contains("D00 T02 §21", StringComparison.Ordinal)))))
+            : s);
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("owner D02 T01 §4's checklist does not owe the Ctrl+Z chord test", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AKeyTheManifestCannotBindCreditsNothing()
+    {
+        var (inputs, _) = LiveInputs(testSource: (cls, src) => cls == "TabBarTests"
+            ? src.Replace("UiInput.Press(window, key, withControl: true);", "var pressed = VirtualKeyShort.KEY_3;\n            UiInput.Press(window, pressed, withControl: true);", StringComparison.Ordinal)
+            : src);
+        var problems = BindingManifest.Check(inputs);
+        Assert.Contains(problems, p => p.Contains("TabBarTests.NumberShortcutsCoverMiddlePositions does not press Ctrl+2 (presses ?unresolved:pressed)", StringComparison.Ordinal));
+        Assert.Equal(["Ctrl+2", "Ctrl+4", "Ctrl+5", "Ctrl+6", "Ctrl+7", "Ctrl+8"],
+            BindingManifest.PressedChords(File.ReadAllText(Path.Combine(RepoRoot(), "tests", "UI", "TabBarTests.cs")), "NumberShortcutsCoverMiddlePositions").Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void KeyHandlingOutsideTheTwoHomesFails()
     {
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D { void M() { box.KeyDown += OnKey; } }"));

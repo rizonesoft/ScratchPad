@@ -25,15 +25,28 @@ internal static class BindingManifest
 
     internal static readonly string[] Classes = ["covered", "disabled", "owner-owed", "duplicate"];
 
+    // Declared before OsReserved: static initializers run in order,
+    // and OsReserved canonicalizes through Chord, which reads this.
+    static readonly string[] ModifierOrder = ["Ctrl", "Shift", "Alt"];
+
     // Chords the OS or shell owns: an app binding on one either never
     // fires or steals a system gesture. Win-key chords cannot be
     // declared through KeyboardAccelerator modifiers we parse, so the
     // list is the Ctrl/Alt/Shift/function-key set.
-    internal static readonly HashSet<string> OsReserved = new(StringComparer.Ordinal)
+    // Written as people say them, canonicalized through Chord exactly
+    // like declarations, so Alt+Shift+Tab and Escape spellings match.
+    internal static readonly HashSet<string> OsReserved = new[]
     {
         "Alt+F4", "Alt+Tab", "Alt+Shift+Tab", "Alt+Esc", "Alt+Space", "Ctrl+Esc",
         "Ctrl+Alt+Delete", "Ctrl+Shift+Esc", "Ctrl+Alt+Tab", "F1", "F10", "Shift+F10",
-    };
+    }.Select(ParseChord).ToHashSet(StringComparer.Ordinal);
+
+    // "Ctrl+Shift+Esc" -> the canonical chord string.
+    internal static string ParseChord(string text)
+    {
+        string[] parts = text.Split('+');
+        return Chord(parts[..^1], parts[^1]);
+    }
 
     internal sealed record Declaration(string Chord, string Command, string Source, bool XamlEnabled, string? AccessKey);
 
@@ -42,8 +55,6 @@ internal static class BindingManifest
     internal sealed record MenuAccessKey(string Menu, string Key);
 
     // ---- chord canonicalization ------------------------------------
-
-    static readonly string[] ModifierOrder = ["Ctrl", "Shift", "Alt"];
 
     internal static string Chord(IEnumerable<string> modifiers, string key)
     {
@@ -75,6 +86,8 @@ internal static class BindingManifest
             "Subtract" or "OEM_MINUS" => "Minus",
             "TAB" => "Tab",
             "DELETE" => "Delete",
+            "Escape" or "ESCAPE" or "ESC" or "Esc" => "Esc",
+            "SPACE" or "Space" => "Space",
             _ when k.StartsWith("Number", StringComparison.Ordinal) && k.Length == 7 => k[6..],
             _ when Regex.IsMatch(k, "^F[0-9]{1,2}$") => k,
             _ when k.Length == 1 => k.ToUpperInvariant(),
@@ -342,23 +355,29 @@ internal static class BindingManifest
                 }
 
                 string keyText = args[1].Expression.ToString();
+                int param = m.ParameterList.Parameters.IndexOf(p => p.Identifier.Text == keyText);
                 if (keyText.StartsWith("VirtualKeyShort.", StringComparison.Ordinal))
                 {
                     chords.Add(Chord(mods, keyText["VirtualKeyShort.".Length..]));
                 }
-                else
+                else if (param >= 0)
                 {
+                    // A Theory key: bind each InlineData row's argument at the
+                    // pressed parameter's position, never any key in the row.
                     foreach (AttributeSyntax attr in m.AttributeLists.SelectMany(l => l.Attributes).Where(a => a.Name.ToString() == "InlineData"))
                     {
-                        foreach (var arg in attr.ArgumentList?.Arguments ?? default)
-                        {
-                            string v = arg.Expression.ToString();
-                            if (v.StartsWith("VirtualKeyShort.", StringComparison.Ordinal))
-                            {
-                                chords.Add(Chord(mods, v["VirtualKeyShort.".Length..]));
-                            }
-                        }
+                        var rowArgs = attr.ArgumentList?.Arguments ?? default;
+                        string v = param < rowArgs.Count ? rowArgs[param].Expression.ToString() : string.Empty;
+                        chords.Add(v.StartsWith("VirtualKeyShort.", StringComparison.Ordinal)
+                            ? Chord(mods, v["VirtualKeyShort.".Length..])
+                            : $"?unresolved:{keyText}");
                     }
+                }
+                else
+                {
+                    // A local, field, or computed key the manifest cannot
+                    // read: it credits nothing, so the row fails loud.
+                    chords.Add($"?unresolved:{keyText}");
                 }
             }
         }
@@ -367,6 +386,14 @@ internal static class BindingManifest
     }
 
     // ---- owners ----------------------------------------------------
+
+    // The obligation must be a checklist item naming the chord and this
+    // rule; an XREF or prose mention is not an owed test.
+    internal static bool OwesChordTest(string sectionBody, string chord) =>
+        sectionBody.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n')
+            .Any(l => (l.StartsWith("- [ ] ", StringComparison.Ordinal) || l.StartsWith("- [x] ", StringComparison.Ordinal))
+                && l.Contains(chord, StringComparison.Ordinal)
+                && l.Contains("D00 T02 §21", StringComparison.Ordinal));
 
     // Resolves `DNN TNN §N` to the section body plus its open/closed
     // row, reading the TODO tree the way todo-graph does.
@@ -485,6 +512,11 @@ internal static class BindingManifest
                     problems.Add($"{at}: duplicate, but no other command declares {row.Chord}");
                 }
 
+                if (!inp.Section(row.Owner).Found)
+                {
+                    problems.Add($"{at}: duplicate names owner '{row.Owner}', which does not resolve to a TODO section");
+                }
+
                 continue;
             }
 
@@ -507,7 +539,7 @@ internal static class BindingManifest
             {
                 problems.Add($"{at}: owner {row.Owner} is stamped, so it no longer owes the chord test; cover the chord");
             }
-            else if (!body.Contains(row.Chord, StringComparison.Ordinal) || !body.Contains("D00 T02 §21", StringComparison.Ordinal))
+            else if (!OwesChordTest(body, row.Chord))
             {
                 problems.Add($"{at}: owner {row.Owner}'s checklist does not owe the {row.Chord} chord test (it must name the chord and D00 T02 §21)");
             }
