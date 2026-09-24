@@ -294,13 +294,20 @@ internal static class BindingManifest
             found.Add($"{TabSourcePath}: AddAccel no longer builds exactly one accelerator from its own key and modifiers parameters");
         }
 
-        foreach (InvocationExpressionSyntax call in root.DescendantNodes().OfType<InvocationExpressionSyntax>()
-            .Where(c => c.Expression is IdentifierNameSyntax { Identifier.Text: "AddAccel" }))
+        // Every reference to the helper's name counts, whatever its shape:
+        // a plain call, a qualified call (MainWindow.AddAccel, this.AddAccel),
+        // a method group handed to a delegate, or nameof. Only the calls in
+        // AddTabAccelerators are derived, so any other reference is a way
+        // to bind a chord the inventory never sees.
+        foreach (IdentifierNameSyntax name in root.DescendantNodes().OfType<IdentifierNameSyntax>()
+            .Where(n => n.Identifier.Text == "AddAccel"))
         {
-            string? caller = call.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault()?.Identifier.Text;
-            if (caller != "AddTabAccelerators")
+            string? caller = name.Ancestors().OfType<MethodDeclarationSyntax>().FirstOrDefault()?.Identifier.Text;
+            bool derived = caller == "AddTabAccelerators"
+                && name.Parent is InvocationExpressionSyntax inv && inv.Expression == name;
+            if (!derived)
             {
-                found.Add($"{TabSourcePath}: AddAccel is called from {caller ?? "outside a method"}, not AddTabAccelerators");
+                found.Add($"{TabSourcePath}: AddAccel is referenced from {caller ?? "outside a method"} as `{name.Parent}`; only direct calls in AddTabAccelerators are derived");
             }
         }
 

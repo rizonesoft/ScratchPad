@@ -178,7 +178,21 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
             p => p.Contains("AddAccel no longer builds exactly one accelerator", StringComparison.Ordinal));
         Assert.Contains(BindingManifest.UndeclaredKeyHandling(Tab,
             "class W { static void AddTabAccelerators(UIElement scope) { } void Other(UIElement scope) { AddAccel(scope, VirtualKey.Q, VirtualKeyModifiers.Control, N); } " + Helper + " }"),
-            p => p.Contains("AddAccel is called from Other", StringComparison.Ordinal));
+            p => p.Contains("AddAccel is referenced from Other", StringComparison.Ordinal));
+
+        // R3-F1 family sweep: every reference shape outside a direct call
+        // in AddTabAccelerators fails: qualified calls elsewhere, a method
+        // group handed to a delegate, and a qualified call inside the home
+        // (the parser only derives direct calls, so it would go unseen).
+        Assert.Contains(BindingManifest.UndeclaredKeyHandling(Tab,
+            "class MainWindow { static void AddTabAccelerators(UIElement scope) { } void Other(UIElement scope) { MainWindow.AddAccel(scope, VirtualKey.Q, VirtualKeyModifiers.Control, N); } " + Helper + " }"),
+            p => p.Contains("AddAccel is referenced from Other as `MainWindow.AddAccel`", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.UndeclaredKeyHandling(Tab,
+            "class MainWindow { static void AddTabAccelerators(UIElement scope) { } void Other() { Action<UIElement, VirtualKey, VirtualKeyModifiers, Action> f = AddAccel; } " + Helper + " }"),
+            p => p.Contains("AddAccel is referenced from Other", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.UndeclaredKeyHandling(Tab,
+            "class MainWindow { static void AddTabAccelerators(UIElement scope) { MainWindow.AddAccel(scope, VirtualKey.Q, VirtualKeyModifiers.Control, N); } " + Helper + " }"),
+            p => p.Contains("AddAccel is referenced from AddTabAccelerators as `MainWindow.AddAccel`", StringComparison.Ordinal));
     }
 
     [Fact]
