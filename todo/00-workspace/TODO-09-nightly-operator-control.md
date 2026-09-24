@@ -90,13 +90,13 @@ Why this section exists: the run has no brakes. The operator needs to pause, res
 
 ## 3. Operator-Presence Yield
 
-Why this section exists: the operator decided (2026-09-24) that when they come back to the PC mid-run the nightly must get out of the way: no more keystrokes, no focus stealing, no windows popping. The run already knows about a locked box (`Get-WorkstationLocked`) but not about a present operator. Presence is read from `GetLastInputInfo`, filtered so the run's own synthetic input does not count as the operator. Default taken: 60 s of quiet resumes; cost of changing it is one setting.
+Why this section exists: the operator decided (2026-09-24) that when they come back to the PC mid-run the nightly must get out of the way: no more keystrokes, no focus stealing, no windows popping. The run already knows about a locked box (`Get-WorkstationLocked`) but not about a present operator. Presence is read from `GetLastInputInfo`, filtered so the run's own synthetic input does not count as the operator. Operator decision 2026-09-24: 10 minutes (600 s) of quiet resumes, long enough to cover a coffee break without resuming under the operator; cost of changing it is one setting.
 
 **Needs:** Windows host (build/test)
 
 - [ ] A presence probe reads `GetLastInputInfo` idle time and distinguishes operator input from the run's own `SendInput` by marking injected input (`dwExtraInfo` tag in `UiInput`) and ignoring last-input changes inside a press window the harness owns. Done when: a fixture proves harness presses do not register as presence and a real key or mouse move does.
 - [ ] Presence during a focus-using leg (interactive, UI soak, foreground-single) requests an automatic pause through the §2 channel with reason `operator present`; headless legs (unit, protocol) keep running. Done when: simulated presence mid-interactive parks the run and a headless leg in the same stub continues.
-- [ ] While paused for presence, the run resumes after `SCRATCHPAD_PRESENCE_QUIET` seconds (default 60) of no operator input; an operator `resume` overrides immediately and an operator `pause` is never auto-resumed. Done when: fixtures pin auto-resume, manual override, and the manual-pause hold.
+- [ ] While paused for presence, the run resumes after `SCRATCHPAD_PRESENCE_QUIET` seconds (default 600, operator decision 2026-09-24) of no operator input; an operator `resume` overrides immediately and an operator `pause` is never auto-resumed. Done when: fixtures pin auto-resume, manual override, and the manual-pause hold.
 - [ ] When the interactive window end approaches while paused, the run stands down its focus legs with every unexecuted test staged as night debt, never red. Done when: a stub with the window closing mid-pause stages the remaining tests and publishes.
 - [ ] The Foreground Single task gets the same guard: it defers with exit 2 when the operator was active in the last quiet period, exactly as it does for a locked box today. Done when: the task XML action checks presence and a fixture run defers.
 - [ ] `docs/testing.md` documents presence yield, the quiet period, and the override. Done when: the paragraph reads.
