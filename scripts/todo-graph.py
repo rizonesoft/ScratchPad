@@ -4157,16 +4157,20 @@ def night_debts(todos: list["Todo"], today_d):
     for did in sorted(owed):
         o = owed[did]
         c = collected.get(did)
-        base = o["owed"] or o["stamp"]
         age = None
         due = None
-        if base:
+        # The first valid base wins: an unparseable owed date falls back
+        # to the owning stamp rather than leaving the debt undated.
+        for base in (o["owed"], o["stamp"]):
+            if not base:
+                continue
             try:
                 base_d = datetime.fromisoformat(base).date()
-                age = max(0, (today_d - base_d).days)
-                due = (base_d + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
             except ValueError:
-                age = None
+                continue
+            age = max(0, (today_d - base_d).days)
+            due = (base_d + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
+            break
         if o["due"]:
             # A malformed override (2026-02-30) falls back to the default
             # window instead of dating the debt with an impossible day.
@@ -4174,7 +4178,9 @@ def night_debts(todos: list["Todo"], today_d):
                 due = datetime.fromisoformat(o["due"]).date().isoformat()
             except ValueError:
                 pass
-        overdue = bool(due) and c is None and today_d.isoformat() > due
+        # An open debt nothing can date fails closed: it escalates as
+        # overdue so it cannot sit unowed with `due ?` forever.
+        overdue = c is None and (due is None or today_d.isoformat() > due)
         out.append(
             {
                 "id": did,
@@ -25365,7 +25371,8 @@ track: Z1
             "**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19)\n"
             "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30)\n"
             "**Night-owed:** D90-T01-S1-N4 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-17)\n"
-            "**Night-owed:** D90-T01-S1-N5 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19, due 2026-02-30)\n\n"
+            "**Night-owed:** D90-T01-S1-N5 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19, due 2026-02-30)\n"
+            "**Night-owed:** D90-T01-S1-N6 (1 Interactive, collector Nightly UI 02:30, owed 2026-13-01)\n\n"
             "## 2. Collected work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
@@ -25445,6 +25452,11 @@ track: Z1
         check(
             "a malformed due token falls back to the default window",
             any("D90-T01-S1-N5" in ln and "due 2026-09-22" in ln and "2026-02-30" not in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "an undatable open debt fails closed as overdue",
+            any("D90-T01-S1-N6" in ln and "due ?" in ln and "OVERDUE escalate operator" in ln for ln in _ndlines),
             True,
         )
         check(
