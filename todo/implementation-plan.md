@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **111 of 291 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **111 of 299 sections complete (37%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -84,126 +84,134 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 
 ### Phase 0 -- Workspace spine: toolchain, CI, and the test backbone
 
-|  ✔  | Section       | Deliverable                                     | Items |
-| :-: | ------------- | ----------------------------------------------- | :---: |
-| [x] | `D00 T01 §1`  | Repo layout and toolchain pin                   |   7   |
-| [x] | `D00 T01 §2`  | Solution scaffold with one-command build        |   5   |
-| [x] | `D00 T01 §3`  | CI on Linux and Windows runners                 |   5   |
-| [x] | `D00 T01 §4`  | Warning and analysis gates                      |   5   |
-| [x] | `D00 T01 §5`  | Test wiring and first smoke test                |   5   |
-| [x] | `D00 T01 §6`  | Developer bootstrap doc                         |   5   |
-| [x] | `D00 T01 §7`  | TODO graph checks in CI                         |   5   |
-| [x] | `D00 T01 §9`  | Opus panel enforcement in the validator         |   5   |
-| [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups            |   4   |
-| [x] | `D00 T01 §11` | Quote-end lookahead removal                     |   4   |
-| [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits        |   3   |
-| [x] | `D00 T01 §13` | Environment-gated ready queries                 |   6   |
-| [x] | `D00 T01 §14` | Plan reviews with a second-family reviewer      |   6   |
-| [x] | `D00 T01 §15` | First plan-review residuals                     |  11   |
-| [x] | `D00 T01 §16` | Second plan-review residuals                    |  16   |
-| [x] | `D00 T01 §17` | Third plan-review residuals                     |  21   |
-| [x] | `D00 T01 §18` | Checker count residual                          |   3   |
-| [x] | `D00 T01 §19` | Fourth plan-review residuals                    |  23   |
-| [x] | `D00 T01 §20` | Run-identity reconciliation                     |   6   |
-| [x] | `D00 T01 §21` | Accountability records and surfacing            |   6   |
-| [x] | `D00 T01 §22` | Clearance binding                               |   4   |
-| [x] | `D00 T01 §23` | Ledger, provenance, and output hardening        |   7   |
-| [x] | `D00 T01 §24` | Lineage residuals and run inspection            |   6   |
-| [x] | `D00 T01 §25` | Rule-24 comment touch-up                        |   3   |
-| [x] | `D00 T01 §26` | Grandfathered migration execution               |   8   |
-| [x] | `D00 T01 §27` | Acceptance integrity                            |   7   |
-| [x] | `D00 T01 §28` | Partial records and governance docs             |   7   |
-| [x] | `D00 T01 §29` | Unattended checks and risk visibility           |   9   |
-| [x] | `D00 T01 §30` | Clearance fixture residuals                     |   4   |
-| [x] | `D00 T01 §31` | Clearance causality and precision               |   8   |
-| [x] | `D00 T01 §32` | Clearance governance and diagnostics            |   6   |
-| [x] | `D00 T01 §33` | Provenance residuals                            |   8   |
-| [x] | `D00 T01 §34` | Amendment and runner residuals                  |  10   |
-| [x] | `D00 T01 §35` | Mixed Sol/Opus panel with soft and hard caps    |  11   |
-| [x] | `D00 T01 §36` | README mixed-panel touch-up                     |   2   |
-| [x] | `D00 T01 §37` | Panel rule residuals                            |   8   |
-| [x] | `D00 T01 §38` | Architecture gate residuals                     |   7   |
-| [x] | `D00 T01 §39` | Panel telemetry                                 |   6   |
-| [x] | `D00 T01 §40` | Centralized build output in Bin                 |   6   |
-| [x] | `D00 T01 §41` | Bin output residuals                            |   9   |
-| [x] | `D00 T02 §1`  | Unit test project and framework                 |   5   |
-| [x] | `D00 T02 §2`  | UI automation driver spike                      |   5   |
-| [x] | `D00 T02 §3`  | Golden capture store and refresh                |   5   |
-| [x] | `D00 T02 §4`  | ACP loopback fixture                            |   5   |
-| [x] | `D00 T02 §5`  | Soak and quarantine procedure                   |   5   |
-| [x] | `D00 T02 §6`  | Golden comparison deterministic on CI           |   9   |
-| [x] | `D00 T02 §7`  | CI evidence capture pipeline                    |   4   |
-| [x] | `D00 T02 §8`  | Focus-free UI suite conversion                  |  14   |
-| [x] | `D00 T02 §9`  | Nightly full-suite regression run               |   8   |
-| [x] | `D00 T02 §10` | Completion-first night-debt system              |  12   |
-| [x] | `D00 T02 §11` | Central launch helper with off-screen birth     |   6   |
-| [x] | `D00 T02 §12` | Accelerator binding coverage sweep              |   4   |
-| [x] | `D00 T02 §13` | Backgrounding leak on the default leg           |  10   |
-| [x] | `D00 T02 §14` | Run-level deadline for the governed run         |   6   |
-| [x] | `D00 T02 §15` | Nightly enforcement and count hardening         |  27   |
-| [ ] | `D00 T02 §16` | Verify timer-fired completion and green         |  17   |
-| [x] | `D00 T02 §17` | Nightly notify plus trend surface               |  10   |
-| [x] | `D00 T02 §18` | Central launch hardening and evidence           |  10   |
-| [ ] | `D00 T02 §19` | Night-debt due dates and escalation             |   3   |
-| [ ] | `D00 T02 §20` | Accelerator sweep sign-off polish               |   3   |
-| [ ] | `D00 T02 §21` | Accelerator sweep follow-ups                    |  12   |
-| [ ] | `D00 T02 §22` | Nightly evidence hardening follow-ups           |   8   |
-| [ ] | `D00 T02 §23` | Nightly acknowledgement hardening               |   6   |
-| [ ] | `D00 T02 §24` | Notify follow-ups                               |  15   |
-| [ ] | `D00 T02 §25` | Trend and telemetry follow-ups                  |  11   |
-| [ ] | `D00 T02 §26` | Sibling sweep narrowing                         |   3   |
-| [ ] | `D00 T03 §1`  | App screenshots for README                      |   6   |
-| [ ] | `D00 T03 §2`  | README rewrite plus repo-face files             |  10   |
-| [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record       |   6   |
-| [ ] | `D00 T03 §4`  | Premium README presentation                     |   9   |
-| [ ] | `D00 T03 §5`  | Agent showcase media                            |   4   |
-| [x] | `D00 T01 §42` | Requires operator vocabulary                    |   5   |
-| [x] | `D00 T01 §43` | Findings count touch-up                         |   5   |
-| [x] | `D00 T01 §44` | Range-fallback lineage guards                   |   3   |
-| [x] | `D00 T01 §45` | Run inspection residuals                        |   3   |
-| [x] | `D00 T01 §46` | Rule-description probe completeness             |   3   |
-| [x] | `D00 T01 §47` | Section-span scan helper                        |   3   |
-| [x] | `D00 T01 §48` | Migration completion assurance                  |   7   |
-| [x] | `D00 T01 §49` | Multi-citer review evaluation                   |   3   |
-| [x] | `D00 T01 §50` | Outage instance dating                          |   3   |
-| [x] | `D00 T01 §51` | Acceptance record follow-ups                    |   9   |
-| [x] | `D00 T01 §52` | Partial-record and quorum follow-ups            |   7   |
-| [x] | `D00 T01 §53` | Unattended notification and register follow-ups |  18   |
-| [x] | `D00 T01 §54` | Clearance fixture follow-ups                    |   8   |
-| [x] | `D00 T01 §55` | Clearance causality follow-ups                  |  30   |
-| [ ] | `D00 T04 §1`  | Sol-note and disposition follow-ups             |  30   |
-| [ ] | `D00 T04 §2`  | Rule-24 probe follow-ups                        |   6   |
-| [ ] | `D00 T04 §3`  | Migration-assurance follow-ups                  |   5   |
-| [ ] | `D00 T04 §4`  | Review-evaluation follow-ups                    |   4   |
-| [ ] | `D00 T04 §5`  | Windows console and prompt follow-ups           |   4   |
-| [x] | `D00 T04 §6`  | Acceptance-record sign-off residuals            |   6   |
-| [ ] | `D00 T04 §7`  | Generation-map refusal parity                   |   3   |
-| [ ] | `D00 T04 §8`  | Position-proof health results                   |   3   |
-| [ ] | `D00 T04 §9`  | Acceptance semantic version binding             |   3   |
-| [ ] | `D00 T04 §10` | Section-52 sign-off residuals                   |   6   |
-| [ ] | `D00 T04 §11` | Section-52 plan-review residuals                |   4   |
-| [ ] | `D00 T04 §12` | Section-54 sign-off residuals                   |  13   |
-| [ ] | `D00 T04 §13` | Section-54 e2e and lane residuals               |  10   |
-| [x] | `D00 T04 §14` | Panel-label rename to Claude and GPT            |   7   |
-| [x] | `D00 T04 §15` | Panel rewire: sol bulk, opus governs            |   7   |
-| [ ] | `D00 T04 §16` | Section-15 plan-review residuals                |   4   |
-| [ ] | `D00 T04 §17` | Section-14 sign-off residuals                   |   4   |
-| [ ] | `D00 T04 §18` | Section-14 plan-review residuals                |   3   |
-| [x] | `D00 T04 §19` | Opus 5.5 reviewer re-pin                        |   6   |
-| [ ] | `D00 T04 §20` | Section-19 plan-review residuals                |   3   |
-| [x] | `D00 T04 §21` | GPT-6 sol reviewer re-pin                       |   6   |
-| [ ] | `D00 T04 §22` | Section-21 review residuals                     |   4   |
-| [x] | `D00 T04 §23` | Implementer-independent panel: GPT governs      |   9   |
-| [ ] | `D00 T04 §24` | Section-23 sign-off residuals                   |   5   |
-| [x] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
-| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   6   |
-| [ ] | `D00 T04 §27` | Self-test determinism on Windows                |   4   |
-| [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   4   |
-| [ ] | `D00 T05 §2`  | Run-guard proof                                 |   3   |
-| [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
-| [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
-| [ ] | `D00 T08 §1`  | Poster and delivery hardening                   |  12   |
-| [ ] | `D00 T08 §2`  | Notification governance and premium views       |  12   |
+|  ✔  | Section       | Deliverable                                               | Items |
+| :-: | ------------- | --------------------------------------------------------- | :---: |
+| [x] | `D00 T01 §1`  | Repo layout and toolchain pin                             |   7   |
+| [x] | `D00 T01 §2`  | Solution scaffold with one-command build                  |   5   |
+| [x] | `D00 T01 §3`  | CI on Linux and Windows runners                           |   5   |
+| [x] | `D00 T01 §4`  | Warning and analysis gates                                |   5   |
+| [x] | `D00 T01 §5`  | Test wiring and first smoke test                          |   5   |
+| [x] | `D00 T01 §6`  | Developer bootstrap doc                                   |   5   |
+| [x] | `D00 T01 §7`  | TODO graph checks in CI                                   |   5   |
+| [x] | `D00 T01 §9`  | Opus panel enforcement in the validator                   |   5   |
+| [x] | `D00 T01 §10` | Opus panel rule hardening follow-ups                      |   4   |
+| [x] | `D00 T01 §11` | Quote-end lookahead removal                               |   4   |
+| [x] | `D00 T01 §12` | Repo-managed git hooks gating TODO edits                  |   3   |
+| [x] | `D00 T01 §13` | Environment-gated ready queries                           |   6   |
+| [x] | `D00 T01 §14` | Plan reviews with a second-family reviewer                |   6   |
+| [x] | `D00 T01 §15` | First plan-review residuals                               |  11   |
+| [x] | `D00 T01 §16` | Second plan-review residuals                              |  16   |
+| [x] | `D00 T01 §17` | Third plan-review residuals                               |  21   |
+| [x] | `D00 T01 §18` | Checker count residual                                    |   3   |
+| [x] | `D00 T01 §19` | Fourth plan-review residuals                              |  23   |
+| [x] | `D00 T01 §20` | Run-identity reconciliation                               |   6   |
+| [x] | `D00 T01 §21` | Accountability records and surfacing                      |   6   |
+| [x] | `D00 T01 §22` | Clearance binding                                         |   4   |
+| [x] | `D00 T01 §23` | Ledger, provenance, and output hardening                  |   7   |
+| [x] | `D00 T01 §24` | Lineage residuals and run inspection                      |   6   |
+| [x] | `D00 T01 §25` | Rule-24 comment touch-up                                  |   3   |
+| [x] | `D00 T01 §26` | Grandfathered migration execution                         |   8   |
+| [x] | `D00 T01 §27` | Acceptance integrity                                      |   7   |
+| [x] | `D00 T01 §28` | Partial records and governance docs                       |   7   |
+| [x] | `D00 T01 §29` | Unattended checks and risk visibility                     |   9   |
+| [x] | `D00 T01 §30` | Clearance fixture residuals                               |   4   |
+| [x] | `D00 T01 §31` | Clearance causality and precision                         |   8   |
+| [x] | `D00 T01 §32` | Clearance governance and diagnostics                      |   6   |
+| [x] | `D00 T01 §33` | Provenance residuals                                      |   8   |
+| [x] | `D00 T01 §34` | Amendment and runner residuals                            |  10   |
+| [x] | `D00 T01 §35` | Mixed Sol/Opus panel with soft and hard caps              |  11   |
+| [x] | `D00 T01 §36` | README mixed-panel touch-up                               |   2   |
+| [x] | `D00 T01 §37` | Panel rule residuals                                      |   8   |
+| [x] | `D00 T01 §38` | Architecture gate residuals                               |   7   |
+| [x] | `D00 T01 §39` | Panel telemetry                                           |   6   |
+| [x] | `D00 T01 §40` | Centralized build output in Bin                           |   6   |
+| [x] | `D00 T01 §41` | Bin output residuals                                      |   9   |
+| [x] | `D00 T02 §1`  | Unit test project and framework                           |   5   |
+| [x] | `D00 T02 §2`  | UI automation driver spike                                |   5   |
+| [x] | `D00 T02 §3`  | Golden capture store and refresh                          |   5   |
+| [x] | `D00 T02 §4`  | ACP loopback fixture                                      |   5   |
+| [x] | `D00 T02 §5`  | Soak and quarantine procedure                             |   5   |
+| [x] | `D00 T02 §6`  | Golden comparison deterministic on CI                     |   9   |
+| [x] | `D00 T02 §7`  | CI evidence capture pipeline                              |   4   |
+| [x] | `D00 T02 §8`  | Focus-free UI suite conversion                            |  14   |
+| [x] | `D00 T02 §9`  | Nightly full-suite regression run                         |   8   |
+| [x] | `D00 T02 §10` | Completion-first night-debt system                        |  12   |
+| [x] | `D00 T02 §11` | Central launch helper with off-screen birth               |   6   |
+| [x] | `D00 T02 §12` | Accelerator binding coverage sweep                        |   4   |
+| [x] | `D00 T02 §13` | Backgrounding leak on the default leg                     |  10   |
+| [x] | `D00 T02 §14` | Run-level deadline for the governed run                   |   6   |
+| [x] | `D00 T02 §15` | Nightly enforcement and count hardening                   |  27   |
+| [ ] | `D00 T02 §16` | Verify timer-fired completion and green                   |  17   |
+| [x] | `D00 T02 §17` | Nightly notify plus trend surface                         |  10   |
+| [x] | `D00 T02 §18` | Central launch hardening and evidence                     |  10   |
+| [ ] | `D00 T02 §19` | Night-debt due dates and escalation                       |   3   |
+| [ ] | `D00 T02 §20` | Accelerator sweep sign-off polish                         |   3   |
+| [ ] | `D00 T02 §21` | Accelerator sweep follow-ups                              |  12   |
+| [ ] | `D00 T02 §22` | Nightly evidence hardening follow-ups                     |   8   |
+| [ ] | `D00 T02 §23` | Nightly acknowledgement hardening                         |   6   |
+| [ ] | `D00 T02 §24` | Notify follow-ups                                         |  15   |
+| [ ] | `D00 T02 §25` | Trend and telemetry follow-ups                            |  11   |
+| [ ] | `D00 T02 §26` | Sibling sweep narrowing                                   |   3   |
+| [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
+| [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
+| [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
+| [ ] | `D00 T03 §4`  | Premium README presentation                               |   9   |
+| [ ] | `D00 T03 §5`  | Agent showcase media                                      |   4   |
+| [x] | `D00 T01 §42` | Requires operator vocabulary                              |   5   |
+| [x] | `D00 T01 §43` | Findings count touch-up                                   |   5   |
+| [x] | `D00 T01 §44` | Range-fallback lineage guards                             |   3   |
+| [x] | `D00 T01 §45` | Run inspection residuals                                  |   3   |
+| [x] | `D00 T01 §46` | Rule-description probe completeness                       |   3   |
+| [x] | `D00 T01 §47` | Section-span scan helper                                  |   3   |
+| [x] | `D00 T01 §48` | Migration completion assurance                            |   7   |
+| [x] | `D00 T01 §49` | Multi-citer review evaluation                             |   3   |
+| [x] | `D00 T01 §50` | Outage instance dating                                    |   3   |
+| [x] | `D00 T01 §51` | Acceptance record follow-ups                              |   9   |
+| [x] | `D00 T01 §52` | Partial-record and quorum follow-ups                      |   7   |
+| [x] | `D00 T01 §53` | Unattended notification and register follow-ups           |  18   |
+| [x] | `D00 T01 §54` | Clearance fixture follow-ups                              |   8   |
+| [x] | `D00 T01 §55` | Clearance causality follow-ups                            |  30   |
+| [ ] | `D00 T04 §1`  | Sol-note and disposition follow-ups                       |  30   |
+| [ ] | `D00 T04 §2`  | Rule-24 probe follow-ups                                  |   6   |
+| [ ] | `D00 T04 §3`  | Migration-assurance follow-ups                            |   5   |
+| [ ] | `D00 T04 §4`  | Review-evaluation follow-ups                              |   4   |
+| [ ] | `D00 T04 §5`  | Windows console and prompt follow-ups                     |   4   |
+| [x] | `D00 T04 §6`  | Acceptance-record sign-off residuals                      |   6   |
+| [ ] | `D00 T04 §7`  | Generation-map refusal parity                             |   3   |
+| [ ] | `D00 T04 §8`  | Position-proof health results                             |   3   |
+| [ ] | `D00 T04 §9`  | Acceptance semantic version binding                       |   3   |
+| [ ] | `D00 T04 §10` | Section-52 sign-off residuals                             |   6   |
+| [ ] | `D00 T04 §11` | Section-52 plan-review residuals                          |   4   |
+| [ ] | `D00 T04 §12` | Section-54 sign-off residuals                             |  13   |
+| [ ] | `D00 T04 §13` | Section-54 e2e and lane residuals                         |  10   |
+| [x] | `D00 T04 §14` | Panel-label rename to Claude and GPT                      |   7   |
+| [x] | `D00 T04 §15` | Panel rewire: sol bulk, opus governs                      |   7   |
+| [ ] | `D00 T04 §16` | Section-15 plan-review residuals                          |   4   |
+| [ ] | `D00 T04 §17` | Section-14 sign-off residuals                             |   4   |
+| [ ] | `D00 T04 §18` | Section-14 plan-review residuals                          |   3   |
+| [x] | `D00 T04 §19` | Opus 5.5 reviewer re-pin                                  |   6   |
+| [ ] | `D00 T04 §20` | Section-19 plan-review residuals                          |   3   |
+| [x] | `D00 T04 §21` | GPT-6 sol reviewer re-pin                                 |   6   |
+| [ ] | `D00 T04 §22` | Section-21 review residuals                               |   4   |
+| [x] | `D00 T04 §23` | Implementer-independent panel: GPT governs                |   9   |
+| [ ] | `D00 T04 §24` | Section-23 sign-off residuals                             |   5   |
+| [x] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback            |   9   |
+| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                             |   6   |
+| [ ] | `D00 T04 §27` | Self-test determinism on Windows                          |   4   |
+| [ ] | `D00 T05 §1`  | Runner file-closeout wiring                               |   4   |
+| [ ] | `D00 T05 §2`  | Run-guard proof                                           |   3   |
+| [ ] | `D00 T06 §1`  | Prerequisite scope audit                                  |   5   |
+| [ ] | `D00 T07 §1`  | Bin machinery follow-ups                                  |   9   |
+| [ ] | `D00 T08 §1`  | Poster and delivery hardening                             |  12   |
+| [ ] | `D00 T08 §2`  | Notification governance and premium views                 |  12   |
+| [ ] | `D00 T09 §1`  | Hotkey-conflict preflight and environment-blocked outcome |   9   |
+| [ ] | `D00 T09 §2`  | Control channel and nightly-ctl CLI                       |   8   |
+| [ ] | `D00 T09 §3`  | Operator-presence yield                                   |   7   |
+| [ ] | `D00 T09 §4`  | Toast action buttons                                      |   4   |
+| [ ] | `D00 T09 §5`  | Tray status and control icon                              |   5   |
+| [ ] | `D00 T09 §6`  | Nightly Claude skill                                      |   4   |
+| [ ] | `D00 T09 §7`  | Adaptive run planning                                     |   6   |
+| [ ] | `D00 T09 §8`  | Claude triage in the morning report                       |   6   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 

@@ -62,6 +62,7 @@ A coverage claim rests on the source it was derived from. This table was derived
 - [00 Workspace] [TODO-06 Operator Docs](./00-workspace/TODO-06-operator-docs.md) -- operator-doc accuracy follow-ups; first resident the prerequisite scope audit from the §41 review.
 - [00 Workspace] [TODO-07 Bin Output Follow-Ups](./00-workspace/TODO-07-bin-output-follow-ups.md) -- Bin-machinery hardening past the T01 section cap; first resident 8 joiners from the §41 plan review.
 - [00 Workspace] [TODO-08 Unattended Notification Follow-Ups](./00-workspace/TODO-08-unattended-notification-follow-ups.md) -- Unattended-notification hardening past the T01 section cap; first resident 22 joiners from the §53 plan review.
+- [00 Workspace] [TODO-09 Nightly Operator Control](./00-workspace/TODO-09-nightly-operator-control.md) -- nightly run control and adaptation: hotkey-conflict preflight, pause/stop/skip across CLI, toast, tray, and skill, operator-presence yield, adaptive planning, Claude triage.
 - [01 Notepad Core] [TODO-01 WinUI App Spine](./01-notepad-core/TODO-01-winui-app-spine.md) -- window, tab model, file IO with encoding detection, open/save round-trips.
 - [01 Notepad Core] [TODO-02 Menus, Settings and Status](./01-notepad-core/TODO-02-menus-settings-status.md) -- full menu bar, settings page, status bar, print slice.
 - [02 Editor] [TODO-01 Editing Surface](./02-editor/TODO-01-editing-surface.md) -- text engine, caret and selection, undo/redo, zoom, wrap, line endings.

@@ -654,6 +654,8 @@ Why this section exists: the §12 plan review returned 22 findings; 11 file here
 
 **Test checkpoint:** Exception named, numbers split, edges pinned, launcher intercepted, framework chords owned, manifest guards, metadata gates, conflicts surface, focus asserts, taxonomy classifies, labels match. Cheaper substitute that fails: the §12 table alone with no follow-through.
 
+- -> XREF: D00 T09 §1 -- owns run-time conflicts with other apps' global hotkeys (probe, skip with reason, owed proof); consumes this section's per-press focus assert when it lands.
+
 ## 22. Nightly Evidence Hardening Follow-Ups
 
 Why this section exists: the §15 plan review returned 30 findings; 5 file here (3 plan-review plus 2 panel-R5), 17 shape §16, 5 shape §17, 1 corrects §15's wording in place, 3 are rejected with reasons in the §15 findings file, and PR27's separate-sections split is realized by this filing (follow-ups land in §16/§17/§22, never back in §15). §15 shipped as a 27-item catch-all; these five keep their own single-purpose home. -> SOURCE: plan-review-D00-T02-s15-2026-09-21-s22 D00-T02-S15-PR21 D00-T02-S15-PR22 D00-T02-S15-PR24 D00-T02-S15-PR27 (capture policy, retention quota, and incident keys from the §15 plan review). -> SOURCE: panel-R5-D00-T02-s15-2026-09-21-s22 D00-T02-S15-R5-F1 D00-T02-S15-R5-F2 (all-skipped banner plus out.log paragraph from the §15 panel round 5). -> SOURCE: plan-review-D00-T02-s17-2026-09-21-s22 D00-T02-S17-PR26 D00-T02-S17-PR27 D00-T02-S17-PR30 (identity contract, incident lifecycle, and manifest mechanics from the §17 plan review).
@@ -715,6 +717,8 @@ Why this section exists: the §17 plan review returned 37 findings; 14 file here
 - [ ] Commit: `"workspace: follow up notify"`
 
 **Test checkpoint:** Edges read, runs canonicalize, delivery retries, silence alerts, finals fire, sends dedupe, states deliver, nights digest, outcomes list, classes route, caps prioritize, reports agree, recoveries notify, incidents link. Cheaper substitute that fails: a louder toast over the same gaps.
+
+- -> XREF: D00 T09 §4 -- adds Pause, Stop, and Skip action buttons to the nightly toast over this section's delivery path.
 
 ## 25. Trend and Telemetry Follow-Ups
 
