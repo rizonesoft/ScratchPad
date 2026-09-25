@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **119 of 308 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **120 of 309 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -153,7 +153,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §25` | Trend and telemetry follow-ups                            |  11   |
 | [x] | `D00 T02 §26` | Sibling sweep narrowing                                   |   3   |
 | [x] | `D00 T02 §27` | Night-debt escalation lifecycle                           |   8   |
-| [ ] | `D00 T02 §28` | Binding guard and funnel hardening                        |  11   |
+| [x] | `D00 T02 §28` | Binding guard and funnel hardening                        |  11   |
 | [ ] | `D00 T02 §29` | Population fingerprint gate before the night              |   7   |
 | [ ] | `D00 T02 §30` | Nightly evidence residuals                                |  11   |
 | [ ] | `D00 T02 §31` | Acknowledgement residuals                                 |  15   |
@@ -161,6 +161,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §33` | Notification residuals                                    |   5   |
 | [ ] | `D00 T02 §34` | Sibling sweep residuals                                   |   7   |
 | [ ] | `D00 T02 §35` | Night-debt lifecycle residuals                            |  13   |
+| [ ] | `D00 T02 §36` | Binding guard residuals                                   |   9   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
@@ -258,7 +259,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |  10   |
 | [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  13   |
 | [ ] | `D02 T01 §4`  | Undo and redo                                                       |   7   |
-| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |  10   |
+| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |  13   |
 | [ ] | `D02 T01 §6`  | Context menu and mouse behaviors                                    |   5   |
 | [ ] | `D02 T01 §7`  | Large-file behavior and budget                                      |   5   |
 | [ ] | `D02 T01 §8`  | Selection utilities: case, sort, dedupe                             |   6   |

@@ -68,7 +68,7 @@ track: W0
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [x]   |
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [x]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [x]   |
-|   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
+|   28  |   §28   | Binding guard and funnel hardening | §21 |  [x]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
 |   30  |   §30   | Nightly evidence residuals | §22 |  [ ]   |
 |   31  |   §31   | Acknowledgement residuals | §23 |  [ ]   |
@@ -76,6 +76,7 @@ track: W0
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
 |   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
+|   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
 
 ---
 
@@ -892,6 +893,7 @@ Why this section exists: the §21 plan review returned 25 findings against the b
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §36 -- residual follow-ups filed from this section's plan review and sign-off.
 - -> XREF: D00 T02 §21 -- filed from its plan review; hardens the guard and funnel it shipped.
 
 - [x] Each covering test asserts an observable command outcome, and a wrong-handler mutation (the chord routed to a different command) fails coverage. Done when: a planted handler swap fails the guard or the covering test. (D00-T02-S21-PR2.)
@@ -910,6 +912,13 @@ Why this section exists: the §21 plan review returned 25 findings against the b
 **Night-owed:** D00-T02-S28-N1 (44 Interactive, collector Nightly UI 02:30, owed 2026-09-25). `ChordRoutingTests.WindowGlobalChordRoutesPerSurface` (item 2) and `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` (item 4) take the foreground, and every Interactive test now runs on the funnel reworked by items 5 and 6 (key-down/key-up split, focus target, operator-held modifier), so the whole fenced population collects in the next quiet window; the focus-free proofs are green and the stamp does not wait.
 
 **Test checkpoint:** Wrong-handler plant fails, routing per surface passes, Ctrl+E dispatches once, layout cases read, wrong-control focus fails, chord interruption aborts cleanly, seam is test-only, accessible text checked, state-conditional enablement fails the exemption. Cheaper substitute that fails: more rows in the audit table with no behavior proven.
+
+> **Verified:** 2026-09-25 | §28 | bound menu handlers match their ids and call exactly their `HostCalls` member, and covering tests assert post-press state (four planted fixtures fail); the funnel binds each press to its focus target, refuses an operator-held modifier, splits key-down and key-up (fixing a key the old funnel never released), aborts only when input leaves the app while the window lives, and cleans only its own modifiers (eleven funnel fixtures); the launch seam needs `SCRATCHPAD_TEST_RUN=1` and a failing capture opens `LaunchCaptureFailedDialog`; Ctrl+E yields one capture; Name and HelpText match beside AcceleratorKey; disabled exemptions hold in fresh, file-open, and selection states; the Ctrl+P row stays consistent with D01 T02 §5; Run A at b36a3d7 Unit 364/0, Protocol 35/0, Smoke 1/0, UI 269 passed 14 skipped 0 failed; routing per surface and layout identity are fenced, Night-owed D00-T02-S28-N1 (44 Interactive)
+> **Review:** round 3 (Full), candidates `ce9501f` `aeca4b0` `c58ec80` `b36a3d7` -- GPT R1-R2 bulk needs-attention (R1-F1..F4, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F2 fixed in `b36a3d7` and re-gated at the stamp, R3-F1 filed D00 T02 §36. Raw findings: docs/reviews/00-workspace/D00-T02-s28.md
+> **Plan review:** GPT medium, filed D00 T02 §36, D02 T01 §5 (run 20260925-D00-T02-S28-codex-c06751119-r4)
+> **CRUD:** not applicable | test harness, guard, and a test-only seam; the seam's only write is the capture append under the run marker, and its failure path is proved in the window
+> **Duration:** 2026-09-25T05:29:00Z to 2026-09-25T06:29:27Z
+> **Reviewed-tip:** b36a3d75e724513a7a56aaf9ebbb09ee0842645d
 
 ## 29. Population Fingerprint Gate Before the Night
 
@@ -1064,6 +1073,24 @@ Why this section exists: the §27 plan review returned 14 findings; 12 file here
 - [ ] Commit: `"workspace: settle the night-debt lifecycle residuals"`
 
 **Test checkpoint:** The owner field names the owner, repeats anchor, same-day reds count, transitions resolve, accepted debt collects, acceptance renews and revokes, boundaries pin, overrides keep history, post-run status reads, red-repeat links its finding, orphans and duplicates warn, and the XREF pair validates. Cheaper substitute that fails: more states with no transition rules.
+
+## 36. Binding Guard Residuals
+
+Why this section exists: the §28 plan review returned 14 findings; 8 file here, 4 on D02 T01 §5 (zoom and word-wrap contracts), and 2 are rejected with reasons in the §28 findings file; the §28 sign-off's R3-F1 files here too. §28 made covering tests assert state after the press, routed menu handlers through a host-call table, and hardened the funnel; these settle what static checks cannot prove and the physical-input paths §28 left implicit. -> SOURCE: plan-review-D00-T02-s28-2026-09-25-s36 D00-T02-S28-PR1 D00-T02-S28-PR2 D00-T02-S28-PR3 D00-T02-S28-PR4 D00-T02-S28-PR5 D00-T02-S28-PR6 D00-T02-S28-PR8 D00-T02-S28-PR13 D00-T02-S28-R3-F1 (physical identity, layout matrix, routing oracle, outcome enforcement, duplicate delivery, partial-send recovery, enablement matrices, wheel input, and the constant-local assertion gap).
+
+- -> XREF: D00 T02 §28 -- filed from its plan review and sign-off; settles the residuals of the guard and funnel it hardened.
+
+- [ ] Covering-test outcome evidence is proved by execution, not syntax: each covered chord gets a mutation run (the handler swapped to another host member under a test-only switch) that its covering test must fail, replacing the static assertion rule that a constant assigned after the press (`int observed = 0; Assert.Equal(0, observed);`) still satisfies; the rule stays as a cheap pre-check. Done when: a planted constant-local assertion passes the static rule but fails the mutation run. (D00-T02-S28-R3-F1, D00-T02-S28-PR4.)
+- [ ] The manifest keeps physical key identity beside the canonical chord (`Add` versus `OEM_PLUS`), so a covering test pressing one variant cannot credit a declaration of the other. Done when: a NumPad-only declaration with a main-row covering press fails the guard. (D00-T02-S28-PR1.)
+- [ ] An explicit layout matrix (named layouts, Shift-dependent plus, AltGr combinations, expected dispatch or character) is shared with D02 T01 §5's zoom keys. Done when: the matrix reads in `docs/ui-input-audit.md` and each row has a fenced case. (D00-T02-S28-PR2.)
+- [ ] The routing oracle is per command and surface: the audit table names, for every window-global chord, execute or suppress on the editor, the tab strip, an open menu, and a modal, replacing §28's single recorded default for Ctrl+T. Done when: the per-command table reads and `ChordRoutingTests` asserts from it. (D00-T02-S28-PR3.)
+- [ ] Exactly-once dispatch generalizes past Ctrl+E: every chord with a menu declaration plus a root route, or two accelerators on one item, proves one press yields one outcome. Done when: a planted double registration fails. (D00-T02-S28-PR5.)
+- [ ] Partial-send recovery is specified: after a sender failure mid-chord the funnel releases every key it successfully injected, in reverse, and leaves operator-held keys alone. Done when: a sender failing after the second key-down fixture releases exactly the injected keys. (D00-T02-S28-PR6.)
+- [ ] Enablement exemptions are read in owner-defined state matrices (clipboard contents, undo history, read-only documents) beside §28's three representative states. Done when: an owner-declared state reads in `DisabledExemptionsHoldAcrossEnablementStates`. (D00-T02-S28-PR8.)
+- [ ] Ctrl+mouse-wheel input goes through a checked funnel path (focus target, foreground binding, no stuck modifier) with an audit row, shared with D02 T01 §5's zoom limits. Done when: a planted focus loss fails a wheel injection fixture. (D00-T02-S28-PR13.)
+- [ ] Commit: `"workspace: settle the binding guard residuals"`
+
+**Test checkpoint:** The mutation run catches the constant-local assertion, physical identity holds, the layout matrix reads, the routing oracle is per command, double registration fails, partial sends release exactly their keys, owner states read, and wheel injection is checked. Cheaper substitute that fails: a longer list of static assertion shapes.
 
 ## Verification
 
