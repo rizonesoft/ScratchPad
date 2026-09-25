@@ -83,7 +83,7 @@ track: W0
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [x]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [x]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [x]   |
-|   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
+|   43  |   §43   | Binding guard second residuals | §36 |  [x]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
@@ -91,6 +91,7 @@ track: W0
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [ ]   |
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
+|   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
 
 ---
 
@@ -1393,6 +1394,7 @@ Why this section exists: the §35 plan review returned 12 findings; 9 file here,
 Why this section exists: the §36 plan review returned 14 findings; 5 file here, 3 file as items on D02 T01 §5, 2 are duplicates of open D02 T01 §5 items, and 4 are rejected with reasons in the §36 findings file. §36 proved covering tests by execution, recorded physical identity, and checked routing, layouts, and states; these settle activation evidence, in-app focus moves, cleanup failures, auto-repeat, and state transitions. -> SOURCE: plan-review-D00-T02-s36-2026-09-25-s43 D00-T02-S36-PR2 D00-T02-S36-PR5 D00-T02-S36-PR6 D00-T02-S36-PR7 D00-T02-S36-PR8 (mutation activation, in-app focus moves, cleanup failures, auto-repeat, and enablement transitions from the §36 plan review).
 
 - -> XREF: D00 T02 §36 -- filed from its plan review; carries the guard and funnel it proved.
+- -> XREF: D00 T02 §51 -- its plan review's residuals.
 
 - [x] Each mutation case proves the swap activated (the substitute's own effect is observed or the app records the swap in the dispatch log) and runs in a fresh child with no inherited target. Done when: a case whose target names no bound command reads inconclusive, never killed. (D00-T02-S36-PR2.)
 - [x] A focus move to another control inside the app between key-down and key-up (or between Ctrl and the wheel) is defined and tested: the press either binds to its original target or aborts loud. Done when: a planted in-app focus move mid-chord reads its documented outcome. (D00-T02-S36-PR5.)
@@ -1402,6 +1404,13 @@ Why this section exists: the §36 plan review returned 14 findings; 5 file here,
 - [x] Commit: `"workspace: settle the binding guard second residuals"`
 
 **Test checkpoint:** Mutations prove activation, in-app focus moves have an outcome, cleanup failures report their stuck keys, held keys repeat by class, and enablement survives transitions. Cheaper substitute that fails: more static rules over test source.
+
+> **Verified:** 2026-09-25 | §43 | a mutation kill needs the app's swap evidence (swap:<target> in the child's own dispatch log; without it a failure or pass reads inconclusive); in-app focus moves mid-chord and between Ctrl and the wheel stay bound to the original target and only input leaving the app aborts; the release pass attempts every key within a 2 s bound, names each stuck key, owns cancellation and a closing window, and never injects an abandoned queued release later; zoom and tab cycling repeat on a hold while every other command runs once per physical press (a recorded default; the repeat flag lives for one input message); enablement over every bound menu item reads documented on entering read-only and a selection and restored on leaving them; final Run A at b0492f9 with the suite display restored: UI 304 passed, 16 skipped, 0 failed; Unit 387, Protocol 35, Smoke 1; foreground gate exit 0 (census 264, primary 0, event-primary 0)
+> **Review:** round 3 (Full), candidates `af49989` `c977b9c` `6e0baf5` `b0492f9` -- GPT R1-R2 bulk needs-attention (R1-F1..F3, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra); below-bar R3-F1 fixed in b0492f9 and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s43.md
+> **Plan review:** GPT medium, filed D00 T02 §51 (run 20260925-D00-T02-S43-codex-c06751119-r3)
+> **CRUD:** not-applicable | command dispatch guards for auto-repeat and test-harness input cleanup; the dispatch log is a test-only seam behind the run marker; no user data
+> **Duration:** 2026-09-25T16:49:36Z to 2026-09-25T20:03:39Z
+> **Reviewed-tip:** b0492f9
 
 ## 44. Population Gate Second Residuals
 
@@ -1541,6 +1550,28 @@ Why this section exists: the §42 plan review returned 12 findings; 11 file here
 - [ ] Commit: `"workspace: settle the second night-debt governance residuals"`
 
 **Test checkpoint:** Replay resolves by rule, contradictions take no effect, the owed inventory is fixed, closure binds to its candidate, every extension shares one authority, schedules are captured, accepted remediation stays visible, writes reconcile once, reassignment keeps provenance, boundaries pin, and evidence survives cleanup. Cheaper substitute that fails: more WARN lines with no rule behind them.
+
+## 51. Binding Guard Third Residuals
+
+Why this section exists: the §43 plan review returned 13 findings; 12 file here and 1 is rejected with its reason in the §43 findings file. §43 proved mutation activation, owned in-app focus moves and cleanup failures, classified held keys, and read enablement across transitions; these carry that through execution acknowledgment, failure attribution, negative routing, key-state reconciliation, containment, hold resets, parity capture, one counting rule, enumerated transitions, owned held-key debt, child isolation, and combined matrices. -> SOURCE: plan-review-D00-T02-s43-2026-09-25-s51 D00-T02-S43-PR1 D00-T02-S43-PR2 D00-T02-S43-PR3 D00-T02-S43-PR5 D00-T02-S43-PR6 D00-T02-S43-PR7 D00-T02-S43-PR8 D00-T02-S43-PR9 D00-T02-S43-PR10 D00-T02-S43-PR11 D00-T02-S43-PR12 D00-T02-S43-PR13
+
+- -> XREF: D00 T02 §43 -- filed from its plan review; carries the guard it settled.
+
+- [ ] Mutation activation requires a correlated execution acknowledgment: the swap line carries the substitute's own completion (or an observable substitute effect), so a logged but unexecuted swap never credits a kill. Done when: a swap logged but whose substitute throws before running reads inconclusive. (D00-T02-S43-PR1.)
+- [ ] A kill distinguishes an outcome mismatch from cleanup, focus, timeout, and unrelated assertion failures, so an infrastructure fault after the press never counts as coverage. Done when: a post-press timeout failure reads inconclusive, not killed. (D00-T02-S43-PR2.)
+- [ ] Positive-dispatch mutation cases are separated from negative-routing (suppressed or disabled chord) cases, which require zero dispatch and unchanged relevant state. Done when: a suppressed chord's case proves zero dispatch instead of a swap. (D00-T02-S43-PR3.)
+- [ ] Stuck-key reporting reconciles injected-key ownership with observed key state, distinguishing a confirmed stuck key from an unknown state. Done when: a release that threw but whose key reads up is reported released. (D00-T02-S43-PR5.)
+- [ ] A cleanup failure has a containment policy: further physical input stops for the run when a release cannot be confirmed, and both the original failure and the cleanup diagnostics are kept. Done when: a confirmed stuck key blocks the next physical press with a named reason. (D00-T02-S43-PR6.)
+- [ ] Held-key classification covers release-and-repress and interrupted holds: a second deliberate press runs, and focus loss, cancellation, or disablement never leaves a command suppressed or repeating. Done when: a release and re-press of Ctrl+T opens a second tab. (D00-T02-S43-PR7.)
+- [ ] The one-shot default carries a parity-capture obligation: stock Notepad's held-key behavior is captured per command class and each command's class is recorded explicitly, with new commands classified by their owners. Done when: each bound command names its repeat class beside a capture. (D00-T02-S43-PR8.)
+- [ ] Exactly-once dispatch and intentional repeat share one counting definition (one dispatch per accepted repeat event for repeatable commands, one per physical hold for one-shot), including multiply registered chords. Done when: a chord registered twice dispatches once per the definition under a hold. (D00-T02-S43-PR9.)
+- [ ] Enablement transitions are enumerated per owner-declared state and include disablement during a held chord, tab switches, and clipboard and undo-history changes. Done when: each enumerated transition reads its documented enablement on entry and exit. (D00-T02-S43-PR10.)
+- [ ] The physical held-key proof has its own Night-owed entry with discoverable cases and candidate-bound collection evidence, instead of riding §36's run. Done when: the held-key debt lists its cases and closes on its own collection. (D00-T02-S43-PR11.)
+- [ ] Mutation child runs are isolated: unique logs, exact target resolution, verified mutation configuration, and a bounded child termination, so stale evidence or orphan processes never contaminate a verdict. Done when: a child that outlives its bound is killed and its case reads inconclusive. (D00-T02-S43-PR12.)
+- [ ] Hold and focus-transition contracts are combined with the layout and surface matrices (a Shift-dependent Plus during a hold, a menu or modal opening mid-chord). Done when: each targeted combination reads its documented outcome. (D00-T02-S43-PR13.)
+- [ ] Commit: `"workspace: settle the binding guard third residuals"`
+
+**Test checkpoint:** Kills need executed substitutes and matching outcomes, negative routing proves zero dispatch, stuck keys reconcile and contain, holds reset, repeat classes carry captures, counting has one rule, transitions enumerate, held-key debt is owned, children are isolated, and combined matrices hold. Cheaper substitute that fails: more fixtures over the pure cores with no physical proof owed.
 
 ## Verification
 

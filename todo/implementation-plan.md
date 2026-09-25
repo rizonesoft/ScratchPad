@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **133 of 323 sections complete (41%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **134 of 324 sections complete (41%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -168,7 +168,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §40` | Trend and telemetry second residuals                      |  18   |
 | [x] | `D00 T02 §41` | Sibling sweep second residuals                            |  10   |
 | [x] | `D00 T02 §42` | Night-debt governance residuals                           |  10   |
-| [ ] | `D00 T02 §43` | Binding guard second residuals                            |   6   |
+| [x] | `D00 T02 §43` | Binding guard second residuals                            |   6   |
 | [ ] | `D00 T02 §44` | Population gate second residuals                          |   9   |
 | [ ] | `D00 T02 §45` | Nightly evidence third residuals                          |   9   |
 | [ ] | `D00 T02 §46` | Acknowledgement third residuals                           |  14   |
@@ -176,6 +176,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §48` | Sibling sweep third residuals                             |  10   |
 | [ ] | `D00 T02 §49` | Gate process attribution under pid reuse                  |   3   |
 | [ ] | `D00 T02 §50` | Night-debt governance second residuals                    |  12   |
+| [ ] | `D00 T02 §51` | Binding guard third residuals                             |  13   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
