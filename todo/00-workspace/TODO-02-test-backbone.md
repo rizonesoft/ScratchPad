@@ -82,7 +82,7 @@ track: W0
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [x]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [x]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [x]   |
-|   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
+|   42  |   §42   | Night-debt governance residuals | §35 |  [x]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
@@ -90,6 +90,7 @@ track: W0
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [ ]   |
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
+|   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
 
 ---
 
@@ -1363,6 +1364,7 @@ Why this section exists: the §34 plan review returned 12 findings; 8 file here 
 Why this section exists: the §35 plan review returned 12 findings; 9 file here, 1 was corrected in place (the §10 reference), and 2 are rejected with reasons in the §35 findings file. §35 gave the lifecycle one precedence order, run-keyed attempts, acceptance governance, and extension history; these carry it through replay order, the governance of the remaining overrides, and the evidence that closes a debt. -> SOURCE: plan-review-D00-T02-s35-2026-09-25-s42 D00-T02-S35-PR1 D00-T02-S35-PR3 D00-T02-S35-PR5 D00-T02-S35-PR6 D00-T02-S35-PR7 D00-T02-S35-PR8 D00-T02-S35-PR10 D00-T02-S35-PR11 D00-T02-S35-PR12 (replay order, reassignment transfer, acceptance versus remediation, schedule identity, extension governance, closure evidence, post-run failure, remediation completion, and contradictory duplicates from the §35 plan review).
 
 - -> XREF: D00 T02 §35 -- filed from its plan review; carries the lifecycle it settled.
+- -> XREF: D00 T02 §50 -- its plan review's residuals.
 
 - [x] Lifecycle records replay in a defined order (record date, then file order) with a multi-event fixture mixing renewal, revocation, reds, and a green, so the result never depends on line order. Done when: shuffling the fixture's lifecycle lines leaves every debt line unchanged. (D00-T02-S35-PR1.) **Corrected 2026-09-25:** the item said record date, then file order; file order changes under a shuffle, which the Done-when forbids, so the tiebreak after the date is the record's own text.
 - [x] A Night-owner reassignment states what transfers: the open acknowledgement and its response deadline stay with the debt and name the new owner. Done when: a reassigned acknowledged debt keeps its deadline and names the new owner. (D00-T02-S35-PR3.)
@@ -1376,6 +1378,13 @@ Why this section exists: the §35 plan review returned 12 findings; 9 file here,
 - [x] Commit: `"workspace: govern the night-debt overrides and closure evidence"`
 
 **Test checkpoint:** Replay order is stable, reassignment transfers its deadline, acceptance keeps remediation visible, missed nights and DST pin, extensions are governed, closure binds to test identity, unrecorded closures red the run, finding completion never closes debt, and duplicates split replay from contradiction. Cheaper substitute that fails: more lifecycle lines with no ordering rule.
+
+> **Verified:** 2026-09-25 | §42 | lifecycle records replay by date then record text (order-free; identical replays collapse, same-day contradictions warn for every kind, reds per run); a reassignment on or after an ack transfers it with its deadline; an accepted red-repeat quotes its finding and next action; Night-extend needs an approver, is capped at 21 days, and never moves a response deadline; closure binds to the owed tests' digest (required from 2026-09-26, `tools/Get-DebtDigest.ps1`; the collector hashes every census row and refuses a different set; the latest matching record closes); a failed write or re-query reads collected-unrecorded and reds the run; a closed finding never closes a debt
+> **Review:** round 3 (Full), candidates `a461653` `680fbbc` `4d608a2` `63b927d` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F1 fixed in 63b927d and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s42.md
+> **Plan review:** GPT medium, filed D00 T02 §50 (run 20260925-D00-T02-S42-codex-c06751119-r4)
+> **CRUD:** applicable | the collector appends Night-collected lines atomically with readback (a failed write is a note, never a stop); the graph only reads; no user data
+> **Duration:** 2026-09-25T16:15:59Z to 2026-09-25T17:50:36Z
+> **Reviewed-tip:** 63b927d9619b19d1fd94b366a23cb97004b2ce4b
 
 ## 43. Binding Guard Second Residuals
 
@@ -1509,6 +1518,27 @@ Why this section exists: the §41 Run A rerun of 2026-09-25 went red on `event-p
 - [ ] Commit: `"workspace: attribute gate events by process identity, not a reused pid"`
 
 **Test checkpoint:** A reused pid never attributes a foreign window to ScratchPad, and every gate line names the process it counted. Cheaper substitute that fails: a longer allowlist of foreign window titles.
+
+## 50. Night-Debt Governance Second Residuals
+
+Why this section exists: the §42 plan review returned 12 findings; 11 file here and 1 is rejected with its reason in the §42 findings file. §42 made replay order-free, transferred acknowledgements, kept accepted remediation, governed extensions, bound closure to the owed tests' digest, and recorded unrecorded closures; these carry that through causal replay, conflict effect, inventory, candidate binding, one extension authority, schedule capture, escalation visibility, reconciliation, provenance, boundaries, and evidence retention. -> SOURCE: plan-review-D00-T02-s42-2026-09-25-s50 D00-T02-S42-PR1 D00-T02-S42-PR2 D00-T02-S42-PR3 D00-T02-S42-PR5 D00-T02-S42-PR6 D00-T02-S42-PR7 D00-T02-S42-PR8 D00-T02-S42-PR9 D00-T02-S42-PR10 D00-T02-S42-PR11 D00-T02-S42-PR12
+
+- -> XREF: D00 T02 §42 -- filed from its plan review; carries the governance it settled.
+
+- [ ] Replay has a causal definition: each lifecycle record carries an event identity and an effective timestamp, and same-date conflicts resolve by an explicit precedence consistent with §35, never by record wording. Done when: two same-date records whose texts sort differently resolve by the precedence rule. (D00-T02-S42-PR1.)
+- [ ] Contradictory records have a defined effect: a contradicted collection, acceptance, or extension takes no effect until resolved, so ambiguous evidence never closes a debt or suppresses its escalation. Done when: a contradicted acceptance leaves the debt escalated. (D00-T02-S42-PR2.)
+- [ ] The owed inventory is immutable and canonical: the owed line records the listed test names (or a reference to them) with parameterized cases and legacy migration defined, so the digest proves the originally owed tests ran. Done when: an owed inventory that later gains a test still closes only on the originally owed set. (D00-T02-S42-PR3.)
+- [ ] Closure binds to the implementation it proves: the collection records its candidate HEAD and run identity, and a green run older than the debt's owed candidate never closes it. Done when: a green run on a commit before the owed candidate keeps the debt open. (D00-T02-S42-PR5.)
+- [ ] Every extension path has one authority: the §27 inline `due` override with a reason obeys the same approver and cumulative limit as Night-extend, or is retired. Done when: an inline due override past the limit warns and changes nothing. (D00-T02-S42-PR6.)
+- [ ] Schedule identity is captured: the owed line (or the collector) persists the timezone and schedule version, with nonexistent and repeated trigger times handled, so deadlines are reproducible. Done when: a debt owed across a DST gap reads the same due on any host. (D00-T02-S42-PR7.)
+- [ ] Acceptance keeps an active remediation escalation visible: an accepted red-repeat past its follow-up deadline still reads the overdue remediation beside the acceptance. Done when: an accepted red-repeat past its follow-up names the overdue remediation. (D00-T02-S42-PR8.)
+- [ ] A failed collection write and an unknown post-write verification are distinct outcomes with idempotent reconciliation, so a write that landed is never misreported or duplicated. Done when: a landed write whose re-query failed reconciles to collected once. (D00-T02-S42-PR9.)
+- [ ] Reassignment keeps provenance: the acknowledgement records who acknowledged and who reassigned, and the assignment history is quoted. Done when: a reassigned ack names the original acknowledger and the reassigner. (D00-T02-S42-PR10.)
+- [ ] The governance fixtures cover valid-extension boundaries (exactly 21 days), cumulative renewals, protected deadlines, and a post-run query failure end to end. Done when: each boundary fixture reads its side. (D00-T02-S42-PR11.)
+- [ ] Closure evidence has a retention contract: the logs a Night-collected line names are retained (or their evidence summarized durably) and a missing artifact is diagnosed. Done when: a collected line whose log was pruned reads its retained evidence or a named gap. (D00-T02-S42-PR12.)
+- [ ] Commit: `"workspace: settle the second night-debt governance residuals"`
+
+**Test checkpoint:** Replay resolves by rule, contradictions take no effect, the owed inventory is fixed, closure binds to its candidate, every extension shares one authority, schedules are captured, accepted remediation stays visible, writes reconcile once, reassignment keeps provenance, boundaries pin, and evidence survives cleanup. Cheaper substitute that fails: more WARN lines with no rule behind them.
 
 ## Verification
 
