@@ -1388,6 +1388,10 @@ $result = [pscustomobject]@{
   timings = $phaseTimes; reserve = $reserveLeft; consumed = $consumedSecs
   env = $envBlock
   incidentEvidence = [pscustomobject]$incidentEvidence
+  # Night grouping by run identity plus timezone (D00 T02 §25 item 3).
+  startUtc = $runStart.ToUniversalTime().ToString('o')
+  tz = $(($runStart - $runStart.ToUniversalTime()).ToString('hh\:mm').Insert(0, $(if (($runStart - $runStart.ToUniversalTime()).Ticks -lt 0) { '-' } else { '+' })))
+  night = (Get-NightKey $runStart)
   report = "build/nightly/morning-$stamp.md"
   note = ''
 }

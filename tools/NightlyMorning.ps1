@@ -50,6 +50,23 @@ if ($ns.NoStart) {
   }
 }
 
+# (1b) Trend alerts (D00 T02 §25 item 6): regression alerts the trend
+# fired join the morning digest once per day, so a developing slope
+# surfaces without anyone watching the trend.
+try {
+  $tPath = Join-Path $NightDir 'trend.md'
+  if (Test-Path $tPath) {
+    $tl = @(Get-Content $tPath -Encoding UTF8)
+    $ai = [array]::IndexOf($tl, '## Alerts')
+    $al = @()
+    if ($ai -ge 0) { for ($i = $ai + 1; $i -lt $tl.Count; $i++) { if ($tl[$i] -like '## *') { break }; if ($tl[$i] -like '- ALERT *') { $al += $tl[$i].Substring(2) } } }
+    if ($al.Count -gt 0) {
+      $ta = Invoke-NightlyNotify -Phase 'final' -RunId "trend-alert-$day" -ResultPath $tPath -Class 'trend-regression' -Title "Nightly trend $day : $($al.Count) alert(s)" -Lines (@($al) + @('Report: build/nightly/trend.md')) -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
+      $log += "trend alerts: $($al.Count) ($($ta.Status))"
+    } else { $log += 'trend alerts: none' }
+  }
+} catch { $log += "trend alerts: failed: $($_.Exception.Message)" }
+
 # (2) Digest: every queued routine notification, whole, in
 # build/nightly/digest-<day>.md plus one summary toast; a failed send
 # falls back to the undelivered set.

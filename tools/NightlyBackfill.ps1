@@ -254,6 +254,18 @@ $result = [pscustomobject]@{
   env = $envBlock
   report = $reportFile[0].FullName
   note = "backfilled $(Get-Date -Format 'yyyy-MM-dd'): mechanical derivation (report rows, transcripts, trx); unknowns noted, never guessed"
+  # Per-field provenance (D00 T02 §25 item 9): source artifact plus
+  # confidence (native, derived, or unknown), so a transcript-derived
+  # value never poses as a native measurement.
+  provenance = [pscustomobject]@{
+    'legs.counts' = [pscustomobject]@{ source = $(if ($countNotes.Count -gt 0) { 'leg transcripts (report rows cross-checked)' } else { 'report leg rows' }); confidence = 'derived' }
+    'legs.gates' = [pscustomobject]@{ source = 'report gate cells'; confidence = $(if (($legA.ran -and ($null -eq $legA.gate)) -or ($legB.ran -and ($null -eq $legB.gate))) { 'unknown' } else { 'derived' }) }
+    'timings' = [pscustomobject]@{ source = 'leg transcript test-seconds'; confidence = 'derived' }
+    'incidents' = [pscustomobject]@{ source = $(if ($incidentsDerived) { 'trx failures' } else { 'report INC lines' }); confidence = $(if ($incidentsDerived) { 'derived' } else { 'native' }) }
+    'soak' = [pscustomobject]@{ source = 'soak trx files'; confidence = 'derived' }
+    'env' = [pscustomobject]@{ source = 'none (run-night environment unrecoverable)'; confidence = 'unknown' }
+    'verdict' = [pscustomobject]@{ source = 'derived from the fields above'; confidence = 'derived' }
+  }
 }
 $legacyGates = @()
 if ($legA.ran -and ($null -eq $legA.gate)) { $legacyGates += 'run-a' }

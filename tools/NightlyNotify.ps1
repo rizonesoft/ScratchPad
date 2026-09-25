@@ -25,6 +25,7 @@ $script:AlertClasses = [ordered]@{
   'enforcement'        = @{ Owner = 'triage (D00 T02 s9)'; Channel = 'digest'; Severity = 'medium'; SlaHours = 24 }
   'test'               = @{ Owner = 'triage (D00 T02 s9)'; Channel = 'digest'; Severity = 'medium'; SlaHours = 24 }
   'degraded-soak'      = @{ Owner = 'triage (D00 T02 s5)'; Channel = 'digest'; Severity = 'low'; SlaHours = 72 }
+  'trend-regression'   = @{ Owner = 'triage (D00 T02 s9)'; Channel = 'digest'; Severity = 'medium'; SlaHours = 24 }
   'green'              = @{ Owner = 'none'; Channel = 'digest'; Severity = 'info'; SlaHours = 0 }
   'stood-down'         = @{ Owner = 'none'; Channel = 'none'; Severity = 'info'; SlaHours = 0 }
   'cancelled'          = @{ Owner = 'operator'; Channel = 'immediate'; Severity = 'high'; SlaHours = 8 }
