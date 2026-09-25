@@ -1436,8 +1436,11 @@ $report += "- Exit: $exitCode"
 $report += $ackSection
 $reportPath = Join-Path $nightDir "morning-$day.md"
 Publish-NightlyReport $report ''
-if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
+# Set the moment the final record lands (D00 T02 §24 R5-F1): anything
+# that throws after this line, the journal update included, leaves the
+# published report and result untouched.
 $script:finalPublished = $true
+if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
 Write-Output "nightly: report at $reportPath"
 if ((-not $Smoke) -and (-not $simMode)) {
   # A notification failure (a corrupt ledger, a lock timeout) never
