@@ -293,7 +293,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T01 §32` | Quarantine the AppIcon and Launch CI flakes                         |   4   |
 | [ ] | `D01 T01 §33` | F1 context help                                                     |   4   |
 | [ ] | `D01 T01 §34` | Pinned-tab close regressions                                        |   3   |
-| [ ] | `D01 T01 §35` | Fix-or-remove the night-triage quarantines                          |  10   |
+| [ ] | `D01 T01 §35` | Fix-or-remove the night-triage quarantines                          |  11   |
 | [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   6   |
 | [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   6   |
 | [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |
