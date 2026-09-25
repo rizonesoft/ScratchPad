@@ -1927,6 +1927,9 @@ function Test-LifecycleRows($Rows) {
     if (@('open', 'closed') -notcontains "$($row.state)") { return "result incidentLifecycle $($row.id) state $($row.state)" }
     if ("$($row.occurrences)" -notmatch '^[1-9]\d*$') { return "result incidentLifecycle $($row.id) occurrences '$($row.occurrences)' is not a positive whole number" }
     if (($names -notcontains 'occurrenceStamps') -or (@($row.occurrenceStamps).Count -ne [int]"$($row.occurrences)")) { return "result incidentLifecycle $($row.id) occurrenceStamps disagree with occurrences ($($row.occurrences))" }
+    # Every occurrence names its stamp (R2-F2): an empty one would rebuild
+    # as a lost occurrence.
+    if (@(@($row.occurrenceStamps) | Where-Object { "$_" -notmatch '^\S+$' }).Count -gt 0) { return "result incidentLifecycle $($row.id) has an empty occurrence stamp" }
     if (($names -contains 'occurrenceWheres') -and (@($row.occurrenceWheres).Count -ne [int]"$($row.occurrences)")) { return "result incidentLifecycle $($row.id) occurrenceWheres disagree with occurrences ($($row.occurrences))" }
     if ("$($row.passStreak)" -notmatch '^\d+$') { return "result incidentLifecycle $($row.id) passStreak '$($row.passStreak)' is not a whole number" }
     if ("$($row.contract)" -ne 'v2') { return "result incidentLifecycle $($row.id) contract '$($row.contract)' unsupported (want v2)" }
@@ -1998,7 +2001,9 @@ function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles
     if ($RecordPath -eq '') { return [pscustomobject]@{ Ok = $true; Error = '' } }
     $rec = Read-LedgerRecord $RecordPath
     if ((-not $rec.Found) -or ($rec.Started -eq '')) { return [pscustomobject]@{ Ok = $true; Error = '' } }
-    $fresh = @($rec.Resets | Where-Object { ([datetime]::ParseExact($_, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)) -ge $Today.AddDays(-1) })
+    # Today or yesterday only (R2-F1): a future-dated reset authorizes
+    # nothing, so it cannot pre-approve later wipes.
+    $fresh = @($rec.Resets | Where-Object { $rd = [datetime]::ParseExact($_, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture); ($rd -ge $Today.AddDays(-1)) -and ($rd -le $Today) })
     if ($fresh.Count -gt 0) { return [pscustomobject]@{ Ok = $true; Error = '' } }
     return [pscustomobject]@{ Ok = $false; Error = "incident ledger and every result carrying incidents are gone, but $RecordPath records the ledger started $($rec.Started): incident history was lost; if the loss is intended, add ``Reset: $($Today.ToString('yyyy-MM-dd')) <reason>`` there and re-run" }
   }
@@ -2551,7 +2556,10 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
     # The shared lifecycle row contract (section 38 item 7).
     $rowErr = Test-LifecycleRows @($o.incidentLifecycle)
     if ($rowErr -ne '') { return [pscustomobject]@{ Ok = $false; Error = $rowErr } }
-    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycleVersion') -and ("$($o.incidentLifecycleVersion)" -notmatch '^[1-9]\d*$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycleVersion '$($o.incidentLifecycleVersion)' is not a positive whole number" } }
+    # The same version rule the readers apply (R2-F2): a version newer
+    # than this code is unsupported, never valid.
+    $blk = Read-LifecycleBlock $o
+    if (@('unsupported', 'invalid') -contains $blk.State) { return [pscustomobject]@{ Ok = $false; Error = "result $($blk.Error)" } }
   }
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }

@@ -747,6 +747,15 @@ $recFile = Join-Path $s38 'incident-ledger.md'
 $wiped = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' $recFile ([datetime]'2026-10-02')
 Add-Content -Path $recFile -Value 'Reset: 2026-10-02 operator cleared the lab host' -Encoding UTF8
 $reset = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' $recFile ([datetime]'2026-10-02')
+$futRec = Join-Path $s38 'incident-ledger-future.md'
+@('Ledger started: 2026-09-25 (contract v2)', 'Reset: 2026-10-09 pre-approved') | Set-Content -Path $futRec -Encoding UTF8
+$futureReset = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' $futRec ([datetime]'2026-10-02')
+Assert ($futureReset.Ok -eq $false) 's38-future-reset-authorizes-nothing' $futureReset.Error
+$emptyStamp = Test-LifecycleRows @([pscustomobject]@{ id = 'INC-0000000a'; test = 'UI.T'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @(''); firstSeen = 's'; passStreak = 0; contract = 'v2' })
+$futRes = Join-Path $s38 'future.result.json'
+[pscustomobject]@{ version = 1; stamp = '2026-09-30-023001'; day = '2026-09-30'; identity = 'x-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycleVersion = 9; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path $futRes -Encoding UTF8
+$futValid = Test-ResultFile $futRes
+Assert (($emptyStamp -like '*empty occurrence stamp*') -and ($futValid.Ok -eq $false) -and ($futValid.Error -like '*version 9 is newer*')) 's38-empty-stamp-and-future-version-invalid' "$emptyStamp | $($futValid.Error)"
 $noRecord = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' (Join-Path $s38 'none.md') ([datetime]'2026-10-02')
 Assert (($wiped.Ok -eq $false) -and ($wiped.Error -like '*records the ledger started 2026-09-25: incident history was lost; if the loss is intended, add *Reset: 2026-10-02 <reason>*') -and ($reset.Ok -eq $true) -and ($noRecord.Ok -eq $true)) 's38-full-wipe-reds-on-the-initialization-record' $wiped.Error
 # Item 5: ledger -> result -> rebuild reproduces every ledger field.

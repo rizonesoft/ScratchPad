@@ -87,6 +87,23 @@ try {
   }
 } catch { $log += "incident overdue: failed: $($_.Exception.Message)" }
 
+# (1d) The published lifecycle, read through its consumer contract (D00
+# T02 section 38 item 7): the newest result's block by version, or why
+# triage cannot trust it; an unreadable block joins the digest.
+try {
+  $lastRes = @($results | Where-Object { @($_.PSObject.Properties.Name) -contains 'incidentLifecycle' }) | Sort-Object { "$($_.stamp)" } | Select-Object -Last 1
+  if ($null -eq $lastRes) { $log += 'lifecycle: no result carries the block yet' }
+  else {
+    $lb = Read-LifecycleBlock $lastRes
+    if ($lb.State -eq 'ok') { $log += "lifecycle: $($lastRes.stamp) contract v$($lb.Version), $(@($lb.Rows).Count) incident(s)" }
+    else {
+      $log += "lifecycle: $($lastRes.stamp) unreadable ($($lb.Error))"
+      $lu = Invoke-NightlyNotify -Phase 'final' -RunId "lifecycle-unreadable-$($lastRes.stamp)" -ResultPath '' -Class 'infrastructure' -Title "Nightly $($lastRes.stamp) : incident lifecycle unreadable" -Lines @($lb.Error) -StateDir $NightDir -Sender $sender -NoPersist:$DryRun -Now $now
+      $log += "lifecycle notify: $($lu.Status)"
+    }
+  }
+} catch { $log += "lifecycle: failed: $($_.Exception.Message)" }
+
 # (2) Digest: every queued routine notification, whole, in
 # build/nightly/digest-<day>.md plus one summary toast; a failed send
 # falls back to the undelivered set.
