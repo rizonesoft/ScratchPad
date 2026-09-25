@@ -5,6 +5,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Makes the SDK record the assembly's timestamps around compile
+         (_AssemblyTimestampBeforeCompile/After), which the build-inputs
+         digest target reads (D00 T02 §44 R1-F3); no post-build event is
+         defined, so nothing else changes. -->
+    <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
   </PropertyGroup>
 
   <ItemGroup>
@@ -45,8 +50,12 @@
   <!-- Content provenance (D00 T02 §44 item 1): after every build, the
        digest of the build inputs' content plus the SDK version lands
        beside the binary, and the population gate's freshness check
-       compares it, so timestamps never decide freshness alone. -->
-  <Target Name="WriteBuildInputsDigest" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+       compares it, so timestamps never decide freshness alone. It is
+       rewritten only when this build compiled the UI assembly or copied
+       a referenced assembly into its output (R1-F3): an incremental build
+       that compiled nothing keeps the digest of what it last compiled, so
+       an edit whose timestamp was restored still reads stale. -->
+  <Target Name="WriteBuildInputsDigest" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and ('$(_AssemblyTimestampBeforeCompile)' != '$(_AssemblyTimestampAfterCompile)' or '$(WroteAtLeastOneFile)' == 'true' or !Exists('$(OutputPath)build-inputs.digest'))">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Write-BuildInputsDigest.ps1&quot; -Root &quot;$(MSBuildThisFileDirectory)..\..&quot; -Out &quot;$(OutputPath)build-inputs.digest&quot; -Sdk &quot;$(NETCoreSdkVersion)&quot;" StandardOutputImportance="low" />
   </Target>
 

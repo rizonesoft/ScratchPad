@@ -1080,6 +1080,71 @@ function Get-CaseIdentityRows($Cases, [string]$Assembly = 'UI') {
   return $rows
 }
 
+function Get-TruncatedCaseSourceRows([string]$TestDir, $Cases) {
+  # Identity for argument text a display name leaves out (D00 T02 section
+  # 44 R1-F1). xunit cuts a long argument at 50 characters and marks the
+  # cut with an ellipsis (U+00B7 x3 or '...'); for each method with such a
+  # row, the rows return `<Class.Method>#args-source <hash>` over the
+  # method's data attributes (the attribute lines above its signature) and
+  # the source of every MemberData member they name, read from the test
+  # sources. A method whose source cannot be found reads `unresolved`.
+  $cut = ([string][char]0xB7) * 3
+  $methods = @(@($Cases) | Where-Object { ("$_".Contains($cut)) -or ("$_".Contains('"...')) } | ForEach-Object { ("$_" -split '\(', 2)[0].Trim() } | Sort-Object -Unique)
+  if ($methods.Count -eq 0) { return @() }
+  $sources = @{}
+  foreach ($f in @(Get-ChildItem -Path $TestDir -Filter '*.cs' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' })) { $sources[$f.FullName] = @(Get-Content -LiteralPath $f.FullName -Encoding UTF8) }
+  $rows = @()
+  foreach ($m in $methods) {
+    $name = ($m -split '\.')[-1]
+    $cls = ($m -split '\.')[-2]
+    $block = $null
+    foreach ($kv in $sources.GetEnumerator()) {
+      $lines = $kv.Value
+      if (-not (@($lines) -match "\bclass $cls\b")) { continue }
+      for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -match "\b(void|Task)\s+$name\s*\(") {
+          $j = $i - 1
+          $attrs = @()
+          while (($j -ge 0) -and ($lines[$j].Trim().StartsWith('[') -or $lines[$j].Trim().StartsWith('//'))) { $attrs = @($lines[$j]) + $attrs; $j-- }
+          $members = @()
+          foreach ($a in $attrs) {
+            foreach ($mm in [regex]::Matches($a, 'MemberData\(\s*(?:nameof\(\s*(\w+)\s*\)|"(\w+)")')) {
+              $mem = if ($mm.Groups[1].Success) { $mm.Groups[1].Value } else { $mm.Groups[2].Value }
+              for ($k = 0; $k -lt $lines.Count; $k++) {
+                if ($lines[$k] -match "\bstatic\b.*\b$mem\b") { $members += @($lines[$k..([math]::Min($lines.Count - 1, $k + 40))]); break }
+              }
+            }
+          }
+          $block = (@($attrs) + @($members)) -join "`n"
+          break
+        }
+      }
+      if ($null -ne $block) { break }
+    }
+    if ($null -eq $block) { $rows += "$m#args-source unresolved"; continue }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $h = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($block))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
+    $rows += "$m#args-source $h"
+  }
+  return $rows
+}
+
+function Merge-AttemptNames($Attempts) {
+  # Executed names over several attempts of one run (D00 T02 section 44
+  # R1-F2): a retry re-executes the cases it covers, so each name counts
+  # at its highest count in any one attempt, never the sum, and a retried
+  # case never discharges an unexecuted twin.
+  $best = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::Ordinal)
+  foreach ($attempt in @($Attempts)) {
+    $one = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::Ordinal)
+    foreach ($n in @($attempt)) { if ($null -ne $n) { $k = "$n".Trim(); $one[$k] = $(if ($one.ContainsKey($k)) { $one[$k] } else { 0 }) + 1 } }
+    foreach ($k in $one.Keys) { if ((-not $best.ContainsKey($k)) -or ($one[$k] -gt $best[$k])) { $best[$k] = $one[$k] } }
+  }
+  $out = @()
+  foreach ($k in $best.Keys) { for ($i = 0; $i -lt $best[$k]; $i++) { $out += $k } }
+  return $out
+}
+
 function Get-CaseHash($Cases) {
   # Case-row identity: SHA-256 over the identity rows (Get-CaseIdentityRows:
   # assembly-qualified, ordinal-sorted, duplicates counted), first 16 hex;
@@ -1219,6 +1284,9 @@ function Invoke-BoundedCapture([string]$Exe, [string[]]$ArgList, [string]$WorkDi
   $capJob = Start-Job -ScriptBlock {
     param($exe, $argList, $dir, $codeOut)
     Set-Location $dir
+    # Output decodes as UTF-8 whatever the console codepage (D00 T02
+    # section 44 R1-F1), so listed names never vary by host.
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
     $out = & $exe @argList 2>&1 | Out-String
     $LASTEXITCODE | Set-Content -Path $codeOut
     $out
@@ -1287,7 +1355,11 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
     if ($methods -notcontains $fq) { $methods += $fq }
   }
   $methods = @($methods | Sort-Object -Unique)
-  return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $caseNames); CaseRows = @(Get-CaseIdentityRows $caseNames) }
+  # A display name cut short hides the rest of its arguments (R1-F1): each
+  # method with a truncated row adds a row for the digest of its test-data
+  # source, so changing an argument past the cut changes the identity.
+  $identity = @($caseNames) + @(Get-TruncatedCaseSourceRows (Split-Path -Parent $Csproj) $caseNames)
+  return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $identity); CaseRows = @(Get-CaseIdentityRows $identity) }
 }
 
 function Test-UiBuildFresh([datetime]$BinaryTimeUtc, [datetime]$NewestSourceTimeUtc, [string]$BinaryPath) {
@@ -1479,7 +1551,7 @@ function Test-BuildInputsDigest([string]$Root, [string]$DigestFile, [string]$Sdk
   $was = @($recorded | Select-Object -Skip 1 | Where-Object { $_ -ne '' })
   $changed = @($now.Lines | Where-Object { $was -cnotcontains $_ }) + @($was | Where-Object { $now.Lines -cnotcontains $_ })
   $first = if ($changed.Count -gt 0) { ($changed[0] -split ' ', 2)[0] } else { '?' }
-  return [pscustomobject]@{ Ok = $false; Error = "UI build is stale by content: its build inputs changed since the build (first: $first; $($changed.Count) differing entries, timestamps notwithstanding); rebuild: dotnet build src/ScratchPad.slnx" }
+  return [pscustomobject]@{ Ok = $false; Error = "UI build is stale by content: its build inputs changed since the build (first: $first; $($changed.Count) differing entries, timestamps notwithstanding); rebuild without incremental skips (a timestamp-restored input would not recompile): dotnet build src/ScratchPad.slnx --no-incremental" }
 }
 
 function Get-UiSdkVersion([string]$Root) {
@@ -1556,6 +1628,37 @@ function Close-OwedCases([string[]]$OwedCases, [string[]]$PassedNames) {
     if ($green.ContainsKey($k) -and ($green[$k] -gt 0)) { $green[$k]-- } else { $left += $k }
   }
   return $left
+}
+
+function Get-OwedCaseNames([string[]]$Rows) {
+  # The case names the per-case owed rows name (`| cases: a ;; b`).
+  $names = @()
+  foreach ($r in @($Rows)) {
+    $m = [regex]::Match("$r", '\| cases: (.+)$')
+    if ($m.Success) { $names += @($m.Groups[1].Value -split ' ;; ' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }) }
+  }
+  return $names
+}
+
+function Get-TrxPassedNames([string]$TrxPath) {
+  # The rows a trx records green (outcome Passed); missing or unreadable
+  # reads as none.
+  if (-not (Test-Path $TrxPath)) { return @() }
+  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return @() }
+  return @(@($t.TestRun.Results.UnitTestResult) | Where-Object { ($null -ne $_) -and ($_.outcome -eq 'Passed') } | ForEach-Object { "$($_.testName)" })
+}
+
+function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan) {
+  # Per-case debt across nights (D00 T02 section 44 R1-F4): the cases the
+  # last result still owed close only on their own green row tonight
+  # (Close-OwedCases); when the interactive leg did not run, all stay owed.
+  # Returns Still (the cases still owed) and the report Line.
+  $prev = @(@($PreviousOwed) | Where-Object { "$_" -ne '' })
+  if ($prev.Count -eq 0) { return [pscustomobject]@{ Still = @(); Line = '' } }
+  # Wrapped whole: an if expression unrolls a one-element array.
+  $still = @(if ($InteractiveRan) { Close-OwedCases $prev $PassedTonight } else { $prev })
+  $closed = $prev.Count - $still.Count
+  return [pscustomobject]@{ Still = $still; Line = "- Carried per-case debt: $closed of $($prev.Count) earlier owed case(s) closed on their own green rows; $($still.Count) still owed" }
 }
 
 function Get-PopulationIdentity([string]$FingerprintPath) {
@@ -2042,8 +2145,11 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     # the fingerprint never revives old evidence toward a closure.
     if ($Population -ne '') {
       if (@($e.PSObject.Properties.Name) -notcontains 'streakPopulation') { $e | Add-Member -NotePropertyName streakPopulation -NotePropertyValue '' }
-      if (([int]$e.passStreak -gt 0) -and ("$($e.streakPopulation)" -ne '') -and ("$($e.streakPopulation)" -ne $Population)) {
-        $lines += "- $id ``$($e.test)``: streak reset (population $($e.streakPopulation) -> ${Population}: the earlier passes stand stale)"
+      # A streak recorded before populations were (an empty population)
+      # has no provenance either (R1-F5): it resets like a changed one.
+      if (([int]$e.passStreak -gt 0) -and ("$($e.streakPopulation)" -ne $Population)) {
+        $was = if ("$($e.streakPopulation)" -eq '') { 'unrecorded' } else { "$($e.streakPopulation)" }
+        $lines += "- $id ``$($e.test)``: streak reset (population $was -> ${Population}: the earlier passes stand stale)"
         $e.passStreak = 0
       }
       $e.streakPopulation = $Population

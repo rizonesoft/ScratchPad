@@ -604,6 +604,35 @@ $u1 = Update-IncidentLedger $popLed @() 's1' $passed @{} 3 @{} $idA
 $u2 = Update-IncidentLedger $u1.Incidents @() 's2' $passed @{} 3 @{} $idA
 $u3 = Update-IncidentLedger $u2.Incidents @() 's3' $passed @{} 3 @{} $idB
 Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1111'].state -eq 'open') -and ([int]$u3.Incidents['INC-aaaa1111'].passStreak -eq 1) -and ((@($u3.Lines | Where-Object { $_ -like '*streak reset (population*the earlier passes stand stale)*' }).Count) -eq 1)) 's44-proof-reads-stale-after-a-row-swap-regen' ($u3.Lines -join ' | ')
+# D00 T02 §44 R1-F5: a streak recorded before populations were (no
+# streakPopulation) resets at its first population-bound pass.
+$legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
+$legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
+Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §44 R1-F2: a retried case counts once per attempt set, so it
+# never discharges its unexecuted twin.
+$att = @(Merge-AttemptNames @(@('UI.D.Dup'), @('UI.D.Dup')))
+$twin = @(Get-UnexecutedCaseRows @('UI.D.Dup', 'UI.D.Dup') $att 'fixture')
+$twinClose = @(Close-OwedCases @('UI.D.Dup', 'UI.D.Dup') (Merge-AttemptNames @(@('UI.D.Dup'), @('UI.D.Dup'))))
+Assert (($att.Count -eq 1) -and ($twin.Count -eq 1) -and ($twin[0] -like '*UI.D.Dup | 1 of 2 cases unexecuted*') -and ($twinClose.Count -eq 1)) 's44-retry-never-discharges-a-twin' (($twin + $twinClose) -join ' || ')
+# D00 T02 §44 R1-F1: a truncated display name adds its method's
+# test-data source digest, so an argument changed past the cut changes the
+# identity; an untruncated listing adds nothing.
+$srcDir = Join-Path $dir 'trunc-src'
+$null = New-Item -ItemType Directory -Force -Path $srcDir
+$srcA = @('public sealed class TruncTests', '{', '    [Theory]', '    [InlineData("a very long argument that runs well past the fifty character cut AAA")]', '    public void Long(string s) { }', '}')
+$srcA | Set-Content -Path (Join-Path $srcDir 'TruncTests.cs') -Encoding UTF8
+$cutName = 'UI.TruncTests.Long(s: "a very long argument that runs well past the fifty c"' + ([string][char]0xB7 * 3) + ')'
+$rowA = @(Get-TruncatedCaseSourceRows $srcDir @($cutName))
+($srcA -replace 'AAA', 'BBB') | Set-Content -Path (Join-Path $srcDir 'TruncTests.cs') -Encoding UTF8
+$rowB = @(Get-TruncatedCaseSourceRows $srcDir @($cutName))
+$rowNone = @(Get-TruncatedCaseSourceRows $srcDir @('UI.TruncTests.Short(s: "x")'))
+Assert (($rowA.Count -eq 1) -and ($rowA[0] -like 'UI.TruncTests.Long#args-source *') -and ($rowA[0] -ne $rowB[0]) -and ($rowNone.Count -eq 0) -and ((Get-CaseHash (@($cutName) + $rowA)) -ne (Get-CaseHash (@($cutName) + $rowB)))) 's44-argument-past-the-cut-changes-identity' (($rowA + $rowB) -join ' | ')
+# D00 T02 §44 R1-F4: the carried debt closes each case only on its own
+# green row tonight, and stays whole when the leg did not run.
+$carried = Resolve-CarriedCaseDebt @('UI.T.M(x: 1)', 'UI.T.M(x: 2)', 'UI.T.M(x: 3)') @('UI.T.M(x: 1)', 'UI.T.M(x: 3)') $true
+$idle = Resolve-CarriedCaseDebt @('UI.T.M(x: 2)') @('UI.T.M(x: 2)') $false
+Assert ((@($carried.Still).Count -eq 1) -and ($carried.Still[0] -eq 'UI.T.M(x: 2)') -and ($carried.Line -eq '- Carried per-case debt: 2 of 3 earlier owed case(s) closed on their own green rows; 1 still owed') -and (@($idle.Still).Count -eq 1) -and (@(Get-OwedCaseNames @('- Night-owed: UI.T.M | 2 of 3 cases unexecuted (x) | collector filter: FullyQualifiedName=UI.T.M | cases: UI.T.M(x: 1) ;; UI.T.M(x: 2)')).Count -eq 2)) 's44-carried-debt-closes-per-case' $carried.Line
 # D00 T02 §44 item 7: a count-only (versionless) fingerprint refuses,
 # naming its version and the regen command.
 $fpOld = Join-Path $dir 'pop-old.fingerprint'

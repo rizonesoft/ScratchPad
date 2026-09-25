@@ -1352,6 +1352,17 @@ if ($stagedStubs.Count -gt 0) {
   $report += $stagedStubs
   $report += ''
 }
+# Per-case debt carries across nights (D00 T02 section 44 R1-F4): the
+# last result's owed cases close only on their own green rows tonight,
+# and the rest stay owed beside tonight's new rows.
+$owedCasesTonight = @(Get-OwedCaseNames $nightOwedRows)
+try {
+  $prevResult = @(Get-ChildItem -Path $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "morning-$stamp.result.json" } | Sort-Object Name) | Select-Object -Last 1
+  $prevOwed = @()
+  if ($null -ne $prevResult) { try { $prevOwed = @((Get-Content -LiteralPath $prevResult.FullName -Raw | ConvertFrom-Json).owedCases) } catch { $prevOwed = @() } }
+  $carry = Resolve-CarriedCaseDebt $prevOwed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx')) ([bool]$interactiveRan)
+  if ($carry.Line -ne '') { $nightOwedRows += $carry.Line; $owedCasesTonight += @($carry.Still) }
+} catch { $nightOwedRows += "- Carried per-case debt: unreadable ($_); the earlier owed cases are not closed" }
 if ($nightOwedRows.Count -gt 0) {
   $report += '### Night-owed (staged; triage files via add-todo)'
   $report += $nightOwedRows
@@ -1482,7 +1493,7 @@ try {
   if ($trxAll.Count -gt 0) { $executedUnique = @($trxAll | ForEach-Object { Get-TrxExecutedNames $_.FullName } | Sort-Object -Unique).Count }
 } catch { $executedUnique = $null }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); owedCases = @($owedCasesTonight); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

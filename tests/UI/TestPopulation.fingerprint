@@ -267,7 +267,7 @@ run-a:
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-a-methods: 258
 run-a-cases: 322
-run-a-case-hash: 4d9768eea925324c
+run-a-case-hash: be34c12d9cdde8c1
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -360,46 +360,50 @@ run-a-case-rows:
   UI|UI.LaunchDropsTests.OptInLaunchDrainsBeforeActivation
   UI|UI.LaunchDropsTests.OptInSeedDrainsExactlyOnce
   UI|UI.LaunchGuardTests.CrossFileGlobalAliasIsCaught
-  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖, fileName: "tests/UI/MyUiLaunch.cs", clean: False)
-  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖, fileName: "tests/UI/Sub/Helper.cs", clean: False)
-  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖, fileName: "tests/UI/UiLaunch.cs", clean: True)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { [Xunit.Fact] public void LaunchAppendsTa"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var a = FlaUI.Core.Applicatio"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var ps = System.Diagnostics.P"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var x = new System.Collection"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M(FlaUI.Core.AutomationElements.But"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "using System.Reflection; class Q { void M() { fore"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath#args-source 8a0da50494064267
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/MyUiLaunch.cs", clean: False)
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/Sub/Helper.cs", clean: False)
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/UiLaunch.cs", clean: True)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard#args-source a809d1e432a6237c
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { [Xunit.Fact] public void LaunchAppendsTa"···)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var a = FlaUI.Core.Applicatio"···)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var ps = System.Diagnostics.P"···)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var x = new System.Collection"···)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M(FlaUI.Core.AutomationElements.But"···)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "using System.Reflection; class Q { void M() { fore"···)
   UI|UI.LaunchGuardTests.LiveTreeScansClean
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class P { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [global::System.Runtime.InteropServices."┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard#args-source c1171a6747a2903b
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class P { void M() { System.Diagnostics.Process.St"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [global::System.Runtime.InteropServices."···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void LaunchApp() {} }")
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { dynamic p = null; p.Start(); "┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { new System.Diagnostics.Proces"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { object? r = typeof(Q).Assembl"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var m = typeof(System.Diagnos"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var p = new System.Diagnostic"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var p = new System.Diagnostic"┬╖┬╖┬╖)#2
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M(System.Reflection.MethodInfo m, o"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void MyLauncher() { FlaUI.Core.Applicati"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { dynamic p = null; p.Start(); "···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { new System.Diagnostics.Proces"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { object? r = typeof(Q).Assembl"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var m = typeof(System.Diagnos"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var p = new System.Diagnostic"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var p = new System.Diagnostic"···)#2
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M(System.Reflection.MethodInfo m, o"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void MyLauncher() { FlaUI.Core.Applicati"···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void SeedSettings() {} }")
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using A = FlaUI.Core.Application; class Q { void M"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using DI = System.Runtime.InteropServices.DllImpor"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using DIAttribute = System.Runtime.InteropServices"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using FlaUI.Core; class P { void M() { Application"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using I = System.Runtime.InteropServices; class Q "┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"┬╖┬╖┬╖)#2
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"┬╖┬╖┬╖)#3
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Diagnostics; class P { void M() { Pro"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"┬╖┬╖┬╖)#2
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"┬╖┬╖┬╖)#3
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; partial clas"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using static System.Diagnostics.Process; class Q {"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "class Q { void M() { var t = Microsoft.CodeAnalysi"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; class Q { de"┬╖┬╖┬╖)
-  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; unsafe class"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using A = FlaUI.Core.Application; class Q { void M"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using DI = System.Runtime.InteropServices.DllImpor"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using DIAttribute = System.Runtime.InteropServices"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using FlaUI.Core; class P { void M() { Application"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using I = System.Runtime.InteropServices; class Q "···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"···)#2
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"···)#3
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Diagnostics; class P { void M() { Pro"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"···)#2
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"···)#3
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; partial clas"···)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using static System.Diagnostics.Process; class Q {"···)
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed#args-source 2234cb912e1e692b
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "class Q { void M() { var t = Microsoft.CodeAnalysi"···)
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; class Q { de"···)
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; unsafe class"···)
   UI|UI.LaunchTests.AssociationVerbsCycleCleanly
   UI|UI.LaunchTests.BareSecondLaunchOpensNewWindow
   UI|UI.LaunchTests.DoubleClickCommandOpensTab
