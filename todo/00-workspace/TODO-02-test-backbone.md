@@ -74,13 +74,14 @@ track: W0
 |   31  |   §31   | Acknowledgement residuals | §23 |  [x]   |
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [x]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
-|   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
+|   34  |   §34   | Sibling sweep residuals | §26 |  [x]   |
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
 |   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
 |   37  |   §37   | Population gate residuals | §29 |  [ ]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
+|   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
 
 ---
 
@@ -605,6 +606,7 @@ Why this section exists: §11 landed the central helper with off-screen birth, b
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §34 -- corrected this section's launch-guard alias boundary (cross-file global aliases now resolve).
 - -> XREF: D00 T02 §13 -- items 2/9 attribution residual lands in item 7 (mechanism only); per-path token semantics narrow out per the §13 record.
 - -> XREF: D00 T02 §26 -- R3-F2 sibling-sweep narrowing filed forward (below-bar sign-off finding; latent, background-only).
 
@@ -1094,6 +1096,8 @@ Why this section exists: the §26 plan review returned 8 findings; 6 file here a
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §41 -- residual follow-ups filed from this section's plan review and sign-off.
+- -> XREF: D00 T02 §18 -- its launch guard's alias boundary is corrected here (item 6).
 - -> XREF: D00 T02 §26 -- filed from its plan review; pins the edges of the sweep it narrowed.
 
 - [x] An unowned helper another window creates while a construction is in flight is attributed correctly (by creating thread or a birth tag), with an interleaving fixture, so it is never swept as this window's own. Done when: the interleaving fixture leaves the other window's helper in place. (D00-T02-S26-PR1.)
@@ -1107,6 +1111,13 @@ Why this section exists: the §26 plan review returned 8 findings; 6 file here a
 
 **Night-owed:** D00-T02-S34-N1 (1 FullyQualifiedName~WindowBirthLeavesAnOwnedDialogInPlace, collector Nightly UI 02:30, owed 2026-09-25). The owned-dialog birth case (item 2) opens the File > Open picker, which takes the foreground, so it is fenced; the focus-free proofs (the sweep log, the unit selection tests, the flyout birth test) are green and the stamp does not wait.
 **Test checkpoint:** Interleaving attributes, dialogs stay, own helpers pin, snapshots do not leak, selection reads deterministically, and the §18 guard matches its criterion. Cheaper substitute that fails: another flyout-only birth test.
+
+> **Verified:** 2026-09-25 | §34 | the sweep decides through `Notepad.Core.SiblingSelection` over a per-construction snapshot token (overlapping constructions never trade snapshots; a sweep without one pins nothing), skipping preexisting windows, other mains' windows, registered worker threads' windows (the print thread), and mains; WinUI's framework-thread helpers still pin (measured); each pin reads back at the target in the test-only sweep log, which the birth test reads beside the WinEvent recorder, with the second birth checked against the test's own pre-birth set; the owned-dialog case is fenced, Night-owed D00-T02-S34-N1; `LaunchGuard` resolves cross-file global aliases; Run A Unit 369/0, Protocol 35/0, Smoke 1/0, UI 270 passed 14 skipped 0 failed
+> **Review:** round 3 (Full), candidates `d242951` `bc7d4bb` `92f97c5` -- GPT R1-R2 bulk needs-attention (R1-F1..F3, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` needs-attention (gpt-6-astra); below-bar R3-F1 filed D00 T02 §41. Raw findings: docs/reviews/00-workspace/D00-T02-s34.md
+> **Plan review:** GPT medium, filed D00 T02 §41 (run 20260925-D00-T02-S34-codex-c06751119-r4)
+> **CRUD:** not applicable | window placement and test instrumentation; the sweep log is a best-effort append under the test-run marker only
+> **Duration:** 2026-09-25T08:57:32Z to 2026-09-25T09:38:25Z
+> **Reviewed-tip:** 92f97c5095c4b44eef88d3c62ad55bf03744956a
 
 ## 35. Night-Debt Lifecycle Residuals
 
@@ -1232,6 +1243,25 @@ Why this section exists: the §32 plan review returned 19 findings; 17 file here
 - [ ] Commit: `"workspace: settle the second trend and telemetry residuals"`
 
 **Test checkpoint:** Hosts key apart, trigger edge cases assign one night, schedule edits keep history, cohort changes rebaseline, unknowns read as changes, detector boundaries pin, coverage counts identities, exclusions never degrade, prune and archive interleave safely, store failures recover, authority keeps stronger evidence, mixed corpora compare, pruned values explain themselves, legacy rows redact, alerts close, attribution says correlation, and storage keeps its policy. Cheaper substitute that fails: more rows in the matrix with no fixtures behind them.
+
+## 41. Sibling Sweep Second Residuals
+
+Why this section exists: the §34 plan review returned 12 findings; 8 file here with the §34 sign-off's R3-F1, 1 was applied (the §18 XREF pair), and 3 are rejected with reasons in the §34 findings file. §34 made the sweep's decision pure, token-scoped, logged, and worker-aware; these carry it through the cases a single-thread synchronous construction and an outside observer cannot yet prove. -> SOURCE: plan-review-D00-T02-s34-2026-09-25-s41 D00-T02-S34-PR1 D00-T02-S34-PR2 D00-T02-S34-PR3 D00-T02-S34-PR5 D00-T02-S34-PR6 D00-T02-S34-PR7 D00-T02-S34-PR9 D00-T02-S34-PR12 D00-T02-S34-R3-F1 (interleaving exclusivity, lifecycle fixtures, ambiguous provenance, late helpers, move revalidation, observation barriers, §18's threat model, launch diagnostics, and first-birth independence from the §34 plan review and sign-off).
+
+- -> XREF: D00 T02 §34 -- filed from its plan review and sign-off; carries the sweep it made explicit.
+
+- [ ] Same-thread exclusivity is proven, not assumed: a fixture shows no other window's construction can run between a construction's snapshot and its sweep (or construction-specific provenance replaces the assumption). Done when: a planted same-thread interleaving reads as another construction's window. (D00-T02-S34-PR1.)
+- [ ] Snapshot lifecycle fixtures cover overlapping completion, cancellation, window destruction, and HWND reuse. Done when: a reused handle value never reads as preexisting for the new window. (D00-T02-S34-PR2.)
+- [ ] A helper of ambiguous provenance has a policy (skip and report, never pin blind). Done when: an ambiguous fixture window is skipped with its own reason and reported. (D00-T02-S34-PR3.)
+- [ ] Helpers created after the sweep have an owner: a delayed placement pass or a documented bound, with a fixture. Done when: a helper created after the sweep still lands off-screen or is reported. (D00-T02-S34-PR5.)
+- [ ] The sweep revalidates identity and ownership immediately before each move, so a destroyed or re-owned handle is never moved. Done when: a handle re-owned between selection and move is skipped. (D00-T02-S34-PR6.)
+- [ ] The dialog and flyout proofs define an observation barrier and an event-drain endpoint, so a transient move cannot slip between recorder events. Done when: the recorder reports its drained event count at the barrier. (D00-T02-S34-PR7.)
+- [ ] §18's promise against wrappers, reflection, and P/Invoke is stated as the threat model the syntax-plus-alias guard enforces, with negative fixtures for what lies outside it. Done when: §18's criterion and the guard's fixtures name the same boundary. (D00-T02-S34-PR9.)
+- [ ] The sweep log's construction identity, attribution, reasons, and move outcomes feed §18's launch diagnostics, so a placement failure explains itself. Done when: a launch diagnostic record quotes its sweep line. (D00-T02-S34-PR12.)
+- [ ] The first birth's helper coverage is verified independently of the app's own snapshot (a pre-construction observation the test controls, such as a launcher that holds the process before the first window). Done when: the first birth's preexisting set is checked against an outside observation. (D00-T02-S34-R3-F1.)
+- [ ] Commit: `"workspace: settle the second sibling sweep residuals"`
+
+**Test checkpoint:** Interleaving is proven exclusive, lifecycle edges hold, ambiguous helpers report, late helpers have an owner, moves revalidate, recorders drain to a barrier, §18 states its threat model, diagnostics quote the sweep, and the first birth is observed from outside. Cheaper substitute that fails: more assertions on the app's own log.
 
 ## Verification
 
