@@ -1665,7 +1665,11 @@ function Test-ResultFile([string]$Path) {
       try { if ($null -eq $g.ran) { return [pscustomobject]@{ Ok = $false; Error = "result legs.$leg missing ran" } } } catch { return [pscustomobject]@{ Ok = $false; Error = "result legs.$leg missing ran" } }
     }
     if (("$($o.soak.verdict)" -eq '') -or (@('green', 'red', 'skipped') -notcontains "$($o.soak.verdict)")) { return [pscustomobject]@{ Ok = $false; Error = 'result soak verdict unknown' } }
-    if ("$($o.env.os)" -eq '') { return [pscustomobject]@{ Ok = $false; Error = 'result env unproven (os missing)' } }
+    # The block must carry at least one allowlisted field (an empty
+    # block would satisfy the readers with nothing); an individual
+    # missing field reads unknown (D00 T02 §25 item 8, R2-F1).
+    $present = @(@($o.env.PSObject.Properties.Name) | Where-Object { $script:EnvFields -contains $_ })
+    if ($present.Count -eq 0) { return [pscustomobject]@{ Ok = $false; Error = 'result env unproven (no allowlisted field)' } }
     # Every consumed env field, with unknown-state semantics (D00 T02 §25 item 8).
     $ef = Test-EnvironmentFields $o.env
     if (-not $ef.Ok) { return [pscustomobject]@{ Ok = $false; Error = "result $($ef.Error)" } }
@@ -1904,30 +1908,34 @@ function ConvertTo-MetricsRow($Result) {
 }
 
 function Sync-MetricsStore([string]$Path, $Results) {
-  # Appends a row for every result the store lacks, once per identity,
-  # then returns every stored row (D00 T02 §25 item 7). The store is
-  # append-only JSON lines in ignored scratch beside the runs; retention
-  # prune never touches it, so pruned nights keep their metrics.
-  $rows = @()
-  $seen = @{}
+  # Keeps one current row per result identity (D00 T02 §25 item 7). The
+  # store is append-only JSON lines in ignored scratch beside the runs:
+  # a result whose computed row differs from its stored one (a new
+  # field such as provenance, R2-F2) appends a revision, and the last
+  # row per identity wins; an unchanged result appends nothing.
+  # Retention prune never touches the store, so pruned nights keep
+  # their metrics. Returns the current row per identity.
+  $byId = [ordered]@{}
+  $rawById = @{}
   if (Test-Path $Path) {
     foreach ($ln in [System.IO.File]::ReadAllLines($Path)) {
       if ($ln.Trim() -eq '') { continue }
-      try { $r = $ln | ConvertFrom-Json; if ("$($r.identity)" -ne '') { $rows += $r; $seen["$($r.identity)"] = $true } } catch { }
+      try { $r = $ln | ConvertFrom-Json; if ("$($r.identity)" -ne '') { $byId["$($r.identity)"] = $r; $rawById["$($r.identity)"] = $ln.Trim() } } catch { }
     }
   }
   $add = @()
   foreach ($res in @($Results)) {
     if ($null -eq $res) { continue }
     $id = "$($res.identity)"
-    if (($id -eq '') -or $seen.ContainsKey($id)) { continue }
-    $seen[$id] = $true
-    $row = ConvertTo-MetricsRow $res
-    $add += (ConvertTo-Json ([pscustomobject]$row) -Depth 6 -Compress)
-    $rows += ($add[-1] | ConvertFrom-Json)
+    if ($id -eq '') { continue }
+    $json = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $res)) -Depth 6 -Compress
+    if ($rawById.ContainsKey($id) -and ($rawById[$id] -eq $json)) { continue }
+    $rawById[$id] = $json
+    $byId[$id] = ($json | ConvertFrom-Json)
+    $add += $json
   }
   if ($add.Count -gt 0) { [System.IO.File]::AppendAllText($Path, (($add -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false))) }
-  return $rows
+  return @($byId.Values)
 }
 
 function ConvertFrom-MetricsRow($Row) {

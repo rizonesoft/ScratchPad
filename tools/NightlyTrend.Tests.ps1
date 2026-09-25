@@ -162,13 +162,31 @@ $mrow = (ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $bfr)) -Depth 6 -
 $back = ConvertFrom-MetricsRow $mrow
 $tb = @(Format-TrendTable @($back) $Q $today)
 Assert ((@($tb | Where-Object { $_ -like '| 2026-09-24 (backfill) (metrics) |*' }).Count -eq 1) -and (@($tb | Where-Object { $_ -like '- Backfill provenance (2026-09-24 2026-09-24-023000): legs.counts derived from rows in morning-x.md' }).Count -eq 1)) 'metrics-backfill-keeps-marker-and-provenance' (($tb | Where-Object { ($_ -like '| 2026*') -or ($_ -like '*provenance*') }) -join ' || ')
-# R1-F6: a real backfill names its actual artifacts.
+# R1-F6 plus R2-F3: a backfill over a synthesized run directory (inside
+# this fixture, no historical artifact needed) names its artifacts.
+$run = Join-Path $dir 'bfrun'
+$null = New-Item -ItemType Directory -Force -Path $run
+@('# Morning report: 2026-09-20', 'Status: final', '', '- HEAD: 0000000', '- Run identity: 2026-09-20-023000-pid7', '- Trigger: task \ScratchPad\Nightly UI (timer)', '', '| Leg | Counts | Gate | Infra | Log |', '| --- | --- | --- | --- | --- |', '| Run A (default) | 10 passed, 0 failed, 1 skipped | exit 0 | - | 2026-09-20-023000-default.log |', '| Run B (primary) | 4 passed, 0 failed, 0 skipped | exit 0 | - | 2026-09-20-023000-primary.log |', '| Interactive (collection) | 3 passed, 0 failed, 0 skipped | n/a | - | 2026-09-20-023000-full.log |') | Set-Content -Path (Join-Path $run 'morning-2026-09-20-023000.md') -Encoding UTF8
+'Passed!  - Failed:     0, Passed:    10, Skipped:     1, Total:    11, Duration: 1 s - UI.dll (net10.0)' | Set-Content -Path (Join-Path $run '2026-09-20-023000-default.log') -Encoding UTF8
+'Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - UI.dll (net10.0)' | Set-Content -Path (Join-Path $run '2026-09-20-023000-primary.log') -Encoding UTF8
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $run '2026-09-20-023000')
+'<TestRun><Results><UnitTestResult testName="UI.X" outcome="Passed" /></Results></TestRun>' | Set-Content -Path (Join-Path $run '2026-09-20-023000\ui-soak-1.trx') -Encoding UTF8
 $bfOut = Join-Path $dir 'backfill.result.json'
-$null = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyBackfill.ps1') -RunDir (Join-Path (Split-Path -Parent $PSScriptRoot) 'build\nightly\retained\nightly-taskrun-2026-09-20') -OutFile $bfOut 2>&1
+$bfLog = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyBackfill.ps1') -RunDir $run -OutFile $bfOut 2>&1 | ForEach-Object { "$_" })
 if (Test-Path $bfOut) {
   $bfj = Get-Content $bfOut -Raw | ConvertFrom-Json
-  Assert (("$($bfj.provenance.'legs.gates'.source)" -like 'gate cells in morning-*.md') -and ("$($bfj.provenance.soak.source)" -like 'soak trx *soak*.trx*') -and ("$($bfj.provenance.'legs.counts'.source)" -like '*.md*')) 'backfill-provenance-names-artifacts' ("gates: $($bfj.provenance.'legs.gates'.source) | soak: $($bfj.provenance.soak.source)")
-} else { Assert $false 'backfill-provenance-names-artifacts' 'backfill wrote no result (retained run missing?)' }
+  Assert (("$($bfj.provenance.'legs.gates'.source)" -eq 'gate cells in morning-2026-09-20-023000.md') -and ("$($bfj.provenance.soak.source)" -eq 'soak trx 2026-09-20-023000\ui-soak-1.trx') -and ("$($bfj.provenance.timings.source)" -like 'test-seconds in 2026-09-20-023000-default.log, 2026-09-20-023000-primary.log, (none matching *-full*.log)')) 'backfill-provenance-names-artifacts' ("gates: $($bfj.provenance.'legs.gates'.source) | soak: $($bfj.provenance.soak.source) | timings: $($bfj.provenance.timings.source)")
+} else { Assert $false 'backfill-provenance-names-artifacts' ($bfLog -join ' | ') }
+# R2-F2: a stored row revises when its result gains a field; the last
+# row per identity wins and an unchanged result appends nothing.
+$rv = Join-Path $dir 'revise.jsonl'
+$plain = New-Night '2026-09-24' '2026-09-24-023000' 5000
+$null = Sync-MetricsStore $rv @($plain)
+$withProv = New-Night '2026-09-24' '2026-09-24-023000' 5000
+$withProv | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'rows in r.md'; confidence = 'derived' } })
+$cur = @(Sync-MetricsStore $rv @($withProv))
+$null = Sync-MetricsStore $rv @($withProv)
+Assert (($cur.Count -eq 1) -and ($null -ne $cur[0].provenance) -and (@(Get-Content $rv | Where-Object { $_.Trim() -ne '' }).Count -eq 2)) 'metrics-row-revises-last-wins' "rows=$($cur.Count) lines=$(@(Get-Content $rv | Where-Object { $_.Trim() -ne '' }).Count)"
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }

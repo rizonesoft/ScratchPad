@@ -631,6 +631,8 @@ Assert ((Test-ResultFile (Join-Path $s17 'contra.result.json')).Error -like 'res
 Assert ((Test-ResultFile (Join-Path $s17 'contra2.result.json')).Error -like 'result verdict red contradicts*') 'result-contra2'
 '{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'noenv.result.json') -Encoding UTF8
 Assert ((Test-ResultFile (Join-Path $s17 'noenv.result.json')).Error -like 'result env unproven*') 'result-noenv'
+'{"version":1,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{"run-a":{"ran":true},"run-b":{"ran":true},"interactive":{"ran":true}},"soak":{"verdict":"green"},"env":{"dpi":"primary 96x96"},"timings":{}}' | Set-Content -Path (Join-Path $s17 'noos.result.json') -Encoding UTF8
+Assert ((Test-ResultFile (Join-Path $s17 'noos.result.json')).Ok) 'result-missing-os-reads-unknown' ((Test-ResultFile (Join-Path $s17 'noos.result.json')).Error)
 '{oops' | Set-Content -Path (Join-Path $s17 'bad.result.json') -Encoding UTF8
 Assert ((Test-ResultFile (Join-Path $s17 'bad.result.json')).Error -like 'result unreadable*') 'result-badjson'
 '{"version":2,"stamp":"s","day":"d","identity":"i","verdict":"green","exit":0,"legs":{},"soak":{},"env":{},"timings":{}}' | Set-Content -Path (Join-Path $s17 'v2.result.json') -Encoding UTF8
