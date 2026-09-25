@@ -35,6 +35,10 @@ Assert ($ra -eq '**Night-red:** 2026-09-18 D90-T01-S1-N2 (0 passed, 1 failed, 0 
 Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $ra) -eq 'appended red line') 'red-line-first-run-appends'
 Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $rb) -eq 'appended red line') 'red-line-second-run-same-day-appends'
 Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $ra) -like 'skip: D90-T01-S1-N2 already carries a red line for 2026-09-18 run run-c') 'red-line-once-per-run'
+# Triage's finding suffix keeps the run identity (D00 T02 §35 R2-F2).
+$linked = (Get-Content $todo -Raw) -replace [regex]::Escape($rb), ($rb.Substring(0, $rb.Length - 1) + '; finding D00-T02-S35-F9)')
+[System.IO.File]::WriteAllText($todo, $linked)
+Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $rb) -like 'skip: D90-T01-S1-N2 already carries a red line for 2026-09-18 run run-d') 'red-line-once-per-run-after-finding-link'
 # The red entry names owner and next action (D00 T02 §35 R1-F4).
 $tn = Format-RedTriageNote 'alice' '2026-09-18'
 Assert ($tn -eq 'owner alice; next: file the staged finding, then append `; finding <ref>` to the 2026-09-18 Night-red line') 'red-entry-links-remediation' $tn

@@ -4522,7 +4522,12 @@ def night_debts(todos: list["Todo"], today_d):
             acc_date = _strict_date(acc.get("date")) if acc else None
             for v in revokes.get(did, []):
                 vd = _strict_date(v.get("date"))
-                if vd and vd <= today_d and v.get("by") and acc_date and vd >= acc_date:
+                if not (vd and vd <= today_d and v.get("by") and v.get("reason")):
+                    # Every field is required (§35 R2-F1): an incomplete or
+                    # future revocation cancels nothing.
+                    warnings.append("Night-revoked line needs a real date on or before today, by, and a reason; ignored")
+                    continue
+                if acc_date and vd >= acc_date:
                     revoked_on = vd.isoformat()
             acc_exp = _strict_date(acc.get("expires")) if acc else None
             acc_ok = bool(
@@ -26117,6 +26122,9 @@ track: Z1
             f"**Night-owed:** D90-T01-S1-N13 ({_o}2026-09-10)\n"
             "**Night-accepted:** D90-T01-S1-N13 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale revoked later)\n"
             "**Night-revoked:** D90-T01-S1-N13 (2026-09-18, by operator, reason the rebind landed)\n"
+            f"**Night-owed:** D90-T01-S1-N28 ({_o}2026-09-10)\n"
+            "**Night-accepted:** D90-T01-S1-N28 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale stands)\n"
+            "**Night-revoked:** D90-T01-S1-N28 (2026-09-18, by operator)\n"
             # Item 7: owed timestamps against the trigger.
             f"**Night-owed:** D90-T01-S1-N14 ({_o}2026-09-17T01:00)\n"
             f"**Night-owed:** D90-T01-S1-N15 ({_o}2026-09-17T03:00)\n"
@@ -26239,6 +26247,11 @@ track: Z1
             "§35 R1-F4: a finding on a red line links the red-repeat; without one the action says to file it",
             "finding D00-T02-S35-F9" in _n35.get("D90-T01-S1-N27", "") and "file the staged finding" not in _n35.get("D90-T01-S1-N27", "")
             and "file the staged finding and record it" in _n35.get("D90-T01-S1-N4", ""),
+            True,
+        )
+        check(
+            "§35 R2-F1: a revocation without a reason cancels nothing and warns",
+            "state accepted" in _n35.get("D90-T01-S1-N28", "") and _n35w("D90-T01-S1-N28", "Night-revoked line needs"),
             True,
         )
         check(

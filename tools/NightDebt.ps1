@@ -105,7 +105,8 @@ function Add-RedLine([string]$TodoPath, [string]$DebtId, [string]$Date, [string]
   $text = Get-Content $TodoPath -Raw -Encoding UTF8
   $runM = [regex]::Match($Line, '; run (\S+?)\)$')
   $dupPattern = '\*\*Night-red:\*\*\s+' + [regex]::Escape($Date) + '\s+' + [regex]::Escape($DebtId) + '\b'
-  if ($runM.Success) { $dupPattern += '[^\n]*; run ' + [regex]::Escape($runM.Groups[1].Value) + '\)' }
+  # The run chunk may be followed by triage's `; finding <ref>` (§35 R2-F2).
+  if ($runM.Success) { $dupPattern += '[^\n]*; run ' + [regex]::Escape($runM.Groups[1].Value) + '[;)]' }
   if ($text -match $dupPattern) { return "skip: $DebtId already carries a red line for $Date$(if ($runM.Success) { " run $($runM.Groups[1].Value)" })" }
   $lines = @($text -split "`r?`n")
   $idx = Find-OwedLineIndex $lines $DebtId
