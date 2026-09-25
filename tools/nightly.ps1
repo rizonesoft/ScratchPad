@@ -1471,7 +1471,7 @@ $ackResultFiles += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'res
 $ackDemands = Get-AckDemands $ackResultFiles
 # Section 31 item 8: §24's severity SLA (the strictest of the run's
 # outcome labels) shortens the day-plus-three default where it is shorter.
-$ackSla = { param($r) $h = @(@(Get-OutcomeLabels $r) | ForEach-Object { (Get-AlertRoute $_).SlaHours } | Where-Object { $_ -gt 0 }); if ($h.Count -gt 0) { ($h | Measure-Object -Minimum).Minimum } else { 0 } }
+$ackSla = { param($r) Get-AckSlaHours $r }
 $ackCheck = Test-Acknowledgements $Root (Join-Path $Root 'docs/nightly-acks') $ackDemands (Get-Date) $ackSla
 $report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { "$($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue: $($ackCheck.Unacked -join ', ')" })"
 if (@($ackCheck.ProofUnacked).Count -gt 0) { $report += "- Proof queue: $(@($ackCheck.ProofUnacked).Count) unacked proof, simulation, or backfill run(s) (never escalated)" }

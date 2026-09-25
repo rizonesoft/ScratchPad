@@ -2692,6 +2692,10 @@ function Test-ProofResult($Result) {
   foreach ($flag in @('proof', 'simulated', 'backfill', 'metricsBackfill')) {
     try { if ([bool]$Result.$flag) { return $true } } catch { }
   }
+  # Inference is for results written before the flag existed only: a
+  # result that says `proof: false` is operational whatever its legs
+  # did (an infrastructure failure before execution still escalates).
+  if (@($Result.PSObject.Properties.Name) -contains 'proof') { return $false }
   try {
     $legsRan = @(@('run-a', 'run-b', 'interactive') | Where-Object { [bool]$Result.legs.$_.ran }).Count
     $soakRan = [bool]$Result.soak.ran
@@ -2724,7 +2728,9 @@ function Get-AckDemands($ResultFiles) {
     $r = $null
     $readErr = ''
     try { $r = Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $readErr = $_.Exception.Message }
-    if (($null -eq $r) -or ($readErr -ne '') -or ("$($r.verdict)" -eq '')) {
+    $invalid = ($null -eq $r) -or ($readErr -ne '') -or (@('green', 'red', 'stood-down', 'cancelled') -notcontains "$($r.verdict)")
+    if ((-not $invalid) -and (@('red', 'cancelled') -contains "$($r.verdict)") -and ("$($r.identity)" -eq '') -and ("$($r.stamp)" -eq '')) { $invalid = $true }
+    if ($invalid) {
       $name = Split-Path -Leaf $p
       $id = "unreadable:$name"
       $dm = [regex]::Match($name, '(\d{4}-\d{2}-\d{2})')
@@ -3058,7 +3064,10 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       # The linked finding must exist, and the disposition must carry its
       # own evidence (section 31 item 3).
       $fnd = "$($fm.Fields['finding'])"
+      # Every per-incident cover finding must exist as well (R1-F3).
+      $missingCover = @(@($fm.Covers) | ForEach-Object { $cm = [regex]::Match("$_", '^(INC-[0-9a-f]{8})\s+\S+\s+(.+?)\s*$'); if ($cm.Success -and (-not (Test-FindingExists $Root $cm.Groups[2].Value $knownIncidents))) { "cover $($cm.Groups[1].Value) finding $($cm.Groups[2].Value) not found" } })
       if (-not (Test-FindingExists $Root $fnd $knownIncidents)) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding $fnd not found"); Disposition = $v.Disposition } }
+      elseif ($missingCover.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $missingCover; Disposition = $v.Disposition } }
       else {
         $evErr = @(Test-DispositionEvidence $fm.Fields @($v.Acked) $Demands $Root)
         if ($evErr.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition } }
@@ -3066,20 +3075,31 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     }
     if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
     $when = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Date)" } else { '' }
+    $commit = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Commit)" } else { '' }
     foreach ($id in $v.Acked) {
       if (-not $claims.ContainsKey($id)) { $claims[$id] = @() }
-      $claims[$id] += [pscustomobject]@{ File = $file.Name; When = $when; Disposition = $v.Disposition; Fields = $fm.Fields }
+      $claims[$id] += [pscustomobject]@{ File = $file.Name; When = $when; Commit = $commit; Disposition = $v.Disposition; Fields = $fm.Fields }
     }
     $staleNote = if ($v.Stale.Count -gt 0) { "; STALE for $($v.Stale -join ', ') (result changed after the ack: re-ack with the new checksum)" } else { '' }
     $ackedText = if (@($v.Acked).Count -gt 0) { $v.Acked -join ', ' } else { 'nothing current' }
     $verb = if ($v.Disposition -eq 'withdrawn') { 'withdraws' } else { 'acknowledges' }
     $lines += "- $($file.Name): $verb $ackedText$staleNote; history $histText"
   }
-  # The newest commit governs each run (section 31 item 10).
+  # The newest commit governs each run (section 31 item 10), ordered by
+  # the commit graph (git log is newest first in topological order), not
+  # by timestamps, which can tie or run backwards (R1-F4).
+  $order = @{}
+  $eap = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $relDir = ($AckDir.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
+    $i = 0
+    foreach ($h in @(git -C $Root log --topo-order --format=%H -- $relDir 2>$null)) { if (-not $order.ContainsKey("$h")) { $order["$h"] = $i }; $i++ }
+  } catch { } finally { $ErrorActionPreference = $eap }
   $acked = @{}
   $governing = @{}
   foreach ($id in @($claims.Keys)) {
-    $g = @($claims[$id] | Sort-Object @{ Expression = { [DateTimeOffset]::Parse($_.When, [System.Globalization.CultureInfo]::InvariantCulture) } }, File | Select-Object -Last 1)[0]
+    $g = @($claims[$id] | Sort-Object @{ Expression = { if ($order.ContainsKey($_.Commit)) { $order[$_.Commit] } else { [int]::MaxValue } } }, File | Select-Object -First 1)[0]
     if (@($claims[$id]).Count -gt 1) { $lines += "- $id governed by $($g.File) (newest of $(@($claims[$id]).Count) acks)" }
     if ($g.Disposition -eq 'withdrawn') { $lines += "- $id released by $($g.File) (withdrawn): demanded again"; continue }
     $acked[$id] = $g.File

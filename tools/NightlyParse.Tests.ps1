@@ -1285,6 +1285,29 @@ $gI = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ((@($gI.Corrective | Where-Object { $_ -like '*ack-2026-09-22-i.md (INC-aaaa1111): open, due 2026-09-30*' }).Count -eq 1)) 'ack-recovered-incident-keeps-investigation-open' ($gI.Corrective -join ' | ')
 & git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-i.md') 2>$null; & git -C $repo commit -q -m 'drop i' 2>$null
 Remove-Item (Join-Path $repo 'build') -Recurse -Force
+# R1-F1, R1-F2: invalid results demand; an explicit proof: false stays
+# operational even with no legs run.
+$rInv = New-Res31 'morning-2026-09-26-130000.result.json' @{ identity = '2026-09-26-130000-pid5'; verdict = 'exploded' }
+$rNoId = New-Res31 'morning-2026-09-26-140000.result.json' @{ identity = ''; stamp = '' }
+$rOp = New-Res31 'morning-2026-09-26-150000.result.json' @{ identity = '2026-09-26-150000-pid6'; proof = $false; legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $false }; 'run-b' = [pscustomobject]@{ ran = $false }; interactive = [pscustomobject]@{ ran = $false } }; soak = [pscustomobject]@{ ran = $false; verdict = 'skipped' } }
+$dInv = Get-AckDemands @($rInv, $rNoId, $rOp)
+Assert ($dInv.ContainsKey('unreadable:morning-2026-09-26-130000.result.json') -and $dInv.ContainsKey('unreadable:morning-2026-09-26-140000.result.json') -and ($dInv['2026-09-26-150000-pid6'].Queue -eq 'operational')) 'ack-invalid-results-demand-and-explicit-proof-false-stays-operational' ((@($dInv.Keys) | Sort-Object) -join ',')
+# R1-F3: a cover line's finding must exist.
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-v.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none' }).Replace("`n---`n", "`ncover: INC-aaaa1111 filed D99 T99 ${S}999`n---`n"))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack v bogus cover' 2>$null
+$gV = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (@($gV.Lines | Where-Object { $_ -like '*ack-2026-09-22-v.md: INVALID (cover INC-aaaa1111 finding D99 T99*999 not found)*' }).Count -eq 1) 'ack-cover-finding-must-exist' ($gV.Lines -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-v.md') 2>$null; & git -C $repo commit -q -m 'drop v' 2>$null
+# R1-F4: with identical timestamps, the later commit still governs.
+$env:GIT_AUTHOR_DATE = '2026-09-24T10:00:00+02:00'; $env:GIT_COMMITTER_DATE = '2026-09-24T10:00:00+02:00'
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-z.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack z' 2>$null
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-a2.md'), (@('---', 'ack-version: 2', "run: $runA2 sha256:$shaA2", 'owner: operator', 'disposition: withdrawn', 'signed: 2026-09-24', '---', '', 'Withdrawn.') -join "`n"))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'withdraw z' 2>$null
+Remove-Item Env:\GIT_AUTHOR_DATE; Remove-Item Env:\GIT_COMMITTER_DATE
+$gT = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (($gT.Unacked -contains $runA2) -and (@($gT.Lines | Where-Object { $_ -like "*$runA2 released by ack-2026-09-22-a2.md (withdrawn)*" }).Count -eq 1)) 'ack-commit-graph-order-governs-over-equal-timestamps' ($gT.Lines -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-z.md') (Join-Path $ackDir 'ack-2026-09-22-a2.md') 2>$null; & git -C $repo commit -q -m 'drop z a2' 2>$null
 # Item 1: overdue filings dedupe to one row updated per night.
 $of1 = Update-OverdueFindings @() @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-24'
 $of2 = Update-OverdueFindings $of1.Lines @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-25'

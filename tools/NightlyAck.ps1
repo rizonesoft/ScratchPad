@@ -29,6 +29,8 @@ param(
   [string]$Owner = '',
   [string]$CorrectiveOwner = '',
   [string]$Due = '',
+  [string[]]$Cover = @(),
+  [switch]$CoversAll,
   [string]$Out = '',
   [string]$Today = '',
   [string]$WorkspaceRoot = ''
@@ -37,6 +39,9 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 if ($WorkspaceRoot -ne '') { $Root = (Resolve-Path $WorkspaceRoot).Path }
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+. (Join-Path $PSScriptRoot 'NightlyNotify.ps1')
+# The nightly's own SLA rule (R1-I1), so filing and the gate agree.
+$ackSla = { param($r) Get-AckSlaHours $r }
 $nightDir = Join-Path $Root 'build\nightly'
 $ackDir = Join-Path $Root 'docs\nightly-acks'
 $now = if ($Today -ne '') { [datetime]::ParseExact($Today, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture) } else { Get-Date }
@@ -55,6 +60,9 @@ if ($Draft) {
   $lines = @('---', 'ack-version: 2', "run: $Run sha256:$($d.Current)", "incidents: $incidents", "owner: $Owner", "disposition: $Disposition")
   if ($Disposition -ne 'withdrawn') { $lines += @("corrective-owner: $CorrectiveOwner", "due: $Due", "finding: $Finding") }
   if ($Evidence -ne '') { $lines += "evidence: $Evidence" }
+  # A run with several incidents needs per-incident coverage (R1-I2).
+  if ($CoversAll) { $lines += 'covers-all: yes' }
+  foreach ($c in @($Cover)) { if ("$c" -ne '') { $lines += "cover: $c" } }
   $lines += @("signed: $signed", '---', '', "# Acknowledgement: $Run", '', "Drafted by tools/NightlyAck.ps1 from the run's current result (checksum $($d.Current.Substring(0, 12))); state the cause and what the finding changes here before committing.")
   $text = ($lines -join "`n") + "`n"
   $v = Test-AckV2 $text $demands
@@ -98,7 +106,7 @@ if ($FileOverdue) {
     Remove-Item $retryPath -Force
     Write-Output 'ack: pending filing commit retried and landed'
   }
-  $gate = Test-Acknowledgements $Root $ackDir $demands $now
+  $gate = Test-Acknowledgements $Root $ackDir $demands $now $ackSla
   $over = @($gate.Overdue | ForEach-Object { $d = $demands[$_]; [pscustomobject]@{ Id = $_; What = $(if ($d.Unreadable) { 'unreadable result' } else { "RED $($d.Day)" }); Incidents = $(if (@($d.Incidents).Count -gt 0) { @($d.Incidents) -join ' ' } else { 'none' }) } })
   $existing = if (Test-Path $tablePath) { @(Get-Content $tablePath -Encoding UTF8) } else { @() }
   $upd = Update-OverdueFindings $existing $over $now.ToString('yyyy-MM-dd')
@@ -118,5 +126,5 @@ if ($FileOverdue) {
   exit 0
 }
 
-Write-Output 'usage: NightlyAck.ps1 -Draft -Run <identity> -Disposition <d> -Owner <o> [-Finding <f>] [-Evidence <e>] [-CorrectiveOwner <c>] [-Due YYYY-MM-DD] [-Out <path>] | -FileOverdue [-Commit] [-Today YYYY-MM-DD] [-WorkspaceRoot <dir>]'
+Write-Output 'usage: NightlyAck.ps1 -Draft -Run <identity> -Disposition <d> -Owner <o> [-Finding <f>] [-Evidence <e>] [-Cover "INC-<id> <disposition> <finding>", ...] [-CoversAll] [-CorrectiveOwner <c>] [-Due YYYY-MM-DD] [-Out <path>] | -FileOverdue [-Commit] [-Today YYYY-MM-DD] [-WorkspaceRoot <dir>]'
 exit 2

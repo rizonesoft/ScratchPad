@@ -77,6 +77,20 @@ $row3 = @(Get-Content $table | Where-Object { $_ -like "| $run |*" })
 $log3 = @(& git -C $ws log --format=%s -- docs/nightly-acks/overdue-findings.md)
 Assert (($f3.Code -eq 0) -and (-not (Test-Path $retry)) -and ($f3.Text -like '*pending filing commit retried and landed*') -and ($row3.Count -eq 1) -and ($row3[0] -like '*| 2026-09-25 | 2026-09-26 | 2 | operator | open |') -and ($log3.Count -eq 2)) 'file-overdue-retry-lands-and-updates-the-row' ($f3.Text + ' || ' + ($log3 -join ','))
 
+# R1-I2: a run with two incidents drafts only with per-incident cover.
+$run2 = '2026-09-21-023001-pid8'
+[pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-21-023001'; day = '2026-09-21'; identity = $run2; verdict = 'red'; exit = 1; incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom', '- INC-bbbb2222 `UI.B` x1 (Run A): bang') } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $nd 'morning-2026-09-21-023001.result.json') -Encoding UTF8
+$noCover = Invoke-Helper @('-Draft', '-Run', $run2, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', "D00 T02 ${S}9", '-Today', '2026-09-22', '-WorkspaceRoot', $ws)
+Assert (($noCover.Code -eq 1) -and ($noCover.Text -like '*uncovered*')) 'draft-two-incidents-needs-cover' $noCover.Text
+$withAll = Invoke-Helper @('-Draft', '-Run', $run2, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', "D00 T02 ${S}9", '-CoversAll', '-Today', '2026-09-22', '-WorkspaceRoot', $ws)
+Assert (($withAll.Code -eq 0) -and ((Get-Content (Join-Path $ws "docs\nightly-acks\ack-$run2.md") -Raw) -like '*covers-all: yes*')) 'draft-covers-all-passes' $withAll.Text
+Remove-Item (Join-Path $ws "docs\nightly-acks\ack-$run2.md")
+# R1-I1: filing uses the nightly's SLA: a test-failure RED is overdue a
+# day after its run although the three-day default has not passed.
+$run3 = '2026-09-27-023001-pid9'
+[pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-27-023001'; day = '2026-09-27'; identity = $run3; verdict = 'red'; exit = 1; startUtc = '2026-09-27T00:30:01.0000000Z'; tz = '+02:00'; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; failed = 1; gate = 0 }; 'run-b' = [pscustomobject]@{ ran = $true; failed = 0; gate = 0 }; interactive = [pscustomobject]@{ ran = $false } } } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $nd 'morning-2026-09-27-023001.result.json') -Encoding UTF8
+$fs = Invoke-Helper @('-FileOverdue', '-Today', '2026-09-28', '-WorkspaceRoot', $ws)
+Assert (($fs.Code -eq 0) -and (@(Get-Content $table | Where-Object { $_ -like "| $run3 |*" }).Count -eq 1)) 'file-overdue-uses-the-nightly-sla' $fs.Text
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyAck.Tests: all green'

@@ -39,6 +39,16 @@ function Get-AlertRoute([string]$Class) {
   return [pscustomobject]@{ Class = $Class; Owner = $r.Owner; Channel = $r.Channel; Severity = $r.Severity; SlaHours = $r.SlaHours }
 }
 
+function Get-AckSlaHours($Result) {
+  # The acknowledgement SLA for a RED (D00 T02 section 31 item 8): the
+  # strictest response SLA among the run's outcome labels, 0 when none
+  # applies. Shared by the nightly's gate and tools/NightlyAck.ps1, so
+  # both judge the same deadline.
+  $h = @(@(Get-OutcomeLabels $Result) | ForEach-Object { (Get-AlertRoute $_).SlaHours } | Where-Object { $_ -gt 0 })
+  if ($h.Count -eq 0) { return 0 }
+  return [int](($h | Measure-Object -Minimum).Minimum)
+}
+
 function Get-OutcomeLabels($Result) {
   # Every outcome a night carries (item 9), in precedence order, beside
   # the single class Classify-NightlyOutcome picks for the title, so one
