@@ -402,6 +402,36 @@ $eb = & $norm (Join-Path $eqDir 'b.md')
 $ediff = @(Compare-Object $ea $eb | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
 Assert (($ediff.Count -eq 0) -and (@($ea | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@(Get-Content (Join-Path $eqDir 'b.md') | Where-Object { $_ -like '*(metrics)*' }).Count -ge 8)) 'render-matches-after-raw-deletion-with-alerts' ($ediff -join ' || ')
 
+# ---- section 32 round 2 ----
+# R2-A1: wrong-typed values are malformed, row by row.
+$bad = Join-Path $dir 'badrows.jsonl'
+@('{"schema":"metrics/1","identity":"a","stamp":"s","night":"2026-02-30","verdict":"green","legs":{}}', '{"schema":"metrics/1","identity":"b","stamp":"s","night":"2026-09-20","verdict":"maybe","legs":{}}', '{"schema":"metrics/1","identity":"c","stamp":"s","night":"2026-09-20","verdict":"green","legs":null}', '{"schema":"metrics/1","identity":"d","stamp":"s","night":"2026-09-20","verdict":"green","legs":{"run-a":{"passed":"lots"}}}', '{"schema":"metrics/1","identity":"e","stamp":"s","night":"2026-09-20","verdict":"green","legs":{"run-a":{"passed":3,"testSeconds":600}}}') | Set-Content -Path $bad -Encoding UTF8
+$rb = Read-MetricsStore $bad
+Assert (($rb.Rows.Count -eq 1) -and ($rb.Rows.Contains('e')) -and ((@($rb.Malformed) -join ',') -eq '1,2,3,4')) 'metrics-wrong-typed-rows-are-malformed' ((@($rb.Malformed) -join ',') + ' rows ' + (@($rb.Rows.Keys) -join ','))
+# R2-C2: with no result at all, scheduled nights since enrollment list missing.
+$tnone = @(Format-TrendTable @() $Q (Get-Date '2026-09-23 08:00') @{} @() @() ([pscustomobject]@{ First = '2026-09-20'; IntervalDays = 1 }))
+Assert ((@($tnone | Where-Object { $_ -like '| 2026-09-2* | missing |*' } | ForEach-Object { $_.Substring(2, 10) }) -join ',') -eq '2026-09-20,2026-09-21,2026-09-22,2026-09-23') 'calendar-lists-missing-before-any-result' (($tnone | Where-Object { $_ -like '| 2026-*' }) -join ' / ')
+# R2-I1: an incident weeks earlier is not a recurrence.
+$recOld = @(1..3 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 'timer' 100 0 5 @('- INC-aaaa1111 `UI.A` x1 (Run A): boom') })
+$recNow = New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 100 0 5 @('- INC-aaaa1111 `UI.A` x1 (Run A): boom')
+Assert (@(Get-TrendAlerts (@($recOld) + @($recNow)) | Where-Object { $_ -like '- ALERT recurring-flake*' }).Count -eq 0) 'recurrence-needs-the-two-calendar-nights-before'
+# R2-I2: incident evidence renders the same from metrics.
+$ev = New-Night '2026-09-28' '2026-09-28-023000'
+$ev | Add-Member -NotePropertyName incidentEvidence -NotePropertyValue ([pscustomobject]@{ 'INC-aaaa1111' = @('Bin/UI/Debug/launch-diagnostics/leak-1.json') }) -Force
+$evRow = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $ev)) -Depth 6 -Compress) | ConvertFrom-Json)
+$evA = @(Format-TrendTable @($ev) $Q $today | Where-Object { $_ -like '- Incident evidence*' })
+$evB = @(Format-TrendTable @($evRow) $Q $today | Where-Object { $_ -like '- Incident evidence*' })
+Assert (($evA.Count -eq 1) -and (($evA -join '') -eq ($evB -join ''))) 'incident-evidence-survives-metrics' (($evA + $evB) -join ' || ')
+# Record: one scheduled night moves across both DST offsets and across
+# zones, and every consumer keys it once.
+$z1 = [pscustomobject]@{ version = 1; identity = 'z-1'; stamp = '2026-10-25-023000'; day = '2026-10-25'; launch = 'timer'; verdict = 'red'; exit = 1; startUtc = '2026-10-25T00:30:00.0000000Z'; tz = '+02:00'; incidents = @() }
+$z2 = [pscustomobject]@{ version = 1; identity = 'z-2'; stamp = '2026-10-25-024000'; day = '2026-10-25'; launch = 'manual'; verdict = 'red'; exit = 1; startUtc = '2026-10-25T01:40:00.0000000Z'; tz = '+01:00'; incidents = @() }
+$z3 = [pscustomobject]@{ version = 1; identity = 'z-3'; stamp = '2026-10-24-214000'; day = '2026-10-24'; launch = 'manual'; verdict = 'red'; exit = 1; startUtc = '2026-10-25T02:40:00.0000000Z'; tz = '-05:00'; incidents = @() }
+$zc = Select-CanonicalRuns @($z1, $z2, $z3)
+$zf = @($z1, $z2, $z3) | ForEach-Object { $zp = Join-Path $dir "$($_.identity).result.json"; ($_ | ConvertTo-Json) | Set-Content -Path $zp -Encoding UTF8; $zp }
+$zd = Get-AckDemands $zf
+Assert (($zc.Keys.Count -eq 1) -and ($zc.ContainsKey('2026-10-25')) -and ($zc['2026-10-25'].Canonical -eq 'z-1') -and ((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day } | Sort-Object -Unique) -eq '2026-10-25') -and (-not ((Get-NoStartVerdict @($z1, $z2, $z3) (Get-Date '2026-10-25 08:00') '06:50' 0).NoStart))) 'one-night-across-both-dst-offsets-and-zones' "$(@($zc.Keys) -join ',') / $((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day }) -join ',')"
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTrend.Tests: all green'

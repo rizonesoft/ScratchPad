@@ -2250,6 +2250,7 @@ function ConvertTo-MetricsRow($Result) {
     omissionOk = $(try { if ($null -eq $Result.omissionOk) { $true } else { [bool]$Result.omissionOk } } catch { $true })
     scheduler = $(try { [ordered]@{ voted = [bool]$Result.scheduler.voted; faults = @(@($Result.scheduler.faults) | ForEach-Object { Protect-DisclosedText "$_" }) } } catch { [ordered]@{ voted = $false; faults = @() } })
     harness = $(try { Protect-DisclosedText "$($Result.harness)" } catch { '' })
+    incidentEvidence = $(try { if ($null -eq $Result.incidentEvidence) { $null } else { $ie = [ordered]@{}; foreach ($pp in @($Result.incidentEvidence.PSObject.Properties)) { $ie[$pp.Name] = @(@($pp.Value) | ForEach-Object { Protect-DisclosedText "$_" }) }; [pscustomobject]$ie } } catch { $null })
     populationHash = $(try { Protect-DisclosedText "$($Result.populationHash)" } catch { '' })
     provenance = $(if ($null -ne $prov) { [pscustomobject]$prov } else { $null })
     population = $(try { Protect-DisclosedText "$($Result.population)" } catch { '' })
@@ -2277,6 +2278,29 @@ function Invoke-WithMetricsLock([scriptblock]$Body) {
   }
 }
 
+function Test-MetricsRowShape($Row) {
+  # A row is data only when every consumed value is sound (section 32
+  # R1-A2, R2-A1): schema, identity, stamp, a real calendar night, a known
+  # verdict, legs as an object whose counts are whole numbers or absent,
+  # and seconds that are numbers or absent. Anything else is malformed.
+  if ("$($Row.schema)" -ne 'metrics/1') { return $false }
+  if (("$($Row.identity)" -eq '') -or ("$($Row.stamp)" -eq '')) { return $false }
+  $d = [datetime]::MinValue
+  if (-not [datetime]::TryParseExact("$($Row.night)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$d)) { return $false }
+  if (@('green', 'red', 'stood-down', 'cancelled') -notcontains "$($Row.verdict)") { return $false }
+  if (@($Row.PSObject.Properties.Name) -notcontains 'legs') { return $false }
+  $legs = $Row.legs
+  if (($null -eq $legs) -or ($legs -is [string]) -or ($legs -is [array]) -or ($legs -is [ValueType])) { return $false }
+  foreach ($lp in @($legs.PSObject.Properties)) {
+    $o = $lp.Value
+    if (($null -eq $o) -or ($o -is [string]) -or ($o -is [ValueType])) { return $false }
+    foreach ($k in @('passed', 'failed', 'skipped')) { $v = $o.$k; if (($null -ne $v) -and ("$v" -notmatch '^\d+$')) { return $false } }
+    $ts = $o.testSeconds
+    if (($null -ne $ts) -and ("$ts" -notmatch '^\d+(\.\d+)?$')) { return $false }
+  }
+  return $true
+}
+
 function Read-MetricsStore([string]$Path) {
   # Per-line validation (item 10): a line is a row only when it parses
   # with schema metrics/1 and an identity; supersession records
@@ -2297,8 +2321,7 @@ function Read-MetricsStore([string]$Path) {
     if ("$($r.schema)" -eq 'supersession/1') { $out.Supersessions += $r; continue }
     # A row is data only with the fields the trend and the archival gate
     # consume (section 32 R1-A2): identity, stamp, night, verdict, legs.
-    $names = @($r.PSObject.Properties.Name)
-    if (("$($r.schema)" -ne 'metrics/1') -or ("$($r.identity)" -eq '') -or ("$($r.stamp)" -eq '') -or ("$($r.night)" -notmatch '^\d{4}-\d{2}-\d{2}$') -or ("$($r.verdict)" -eq '') -or ($names -notcontains 'legs')) { $out.Malformed += $i; continue }
+    if (-not (Test-MetricsRowShape $r)) { $out.Malformed += $i; continue }
     $out.Rows["$($r.identity)"] = $r
     $out.Raw["$($r.identity)"] = $ln.Trim()
   }
@@ -2422,7 +2445,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $true }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)" }
+  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $true }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }) }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -2572,7 +2595,13 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   $aliasMap = Get-IncidentAliases $Rows
   $ids = { param($x) @(@($x.incidents) | ForEach-Object { $m = [regex]::Match("$_", '(INC-[0-9a-f]{8})'); if ($m.Success) { if ($aliasMap.ContainsKey($m.Groups[1].Value)) { $aliasMap[$m.Groups[1].Value] } else { $m.Groups[1].Value } } }) }
   $li = @(& $ids $latest)
-  $recent = @($r[0..($r.Count - 2)] | Select-Object -Last 2)
+  # The two calendar nights before the evaluated one (section 32 R2-I1):
+  # an incident weeks earlier is not a recurrence.
+  if ($windowed) {
+    $rFrom = $latestNight.AddDays(-2).ToString('yyyy-MM-dd')
+    $rTo = $latestNight.AddDays(-1).ToString('yyyy-MM-dd')
+    $recent = @($r[0..($r.Count - 2)] | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $rFrom) -and ($nk -le $rTo) })
+  } else { $recent = @($r[0..($r.Count - 2)] | Select-Object -Last 2) }
   foreach ($id in ($li | Sort-Object -Unique)) {
     $hits = @($recent | Where-Object { (& $ids $_) -contains $id })
     if ($hits.Count -gt 0) {
@@ -2818,16 +2847,23 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # and last canonical night with no result at all renders as missing.
   $canonNights = @($canon.Keys | Where-Object { $canon[$_].Canonical -ne '' } | Sort-Object)
   $allNights = @($rowEntries | ForEach-Object { $_.Night })
-  if ($canonNights.Count -ge 1) {
-    # Schedule-aware calendar (R1-C1): from enrollment (the first
-    # canonical night) through the latest night that is already due
-    # (today's once the quiet window has passed), only nights the
-    # task's trigger scheduled; the tail after the last result counts.
-    $d0 = [datetime]::ParseExact($canonNights[0], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    $d1 = [datetime]::ParseExact($canonNights[-1], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+  # Enrollment (section 32 R2-C2): the first governed result's night, of
+  # any verdict, else the schedule's first night, so a history with no
+  # successful publication still lists its missed nights.
+  $anyNights = @($rows | ForEach-Object { Get-ResultNight $_ } | Where-Object { $_ -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object)
+  $enroll = if ($anyNights.Count -gt 0) { $anyNights[0] } elseif ($null -ne $Schedule) { $Schedule.First } else { '' }
+  if (($null -ne $Schedule) -and ($enroll -ne '') -and ([string]::CompareOrdinal($enroll, $Schedule.First) -lt 0)) { $enroll = $Schedule.First }
+  if ($enroll -ne '') {
+    # Schedule-aware calendar (R1-C1): from enrollment through the latest
+    # night already due (today's once the quiet window has passed), only
+    # nights the task's trigger scheduled; the tail after the last
+    # result counts.
+    $d0 = [datetime]::ParseExact($enroll, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    $lastSeen = if ($anyNights.Count -gt 0) { [datetime]::ParseExact($anyNights[-1], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture) } else { $d0 }
+    $d1 = $lastSeen
     $dueThrough = if ($Today.TimeOfDay -ge [TimeSpan]::FromHours(7)) { $Today.Date } else { $Today.Date.AddDays(-1) }
     if ($dueThrough -gt $d1) { $d1 = $dueThrough.AddDays(1) }
-    for ($d = $d0.AddDays(1); $d -lt $d1; $d = $d.AddDays(1)) {
+    for ($d = $d0; $d -lt $d1; $d = $d.AddDays(1)) {
       $ds = $d.ToString('yyyy-MM-dd')
       if (-not (Test-NightScheduled $Schedule $ds)) { continue }
       if ($allNights -notcontains $ds) {
