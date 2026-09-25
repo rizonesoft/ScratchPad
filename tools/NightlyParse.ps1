@@ -1113,8 +1113,15 @@ function Get-UiBuildInputs([string]$Root) {
     $extra[$file] = $true
     $here = Split-Path -Parent $file
     $text = Get-Content $file -Raw
+    # A property's own $(MSBuildThisFileDirectory) is its defining file's
+    # directory, fixed where it is defined (R3-F2); two different
+    # definitions of one name make it ambiguous, and a path using it
+    # stays unresolved instead of guessing evaluation order.
     foreach ($pm in [regex]::Matches($text, '<([A-Za-z_][\w.]*)>([^<]*)</\1>')) {
-      if (-not $props.ContainsKey($pm.Groups[1].Value)) { $props[$pm.Groups[1].Value] = $pm.Groups[2].Value.Trim() }
+      $pn = $pm.Groups[1].Value
+      $pv = $pm.Groups[2].Value.Trim().Replace('$(MSBuildThisFileDirectory)', ($here.TrimEnd('\') + '\'))
+      if (-not $props.ContainsKey($pn)) { $props[$pn] = $pv }
+      elseif ($props[$pn] -ne $pv) { $props[$pn] = '$(__ambiguous__' + $pn + ')' }
     }
     if ($file -like '*proj') {
       $dirs += $here
@@ -1131,7 +1138,7 @@ function Get-UiBuildInputs([string]$Root) {
       }
     }
     foreach ($m in [regex]::Matches($text, '<Import\s+Project="([^"]+)"')) { $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'queue'; From = $file }) }
-    foreach ($m in [regex]::Matches($text, '<(?:Compile|None|Content|Page|EmbeddedResource|ApplicationDefinition|Manifest|Resource|AdditionalFiles|PRIResource)\s+Include="([^"*]+)"')) {
+    foreach ($m in [regex]::Matches($text, '<(?:Compile|None|Content|Page|EmbeddedResource|ApplicationDefinition|Manifest|Resource|AdditionalFiles|PRIResource)\s+Include="([^"]+)"')) {
       $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'file'; From = $file })
     }
   }
@@ -1142,8 +1149,16 @@ function Get-UiBuildInputs([string]$Root) {
   foreach ($p in $pending) {
     $path = Resolve-MsBuildPath $p.Raw $p.Dir $p.From $props
     if ($null -eq $path) { $later.Add($p); continue }
-    if ($p.Kind -eq 'queue') { if (-not $seen.ContainsKey($path)) { $queue.Enqueue($path) } }
+    if ($path.Contains('*')) {
+      # A wildcard item (R3-F3): every file it matches is an input.
+      foreach ($hit in @(Expand-MsBuildWildcard $path)) { $extra[$hit] = $true }
+    } elseif ($p.Kind -eq 'queue') { if (-not $seen.ContainsKey($path)) { $queue.Enqueue($path) } }
     elseif (Test-Path $path -PathType Leaf) { $extra[$path] = $true }
+    elseif ($p.Kind -eq 'file') {
+      # A resolved item that names no file cannot be proved older than the
+      # binary (R3-F2): report it instead of dropping it.
+      $later.Add(@{ Dir = $p.Dir; Raw = "$($p.Raw) (resolves to missing $path)"; Kind = 'missing'; From = $p.From })
+    }
   }
   $pending = $later
   } while ($queue.Count -gt 0)
@@ -1159,6 +1174,18 @@ function Get-UiBuildInputs([string]$Root) {
   }
   foreach ($k in $extra.Keys) { $files += Get-Item $k }
   return $files
+}
+
+function Expand-MsBuildWildcard([string]$Pattern) {
+  # MSBuild item wildcards: `*` within a segment, `**` across segments.
+  # The walk starts at the longest wildcard-free prefix directory.
+  $segments = $Pattern -split '\\'
+  $fixed = @()
+  foreach ($seg in $segments) { if ($seg.Contains('*')) { break } ; $fixed += $seg }
+  $base = $fixed -join '\'
+  if (-not (Test-Path $base -PathType Container)) { return @() }
+  $rx = '^' + (([regex]::Escape($Pattern)) -replace '\\\*\\\*\\\\', '(?:.*\\)?' -replace '\\\*', '[^\\]*') + '$'
+  return @(Get-ChildItem -Path $base -Recurse -File | Where-Object { $_.FullName -match $rx -and $_.FullName -notmatch '\\(obj|bin)\\' } | ForEach-Object { $_.FullName })
 }
 
 function Resolve-MsBuildPath([string]$Raw, [string]$Dir, [string]$From, $Props) {
@@ -1178,6 +1205,14 @@ function Resolve-MsBuildPath([string]$Raw, [string]$Dir, [string]$From, $Props) 
   }
   if ($v -match '\$\(') { return $null }
   if (-not [System.IO.Path]::IsPathRooted($v)) { $v = Join-Path $Dir $v }
+  if ($v.Contains('*')) {
+    # Windows PowerShell's GetFullPath rejects wildcards: normalize the
+    # wildcard-free prefix and keep the pattern segments as written.
+    $segs = $v -split '\\'
+    $cut = 0
+    while (($cut -lt $segs.Count) -and (-not $segs[$cut].Contains('*'))) { $cut++ }
+    return ([System.IO.Path]::GetFullPath(($segs[0..($cut - 1)] -join '\')).TrimEnd('\') + '\' + ($segs[$cut..($segs.Count - 1)] -join '\'))
+  }
   return [System.IO.Path]::GetFullPath($v)
 }
 
@@ -1253,11 +1288,17 @@ function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check 
   return [pscustomobject]@{ State = 'pending'; Line = "CI population check not verified: step '$Step' in run $($run.databaseId) reads '$c'" }
 }
 
-function Resolve-CiAdmission($Gate, [bool]$AllowUnverified) {
+function Resolve-CiAdmission($Gate, [bool]$AllowUnverified, [string]$TreeState = 'clean') {
   # Admission (D00 T02 section 37 R1-F1): only green admits. Red, pending,
   # or unverifiable CI refuses the population, naming the state; the
   # operator override admits a non-red state and the line says so. A red
   # check is never overridden.
+  # A dirty or unreadable tree is not the commit CI checked (R3-F1): a
+  # green HEAD vouches for nothing the working tree changed, so it reads
+  # as not verified.
+  if (($Gate.State -eq 'green') -and ($TreeState -ne 'clean')) {
+    $Gate = [pscustomobject]@{ State = 'none'; Line = "$($Gate.Line), but the built tree is $TreeState, so CI did not check this candidate" }
+  }
   if ($Gate.State -eq 'green') { return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Line = $Gate.Line } }
   if (($Gate.State -ne 'red') -and $AllowUnverified) {
     return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Line = "$($Gate.Line); admitted without CI verification (-AllowUnverifiedCi)" }

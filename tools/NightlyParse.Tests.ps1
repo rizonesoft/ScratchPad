@@ -626,6 +626,25 @@ $propUnknown = Get-UiBuildFreshness $bRoot
 '<Project />' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
 (Get-Item (Join-Path $bRoot 'src\App\App.csproj')).LastWriteTimeUtc = $tOld
 Assert (($propStale.Ok -eq $false) -and ($propStale.Error -like '*build-shared\Extra.targets*') -and ($propUnknown.Ok -eq $false) -and ($propUnknown.Error -like '*unresolved build input path(s): $(NotDefinedAnywhere)\x.targets in src\App\App.csproj*')) 's37-property-paths-resolve-or-refuse' "$($propStale.Error) | $($propUnknown.Error)"
+# R3-F2: a property defined with its own file's directory resolves
+# against its definition, and a missing resolved item refuses; R3-F3: a
+# wildcard item outside the project counts every file it matches.
+'<Project><PropertyGroup><SharedDir>$(MSBuildThisFileDirectory)build-shared\</SharedDir></PropertyGroup></Project>' | Set-Content -Path (Join-Path $bRoot 'Directory.Build.props') -Encoding UTF8
+'<Project><Import Project="$(SharedDir)Extra.targets" /><ItemGroup><Compile Include="..\..\shared-src\**\*.cs" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+foreach ($f in @('Directory.Build.props', 'src\App\App.csproj')) { (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld }
+(Get-Item (Join-Path $bRoot 'build-shared\Extra.targets')).LastWriteTimeUtc = $tOld.AddMinutes(30)
+$defStale = Get-UiBuildFreshness $bRoot
+(Get-Item (Join-Path $bRoot 'build-shared\Extra.targets')).LastWriteTimeUtc = $tOld
+(Get-Item (Join-Path $bRoot 'shared-src\Linked.cs')).LastWriteTimeUtc = $tOld.AddMinutes(30)
+$wildStale = Get-UiBuildFreshness $bRoot
+(Get-Item (Join-Path $bRoot 'shared-src\Linked.cs')).LastWriteTimeUtc = $tOld
+'<Project><ItemGroup><None Include="..\..\gone\Missing.txt" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+(Get-Item (Join-Path $bRoot 'src\App\App.csproj')).LastWriteTimeUtc = $tOld
+$missing = Get-UiBuildFreshness $bRoot
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'Directory.Build.props') -Encoding UTF8
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+foreach ($f in @('Directory.Build.props', 'src\App\App.csproj')) { (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld }
+Assert (($defStale.Ok -eq $false) -and ($defStale.Error -like '*build-shared\Extra.targets*') -and ($wildStale.Ok -eq $false) -and ($wildStale.Error -like '*shared-src\Linked.cs*') -and ($missing.Ok -eq $false) -and ($missing.Error -like '*resolves to missing*Missing.txt*')) 's37-definition-dir-wildcards-and-missing-items' "$($defStale.Error) | $($wildStale.Error) | $($missing.Error)"
 # R2-F1: case-distinct Theory rows stay distinct in the hash and the debt.
 Assert ((Get-CaseHash @('UI.X.T(s: "a")', 'UI.X.T(s: "A")')) -ne (Get-CaseHash @('UI.X.T(s: "a")'))) 's37-case-hash-is-ordinal'
 $caseRows = @(Get-UnexecutedCaseRows @('UI.X.T(s: "a")', 'UI.X.T(s: "A")') @('UI.X.T(s: "a")') 'fixture')
@@ -652,6 +671,9 @@ $aPending = Resolve-CiAdmission $gPending $false
 $aNone = Resolve-CiAdmission $gNone $false
 $aOverride = Resolve-CiAdmission $gNone $true
 $aRedOverride = Resolve-CiAdmission $gRed $true
+# R3-F1: a green HEAD does not admit a dirty tree.
+$aDirty = Resolve-CiAdmission $gGreen $false 'dirty'
+Assert (($aDirty.Admitted -eq $false) -and ($aDirty.Line -like '*the built tree is dirty, so CI did not check this candidate*')) 's37-green-head-does-not-admit-a-dirty-tree' $aDirty.Line
 Assert (($aGreen.Admitted -eq $true) -and ($aPending.Admitted -eq $false) -and ($aNone.Admitted -eq $false) -and ($aNone.Line -like '*only a green CI population check admits it*') -and ($aOverride.Admitted -eq $true) -and ($aOverride.Line -like '*admitted without CI verification (-AllowUnverifiedCi)') -and ($aRedOverride.Admitted -eq $false)) 's37-only-green-admits' "$($aNone.Line) | $($aOverride.Line)"
 Assert (($gRed.State -eq 'red') -and ($gRed.Line -eq 'CI population check failure on abc1234 (run 42): the population is refused') -and ($gGreen.State -eq 'green') -and ($gPending.State -eq 'pending') -and ($gNone.State -eq 'none') -and ($gNone.Line -like '*no build.yml run for abc1234*')) 's37-red-ci-check-refuses-the-population' "$($gRed.Line) | $($gGreen.Line) | $($gPending.Line) | $($gNone.Line)"
 

@@ -762,7 +762,7 @@ try {
       # the population; red, pending, or unverifiable CI refuses it unless
       # the operator passes -AllowUnverifiedCi, which the report quotes.
       $ciGate = Get-CandidateCiState $Root $script:buildHead
-      $ciGate = Resolve-CiAdmission $ciGate ([bool]$AllowUnverifiedCi)
+      $ciGate = Resolve-CiAdmission $ciGate ([bool]$AllowUnverifiedCi) $treeStart.State
       Write-Output "nightly: $($ciGate.Line)"
       if (-not $ciGate.Admitted) { throw $ciGate.Line }
       $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fpRead.RunAFilter $fpRead.RunBFilter $fpRead.InteractiveFilter
