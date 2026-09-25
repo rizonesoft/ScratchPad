@@ -1134,7 +1134,7 @@ $v1Text = 'Owner: operator. Signed: 2026-09-20. ' + ('The 2026-09-20 run failed 
 $g4 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert (($g4.Unacked -notcontains $runOld) -and (@($g4.Lines | Where-Object { $_ -like '*ack-2026-09-20.md: v1 legacy, acknowledges 1 run(s)*' }).Count -eq 1)) 'ack-v1-before-cutover-counts' ($g4.Lines -join ' | ')
 Assert (($g4.Unacked -contains $runA2) -and (@($g4.Lines | Where-Object { $_ -like '*ack-2026-09-22.md: v1 day file after the 2026-09-21 cutover*' }).Count -eq 1)) 'ack-v1-after-cutover-ignored' ($g4.Lines -join ' | ')
-Assert ((@($g4.Overdue).Count -eq 0) -and (@($g4.Lines | Where-Object { $_ -like "*UNACKED $runA2 (RED 2026-09-22, due 2026-09-25)*" }).Count -eq 1)) 'ack-due-date-shown' ($g4.Lines -join ' | ')
+Assert ((@($g4.Overdue).Count -eq 0) -and (@($g4.Lines | Where-Object { $_ -like "*UNACKED $runA2 (RED 2026-09-22, due 2026-09-25T23:59:59*)*" }).Count -eq 1)) 'ack-due-date-shown' ($g4.Lines -join ' | ')
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'deadbeef'; incidents = 'none' }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b bogus commit' 2>$null
 $g4b = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
@@ -1145,11 +1145,11 @@ Assert (@((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Lin
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'INC-deadbeef'; incidents = 'none' }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b bogus incident' 2>$null
 Assert (@((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Lines | Where-Object { $_ -like '*ack-2026-09-22-b.md: INVALID (finding INC-deadbeef not found)*' }).Count -eq 1) 'ack-invented-incident-fails'
-[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'INC-aaaa1111'; incidents = 'none' }))
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'INC-aaaa1111'; incidents = 'none'; evidence = "D00 T02 $([char]0xA7)9" }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b known incident' 2>$null
 Assert ((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Unacked -notcontains $runA2) 'ack-known-incident-passes'
 $realSha = ((& git -C $repo rev-parse HEAD) | Out-String).Trim()
-[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = $realSha.Substring(0, 12); incidents = 'none' }))
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = $realSha.Substring(0, 12); incidents = 'none'; disposition = 'fixed' }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b real commit' 2>$null
 $g4c = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ($g4c.Unacked -notcontains $runA2) 'ack-real-commit-finding-passes' ($g4c.Lines -join ' | ')
@@ -1167,7 +1167,7 @@ $hr = @($g4e.Lines | Where-Object { $_ -like '*ack-2026-09-22-renamed.md: acknow
 Assert (($hr.Count -eq 1) -and (([regex]::Matches($hr[0], 'Fixture Operator')).Count -eq 3)) 'ack-rename-keeps-history' ($g4e.Lines -join ' | ')
 & git -C $repo mv (Join-Path $ackDir 'ack-2026-09-22-renamed.md') (Join-Path $ackDir 'ack-2026-09-22-a.md') 2>$null; & git -C $repo commit -q -m 'rename back' 2>$null
 $g5 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-28')
-Assert ((($g5.Overdue) -contains $runA2) -and (@($g5.Lines | Where-Object { $_ -like "*OVERDUE ack: $runA2 (RED 2026-09-22, due 2026-09-25, 3 day(s) overdue): escalate operator*" }).Count -eq 1)) 'ack-past-deadline-escalates' ($g5.Lines -join ' | ')
+Assert ((($g5.Overdue) -contains $runA2) -and (@($g5.Lines | Where-Object { $_ -like "*OVERDUE ack: $runA2 (RED 2026-09-22, due 2026-09-25T23:59:59*, 3 day(s) overdue): escalate operator*" }).Count -eq 1)) 'ack-past-deadline-escalates' ($g5.Lines -join ' | ')
 Assert (@($g5.Staged | Where-Object { $_ -like "*STAGED ack-overdue $runA2 *" }).Count -eq 1) 'ack-past-deadline-stages-finding' ($g5.Staged -join ' | ')
 # R1-F1: a newer rewrite of the result makes an ack that matches only the
 # older retained copy stale.
@@ -1199,6 +1199,100 @@ Assert ((@($demInPlace[$runA1].AllIncidents) -join ',') -eq 'INC-bbbb2222') 'ack
 $inPlace = Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1", "$runA2 sha256:$shaA2") @{ incidents = 'INC-aaaa1111' }) $demInPlace
 Assert ($inPlace.Ok -and ((@($inPlace.Acked) -join ',') -eq $runA2) -and ((@($inPlace.Stale) -join ',') -eq $runA1)) 'ack-batch-survives-inplace-rewrite' ("ok $($inPlace.Ok) errs $($inPlace.Errors -join '; ')")
 Assert (-not (Test-AckV2 (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'INC-aaaa1111' }) $demInPlace).Ok) 'ack-extra-incident-still-fails-without-stale'
+# D00 T02 section 31: the acknowledgement lifecycle past the signature.
+$S = [string][char]0xA7
+$s31 = Join-Path $dir 's31'
+$n31 = Join-Path $s31 'build\nightly'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $n31 'retained\c')
+function New-Res31([string]$Name, [hashtable]$Fields) {
+  $o = [ordered]@{ version = 1; stamp = '2026-09-26-023001'; day = '2026-09-26'; identity = '2026-09-26-023001-pid1'; verdict = 'red'; exit = 1; incidents = @() }
+  foreach ($k in $Fields.Keys) { $o[$k] = $Fields[$k] }
+  $path = Join-Path $n31 $Name
+  (ConvertTo-Json ([pscustomobject]$o) -Depth 6) | Set-Content -Path $path -Encoding UTF8
+  return $path
+}
+# Item 5: revisions order copies; equal revisions that differ conflict.
+$r1 = New-Res31 'morning-2026-09-26-023001.result.json' @{ revision = 2; note = 'rev two' }
+$r2 = New-Res31 'retained\c\result.json' @{ revision = 1; note = 'rev one, written later' }
+$dRev = Get-AckDemands @($r1, $r2)
+Assert ($dRev['2026-09-26-023001-pid1'].Current -eq (Get-FileSha256 $r1)) 'ack-revision-orders-copies-not-write-time' "$($dRev['2026-09-26-023001-pid1'].Current)"
+$r3 = New-Res31 'retained\c\result.json' @{ revision = 2; note = 'rev two, different bytes' }
+$dCon = Get-AckDemands @($r1, $r3)
+$vCon = Test-AckV2 (New-Ack @("2026-09-26-023001-pid1 sha256:$(Get-FileSha256 $r1)") @{ incidents = 'none' }) $dCon
+Assert ((-not $vCon.Ok) -and (($vCon.Errors -join '') -like '*conflicting result copies at revision 2*')) 'ack-equal-revision-copies-conflict' ($vCon.Errors -join '; ')
+Remove-Item $r3
+# Item 6: a green retry never erases the earlier RED's demand.
+$rg = New-Res31 'morning-2026-09-26-120000.result.json' @{ identity = '2026-09-26-120000-pid2'; stamp = '2026-09-26-120000'; verdict = 'green'; exit = 0 }
+$dRetry = Get-AckDemands @($r1, $rg)
+Assert ($dRetry.ContainsKey('2026-09-26-023001-pid1') -and (-not $dRetry.ContainsKey('2026-09-26-120000-pid2'))) 'ack-red-then-green-retry-still-demands'
+# Item 7: a skip-all proof run queues apart and never stages.
+$rp = New-Res31 'morning-2026-09-26-090000.result.json' @{ identity = '2026-09-26-090000-pid3'; stamp = '2026-09-26-090000'; legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $false }; 'run-b' = [pscustomobject]@{ ran = $false }; interactive = [pscustomobject]@{ ran = $false } }; soak = [pscustomobject]@{ ran = $false; verdict = 'skipped' } }
+$rf = New-Res31 'morning-2026-09-26-100000.result.json' @{ identity = '2026-09-26-100000-pid4'; stamp = '2026-09-26-100000'; proof = $true }
+# Item 11: an unreadable result raises its own demand.
+'{ not json' | Set-Content -Path (Join-Path $n31 'morning-2026-09-26-110000.result.json') -Encoding UTF8
+$dQ = Get-AckDemands @($r1, $rp, $rf, (Join-Path $n31 'morning-2026-09-26-110000.result.json'))
+Assert (($dQ['2026-09-26-090000-pid3'].Queue -eq 'proof') -and ($dQ['2026-09-26-100000-pid4'].Queue -eq 'proof') -and ($dQ['2026-09-26-023001-pid1'].Queue -eq 'operational')) 'ack-proof-runs-queue-apart'
+Assert ($dQ.ContainsKey('unreadable:morning-2026-09-26-110000.result.json') -and ($dQ['unreadable:morning-2026-09-26-110000.result.json'].Day -eq '2026-09-26')) 'ack-unreadable-result-demands' ((@($dQ.Keys) | Sort-Object) -join ',')
+$emptyAcks = Join-Path $s31 'acks-empty'
+$null = New-Item -ItemType Directory -Force -Path $emptyAcks
+$gQ = Test-Acknowledgements $s31 $emptyAcks $dQ (Get-Date '2026-10-05')
+Assert ((@($gQ.ProofUnacked) -contains '2026-09-26-090000-pid3') -and (@($gQ.Unacked) -notcontains '2026-09-26-090000-pid3') -and (@($gQ.Staged | Where-Object { $_ -like '*090000-pid3*' }).Count -eq 0) -and (@($gQ.Unacked) -contains 'unreadable:morning-2026-09-26-110000.result.json') -and (@($gQ.Lines | Where-Object { $_ -like '*UNREADABLE result morning-2026-09-26-110000.result.json*' }).Count -eq 1)) 'ack-proof-never-escalates-unreadable-does' ($gQ.Lines -join ' | ')
+# Item 8: the SLA shortens the deadline, and the boundary is inclusive.
+$slaDem = [pscustomobject]@{ Id = 'x'; Day = '2026-09-26'; Result = [pscustomobject]@{ startUtc = '2026-09-26T00:30:00.0000000Z'; tz = '+02:00' } }
+$dDef = Get-AckDue $slaDem 0
+$dSla = Get-AckDue $slaDem 4
+Assert (($dDef.ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) -eq '2026-09-29T23:59:59+02:00') -and ($dSla.ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) -eq '2026-09-26T06:30:00+02:00')) 'ack-sla-shortens-the-default' "$dDef / $dSla"
+$slaDemands = @{ 'x' = [pscustomobject]@{ Id = 'x'; Day = '2026-09-26'; Queue = 'operational'; Shas = @(); Incidents = @(); Paths = @(); Current = ''; AllIncidents = @(); Conflict = @(); Unreadable = $false; Result = $slaDem.Result } }
+$atDue = Test-Acknowledgements $s31 $emptyAcks $slaDemands ($dSla.LocalDateTime) { param($r) 4 }
+$pastDue = Test-Acknowledgements $s31 $emptyAcks $slaDemands ($dSla.LocalDateTime.AddSeconds(1)) { param($r) 4 }
+Assert ((@($atDue.Overdue).Count -eq 0) -and (@($pastDue.Overdue) -contains 'x')) 'ack-sla-boundary-inclusive' (($atDue.Lines + $pastDue.Lines) -join ' | ')
+# Item 3: each disposition carries its evidence.
+$evDem = @{ 'r1' = [pscustomobject]@{ Id = 'r1' }; 'r2' = [pscustomobject]@{ Id = 'r2' } }
+Assert ((@(Test-DispositionEvidence @{ disposition = 'fixed'; finding = "D00 T02 ${S}9" } @('r1') $evDem $repo)[0]) -like 'fixed needs a commit*') 'ack-fixed-without-commit-fails'
+Assert ((@(Test-DispositionEvidence @{ disposition = 'duplicate'; finding = "D00 T02 ${S}9"; evidence = 'r1' } @('r1') $evDem $repo)[0]) -like 'duplicate needs evidence naming the other known RED*') 'ack-duplicate-of-itself-fails'
+Assert (@(Test-DispositionEvidence @{ disposition = 'duplicate'; finding = "D00 T02 ${S}9"; evidence = 'r2' } @('r1') $evDem $repo).Count -eq 0) 'ack-duplicate-of-another-run-passes'
+Assert ((@(Test-DispositionEvidence @{ disposition = 'environment'; finding = "D00 T02 ${S}9"; evidence = 'no/such/record.json' } @('r1') $evDem $repo)[0]) -like 'environment needs evidence*') 'ack-environment-without-record-fails'
+# Item 9: a batch covers each incident.
+$b2 = [pscustomobject]@{ Id = 'b2'; Day = '2026-09-26'; Queue = 'operational'; Shas = @('a' * 64); Incidents = @('INC-aaaa1111', 'INC-bbbb2222'); Paths = @(); Current = ('a' * 64); AllIncidents = @(); Conflict = @(); Unreadable = $false; Result = $null }
+$bDem = @{ 'b2' = $b2 }
+$bOne = New-Ack @("b2 sha256:$('a' * 64)") @{ incidents = 'INC-aaaa1111, INC-bbbb2222' }
+$bOne = $bOne.Replace("`n---`n", "`ncover: INC-aaaa1111 filed D00 T02 ${S}29`n---`n")
+Assert (((Test-AckV2 $bOne $bDem).Errors -join '') -like '*leaves INC-bbbb2222 uncovered*') 'ack-batch-uncovered-incident-fails' ((Test-AckV2 $bOne $bDem).Errors -join '; ')
+$bTwo = $bOne.Replace("`n---`n", "`ncover: INC-bbbb2222 fixed abc1234`n---`n")
+Assert ((Test-AckV2 $bTwo $bDem).Ok) 'ack-batch-covered-per-incident-passes' ((Test-AckV2 $bTwo $bDem).Errors -join '; ')
+$bAll = (New-Ack @("b2 sha256:$('a' * 64)") @{ incidents = 'INC-aaaa1111, INC-bbbb2222' }).Replace("`n---`n", "`ncovers-all: yes`n---`n")
+Assert ((Test-AckV2 $bAll $bDem).Ok) 'ack-batch-covers-all-passes'
+# Items 2, 10, 12 over the git fixture: corrective actions, withdrawal,
+# and recovery never closing an investigation.
+Add-Content -Path (Join-Path $repo 'todo\00-workspace\TODO-02-fixture.md') -Value @('', '| Order | Section | Title | Depends | Status |', '| --- | --- | --- | --- | --- |', "|   9   |   ${S}9   | Nine | -- |  [ ]   |", "|   29  |   ${S}29   | Twenty-nine | -- |  [x]   |") -Encoding UTF8
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'rows' 2>$null
+Assert ((Test-SectionStamped $repo "D00 T02 ${S}29") -and (-not (Test-SectionStamped $repo "D00 T02 ${S}9"))) 'ack-section-stamped-reads-the-row'
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-c.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none'; finding = "D00 T02 ${S}9"; due = '2026-09-26' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack c' 2>$null
+$gC = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-28')
+Assert ((@($gC.Corrective | Where-Object { $_ -like '*ack-2026-09-22-a.md*closed (D00 T02*29 stamped)*' }).Count -eq 1) -and (@($gC.Corrective | Where-Object { $_ -like '*ack-2026-09-22-c.md*OVERDUE since 2026-09-26: escalate D00 T02*9*' }).Count -eq 1) -and (@($gC.CorrectiveOverdue) -contains 'ack-2026-09-22-c.md')) 'ack-corrective-actions-escalate-and-close-on-evidence' ($gC.Corrective -join ' | ')
+Start-Sleep -Seconds 1
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-w.md'), (@('---', 'ack-version: 2', "run: $runA2 sha256:$shaA2", 'owner: operator', 'disposition: withdrawn', 'signed: 2026-09-27', '---', '', 'Withdrawn: the filing was wrong.') -join "`n"))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'withdraw c' 2>$null
+$gW = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (($gW.Unacked -contains $runA2) -and (@($gW.Lines | Where-Object { $_ -like "*$runA2 released by ack-2026-09-22-w.md (withdrawn)*" }).Count -eq 1)) 'ack-withdrawal-re-demands' ($gW.Lines -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-w.md') (Join-Path $ackDir 'ack-2026-09-22-c.md') 2>$null; & git -C $repo commit -q -m 'drop c and w' 2>$null
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'build\nightly')
+Write-IncidentLedger @{ 'INC-aaaa1111' = [pscustomobject]@{ id = 'INC-aaaa1111'; test = 'UI.A'; phase = 'run-a'; key = ''; owner = 'operator'; state = 'closed'; firstSeen = 's'; lastSeen = 's'; closedAt = 's2'; closedBy = 'passed in run-a on 3 runs'; occurrences = @([pscustomobject]@{ stamp = 's'; wheres = @('Run A') }); passStreak = 3; lastPassStamp = 's2'; due = ''; finding = '' } } (Join-Path $repo 'build\nightly\incidents.json') | Out-Null
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-i.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none'; finding = 'INC-aaaa1111'; evidence = "D00 T02 ${S}9"; due = '2026-09-30' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack i' 2>$null
+$gI = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert ((@($gI.Corrective | Where-Object { $_ -like '*ack-2026-09-22-i.md (INC-aaaa1111): open, due 2026-09-30*' }).Count -eq 1)) 'ack-recovered-incident-keeps-investigation-open' ($gI.Corrective -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-i.md') 2>$null; & git -C $repo commit -q -m 'drop i' 2>$null
+Remove-Item (Join-Path $repo 'build') -Recurse -Force
+# Item 1: overdue filings dedupe to one row updated per night.
+$of1 = Update-OverdueFindings @() @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-24'
+$of2 = Update-OverdueFindings $of1.Lines @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-25'
+$of3 = Update-OverdueFindings $of2.Lines @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-26'
+$ofSame = Update-OverdueFindings $of3.Lines @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-26'
+$ofAck = Update-OverdueFindings $of3.Lines @() '2026-09-27'
+$rowX = @($of3.Lines | Where-Object { $_ -like '| run-x |*' })
+Assert (($rowX.Count -eq 1) -and ($rowX[0] -eq '| run-x | RED 2026-09-20 | none | 2026-09-24 | 2026-09-26 | 3 | operator | open |') -and $of2.Changed -and (-not $ofSame.Changed) -and (@($ofAck.Lines | Where-Object { $_ -like '| run-x |*| acked |' }).Count -eq 1)) 'ack-overdue-files-once-and-updates' ($of3.Lines -join ' / ')
 # R1-F4: a history git cannot verify never counts.
 [System.IO.File]::WriteAllText((Join-Path $repo '.git\index'), 'not an index')
 $g6 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')

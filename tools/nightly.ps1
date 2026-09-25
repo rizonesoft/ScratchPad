@@ -41,6 +41,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+# A skip-all run is deliberate proof activity (D00 T02 section 31 item 7):
+# recorded before the drift path can force the switches on.
+$proofRun = [bool]($SkipDefault -and $SkipPrimary -and $SkipFenced -and $SkipSoak)
 $SdkDir = Join-Path $Root '.tools\dotnet-win-x64'
 $Dotnet = Join-Path $SdkDir 'dotnet.exe'
 $GateExe = Join-Path $Root 'Bin\ForegroundLog\Debug\ForegroundLog.exe'
@@ -1404,7 +1407,7 @@ $odNames = @()
 try { $odNames = @($quar.Overdue | ForEach-Object { $_.Test }) } catch { }
 $schedVoted = ((@($schedFaults).Count -gt 0) -and $schedulerParented)
 $result = [pscustomobject]@{
-  version = 1; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError
@@ -1437,6 +1440,8 @@ if (-not $selfCheck.Ok) {
   $result.verdict = 'red'; $result.exit = 1
   $failClosedNote = "own result invalid, failing closed ($($selfCheck.Error))"
   $result.note += "; $failClosedNote"
+  # Each rewrite of the run's result is a new revision (section 31 item 5).
+  $result.revision += 1
   Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
   $selfCheck = Test-ResultFile $resultPath -RequireLifecycle
   Write-Output "nightly: own result file invalid, failing closed ($($selfCheck.Error))"
@@ -1451,6 +1456,7 @@ else {
   $failed = $true
   $result.verdict = 'red'; $result.exit = 1
   $result.note += "; report/result disagree: $($agree.Breaks -join '; ')"
+  $result.revision += 1
   Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
   foreach ($b in $agree.Breaks) { $report += "- Agreement RED: $b" }
 }
@@ -1463,8 +1469,13 @@ $exitCode = if ($failed) { 1 } else { 0 }
 $ackResultFiles = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $ackResultFiles += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $ackDemands = Get-AckDemands $ackResultFiles
-$ackCheck = Test-Acknowledgements $Root (Join-Path $Root 'docs/nightly-acks') $ackDemands (Get-Date)
+# Section 31 item 8: §24's severity SLA (the strictest of the run's
+# outcome labels) shortens the day-plus-three default where it is shorter.
+$ackSla = { param($r) $h = @(@(Get-OutcomeLabels $r) | ForEach-Object { (Get-AlertRoute $_).SlaHours } | Where-Object { $_ -gt 0 }); if ($h.Count -gt 0) { ($h | Measure-Object -Minimum).Minimum } else { 0 } }
+$ackCheck = Test-Acknowledgements $Root (Join-Path $Root 'docs/nightly-acks') $ackDemands (Get-Date) $ackSla
 $report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { "$($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue: $($ackCheck.Unacked -join ', ')" })"
+if (@($ackCheck.ProofUnacked).Count -gt 0) { $report += "- Proof queue: $(@($ackCheck.ProofUnacked).Count) unacked proof, simulation, or backfill run(s) (never escalated)" }
+if (@($ackCheck.CorrectiveOverdue).Count -gt 0) { $report += "- Corrective actions overdue: $(@($ackCheck.CorrectiveOverdue) -join ', ')" }
 $ackSection = @('', '## Acknowledgements', '')
 if (@($ackCheck.Lines).Count -eq 0) { $ackSection += '(no RED runs and no ack files)' } else { $ackSection += $ackCheck.Lines }
 if (@($ackCheck.Staged).Count -gt 0) { $ackSection += @('', 'Staged filings (ack overdue):') + $ackCheck.Staged }

@@ -1946,6 +1946,9 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
     if (($null -eq $o.$f) -or ("$($o.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result missing $f" } }
   }
   if (@('green', 'red', 'stood-down', 'cancelled') -notcontains "$($o.verdict)") { return [pscustomobject]@{ Ok = $false; Error = "unknown verdict $($o.verdict)" } }
+  # The revision orders a run's copies (D00 T02 section 31 item 5):
+  # optional (older results predate it), a positive whole number when present.
+  if ((@($o.PSObject.Properties.Name) -contains 'revision') -and ("$($o.revision)" -notmatch '^[1-9]\d*$')) { return [pscustomobject]@{ Ok = $false; Error = "result revision '$($o.revision)' is not a positive whole number" } }
   $ex = 0
   try { $ex = [int]$o.exit } catch { return [pscustomobject]@{ Ok = $false; Error = 'result exit not a number' } }
   if ((@('green', 'stood-down') -contains "$($o.verdict)") -and ($ex -ne 0)) { return [pscustomobject]@{ Ok = $false; Error = "result verdict $($o.verdict) contradicts exit $ex" } }
@@ -2665,9 +2668,15 @@ function Test-AckFile([string]$Path, [string]$Day) {
 # structured disposition, and counts only once committed, so git
 # history is its append-only integrity record. v1 day-keyed files
 # (Test-AckFile) stay valid only for runs on or before the cutover day.
+# D00 T02 §31 carries the lifecycle past the signature: a result's own
+# revision orders its copies, proof runs queue apart, deadlines are
+# timestamps that §24's SLAs can shorten, each disposition names its
+# evidence, a batch covers each incident, the latest commit governs a
+# run (withdrawn releases it), unreadable results demand, and a signed
+# RED opens a corrective action that closes only on evidence.
 $script:AckV1Cutover = '2026-09-21'
 $script:AckDueDays = 3
-$script:AckDispositions = @('fixed', 'filed', 'quarantined', 'environment', 'expected', 'duplicate')
+$script:AckDispositions = @('fixed', 'filed', 'quarantined', 'environment', 'expected', 'duplicate', 'withdrawn')
 
 function Get-FileSha256([string]$Path) {
   $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -2676,67 +2685,110 @@ function Get-FileSha256([string]$Path) {
   } finally { $sha.Dispose() }
 }
 
+function Test-ProofResult($Result) {
+  # Deliberate test activity (section 31 item 7): a result marked proof,
+  # simulated, or backfilled, or one whose every leg and the soak were
+  # skipped (a skip-all proof run from before the flag existed).
+  foreach ($flag in @('proof', 'simulated', 'backfill', 'metricsBackfill')) {
+    try { if ([bool]$Result.$flag) { return $true } } catch { }
+  }
+  try {
+    $legsRan = @(@('run-a', 'run-b', 'interactive') | Where-Object { [bool]$Result.legs.$_.ran }).Count
+    $soakRan = [bool]$Result.soak.ran
+    if (($null -ne $Result.legs) -and ($legsRan -eq 0) -and (-not $soakRan) -and ("$($Result.buildError)" -eq '')) { return $true }
+  } catch { }
+  return $false
+}
+
 function Get-AckDemands($ResultFiles) {
   # One demand per RED or cancelled run identity (D00 T02 §23 items 1
   # and 4): retained copies, reruns, and re-emitted results of one run
-  # dedupe onto its identity, carrying every checksum seen for it (the
-  # checksum covers the schema version field, so the key is run,
-  # checksum, and version). $ResultFiles are paths; unreadable files
-  # are skipped (the result gate reds them elsewhere). Returns a
-  # hashtable identity -> Day, Shas, Paths, Current (the checksum of
-  # the most recently written copy), Incidents (that copy's INC ids),
-  # and AllIncidents (the union across copies).
+  # dedupe onto its identity, carrying every checksum seen for it. The
+  # checksum covers the result only (notification state lives in
+  # §24's own files and never enters it, so a notification version bump
+  # leaves every ack valid; section 31 item 4), and the demand records
+  # the result's schema version beside it.
+  # Section 31 item 5: a copy's `revision` field orders the copies of a
+  # run; the highest revision is current, and two copies at the same
+  # revision with different checksums are a CONFLICT no ack can resolve.
+  # Copies without the field (results written before it) keep the
+  # write-time order they always had.
+  # Section 31 item 11: an unreadable result raises its own demand
+  # (`unreadable:<file>`), never silently dropping out of the gate.
+  # Returns identity -> Id, Day, Queue (operational or proof), Shas,
+  # Paths, Current, Incidents, AllIncidents, Conflict, Unreadable,
+  # SchemaVersion, Result, Revision.
   $demands = @{}
   foreach ($p in @($ResultFiles)) {
     if (-not (Test-Path $p -PathType Leaf)) { continue }
     $r = $null
-    try { $r = Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
-    if ($null -eq $r) { continue }
+    $readErr = ''
+    try { $r = Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $readErr = $_.Exception.Message }
+    if (($null -eq $r) -or ($readErr -ne '') -or ("$($r.verdict)" -eq '')) {
+      $name = Split-Path -Leaf $p
+      $id = "unreadable:$name"
+      $dm = [regex]::Match($name, '(\d{4}-\d{2}-\d{2})')
+      $day = if ($dm.Success) { $dm.Groups[1].Value } else { '' }
+      $sha = Get-FileSha256 $p
+      if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = $day; Queue = 'operational'; Shas = @($sha); Incidents = @(); Paths = @($p); Current = $sha; CurrentTime = [datetime]::MinValue; AllIncidents = @(); Conflict = @(); Unreadable = $true; SchemaVersion = ''; Result = $null; Revision = 0 } }
+      continue
+    }
     if (@('red', 'cancelled') -notcontains "$($r.verdict)") { continue }
     $id = "$($r.identity)"
     if ($id -eq '') { $id = "$($r.stamp)" }
     if ($id -eq '') { continue }
-    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Shas = @(); Incidents = @(); Paths = @(); Current = ''; CurrentTime = [datetime]::MinValue; AllIncidents = @() } }
+    $queue = if (Test-ProofResult $r) { 'proof' } else { 'operational' }
+    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Queue = $queue; Shas = @(); Incidents = @(); Paths = @(); Current = ''; CurrentTime = [datetime]::MinValue; AllIncidents = @(); Conflict = @(); Unreadable = $false; SchemaVersion = "$($r.version)"; Result = $r; Revision = -1 } }
     $d = $demands[$id]
     $sha = Get-FileSha256 $p
     if ($d.Shas -notcontains $sha) { $d.Shas += $sha }
     $d.Paths += $p
-    # The most recently written copy is the run's current result: an ack
-    # must match it, so an older retained copy can never keep a changed
-    # result acknowledged.
     $copyInc = @()
     foreach ($ln in @($r.incidents)) {
       $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8})')
       if ($m.Success -and ($copyInc -notcontains $m.Groups[1].Value)) { $copyInc += $m.Groups[1].Value }
     }
     foreach ($i in $copyInc) { if ($d.AllIncidents -notcontains $i) { $d.AllIncidents += $i } }
-    # Incidents follow the current copy, so a rewrite that removes or
-    # corrects an incident is acknowledged against what it says now.
+    $hasRev = @($r.PSObject.Properties.Name) -contains 'revision'
+    $rev = 0
+    if ($hasRev) { try { $rev = [int]$r.revision } catch { $rev = 0 } }
     $wt = (Get-Item -LiteralPath $p).LastWriteTimeUtc
-    if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc }
+    if ($hasRev -and ($rev -gt 0)) {
+      if ($rev -gt $d.Revision) { $d.Revision = $rev; $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc; $d.Result = $r; $d.Conflict = @() }
+      elseif (($rev -eq $d.Revision) -and ($sha -ne $d.Current)) { if ($d.Conflict -notcontains $sha) { $d.Conflict += $sha } }
+    } elseif ($d.Revision -le 0) {
+      # Legacy copies: the most recently written is current, so an older
+      # retained copy can never keep a changed result acknowledged.
+      if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc; $d.Result = $r; $d.Revision = 0 }
+    }
   }
   return $demands
 }
 
 function Read-AckFrontmatter([string]$Text) {
   # The leading `---` block of an ack file: `key: value` lines, with
-  # `run:` repeatable. Returns Ok, Fields (last value per key), Runs
-  # (each `run:` value), and Error.
+  # `run:` and `cover:` repeatable. Returns Ok, Fields (last value per
+  # key), Runs (each `run:` value), Covers (each `cover:` value), Error.
   $lines = @("$Text" -split "`r?`n")
-  if (($lines.Count -lt 3) -or ($lines[0].Trim() -ne '---')) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Error = 'no frontmatter' } }
+  if (($lines.Count -lt 3) -or ($lines[0].Trim() -ne '---')) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Covers = @(); Error = 'no frontmatter' } }
   $fields = @{}
   $runs = @()
+  $covers = @()
   $closed = $false
   for ($i = 1; $i -lt $lines.Count; $i++) {
     $ln = $lines[$i]
     if ($ln.Trim() -eq '---') { $closed = $true; break }
     if ($ln.Trim() -eq '') { continue }
     $m = [regex]::Match($ln, '^([a-z][a-z0-9-]*):\s*(.*?)\s*$')
-    if (-not $m.Success) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Error = "frontmatter line malformed: $ln" } }
-    if ($m.Groups[1].Value -eq 'run') { $runs += $m.Groups[2].Value } else { $fields[$m.Groups[1].Value] = $m.Groups[2].Value }
+    if (-not $m.Success) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Covers = @(); Error = "frontmatter line malformed: $ln" } }
+    switch ($m.Groups[1].Value) {
+      'run' { $runs += $m.Groups[2].Value }
+      'cover' { $covers += $m.Groups[2].Value }
+      default { $fields[$m.Groups[1].Value] = $m.Groups[2].Value }
+    }
   }
-  if (-not $closed) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Error = 'frontmatter not closed' } }
-  return [pscustomobject]@{ Ok = $true; Fields = $fields; Runs = $runs; Error = '' }
+  if (-not $closed) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Covers = @(); Error = 'frontmatter not closed' } }
+  return [pscustomobject]@{ Ok = $true; Fields = $fields; Runs = $runs; Covers = $covers; Error = '' }
 }
 
 function Test-AckV2([string]$Text, [hashtable]$Demands) {
@@ -2745,22 +2797,27 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
   # checksum matches a copy of its result, the incident list equals the
   # run's incident ids, and the disposition is structured (enum,
   # corrective owner, due date on or after signing, linked finding).
-  # Prose length proves nothing, so it is never checked. Returns Ok,
-  # Acked (run ids), Stale (runs whose result changed after the ack),
-  # and Errors.
+  # A `withdrawn` ack names its runs, owner, and signing day only: it
+  # releases them (section 31 item 10). A run whose copies conflict at
+  # one revision cannot be acked (item 5). An ack naming more than one
+  # incident covers each with a `cover:` line or says `covers-all: yes`
+  # (item 9). Returns Ok, Acked, Stale, Errors, Disposition.
   $fm = Read-AckFrontmatter $Text
-  if (-not $fm.Ok) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = @(); Errors = @($fm.Error) } }
+  if (-not $fm.Ok) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = @(); Errors = @($fm.Error); Disposition = '' } }
   $f = $fm.Fields
   $errs = @()
+  $disp = "$($f['disposition'])"
+  $withdrawn = ($disp -eq 'withdrawn')
   if ("$($f['ack-version'])" -ne '2') { $errs += "ack-version must be 2 (got '$($f['ack-version'])')" }
-  foreach ($req in @('owner', 'disposition', 'corrective-owner', 'due', 'finding', 'signed', 'incidents')) {
+  $required = if ($withdrawn) { @('owner', 'disposition', 'signed') } else { @('owner', 'disposition', 'corrective-owner', 'due', 'finding', 'signed', 'incidents') }
+  foreach ($req in $required) {
     if (-not $f.ContainsKey($req) -or ("$($f[$req])" -eq '')) { $errs += "missing $req" }
   }
   $placeholder = '^(TBD|TODO|TBS|XXX|none|n/a|unknown|\?)$'
   foreach ($who in @('owner', 'corrective-owner')) {
     if ($f.ContainsKey($who) -and ("$($f[$who])" -match $placeholder)) { $errs += "$who is a placeholder" }
   }
-  if ($f.ContainsKey('disposition') -and ($script:AckDispositions -notcontains "$($f['disposition'])")) { $errs += "disposition '$($f['disposition'])' not one of $($script:AckDispositions -join ', ')" }
+  if ($f.ContainsKey('disposition') -and ($script:AckDispositions -notcontains $disp)) { $errs += "disposition '$disp' not one of $($script:AckDispositions -join ', ')" }
   $signed = [datetime]::MinValue
   $due = [datetime]::MinValue
   $signedOk = $f.ContainsKey('signed') -and [datetime]::TryParseExact("$($f['signed'])", 'yyyy-MM-dd', $null, 'None', [ref]$signed)
@@ -2768,7 +2825,8 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
   if ($f.ContainsKey('signed') -and -not $signedOk) { $errs += "signed is not a YYYY-MM-DD date" }
   if ($f.ContainsKey('due') -and -not $dueOk) { $errs += "due is not a YYYY-MM-DD date" }
   if ($signedOk -and $dueOk -and ($due -lt $signed)) { $errs += 'due precedes signed' }
-  if ($f.ContainsKey('finding') -and ("$($f['finding'])" -notmatch '^(D\d{2} T\d{2} \u00A7\d+|INC-[0-9a-f]{8}|[0-9a-f]{7,40})$')) { $errs += "finding '$($f['finding'])' is not a section ref, incident id, or commit" }
+  $findingRe = '^(D\d{2} T\d{2} \u00A7\d+|INC-[0-9a-f]{8}|[0-9a-f]{7,40})$'
+  if ($f.ContainsKey('finding') -and ("$($f['finding'])" -notmatch $findingRe)) { $errs += "finding '$($f['finding'])' is not a section ref, incident id, or commit" }
   if ($fm.Runs.Count -eq 0) { $errs += 'names no run' }
   $acked = @()
   $stale = @()
@@ -2782,10 +2840,11 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
     $named += $id
     if (-not $Demands.ContainsKey($id)) { $errs += "run $id is not a known RED"; continue }
     $d = $Demands[$id]
+    if (@($d.Conflict).Count -gt 0) { $errs += "run $id has conflicting result copies at revision $($d.Revision) ($(@(@($d.Current) + @($d.Conflict)) | ForEach-Object { $_.Substring(0, 12) }) -join ', '); resolve the copies before acking"; continue }
     if ($d.Current -ne $sha) { $stale += $id; continue }
     $acked += $id
   }
-  if ($f.ContainsKey('incidents') -and ($errs.Count -eq 0)) {
+  if ((-not $withdrawn) -and $f.ContainsKey('incidents') -and ($errs.Count -eq 0)) {
     $listed = @()
     if ("$($f['incidents'])" -ne 'none') { $listed = @("$($f['incidents'])" -split '[,\s]+' | Where-Object { $_ -ne '' }) }
     $want = @()
@@ -2800,9 +2859,26 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
     if ($stale.Count -eq 0) { $extra = @($listed | Where-Object { $want -notcontains $_ }) }
     if ($missing.Count -gt 0) { $errs += "incidents missing: $($missing -join ', ')" }
     if ($extra.Count -gt 0) { $errs += "incidents not in the acked runs: $($extra -join ', ')" }
+    # Per-incident coverage (section 31 item 9).
+    if ($listed.Count -gt 1) {
+      if ("$($f['covers-all'])" -eq 'yes') { }
+      else {
+        $covered = @{}
+        foreach ($c in @($fm.Covers)) {
+          $cm = [regex]::Match("$c", '^(INC-[0-9a-f]{8})\s+(\S+)\s+(.+?)\s*$')
+          if (-not $cm.Success) { $errs += "cover line malformed: $c"; continue }
+          if ($listed -notcontains $cm.Groups[1].Value) { $errs += "cover names $($cm.Groups[1].Value), which the ack does not list"; continue }
+          if (($script:AckDispositions -notcontains $cm.Groups[2].Value) -or ($cm.Groups[2].Value -eq 'withdrawn')) { $errs += "cover $($cm.Groups[1].Value) disposition '$($cm.Groups[2].Value)' unknown"; continue }
+          if ($cm.Groups[3].Value -notmatch $findingRe) { $errs += "cover $($cm.Groups[1].Value) finding '$($cm.Groups[3].Value)' is not a section ref, incident id, or commit"; continue }
+          $covered[$cm.Groups[1].Value] = $true
+        }
+        $uncovered = @($listed | Where-Object { -not $covered.ContainsKey($_) })
+        if ($uncovered.Count -gt 0) { $errs += "batch of $($listed.Count) incidents leaves $($uncovered -join ', ') uncovered (add a cover line per incident or covers-all: yes)" }
+      }
+    }
   }
-  if ($errs.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $stale; Errors = $errs } }
-  return [pscustomobject]@{ Ok = $true; Acked = $acked; Stale = $stale; Errors = @() }
+  if ($errs.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $stale; Errors = $errs; Disposition = $disp } }
+  return [pscustomobject]@{ Ok = $true; Acked = $acked; Stale = $stale; Errors = @(); Disposition = $disp }
 }
 
 function Get-AckHistory([string]$Root, [string]$RelPath) {
@@ -2810,7 +2886,7 @@ function Get-AckHistory([string]$Root, [string]$RelPath) {
   # counts only once committed with the working copy equal to HEAD, and
   # its history is the git log of the file (trunk never amends or
   # force-pushes, so the log only grows). Returns Committed, Dirty,
-  # Entries (commit, author, date), and Error.
+  # Entries (commit, author, date, newest first), and Error.
   $out = [pscustomobject]@{ Committed = $false; Dirty = $false; Entries = @(); Error = '' }
   $eap = $ErrorActionPreference
   try {
@@ -2842,39 +2918,121 @@ function Test-FindingExists([string]$Root, [string]$Finding, [string[]]$KnownInc
   # resolves in the repository. Syntax alone links nothing.
   $m = [regex]::Match($Finding, '^D(\d{2}) T(\d{2}) \u00A7(\d+)$')
   if ($m.Success) {
-    $files = @(Get-ChildItem (Join-Path $Root 'todo') -Directory -Filter "$($m.Groups[1].Value)-*" -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.FullName -File -Filter "TODO-$($m.Groups[2].Value)-*.md" -ErrorAction SilentlyContinue })
-    foreach ($f in $files) {
+    foreach ($f in @(Get-SectionTodoFiles $Root $m.Groups[1].Value $m.Groups[2].Value)) {
       foreach ($ln in [System.IO.File]::ReadAllLines($f.FullName)) { if ($ln -match "^## $($m.Groups[3].Value)\. ") { return $true } }
     }
     return $false
   }
   if ($Finding -match '^INC-[0-9a-f]{8}$') { return (@($KnownIncidents) -contains $Finding) }
-  if ($Finding -match '^[0-9a-f]{7,40}$') {
-    # Windows PowerShell turns native stderr into a terminating error
-    # under Stop even when redirected, so the probe runs with the
-    # preference scoped to Continue and reads only the exit code.
-    $found = $false
-    $eap = $ErrorActionPreference
-    try { $ErrorActionPreference = 'Continue'; $null = git -C $Root cat-file -e "$Finding^{commit}" 2>&1; $found = ($LASTEXITCODE -eq 0) } catch { $found = $false } finally { $ErrorActionPreference = $eap }
-    return $found
+  if ($Finding -match '^[0-9a-f]{7,40}$') { return (Test-CommitExists $Root $Finding) }
+  return $false
+}
+
+function Get-SectionTodoFiles([string]$Root, [string]$Domain, [string]$Todo) {
+  return @(Get-ChildItem (Join-Path $Root 'todo') -Directory -Filter "$Domain-*" -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.FullName -File -Filter "TODO-$Todo-*.md" -ErrorAction SilentlyContinue })
+}
+
+function Test-CommitExists([string]$Root, [string]$Sha) {
+  # Windows PowerShell turns native stderr into a terminating error
+  # under Stop even when redirected, so the probe runs with the
+  # preference scoped to Continue and reads only the exit code.
+  $found = $false
+  $eap = $ErrorActionPreference
+  try { $ErrorActionPreference = 'Continue'; $null = git -C $Root cat-file -e "$Sha^{commit}" 2>&1; $found = ($LASTEXITCODE -eq 0) } catch { $found = $false } finally { $ErrorActionPreference = $eap }
+  return $found
+}
+
+function Test-SectionStamped([string]$Root, [string]$Ref) {
+  # True when the section's Implementation Order row reads [x] (its
+  # stamp landed): the evidence that closes a corrective action.
+  $m = [regex]::Match($Ref, '^D(\d{2}) T(\d{2}) \u00A7(\d+)$')
+  if (-not $m.Success) { return $false }
+  foreach ($f in @(Get-SectionTodoFiles $Root $m.Groups[1].Value $m.Groups[2].Value)) {
+    foreach ($ln in [System.IO.File]::ReadAllLines($f.FullName)) {
+      if ($ln -match "^\|\s*\d+\s*\|\s*\u00A7$($m.Groups[3].Value)\s*\|.*\|\s*\[x\]\s*\|\s*$") { return $true }
+    }
   }
   return $false
 }
 
-function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Demands, [datetime]$Today) {
-  # The whole gate (D00 T02 §23): v2 acks (committed, clean, valid)
-  # plus v1 day files for runs on or before the cutover acknowledge
-  # demands; everything else stays unacked with its due date, and a
-  # past-due demand escalates and stages a finding stub. Returns Ok,
-  # Unacked (ids), Lines (report section), Staged (Filings stubs),
-  # Overdue (ids).
-  $acked = @{}
+function Test-DispositionEvidence($Fields, [string[]]$Runs, [hashtable]$Demands, [string]$Root) {
+  # Each disposition names its evidence (section 31 item 3), carried by
+  # `finding` or an `evidence:` field: fixed a commit, filed a section,
+  # quarantined a test on the quarantine list, environment a record
+  # that exists in the tree, expected the proof section it served,
+  # duplicate the other run it repeats. Returns error strings.
+  $disp = "$($Fields['disposition'])"
+  $finding = "$($Fields['finding'])"
+  $ev = "$($Fields['evidence'])"
+  $both = @($finding, $ev) | Where-Object { $_ -ne '' }
+  $isCommit = { param($x) ($x -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $x) }
+  $isSection = { param($x) $x -match '^D\d{2} T\d{2} \u00A7\d+$' }
+  switch ($disp) {
+    'fixed' { if (@($both | Where-Object { & $isCommit $_ }).Count -eq 0) { return @('fixed needs a commit that exists (finding or evidence)') } }
+    'filed' { if (@($both | Where-Object { & $isSection $_ }).Count -eq 0) { return @('filed needs a section ref (finding or evidence)') } }
+    'expected' { if (@($both | Where-Object { & $isSection $_ }).Count -eq 0) { return @('expected needs the proof section it served (finding or evidence)') } }
+    'quarantined' {
+      $qPath = Join-Path $Root 'docs/soak-and-quarantine.md'
+      $listed = $false
+      if (($ev -ne '') -and (Test-Path $qPath)) { $listed = ((Get-Content $qPath -Raw -Encoding UTF8) -match [regex]::Escape("``$ev``")) }
+      if (-not $listed) { return @("quarantined needs evidence naming a test on the quarantine list (got '$ev')") }
+    }
+    'environment' { if (($ev -eq '') -or (-not (Test-Path (Join-Path $Root $ev)))) { return @("environment needs evidence naming the preflight or block record in the tree (got '$ev')") } }
+    'duplicate' { if (($ev -eq '') -or (-not $Demands.ContainsKey($ev)) -or (@($Runs) -contains $ev)) { return @("duplicate needs evidence naming the other known RED it repeats (got '$ev')") } }
+  }
+  return @()
+}
+
+function Get-AckDue($Demand, [int]$SlaHours = 0) {
+  # The deadline as an explicit timestamp (section 31 item 8): the end
+  # of the run's day plus $script:AckDueDays (23:59:59 in the run's own
+  # zone, the boundary inclusive), shortened to the run start plus the
+  # §24 severity SLA when that comes first. Returns a DateTimeOffset, or
+  # $null when the day cannot be read.
+  $dayDate = [datetime]::MinValue
+  if (-not [datetime]::TryParseExact("$($Demand.Day)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$dayDate)) { return $null }
+  $offset = [System.TimeZoneInfo]::Local.GetUtcOffset($dayDate)
+  $r = $Demand.Result
+  try {
+    $tzm = [regex]::Match("$($r.tz)", '^([+-])(\d{2}):(\d{2})$')
+    if ($tzm.Success) { $offset = New-TimeSpan -Hours ([int]$tzm.Groups[2].Value) -Minutes ([int]$tzm.Groups[3].Value); if ($tzm.Groups[1].Value -eq '-') { $offset = $offset.Negate() } }
+  } catch { }
+  $due = [DateTimeOffset]::new($dayDate.AddDays($script:AckDueDays).AddHours(23).AddMinutes(59).AddSeconds(59), $offset)
+  if ($SlaHours -gt 0) {
+    $start = $null
+    try { if ($r.startUtc -is [datetime]) { $start = [DateTimeOffset]::new(([datetime]$r.startUtc).ToUniversalTime()) } elseif ("$($r.startUtc)" -ne '') { $start = [DateTimeOffset]::Parse("$($r.startUtc)", [System.Globalization.CultureInfo]::InvariantCulture) } } catch { $start = $null }
+    if ($null -eq $start) { $start = [DateTimeOffset]::new($dayDate, $offset) }
+    $sla = $start.AddHours($SlaHours).ToOffset($offset)
+    if ($sla -lt $due) { $due = $sla }
+  }
+  return $due
+}
+
+function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Demands, [datetime]$Today, [scriptblock]$SlaFor = $null) {
+  # The whole gate (D00 T02 §23, §31): v2 acks (committed, clean, valid,
+  # evidenced) plus v1 day files for runs on or before the cutover
+  # acknowledge demands. Per run the ack with the newest commit governs,
+  # and a governing `withdrawn` releases the run (item 10). Everything
+  # else stays unacked with its due timestamp; an operational demand
+  # past due escalates and stages a filing for tools/NightlyAck.ps1
+  # -FileOverdue (item 1), while proof, simulation, and backfill runs
+  # queue apart and never stage (item 7). $Today is the instant the gate
+  # judges (the run's clock); $SlaFor maps a result to §24's SLA hours.
+  # A governing non-withdrawn ack opens a corrective action that closes
+  # only on evidence (item 2): its commit finding, its section stamped,
+  # or a `closed:` commit; an incident finding closes only on `closed:`,
+  # never on the incident's recovery (item 12). Returns Ok (operational
+  # queue acked), Unacked, ProofUnacked, Lines, Staged, Overdue,
+  # Corrective, CorrectiveOverdue.
   $lines = @()
   $staged = @()
   $knownIncidents = @()
   foreach ($id in @($Demands.Keys)) { $knownIncidents += @($Demands[$id].Incidents) }
   $ledgerRead = Read-IncidentLedger (Join-Path $Root 'build\nightly\incidents.json')
   if ($ledgerRead.Ok) { $knownIncidents += @($ledgerRead.Incidents.Keys) }
+  $now = [DateTimeOffset]::new($Today)
+  $v1Acked = @{}
+  $claims = @{}
   foreach ($file in @(Get-ChildItem $AckDir -Filter 'ack-*.md' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
     $rel = ($file.FullName.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
     $text = ''
@@ -2885,7 +3043,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       if ([string]::CompareOrdinal($day, $script:AckV1Cutover) -gt 0) { $lines += "- $($file.Name): v1 day file after the $($script:AckV1Cutover) cutover (ignored; write a v2 ack naming each run)"; continue }
       if (-not (Test-AckFile $file.FullName $day).Ok) { $lines += "- $($file.Name): v1 ack invalid (ignored)"; continue }
       $n = 0
-      foreach ($id in @($Demands.Keys)) { if ($Demands[$id].Day -eq $day) { $acked[$id] = "v1 $($file.Name)"; $n++ } }
+      foreach ($id in @($Demands.Keys)) { if ($Demands[$id].Day -eq $day) { $v1Acked[$id] = "v1 $($file.Name)"; $n++ } }
       $lines += "- $($file.Name): v1 legacy, acknowledges $n run(s) of $day"
       continue
     }
@@ -2895,35 +3053,113 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     if ($hist.Dirty) { $lines += "- $($file.Name): edited since its last commit (ignored until committed)"; continue }
     $v = Test-AckV2 $text $Demands
     $histText = (@($hist.Entries | ForEach-Object { "$($_.Commit.Substring(0, 7)) $($_.Author) $($_.Date)" }) -join '; ')
-    if ($v.Ok) {
-      # The linked finding must exist: an invented section, incident, or
-      # commit links no corrective work.
-      $fnd = "$((Read-AckFrontmatter $text).Fields['finding'])"
-      if (-not (Test-FindingExists $Root $fnd $knownIncidents)) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding $fnd not found") } }
+    $fm = Read-AckFrontmatter $text
+    if ($v.Ok -and ($v.Disposition -ne 'withdrawn')) {
+      # The linked finding must exist, and the disposition must carry its
+      # own evidence (section 31 item 3).
+      $fnd = "$($fm.Fields['finding'])"
+      if (-not (Test-FindingExists $Root $fnd $knownIncidents)) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding $fnd not found"); Disposition = $v.Disposition } }
+      else {
+        $evErr = @(Test-DispositionEvidence $fm.Fields @($v.Acked) $Demands $Root)
+        if ($evErr.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition } }
+      }
     }
     if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
-    foreach ($id in $v.Acked) { $acked[$id] = $file.Name }
+    $when = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Date)" } else { '' }
+    foreach ($id in $v.Acked) {
+      if (-not $claims.ContainsKey($id)) { $claims[$id] = @() }
+      $claims[$id] += [pscustomobject]@{ File = $file.Name; When = $when; Disposition = $v.Disposition; Fields = $fm.Fields }
+    }
     $staleNote = if ($v.Stale.Count -gt 0) { "; STALE for $($v.Stale -join ', ') (result changed after the ack: re-ack with the new checksum)" } else { '' }
     $ackedText = if (@($v.Acked).Count -gt 0) { $v.Acked -join ', ' } else { 'nothing current' }
-    $lines += "- $($file.Name): acknowledges $ackedText$staleNote; history $histText"
+    $verb = if ($v.Disposition -eq 'withdrawn') { 'withdraws' } else { 'acknowledges' }
+    $lines += "- $($file.Name): $verb $ackedText$staleNote; history $histText"
   }
+  # The newest commit governs each run (section 31 item 10).
+  $acked = @{}
+  $governing = @{}
+  foreach ($id in @($claims.Keys)) {
+    $g = @($claims[$id] | Sort-Object @{ Expression = { [DateTimeOffset]::Parse($_.When, [System.Globalization.CultureInfo]::InvariantCulture) } }, File | Select-Object -Last 1)[0]
+    if (@($claims[$id]).Count -gt 1) { $lines += "- $id governed by $($g.File) (newest of $(@($claims[$id]).Count) acks)" }
+    if ($g.Disposition -eq 'withdrawn') { $lines += "- $id released by $($g.File) (withdrawn): demanded again"; continue }
+    $acked[$id] = $g.File
+    $governing[$g.File] = $g
+  }
+  foreach ($id in @($v1Acked.Keys)) { if (-not $claims.ContainsKey($id)) { $acked[$id] = $v1Acked[$id] } }
+  # Corrective actions (items 2 and 12).
+  $corrective = @()
+  $corrOverdue = @()
+  foreach ($file in @($governing.Keys | Sort-Object)) {
+    $f = $governing[$file].Fields
+    $fnd = "$($f['finding'])"
+    $closedBy = ''
+    $closedField = "$($f['closed'])"
+    if (($closedField -ne '') -and ($closedField -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $closedField)) { $closedBy = "closed: $closedField" }
+    elseif (($fnd -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $fnd)) { $closedBy = "commit $fnd" }
+    elseif (($fnd -match '^D\d{2} T\d{2} \u00A7\d+$') -and (Test-SectionStamped $Root $fnd)) { $closedBy = "$fnd stamped" }
+    if ($closedBy -ne '') { $corrective += "- CORRECTIVE $file ($fnd): closed ($closedBy)"; continue }
+    $dueDate = [datetime]::MinValue
+    $hasDue = [datetime]::TryParseExact("$($f['due'])", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$dueDate)
+    if ($hasDue -and ($Today.Date -gt $dueDate.Date)) {
+      $corrOverdue += $file
+      $corrective += "- CORRECTIVE $file ($fnd): OVERDUE since $($f['due']): escalate $($f['corrective-owner'])$(if ($fnd -match '^INC-') { ' (an incident closes its investigation only on a closed: commit, never on recovery)' })"
+    } else {
+      $corrective += "- CORRECTIVE $file ($fnd): open, due $($f['due']) (owner $($f['corrective-owner']))"
+    }
+  }
+  $lines += $corrective
   $unacked = @()
+  $proofUnacked = @()
   $overdue = @()
   foreach ($id in @($Demands.Keys | Sort-Object)) {
     if ($acked.ContainsKey($id)) { continue }
-    $unacked += $id
     $d = $Demands[$id]
-    $dayDate = [datetime]::MinValue
-    if (-not [datetime]::TryParseExact("$($d.Day)", 'yyyy-MM-dd', $null, 'None', [ref]$dayDate)) { $lines += "- UNACKED $id (day unreadable: escalate operator)"; $overdue += $id; continue }
-    $dueDate = $dayDate.AddDays($script:AckDueDays)
-    $late = ($Today.Date - $dueDate.Date).Days
-    if ($late -gt 0) {
+    $isProof = ($d.Queue -eq 'proof')
+    if ($isProof) { $proofUnacked += $id } else { $unacked += $id }
+    $tag = if ($isProof) { ' (proof queue)' } else { '' }
+    $what = if ($d.Unreadable) { "UNREADABLE result $($id.Substring(11))" } else { "RED $($d.Day)" }
+    $sla = 0
+    if (($null -ne $SlaFor) -and ($null -ne $d.Result)) { try { $sla = [int](& $SlaFor $d.Result) } catch { $sla = 0 } }
+    $due = Get-AckDue $d $sla
+    if ($null -eq $due) { $lines += "- UNACKED$tag $id ($what; day unreadable: escalate operator)"; if (-not $isProof) { $overdue += $id }; continue }
+    $dueText = $due.ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($now -gt $due) {
+      $late = [int][math]::Ceiling(($now - $due).TotalDays)
+      if ($isProof) { $lines += "- UNACKED$tag $id ($what, due $dueText, past due; proof runs never escalate)"; continue }
       $overdue += $id
-      $lines += "- OVERDUE ack: $id (RED $($d.Day), due $($dueDate.ToString('yyyy-MM-dd')), $late day(s) overdue): escalate operator"
-      $staged += "- STAGED ack-overdue $id : RED $($d.Day) unacknowledged $late day(s) past due; file under D00 T02 $([char]0xA7)9 triage or write docs/nightly-acks/ack-<name>.md naming it (incidents: $(if ($d.Incidents.Count -gt 0) { $d.Incidents -join ', ' } else { 'none' }))"
+      $lines += "- OVERDUE ack: $id ($what, due $dueText, $late day(s) overdue): escalate operator"
+      $staged += "- STAGED ack-overdue $id : $what unacknowledged $late day(s) past due; file it with tools/NightlyAck.ps1 -FileOverdue or write docs/nightly-acks/ack-<name>.md naming it (incidents: $(if ($d.Incidents.Count -gt 0) { $d.Incidents -join ', ' } else { 'none' }))"
     } else {
-      $lines += "- UNACKED $id (RED $($d.Day), due $($dueDate.ToString('yyyy-MM-dd')))"
+      $lines += "- UNACKED$tag $id ($what, due $dueText)"
     }
   }
-  return [pscustomobject]@{ Ok = ($unacked.Count -eq 0); Unacked = $unacked; Lines = $lines; Staged = $staged; Overdue = $overdue }
+  return [pscustomobject]@{ Ok = ($unacked.Count -eq 0); Unacked = $unacked; ProofUnacked = $proofUnacked; Lines = $lines; Staged = $staged; Overdue = $overdue; Corrective = $corrective; CorrectiveOverdue = $corrOverdue }
+}
+
+function Update-OverdueFindings([string[]]$Lines, $Overdue, [string]$Today, [string]$Owner = 'operator') {
+  # The tracked home for overdue acknowledgements (section 31 item 1):
+  # one table row per run in docs/nightly-acks/overdue-findings.md,
+  # created once and updated (last overdue day, night count) on later
+  # nights, so a staged stub becomes durable, deduped work. $Overdue
+  # entries carry Id, What, and Incidents. Returns the new file lines
+  # plus Changed.
+  $header = @('# Overdue acknowledgements', '', 'Filed by `tools/NightlyAck.ps1 -FileOverdue` (D00 T02 section 31 item 1): one row per RED run whose acknowledgement passed its deadline. The row stays until the run is acknowledged (write `docs/nightly-acks/ack-<name>.md`), then the next filing marks it acked.', '', '| Run | What | Incidents | First overdue | Last overdue | Nights | Owner | State |', '| --- | --- | --- | --- | --- | --- | --- | --- |')
+  $rows = [ordered]@{}
+  foreach ($ln in @($Lines)) {
+    $m = [regex]::Match("$ln", '^\|\s*(\S+)\s*\|\s*(.*?)\s*\|\s*(.*?)\s*\|\s*(\S+)\s*\|\s*(\S+)\s*\|\s*(\d+)\s*\|\s*(.*?)\s*\|\s*(\S+)\s*\|\s*$')
+    if ($m.Success -and ($m.Groups[1].Value -ne 'Run') -and ($m.Groups[1].Value -ne '---')) { $rows[$m.Groups[1].Value] = [pscustomobject]@{ Id = $m.Groups[1].Value; What = $m.Groups[2].Value; Incidents = $m.Groups[3].Value; First = $m.Groups[4].Value; Last = $m.Groups[5].Value; Nights = [int]$m.Groups[6].Value; Owner = $m.Groups[7].Value; State = $m.Groups[8].Value } }
+  }
+  $changed = $false
+  $over = @{}
+  foreach ($o in @($Overdue)) { $over[$o.Id] = $o }
+  foreach ($id in @($over.Keys | Sort-Object)) {
+    $o = $over[$id]
+    if (-not $rows.Contains($id)) { $rows[$id] = [pscustomobject]@{ Id = $id; What = $o.What; Incidents = $o.Incidents; First = $Today; Last = $Today; Nights = 1; Owner = $Owner; State = 'open' }; $changed = $true }
+    elseif ($rows[$id].Last -ne $Today) { $rows[$id].Last = $Today; $rows[$id].Nights += 1; $rows[$id].State = 'open'; $changed = $true }
+  }
+  foreach ($id in @($rows.Keys)) {
+    if ((-not $over.ContainsKey($id)) -and ($rows[$id].State -eq 'open')) { $rows[$id].State = 'acked'; $changed = $true }
+  }
+  $out = $header + @($rows.Values | ForEach-Object { "| $($_.Id) | $($_.What) | $($_.Incidents) | $($_.First) | $($_.Last) | $($_.Nights) | $($_.Owner) | $($_.State) |" })
+  return [pscustomobject]@{ Lines = $out; Changed = $changed }
 }

@@ -569,7 +569,7 @@ Why this section exists: the governed run's verdict currently sits in a local Ma
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §9 -- surfaces that run's verdict plus history.
-- -> XREF: D00 T02 §23 -- acknowledgement hardening filed from this section's Opus panel round 3 (per-run granularity, structured disposition).
+- -> XREF: D00 T02 §23 -- governs the acknowledgement contract: this section's prose-length ack gate (200 characters of substance) is superseded by §23's per-run v2 acks with structured dispositions, carried further by §31; filed from this section's Opus panel round 3.
 - -> XREF: D00 T02 §24 -- notify follow-ups filed from this section's plan review (PR1, PR2, PR6, PR7, PR8, PR9, PR10, PR11, PR12, PR13, PR14, PR23, PR28, PR37).
 - -> XREF: D00 T02 §25 -- trend and telemetry follow-ups filed from this section's plan review (PR15, PR16, PR17, PR18, PR19, PR20, PR21, PR22, PR24, PR25).
 - -> XREF: D00 T02 §14 -- consumes its run deadline, reserve, and session matrix (the result's reserve plus the delivery matrix read them). **Corrected 2026-09-25 (D00 T02 §24 item 1):** edge added.
@@ -754,6 +754,7 @@ Why this section exists: the round-3 Opus panel on §17 left two below-bar advis
 
 - -> XREF: D00 T02 §17 -- filed from its Opus panel round 3 plus its plan review; hardens that section's acknowledgement gate.
 - -> XREF: D00 T02 §31 -- residual follow-ups filed from this section's plan review.
+- -> XREF: D00 T02 §24 -- shares the acknowledgement contract: acks bind to the result checksum only, never to §24's notification state or version, and §24's severity SLAs shorten the ack deadline (§31).
 
 - [x] Acknowledgements bind to immutable run plus incident IDs instead of an owner plus day string, so a same-day second RED stays unacknowledged after the first signs off. Done when: two same-day REDs demand two acknowledgements. (Panel D00-T02-S17-R3-F1, D00-T02-S17-PR3.) Done: `Get-AckDemands` keys one demand per RED or cancelled run identity; v2 acks name `run: <identity> sha256:<result checksum>` and the run's INC ids (`Test-AckV2`); v1 day files stop at the 2026-09-21 cutover. Fixture: `ack-demand-per-red-run`, `ack-same-day-second-red-stays-unacked`, `ack-batch-names-each-run`, `ack-must-name-run-incidents`, `ack-v1-after-cutover-ignored`.
 - [x] Acknowledgement validation requires a structured disposition with corrective owner, due date, and linked finding instead of 200-character substance, so length stops standing in for actionable triage. Done when: prose without the disposition fails and a complete disposition passes. (Panel D00-T02-S17-R3-F2, D00-T02-S17-PR4.) Done: the frontmatter requires `disposition` (enum), non-placeholder `owner` and `corrective-owner`, `due` on or after `signed`, and a linked `finding` (section ref, INC id, or commit); length is never checked. Fixture: `ack-prose-without-disposition-fails`, `ack-missing-disposition-fails`, `ack-unknown-disposition-fails`, `ack-placeholder-owner-fails`, `ack-due-before-signed-fails`, `ack-unlinked-finding-fails`, `ack-v2-valid`.
@@ -781,6 +782,7 @@ Why this section exists: the §17 plan review returned 37 findings; 14 file here
 
 - -> XREF: D00 T02 §33 -- notification residuals filed from the §25 plan review.
 - -> XREF: D00 T02 §31 -- shares the notification-version and recovery halves of the acknowledgement contract.
+- -> XREF: D00 T02 §23 -- the acknowledgement half of the shared contract: its acks never bind to this section's notification state, and this section's SLAs shorten its deadlines.
 - -> XREF: D00 T02 §17 -- filed from its plan review; hardens that section's notify surface.
 
 - [x] §17's dependency and XREF edges to §§14-15 plus the §22 incident-key work read in the plan, since §17 consumes their deadlines, result schema, retention, scheduler, and incident contracts. Done when: §17's XREF block names §§14, §15, and §22 with return lines. (D00-T02-S17-PR1.) Done: §17's XREF block names §14 (deadline, reserve, session matrix), §15 (per-leg evidence, retention, incident ids), and §22 (incident identity contract), and each points back; `validate` 0 fatal.
@@ -990,6 +992,8 @@ Why this section exists: the §22 plan review returned 21 findings; 10 file here
 
 ## 31. Acknowledgement Residuals
 
+> **Started:** 2026-09-25T07:24:17Z
+
 Why this section exists: the §23 plan review returned 17 findings; 14 file here and 3 are rejected with reasons in the §23 findings file. §23 bound acknowledgements to runs, checksums, and incidents with a structured disposition, a deadline, and git history; these carry the lifecycle past the signature, the shared contract with §24, and the operator's workflow. -> SOURCE: plan-review-D00-T02-s23-2026-09-25-s31 D00-T02-S23-PR1 D00-T02-S23-PR2 D00-T02-S23-PR3 D00-T02-S23-PR4 D00-T02-S23-PR5 D00-T02-S23-PR6 D00-T02-S23-PR7 D00-T02-S23-PR8 D00-T02-S23-PR11 D00-T02-S23-PR12 D00-T02-S23-PR13 D00-T02-S23-PR15 D00-T02-S23-PR16 D00-T02-S23-PR17 (filing durability, corrective-action lifecycle, disposition evidence, notification versioning, result revisions, retry eligibility, test-run isolation, deadline semantics, per-incident coverage, ack precedence, unreadable results, recovery transitions, reciprocal links, and an ack helper from the §23 plan review).
 
 **Needs:** Windows host (build/test)
@@ -997,21 +1001,21 @@ Why this section exists: the §23 plan review returned 17 findings; 14 file here
 - -> XREF: D00 T02 §23 -- filed from its plan review; carries the acknowledgement contract past signing.
 - -> XREF: D00 T02 §24 -- the notification half of the shared idempotency and recovery contract.
 
-- [ ] Overdue acknowledgements file durably: a staged `ack-overdue` stub becomes a tracked finding through a triage helper that commits it once and updates it on later nights, with an owner and a retry when the commit fails. Done when: two overdue nights produce one tracked finding updated twice. (D00-T02-S23-PR1.)
-- [ ] A validated ack opens a corrective-action state (open, overdue, closed) keyed to its `due` and `finding`, so signing a RED never hides unfinished remediation; closure needs evidence (the finding's stamp or a commit). Done when: a past-due corrective action escalates and a closed one quotes its evidence. (D00-T02-S23-PR2.)
-- [ ] Each disposition names its required evidence (`fixed`: a commit; `filed`: a section ref; `quarantined`: a quarantine row; `environment`: the preflight or block record; `expected`: the proof it served; `duplicate`: the other run), and validation checks it. Done when: a `fixed` ack without a commit fails. (D00-T02-S23-PR3.)
-- [ ] The idempotency key separates the result schema version from the notification version shared with §24, so a notification format change never reopens triage. Done when: a notification-version bump leaves acks valid. (D00-T02-S23-PR4.)
-- [ ] A run has one authoritative result revision: conflicting copies are rejected or ordered by an explicit revision field rather than write time, and a re-ack supersedes the prior ack for that run. Done when: two conflicting copies read as a conflict, not as whichever was written last. (D00-T02-S23-PR5.)
-- [ ] Acknowledgement eligibility stays separate from §24's canonical-run selection, so a later green retry never erases an earlier RED demand. Done when: a RED then green retry pair still demands the RED. (D00-T02-S23-PR6.)
-- [ ] Proof, simulation, and backfill runs are marked in their results and routed to a separate acknowledgement queue, so deliberate test activity never floods the operational one. Done when: a skip-all proof run lands in the proof queue. (D00-T02-S23-PR7.)
-- [ ] Deadlines use explicit timestamps with a stated timezone and boundary, and §24's severity SLAs take precedence over the day-plus-three default where they are shorter. Done when: a severe RED escalates on its SLA and the boundary fixture reads. (D00-T02-S23-PR8.)
-- [ ] A batch ack covers each incident with its own disposition line or states explicitly that one disposition covers all, so one reference cannot silently acknowledge unrelated incidents. Done when: a two-incident batch with one unrelated finding fails. (D00-T02-S23-PR11.)
-- [ ] Conflicting acks, withdrawals, and replacements resolve deterministically (the latest commit governs, and a `withdrawn` disposition releases the run back to unacked). Done when: a withdrawal commit re-demands the run. (D00-T02-S23-PR12.)
-- [ ] An unreadable or invalid result file raises its own demand (by file name) instead of silently dropping out of the gate, connected to §17's fail-closed result handling. Done when: a corrupted result file shows as an unacked demand. (D00-T02-S23-PR13.)
-- [ ] Recovery and incident auto-resolution (§22, §24) are distinct from acknowledgement and corrective-action closure, so a recovered test never closes an open investigation. Done when: a recovered incident with an open corrective action stays open. (D00-T02-S23-PR15.)
-- [ ] §23 and §24 carry reciprocal XREF lines for the shared contract, and §17's prose-length gate text points at §23 as the governing contract. Done when: `validate` reads the pairs and §17 names its successor. (D00-T02-S23-PR16.)
-- [ ] A `tools/NightlyAck.ps1` helper drafts an ack from a run identity (current checksum, incident ids, due date, owner prompt) and validates it with `Test-AckV2` before writing, so a failure burst stays practical to triage. Done when: the helper drafts a valid ack for a real RED and refuses an invalid edit. (D00-T02-S23-PR17.)
-- [ ] Commit: `"workspace: close the acknowledgement residuals"`
+- [x] Overdue acknowledgements file durably: a staged `ack-overdue` stub becomes a tracked finding through a triage helper that commits it once and updates it on later nights, with an owner and a retry when the commit fails. Done when: two overdue nights produce one tracked finding updated twice. (D00-T02-S23-PR1.)
+- [x] A validated ack opens a corrective-action state (open, overdue, closed) keyed to its `due` and `finding`, so signing a RED never hides unfinished remediation; closure needs evidence (the finding's stamp or a commit). Done when: a past-due corrective action escalates and a closed one quotes its evidence. (D00-T02-S23-PR2.)
+- [x] Each disposition names its required evidence (`fixed`: a commit; `filed`: a section ref; `quarantined`: a quarantine row; `environment`: the preflight or block record; `expected`: the proof it served; `duplicate`: the other run), and validation checks it. Done when: a `fixed` ack without a commit fails. (D00-T02-S23-PR3.)
+- [x] The idempotency key separates the result schema version from the notification version shared with §24, so a notification format change never reopens triage. Done when: a notification-version bump leaves acks valid. (D00-T02-S23-PR4.)
+- [x] A run has one authoritative result revision: conflicting copies are rejected or ordered by an explicit revision field rather than write time, and a re-ack supersedes the prior ack for that run. Done when: two conflicting copies read as a conflict, not as whichever was written last. (D00-T02-S23-PR5.)
+- [x] Acknowledgement eligibility stays separate from §24's canonical-run selection, so a later green retry never erases an earlier RED demand. Done when: a RED then green retry pair still demands the RED. (D00-T02-S23-PR6.)
+- [x] Proof, simulation, and backfill runs are marked in their results and routed to a separate acknowledgement queue, so deliberate test activity never floods the operational one. Done when: a skip-all proof run lands in the proof queue. (D00-T02-S23-PR7.)
+- [x] Deadlines use explicit timestamps with a stated timezone and boundary, and §24's severity SLAs take precedence over the day-plus-three default where they are shorter. Done when: a severe RED escalates on its SLA and the boundary fixture reads. (D00-T02-S23-PR8.)
+- [x] A batch ack covers each incident with its own disposition line or states explicitly that one disposition covers all, so one reference cannot silently acknowledge unrelated incidents. Done when: a two-incident batch with one unrelated finding fails. (D00-T02-S23-PR11.)
+- [x] Conflicting acks, withdrawals, and replacements resolve deterministically (the latest commit governs, and a `withdrawn` disposition releases the run back to unacked). Done when: a withdrawal commit re-demands the run. (D00-T02-S23-PR12.)
+- [x] An unreadable or invalid result file raises its own demand (by file name) instead of silently dropping out of the gate, connected to §17's fail-closed result handling. Done when: a corrupted result file shows as an unacked demand. (D00-T02-S23-PR13.)
+- [x] Recovery and incident auto-resolution (§22, §24) are distinct from acknowledgement and corrective-action closure, so a recovered test never closes an open investigation. Done when: a recovered incident with an open corrective action stays open. (D00-T02-S23-PR15.)
+- [x] §23 and §24 carry reciprocal XREF lines for the shared contract, and §17's prose-length gate text points at §23 as the governing contract. Done when: `validate` reads the pairs and §17 names its successor. (D00-T02-S23-PR16.)
+- [x] A `tools/NightlyAck.ps1` helper drafts an ack from a run identity (current checksum, incident ids, due date, owner prompt) and validates it with `Test-AckV2` before writing, so a failure burst stays practical to triage. Done when: the helper drafts a valid ack for a real RED and refuses an invalid edit. (D00-T02-S23-PR17.)
+- [x] Commit: `"workspace: close the acknowledgement residuals"`
 
 **Test checkpoint:** Overdue stubs file once and update, corrective actions escalate and close on evidence, dispositions demand their evidence, notification bumps leave acks valid, conflicting copies conflict, retries keep their demands, proof runs queue apart, SLAs precede the default, batch coverage is per incident, withdrawals re-demand, unreadable results demand, recovery leaves investigations open, the XREFs validate, and the helper drafts a valid ack. Cheaper substitute that fails: more fields in the frontmatter with no lifecycle behind them.
 
