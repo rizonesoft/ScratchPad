@@ -5322,27 +5322,25 @@ function Test-AckV2([string]$Text, [hashtable]$Demands, [hashtable]$Aliases = @{
     if ($stale.Count -eq 0) { $extra = @($listed | Where-Object { $want -notcontains $_ }) }
     if ($missing.Count -gt 0) { $errs += "incidents missing: $($missing -join ', ')" }
     if ($extra.Count -gt 0) { $errs += "incidents not in the acked runs: $($extra -join ', ')" }
-    # Per-incident coverage (section 31 item 9).
-    if ($listed.Count -gt 1) {
-      if ("$($f['covers-all'])" -eq 'yes') { }
-      else {
-        # Coverage faults are per incident (section 46 item 11): each one
-        # rejects only the runs carrying that incident, and one incident
-        # has exactly one effective disposition, so a second cover for it
-        # refuses.
-        $covered = @{}
-        foreach ($c in @($fm.Covers)) {
-          $cm = [regex]::Match("$c", $script:AckCoverRe)
-          if (-not $cm.Success) { $errs += "cover line malformed: $c"; continue }
-          $ci = $cm.Groups[1].Value
-          if ($listed -notcontains $ci) { $errs += "cover names $ci, which the ack does not list"; continue }
-          if ($covered.ContainsKey($ci)) { $covFault[$ci] = "cover names $ci twice (one incident has exactly one disposition)"; continue }
-          $covered[$ci] = $true
-          if (($script:AckDispositions -notcontains $cm.Groups[2].Value) -or ($cm.Groups[2].Value -eq 'withdrawn')) { $covFault[$ci] = "cover $ci disposition '$($cm.Groups[2].Value)' unknown"; continue }
-          if ($cm.Groups[3].Value -notmatch $findingRe) { $covFault[$ci] = "cover $ci finding '$($cm.Groups[3].Value)' is not a section ref, incident id, or commit"; continue }
-        }
-        foreach ($u in @($listed | Where-Object { -not $covered.ContainsKey($_) })) { $covFault[$u] = "batch of $($listed.Count) incidents leaves $u uncovered (add a cover line per incident or covers-all: yes)" }
-      }
+    # Per-incident coverage (section 31 item 9). Every cover line is
+    # validated whatever the batch shape (section 46 R1-F1): coverage
+    # faults are per incident (item 11), each rejecting only the runs that
+    # carry the incident, and one incident has exactly one effective
+    # disposition, so a second cover for it refuses even with one incident
+    # listed or covers-all.
+    $covered = @{}
+    foreach ($c in @($fm.Covers)) {
+      $cm = [regex]::Match("$c", $script:AckCoverRe)
+      if (-not $cm.Success) { $errs += "cover line malformed: $c"; continue }
+      $ci = $cm.Groups[1].Value
+      if ($listed -notcontains $ci) { $errs += "cover names $ci, which the ack does not list"; continue }
+      if ($covered.ContainsKey($ci)) { $covFault[$ci] = "cover names $ci twice (one incident has exactly one disposition)"; continue }
+      $covered[$ci] = $true
+      if (($script:AckDispositions -notcontains $cm.Groups[2].Value) -or ($cm.Groups[2].Value -eq 'withdrawn')) { $covFault[$ci] = "cover $ci disposition '$($cm.Groups[2].Value)' unknown"; continue }
+      if ($cm.Groups[3].Value -notmatch $findingRe) { $covFault[$ci] = "cover $ci finding '$($cm.Groups[3].Value)' is not a section ref, incident id, or commit"; continue }
+    }
+    if (($listed.Count -gt 1) -and ("$($f['covers-all'])" -ne 'yes')) {
+      foreach ($u in @($listed | Where-Object { -not $covered.ContainsKey($_) })) { $covFault[$u] = "batch of $($listed.Count) incidents leaves $u uncovered (add a cover line per incident or covers-all: yes)" }
     }
   }
   if ($errs.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $stale; Errors = $errs; Disposition = $disp; Rejected = @() } }
@@ -5681,10 +5679,14 @@ function Get-AckHistoricalTargets([string]$Root, [string]$RelPath) {
       $fm = Read-AckFrontmatter $text
       if (-not $fm.Ok) { continue }
       $top = "$($fm.Fields['finding'])"
-      if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and (-not $targets.Contains($top))) { $targets[$top] = [pscustomobject]@{ Label = $top; Finding = $top; Disposition = "$($fm.Fields['disposition'])"; Evidence = "$($fm.Fields['evidence'])"; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])" } }
+      # The incidents that version listed ride its targets (section 46
+      # R1-C1), so a later edit that drops them never empties what a
+      # historical action must verify.
+      $verInc = @("$($fm.Fields['incidents'])" -split '[,\s]+' | Where-Object { ($_ -ne '') -and ($_ -ne 'none') })
+      if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and (-not $targets.Contains($top))) { $targets[$top] = [pscustomobject]@{ Label = $top; Finding = $top; Disposition = "$($fm.Fields['disposition'])"; Evidence = "$($fm.Fields['evidence'])"; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = $verInc } }
       foreach ($cv in @($fm.Covers)) {
         $cm = [regex]::Match("$cv", $script:AckCoverRe)
-        if ($cm.Success) { $k = "$($cm.Groups[1].Value) $($cm.Groups[3].Value)"; if (-not $targets.Contains($k)) { $targets[$k] = [pscustomobject]@{ Label = $k; Finding = $cm.Groups[3].Value; Disposition = $cm.Groups[2].Value; Evidence = $cm.Groups[4].Value; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])" } } }
+        if ($cm.Success) { $k = "$($cm.Groups[1].Value) $($cm.Groups[3].Value)"; if (-not $targets.Contains($k)) { $targets[$k] = [pscustomobject]@{ Label = $k; Finding = $cm.Groups[3].Value; Disposition = $cm.Groups[2].Value; Evidence = $cm.Groups[4].Value; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = @($cm.Groups[1].Value) } } }
       }
     }
   } catch { } finally { $ErrorActionPreference = $eap; try { [Console]::OutputEncoding = $enc } catch { } }
@@ -5926,7 +5928,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     foreach ($k in $hist.Keys) {
       if (@($targets | Where-Object { $_.Label -eq $k }).Count -gt 0) { continue }
       $h = $hist[$k]
-      $hInc = if ($k -match '^(INC-[0-9a-f]{8}) ') { @($Matches[1]) } else { $listedInc }
+      $hInc = if (($null -ne $h.PSObject.Properties['Incidents']) -and (@($h.Incidents).Count -gt 0)) { @($h.Incidents) } elseif ($k -match '^(INC-[0-9a-f]{8}) ') { @($Matches[1]) } else { @() }
       $targets += [pscustomobject]@{ Label = "$k (dropped from the ack, opened $($h.Since.Substring(0, 10)))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = $hInc }
     }
     $dueDate = [datetime]::MinValue
@@ -5949,6 +5951,11 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
         # item 1): a duplicate closes only when the repeated run's own
         # actions for the matching incidents are closed.
         $pendingDup += [pscustomobject]@{ File = $file; Target = $tg; Of = $ev; DueOk = $tgHasDue; Due = $tgDue; DueText = $tgDueText; Owner = "$($f['corrective-owner'])"; Stale = $isStale }
+        # Registered open now, so a chain A -> B -> C sees B's action
+        # (section 46 R1-F2) until B's own resolution closes it.
+        if (-not $targetsByFile.ContainsKey($file)) { $targetsByFile[$file] = @() }
+        $targetsByFile[$file] += $tg
+        $targetState["$file|$($tg.Label)"] = ''
         continue
       }
       elseif ($tg.Disposition -eq 'fixed') {
@@ -5981,7 +5988,32 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
   }
   # Duplicates link the surviving action (section 46 item 1): the target
   # names the repeated run's governing ack and its action for the matching
-  # incidents, and closes only when those actions are closed.
+  # incidents, and closes only when those actions are closed. Chains
+  # resolve to a fixpoint (R1-F2): a duplicate closes only once every
+  # action it waits on, duplicates included, has closed; a chain that never
+  # settles stays open.
+  $survFor = {
+    param($pd)
+    $of = "$($pd.Of)"
+    if (($of -eq '') -or (-not $acked.ContainsKey($of))) { return $null }
+    $gf = $acked[$of]
+    $inc = @($pd.Target.Incidents)
+    return @(@($targetsByFile[$gf]) | Where-Object { $t = $_; ($inc.Count -eq 0) -or (@($t.Incidents).Count -eq 0) -or (@($t.Incidents | Where-Object { $inc -contains $_ }).Count -gt 0) })
+  }
+  $changed = $true
+  $guard = 0
+  while ($changed -and ($guard -lt 64)) {
+    $changed = $false
+    $guard++
+    foreach ($pd in $pendingDup) {
+      $key = "$($pd.File)|$($pd.Target.Label)"
+      if ("$($targetState[$key])" -ne '') { continue }
+      $surv = & $survFor $pd
+      if ($null -eq $surv) { continue }
+      $gf = $acked["$($pd.Of)"]
+      if ((@($surv).Count -eq 0) -or (@($surv | Where-Object { "$($targetState["$gf|$($_.Label)"])" -eq '' }).Count -eq 0)) { $targetState[$key] = "duplicate of acknowledged $($pd.Of)"; $changed = $true }
+    }
+  }
   foreach ($pd in $pendingDup) {
     $tg = $pd.Target
     $of = "$($pd.Of)"
@@ -6000,6 +6032,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     $surv = @(@($targetsByFile[$gf]) | Where-Object { $t = $_; ($inc.Count -eq 0) -or (@($t.Incidents).Count -eq 0) -or (@($t.Incidents | Where-Object { $inc -contains $_ }).Count -gt 0) })
     if ($surv.Count -eq 0) { $corrective += "$label`: closed (duplicate of acknowledged $of; its ack $gf opened no action for these incidents)"; continue }
     $open = @($surv | Where-Object { "$($targetState["$gf|$($_.Label)"])" -eq '' })
+    if ("$($targetState["$($pd.File)|$($tg.Label)"])" -ne '') { $open = @() }
     $names = (@($surv | ForEach-Object { "$gf ($($_.Label))" }) -join ', ')
     if ($open.Count -eq 0) { $corrective += "$label`: closed (duplicate of acknowledged $of; its action $names closed)"; continue }
     $openNames = (@($open | ForEach-Object { "$gf ($($_.Label))" }) -join ', ')
@@ -6014,6 +6047,8 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     }
   }
   $lines += $corrective
+  # Every demand's enforced deadline (section 46 R1-I1), for the status view.
+  foreach ($id in @($Demands.Keys)) { $dues[$id] = Get-DemandDue $Demands[$id] $SlaFor $(if ($inheritDue.ContainsKey($id)) { $inheritDue[$id] } else { $null }) }
   $unacked = @()
   $proofUnacked = @()
   $overdue = @()

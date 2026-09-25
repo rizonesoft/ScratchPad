@@ -541,6 +541,61 @@ $g5b = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-10')
 $g5c = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-10')
 Assert ((@($g5a.Lines | Where-Object { $_ -like "*$runH TIE*" }).Count -eq 1) -and ($g5b.Governing[$runH] -eq 'ack-h3.md') -and ($g5c.Governing[$runH] -eq 'ack-h3.md') -and ($g5b.Unacked -notcontains $runH)) 's46-merge-resolution-decides-deterministically' (($g5a.Lines + @('||') + $g5b.Lines) -join ' | ')
 
+# Section 46 R1-F1: two covers for a single listed incident refuse too.
+$runT = '2026-10-11-023001-pid48'
+New-Red $runT '2026-10-11' @('- INC-f0000004 `UI.C.T` x1 (Run A): boom')
+$dT = Get-Dem
+$oneText = ((@('---', 'ack-version: 2', "run: $runT sha256:$($dT[$runT].Current)", 'incidents: INC-f0000004', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", "cover: INC-f0000004 filed $fnd9", "cover: INC-f0000004 expected $fnd9", 'signed: 2026-10-11', '---')) -join "`n") + "`n"
+$vOne = Test-AckV2 $oneText $dT
+Assert ((-not $vOne.Ok) -and (($vOne.Errors -join ' ') -like '*cover names INC-f0000004 twice*')) 's46-single-incident-overlap-refuses' ($vOne.Errors -join '; ')
+# Section 46 R1-F2: a duplicate chain P -> Q -> R waits on R's open action.
+$runP = '2026-10-12-023001-pid49'; $runQ = '2026-10-12-120001-pid50'; $runR = '2026-10-12-180001-pid51'
+foreach ($r in @($runP, $runQ, $runR)) { New-Red $r '2026-10-12' @() }
+$dPQR = Get-Dem
+Write-Ack 'ack-r.md' @("run: $runR sha256:$($dPQR[$runR].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-12')
+Write-Ack 'ack-q.md' @("run: $runQ sha256:$($dPQR[$runQ].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runR", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-12')
+Write-Ack 'ack-p.md' @("run: $runP sha256:$($dPQR[$runP].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runQ", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-12')
+Save-All 'acks p q r'
+$gChain = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-12')
+Assert ((@($gChain.Lines | Where-Object { $_ -like "*CORRECTIVE ack-p.md ($fnd9): open (duplicate of $runQ; open while its action ack-q.md ($fnd9) is open*" }).Count -eq 1) -and (@($gChain.Lines | Where-Object { $_ -like "*CORRECTIVE ack-q.md ($fnd9): open (duplicate of $runR; open while its action ack-r.md ($fnd9) is open*" }).Count -eq 1)) 's46-duplicate-chain-waits-on-the-end' ($gChain.Lines -join ' | ')
+# Section 46 R1-I2: status counts a superseded ack's open action.
+Write-Ack 'ack-q2.md' @("run: $runQ sha256:$($dPQR[$runQ].Current)", 'incidents: none', 'owner: operator', 'disposition: expected', "finding: $fnd9", 'corrective-owner: operator', 'due: 2026-12-01', 'signed: 2026-10-13')
+Save-All 'ack q2 supersedes q'
+$stQ = Invoke-Helper @('-Status', '-Run', $runQ, '-Today', '2026-10-13', '-WorkspaceRoot', $ws)
+Assert (($stQ.Text -like '*governing: ack-q2.md*') -and ($stQ.Text -like '*blocking: CORRECTIVE ack-q.md (D00 T02 *9): open*')) 's46-status-counts-superseded-actions' $stQ.Text
+# Section 46 R1-C1: withdrawing a fixed ack in place keeps its historical
+# action bound to the incidents that version listed.
+$runS = '2026-10-14-023001-pid52'
+New-Red $runS '2026-10-14' @('- INC-dddd4444 `UI.C.T` x1 (Run A): boom')
+$dS = Get-Dem
+Write-Ack 'ack-s.md' @("run: $runS sha256:$($dS[$runS].Current)", 'incidents: INC-dddd4444', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $shaC", 'signed: 2026-10-14')
+Save-All 'ack s fixed'
+Write-Ack 'ack-s.md' @("run: $runS sha256:$($dS[$runS].Current)", 'owner: operator', 'disposition: withdrawn', 'signed: 2026-10-15')
+Save-All 'withdraw s in place'
+$gS = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-15')
+Assert (@($gS.Lines | Where-Object { $_ -like "*CORRECTIVE ack-s.md ($shaC (dropped from the ack*): open*awaiting a passing run of INC-dddd4444*" }).Count -eq 1) 's46-in-place-withdrawal-keeps-the-verification-debt' ($gS.Lines -join ' | ')
+# Section 46 R1-I1: status reads the deadline the gate enforces,
+# inheritance from a corruption repair included.
+[pscustomobject]@{ version = 1; entries = @([pscustomobject]@{ file = 'morning-2026-10-01-023001.result.json'; firstSeen = '2026-10-01'; reason = 'unreadable'; restored = $runE; restoredOn = '2026-10-08'; sha = ('a' * 64) }) } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $nd 'ack-corruption.json') -Encoding UTF8
+$stE = Invoke-Helper @('-Status', '-Run', $runE, '-Today', '2026-10-09', '-WorkspaceRoot', $ws)
+Remove-Item (Join-Path $nd 'ack-corruption.json')
+Assert ($stE.Text -like '*deadline: 2026-10-04T23:59:59*') 's46-status-reads-the-inherited-deadline' $stE.Text
+# Section 46 R1-R1: two filings for different runs in flight at once both
+# record, and neither is refused.
+$runU = '2026-10-16-023001-pid53'; $runV = '2026-10-16-120001-pid54'
+New-Red $runU '2026-10-16' @(); New-Red $runV '2026-10-16' @()
+$tableS = Join-Path $acks 'overdue-findings.md'
+$prevCc3 = $env:CLAUDECODE; $env:CLAUDECODE = '1'
+$jobs = @()
+foreach ($day in @('2026-10-25', '2026-10-26')) {
+  $jobs += Start-Job -ScriptBlock { param($h, $d, $w) $o = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $h -FileOverdue -Commit -Today $d -WorkspaceRoot $w 2>&1 | ForEach-Object { "$_" }); [pscustomobject]@{ Code = $LASTEXITCODE; Text = ($o -join ' | ') } } -ArgumentList $helper, $day, $ws
+}
+$res = @($jobs | ForEach-Object { $null = Wait-Job $_ -Timeout 120; Receive-Job $_; Remove-Job $_ -Force })
+$env:CLAUDECODE = $prevCc3
+$rowsUV = @(Get-Content $tableS | Where-Object { ($_ -like "| $runU |*") -or ($_ -like "| $runV |*") })
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $dirtyUV = @(& git -C $ws status --porcelain -- docs/nightly-acks/overdue-findings.md 2>$null); $ErrorActionPreference = $eap
+Assert ((@($res | Where-Object { $_.Code -eq 0 }).Count -eq 2) -and (@($res | Where-Object { $_.Text -like '*another filing held*' }).Count -eq 0) -and ($rowsUV.Count -eq 2) -and ($dirtyUV.Count -eq 0)) 's46-concurrent-filings-both-record' (@($res | ForEach-Object { "$($_.Code): $($_.Text)" }) -join ' || ')
+
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyAck.Tests: all green'

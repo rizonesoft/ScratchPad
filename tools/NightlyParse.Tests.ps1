@@ -1715,7 +1715,7 @@ Assert ($dInv.ContainsKey('unreadable:morning-2026-09-26-130000.result.json') -a
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-v.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none' }).Replace("`n---`n", "`ncover: INC-aaaa1111 filed D99 T99 ${S}999`n---`n"))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack v bogus cover' 2>$null
 $gV = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
-Assert (@($gV.Lines | Where-Object { $_ -like '*ack-2026-09-22-v.md: INVALID (cover INC-aaaa1111 finding D99 T99*999 not found)*' }).Count -eq 1) 'ack-cover-finding-must-exist' ($gV.Lines -join ' | ')
+Assert (@($gV.Lines | Where-Object { ($_ -like '*ack-2026-09-22-v.md: INVALID (cover INC-aaaa1111 finding D99 T99*999 not found)*') -or ($_ -like '*ack-2026-09-22-v.md: INVALID (cover names INC-aaaa1111, which the ack does not list)*') }).Count -eq 1) 'ack-cover-finding-must-exist' ($gV.Lines -join ' | ')
 & git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-v.md') 2>$null; & git -C $repo commit -q -m 'drop v' 2>$null
 # R1-F4: with identical timestamps, the later commit still governs.
 $env:GIT_AUTHOR_DATE = '2026-09-24T10:00:00+02:00'; $env:GIT_COMMITTER_DATE = '2026-09-24T10:00:00+02:00'

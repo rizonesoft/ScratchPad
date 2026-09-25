@@ -123,24 +123,32 @@ if ($Status) {
   # that blocks the run or its ack's actions.
   $d = $demands[$Run]
   $gov = if ($gate.Governing.ContainsKey($Run)) { "$($gate.Governing[$Run])" } else { '' }
-  $dueNow = Get-DemandDue $d $ackSla
+  # The deadline the gate enforces (section 46 R1-I1), inheritance included.
+  $dueNow = if ($gate.Dues.ContainsKey($Run)) { $gate.Dues[$Run] } else { Get-DemandDue $d $ackSla }
   Write-Output "status: $Run"
   Write-Output "  governing: $(if ($gov -ne '') { $gov } else { 'none' })"
   Write-Output "  deadline: $(if ($null -ne $dueNow) { $dueNow.ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) } else { 'unreadable (escalate operator)' })"
   $govClaim = $null
   if (($gov -ne '') -and $gate.Claims.ContainsKey($Run)) { $govClaim = @($gate.Claims[$Run] | Where-Object { $_.File -eq $gov }) | Select-Object -First 1 }
   if ($null -ne $govClaim) { Write-Output "  owners: owner $($govClaim.Fields['owner']), corrective-owner $($govClaim.Fields['corrective-owner'])" } else { Write-Output '  owners: none (no governing ack)' }
+  # Every ack that ever claimed the run counts (section 46 R1-I2): a
+  # superseded ack's open action still holds its incidents open.
+  $files = @()
+  if ($gate.Claims.ContainsKey($Run)) { $files = @($gate.Claims[$Run] | ForEach-Object { $_.File } | Sort-Object -Unique) }
+  if (($gov -ne '') -and ($files -notcontains $gov)) { $files += $gov }
+  $onFiles = { param($ln) @($files | Where-Object { $ln -like "*CORRECTIVE $_ (*" }).Count -gt 0 }
   foreach ($inc in @($d.Incidents)) {
-    # A cover line answers for its own incident; otherwise the ack's
+    # A cover line answers for its own incident; otherwise each ack's
     # top-level action does.
-    $mine = @($gate.Corrective | Where-Object { ($gov -ne '') -and ($_ -like "*CORRECTIVE $gov ($inc *") })
-    if (($mine.Count -eq 0) -and ($gov -ne '')) { $mine = @($gate.Corrective | Where-Object { ($_ -like "*CORRECTIVE $gov (*") -and ($_ -notlike "*CORRECTIVE $gov (INC-*") }) }
-    $st = if ($gov -eq '') { 'pending (no governing ack)' } elseif ($mine.Count -eq 0) { 'closed (no action opened)' } elseif (@($mine | Where-Object { $_ -like '*: closed (*' }).Count -eq $mine.Count) { 'closed' } else { 'pending' }
+    $mine = @($gate.Corrective | Where-Object { (& $onFiles $_) -and ($_ -like "* ($inc *") })
+    $top = @($gate.Corrective | Where-Object { (& $onFiles $_) -and ($_ -notmatch 'CORRECTIVE \S+ \(INC-') })
+    $all = @($mine) + @($top)
+    $st = if ($files.Count -eq 0) { 'pending (no ack)' } elseif ($all.Count -eq 0) { 'closed (no action opened)' } elseif (@($all | Where-Object { $_ -like '*: closed (*' }).Count -eq $all.Count) { 'closed' } else { 'pending' }
     Write-Output "  incident $inc`: $st"
   }
   # A plain acknowledgement line blocks nothing; a stale, invalid, tie, or
-  # open-action line does.
-  $block = @($gate.Lines | Where-Object { (($_ -like "*$Run*") -and (($_ -notmatch ': acknowledges ') -or ($_ -like '*STALE*'))) -or (($gov -ne '') -and ($_ -like "*CORRECTIVE $gov (*") -and ($_ -notlike '*: closed (*')) })
+  # open-action line does, from any ack that claimed the run.
+  $block = @($gate.Lines | Where-Object { (($_ -like "*$Run*") -and (($_ -notmatch ': acknowledges ') -or ($_ -like '*STALE*'))) -or ((& $onFiles $_) -and ($_ -notlike '*: closed (*')) })
   if ($block.Count -eq 0) { Write-Output '  blocking: none' } else { foreach ($b in $block) { Write-Output "  blocking: $("$b".TrimStart('-', ' '))" } }
   if ((@($gate.Unacked) -notcontains $Run) -and (@($gate.ProofUnacked) -notcontains $Run)) { Write-Output "ack: $Run EFFECTIVE (acknowledged now)"; exit 0 }
   $pending = @($gate.Lines | Where-Object { ($_ -like '*: uncommitted*') -or ($_ -like '*edited since its last commit*') } | Where-Object { $ln = $_; $f = [regex]::Match($ln, '^- (\S+?):').Groups[1].Value; ($f -ne '') -and (Test-Path (Join-Path $ackDir $f)) -and ((Get-Content (Join-Path $ackDir $f) -Raw) -match [regex]::Escape("run: $Run ")) })
