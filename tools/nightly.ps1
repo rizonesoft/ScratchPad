@@ -1196,6 +1196,10 @@ if ($debtQueryError -ne '') {
     if (($sumI.FailedCount -gt 0) -or ($interactiveLeaked.Count -gt 0)) {
       $stageNote = if ($sumI.FailedCount -gt 0) { 'findings staged below' } else { 'non-quarantine skips, no failures' }
       $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); $stageNote; debt stays open"
+      # The red is recorded (D00 T02 §27 item 3): the first resets the
+      # due window once, a second escalates as red-repeat.
+      $redNote = Add-RedLine (Join-Path $Root $debt.File) $debt.Id $day (Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx")
+      Write-Output "nightly: night-debt $($debt.Id): $redNote"
       continue
     }
     $logRel = "build/nightly/$stamp/interactive.trx"
@@ -1211,6 +1215,8 @@ if ($debtQueryError -ne '') {
         if ($pair[1]) { $failed = $true }
       } elseif ($decision -eq 'red') {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open"
+        $redNote = Add-RedLine (Join-Path $Root $debt.File) $debt.Id $day (Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel)
+        Write-Output "nightly: night-debt $($debt.Id): $redNote"
       } elseif ($decision -eq 'skipped-stage') {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): subset has $($sub.Skipped) skips without reasons; triage closes with attribution; log $logRel"
       } elseif ($decision -eq 'mismatch') {
@@ -1248,6 +1254,16 @@ $report += '## Night debt'
 $report += ''
 if ($debtEntries.Count -eq 0) { $report += '(no open debt at run start)'; $report += '' }
 else { $report += $debtEntries; $report += '' }
+# Debt status from the same night_debts source as the queries (D00 T02
+# §27 items 6 and 7): each open debt's `query night-debt` line,
+# verbatim (due, age, owner, state, and the escalation with its
+# response deadline), so the report and the queries never disagree.
+if (@($debtSnapshot).Count -gt 0) {
+  $report += 'Debt status at run start (`query night-debt`, verbatim):'
+  $report += ''
+  foreach ($debt in $debtSnapshot) { $report += "    $($debt.Line)" }
+  $report += ''
+}
 $report += '## Filings'
 $report += ''
 $report += '(triage appends one line per failure: test name, finding ref or quarantine row)'

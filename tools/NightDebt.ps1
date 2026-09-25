@@ -9,25 +9,25 @@
 
 function Get-OpenNightDebts {
   param([string]$Root, [string]$Python = 'py')
-  # One object per open debt: File, Id, Section, Count, Filter, Age,
-  # LastLog. A failed query fails LOUD: the collector never runs blind.
-  $raw = & $Python (Join-Path $Root 'scripts/todo-graph.py') query night-debt 2>&1
+  # One object per open debt from `query night-debt --json` (schema
+  # night-debt/1, D00 T02 §27): File, Id, Section, Count, Filter, Age,
+  # Due, Owner, State, Overdue, LastLog, plus Line, the exact text the
+  # queries print, which the morning report quotes verbatim. JSON
+  # replaced the text scrape after §19's due field broke it (the scrape
+  # matched no line and the collector ran blind). A failed query or an
+  # unexpected schema fails LOUD: the collector never runs blind.
+  $raw = & $Python (Join-Path $Root 'scripts/todo-graph.py') query night-debt --json 2>&1
   if ($LASTEXITCODE -ne 0) { throw "night-debt: query failed: $raw" }
+  $doc = $null
+  try { $doc = (@($raw) -join "`n") | ConvertFrom-Json } catch { throw "night-debt: query output is not JSON: $raw" }
+  if ("$($doc.schema)" -ne 'night-debt/1') { throw "night-debt: unexpected schema '$($doc.schema)'" }
   $debts = @()
-  foreach ($ln in ($raw -split "`r?`n")) {
-    $m = [regex]::Match(
-      $ln,
-      '^\s*(?<file>\S+)\s+(?<id>\S+)\s+(?<section>.+?)\s+count\s+(?<count>\S+)\s+filter\s+(?<filter>.+?)\s+age\s+(?<age>\S+)\s+last-log\s+(?<lastlog>\S+)\s*$'
-    )
-    if (-not $m.Success) { continue }
+  foreach ($d in @($doc.debts)) {
+    if ($null -eq $d) { continue }
     $debts += [pscustomobject]@{
-      File = $m.Groups['file'].Value
-      Id = $m.Groups['id'].Value
-      Section = $m.Groups['section'].Value
-      Count = $m.Groups['count'].Value
-      Filter = $m.Groups['filter'].Value
-      Age = $m.Groups['age'].Value
-      LastLog = $m.Groups['lastlog'].Value
+      File = "$($d.file)"; Id = "$($d.id)"; Section = "$($d.section)"; Count = "$($d.count)"; Filter = "$($d.filter)"
+      Age = $(if ($null -eq $d.age) { '?n' } else { "$($d.age)n" }); Due = "$($d.due)"; Owner = "$($d.owner)"; State = "$($d.state)"
+      Overdue = [bool]$d.overdue; LastLog = $(if ($null -eq $d.last_log) { 'none' } else { "$($d.last_log)" }); Line = "$($d.line)"
     }
   }
   return $debts
@@ -43,6 +43,34 @@ function Get-DebtDotnetFilter([string]$Filter) {
 
 function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log) {
   return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log)"
+}
+
+function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log) {
+  # A red collection's record (D00 T02 §27 item 3): the first resets the
+  # due window once, a second escalates the debt as red-repeat.
+  return "**Night-red:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log)"
+}
+
+function Add-RedLine([string]$TodoPath, [string]$DebtId, [string]$Date, [string]$Line) {
+  # Appends a Night-red line after the id's owed line (and any lines
+  # already following it for the id), once per id and date, atomic with
+  # readback. Triage commits it like a Night-collected line.
+  $text = Get-Content $TodoPath -Raw -Encoding UTF8
+  if ($text -match ('\*\*Night-red:\*\*\s+' + [regex]::Escape($Date) + '\s+' + [regex]::Escape($DebtId) + '\b')) { return "skip: $DebtId already carries a red line for $Date" }
+  $lines = @($text -split "`r?`n")
+  $idx = Find-OwedLineIndex $lines $DebtId
+  if ($idx -lt 0) { return "skip: no Night-owed line for $DebtId" }
+  $at = $idx
+  while ((($at + 1) -lt $lines.Count) -and ($lines[$at + 1] -match ('\*\*Night-(red|collected|ack|accepted):\*\*\s+(\S+\s+)?' + [regex]::Escape($DebtId) + '\b'))) { $at++ }
+  $new = New-Object System.Collections.Generic.List[string]
+  for ($i = 0; $i -lt $lines.Count; $i++) { $new.Add($lines[$i]); if ($i -eq $at) { $new.Add($Line) } }
+  $tmp = "$TodoPath.tmp"
+  [System.IO.File]::WriteAllText($tmp, ($new -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
+  Move-Item -Path $tmp -Destination $TodoPath -Force
+  $back = Get-Content $TodoPath -Raw -Encoding UTF8
+  $n = ([regex]::Matches($back, [regex]::Escape($Line))).Count
+  if ($n -ne 1) { return "FAULT: $DebtId red line reads back $n times" }
+  return "appended red line"
 }
 
 function Find-OwedLineIndex([string[]]$Lines, [string]$DebtId) {
