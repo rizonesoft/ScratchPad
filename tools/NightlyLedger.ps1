@@ -23,7 +23,12 @@ if (-not $Rebuild) { Write-Output 'usage: NightlyLedger.ps1 -Rebuild [-Force] [-
 if ((Test-Path $ledgerPath) -and (-not $Force)) { Write-Output "ledger: $ledgerPath exists; pass -Force to replace it"; exit 1 }
 $files = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $files += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$map = New-IncidentLedgerFromResults $files $script:IncidentContractV2Since (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
+try {
+  $map = New-IncidentLedgerFromResults $files $script:IncidentContractV2Since (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
+} catch {
+  Write-Output "ledger: $($_.Exception.Message)"
+  exit 1
+}
 $err = Write-IncidentLedger $map $ledgerPath
 if ($err -ne '') { Write-Output "ledger: rebuild FAILED: $err"; exit 1 }
 Write-Output "ledger: rebuilt $($map.Count) incident(s) from $($files.Count) result file(s) into $ledgerPath"

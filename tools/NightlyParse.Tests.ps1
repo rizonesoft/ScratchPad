@@ -477,7 +477,7 @@ foreach ($bad in @(@{ occurrences = -1 }, @{ passStreak = 'x' }, @{ contract = '
   Assert (((Test-ResultFile $lifeRes).Ok -eq $false) -and ((Test-ResultFile $lifeRes).Error -like "*$bk*")) "lifecycle-bad-$bk-fails" (Test-ResultFile $lifeRes).Error
 }
 # R1-I1: the rebuild restores the latest lifecycle snapshot.
-[pscustomobject]@{ version = 1; stamp = '2026-09-28-023001'; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-1a2b3c4d'; test = 'UI.X.Y'; phase = 'soak'; state = 'closed'; owner = $sec5; occurrences = 3; occurrenceStamps = @('2026-09-25-023001', '2026-09-26-023001', '2026-09-27-023001'); firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-27-023001'; passStreak = 3; contract = 'v2'; due = ''; finding = 'abc1234' }, [pscustomobject]@{ id = 'INC-0000aced'; test = 'UI.Aged.T'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('2026-09-25-120000'); firstSeen = '2026-09-25-120000'; lastSeen = '2026-09-25-120000'; passStreak = 1; contract = 'v2'; due = '2026-09-27'; finding = '' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-09-28-023001'; day = '2026-09-28'; identity = '2026-09-28-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-1a2b3c4d'; test = 'UI.X.Y'; phase = 'soak'; state = 'closed'; owner = $sec5; occurrences = 3; occurrenceStamps = @('2026-09-25-023001', '2026-09-26-023001', '2026-09-27-023001'); firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-27-023001'; passStreak = 3; contract = 'v2'; due = ''; finding = 'abc1234' }, [pscustomobject]@{ id = 'INC-0000aced'; test = 'UI.Aged.T'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('2026-09-25-120000'); firstSeen = '2026-09-25-120000'; lastSeen = '2026-09-25-120000'; passStreak = 1; contract = 'v2'; due = '2026-09-27'; finding = '' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') -Encoding UTF8
 [pscustomobject]@{ version = 1; stamp = '2026-09-29-023001'; incidents = @(); incidentLifecycleSource = 'unavailable'; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-29-023001.result.json') -Encoding UTF8
 $snapFiles = @(Get-ChildItem $ledDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
 $snapMap = New-IncidentLedgerFromResults $snapFiles '2026-09-25-000000' @{} @{}
@@ -500,6 +500,16 @@ $null = New-Item -ItemType Directory -Force -Path $snapOnly
 Copy-Item (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') $snapOnly
 $soPres = Test-IncidentLedgerPresence (Join-Path $snapOnly 'incidents.json') @(Get-ChildItem $snapOnly -Filter '*.result.json' | ForEach-Object { $_.FullName }) '2026-09-25-000000'
 Assert (($soPres.Ok -eq $false) -and ($soPres.Error -like 'incident ledger missing while the 2026-09-28-023001 lifecycle snapshot holds 2 incident(s); rebuild:*')) 'ledger-missing-with-snapshot-only-reds' $soPres.Error
+# R4-F1: an invalid newest snapshot fails the rebuild and the presence
+# check instead of thinning history.
+[pscustomobject]@{ version = 1; stamp = '2026-10-01-023001'; day = '2026-10-01'; identity = '2026-10-01-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-1a2b3c4d'; state = 'closed'; owner = 'operator'; occurrences = 3; passStreak = 3; contract = 'v2' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-10-01-023001.result.json') -Encoding UTF8
+$badFiles = @(Get-ChildItem $ledDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
+$badThrow = ''
+try { $null = New-IncidentLedgerFromResults $badFiles '2026-09-25-000000' @{} @{} } catch { $badThrow = $_.Exception.Message }
+Assert ($badThrow -like 'rebuild refused: lifecycle snapshot 2026-10-01-023001 (*) is invalid: result incidentLifecycle row INC-1a2b3c4d missing test*') 'ledger-rebuild-refuses-invalid-snapshot' $badThrow
+$badPres = Test-IncidentLedgerPresence (Join-Path $ledDir 'missing.json') $badFiles '2026-09-25-000000'
+Assert (($badPres.Ok -eq $false) -and ($badPres.Error -like '*lifecycle snapshot 2026-10-01-023001 (*) is invalid*')) 'ledger-presence-counts-invalid-snapshot' $badPres.Error
+Remove-Item (Join-Path $ledDir 'morning-2026-10-01-023001.result.json')
 $agErr = Write-IncidentLedger $snapMap (Join-Path $ledDir 'rebuilt.json')
 Assert ($agErr -eq '') 'ledger-rebuild-with-snapshot-writes-back' $agErr
 # Item 3: release candidates name the oldest exemptions and citations.
