@@ -196,6 +196,16 @@ $target = Join-Path $RetDir $Name
 $manifest = Join-Path $EvDir ($Name + '.md')
 if ((Test-Path $target) -or (Test-Path $manifest)) { Write-Output "retain: target exists (no overwrite): $Name"; exit 1 }
 $srcBytes = (Get-ChildItem -Path $srcFull -Recurse -File | Measure-Object Length -Sum).Sum
+# Capture protection (D00 T02 §22 item 1, R3-F1): retention is the one
+# path that keeps capture bytes past their 30 days, so it re-scans them
+# itself and refuses on a failure marker, a secret hit, or an
+# unreadable capture; nothing is copied until the source is clean.
+. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+$prot = Test-RetainableCaptures $srcFull
+if (-not $prot.Ok) {
+  Write-Output "retain: PROTECTION REFUSED: $($prot.Reasons -join '; '); redact or delete the capture, then re-run; nothing copied"
+  exit 1
+}
 # Quota over the KEEP exemptions (D00 T02 §22 item 2, D00-T02-S15-PR22):
 # retained copies plus KEEP-marked stamp dirs never age out, so their
 # count and bytes are capped, or stamped evidence would grow into the

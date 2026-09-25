@@ -48,9 +48,24 @@ Assert (-not (Test-Path (Join-Path $night 'retained\fx-three'))) 'retain-byte-re
 $r5 = Invoke-Retention @('-Retain', '-Source', '2026-09-22-023001', '-Name', 'fx-three', '-Provenance', 'fixture', '-MaxRetained', '3', '-WorkspaceRoot', $ws)
 Assert ($r5.Code -eq 0) 'retain-raised-cap-passes' $r5.Text
 
+# Capture protection: a source whose capture still holds a secret, or
+# carries the scan-failure marker, refuses before any byte moves.
+$leak = Join-Path $night '2026-09-23-023001'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $leak 'captures-run-a')
+('pid=1 x: ' + 'ghp_' + ('A1b2C3d4E5' * 4)) | Set-Content -Path (Join-Path $leak 'captures-run-a\run-a-windows.txt') -Encoding UTF8
+$r6 = Invoke-Retention @('-Retain', '-Source', '2026-09-23-023001', '-Name', 'fx-leak', '-Provenance', 'fixture', '-MaxRetained', '20', '-WorkspaceRoot', $ws)
+Assert (($r6.Code -eq 1) -and ($r6.Text -like '*PROTECTION REFUSED: captures-run-a/run-a-windows.txt holds github-token*nothing copied*') -and (-not (Test-Path (Join-Path $night 'retained\fx-leak')))) 'retain-refuses-unredacted-capture' $r6.Text
+'clean window list' | Set-Content -Path (Join-Path $leak 'captures-run-a\run-a-windows.txt') -Encoding UTF8
+'run-a-windows.txt' | Set-Content -Path (Join-Path $leak 'captures-run-a\SECRET-SCAN-FAILED.txt') -Encoding UTF8
+$r7 = Invoke-Retention @('-Retain', '-Source', '2026-09-23-023001', '-Name', 'fx-leak', '-Provenance', 'fixture', '-MaxRetained', '20', '-WorkspaceRoot', $ws)
+Assert (($r7.Code -eq 1) -and ($r7.Text -like '*PROTECTION REFUSED: captures-run-a/SECRET-SCAN-FAILED.txt present*')) 'retain-refuses-scan-failure-marker' $r7.Text
+Remove-Item (Join-Path $leak 'captures-run-a\SECRET-SCAN-FAILED.txt') -Force
+$r8 = Invoke-Retention @('-Retain', '-Source', '2026-09-23-023001', '-Name', 'fx-leak', '-Provenance', 'fixture', '-MaxRetained', '20', '-WorkspaceRoot', $ws)
+Assert ($r8.Code -eq 0) 'retain-clean-capture-passes' $r8.Text
+
 # The catalog verifies clean, then faults on a manifest without bytes.
 $v1 = Invoke-Retention @('-Verify', '-WorkspaceRoot', $ws)
-Assert (($v1.Code -eq 0) -and ($v1.Text -like '*all retained runs clean (3 runs)*')) 'verify-catalog-current' $v1.Text
+Assert (($v1.Code -eq 0) -and ($v1.Text -like '*all retained runs clean (4 runs)*')) 'verify-catalog-current' $v1.Text
 Remove-Item (Join-Path $night 'retained\fx-two') -Recurse -Force
 $v2 = Invoke-Retention @('-Verify', '-WorkspaceRoot', $ws)
 Assert (($v2.Code -eq 1) -and ($v2.Text -like '*fx-two FAULT: manifest without bytes*')) 'verify-catalog-loss-faults' $v2.Text

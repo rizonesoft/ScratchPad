@@ -514,6 +514,7 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
 # screenshots. Retention follows the run evidence (30 days, prune).
 $script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'ForegroundLog', 'JobControl')
 $script:CaptureMaxBytes = 25MB
+$script:CaptureFailMarker = 'SECRET-SCAN-FAILED.txt'
 $script:SecretPatterns = @(
   @('github-token', 'gh[pousr]_[A-Za-z0-9]{36,}'),
   @('github-pat', 'github_pat_[A-Za-z0-9_]{22,}'),
@@ -571,6 +572,25 @@ function Format-WindowRow([int]$ProcId, [string]$Name, [string]$Title, [bool]$Ow
   return "pid=$ProcId ${Name}: [title redacted]"
 }
 
+function Test-RetainableCaptures([string]$SourceDir) {
+  # Retain-side enforcement of the capture policy (D00 T02 §22 item 1,
+  # R3-F1): retention re-scans every text capture under the source's
+  # captures-* directories itself instead of trusting the run's notes.
+  # A failure marker, a secret hit, or an unreadable capture refuses
+  # the retain. Returns Ok plus Reasons.
+  $reasons = @()
+  foreach ($d in @(Get-ChildItem -Path $SourceDir -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
+    if (Test-Path (Join-Path $d.FullName $script:CaptureFailMarker)) { $reasons += "$($d.Name)/$($script:CaptureFailMarker) present (an unscanned capture was kept)" }
+    foreach ($f in @(Get-ChildItem -Path $d.FullName -File -ErrorAction SilentlyContinue | Where-Object { (@('.txt', '.log', '.json') -contains $_.Extension.ToLower()) -and ($_.Name -ne $script:CaptureFailMarker) })) {
+      try {
+        $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($f.FullName)))
+        if ($hits.Count -gt 0) { $reasons += "$($d.Name)/$($f.Name) holds $($hits -join ', ')" }
+      } catch { $reasons += "$($d.Name)/$($f.Name) unreadable ($($_.Exception.Message))" }
+    }
+  }
+  return [pscustomobject]@{ Ok = ($reasons.Count -eq 0); Reasons = $reasons }
+}
+
 function Test-CaptureSecrets([string]$Text) {
   # Secret scan over one text capture: returns the pattern names that
   # hit (empty when clean). Names only, never the matched value.
@@ -590,7 +610,7 @@ function Protect-CaptureDir([string]$CaptureDir, [string]$Leg) {
   # throws; returns report notes.
   $notes = @()
   if (-not (Test-Path $CaptureDir)) { return $notes }
-  foreach ($f in @(Get-ChildItem -Path $CaptureDir -File -ErrorAction SilentlyContinue | Where-Object { @('.txt', '.log', '.json') -contains $_.Extension.ToLower() })) {
+  foreach ($f in @(Get-ChildItem -Path $CaptureDir -File -ErrorAction SilentlyContinue | Where-Object { (@('.txt', '.log', '.json') -contains $_.Extension.ToLower()) -and ($_.Name -ne $script:CaptureFailMarker) })) {
     try {
       $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($f.FullName)))
       if ($hits.Count -gt 0) {
@@ -607,6 +627,10 @@ function Protect-CaptureDir([string]$CaptureDir, [string]$Leg) {
         $notes += "- $Leg : SECRET-SCAN could not scan $($f.Name) ($why); capture deleted (fail closed)"
       } catch {
         $notes += "- $Leg : SECRET-SCAN FAILED: $($f.Name) could not be scanned ($why) or deleted ($($_.Exception.Message)); do not retain this run"
+        # Persist the failure beside the capture: NightlyRetention.ps1
+        # -Retain refuses any source carrying this marker, so a lock
+        # that clears later cannot let the unscanned bytes be retained.
+        try { Add-Content -LiteralPath (Join-Path $CaptureDir $script:CaptureFailMarker) -Value $f.Name -Encoding UTF8 } catch { $notes += "- $Leg : SECRET-SCAN marker write failed: $($_.Exception.Message)" }
       }
     }
   }

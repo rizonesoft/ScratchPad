@@ -886,6 +886,9 @@ $planted | Set-Content -Path $lockedCap -Encoding UTF8
 $lockHandle = [System.IO.File]::Open($lockedCap, 'Open', 'ReadWrite', 'None')
 try { $lockNotes = @(Protect-CaptureDir $capFx 'run-a') } finally { $lockHandle.Dispose() }
 Assert (@($lockNotes | Where-Object { $_ -like '*SECRET-SCAN FAILED: run-a-locked.txt could not be scanned*do not retain this run*' }).Count -eq 1) 'capture-unscannable-undeletable-fails-loud' ($lockNotes -join ' | ')
+Assert ((Get-Content (Join-Path $capFx 'SECRET-SCAN-FAILED.txt') -Raw) -like '*run-a-locked.txt*') 'capture-failure-marker-persists'
+$retOk = Test-RetainableCaptures $s22
+Assert ((-not $retOk.Ok) -and (@($retOk.Reasons | Where-Object { $_ -like '*SECRET-SCAN-FAILED.txt present*' }).Count -eq 1) -and (@($retOk.Reasons | Where-Object { $_ -like '*run-a-locked.txt holds github-token*' }).Count -eq 1)) 'capture-retain-refuses-marker-and-secret' ($retOk.Reasons -join ' | ')
 $lockNotes2 = @(Protect-CaptureDir $capFx 'run-a')
 Assert ((@($lockNotes2 | Where-Object { $_ -like '*SECRET-SCAN redacted run-a-locked.txt*' }).Count -eq 1)) 'capture-rescan-after-unlock-redacts' ($lockNotes2 -join ' | ')
 $capWas = $script:CaptureMaxBytes
