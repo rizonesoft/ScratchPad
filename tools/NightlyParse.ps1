@@ -1984,8 +1984,9 @@ function Get-AckDemands($ResultFiles) {
   # checksum covers the schema version field, so the key is run,
   # checksum, and version). $ResultFiles are paths; unreadable files
   # are skipped (the result gate reds them elsewhere). Returns a
-  # hashtable identity -> Day, Shas, Incidents, Paths, Current (the
-  # checksum of the most recently written copy).
+  # hashtable identity -> Day, Shas, Paths, Current (the checksum of
+  # the most recently written copy), Incidents (that copy's INC ids),
+  # and AllIncidents (the union across copies).
   $demands = @{}
   foreach ($p in @($ResultFiles)) {
     if (-not (Test-Path $p -PathType Leaf)) { continue }
@@ -1996,7 +1997,7 @@ function Get-AckDemands($ResultFiles) {
     $id = "$($r.identity)"
     if ($id -eq '') { $id = "$($r.stamp)" }
     if ($id -eq '') { continue }
-    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Shas = @(); Incidents = @(); Paths = @(); Current = ''; CurrentTime = [datetime]::MinValue } }
+    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Shas = @(); Incidents = @(); Paths = @(); Current = ''; CurrentTime = [datetime]::MinValue; AllIncidents = @() } }
     $d = $demands[$id]
     $sha = Get-FileSha256 $p
     if ($d.Shas -notcontains $sha) { $d.Shas += $sha }
@@ -2004,12 +2005,16 @@ function Get-AckDemands($ResultFiles) {
     # The most recently written copy is the run's current result: an ack
     # must match it, so an older retained copy can never keep a changed
     # result acknowledged.
-    $wt = (Get-Item -LiteralPath $p).LastWriteTimeUtc
-    if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt }
+    $copyInc = @()
     foreach ($ln in @($r.incidents)) {
       $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8})')
-      if ($m.Success -and ($d.Incidents -notcontains $m.Groups[1].Value)) { $d.Incidents += $m.Groups[1].Value }
+      if ($m.Success -and ($copyInc -notcontains $m.Groups[1].Value)) { $copyInc += $m.Groups[1].Value }
     }
+    foreach ($i in $copyInc) { if ($d.AllIncidents -notcontains $i) { $d.AllIncidents += $i } }
+    # Incidents follow the current copy, so a rewrite that removes or
+    # corrects an incident is acknowledged against what it says now.
+    $wt = (Get-Item -LiteralPath $p).LastWriteTimeUtc
+    if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc }
   }
   return $demands
 }
@@ -2086,8 +2091,13 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
     if ("$($f['incidents'])" -ne 'none') { $listed = @("$($f['incidents'])" -split '[,\s]+' | Where-Object { $_ -ne '' }) }
     $want = @()
     foreach ($id in $acked) { foreach ($i in @($Demands[$id].Incidents)) { if ($want -notcontains $i) { $want += $i } } }
+    # A stale run is judged by its STALE line, never by its incidents:
+    # anything it ever carried may stay listed without voiding the runs
+    # the file still acknowledges.
+    $staleInc = @()
+    foreach ($id in $stale) { $staleInc += @($Demands[$id].AllIncidents) }
     $missing = @($want | Where-Object { $listed -notcontains $_ })
-    $extra = @($listed | Where-Object { $want -notcontains $_ })
+    $extra = @($listed | Where-Object { ($want -notcontains $_) -and ($staleInc -notcontains $_) })
     if ($missing.Count -gt 0) { $errs += "incidents missing: $($missing -join ', ')" }
     if ($extra.Count -gt 0) { $errs += "incidents not in the acked runs: $($extra -join ', ')" }
   }
@@ -2105,7 +2115,7 @@ function Get-AckHistory([string]$Root, [string]$RelPath) {
   $eap = $ErrorActionPreference
   try {
     $ErrorActionPreference = 'Continue'
-    $log = @(git -C $Root log --format='%H|%an|%aI' -- $RelPath 2>$null)
+    $log = @(git -C $Root log --follow --format='%H|%an|%aI' -- $RelPath 2>$null)
     if ($LASTEXITCODE -ne 0) {
       # A repository with no commits yet fails `git log`; that history
       # is empty (uncommitted), not unverifiable.

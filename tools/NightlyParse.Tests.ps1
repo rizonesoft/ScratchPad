@@ -1008,6 +1008,12 @@ Assert ($g4c.Unacked -notcontains $runA2) 'ack-real-commit-finding-passes' ($g4c
 $g4d = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert (($g4d.Unacked -notcontains $runA2) -and (@($g4d.Lines | Where-Object { $_ -like "*ack-2026-09-23.md: acknowledges $runA2*" }).Count -eq 1)) 'ack-v2-day-named-file-counts' ($g4d.Lines -join ' | ')
 & git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-23.md') 2>$null; & git -C $repo commit -q -m 'drop day-named v2' 2>$null
+# R2-F3: a renamed ack keeps its whole history.
+& git -C $repo mv (Join-Path $ackDir 'ack-2026-09-22-a.md') (Join-Path $ackDir 'ack-2026-09-22-renamed.md') 2>$null; & git -C $repo commit -q -m 'rename ack a' 2>$null
+$g4e = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+$hr = @($g4e.Lines | Where-Object { $_ -like '*ack-2026-09-22-renamed.md: acknowledges*' })
+Assert (($hr.Count -eq 1) -and (([regex]::Matches($hr[0], 'Fixture Operator')).Count -eq 3)) 'ack-rename-keeps-history' ($g4e.Lines -join ' | ')
+& git -C $repo mv (Join-Path $ackDir 'ack-2026-09-22-renamed.md') (Join-Path $ackDir 'ack-2026-09-22-a.md') 2>$null; & git -C $repo commit -q -m 'rename back' 2>$null
 $g5 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-28')
 Assert ((($g5.Overdue) -contains $runA2) -and (@($g5.Lines | Where-Object { $_ -like "*OVERDUE ack: $runA2 (RED 2026-09-22, due 2026-09-25, 3 day(s) overdue): escalate operator*" }).Count -eq 1)) 'ack-past-deadline-escalates' ($g5.Lines -join ' | ')
 Assert (@($g5.Staged | Where-Object { $_ -like "*STAGED ack-overdue $runA2 *" }).Count -eq 1) 'ack-past-deadline-stages-finding' ($g5.Staged -join ' | ')
@@ -1020,6 +1026,19 @@ $demNew = Get-AckDemands $resFiles
 Assert ((@($demNew[$runA1].Shas).Count -eq 2) -and ($demNew[$runA1].Current -ne $shaA1)) 'ack-current-is-newest-copy' "shas $(@($demNew[$runA1].Shas).Count)"
 $staleOld = Test-AckV2 $ackOne $demNew
 Assert ((@($staleOld.Stale) -join ',') -eq $runA1) 'ack-older-copy-cannot-ack-changed-result' ("stale $(@($staleOld.Stale) -join ',') acked $(@($staleOld.Acked) -join ',')")
+# R2-F1: a batch keeps acknowledging its unchanged run while the other
+# goes stale, even though it lists the stale run's old incidents.
+$batch = Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1", "$runA2 sha256:$shaA2") @{ incidents = 'INC-aaaa1111' }) $demNew
+Assert ($batch.Ok -and ((@($batch.Acked) -join ',') -eq $runA2) -and ((@($batch.Stale) -join ',') -eq $runA1)) 'ack-batch-survives-a-stale-run' ("ok $($batch.Ok) acked $(@($batch.Acked) -join ',') stale $(@($batch.Stale) -join ',') errs $($batch.Errors -join '; ')")
+# R2-F2: incidents follow the current copy: a rewrite that drops one is
+# acknowledged by what it says now.
+Start-Sleep -Milliseconds 50
+New-RedResult $primaryA1 $runA1 '2026-09-22' @('- INC-bbbb2222 `UI.B` x1 (Run A): later')
+$demDrop = Get-AckDemands $resFiles
+$curA1 = $demDrop[$runA1].Current
+Assert (((@($demDrop[$runA1].Incidents) -join ',') -eq 'INC-bbbb2222') -and ((@($demDrop[$runA1].AllIncidents) | Sort-Object) -join ',') -eq 'INC-aaaa1111,INC-bbbb2222') 'ack-incidents-follow-current-copy' ("cur $(@($demDrop[$runA1].Incidents) -join ',') all $(@($demDrop[$runA1].AllIncidents) -join ',')")
+$cur = Test-AckV2 (New-Ack @("$runA1 sha256:$curA1") @{ incidents = 'INC-bbbb2222' }) $demDrop
+Assert ($cur.Ok -and ((@($cur.Acked) -join ',') -eq $runA1)) 'ack-current-incidents-pass' ($cur.Errors -join '; ')
 # R1-F4: a history git cannot verify never counts.
 [System.IO.File]::WriteAllText((Join-Path $repo '.git\index'), 'not an index')
 $g6 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
