@@ -1202,7 +1202,9 @@ if (-not $ledgerRead.Ok) {
   $failed = $true
   $report += "- RED: $($ledgerRead.Error) (ledger left untouched; repair or move it aside, then re-run)"
 } else {
-  $ledgerUpd = Update-IncidentLedger $ledgerRead.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
+  # Recovery streaks stand on tonight's test population (D00 T02 section
+  # 44 item 6): a streak built under another population resets.
+  $ledgerUpd = Update-IncidentLedger $ledgerRead.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md')) (Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'))
   $ledgerErr = ''
   try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
   if ($ledgerErr -ne '') { $failed = $true; $report += "- RED: $ledgerErr" }
@@ -1480,7 +1482,7 @@ try {
   if ($trxAll.Count -gt 0) { $executedUnique = @($trxAll | ForEach-Object { Get-TrxExecutedNames $_.FullName } | Sort-Object -Unique).Count }
 } catch { $executedUnique = $null }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

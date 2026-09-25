@@ -487,7 +487,7 @@ public sealed class TabBarTests
         Assert.Equal(2, WaitForTabCount(window, 2));
     }
 
-    [HookFact]
+    [HookFact("D01 T01 §3")]
     [Trait("Category", "Interactive")]
     public void MiddleClickClosesTheTabUnderTheCursor()
     {

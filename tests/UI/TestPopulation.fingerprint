@@ -2,6 +2,7 @@
 # One --list-tests discovery per leg filter; member FQNs sorted unique.
 # Regen: tools/Update-TestFingerprint.ps1 (build first). Review the diff:
 # every membership change stales prior proofs until re-accepted here.
+schema: population/2
 run-a-filter: Category!=Interactive&Category!=Primary
 run-b-filter: Category=Primary
 interactive-filter: Category=Interactive
@@ -266,7 +267,330 @@ run-a:
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-a-methods: 258
 run-a-cases: 322
-run-a-case-hash: 024b2756fde8e02a
+run-a-case-hash: 4d9768eea925324c
+run-a-case-rows:
+  UI|UI.AppIconTests.ExeIconMatchesAsset
+  UI|UI.AppIconTests.WindowChromeIconMatchesAsset
+  UI|UI.BackupTests.FailedSaveStillWritesSibling
+  UI|UI.BackupTests.RotationEvictsOldestSeededSibling
+  UI|UI.BackupTests.SaveWritesSiblingWithPreSaveBytes
+  UI|UI.BindingManifestTests.AKeyTheManifestCannotBindCreditsNothing
+  UI|UI.BindingManifestTests.AccessibleTextMismatchFails
+  UI|UI.BindingManifestTests.AnXrefAloneDoesNotOweTheChordTest
+  UI|UI.BindingManifestTests.BoundHandlerWithoutTheMutationGuardFails
+  UI|UI.BindingManifestTests.ConstantAssertionDoesNotCountAsAnOutcome
+  UI|UI.BindingManifestTests.CoveringMethodThatNeverRunsFails
+  UI|UI.BindingManifestTests.CoveringTestWithoutAnOutcomeAssertionFails
+  UI|UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
+  UI|UI.BindingManifestTests.DuplicateWithAnUnresolvedOwnerFails
+  UI|UI.BindingManifestTests.EnablementStatePlantsFail
+  UI|UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
+  UI|UI.BindingManifestTests.KeyHandlingOutsideTheTwoHomesFails
+  UI|UI.BindingManifestTests.LayoutMatrixPlantsFail
+  UI|UI.BindingManifestTests.LiveCoveringTestsAssertAfterTheirPress
+  UI|UI.BindingManifestTests.LiveSourceHasNoUndeclaredKeyHandling
+  UI|UI.BindingManifestTests.LiveTreeDeclaresFortyFourBindings
+  UI|UI.BindingManifestTests.LiveTreeManifestIsClean
+  UI|UI.BindingManifestTests.MismatchedMenuLabelFails
+  UI|UI.BindingManifestTests.NumPadDeclarationWithMainRowPressFails
+  UI|UI.BindingManifestTests.OwnerStillClaimingTheLiveCommandShipsDisabledFails
+  UI|UI.BindingManifestTests.OwnerThatNoLongerOwesTheChordFails
+  UI|UI.BindingManifestTests.PlantedAccessKeyCollisionFails
+  UI|UI.BindingManifestTests.PlantedConflictFails
+  UI|UI.BindingManifestTests.PlantedDoubleRegistrationFails
+  UI|UI.BindingManifestTests.PlantedEnabledButExemptCommandFails
+  UI|UI.BindingManifestTests.PlantedHandlerBodySwapFails
+  UI|UI.BindingManifestTests.PlantedHandlerSwapFails
+  UI|UI.BindingManifestTests.PlantedOsReservedChordFails
+  UI|UI.BindingManifestTests.PlantedUndeclaredBindingFails
+  UI|UI.BindingManifestTests.ReservedChordsMatchWhateverSpellingTheyAreDeclaredIn
+  UI|UI.BindingManifestTests.RoutingOraclePlantsFail
+  UI|UI.BindingManifestTests.StateConditionalEnablementPlantFails
+  UI|UI.BindingManifestTests.WrongKeyMutationFailsTheGate
+  UI|UI.BindingMutationTests.ChildRunReadsAPassingPureTest
+  UI|UI.BindingMutationTests.EveryCoveredRowHasAMutationCaseWithItsPressLine
+  UI|UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey
+  UI|UI.BindingMutationTests.VerdictsSeparateKilledSurvivedAndInconclusive
+  UI|UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser(itemId: "MenuEditDefineBing", define: True)
+  UI|UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser(itemId: "MenuEditSearchBing", define: False)
+  UI|UI.BingLaunchTests.FailingCaptureWriteReportsInTheWindow
+  UI|UI.ChromeTests.FullStripParksAddButtonLeftOfCaption
+  UI|UI.ChromeTests.ZeroTabsCentersAddButton
+  UI|UI.DirtyPromptTests.CancelKeepsTabExactly
+  UI|UI.DirtyPromptTests.DontSaveDiscardsAndCloses
+  UI|UI.DirtyPromptTests.FreshTypingDeletesStaleSession
+  UI|UI.DirtyPromptTests.KillRecoversBuffersSilentlyWithFilesUntouched
+  UI|UI.DirtyPromptTests.SaveOnPathedDirtyTabWritesBytesAndCloses
+  UI|UI.DirtyPromptTests.WindowCloseWithDirtyTabsIsSilentAndRestores
+  UI|UI.DiscoveryListingTests.CapabilityGatedRows(row: 1)
+  UI|UI.DiscoveryListingTests.CapabilityGatedRows(row: 2)
+  UI|UI.DiscoveryListingTests.CapabilityGatedRows(row: 3)
+  UI|UI.DiscoveryListingTests.EveryTheoryAttributeIsAGatedTheory
+  UI|UI.DiscoveryListingTests.GatedTheoryListsIdenticallyWithAndWithoutTheCapability
+  UI|UI.EncryptedNotesTests.LockUnlockRoundTripsExactBytes
+  UI|UI.EncryptedNotesTests.PasswordNeverReachesDisk
+  UI|UI.EncryptedNotesTests.RelockOnCloseSaveKeepsCiphertext
+  UI|UI.EncryptedNotesTests.RestoreGhostsLockedFile
+  UI|UI.EncryptedNotesTests.UntitledShowsSaveFirstNote
+  UI|UI.EncryptedNotesTests.WrongPasswordFailsLoudWithNothingRendered
+  UI|UI.ExportTests.ExportHtmlRendersStructure
+  UI|UI.ExportTests.ExportMarkdownWritesConvertedFile
+  UI|UI.ExportTests.ExportPlainStripsMarkers
+  UI|UI.ExportTests.UntitledShowsSaveFirstNote
+  UI|UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
+  UI|UI.GoldenComparisonTests.FreshCaptureMatchesGolden
+  UI|UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
+  UI|UI.GoldenComparisonTests.TenPixelShiftFailsComparison
+  UI|UI.JumpListSpikeTests.JumpListApiWorksUnpackaged
+  UI|UI.JumpListTaskTests.NewNoteFreshWithFileSelectsSpare
+  UI|UI.JumpListTaskTests.NewNoteRedirectOpensFreshTab
+  UI|UI.JumpListTaskTests.PinTaskArgsOpenTheFile
+  UI|UI.JumpListTaskTests.RecentTaskArgsOpenTheFile
+  UI|UI.JumpListTaskTests.TaskbarCarriesNewNotePinnedAndRecent
+  UI|UI.LaunchDiagnosticsTests.ForcedFailureQuotesAllSeven
+  UI|UI.LaunchDiagnosticsTests.PruneOldLaunchesKeepsFresh
+  UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "--api-key: \"quoted secret\"", expected: "--api-key: ***")
+  UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "--file x.txt", expected: "--file x.txt")
+  UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "--password hunter2", expected: "--password ***")
+  UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "Bearer abc.def.ghi", expected: "Bearer ***")
+  UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "auth hunter2", expected: "auth ***")
+  UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "token=abc123", expected: "token=***")
+  UI|UI.LaunchDiagnosticsTests.SuccessRecordQuotesFields
+  UI|UI.LaunchDropsTests.DefaultSeedPreservesDrops
+  UI|UI.LaunchDropsTests.OptInLaunchDrainsBeforeActivation
+  UI|UI.LaunchDropsTests.OptInSeedDrainsExactlyOnce
+  UI|UI.LaunchGuardTests.CrossFileGlobalAliasIsCaught
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖, fileName: "tests/UI/MyUiLaunch.cs", clean: False)
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖, fileName: "tests/UI/Sub/Helper.cs", clean: False)
+  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖, fileName: "tests/UI/UiLaunch.cs", clean: True)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { [Xunit.Fact] public void LaunchAppendsTa"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var a = FlaUI.Core.Applicatio"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var ps = System.Diagnostics.P"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var x = new System.Collection"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M(FlaUI.Core.AutomationElements.But"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "using System.Reflection; class Q { void M() { fore"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.LiveTreeScansClean
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class P { void M() { System.Diagnostics.Process.St"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [global::System.Runtime.InteropServices."┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void LaunchApp() {} }")
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { dynamic p = null; p.Start(); "┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { new System.Diagnostics.Proces"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { object? r = typeof(Q).Assembl"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var m = typeof(System.Diagnos"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var p = new System.Diagnostic"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M() { var p = new System.Diagnostic"┬╖┬╖┬╖)#2
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void M(System.Reflection.MethodInfo m, o"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void MyLauncher() { FlaUI.Core.Applicati"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { void SeedSettings() {} }")
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using A = FlaUI.Core.Application; class Q { void M"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using DI = System.Runtime.InteropServices.DllImpor"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using DIAttribute = System.Runtime.InteropServices"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using FlaUI.Core; class P { void M() { Application"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using I = System.Runtime.InteropServices; class Q "┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"┬╖┬╖┬╖)#2
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using P = System.Diagnostics.Process; class Q { vo"┬╖┬╖┬╖)#3
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Diagnostics; class P { void M() { Pro"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"┬╖┬╖┬╖)#2
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"┬╖┬╖┬╖)#3
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; partial clas"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using static System.Diagnostics.Process; class Q {"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "class Q { void M() { var t = Microsoft.CodeAnalysi"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; class Q { de"┬╖┬╖┬╖)
+  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; unsafe class"┬╖┬╖┬╖)
+  UI|UI.LaunchTests.AssociationVerbsCycleCleanly
+  UI|UI.LaunchTests.BareSecondLaunchOpensNewWindow
+  UI|UI.LaunchTests.DoubleClickCommandOpensTab
+  UI|UI.LaunchTests.FirstBirthPreexistingSetMatchesAnOutsideObservation
+  UI|UI.LaunchTests.FreshLaunchHoldsFilesInOneWindowInNewWindowMode
+  UI|UI.LaunchTests.HelperBornAfterTheSweepIsParkedByTheDelayedPass
+  UI|UI.LaunchTests.JumpListCommitsRecentsAndPinsFromStore
+  UI|UI.LaunchTests.LargeFileOpensResponsively
+  UI|UI.LaunchTests.LockedFileReportsLocked
+  UI|UI.LaunchTests.MissingFileOfferNoCreatesNothing
+  UI|UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates
+  UI|UI.LaunchTests.MultiFileLaunchOpensTabsInOneWindow
+  UI|UI.LaunchTests.OpenInNewWindowModeOpensSecondWindow
+  UI|UI.LaunchTests.OverLimitFileRefusesTooLarge
+  UI|UI.LaunchTests.PrintFlagPrintsThenCloses
+  UI|UI.LaunchTests.PrintToBogusPrinterExits2
+  UI|UI.LaunchTests.SecondLaunchRedirectsFileIntoFirst
+  UI|UI.LaunchTests.SingleFileLaunchOpensTab
+  UI|UI.LaunchTests.WindowBirthLeavesOtherWindowsHelpersInPlace
+  UI|UI.LockedResidueTests.DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost
+  UI|UI.LockedResidueTests.LockedTabRefusesTakesWithInlineNote
+  UI|UI.MainWindowTests.FirstRunShowsWhatsNewAndMegaphoneReopensIt
+  UI|UI.MainWindowTests.ShellMatchesGolden
+  UI|UI.MainWindowTests.ShellRegionsExistAndTitleFollowsConvention
+  UI|UI.MainWindowTests.ThemesRenderWithMica(theme: "dark", brightnessBound: 100)
+  UI|UI.MainWindowTests.ThemesRenderWithMica(theme: "light", brightnessBound: 150)
+  UI|UI.MainWindowTests.ThemesRenderWithMica(theme: "system", brightnessBound: 100)
+  UI|UI.MenuBarTests.EditBingItemsPresentEnabledAndUnclicked
+  UI|UI.MenuBarTests.FileCloseTabFollowsPrompt
+  UI|UI.MenuBarTests.FileCloseWindowPreservesSilently
+  UI|UI.MenuBarTests.FileExitClosesApp
+  UI|UI.MenuBarTests.FileNewTabOpensAndFocusesTab
+  UI|UI.MenuBarTests.FileNewWindowOpensSecondWindow
+  UI|UI.MenuBarTests.FileRecentMissingReportsNotFound
+  UI|UI.MenuBarTests.FileRecentRendersListClearAndReopen
+  UI|UI.MenuBarTests.FileSaveWritesPathedTabInPlace
+  UI|UI.MenuBarTests.LiveItemsStayEnabledAcrossStates
+  UI|UI.MenuBarTests.MenuStructureMatchesStockCaptures
+  UI|UI.MenuBarTests.PendingOwnerItemsStayDisabled
+  UI|UI.MenuBarTests.ToolsMenuInvokesExport
+  UI|UI.MenuBarTests.ToolsMenuInvokesLock
+  UI|UI.MenuBarTests.ToolsMenuInvokesSnapshots
+  UI|UI.MenuBarTests.ToolsMenuInvokesStats
+  UI|UI.MenuBarTests.ToolsMenuInvokesTemplates
+  UI|UI.MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates
+  UI|UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
+  UI|UI.MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement
+  UI|UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
+  UI|UI.MultiWindowTests.WindowsKeepIndependentTabs
+  UI|UI.MutationPlantTests.PlantedConstantLocalAssertion
+  UI|UI.NightlyPartitionTests.EveryUiTestBelongsToExactlyOneNightlyLeg
+  UI|UI.OffScreenBirthTests.BackgroundRestoreLandsOnTheSuiteDisplay
+  UI|UI.OffScreenBirthTests.NegativeOriginKeepsTheWindowOutside
+  UI|UI.OffScreenBirthTests.ObservedBirthMatchesTheDerivedPoint
+  UI|UI.OffScreenBirthTests.OverflowDoesNotWrapIntoTheScreen
+  UI|UI.OffScreenBirthTests.StackedMonitorsKeepTheWindowOutside
+  UI|UI.OffScreenBirthTests.VeryWideScreenRejectsTheOldFixedPoint
+  UI|UI.OffScreenBirthTests.WindowSizeStaysOutsideOnTheLeftFallback
+  UI|UI.ProtocolHandlerTests.LinkOpensTheCarriedFile
+  UI|UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow(link: "scratchpad://")
+  UI|UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow(link: "scratchpad://relative/x.txt")
+  UI|UI.ProtocolHandlerTests.ProtocolVerbsCycleCleanly
+  UI|UI.ProtocolHandlerTests.ShellLinkOpensTheFile
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "00:00", expected: False)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "01:59", expected: False)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "02:00", expected: True)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "04:30", expected: True)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "06:49", expected: True)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "06:50", expected: False)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "12:00", expected: False)
+  UI|UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650(time: "23:59", expected: False)
+  UI|UI.QuietHoursTests.EveryGatedTestCarriesTheInteractiveTrait
+  UI|UI.QuietHoursTests.EveryInteractiveTraitCarriesAGate
+  UI|UI.QuietHoursTests.EveryPrimaryFactCarriesThePrimaryTrait
+  UI|UI.QuietHoursTests.EveryPrimaryTraitCarriesAGate
+  UI|UI.QuietHoursTests.ForceVariableAllowsAnyTime
+  UI|UI.QuietHoursTests.OvernightWindowWrapsPastMidnight(window: "22:00-06:00", time: "05:59", expected: True)
+  UI|UI.QuietHoursTests.OvernightWindowWrapsPastMidnight(window: "22:00-06:00", time: "06:00", expected: False)
+  UI|UI.QuietHoursTests.OvernightWindowWrapsPastMidnight(window: "22:00-06:00", time: "12:00", expected: False)
+  UI|UI.QuietHoursTests.OvernightWindowWrapsPastMidnight(window: "22:00-06:00", time: "21:59", expected: False)
+  UI|UI.QuietHoursTests.OvernightWindowWrapsPastMidnight(window: "22:00-06:00", time: "23:00", expected: True)
+  UI|UI.QuietHoursTests.PrimarySetSizeIsPinned
+  UI|UI.QuietHoursTests.UnparseableWindowFailsToParse(window: "")
+  UI|UI.QuietHoursTests.UnparseableWindowFailsToParse(window: "02:00")
+  UI|UI.QuietHoursTests.UnparseableWindowFailsToParse(window: "02:00-06:50-extra")
+  UI|UI.QuietHoursTests.UnparseableWindowFailsToParse(window: "nope")
+  UI|UI.ReloadTests.CancelKeepsLikeKeep
+  UI|UI.ReloadTests.CleanChangePromptsAndReloadRefreshes
+  UI|UI.ReloadTests.DeletedFileReloadFailsLoud
+  UI|UI.ReloadTests.DirtyKeepPreservesEdits
+  UI|UI.ReloadTests.DirtyReloadDiscardsEdits
+  UI|UI.ReloadTests.KeepHoldsBufferAndDirties
+  UI|UI.ReloadTests.LockedReloadRoutesThroughUnlock
+  UI|UI.ReloadTests.UntitledAndIdenticalWritesNeverPrompt
+  UI|UI.SeedPrecedenceTests.ExplicitDefaultValuedGeometrySeedsOffScreen
+  UI|UI.SeedPrecedenceTests.ForegroundDefaultsStayAtCascadeOrigin
+  UI|UI.SeedPrecedenceTests.FullExplicitGeometryWins
+  UI|UI.SeedPrecedenceTests.MalformedExplicitGeometryWins
+  UI|UI.SeedPrecedenceTests.PartialExplicitGeometryWins
+  UI|UI.SeedPrecedenceTests.StringSeededExplicitGeometryWins
+  UI|UI.SeedPrecedenceTests.UntouchedDefaultsSeedOffScreen
+  UI|UI.SessionRestoreTests.CleanProfileRestoresWithContinueDefault
+  UI|UI.SessionRestoreTests.FreshModeStartsNewWindowAndDiscardsSession
+  UI|UI.SessionRestoreTests.MissingFileNotifiesOnActivationAndDropsFromSnapshot
+  UI|UI.SessionRestoreTests.MultiWindowSessionRestoresBothWindows
+  UI|UI.SessionRestoreTests.TabCloseRecordsRecentsNewestFirstCappedAtTen
+  UI|UI.SessionRestoreTests.WindowCloseRecordsNoRecent
+  UI|UI.SettingsPageTests.AboutShowsNameAndVersion
+  UI|UI.SettingsPageTests.DisabledCardsStayDisabled
+  UI|UI.SettingsPageTests.EditFontMenuJumpsToSettings
+  UI|UI.SettingsPageTests.FontEachChoiceWritesStore
+  UI|UI.SettingsPageTests.GearOpensSettingsAndBackReturns
+  UI|UI.SettingsPageTests.OpeningEachOptionWritesStore
+  UI|UI.SettingsPageTests.SettingsCaptureMatchesGolden
+  UI|UI.SettingsPageTests.SettingsPageHasNoReset
+  UI|UI.SettingsPageTests.ThemeEachOptionAppliesLive
+  UI|UI.SettingsPageTests.WhenStartsEachOptionWritesStore
+  UI|UI.SettingsPageTests.WordWrapToggleWritesStore
+  UI|UI.SettingsStoreNoticeTests.CorruptSettingsShowsNoticeAndRestoresDefaults
+  UI|UI.SnapshotTests.RestoreCancelKeepsBuffer
+  UI|UI.SnapshotTests.RestoreDontSaveReplacesBuffer
+  UI|UI.SnapshotTests.RestoreOnCleanBufferSkipsPrompt
+  UI|UI.SnapshotTests.RestoreSaveFailureAbortsWithWorkPreserved
+  UI|UI.SnapshotTests.RestoreSaveWritesThenRestores
+  UI|UI.SnapshotTests.RetentionEvictsOldestPastTen
+  UI|UI.SnapshotTests.TakeStoresBytesAndListsVersion
+  UI|UI.SnapshotTests.UntitledShowsSaveFirstNote
+  UI|UI.StatsPanelTests.EmptyTabsShowZeros
+  UI|UI.StatsPanelTests.LongRepetitionListTruncatesWithTrailer
+  UI|UI.StatsPanelTests.PanelListsFixtureExactStats
+  UI|UI.StatsPanelTests.RefreshAndReopenRecompute
+  UI|UI.StatsPanelTests.ValuesAlignToDialogRightEdge
+  UI|UI.StatusBarTests.CrFileShowsMacintoshSegment
+  UI|UI.StatusBarTests.MarkdownTabShowsDisabledFormattedSwitch
+  UI|UI.StatusBarTests.SegmentsShowLiveTruthForLoadedFile
+  UI|UI.StatusBarTests.TabSwitchUpdatesStrip
+  UI|UI.StatusBarTests.ToggleHidesBarAndPersistsAcrossRelaunch
+  UI|UI.StatusBarTests.Utf16FileShowsEncodingSegment
+  UI|UI.TabAccessibilityTests.SuffixFlipsLiveWithDirty
+  UI|UI.TabAccessibilityTests.TabNamesCarryStockSuffixes
+  UI|UI.TabBarTests.DirtyClosePromptsAndCancelKeepsTheTab
+  UI|UI.TabBarTests.InitialTabRendersFromModel
+  UI|UI.TabBarTests.OverflowShrinksTabsWithoutScrollChrome
+  UI|UI.TemplateTests.BlankNoteOpensCleanEmptyTab
+  UI|UI.TemplateTests.DailyJournalOpensExpanded
+  UI|UI.TemplateTests.EmptyTitleDisablesSave
+  UI|UI.TemplateTests.PickerListsBuiltInsAndUsesMeetingNotes
+  UI|UI.TemplateTests.SaveCurrentPersistsAcrossRelaunch
+  UI|UI.TemplateTests.UnknownBracesStayLiteralInRoom
+  UI|UI.TitleBarIconTests.TitleBarIconLeftOfFirstTab
+  UI|UI.TitleBarIconTests.TitleBarIconPresentAndSized
+  UI|UI.UiForegroundTests.LargestSecondaryWins
+  UI|UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
+  UI|UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI|UI.UiInputFunnelTests.AbandonedQueuedReleaseNeverInjectsLater
+  UI|UI.UiInputFunnelTests.BlockingReleaseIsReportedWithinTheBound
+  UI|UI.UiInputFunnelTests.CancelledReleaseAndTheBoundReportEveryStuckKey
+  UI|UI.UiInputFunnelTests.ClosingTheTargetWindowIsNotAnInterruption
+  UI|UI.UiInputFunnelTests.CommandMovingFocusInsideTheAppIsNotAnInterruption
+  UI|UI.UiInputFunnelTests.FocusChangeBetweenKeyDownAndKeyUpAbortsCleanly
+  UI|UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
+  UI|UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
+  UI|UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
+  UI|UI.UiInputFunnelTests.InAppFocusMoveBetweenCtrlAndWheelStillScrollsOnce
+  UI|UI.UiInputFunnelTests.MatchingWindowAndFocusSendsOnce
+  UI|UI.UiInputFunnelTests.ModifierPressedMidInjectionOutsideTheChordIsNotReleased
+  UI|UI.UiInputFunnelTests.OnlyTheFunnelTouchesTheKeyboard
+  UI|UI.UiInputFunnelTests.OperatorHeldModifierIsNeverReleased
+  UI|UI.UiInputFunnelTests.PartialSendReleasesExactlyTheInjectedKeys
+  UI|UI.UiInputFunnelTests.PlantedFocusOnTheWrongControlFailsThePrecondition
+  UI|UI.UiInputFunnelTests.PreconditionSettlingWithinTheWaitStillSends
+  UI|UI.UiInputFunnelTests.StuckModifierIsReleasedAndFailsLoud
+  UI|UI.UiInputFunnelTests.TheAppsOtherWindowFailsLoudAndSendsNothing
+  UI|UI.UiInputFunnelTests.ThrowingReleaseNamesTheStuckKeyAndReleasesTheRest
+  UI|UI.UiInputFunnelTests.ThrowingSenderStillSendsKeyUpReleasesModifiersAndKeepsItsFailure
+  UI|UI.UiInputFunnelTests.TypedTextOwnsOnlyItsCharactersModifiers
+  UI|UI.UiInputFunnelTests.WheelOnTargetScrollsOnceBetweenCtrlDownAndUp
+  UI|UI.UiInputFunnelTests.WheelWithFocusLostScrollsNothing
+  UI|UI.UiInputFunnelTests.WindowClosingDuringRecoveryStillReleases
+  UI|UI.UiLeakBundleTests.EventSlicesFillFromGateLog
+  UI|UI.UiLeakBundleTests.EventSlicesScrubTitles
+  UI|UI.UiLeakBundleTests.RetentionPrunesOldBundles
+  UI|UI.UiLeakBundleTests.ScaleToCapPinsDimensions(width: 1000, height: 2000, cappedWidth: 800, cappedHeight: 1600)
+  UI|UI.UiLeakBundleTests.ScaleToCapPinsDimensions(width: 1600, height: 1600, cappedWidth: 1600, cappedHeight: 1600)
+  UI|UI.UiLeakBundleTests.ScaleToCapPinsDimensions(width: 2000, height: 1000, cappedWidth: 1600, cappedHeight: 800)
+  UI|UI.UiLeakBundleTests.ScaleToCapPinsDimensions(width: 900, height: 650, cappedWidth: 900, cappedHeight: 650)
+  UI|UI.UiLeakBundleTests.ScrubTitleShapes(title: "login token=abc123 failed", expected: "login token=*** failed")
+  UI|UI.UiLeakBundleTests.ScrubTitleShapes(title: "plain title", expected: "plain title")
+  UI|UI.UiLeakBundleTests.ScrubTitleTruncates
+  UI|UI.UntitledTitleTests.FirstLineTrimsAndTruncates
+  UI|UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -274,7 +598,12 @@ run-b:
   UI.UiLeakBundleTests.ForcedLeakQuotesFullBundle
 run-b-methods: 4
 run-b-cases: 4
-run-b-case-hash: 5060a831f28bbeeb
+run-b-case-hash: 3fabee488c187de7
+run-b-case-rows:
+  UI|UI.GateCalibrationTests.PlantedDwellTripsTheGate
+  UI|UI.MainWindowTests.GeometryRestoresAcrossLaunches
+  UI|UI.MultiWindowTests.MenuNewWindowOpensSecondWindowAtCascade
+  UI|UI.UiLeakBundleTests.ForcedLeakQuotesFullBundle
 interactive:
   UI.AcceleratorTests.ChordCtrlEOpensBingSearch
   UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
@@ -321,4 +650,79 @@ interactive:
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
 interactive-methods: 43
 interactive-cases: 74
-interactive-case-hash: 582f7acd927a8963
+interactive-case-hash: db52692cc3510410
+interactive-case-rows:
+  UI|UI.AcceleratorTests.ChordCtrlEOpensBingSearch
+  UI|UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
+  UI|UI.AcceleratorTests.ChordCtrlShiftGOpensStats
+  UI|UI.AcceleratorTests.ChordCtrlShiftHOpensSnapshots
+  UI|UI.AcceleratorTests.ChordCtrlShiftLOpensLock
+  UI|UI.AcceleratorTests.ChordCtrlShiftNOpensSecondWindow
+  UI|UI.AcceleratorTests.ChordCtrlShiftXOpensExport
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+1", command: "Tabs.GotoNumber(1)", test: "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+2", command: "Tabs.GotoNumber(2)", test: "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+3", command: "Tabs.GotoNumber(3)", test: "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+4", command: "Tabs.GotoNumber(4)", test: "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+5", command: "Tabs.GotoNumber(5)", test: "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+6", command: "Tabs.GotoNumber(6)", test: "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+7", command: "Tabs.GotoNumber(7)", test: "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+8", command: "Tabs.GotoNumber(8)", test: "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+9", command: "Tabs.GotoNumber(9)", test: "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Alt+S", command: "MenuFileSaveAll", test: "MenuBarTests.FileSaveAllWalksDirtyTabs")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+E", command: "MenuEditSearchBing", test: "AcceleratorTests.ChordCtrlEOpensBingSearch")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+N", command: "MenuFileNewTab", test: "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+O", command: "MenuFileOpen", test: "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+S", command: "MenuFileSave", test: "MenuBarTests.FileSaveOnUntitledOpensSaveAs")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+E", command: "MenuToolsTemplates", test: "AcceleratorTests.ChordCtrlShiftEOpensTemplates")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+G", command: "MenuToolsStats", test: "AcceleratorTests.ChordCtrlShiftGOpensStats")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+H", command: "MenuToolsSnapshots", test: "AcceleratorTests.ChordCtrlShiftHOpensSnapshots")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+L", command: "MenuToolsLock", test: "AcceleratorTests.ChordCtrlShiftLOpensLock")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+N", command: "MenuFileNewWindow", test: "AcceleratorTests.ChordCtrlShiftNOpensSecondWindow")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+S", command: "MenuFileSaveAs", test: "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+T", command: "Tabs.ReopenLast", test: "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+Tab", command: "Tabs.CyclePrevious", test: "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+W", command: "MenuFileCloseWindow", test: "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Shift+X", command: "MenuToolsExport", test: "AcceleratorTests.ChordCtrlShiftXOpensExport")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+T", command: "Tabs.NewTab", test: "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+Tab", command: "Tabs.CycleNext", test: "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped(chord: "Ctrl+W", command: "MenuFileCloseTab", test: "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|UI.BindingMutationTests.PlantedConstantLocalSurvivesTheMutationRun
+  UI|UI.ChordRoutingTests.EveryLiveChordRoutesPerTheOracle
+  UI|UI.ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity
+  UI|UI.ChordRoutingTests.WindowGlobalChordRoutesPerSurface
+  UI|UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
+  UI|UI.LaunchTests.ForegroundDefaultsLandOnScreen
+  UI|UI.LaunchTests.MissingFileOfferEnterAcceptsAsYes
+  UI|UI.LaunchTests.WindowBirthLeavesAnOwnedDialogInPlace
+  UI|UI.MenuBarTests.AccessKeysOpenEachMenu
+  UI|UI.MenuBarTests.FileMenuLiveAcceleratorsWork
+  UI|UI.MenuBarTests.FileOpenLoadsFileWithForcedEncoding
+  UI|UI.MenuBarTests.FileOpenMissingNameOffersCreate
+  UI|UI.MenuBarTests.FileOpenOpensExactlyOneFile
+  UI|UI.MenuBarTests.FileOpenShowsPickerWithEncodingList
+  UI|UI.MenuBarTests.FileSaveAllWalksDirtyTabs
+  UI|UI.MenuBarTests.FileSaveAsPrefillsEncodingAndEol
+  UI|UI.MenuBarTests.FileSaveAsWritesChosenPathAndEncoding
+  UI|UI.MenuBarTests.FileSaveOnUntitledOpensSaveAs
+  UI|UI.MultiWindowTests.TabDragOutsideStripDetachesNothing
+  UI|UI.PinnedTabsTests.CloseOthersSkipsPinned
+  UI|UI.PinnedTabsTests.CloseRightSkipsPinned
+  UI|UI.PinnedTabsTests.DoubleClickTogglesPinGlyph
+  UI|UI.PinnedTabsTests.PinsSurviveRelaunch
+  UI|UI.PinnedTabsTests.SingleCloseStillClosesPinned
+  UI|UI.SessionRestoreTests.QuitAndRelaunchRestoresTabsContentsAndCarets
+  UI|UI.StatusBarTests.KeystrokesAndCaretMovesUpdateStrip
+  UI|UI.StatusBarTests.StatusSegmentsHaveNoClickPath
+  UI|UI.TabBarTests.ContextMenuMatchesNotepad
+  UI|UI.TabBarTests.DontSaveClosesAndNeverReopens
+  UI|UI.TabBarTests.DragAttemptLeavesOrderUnchanged
+  UI|UI.TabBarTests.MiddleClickClosesTheTabUnderTheCursor
+  UI|UI.TabBarTests.NumberShortcutsAndReopenMatchNotepad
+  UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_2, position: 1)
+  UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_4, position: 3)
+  UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_5, position: 4)
+  UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_6, position: 5)
+  UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_7, position: 6)
+  UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_8, position: 7)
+  UI|UI.TabBarTests.ThreeTabsSwitchAndClose
+  UI|UI.TitleBarIconTests.AddButtonRealClickOpensTab

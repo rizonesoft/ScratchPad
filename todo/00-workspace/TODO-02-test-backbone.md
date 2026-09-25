@@ -1405,19 +1405,21 @@ Why this section exists: the §36 plan review returned 14 findings; 5 file here,
 
 ## 44. Population Gate Second Residuals
 
+> **Started:** 2026-09-25T17:59:25Z
+
 Why this section exists: the §37 plan review returned 11 findings; 8 file here, 1 was applied (the §15 XREF pair), and 2 are rejected with reasons in the §37 findings file. §37 gated the night on green CI, widened freshness to every build input, made gated Theories list identically, and gave the population case identity and per-case debt; these carry that through content provenance, identity encoding, exclusion accountability, trx reconciliation, debt closure, proof validity, format migration, and diagnostics. -> SOURCE: plan-review-D00-T02-s37-2026-09-25-s44 D00-T02-S37-PR3 D00-T02-S37-PR4 D00-T02-S37-PR5 D00-T02-S37-PR6 D00-T02-S37-PR7 D00-T02-S37-PR8 D00-T02-S37-PR9 D00-T02-S37-PR10 (content provenance, identity encoding, exclusion accountability, trx reconciliation, debt closure, proof validity, format migration, and drift diagnostics from the §37 plan review).
 
 - -> XREF: D00 T02 §37 -- filed from its plan review; carries the gate it widened.
 
-- [ ] Freshness is content-based where timestamps lie: the regen records a digest over the build inputs (plus restore inputs and SDK identity) beside the binary, so preserved timestamps, deletions, and property changes are caught. Done when: a fixture editing an input with its timestamp restored refuses. (D00-T02-S37-PR3.)
-- [ ] Case-row identity has a defined representation: assembly-qualified names, a deterministic argument encoding, and duplicate display names counted, independent of discovery order. Done when: two rows with one display name hash apart and a reordered listing hashes the same. (D00-T02-S37-PR4.)
-- [ ] Capability-gated rows that never run are accounted for: each CAPABILITY skip names its owner and the host that owes the run, so an identical listing never hides a dropped test. Done when: a capability skip without an owner reds the leg summary. (D00-T02-S37-PR5.)
-- [ ] Per-case debt reconciles listed identities with trx outcomes across retries, duplicate names, skips, and aborted runs. Done when: a retried row and a duplicate-named row each keep the right owed count. (D00-T02-S37-PR6.)
-- [ ] Per-case debt closes under the collector's method filter by case: the collection reruns the method and each owed row closes only when its own case executes green. Done when: a collection green on two of three rows keeps one owed. (D00-T02-S37-PR7.)
-- [ ] Proof validity binds to the population identity: a proof recorded against one case hash reads stale after a regen with another, so updating the fingerprint cannot revive old evidence. Done when: a fixture proof reads stale after a row-swap regen. (D00-T02-S37-PR8.)
-- [ ] The fingerprint carries a schema version, and readers refuse an older or unknown version with the regen command. Done when: a count-only fingerprint refuses naming its version and the command. (D00-T02-S37-PR9.)
-- [ ] Case drift names the added, removed, and changed cases per leg with the recovery command, not only the two hashes. Done when: a row swap prints the removed and the added row. (D00-T02-S37-PR10.)
-- [ ] Commit: `"workspace: settle the population gate second residuals"`
+- [x] Freshness is content-based where timestamps lie: the regen records a digest over the build inputs (plus restore inputs and SDK identity) beside the binary, so preserved timestamps, deletions, and property changes are caught. Done when: a fixture editing an input with its timestamp restored refuses. (D00-T02-S37-PR3.)
+- [x] Case-row identity has a defined representation: assembly-qualified names, a deterministic argument encoding, and duplicate display names counted, independent of discovery order. Done when: two rows with one display name hash apart and a reordered listing hashes the same. (D00-T02-S37-PR4.)
+- [x] Capability-gated rows that never run are accounted for: each CAPABILITY skip names its owner and the host that owes the run, so an identical listing never hides a dropped test. Done when: a capability skip without an owner reds the leg summary. (D00-T02-S37-PR5.)
+- [x] Per-case debt reconciles listed identities with trx outcomes across retries, duplicate names, skips, and aborted runs. Done when: a retried row and a duplicate-named row each keep the right owed count. (D00-T02-S37-PR6.)
+- [x] Per-case debt closes under the collector's method filter by case: the collection reruns the method and each owed row closes only when its own case executes green. Done when: a collection green on two of three rows keeps one owed. (D00-T02-S37-PR7.)
+- [x] Proof validity binds to the population identity: a proof recorded against one case hash reads stale after a regen with another, so updating the fingerprint cannot revive old evidence. Done when: a fixture proof reads stale after a row-swap regen. (D00-T02-S37-PR8.)
+- [x] The fingerprint carries a schema version, and readers refuse an older or unknown version with the regen command. Done when: a count-only fingerprint refuses naming its version and the command. (D00-T02-S37-PR9.)
+- [x] Case drift names the added, removed, and changed cases per leg with the recovery command, not only the two hashes. Done when: a row swap prints the removed and the added row. (D00-T02-S37-PR10.)
+- [x] Commit: `"workspace: settle the population gate second residuals"`
 
 **Test checkpoint:** Content provenance catches restored timestamps, identity survives reordering and splits duplicates, capability skips carry owners, debt reconciles retries and closes per case, proofs stale with the population, old formats refuse with the command, and drift names cases. Cheaper substitute that fails: a longer hash.
 

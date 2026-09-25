@@ -611,7 +611,7 @@ public sealed class LaunchTests
     // with no windows when one exists (plus a next-to-source PDF when the
     // default is Print to PDF), exit 2 naming the missing printer when
     // none exists. Either way no window may appear.
-    [PrinterFact]
+    [PrinterFact("D01 T02 §5")]
     public void PrintFlagPrintsThenCloses()
     {
         string dir = NewTempDir();

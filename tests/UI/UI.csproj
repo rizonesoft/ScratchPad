@@ -42,4 +42,12 @@
     <WriteLinesToFile File="$(OutputPath)fglogpath.txt" Lines="@(ForegroundLogTargetPath)" Overwrite="true" />
   </Target>
 
+  <!-- Content provenance (D00 T02 §44 item 1): after every build, the
+       digest of the build inputs' content plus the SDK version lands
+       beside the binary, and the population gate's freshness check
+       compares it, so timestamps never decide freshness alone. -->
+  <Target Name="WriteBuildInputsDigest" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Write-BuildInputsDigest.ps1&quot; -Root &quot;$(MSBuildThisFileDirectory)..\..&quot; -Out &quot;$(OutputPath)build-inputs.digest&quot; -Sdk &quot;$(NETCoreSdkVersion)&quot;" StandardOutputImportance="low" />
+  </Target>
+
 </Project>

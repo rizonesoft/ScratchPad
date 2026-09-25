@@ -99,22 +99,25 @@ function Get-NonQuarantineSkips([string]$TrxPath) {
   if (-not (Test-Path $TrxPath)) { return $unproven }
   try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return $unproven }
   $names = @()
-  $legacyCapability = @(
-    'Low-level mouse hooks are unavailable on this host',
-    'No printers enumerated in this context',
-    'Default printer is hardware'
-  )
   foreach ($r in @($t.TestRun.Results.UnitTestResult | Where-Object { $_.outcome -eq 'NotExecuted' })) {
     $msg = ''
     if ($r.Output -and $r.Output.ErrorInfo -and $r.Output.ErrorInfo.Message) { $msg = $r.Output.ErrorInfo.Message }
     if ($msg -cmatch 'QUARANTINED \d{4}-\d{2}-\d{2} \S+') { continue }
-    if ($msg -clike 'CAPABILITY:*') { continue }
-    $legacy = $false
-    foreach ($frag in $legacyCapability) { if ($msg -clike "$frag*") { $legacy = $true; break } }
-    if ($legacy) { continue }
+    # A capability skip is explained only when it names its owner and the
+    # host that owes the run (D00 T02 §44 item 3); the ownerless forms,
+    # the pre-code legacy fragments included, now read unexplained.
+    if (Test-CapabilitySkip $msg) { continue }
     $names += $r.testName
   }
   return [pscustomobject]@{ Ok = $true; Names = $names }
+}
+
+function Test-CapabilitySkip([string]$Message) {
+  # `CAPABILITY: <why>; owner DNN TNN <section sign>N; owed on <host>.`
+  # (D00 T02 §44 item 3). The section sign is built by code point: Windows
+  # PowerShell reads this BOM-less script as ANSI.
+  $sec = [char]0xA7
+  return ($Message -cmatch ('^CAPABILITY: .+; owner D\d{2} T\d{2} ' + $sec + '\d+; owed on \S.*'))
 }
 
 function Get-TranscriptSkips([string]$LogPath) {
@@ -1012,6 +1015,7 @@ function Read-TestPopulationFile([string]$Path) {
   $runA = @()
   $runB = @()
   $interactive = @()
+  $rows = @{ 'run-a' = @(); 'run-b' = @(); 'interactive' = @() }
   $section = ''
   foreach ($raw in (Get-Content $Path)) {
     $ln = $raw.Trim()
@@ -1019,6 +1023,9 @@ function Read-TestPopulationFile([string]$Path) {
     if ($ln -eq 'run-a:') { $section = 'run-a'; continue }
     if ($ln -eq 'run-b:') { $section = 'run-b'; continue }
     if ($ln -eq 'interactive:') { $section = 'interactive'; continue }
+    $rm = [regex]::Match($ln, '^(run-a|run-b|interactive)-case-rows:$')
+    if ($rm.Success) { $section = 'rows:' + $rm.Groups[1].Value; continue }
+    if ($section.StartsWith('rows:') -and ($raw -match '^  \S')) { $rows[$section.Substring(5)] += $ln; continue }
     $kv = [regex]::Match($ln, '^([a-z-]+):\s*(.+)$')
     if ($kv.Success -and ($raw -notmatch '^\s')) {
       $section = ''
@@ -1030,6 +1037,9 @@ function Read-TestPopulationFile([string]$Path) {
     if (($section -eq 'interactive') -and ($raw -match '^  \S')) { $interactive += $ln; continue }
     return (& $bad "fingerprint malformed line: $raw")
   }
+  # The format version first (D00 T02 §44 item 7).
+  $ver = if ($filters.ContainsKey('schema')) { $filters['schema'] } else { 'missing (count-only format)' }
+  if ($ver -ne $script:PopulationSchema) { return (& $bad "fingerprint schema $ver is not $script:PopulationSchema; regenerate: $script:PopulationRegen") }
   foreach ($k in @('run-a-filter', 'run-b-filter', 'interactive-filter')) {
     if (-not $filters.ContainsKey($k)) { return (& $bad "fingerprint missing $k") }
   }
@@ -1047,23 +1057,52 @@ function Read-TestPopulationFile([string]$Path) {
   foreach ($k in @('run-a-case-hash', 'run-b-case-hash', 'interactive-case-hash')) {
     if (-not $filters.ContainsKey($k)) { return (& $bad "fingerprint missing $k") }
   }
-  return [pscustomobject]@{ Ok = $true; Error = ''; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases']; RunACaseHash = $filters['run-a-case-hash']; RunBCaseHash = $filters['run-b-case-hash']; InteractiveCaseHash = $filters['interactive-case-hash'] }
+  return [pscustomobject]@{ Ok = $true; Error = ''; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases']; RunACaseHash = $filters['run-a-case-hash']; RunBCaseHash = $filters['run-b-case-hash']; InteractiveCaseHash = $filters['interactive-case-hash']; RunACaseRows = @($rows['run-a']); RunBCaseRows = @($rows['run-b']); InteractiveCaseRows = @($rows['interactive']) }
+}
+
+function Get-CaseIdentityRows($Cases, [string]$Assembly = 'UI') {
+  # The case-row representation (D00 T02 §44 item 2): each row is
+  # `<assembly>|<display name>` (the display name carries the Theory
+  # arguments in xunit's deterministic encoding), rows sort ordinally, and
+  # a display name listed twice keeps both rows (the second reads
+  # `#2`), so duplicates count and discovery order never matters.
+  $list = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($c in @($Cases)) { if ($null -ne $c) { $list.Add("$c") } }
+  $list.Sort([StringComparer]::Ordinal)
+  $rows = @()
+  $seen = @{}
+  foreach ($c in $list) {
+    $k = "$c"
+    $n = if ($seen.ContainsKey($k)) { $seen[$k] + 1 } else { 1 }
+    $seen[$k] = $n
+    $rows += $(if ($n -gt 1) { "$Assembly|$c#$n" } else { "$Assembly|$c" })
+  }
+  return $rows
 }
 
 function Get-CaseHash($Cases) {
-  # Case-row identity: SHA-256 over the sorted unique case display names
-  # (a Theory row's arguments included), first 16 hex; 'none' when the
-  # discovery carries no case list (fixtures built by hand).
+  # Case-row identity: SHA-256 over the identity rows (Get-CaseIdentityRows:
+  # assembly-qualified, ordinal-sorted, duplicates counted), first 16 hex;
+  # 'none' when the discovery carries no case list (fixtures built by hand).
   if ($null -eq $Cases) { return 'none' }
   # Ordinal identity (D00 T02 section 37 R2-F1): PowerShell sorting and
   # uniqueness ignore case, which would fold rows differing only by a
   # string argument's casing.
-  $set = New-Object 'System.Collections.Generic.SortedSet[string]' ([StringComparer]::Ordinal)
-  foreach ($c in @($Cases)) { if ($null -ne $c) { $null = $set.Add("$c") } }
-  $text = (@($set) -join "`n")
+  $text = (@(Get-CaseIdentityRows $Cases) -join "`n")
   $sha = [System.Security.Cryptography.SHA256]::Create()
   try { $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) } finally { $sha.Dispose() }
   return ([System.BitConverter]::ToString($bytes) -replace '-', '').Substring(0, 16).ToLowerInvariant()
+}
+
+# The fingerprint format (D00 T02 §44 item 7): readers refuse any other
+# version with the regen command, so an old count-only file never reads.
+$script:PopulationSchema = 'population/2'
+$script:PopulationRegen = 'powershell -File tools/Update-TestFingerprint.ps1 (after a fresh build)'
+
+function Get-DiscoveryCaseRows($Discovery, [string]$Leg) {
+  $p = $Discovery.PSObject.Properties[$Leg + 'CaseRows']
+  if ($null -eq $p -or $null -eq $p.Value) { return @() }
+  return @($p.Value)
 }
 
 function Get-DiscoveryCaseHash($Discovery, [string]$Leg) {
@@ -1084,6 +1123,7 @@ function Write-TestPopulationFile([string]$Path, [string]$RunAFilter, [string]$R
     '# One --list-tests discovery per leg filter; member FQNs sorted unique.',
     '# Regen: tools/Update-TestFingerprint.ps1 (build first). Review the diff:',
     '# every membership change stales prior proofs until re-accepted here.',
+    "schema: $script:PopulationSchema",
     "run-a-filter: $RunAFilter",
     "run-b-filter: $RunBFilter",
     "interactive-filter: $InteractiveFilter",
@@ -1093,16 +1133,22 @@ function Write-TestPopulationFile([string]$Path, [string]$RunAFilter, [string]$R
   $lines += "run-a-methods: $($Discovery.RunAMethods)"
   $lines += "run-a-cases: $($Discovery.RunACases)"
   $lines += "run-a-case-hash: $(Get-DiscoveryCaseHash $Discovery 'RunA')"
+  $lines += 'run-a-case-rows:'
+  foreach ($r in @(Get-DiscoveryCaseRows $Discovery 'RunA')) { $lines += "  $r" }
   $lines += 'run-b:'
   foreach ($m in (@($Discovery.RunB) | Sort-Object -Unique)) { $lines += "  $m" }
   $lines += "run-b-methods: $($Discovery.RunBMethods)"
   $lines += "run-b-cases: $($Discovery.RunBCases)"
   $lines += "run-b-case-hash: $(Get-DiscoveryCaseHash $Discovery 'RunB')"
+  $lines += 'run-b-case-rows:'
+  foreach ($r in @(Get-DiscoveryCaseRows $Discovery 'RunB')) { $lines += "  $r" }
   $lines += 'interactive:'
   foreach ($m in (@($Discovery.Interactive) | Sort-Object -Unique)) { $lines += "  $m" }
   $lines += "interactive-methods: $($Discovery.InteractiveMethods)"
   $lines += "interactive-cases: $($Discovery.InteractiveCases)"
   $lines += "interactive-case-hash: $(Get-DiscoveryCaseHash $Discovery 'Interactive')"
+  $lines += 'interactive-case-rows:'
+  foreach ($r in @(Get-DiscoveryCaseRows $Discovery 'Interactive')) { $lines += "  $r" }
   $tmp = "$Path.tmp"
   $lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
   Move-Item -Path $tmp -Destination $Path -Force
@@ -1140,7 +1186,22 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
   }
   foreach ($h in @(@('run-a', $fp.RunACaseHash, 'RunA'), @('run-b', $fp.RunBCaseHash, 'RunB'), @('interactive', $fp.InteractiveCaseHash, 'Interactive'))) {
     $live = Get-DiscoveryCaseHash $Discovery $h[2]
-    if ($h[1] -ne $live) { $drifts += "$($h[0]) case rows changed: fingerprinted hash $($h[1]) vs discovered $live" }
+    if ($h[1] -ne $live) {
+      $drifts += "$($h[0]) case rows changed: fingerprinted hash $($h[1]) vs discovered $live"
+      # The rows themselves (D00 T02 §44 item 8): which cases were added
+      # and removed, and the command that re-accepts them.
+      $was = @($fp.($h[2] + 'CaseRows'))
+      $now = @(Get-DiscoveryCaseRows $Discovery $h[2])
+      if (($was.Count -gt 0) -or ($now.Count -gt 0)) {
+        $addedRows = @($now | Where-Object { $was -cnotcontains $_ })
+        $removedRows = @($was | Where-Object { $now -cnotcontains $_ })
+        foreach ($r in ($removedRows | Select-Object -First 5)) { $drifts += "$($h[0]) case removed: $r" }
+        if ($removedRows.Count -gt 5) { $drifts += "$($h[0]) case removed: ... ($($removedRows.Count) total)" }
+        foreach ($r in ($addedRows | Select-Object -First 5)) { $drifts += "$($h[0]) case added: $r" }
+        if ($addedRows.Count -gt 5) { $drifts += "$($h[0]) case added: ... ($($addedRows.Count) total)" }
+      }
+      $drifts += "$($h[0]) re-accept after review: $script:PopulationRegen"
+    }
   }
   if ($Discovery.RunAMethods -ne @($Discovery.RunA).Count) { $drifts += 'discovery run-a method list disagrees with its count (internal error)' }
   if ($Discovery.RunBMethods -ne @($Discovery.RunB).Count) { $drifts += 'discovery run-b method list disagrees with its count (internal error)' }
@@ -1226,7 +1287,7 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
     if ($methods -notcontains $fq) { $methods += $fq }
   }
   $methods = @($methods | Sort-Object -Unique)
-  return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $caseNames) }
+  return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $caseNames); CaseRows = @(Get-CaseIdentityRows $caseNames) }
 }
 
 function Test-UiBuildFresh([datetime]$BinaryTimeUtc, [datetime]$NewestSourceTimeUtc, [string]$BinaryPath) {
@@ -1375,6 +1436,58 @@ function Resolve-MsBuildPath([string]$Raw, [string]$Dir, [string]$From, $Props) 
   return [System.IO.Path]::GetFullPath($v)
 }
 
+# Content provenance for the UI build (D00 T02 section 44 item 1).
+
+function Get-FileSha256([string]$Path) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $fs = [System.IO.File]::OpenRead($Path)
+    try { return ([System.BitConverter]::ToString($sha.ComputeHash($fs)) -replace '-', '').ToLowerInvariant() } finally { $fs.Dispose() }
+  } finally { $sha.Dispose() }
+}
+
+function Get-BuildInputsDigest([string]$Root, [string]$Sdk, $Inputs = $null) {
+  # One line per input (`<root-relative path> <sha256>`, ordinal-sorted),
+  # the restore result, and the SDK version; the digest is SHA-256 over
+  # the lines. $Inputs overrides the discovered set (fixtures).
+  $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $files = if ($null -ne $Inputs) { @($Inputs) } else { @(Get-UiBuildInputs $Root | ForEach-Object { $_.FullName }) }
+  $assets = Join-Path $rootFull 'tests\UI\obj\project.assets.json'
+  if ((Test-Path $assets) -and ($null -eq $Inputs)) { $files += $assets }
+  $lines = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($f in $files) {
+    $full = [System.IO.Path]::GetFullPath("$f")
+    $rel = if ($full.StartsWith($rootFull + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $full.Substring($rootFull.Length + 1) } else { $full }
+    $hash = if (Test-Path -LiteralPath $full) { Get-FileSha256 $full } else { 'missing' }
+    $lines.Add("$($rel.Replace('\', '/')) $hash")
+  }
+  $lines.Sort([StringComparer]::Ordinal)
+  $lines.Add("sdk $Sdk")
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { $digest = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
+  return [pscustomobject]@{ Digest = $digest; Lines = @($lines) }
+}
+
+function Test-BuildInputsDigest([string]$Root, [string]$DigestFile, [string]$Sdk, $Inputs = $null) {
+  # The content freshness check: the digest recorded beside the binary at
+  # build time must equal the inputs' digest now. Names the first
+  # differing entry so the refusal says what changed.
+  if (-not (Test-Path $DigestFile)) { return [pscustomobject]@{ Ok = $false; Error = "UI build has no content digest ($DigestFile); rebuild: dotnet build src/ScratchPad.slnx" } }
+  $recorded = @(Get-Content -LiteralPath $DigestFile)
+  $now = Get-BuildInputsDigest $Root $Sdk $Inputs
+  if (($recorded.Count -gt 0) -and ($recorded[0].Trim() -eq $now.Digest)) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+  $was = @($recorded | Select-Object -Skip 1 | Where-Object { $_ -ne '' })
+  $changed = @($now.Lines | Where-Object { $was -cnotcontains $_ }) + @($was | Where-Object { $now.Lines -cnotcontains $_ })
+  $first = if ($changed.Count -gt 0) { ($changed[0] -split ' ', 2)[0] } else { '?' }
+  return [pscustomobject]@{ Ok = $false; Error = "UI build is stale by content: its build inputs changed since the build (first: $first; $($changed.Count) differing entries, timestamps notwithstanding); rebuild: dotnet build src/ScratchPad.slnx" }
+}
+
+function Get-UiSdkVersion([string]$Root) {
+  # The SDK the build records (NETCoreSdkVersion): the repo-local
+  # toolchain's version, else the PATH one, else '' when neither answers.
+  try { $dn = Join-Path $Root '.tools\dotnet-win-x64\dotnet.exe'; if (-not (Test-Path $dn)) { $dn = 'dotnet' }; return "$(& $dn --version)".Trim() } catch { return '' }
+}
+
 function Get-UiBuildFreshness([string]$Root) {
   $dll = Join-Path $Root 'Bin\UI\Debug\UI.dll'
   if (-not (Test-Path $dll)) { return [pscustomobject]@{ Ok = $false; Error = "UI build missing: $dll; run: dotnet build src/ScratchPad.slnx, then retry" } }
@@ -1387,8 +1500,12 @@ function Get-UiBuildFreshness([string]$Root) {
   $newest = $inputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
   if ($null -eq $newest) { return [pscustomobject]@{ Ok = $true; Error = '' } }
   $r = Test-UiBuildFresh (Get-Item $dll).LastWriteTimeUtc $newest.LastWriteTimeUtc $dll
-  if (-not $r.Ok) { $r.Error = $r.Error -replace 'the newest tests/UI source', "its newest build input ($($newest.FullName.Substring($Root.Length).TrimStart('\')))" }
-  return $r
+  if (-not $r.Ok) { $r.Error = $r.Error -replace 'the newest tests/UI source', "its newest build input ($($newest.FullName.Substring($Root.Length).TrimStart('\')))"; return $r }
+  # Content freshness (D00 T02 section 44 item 1): the digest the build
+  # recorded beside the binary must equal the inputs' digest now, so an
+  # edit whose timestamp was restored, a deletion, or a property or SDK
+  # change is caught where timestamps say fresh.
+  return (Test-BuildInputsDigest $Root (Join-Path $Root 'Bin\UI\Debug\build-inputs.digest') (Get-UiSdkVersion $Root))
 }
 
 function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
@@ -1398,24 +1515,56 @@ function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
   # collector reruns the method filter (every row of it).
   # Ordinal identity (R2-F1): a case differing only by casing is its own
   # case, so executing one never discharges the other.
-  $done = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
-  foreach ($e in @($ExecutedNames)) { if ($null -ne $e) { $null = $done.Add("$e".Trim()) } }
+  # Reconciliation is by count per display name (D00 T02 §44 item 4): a
+  # name listed twice owes two rows, a retry executing it twice never
+  # discharges more than was listed, and skipped or aborted rows (absent
+  # from the executed names) stay owed.
+  $ran = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::Ordinal)
+  foreach ($e in @($ExecutedNames)) { if ($null -ne $e) { $k = "$e".Trim(); $ran[$k] = $(if ($ran.ContainsKey($k)) { $ran[$k] } else { 0 }) + 1 } }
   $byMethod = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::Ordinal)
   $order = New-Object System.Collections.Generic.List[string]
   foreach ($c in @($ListedCases)) {
     if ($null -eq $c) { continue }
     $name = "$c".Trim()
     $method = ($name -split '\(', 2)[0].Trim()
-    if (-not $byMethod.ContainsKey($method)) { $byMethod[$method] = @{ Listed = 0; Owed = 0 }; $order.Add($method) }
+    if (-not $byMethod.ContainsKey($method)) { $byMethod[$method] = @{ Listed = 0; Owed = 0; Cases = (New-Object System.Collections.Generic.List[string]) }; $order.Add($method) }
     $byMethod[$method].Listed++
-    if (-not $done.Contains($name)) { $byMethod[$method].Owed++ }
+    if ($ran.ContainsKey($name) -and ($ran[$name] -gt 0)) { $ran[$name]-- }
+    else { $byMethod[$method].Owed++; $byMethod[$method].Cases.Add($name) }
   }
   $rows = @()
   foreach ($k in $order) {
     $v = $byMethod[$k]
-    if ($v.Owed -gt 0) { $rows += "- Night-owed: $k | $($v.Owed) of $($v.Listed) cases unexecuted ($Why) | collector filter: FullyQualifiedName=$k" }
+    # The row names its owed cases (item 5), so a collection closes each
+    # case only on its own green execution.
+    if ($v.Owed -gt 0) { $rows += "- Night-owed: $k | $($v.Owed) of $($v.Listed) cases unexecuted ($Why) | collector filter: FullyQualifiedName=$k | cases: $(@($v.Cases) -join ' ;; ')" }
   }
   return $rows
+}
+
+function Close-OwedCases([string[]]$OwedCases, [string[]]$PassedNames) {
+  # Per-case closure (D00 T02 §44 item 5): the collector reruns the
+  # method, and each owed case closes only when its own row executed
+  # green (by count, so one pass closes one owed copy of a duplicated
+  # name). Returns the cases still owed.
+  $green = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::Ordinal)
+  foreach ($p in @($PassedNames)) { if ($null -ne $p) { $k = "$p".Trim(); $green[$k] = $(if ($green.ContainsKey($k)) { $green[$k] } else { 0 }) + 1 } }
+  $left = @()
+  foreach ($c in @($OwedCases)) {
+    if ($null -eq $c) { continue }
+    $k = "$c".Trim()
+    if ($green.ContainsKey($k) -and ($green[$k] -gt 0)) { $green[$k]-- } else { $left += $k }
+  }
+  return $left
+}
+
+function Get-PopulationIdentity([string]$FingerprintPath) {
+  # The population a proof stands on (D00 T02 §44 item 6): the three legs'
+  # case hashes, so a regen that swaps a case row changes it while a
+  # comment or ordering edit does not. 'unknown' when unreadable.
+  $fp = Read-TestPopulationFile $FingerprintPath
+  if (-not $fp.Ok) { return 'unknown' }
+  return (Get-CaseHash @("run-a=$($fp.RunACaseHash)", "run-b=$($fp.RunBCaseHash)", "interactive=$($fp.InteractiveCaseHash)"))
 }
 
 function Get-TrxExecutedNames([string]$TrxPath) {
@@ -1496,6 +1645,7 @@ function Get-UiTestDiscovery([string]$Dotnet, [string]$UiCsproj, [string]$RunAFi
     $out.($leg[0] + 'Methods') = $one.MethodCount
     $out.($leg[0] + 'Cases') = $one.CaseCount
     $out | Add-Member -NotePropertyName ($leg[0] + 'CaseHash') -NotePropertyValue $one.CaseHash -Force
+    $out | Add-Member -NotePropertyName ($leg[0] + 'CaseRows') -NotePropertyValue @($one.CaseRows) -Force
   }
   return $out
 }
@@ -1816,7 +1966,7 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
   })
 }
 
-function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}) {
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '') {
   # Incident lifecycle (D00 T02 §22 item 6, D00-T02-S17-PR27): an
   # incident is created once; later sightings append an occurrence to
   # it (never a second incident, so §9's file-every-failure rule files
@@ -1887,6 +2037,17 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     $passed = @()
     if ($PassedByPhase -and $PassedByPhase.ContainsKey($e.phase)) { $passed = @($PassedByPhase[$e.phase]) }
     if ($passed -notcontains $e.test) { continue }
+    # A streak stands on one test population (D00 T02 §44 item 6): passes
+    # recorded against another case population read stale, so updating
+    # the fingerprint never revives old evidence toward a closure.
+    if ($Population -ne '') {
+      if (@($e.PSObject.Properties.Name) -notcontains 'streakPopulation') { $e | Add-Member -NotePropertyName streakPopulation -NotePropertyValue '' }
+      if (([int]$e.passStreak -gt 0) -and ("$($e.streakPopulation)" -ne '') -and ("$($e.streakPopulation)" -ne $Population)) {
+        $lines += "- $id ``$($e.test)``: streak reset (population $($e.streakPopulation) -> ${Population}: the earlier passes stand stale)"
+        $e.passStreak = 0
+      }
+      $e.streakPopulation = $Population
+    }
     if ($e.lastPassStamp -ne $Stamp) { $e.passStreak = [int]$e.passStreak + 1; $e.lastPassStamp = $Stamp }
     if ([int]$e.passStreak -ge $RecoveryRuns) {
       $e.state = 'closed'; $e.closedAt = $Stamp; $e.closedBy = "passed in $($e.phase) on $($e.passStreak) runs"

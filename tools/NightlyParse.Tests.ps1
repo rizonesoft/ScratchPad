@@ -19,8 +19,8 @@ $trxXml = @'
 <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results>
 <UnitTestResult testName="UI.OkTest" outcome="Passed" />
 <UnitTestResult testName="UI.QuarantinedTest" outcome="NotExecuted"><Output><ErrorInfo><Message>QUARANTINED 2026-09-20 D01-T01-S9 fixture-quarantine</Message></ErrorInfo></Output></UnitTestResult>
-<UnitTestResult testName="UI.HookTest" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: Low-level mouse hooks are unavailable on this host (Win32 error 5).</Message></ErrorInfo></Output></UnitTestResult>
-<UnitTestResult testName="UI.PrinterTest" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: No printers enumerated in this context (agent context is printer-blind); run where the spooler is visible.</Message></ErrorInfo></Output></UnitTestResult>
+<UnitTestResult testName="UI.HookTest" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: Low-level mouse hooks are unavailable on this host (Win32 error 5); owner D01 T01 SECT3; owed on a host whose policy allows low-level mouse hooks.</Message></ErrorInfo></Output></UnitTestResult>
+<UnitTestResult testName="UI.PrinterTest" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: No printers enumerated in this context (agent context is printer-blind); owner D01 T02 SECT5; owed on a session where the spooler is visible.</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.LegacyHookTest" outcome="NotExecuted"><Output><ErrorInfo><Message>Low-level mouse hooks are unavailable on this host (Win32 error 5).</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.BareSkip" outcome="NotExecuted"><Output><ErrorInfo><Message>TEMPORARY: unclassified skip</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.QuietSkip" outcome="NotExecuted"><Output><ErrorInfo><Message>Outside the quiet-hours window</Message></ErrorInfo></Output></UnitTestResult>
@@ -28,7 +28,8 @@ $trxXml = @'
 </Results></TestRun>
 '@
 $trx = Join-Path $dir 'fixture.trx'
-$trxXml | Set-Content -Path $trx -Encoding UTF8
+# The section sign by code point (this script reads as ANSI on 5.1).
+$trxXml.Replace('SECT', [string][char]0xA7) | Set-Content -Path $trx -Encoding UTF8
 
 $logLines = @(
   'Passed!  - Failed:     1, Passed:    10, Skipped:     3, Total:    14, Duration: 1 s - UI.dll (net10.0)',
@@ -68,7 +69,9 @@ Assert ($null -eq (Get-TrxSummary (Join-Path $dir 'missing.trx'))) 'missing-trx-
 # bare plus quiet-hours flag.
 $enf = Get-NonQuarantineSkips $trx
 $leaked = @($enf.Names)
-Assert (($enf.Ok -eq $true) -and ($leaked.Count -eq 2) -and ($leaked -contains 'UI.BareSkip') -and ($leaked -contains 'UI.QuietSkip')) 'skip-classes' ($leaked -join ',')
+# D00 T02 §44 item 3: owned capability skips are explained; the
+# ownerless legacy form now reads unexplained and reds the leg.
+Assert (($enf.Ok -eq $true) -and ($leaked.Count -eq 3) -and ($leaked -contains 'UI.BareSkip') -and ($leaked -contains 'UI.QuietSkip') -and ($leaked -contains 'UI.LegacyHookTest')) 'skip-classes' ($leaked -join ',')
 
 # Strict matching: prose mentioning the tokens cannot self-allowlist;
 # stamps need shape, codes need case, legacy anchors to the start.
@@ -77,17 +80,18 @@ $trxXml2 = @'
 <UnitTestResult testName="UI.StampOk" outcome="NotExecuted"><Output><ErrorInfo><Message>QUARANTINED 2026-09-20 D01-T01-S9 fixture-quarantine</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.MidQuarantine" outcome="NotExecuted"><Output><ErrorInfo><Message>flaky, QUARANTINED candidate, needs triage</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.DatelessStamp" outcome="NotExecuted"><Output><ErrorInfo><Message>QUARANTINED incident without fields</Message></ErrorInfo></Output></UnitTestResult>
-<UnitTestResult testName="UI.CodedOk" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: Default printer is hardware</Message></ErrorInfo></Output></UnitTestResult>
+<UnitTestResult testName="UI.CodedOk" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: Default printer is hardware (USB001); owner D01 T02 SECT5; owed on a host whose default printer is virtual (PDF or XPS).</Message></ErrorInfo></Output></UnitTestResult>
+<UnitTestResult testName="UI.CodedNoOwner" outcome="NotExecuted"><Output><ErrorInfo><Message>CAPABILITY: Default printer is hardware</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.LowerCapability" outcome="NotExecuted"><Output><ErrorInfo><Message>capability: hooks unavailable</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.MidLegacy" outcome="NotExecuted"><Output><ErrorInfo><Message>Error: No printers enumerated in this context (nested)</Message></ErrorInfo></Output></UnitTestResult>
 <UnitTestResult testName="UI.LegacyPrefix" outcome="NotExecuted"><Output><ErrorInfo><Message>Default printer is hardware (USB001)</Message></ErrorInfo></Output></UnitTestResult>
 </Results></TestRun>
 '@
 $trx2 = Join-Path $dir 'msgs.trx'
-$trxXml2 | Set-Content -Path $trx2 -Encoding UTF8
+$trxXml2.Replace('SECT', [string][char]0xA7) | Set-Content -Path $trx2 -Encoding UTF8
 $enf2 = Get-NonQuarantineSkips $trx2
 $leaked2 = @($enf2.Names)
-Assert (($enf2.Ok -eq $true) -and ($leaked2.Count -eq 4) -and ($leaked2 -contains 'UI.MidQuarantine') -and ($leaked2 -contains 'UI.DatelessStamp') -and ($leaked2 -contains 'UI.LowerCapability') -and ($leaked2 -contains 'UI.MidLegacy')) 'skip-strict' ($leaked2 -join ',')
+Assert (($enf2.Ok -eq $true) -and ($leaked2.Count -eq 6) -and ($leaked2 -contains 'UI.MidQuarantine') -and ($leaked2 -contains 'UI.DatelessStamp') -and ($leaked2 -contains 'UI.LowerCapability') -and ($leaked2 -contains 'UI.MidLegacy') -and ($leaked2 -contains 'UI.CodedNoOwner') -and ($leaked2 -contains 'UI.LegacyPrefix') -and ($leaked2 -notcontains 'UI.CodedOk')) 'skip-strict' ($leaked2 -join ',')
 
 # Counts: the trx sums plus the threaded assembly sum.
 $sum = Get-TrxSummary $trx
@@ -388,7 +392,7 @@ Assert (($popSkew.Ok -eq $false) -and (($popSkew.Drifts -join '') -like '*run-a-
 $swapDisc = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.X'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1 }
 $popSwap = Compare-TestPopulation $fpFile $fakeNightly $swapDisc
 Assert (($popSwap.Ok -eq $false) -and (($popSwap.Drifts -join '') -like '*run-a removed: UI.A.T2*') -and (($popSwap.Drifts -join '') -like '*run-a added: UI.A.X*')) 'fingerprint-run-a-swap' ($popSwap.Drifts -join '|')
-@('run-a-filter: Category!=Interactive&Category!=Primary', 'run-b-filter: Category=Primary', 'interactive-filter: Category=Interactive', 'run-a-methods: 2', 'run-a-cases: 3', 'run-b:', '  UI.B.P1', 'run-b-methods: 1', 'run-b-cases: 1', 'interactive:', '  UI.C.I1', 'interactive-methods: 1', 'interactive-cases: 1') | Set-Content -Path (Join-Path $dir 'pop-noruna.fingerprint') -Encoding UTF8
+@('schema: population/2', 'run-a-filter: Category!=Interactive&Category!=Primary', 'run-b-filter: Category=Primary', 'interactive-filter: Category=Interactive', 'run-a-methods: 2', 'run-a-cases: 3', 'run-b:', '  UI.B.P1', 'run-b-methods: 1', 'run-b-cases: 1', 'interactive:', '  UI.C.I1', 'interactive-methods: 1', 'interactive-cases: 1') | Set-Content -Path (Join-Path $dir 'pop-noruna.fingerprint') -Encoding UTF8
 $popNoRuna = Compare-TestPopulation (Join-Path $dir 'pop-noruna.fingerprint') $fakeNightly $fpDisc
 Assert (($popNoRuna.Ok -eq $false) -and (($popNoRuna.Drifts -join '') -like '*run-a items 0 != methods 2*')) 'fingerprint-run-a-required' ($popNoRuna.Drifts -join '|')
 $fakeNightly2 = Join-Path $dir 'nightly-fake2.ps1'
@@ -399,7 +403,7 @@ $fakeNightly2 = Join-Path $dir 'nightly-fake2.ps1'
 ) | Set-Content -Path $fakeNightly2 -Encoding UTF8
 $popFilter = Compare-TestPopulation $fpFile $fakeNightly2 $fpDisc
 Assert (($popFilter.Ok -eq $false) -and (($popFilter.Drifts -join '') -like "*appears 0 times*")) 'fingerprint-filter-drift' ($popFilter.Drifts -join '|')
-@('run-a-filter: Category!=Interactive&Category!=Primary') | Set-Content -Path (Join-Path $dir 'pop-bad.fingerprint') -Encoding UTF8
+@('schema: population/2', 'run-a-filter: Category!=Interactive&Category!=Primary') | Set-Content -Path (Join-Path $dir 'pop-bad.fingerprint') -Encoding UTF8
 $popBad = Compare-TestPopulation (Join-Path $dir 'pop-bad.fingerprint') $fakeNightly $fpDisc
 Assert (($popBad.Ok -eq $false) -and (($popBad.Drifts -join '') -like '*missing run-b-filter*')) 'fingerprint-malformed' ($popBad.Drifts -join '|')
 
@@ -563,7 +567,49 @@ Write-TestPopulationFile $fpHash 'Category!=Interactive&Category!=Primary' 'Cate
 $dh2 = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1; RunACaseHash = (Get-CaseHash $caseSwap); RunBCaseHash = (Get-CaseHash @('UI.B.P1')); InteractiveCaseHash = (Get-CaseHash @('UI.C.I1')) }
 $popSame = Compare-TestPopulation $fpHash $fakeNightly $dh1
 $popRow = Compare-TestPopulation $fpHash $fakeNightly $dh2
-Assert (($popSame.Ok -eq $true) -and ($popRow.Ok -eq $false) -and (@($popRow.Drifts).Count -eq 1) -and ($popRow.Drifts[0] -like 'run-a case rows changed: fingerprinted hash * vs discovered *')) 's37-theory-row-swap-at-equal-count-drifts' ($popRow.Drifts -join '|')
+Assert (($popSame.Ok -eq $true) -and ($popRow.Ok -eq $false) -and (@($popRow.Drifts).Count -eq 2) -and ($popRow.Drifts[0] -like 'run-a case rows changed: fingerprinted hash * vs discovered *') -and ($popRow.Drifts[1] -like 'run-a re-accept after review: *Update-TestFingerprint*')) 's37-theory-row-swap-at-equal-count-drifts' ($popRow.Drifts -join '|')
+# D00 T02 §44 item 2: two rows with one display name hash apart from one,
+# and a reordered listing hashes the same.
+Assert (((Get-CaseHash @('UI.A.T(x: 1)', 'UI.A.T(x: 1)')) -ne (Get-CaseHash @('UI.A.T(x: 1)'))) -and ((Get-CaseHash @('UI.B', 'UI.A', 'UI.A')) -eq (Get-CaseHash @('UI.A', 'UI.B', 'UI.A'))) -and ((@(Get-CaseIdentityRows @('UI.A', 'UI.A')) -join ',') -eq 'UI|UI.A,UI|UI.A#2')) 's44-identity-counts-duplicates-and-ignores-order'
+# D00 T02 §44 item 8: with case rows recorded, a row swap names the
+# removed and the added row and the regen command.
+$dr1 = $dh1.PSObject.Copy(); $dr1 | Add-Member -NotePropertyName RunACaseRows -NotePropertyValue @(Get-CaseIdentityRows $caseA) -Force
+$dr2 = $dh2.PSObject.Copy(); $dr2 | Add-Member -NotePropertyName RunACaseRows -NotePropertyValue @(Get-CaseIdentityRows $caseSwap) -Force
+$fpRows = Join-Path $dir 'pop-rows.fingerprint'
+Write-TestPopulationFile $fpRows 'Category!=Interactive&Category!=Primary' 'Category=Primary' 'Category=Interactive' $dr1
+$popNamed = Compare-TestPopulation $fpRows $fakeNightly $dr2
+$namedText = @($popNamed.Drifts) -join '|'
+Assert (($popNamed.Ok -eq $false) -and ($namedText -like '*run-a case removed: UI|UI.A.T2(x: 2)*') -and ($namedText -like '*run-a case added: UI|UI.A.T2(x: 3)*') -and ($namedText -like '*re-accept after review:*')) 's44-row-swap-names-the-cases' $namedText
+# D00 T02 §44 item 4: per-case debt reconciles by count per name: a
+# retried row (executed twice, listed once) owes nothing, a duplicate
+# display name listed twice and executed once owes one, a skipped row stays
+# owed.
+$dbt = @(Get-UnexecutedCaseRows @('UI.R.Retry', 'UI.D.Dup(x: 1)', 'UI.D.Dup(x: 1)', 'UI.S.Skip') @('UI.R.Retry', 'UI.R.Retry', 'UI.D.Dup(x: 1)') 'fixture')
+Assert (($dbt.Count -eq 2) -and ((@($dbt | Where-Object { $_ -like '- Night-owed: UI.D.Dup | 1 of 2 cases unexecuted*cases: UI.D.Dup(x: 1)' }).Count) -eq 1) -and ((@($dbt | Where-Object { $_ -like '- Night-owed: UI.S.Skip | 1 of 1 cases unexecuted*' }).Count) -eq 1) -and ((@($dbt | Where-Object { $_ -like '*UI.R.Retry*' }).Count) -eq 0)) 's44-retry-and-duplicate-keep-the-right-owed-count' ($dbt -join ' || ')
+# D00 T02 §44 item 5: a collection green on two of three owed rows keeps
+# one owed.
+$left = @(Close-OwedCases @('UI.T.M(x: 1)', 'UI.T.M(x: 2)', 'UI.T.M(x: 3)') @('UI.T.M(x: 1)', 'UI.T.M(x: 3)'))
+Assert (($left.Count -eq 1) -and ($left[0] -eq 'UI.T.M(x: 2)')) 's44-collection-closes-each-case-on-its-own-row' ($left -join ',')
+# D00 T02 §44 item 6: a recovery streak built under one population reads
+# stale after a regen that swaps a row, and never closes on it.
+$popFpA = Join-Path $dir 'pop-idA.fingerprint'
+$popFpB = Join-Path $dir 'pop-idB.fingerprint'
+Write-TestPopulationFile $popFpA 'Category!=Interactive&Category!=Primary' 'Category=Primary' 'Category=Interactive' $dr1
+Write-TestPopulationFile $popFpB 'Category!=Interactive&Category!=Primary' 'Category=Primary' 'Category=Interactive' $dr2
+$idA = Get-PopulationIdentity $popFpA
+$idB = Get-PopulationIdentity $popFpB
+$popLed = @{ 'INC-aaaa1111' = [pscustomobject]@{ id = 'INC-aaaa1111'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 0; lastPassStamp = '' } }
+$passed = @{ 'run-a' = @('UI.A.T1') }
+$u1 = Update-IncidentLedger $popLed @() 's1' $passed @{} 3 @{} $idA
+$u2 = Update-IncidentLedger $u1.Incidents @() 's2' $passed @{} 3 @{} $idA
+$u3 = Update-IncidentLedger $u2.Incidents @() 's3' $passed @{} 3 @{} $idB
+Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1111'].state -eq 'open') -and ([int]$u3.Incidents['INC-aaaa1111'].passStreak -eq 1) -and ((@($u3.Lines | Where-Object { $_ -like '*streak reset (population*the earlier passes stand stale)*' }).Count) -eq 1)) 's44-proof-reads-stale-after-a-row-swap-regen' ($u3.Lines -join ' | ')
+# D00 T02 §44 item 7: a count-only (versionless) fingerprint refuses,
+# naming its version and the regen command.
+$fpOld = Join-Path $dir 'pop-old.fingerprint'
+@('run-a-filter: Category!=Interactive&Category!=Primary', 'run-b-filter: Category=Primary', 'interactive-filter: Category=Interactive', 'run-a-methods: 0', 'run-a-cases: 0', 'run-b-methods: 0', 'run-b-cases: 0', 'interactive-methods: 0', 'interactive-cases: 0') | Set-Content -Path $fpOld -Encoding UTF8
+$oldRead = Read-TestPopulationFile $fpOld
+Assert ((-not $oldRead.Ok) -and ($oldRead.Error -like 'fingerprint schema missing (count-only format) is not population/2; regenerate: *Update-TestFingerprint.ps1*')) 's44-old-format-refuses-with-the-command' $oldRead.Error
 $noHash = @(Get-Content $fpHash | Where-Object { $_ -notlike 'run-b-case-hash:*' })
 $noHash | Set-Content -Path (Join-Path $dir 'pop-nohash.fingerprint') -Encoding UTF8
 Assert ((Read-TestPopulationFile (Join-Path $dir 'pop-nohash.fingerprint')).Error -eq 'fingerprint missing run-b-case-hash') 's37-case-hash-required'
@@ -590,6 +636,10 @@ $null = New-Item -ItemType Directory -Force -Path (Join-Path $bRoot 'tests\UI'),
 $tOld = [datetime]::new(2026, 9, 25, 9, 0, 0, [DateTimeKind]::Utc)
 foreach ($f in @('tests\UI\UI.csproj', 'src\App\App.csproj', 'src\App\A.cs', 'Directory.Build.props')) { (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld }
 (Get-Item (Join-Path $bRoot 'Bin\UI\Debug\UI.dll')).LastWriteTimeUtc = $tOld.AddMinutes(10)
+# The build's content digest (D00 T02 §44 item 1), written as the build
+# target would, so the fresh fixture is fresh by content too.
+$bDigest = Get-BuildInputsDigest $bRoot (Get-UiSdkVersion $bRoot)
+[System.IO.File]::WriteAllText((Join-Path $bRoot 'Bin\UI\Debug\build-inputs.digest'), $bDigest.Digest + "`n" + ($bDigest.Lines -join "`n") + "`n")
 $freshB = Get-UiBuildFreshness $bRoot
 (Get-Item (Join-Path $bRoot 'Directory.Build.props')).LastWriteTimeUtc = $tOld.AddMinutes(20)
 $staleShared = Get-UiBuildFreshness $bRoot
@@ -652,7 +702,7 @@ Assert (($caseRows.Count -eq 1) -and ($caseRows[0] -like '*UI.X.T | 1 of 2 cases
 Assert (($freshB.Ok -eq $true) -and ($staleShared.Ok -eq $false) -and ($staleShared.Error -like '*newest build input (Directory.Build.props)*') -and ($staleRef.Ok -eq $false) -and ($staleRef.Error -like '*src\App\A.cs*')) 's37-shared-and-referenced-inputs-refuse' "$($staleShared.Error) | $($staleRef.Error)"
 # Item 6: one of three Theory rows run keeps two owed.
 $owedRows = @(Get-UnexecutedCaseRows @('UI.X.Theory(n: 1)', 'UI.X.Theory(n: 2)', 'UI.X.Theory(n: 3)', 'UI.X.Fact') @('UI.X.Theory(n: 2)', 'UI.X.Fact') 'fixture kill')
-Assert (($owedRows.Count -eq 1) -and ($owedRows[0] -eq '- Night-owed: UI.X.Theory | 2 of 3 cases unexecuted (fixture kill) | collector filter: FullyQualifiedName=UI.X.Theory')) 's37-partial-theory-keeps-two-owed' ($owedRows -join '|')
+Assert (($owedRows.Count -eq 1) -and ($owedRows[0] -eq '- Night-owed: UI.X.Theory | 2 of 3 cases unexecuted (fixture kill) | collector filter: FullyQualifiedName=UI.X.Theory | cases: UI.X.Theory(n: 1) ;; UI.X.Theory(n: 3)')) 's37-partial-theory-keeps-two-owed' ($owedRows -join '|')
 $trxPart = Join-Path $dir 'partial.trx'
 '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results><UnitTestResult testName="UI.X.Theory(n: 2)" outcome="Passed" /><UnitTestResult testName="UI.X.Skip" outcome="NotExecuted" /></Results></TestRun>' | Set-Content -Path $trxPart -Encoding UTF8
 $exec = @(Get-TrxExecutedNames $trxPart)

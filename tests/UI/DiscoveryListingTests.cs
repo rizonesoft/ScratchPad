@@ -12,7 +12,7 @@ sealed class CapabilityFixtureTheoryAttribute : GatedTheoryAttribute
 
     public CapabilityFixtureTheoryAttribute()
     {
-        Gate(Environment.GetEnvironmentVariable(Variable) == "1" ? null : "CAPABILITY: fixture capability absent (D00 T02 §37 discovery-listing fixture).");
+        Gate(Environment.GetEnvironmentVariable(Variable) == "1" ? null : "CAPABILITY: fixture capability absent (discovery-listing fixture); owner D00 T02 §37; owed on a run that sets the fixture variable.");
     }
 }
 
