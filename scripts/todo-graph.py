@@ -2398,6 +2398,11 @@ NIGHT_COLLECTED_RE = re.compile(r"\*\*Night-collected:\*\*\s*(\d{4}-\d{2}-\d{2})
 NIGHT_ACK_RE = re.compile(r"\*\*Night-ack:\*\*\s*(\S+)\s*\(([^)]*)\)")
 NIGHT_ACCEPTED_RE = re.compile(r"\*\*Night-accepted:\*\*\s*(\S+)\s*\((.*)\)\s*$")
 NIGHT_RED_RE = re.compile(r"\*\*Night-red:\*\*\s*(\d{4}-\d{2}-\d{2})\s+(\S+)\s*\(([^)]*)\)")
+# D00 T02 §35 lifecycle lines: an owner reassignment, a due extension
+# (append-only history), and an acceptance revocation.
+NIGHT_OWNER_RE = re.compile(r"\*\*Night-owner:\*\*\s*(\S+)\s*\(([^)]*)\)")
+NIGHT_EXTEND_RE = re.compile(r"\*\*Night-extend:\*\*\s*(\S+)\s*\(([^)]*)\)")
+NIGHT_REVOKED_RE = re.compile(r"\*\*Night-revoked:\*\*\s*(\S+)\s*\(([^)]*)\)")
 DEBT_ID_RE = re.compile(r"[A-Z0-9]+-T[0-9]+-S[0-9]+-N[0-9]+\Z")
 MANIFEST_RE = re.compile(
     r"^Manifest:\s*sections\s*\[(.*?)\];\s*dependents\s*\[(.*?)\];\s*bytes\s*(\d+)(?:;\s*run\s+(\S+))?\s*$",
@@ -4084,6 +4089,11 @@ NIGHT_DEBT_ESCALATION = "rerun the collection (tools/nightly.ps1) or record risk
 NIGHT_DEBT_RESPONSE_DAYS = 2
 NIGHT_DEBT_FOLLOWUP_DAYS = 2
 NIGHT_DEBT_DEFAULT_OWNER = "operator"
+# D00 T02 §35: who may accept night-debt risk, for how long at most, and
+# the collector trigger time a date-only owed line assumes.
+NIGHT_DEBT_APPROVERS = ("operator",)
+NIGHT_DEBT_MAX_ACCEPT_DAYS = 30
+NIGHT_DEBT_DEFAULT_TRIGGER = "02:30"
 NIGHT_DEBT_RED_ESCALATION = "fix the failing tests or record risk acceptance"
 
 
@@ -4103,7 +4113,9 @@ def _parse_owed_paren(paren: str):
         if m:
             count, filt = int(m.group(1)), m.group(2).strip()
     for c in chunks[1:]:
-        m = re.match(r"owed\s+(\d{4}-\d{2}-\d{2})\Z", c)
+        # A date, or a local timestamp with an optional offset (D00 T02 §35
+        # item 7), so an owed-before-the-trigger debt can say so.
+        m = re.match(r"owed\s+(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2})?(?:Z|[+-]\d{2}:\d{2})?)?)\Z", c)
         if m:
             owed = m.group(1)
         m = re.match(r"due\s+(\S+)\Z", c)
@@ -4119,11 +4131,11 @@ def _parse_owed_paren(paren: str):
 
 
 def _kv_paren(paren: str, keys: tuple) -> dict:
-    """Key-value chunks of a lifecycle paren; `rationale` and `action`
-    run to the end, so they may carry commas."""
+    """Key-value chunks of a lifecycle paren; `rationale`, `action`, and
+    `reason` run to the end, so they may carry commas."""
     out = {}
     tail = None
-    for k in ("rationale", "action"):
+    for k in ("rationale", "action", "reason"):
         m = re.search(r"(?:^|,\s*)" + k + r"\s+(.*)\Z", paren)
         if m and k in keys:
             out[k] = m.group(1).strip()
@@ -4161,6 +4173,35 @@ def _strict_date(s):
         return None
 
 
+def _owed_local(owed: str):
+    """The owed token as (local date, local time or None): a date-only
+    token has no time; a timestamp with an offset converts to the local
+    zone first, so a timezone change never moves the owed day (§35)."""
+    if not owed:
+        return None, None
+    if "T" not in owed:
+        d = _strict_date(owed)
+        return d, None
+    try:
+        dt = datetime.fromisoformat(owed.replace("Z", "+00:00"))
+    except ValueError:
+        return None, None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone().replace(tzinfo=None)
+    return dt.date(), dt.time()
+
+
+def _trigger_time(paren: str):
+    """The collector trigger time the owed line names (`collector ...
+    HH:MM`), else the default; a moved trigger moves the window (§35)."""
+    m = re.search(r"collector\b[^,]*?\b(\d{2}):(\d{2})\b", paren or "")
+    hh, mm = (m.group(1), m.group(2)) if m else NIGHT_DEBT_DEFAULT_TRIGGER.split(":")
+    try:
+        return datetime.strptime(f"{hh}:{mm}", "%H:%M").time()
+    except ValueError:
+        return datetime.strptime(NIGHT_DEBT_DEFAULT_TRIGGER, "%H:%M").time()
+
+
 def _iso(s):
     try:
         return datetime.fromisoformat(s).date() if s else None
@@ -4180,6 +4221,12 @@ def night_debt_line(d: dict) -> str:
     )
     if d.get("state") == "accepted":
         line += f" accepted-by {d['accepted_by']} expires {d['accepted_expires']}"
+    if d.get("extensions"):
+        # Every extension, append-only (§35 item 8).
+        line += " extended " + "; ".join(f"{x['date']} by {x['by']} to {x['due']}" for x in d["extensions"])
+    if d.get("state") in ("red-repeat", "acknowledged") and d.get("red_repeat"):
+        # A red-repeat debt links its remediation (§35 item 10).
+        line += f" finding {d.get('finding') or 'none'}"
     if d["overdue"]:
         line += f" OVERDUE escalate {d['owner']} by {d['respond_by'] or '?'}: {d['action']}"
     return line
@@ -4219,11 +4266,24 @@ def night_debts(todos: list["Todo"], today_d):
     reds: dict[str, list] = {}
     acks: dict[str, dict] = {}
     accepts: dict[str, dict] = {}
+    accept_lists: dict[str, list] = {}
+    owners_re: dict[str, list] = {}
+    extends: dict[str, list] = {}
+    revokes: dict[str, list] = {}
     for t in todos:
         try:
             raw = (TODO_DIR.parent / t.path).read_text(encoding="utf-8")
         except OSError:
             continue
+        # The file's recorded owner (frontmatter `owner:`) and each
+        # section's `**Owner:**` line (§35 item 1).
+        fm_owner = None
+        fmm = re.match(r"---\n(.*?)\n---", raw, re.S)
+        if fmm:
+            om0 = re.search(r"^owner:\s*(\S+)\s*$", fmm.group(1), re.M)
+            if om0:
+                fm_owner = om0.group(1)
+        sec_owner: dict[int, str] = {}
         num = None
         for ln in raw.splitlines():
             hm = re.match(r"## (\d+)[. ]", ln)
@@ -4231,6 +4291,10 @@ def night_debts(todos: list["Todo"], today_d):
                 num = int(hm.group(1))
                 continue
             if num is None:
+                continue
+            sm = re.match(r"\*\*Owner:\*\*\s*(\S+)", ln)
+            if sm:
+                sec_owner[num] = sm.group(1)
                 continue
             om = NIGHT_OWED_RE.search(ln)
             if om and DEBT_ID_RE.match(om.group(1)):
@@ -4245,8 +4309,23 @@ def night_debts(todos: list["Todo"], today_d):
                     "due": due_on,
                     "reason": reason,
                     "owner": owner,
+                    "section_owner": lambda n=num, so=sec_owner: so.get(n),
+                    "file_owner": fm_owner,
+                    "trigger": _trigger_time(om.group(2)),
                     "stamp": sec.stamped_on if sec is not None else None,
                 }
+                continue
+            wm = NIGHT_OWNER_RE.search(ln)
+            if wm and DEBT_ID_RE.match(wm.group(1)):
+                owners_re.setdefault(wm.group(1), []).append(_kv_paren(wm.group(2), ("date", "owner", "by")))
+                continue
+            em = NIGHT_EXTEND_RE.search(ln)
+            if em and DEBT_ID_RE.match(em.group(1)):
+                extends.setdefault(em.group(1), []).append(_kv_paren(em.group(2), ("date", "by", "due", "reason")))
+                continue
+            vm = NIGHT_REVOKED_RE.search(ln)
+            if vm and DEBT_ID_RE.match(vm.group(1)):
+                revokes.setdefault(vm.group(1), []).append(_kv_paren(vm.group(2), ("date", "by", "reason")))
                 continue
             cm = NIGHT_COLLECTED_RE.search(ln)
             if cm and DEBT_ID_RE.match(cm.group(2)):
@@ -4258,20 +4337,34 @@ def night_debts(todos: list["Todo"], today_d):
             rm = NIGHT_RED_RE.search(ln)
             if rm and DEBT_ID_RE.match(rm.group(2)):
                 counts, log = _parse_collected_paren(rm.group(3))
-                reds.setdefault(rm.group(2), []).append({"date": rm.group(1), "log": log})
+                runm = re.search(r"\brun\s+(\S+?)[;)]?(?:\s|$)", rm.group(3))
+                reds.setdefault(rm.group(2), []).append({"date": rm.group(1), "log": log, "run": runm.group(1) if runm else None})
                 continue
             am = NIGHT_ACK_RE.search(ln)
             if am and DEBT_ID_RE.match(am.group(1)):
-                acks[am.group(1)] = _kv_paren(am.group(2), ("date", "owner", "action"))
+                acks[am.group(1)] = _kv_paren(am.group(2), ("date", "owner", "action", "finding"))
                 continue
             xm = NIGHT_ACCEPTED_RE.search(ln)
             if xm and DEBT_ID_RE.match(xm.group(1)):
-                accepts[xm.group(1)] = _kv_paren(xm.group(2), ("approver", "owner", "date", "expires", "rationale"))
+                rec = _kv_paren(xm.group(2), ("approver", "owner", "date", "expires", "rationale"))
+                accepts[xm.group(1)] = rec
+                accept_lists.setdefault(xm.group(1), []).append(rec)
+    # Orphans and duplicates (§35 item 11): a lifecycle line whose id
+    # has no Night-owed line, and two acceptances on one day, warn.
+    global NIGHT_DEBT_ORPHANS
+    NIGHT_DEBT_ORPHANS = []
+    for kind, table in (("Night-collected", collected), ("Night-red", reds), ("Night-ack", acks), ("Night-accepted", accepts), ("Night-owner", owners_re), ("Night-extend", extends), ("Night-revoked", revokes)):
+        for oid in sorted(table):
+            if oid not in owed:
+                NIGHT_DEBT_ORPHANS.append(f"{oid}: orphan {kind} line (no Night-owed line names it)")
     out = []
     for did in sorted(owed):
         o = owed[did]
         c = collected.get(did)
         warnings = []
+        _days = [a.get("date") for a in accept_lists.get(did, [])]
+        for dd in sorted(set(x for x in _days if x and _days.count(x) > 1)):
+            warnings.append(f"duplicate Night-accepted lines dated {dd}; the last one reads")
         age = None
         due = None
         base_d = None
@@ -4281,9 +4374,17 @@ def night_debts(todos: list["Todo"], today_d):
             if not base:
                 continue
             try:
-                base_d = datetime.fromisoformat(base).date()
+                owed_d, owed_t = _owed_local(base) if base is o["owed"] else (datetime.fromisoformat(base).date(), None)
+                if owed_d is None:
+                    raise ValueError(base)
+                base_d = owed_d
+                # The first collector night (§35 item 7): owed before the
+                # trigger time on day D is collectable that same night, so
+                # the window closes a day earlier; a date-only owed line
+                # assumes after the trigger (first night D+1).
+                first = owed_d if (owed_t is not None and owed_t < o["trigger"]) else owed_d + timedelta(days=1)
                 # 9999-12-31 parses but overflows the window: undatable.
-                due = (base_d + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
+                due = (first + timedelta(days=NIGHT_DEBT_DUE_NIGHTS - 1)).isoformat()
             except (ValueError, OverflowError):
                 base_d = None
                 continue
@@ -4302,7 +4403,32 @@ def night_debts(todos: list["Todo"], today_d):
                 warnings.append(f"due {od.isoformat()} extends past the default {default_due} without a reason; default kept")
             else:
                 due = od.isoformat()
-        owner = o["owner"] or NIGHT_DEBT_DEFAULT_OWNER
+        # Append-only extension history (§35 item 8): each Night-extend line
+        # needs a real date on or before today, who extended, a canonical
+        # due, and a reason; the latest valid one sets the due, and every
+        # valid one is quoted.
+        extensions = []
+        for x in sorted(extends.get(did, []), key=lambda r: r.get("date") or ""):
+            xd = _strict_date(x.get("date"))
+            xdue = _strict_date(x.get("due"))
+            if not (xd and xd <= today_d and x.get("by") and xdue and x.get("reason")):
+                warnings.append("Night-extend line needs a real date on or before today, by, a canonical due, and a reason; ignored")
+                continue
+            extensions.append({"date": xd.isoformat(), "by": x["by"], "due": xdue.isoformat(), "reason": x["reason"]})
+            due = xdue.isoformat()
+        # The owner (§35 item 1): the owed line's own owner, else the latest
+        # Night-owner reassignment, else the section's **Owner:** line, else
+        # the file's frontmatter owner, else the default.
+        reassigned = None
+        for w in sorted(owners_re.get(did, []), key=lambda r: r.get("date") or ""):
+            wd = _strict_date(w.get("date"))
+            if wd and wd <= today_d and w.get("owner"):
+                reassigned = w["owner"]
+            else:
+                warnings.append("Night-owner line needs a real date on or before today and an owner; ignored")
+        owner = o["owner"] or reassigned or o["section_owner"]() or o["file_owner"] or NIGHT_DEBT_DEFAULT_OWNER
+        finding = None
+        red_repeat = False
         accepted_by, accepted_expires = None, None
         state = "collected" if c is not None else "open"
         action = NIGHT_DEBT_ESCALATION
@@ -4314,6 +4440,7 @@ def night_debts(todos: list["Todo"], today_d):
             # follow-up deadline, so reruns that stay red cannot satisfy
             # the escalation forever.
             rl = []
+            _seen_attempts = set()
             for r in reds.get(did, []):
                 rd = _strict_date(r["date"])
                 if rd is None or rd > today_d:
@@ -4321,6 +4448,12 @@ def night_debts(todos: list["Todo"], today_d):
                     # says so (§27 R2-F2).
                     warnings.append(f"Night-red date '{r['date']}' is not a real day on or before today; ignored")
                     continue
+                # One attempt per run identity (§35 item 3): two red runs on
+                # one day are two attempts; the same run twice is one.
+                key = (rd.isoformat(), r.get("run") or r.get("log") or "")
+                if key in _seen_attempts:
+                    continue
+                _seen_attempts.add(key)
                 if base_d is None or rd >= base_d:
                     rl.append(rd.isoformat())
             rl.sort()
@@ -4334,11 +4467,14 @@ def night_debts(todos: list["Todo"], today_d):
                     due = _add_days(first_red, NIGHT_DEBT_DUE_NIGHTS)
                 state = "red"
             if len(rl) >= 2:
-                last_red = _iso(rl[-1])
+                # The follow-up anchors on the first repeat (§35 item 2): a
+                # third red never moves the deadline the second one set.
+                first_repeat = _iso(rl[1])
                 state = "red-repeat"
+                red_repeat = True
                 action = NIGHT_DEBT_RED_ESCALATION
-                respond_by = _add_days(last_red, NIGHT_DEBT_FOLLOWUP_DAYS)
-                escalation_start = rl[-1]
+                respond_by = _add_days(first_repeat, NIGHT_DEBT_FOLLOWUP_DAYS)
+                escalation_start = rl[1]
                 overdue = True
             else:
                 # An open debt nothing can date fails closed: it
@@ -4349,13 +4485,37 @@ def night_debts(todos: list["Todo"], today_d):
                     escalation_start = due
             # Risk acceptance (§27 item 2): reads accepted, never
             # collected; an expired acceptance re-escalates.
-            acc = accepts.get(did)
+            # Governance (§35 item 6): the approver has authority, the term
+            # is at most NIGHT_DEBT_MAX_ACCEPT_DAYS, a renewal is a later
+            # line (the latest valid one reads), and a revocation on or
+            # after an acceptance voids it.
+            acc = None
+            for a in sorted(accept_lists.get(did, []), key=lambda r: r.get("date") or ""):
+                ad, ae = _strict_date(a.get("date")), _strict_date(a.get("expires"))
+                if a.get("approver") and a["approver"] not in NIGHT_DEBT_APPROVERS:
+                    warnings.append(f"Night-accepted approver '{a['approver']}' lacks authority ({', '.join(NIGHT_DEBT_APPROVERS)}); ignored")
+                    continue
+                if ad and ae and (ae - ad).days > NIGHT_DEBT_MAX_ACCEPT_DAYS:
+                    warnings.append(f"Night-accepted term {(ae - ad).days} days exceeds {NIGHT_DEBT_MAX_ACCEPT_DAYS}; ignored")
+                    continue
+                acc = a
+            if acc is None and accept_lists.get(did):
+                acc = {}
+            revoked_on = None
             acc_date = _strict_date(acc.get("date")) if acc else None
+            for v in revokes.get(did, []):
+                vd = _strict_date(v.get("date"))
+                if vd and vd <= today_d and v.get("by") and acc_date and vd >= acc_date:
+                    revoked_on = vd.isoformat()
             acc_exp = _strict_date(acc.get("expires")) if acc else None
             acc_ok = bool(
                 acc and acc.get("approver") and acc.get("owner") and acc.get("rationale")
                 and acc_date and acc_exp and acc_date <= today_d and acc_date <= acc_exp
             )
+            if acc_ok and revoked_on:
+                warnings.append(f"acceptance revoked on {revoked_on}; the debt escalates again")
+                acc_ok = False
+                acc = None
             if acc_ok:
                 accepted_by, accepted_expires = acc["approver"], acc_exp.isoformat()
                 if today_d <= acc_exp:
@@ -4369,7 +4529,7 @@ def night_debts(todos: list["Todo"], today_d):
                     respond_by = acc_exp.isoformat()
                     escalation_start = acc_exp.isoformat()
                     action = "renew the risk acceptance or rerun the collection"
-            elif acc:
+            elif acc and acc != {}:
                 # Every field of the findings-file grammar is required, and a
                 # future-dated record accepts nothing yet (§27 R1-F2).
                 warnings.append("Night-accepted line needs approver, owner, a canonical YYYY-MM-DD date on or before today, a canonical expires, and rationale; ignored")
@@ -4384,6 +4544,12 @@ def night_debts(todos: list["Todo"], today_d):
                 # Dated before this escalation began: it answered an
                 # earlier one, so it cannot hold this one (§27 R1-F3).
                 ack = None
+            if ack and red_repeat and not ack.get("finding"):
+                # A repeat needs tracked remediation (§35 items 2, 10).
+                warnings.append("a red-repeat acknowledgement needs a finding (the remediation it tracks); ignored")
+                ack = None
+            if ack and ack.get("finding"):
+                finding = ack["finding"]
             if ack and state not in ("accepted",) and overdue:
                 rb = respond_by
                 if rb and today_d.isoformat() <= rb:
@@ -4413,6 +4579,9 @@ def night_debts(todos: list["Todo"], today_d):
                 "accepted_by": accepted_by,
                 "accepted_expires": accepted_expires,
                 "warnings": warnings,
+                "extensions": extensions,
+                "finding": finding,
+                "red_repeat": red_repeat,
                 "last_log": c["log"] if c else None,
                 "open": c is None,
             }
@@ -4420,15 +4589,21 @@ def night_debts(todos: list["Todo"], today_d):
     return out
 
 
+NIGHT_DEBT_ORPHANS: list = []
+
+
 def night_debt_block(debts: list) -> list:
     """The debt block, identical in `query night-debt`, `query summary`,
     and the morning report (which writes the JSON `report_block`
-    verbatim): each debt's line, then its WARN lines (§27 R1-F5)."""
+    verbatim): each debt's line, then its WARN lines (§27 R1-F5), then
+    orphan lifecycle lines (§35 item 11, information only)."""
     out = []
     for d in debts:
         out.append("    " + night_debt_line(d))
         for w in d["warnings"]:
             out.append(f"    WARN {d['id']}: {w}")
+    for w in NIGHT_DEBT_ORPHANS:
+        out.append(f"    WARN {w}")
     return out
 
 
@@ -4529,6 +4704,8 @@ def cmd_query(args) -> int:
                 "schema": "night-debt/1",
                 "today": _today_s,
                 "debts": [dict(d, line=night_debt_line(d)) for d in _debts],
+                # Lifecycle lines naming no owed debt (§35 item 11).
+                "orphans": list(NIGHT_DEBT_ORPHANS),
                 "report_block": night_debt_block(_debts),
             }, ensure_ascii=False, sort_keys=True))
             return 0
@@ -25860,6 +26037,231 @@ track: Z1
         check(
             "query summary surfaces the open debt line",
             any("D90-T01-S1-N1" in ln for ln in _ndsumlines),
+            True,
+        )
+        # --- night-debt lifecycle residuals (D00 T02 §35) -----------------
+        nd35 = root / "nd35"
+        (nd35 / "todo" / "90-night").mkdir(parents=True)
+        _o = "1 Interactive, collector Nightly UI 02:30, owed "
+        _red = " (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run "
+        (nd35 / "todo" / "90-night" / "TODO-01-night.md").write_text(
+            "---\nschema_version: 1\nid: night\ndomain: 90-night\nstatus: active\nowner: carol\n"
+            'title: "TODO-01 -- Night"\ntrack: Z9\n---\n\n# TODO-01 -- Night\n\n'
+            "> **Goal:** Fixture: §35 lifecycle residuals.\n\n"
+            "## Outcome\n\n- Fixture debt lists.\n\n"
+            "**Adjacency:** all=not-applicable (fixture)\n\n"
+            "## Implementation Order\n\n"
+            "| Order | Section | Deliverable | Depends On | Status |\n"
+            "| :---: | :-----: | ----------- | ---------- | :----: |\n"
+            "|   1   |   §1    | Owned work | -- |  [ ]   |\n"
+            "|   2   |   §2    | Unowned work | -- |  [ ]   |\n\n---\n\n## 1. Owned work\n\n"
+            "**Owner:** alice\n\n"
+            "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
+            "**Test checkpoint:** `true`\n\n"
+            # Item 1: owner precedence.
+            f"**Night-owed:** D90-T01-S1-N1 ({_o}2026-09-19)\n"
+            f"**Night-owed:** D90-T01-S1-N2 ({_o}2026-09-19)\n"
+            "**Night-owner:** D90-T01-S1-N2 (2026-09-19, owner bob, by operator)\n"
+            f"**Night-owed:** D90-T01-S1-N3 ({_o}2026-09-19, owner dave)\n"
+            "**Night-owner:** D90-T01-S1-N3 (2026-09-19, owner bob, by operator)\n"
+            # Items 2, 10: the first repeat anchors; a repeat ack needs a finding.
+            f"**Night-owed:** D90-T01-S1-N4 ({_o}2026-09-14)\n"
+            f"**Night-red:** 2026-09-15 D90-T01-S1-N4{_red}a1)\n"
+            f"**Night-red:** 2026-09-17 D90-T01-S1-N4{_red}a2)\n"
+            f"**Night-red:** 2026-09-19 D90-T01-S1-N4{_red}a3)\n"
+            f"**Night-owed:** D90-T01-S1-N5 ({_o}2026-09-14)\n"
+            f"**Night-red:** 2026-09-15 D90-T01-S1-N5{_red}b1)\n"
+            f"**Night-red:** 2026-09-18 D90-T01-S1-N5{_red}b2)\n"
+            "**Night-ack:** D90-T01-S1-N5 (2026-09-19, owner operator, action rerun)\n"
+            f"**Night-owed:** D90-T01-S1-N6 ({_o}2026-09-14)\n"
+            f"**Night-red:** 2026-09-15 D90-T01-S1-N6{_red}c1)\n"
+            f"**Night-red:** 2026-09-18 D90-T01-S1-N6{_red}c2)\n"
+            "**Night-ack:** D90-T01-S1-N6 (2026-09-19, owner operator, finding D00-T02-S35-F1, action fix the flaky wait)\n"
+            # Item 3: attempts are keyed by run identity.
+            f"**Night-owed:** D90-T01-S1-N7 ({_o}2026-09-17)\n"
+            f"**Night-red:** 2026-09-18 D90-T01-S1-N7{_red}d1)\n"
+            f"**Night-red:** 2026-09-18 D90-T01-S1-N7{_red}d2)\n"
+            f"**Night-owed:** D90-T01-S1-N8 ({_o}2026-09-17)\n"
+            f"**Night-red:** 2026-09-18 D90-T01-S1-N8{_red}e1)\n"
+            f"**Night-red:** 2026-09-18 D90-T01-S1-N8{_red}e1)\n"
+            # Item 5: accepted then collected reads collected.
+            f"**Night-owed:** D90-T01-S1-N9 ({_o}2026-09-12)\n"
+            "**Night-accepted:** D90-T01-S1-N9 (approver operator, owner operator, date 2026-09-14, expires 2026-10-01, rationale pending)\n"
+            "**Night-collected:** 2026-09-18 D90-T01-S1-N9 (1 passed, 0 failed, 0 skipped; log build/nightly/ok.trx)\n"
+            # Item 6: governance.
+            f"**Night-owed:** D90-T01-S1-N10 ({_o}2026-09-10)\n"
+            "**Night-accepted:** D90-T01-S1-N10 (approver mallory, owner operator, date 2026-09-12, expires 2026-10-01, rationale no authority)\n"
+            f"**Night-owed:** D90-T01-S1-N11 ({_o}2026-09-10)\n"
+            "**Night-accepted:** D90-T01-S1-N11 (approver operator, owner operator, date 2026-09-12, expires 2026-12-31, rationale too long)\n"
+            f"**Night-owed:** D90-T01-S1-N12 ({_o}2026-09-01)\n"
+            "**Night-accepted:** D90-T01-S1-N12 (approver operator, owner operator, date 2026-09-02, expires 2026-09-10, rationale first term)\n"
+            "**Night-accepted:** D90-T01-S1-N12 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale renewed)\n"
+            f"**Night-owed:** D90-T01-S1-N13 ({_o}2026-09-10)\n"
+            "**Night-accepted:** D90-T01-S1-N13 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale revoked later)\n"
+            "**Night-revoked:** D90-T01-S1-N13 (2026-09-18, by operator, reason the rebind landed)\n"
+            # Item 7: owed timestamps against the trigger.
+            f"**Night-owed:** D90-T01-S1-N14 ({_o}2026-09-17T01:00)\n"
+            f"**Night-owed:** D90-T01-S1-N15 ({_o}2026-09-17T03:00)\n"
+            "**Night-owed:** D90-T01-S1-N16 (1 Interactive, collector Nightly UI 00:30, owed 2026-09-17T01:00)\n"
+            f"**Night-owed:** D90-T01-S1-N17 ({_o}2026-09-17T12:00+00:00)\n"
+            # Item 8: extension history.
+            f"**Night-owed:** D90-T01-S1-N18 ({_o}2026-09-10)\n"
+            "**Night-extend:** D90-T01-S1-N18 (2026-09-12, by operator, due 2026-09-25, reason host rebuilt)\n"
+            "**Night-extend:** D90-T01-S1-N18 (2026-09-18, by operator, due 2026-09-28, reason host rebuilt again)\n"
+            f"**Night-owed:** D90-T01-S1-N19 ({_o}2026-09-10)\n"
+            "**Night-extend:** D90-T01-S1-N19 (2026-09-12, by operator, due 2026-09-25)\n"
+            # Item 11: orphans and duplicates.
+            "**Night-ack:** D90-T01-S1-N99 (2026-09-19, owner operator, action nothing owed)\n"
+            f"**Night-owed:** D90-T01-S1-N20 ({_o}2026-09-10)\n"
+            "**Night-accepted:** D90-T01-S1-N20 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale one)\n"
+            "**Night-accepted:** D90-T01-S1-N20 (approver operator, owner operator, date 2026-09-12, expires 2026-10-02, rationale two)\n"
+            # Item 4: each conflicting pair of the transition table.
+            f"**Night-owed:** D90-T01-S1-N21 ({_o}2026-09-12)\n"
+            f"**Night-red:** 2026-09-14 D90-T01-S1-N21{_red}f1)\n"
+            "**Night-collected:** 2026-09-16 D90-T01-S1-N21 (1 passed, 0 failed, 0 skipped; log build/nightly/ok.trx)\n"
+            f"**Night-owed:** D90-T01-S1-N22 ({_o}2026-09-12)\n"
+            "**Night-ack:** D90-T01-S1-N22 (2026-09-16, owner operator, action rerun)\n"
+            "**Night-collected:** 2026-09-17 D90-T01-S1-N22 (1 passed, 0 failed, 0 skipped; log build/nightly/ok.trx)\n"
+            f"**Night-owed:** D90-T01-S1-N23 ({_o}2026-09-12)\n"
+            f"**Night-red:** 2026-09-14 D90-T01-S1-N23{_red}g1)\n"
+            f"**Night-red:** 2026-09-16 D90-T01-S1-N23{_red}g2)\n"
+            "**Night-accepted:** D90-T01-S1-N23 (approver operator, owner operator, date 2026-09-17, expires 2026-10-01, rationale known red)\n"
+            f"**Night-owed:** D90-T01-S1-N24 ({_o}2026-09-10)\n"
+            "**Night-ack:** D90-T01-S1-N24 (2026-09-14, owner nightowl, action rerun)\n"
+            "**Night-accepted:** D90-T01-S1-N24 (approver operator, owner operator, date 2026-09-15, expires 2026-10-01, rationale accepted)\n"
+            f"**Night-owed:** D90-T01-S1-N25 ({_o}2026-09-10)\n"
+            "**Night-extend:** D90-T01-S1-N25 (2026-09-11, by operator, due 2026-09-30, reason host rebuilt)\n"
+            f"**Night-red:** 2026-09-15 D90-T01-S1-N25{_red}h1)\n\n"
+            "## 2. Unowned work\n\n"
+            "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
+            "**Test checkpoint:** `true`\n\n"
+            f"**Night-owed:** D90-T01-S2-N1 ({_o}2026-09-19)\n\n"
+            "## Verification\n\n- [ ] Fixture file validates\n",
+            encoding="utf-8",
+        )
+        (nd35 / "todo" / "90-night" / "INDEX.md").write_text(
+            "# 90 Night\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-01](./TODO-01-night.md) | Night | active |\n",
+            encoding="utf-8",
+        )
+        saved_tree, TODO_DIR = TODO_DIR, nd35 / "todo"
+        try:
+            _n35buf = _tio.StringIO()
+            with _tctx.redirect_stdout(_n35buf), _tctx.redirect_stderr(_tio.StringIO()):
+                _n35code = cmd_query(argparse.Namespace(what="night-debt", today="2026-09-20"))
+            _n35lines = _n35buf.getvalue().splitlines()
+            _n35jbuf = _tio.StringIO()
+            with _tctx.redirect_stdout(_n35jbuf), _tctx.redirect_stderr(_tio.StringIO()):
+                cmd_query(argparse.Namespace(what="night-debt", today="2026-09-20", json=True))
+            _n35json = json.loads(_n35jbuf.getvalue())
+        finally:
+            TODO_DIR = saved_tree
+        _n35 = {re.search(r"D90-T01-S\d+-N\d+", ln).group(0): ln for ln in _n35lines if re.search(r" D90-T01-S\d+-N\d+ ", ln) and not ln.lstrip().startswith("WARN")}
+
+        def _n35w(did, text):
+            return any(ln.lstrip().startswith(f"WARN {did}:") and text in ln for ln in _n35lines)
+
+        check("§35: query night-debt exits 0", _n35code, 0)
+        check(
+            "§35 item 1: owner precedence is owed paren, then Night-owner, then section Owner, then frontmatter",
+            ("owner alice " in _n35.get("D90-T01-S1-N1", ""), "owner bob " in _n35.get("D90-T01-S1-N2", ""),
+             "owner dave " in _n35.get("D90-T01-S1-N3", ""), "owner carol " in _n35.get("D90-T01-S2-N1", "")),
+            (True, True, True, True),
+        )
+        check(
+            "§35 item 2: a third red never moves the follow-up the first repeat set",
+            "state red-repeat" in _n35.get("D90-T01-S1-N4", "") and "OVERDUE escalate alice by 2026-09-19" in _n35.get("D90-T01-S1-N4", ""),
+            True,
+        )
+        check(
+            "§35 items 2, 10: a red-repeat ack without a finding holds nothing and warns",
+            "state red-repeat" in _n35.get("D90-T01-S1-N5", "") and "finding none" in _n35.get("D90-T01-S1-N5", "")
+            and _n35w("D90-T01-S1-N5", "red-repeat acknowledgement needs a finding"),
+            True,
+        )
+        check(
+            "§35 items 2, 10: a red-repeat ack with a finding holds and quotes it",
+            "state acknowledged" in _n35.get("D90-T01-S1-N6", "") and "finding D00-T02-S35-F1" in _n35.get("D90-T01-S1-N6", ""),
+            True,
+        )
+        check(
+            "§35 item 3: two red runs on one day are two attempts; one run twice is one",
+            ("state red-repeat" in _n35.get("D90-T01-S1-N7", ""), "state red " in _n35.get("D90-T01-S1-N8", "")),
+            (True, True),
+        )
+        check("§35 item 5: accepted then collected reads collected (closed)", "D90-T01-S1-N9" in _n35, False)
+        check(
+            "§35 item 6: an approver without authority accepts nothing and warns",
+            "state accepted" not in _n35.get("D90-T01-S1-N10", "") and _n35w("D90-T01-S1-N10", "lacks authority"),
+            True,
+        )
+        check(
+            "§35 item 6: a term over the maximum accepts nothing and warns",
+            "state accepted" not in _n35.get("D90-T01-S1-N11", "") and _n35w("D90-T01-S1-N11", "exceeds 30"),
+            True,
+        )
+        check(
+            "§35 item 6: the latest valid renewal reads",
+            "state accepted" in _n35.get("D90-T01-S1-N12", "") and "expires 2026-10-01" in _n35.get("D90-T01-S1-N12", ""),
+            True,
+        )
+        check(
+            "§35 item 6: a revocation voids the acceptance and escalates",
+            "state accepted" not in _n35.get("D90-T01-S1-N13", "") and "OVERDUE" in _n35.get("D90-T01-S1-N13", "")
+            and _n35w("D90-T01-S1-N13", "revoked on 2026-09-18"),
+            True,
+        )
+        check(
+            "§35 item 7: owed before the trigger is collectable that night; after it, the next",
+            ("due 2026-09-19" in _n35.get("D90-T01-S1-N14", ""), "due 2026-09-20" in _n35.get("D90-T01-S1-N15", ""),
+             "due 2026-09-20" in _n35.get("D90-T01-S1-N16", "")),
+            (True, True, True),
+        )
+        _n17_local = datetime.fromisoformat("2026-09-17T12:00+00:00").astimezone().replace(tzinfo=None)
+        _n17_first = _n17_local.date() if _n17_local.time() < datetime.strptime("02:30", "%H:%M").time() else _n17_local.date() + timedelta(days=1)
+        check(
+            "§35 item 7: an owed timestamp with an offset converts to local time first",
+            f"due {(_n17_first + timedelta(days=2)).isoformat()}" in _n35.get("D90-T01-S1-N17", ""),
+            True,
+        )
+        check(
+            "§35 item 8: every valid extension is quoted and the latest sets the due",
+            "due 2026-09-28" in _n35.get("D90-T01-S1-N18", "")
+            and "extended 2026-09-12 by operator to 2026-09-25; 2026-09-18 by operator to 2026-09-28" in _n35.get("D90-T01-S1-N18", ""),
+            True,
+        )
+        check(
+            "§35 item 8: an extension without a reason is ignored and warns",
+            "due 2026-09-13" in _n35.get("D90-T01-S1-N19", "") and _n35w("D90-T01-S1-N19", "Night-extend line needs"),
+            True,
+        )
+        check(
+            "§35 item 11: an orphan lifecycle line warns in the block and the JSON",
+            any("WARN D90-T01-S1-N99: orphan Night-ack line" in ln for ln in _n35lines)
+            and any("D90-T01-S1-N99" in o for o in _n35json["orphans"])
+            and any("D90-T01-S1-N99" in ln for ln in _n35json["report_block"]),
+            True,
+        )
+        check(
+            "§35 item 4: collected outranks red and ack",
+            ("D90-T01-S1-N21" in _n35, "D90-T01-S1-N22" in _n35),
+            (False, False),
+        )
+        check(
+            "§35 item 4: accepted outranks red-repeat and ack",
+            ("state accepted" in _n35.get("D90-T01-S1-N23", "") and "OVERDUE" not in _n35.get("D90-T01-S1-N23", ""),
+             "state accepted" in _n35.get("D90-T01-S1-N24", "") and "owner operator " in _n35.get("D90-T01-S1-N24", "")),
+            (True, True),
+        )
+        check(
+            "§35 item 4: a red resets the window after an extension",
+            "state red" in _n35.get("D90-T01-S1-N25", "") and "due 2026-09-18" in _n35.get("D90-T01-S1-N25", ""),
+            True,
+        )
+        check(
+            "§35 item 11: two acceptances on one day warn",
+            _n35w("D90-T01-S1-N20", "duplicate Night-accepted lines dated 2026-09-12"),
             True,
         )
         # Poster path proof (D00 T01 §53 items 1-2): the extracted

@@ -20,13 +20,30 @@ function Get-NightDebtDocument {
   return $doc
 }
 
-function Format-NightDebtStatus($Doc) {
+function Format-NightDebtStatus($Doc, [string]$Heading = 'Debt status at run start (`query night-debt`, verbatim):') {
   # The morning report's debt status block (D00 T02 §27 items 6 and 7):
   # the document's report_block verbatim, warnings included, under its
   # heading, so the report and the queries never disagree.
   $block = @($Doc.report_block | Where-Object { $null -ne $_ })
   if ($block.Count -eq 0) { return @() }
-  return @('Debt status at run start (`query night-debt`, verbatim):', '') + $block + @('')
+  return @($Heading, '') + $block + @('')
+}
+
+function Format-NightDebtPostRun($StartDoc, $EndDoc) {
+  # The post-run debt status (D00 T02 §35 item 9): the query re-run after
+  # tonight's Night-collected and Night-red lines landed, verbatim, plus one
+  # line per debt open at run start that the post-run query no longer lists,
+  # so a debt collected green tonight reads collected and never carries the
+  # run-start escalation into the morning.
+  $endIds = @{}
+  foreach ($d in @($EndDoc.debts)) { if ($null -ne $d) { $endIds["$($d.id)"] = $true } }
+  $closed = @()
+  foreach ($d in @($StartDoc.debts)) {
+    if (($null -ne $d) -and -not $endIds.ContainsKey("$($d.id)")) { $closed += "    $($d.id) state collected tonight (was $($d.state))" }
+  }
+  $block = @($EndDoc.report_block | Where-Object { $null -ne $_ }) + $closed
+  if ($block.Count -eq 0) { return @() }
+  return @('Debt status after the run (`query night-debt` re-run, verbatim, plus debts closed tonight):', '') + $block + @('')
 }
 
 function Get-OpenNightDebts {
@@ -63,23 +80,30 @@ function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Fa
   return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log)"
 }
 
-function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log) {
+function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Run = '') {
   # A red collection's record (D00 T02 §27 item 3): the first resets the
-  # due window once, a second escalates the debt as red-repeat.
-  return "**Night-red:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log)"
+  # due window once, a second escalates the debt as red-repeat. The run
+  # identity (D00 T02 §35 item 3) makes two red runs on one day two
+  # attempts.
+  $runPart = if ([string]::IsNullOrWhiteSpace($Run)) { '' } else { "; run $Run" }
+  return "**Night-red:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log$runPart)"
 }
 
 function Add-RedLine([string]$TodoPath, [string]$DebtId, [string]$Date, [string]$Line) {
   # Appends a Night-red line after the id's owed line (and any lines
-  # already following it for the id), once per id and date, atomic with
-  # readback. Triage commits it like a Night-collected line.
+  # already following it for the id), once per id and run identity (once
+  # per id and date for a line with no run, D00 T02 §35 item 3), atomic
+  # with readback. Triage commits it like a Night-collected line.
   $text = Get-Content $TodoPath -Raw -Encoding UTF8
-  if ($text -match ('\*\*Night-red:\*\*\s+' + [regex]::Escape($Date) + '\s+' + [regex]::Escape($DebtId) + '\b')) { return "skip: $DebtId already carries a red line for $Date" }
+  $runM = [regex]::Match($Line, '; run (\S+?)\)$')
+  $dupPattern = '\*\*Night-red:\*\*\s+' + [regex]::Escape($Date) + '\s+' + [regex]::Escape($DebtId) + '\b'
+  if ($runM.Success) { $dupPattern += '[^\n]*; run ' + [regex]::Escape($runM.Groups[1].Value) + '\)' }
+  if ($text -match $dupPattern) { return "skip: $DebtId already carries a red line for $Date$(if ($runM.Success) { " run $($runM.Groups[1].Value)" })" }
   $lines = @($text -split "`r?`n")
   $idx = Find-OwedLineIndex $lines $DebtId
   if ($idx -lt 0) { return "skip: no Night-owed line for $DebtId" }
   $at = $idx
-  while ((($at + 1) -lt $lines.Count) -and ($lines[$at + 1] -match ('\*\*Night-(red|collected|ack|accepted):\*\*\s+(\S+\s+)?' + [regex]::Escape($DebtId) + '\b'))) { $at++ }
+  while ((($at + 1) -lt $lines.Count) -and ($lines[$at + 1] -match ('\*\*Night-(red|collected|ack|accepted|owner|extend|revoked):\*\*\s+(\S+\s+)?' + [regex]::Escape($DebtId) + '\b'))) { $at++ }
   $new = New-Object System.Collections.Generic.List[string]
   for ($i = 0; $i -lt $lines.Count; $i++) { $new.Add($lines[$i]); if ($i -eq $at) { $new.Add($Line) } }
   $tmp = "$TodoPath.tmp"

@@ -27,6 +27,14 @@ $lines = @((Get-Content $todo -Raw) -split "`r?`n")
 $i1 = [array]::IndexOf($lines, $r1); $i2 = [array]::IndexOf($lines, $r2); $iOwed2 = [array]::IndexOf($lines, '**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-14)')
 Assert (($i1 -eq 3) -and ($i2 -eq 4) -and ($iOwed2 -eq 5)) 'red-lines-follow-their-owed-line' "red1 $i1 red2 $i2 owed2 $iOwed2"
 Assert ((Add-RedLine $todo 'D90-T01-S1-N9' '2026-09-16' $r1) -eq 'skip: no Night-owed line for D90-T01-S1-N9') 'red-line-without-owed-skips-loud'
+# Run identity (D00 T02 §35 item 3): two red runs on one day are two
+# attempts and both land; the same run twice lands once.
+$ra = Format-RedLine '2026-09-18' 'D90-T01-S1-N2' 0 1 0 'build/nightly/c/interactive.trx' 'run-c'
+$rb = Format-RedLine '2026-09-18' 'D90-T01-S1-N2' 0 1 0 'build/nightly/d/interactive.trx' 'run-d'
+Assert ($ra -eq '**Night-red:** 2026-09-18 D90-T01-S1-N2 (0 passed, 1 failed, 0 skipped; log build/nightly/c/interactive.trx; run run-c)') 'red-line-carries-run' $ra
+Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $ra) -eq 'appended red line') 'red-line-first-run-appends'
+Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $rb) -eq 'appended red line') 'red-line-second-run-same-day-appends'
+Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $ra) -like 'skip: D90-T01-S1-N2 already carries a red line for 2026-09-18 run run-c') 'red-line-once-per-run'
 
 # Parity with the live queries: every debt's JSON line equals the text
 # line `query night-debt` prints, and the reader fails loud on non-JSON.
@@ -41,6 +49,14 @@ $synthetic = [pscustomobject]@{ schema = 'night-debt/1'; report_block = @('    t
 $blockOut = @(Format-NightDebtStatus $synthetic)
 Assert (($blockOut.Count -eq 5) -and ($blockOut[0] -eq 'Debt status at run start (`query night-debt`, verbatim):') -and ($blockOut[2] -eq $synthetic.report_block[0]) -and ($blockOut[3] -eq $synthetic.report_block[1])) 'report-block-verbatim-with-warnings' ($blockOut -join ' | ')
 Assert (@(Format-NightDebtStatus ([pscustomobject]@{ schema = 'night-debt/1'; report_block = @() })).Count -eq 0) 'report-block-empty-when-no-debt'
+# The post-run block (D00 T02 §35 item 9): a debt open at run start and
+# collected green tonight reads collected; one still open reads its
+# post-run line verbatim.
+$startDoc = [pscustomobject]@{ debts = @([pscustomobject]@{ id = 'D90-T01-S1-N1'; state = 'open' }, [pscustomobject]@{ id = 'D90-T01-S1-N2'; state = 'red' }); report_block = @('    a', '    b') }
+$endDoc = [pscustomobject]@{ debts = @([pscustomobject]@{ id = 'D90-T01-S1-N2'; state = 'red-repeat' }); report_block = @('    todo/x.md D90-T01-S1-N2 state red-repeat') }
+$post = @(Format-NightDebtPostRun $startDoc $endDoc)
+Assert (($post[0] -like 'Debt status after the run*') -and ($post -contains '    todo/x.md D90-T01-S1-N2 state red-repeat') -and ($post -contains '    D90-T01-S1-N1 state collected tonight (was open)')) 'post-run-reads-collected-tonight' ($post -join ' | ')
+Assert (@(Format-NightDebtPostRun ([pscustomobject]@{ debts = @(); report_block = @() }) ([pscustomobject]@{ debts = @(); report_block = @() })).Count -eq 0) 'post-run-empty-when-no-debt'
 $liveDoc = Get-NightDebtDocument $Root $py
 $liveText = @(& $py (Join-Path $Root 'scripts/todo-graph.py') query night-debt 2>&1 | Where-Object { "$_" -match '^\s{4}\S' } | ForEach-Object { "$_" })
 Assert ((@($liveDoc.report_block) -join "`n") -eq ($liveText -join "`n")) 'live-report-block-equals-query-text' "block $(@($liveDoc.report_block).Count) text $($liveText.Count)"
