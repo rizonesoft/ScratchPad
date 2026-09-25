@@ -62,7 +62,7 @@ track: W0
 |   19  |   §19   | Night-debt due dates and escalation | §10 |  [x]   |
 |   20  |   §20   | Accelerator sweep sign-off polish | §12 |  [x]   |
 |   21  |   §21   | Accelerator sweep follow-ups | §12 |  [x]   |
-|   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [ ]   |
+|   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [x]   |
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [ ]   |
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [ ]   |
@@ -70,6 +70,7 @@ track: W0
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
+|   30  |   §30   | Nightly evidence residuals | §22 |  [ ]   |
 
 ---
 
@@ -707,6 +708,7 @@ Why this section exists: the §15 plan review returned 30 findings; 5 file here 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §15 -- hardens that section's evidence surfaces (failure captures, retained runs, incident ledger).
+- -> XREF: D00 T02 §30 -- residual follow-ups filed from this section's plan review.
 
 - [x] Failure captures carry redaction, access, size, retention, and secret-scanning rules, so screenshots, window titles, event slices, and dumps cannot leak operator data. Done when: the policy reads and a planted secret fails the scan. (D00-T02-S15-PR21.) Done: `Format-WindowRow` redacts titles of processes the run does not own, `Protect-CaptureDir` secret-scans every text capture after `Invoke-FailureCapture` writes it (replacing a hit whole, `SECRET-SCAN` note) and drops screenshots over the 25 MB cap; policy paragraph "Failure-capture policy" in `docs/testing.md` (access, redaction, scanning, size, retention, the screenshot default with its cost). Fixture: `capture-planted-secret-fails-scan` (a planted `ghp_` token hits `github-token`), `capture-secret-redacted-whole`, `capture-foreign-title-redacted`, `capture-operator-shell-title-redacted` (shells and `dotnet` are not run-owned: the operator's terminals share those names), `capture-over-cap-drops-screenshot` green; pre-kill dumps are `MiniDumpNormal` (no heap), named in the policy in `tools/NightlyParse.Tests.ps1`.
 - [x] Retained runs carry a quota or maximum count over KEEP.txt exemptions, so stamped evidence cannot grow into the low-disk refusal it guards against. Done when: an over-quota retain refuses loud. (D00-T02-S15-PR22.) Done: `NightlyRetention.ps1 -Retain` refuses loud (`retain: QUOTA REFUSED`, exit 1, nothing copied) past `-MaxRetained` (20 retained runs or KEEP-marked stamp dirs) or `-MaxRetainedBytes` (2 GB over retained copies plus KEEP-marked sources); new `tools/NightlyRetention.Tests.ps1` drives the real script on a temp workspace (`-WorkspaceRoot`): 10/10 green including `retain-over-count-refuses-loud`, `retain-over-bytes-refuses-loud`, and both copy-nothing checks; a planted disabled count quota fails 5.
@@ -718,6 +720,13 @@ Why this section exists: the §15 plan review returned 30 findings; 5 file here 
 - [x] Commit: `"workspace: harden nightly evidence follow-ups"` Done: 9f9d8b5.
 
 **Test checkpoint:** Policy scans, quota refuses, keys split, lifecycle appends, manifests stay clean. Cheaper substitute that fails: §15's approximate shapes with no hardening behind them.
+
+> **Verified:** 2026-09-25 | §22 | capture policy live (run-descendant title ownership, post-write secret scan with whole-file redaction and fail-closed delete, 25 MB screenshot cap, retain-time re-scan refusing markers, hits, and unreadable captures); retention quota refuses loud past 20 runs or 2 GB with nothing copied; incident identity v2 (test, phase, failure class, HRESULTs, stack signature) with golden ids; the all-skipped `Skipped!` banner conserves green; the `.out.log` paragraph; a fail-closed cross-night incident ledger (create once, append per stamp, quarantine owner, 3-run recovery with same test-phase resets, reopen with history); the Run integrity `- Catalog:` line; fixtures 284/0 and 13/0 at the tip with every planted regression failing; proof run 2026-09-25-043232-pid54360 on the tip: Population OK, Tree clean at start and end, Catalog current, ledger written
+> **Review:** round 4 (Full), candidates `9f9d8b5` `44a78b8` `e0bf50b` `a191fb4` `81cbabf` `78de9db` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1..F2 fixed), GPT R3 sign-off needs-attention (R3-F1 safety, R2-F1 family, fixed at the retain enforcement point), GPT R4 depth governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s22.md
+> **Plan review:** GPT medium, filed D00 T02 §30, D00 T09 §1, D00 T09 §8 (run 20260925-D00-T02-S22-codex-c06751119-r5)
+> **CRUD:** applicable | the ledger wrote incidents.json (read back by `Write-IncidentLedger` on every write and by the next run; corrupt, arrayless, duplicate, and field-missing ledgers fail closed); retain wrote copies, manifests, and KEEP marks (read back by -Verify; quota and protection refusals copy nothing); capture redaction rewrote or deleted captures (read back by the fixture and by the retain re-scan)
+> **Duration:** 2026-09-25T01:46:48Z to 2026-09-25T02:38:27Z
+> **Reviewed-tip:** 78de9db5df2efe568124a5c75f8a3889f86beb57
 
 ## 23. Nightly Acknowledgement Hardening
 
@@ -859,6 +868,28 @@ Why this section exists: the population fingerprint (`tests/UI/TestPopulation.fi
 - [ ] Commit: `"workspace: gate the population fingerprint before the night"`
 
 **Test checkpoint:** The script prints OK on HEAD, reproduces the exact 2026-09-25 drift line against the stale count, the CI step runs green, a methods-only plant fails the fixture suite, and a stale-build regen refuses. Cheaper substitute that fails: a comment telling the next author to rebuild before regenerating.
+
+## 30. Nightly Evidence Residuals
+
+Why this section exists: the §22 plan review returned 21 findings; 10 file here, 4 on D00 T09 §1, 4 on D00 T09 §8, and 3 are rejected with reasons in the §22 findings file. §22 shipped the capture policy, the retention quota, incident identity v2, and the incident lifecycle; these keep their follow-ups in one home rather than reopening a stamped section. -> SOURCE: plan-review-D00-T02-s22-2026-09-25-s30 D00-T02-S22-PR1 D00-T02-S22-PR3 D00-T02-S22-PR4 D00-T02-S22-PR5 D00-T02-S22-PR7 D00-T02-S22-PR9 D00-T02-S22-PR10 D00-T02-S22-PR11 D00-T02-S22-PR12 D00-T02-S22-PR20 (scan window, byte budget, quota recovery, ledger durability, identity aliases, ownership fallback, finding links, catalog wording, reciprocal references, and machine-readable lifecycle from the §22 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §22 -- filed from its plan review; hardens the capture policy, retention quota, and incident lifecycle it shipped.
+
+- [ ] Text captures are written to a staging name and renamed into the capture directory only after `Protect-CaptureDir` scans them, so no reader of the capture directory ever sees an unscanned file. Done when: a fixture shows the staging file absent after a clean scan and never renamed on a hit. (D00-T02-S22-PR1.)
+- [ ] Each run carries an aggregate capture byte budget across screenshots, window lists, event slices, and dumps, with an explicit truncation marker naming what was dropped. Done when: an over-budget fixture keeps the marker and drops in a stated order. (D00-T02-S22-PR3.)
+- [ ] A quota refusal has a documented recovery path: the refusal names the oldest KEEP exemptions with their citing stamps, and `docs/testing.md` states how a citation is released or archived without losing the stamp's evidence. Done when: a fixture refusal lists candidates and the paragraph reads. (D00-T02-S22-PR4.)
+- [ ] A missing incident ledger is detected rather than read as empty whenever earlier result files carry incidents, and the run reds with a rebuild instruction (rebuild from the retained result files). Done when: deleting the ledger after a night with incidents reds the next run with the instruction. (D00-T02-S22-PR5.)
+- [ ] Identity contract changes carry an alias map (old id to new id) so the §17 recurrence joins across a contract bump, starting with v1 to v2 for the nights since 2026-09-20. Done when: the trend's recurrence line joins a v1 and a v2 sighting of one failure. (D00-T02-S22-PR7.)
+- [ ] An incident with no quarantine owner routes to a named default owner (the triage owner) with an escalation date instead of reading `unassigned` forever. Done when: a fixture incident with no quarantine row names the default owner and its due date. (D00-T02-S22-PR9.)
+- [ ] The ledger records each incident's finding link once triage files it, and the report re-lists open incidents with no link on every run until one is recorded. Done when: an unlinked open incident re-lists and a linked one does not. (D00-T02-S22-PR10.)
+- [ ] The Run integrity catalog line reads as what it proves (`Catalog: retained runs verified (N)`), distinct from whether this run's own evidence is retained. Done when: the report line and the paragraph agree. (D00-T02-S22-PR11.)
+- [ ] D00 T09 §1 and D00 T09 §8 declare `-> XREF: D00 T02 §22` for the capture policy they consume, and §22 points back. Done when: `validate` reads the reciprocal pairs. (D00-T02-S22-PR12.)
+- [ ] `morning-<stamp>.result.json` publishes the incident lifecycle (id, state, owner, occurrence count, pass streak, contract version) beside the incident lines, validated by `Test-ResultFile`, so notify, trend, and D00 T09 §8 triage read one machine contract. Done when: a fixture result carries the block and fails validation when a field is missing. (D00-T02-S22-PR20.)
+- [ ] Commit: `"workspace: close the nightly evidence residuals"`
+
+**Test checkpoint:** Staging never exposes unscanned text, the byte budget truncates with a marker, a quota refusal lists release candidates, a missing ledger reds with its rebuild instruction, recurrence joins across the alias map, unowned incidents name the default owner, unlinked incidents re-list, the catalog line reads truthfully, the XREF pairs validate, and the result JSON carries the validated lifecycle block. Cheaper substitute that fails: notes in the report with no enforcement behind them.
 
 ## Verification
 

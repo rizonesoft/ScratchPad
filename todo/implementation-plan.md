@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **114 of 302 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **115 of 303 sections complete (38%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -147,7 +147,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §19` | Night-debt due dates and escalation                       |   3   |
 | [x] | `D00 T02 §20` | Accelerator sweep sign-off polish                         |   3   |
 | [x] | `D00 T02 §21` | Accelerator sweep follow-ups                              |  13   |
-| [ ] | `D00 T02 §22` | Nightly evidence hardening follow-ups                     |   8   |
+| [x] | `D00 T02 §22` | Nightly evidence hardening follow-ups                     |   8   |
 | [ ] | `D00 T02 §23` | Nightly acknowledgement hardening                         |   6   |
 | [ ] | `D00 T02 §24` | Notify follow-ups                                         |  15   |
 | [ ] | `D00 T02 §25` | Trend and telemetry follow-ups                            |  11   |
@@ -155,6 +155,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §27` | Night-debt escalation lifecycle                           |   8   |
 | [ ] | `D00 T02 §28` | Binding guard and funnel hardening                        |  11   |
 | [ ] | `D00 T02 §29` | Population fingerprint gate before the night              |   6   |
+| [ ] | `D00 T02 §30` | Nightly evidence residuals                                |  11   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
@@ -207,14 +208,14 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                                  |   9   |
 | [ ] | `D00 T08 §1`  | Poster and delivery hardening                             |  12   |
 | [ ] | `D00 T08 §2`  | Notification governance and premium views                 |  12   |
-| [ ] | `D00 T09 §1`  | Hotkey-conflict preflight and environment-blocked outcome |  14   |
+| [ ] | `D00 T09 §1`  | Hotkey-conflict preflight and environment-blocked outcome |  18   |
 | [ ] | `D00 T09 §2`  | Control channel and nightly-ctl CLI                       |   8   |
 | [ ] | `D00 T09 §3`  | Operator-presence yield                                   |   7   |
 | [ ] | `D00 T09 §4`  | Toast action buttons                                      |   4   |
 | [ ] | `D00 T09 §5`  | Tray status and control icon                              |   5   |
 | [ ] | `D00 T09 §6`  | Nightly Claude skill                                      |   4   |
 | [ ] | `D00 T09 §7`  | Adaptive run planning                                     |   6   |
-| [ ] | `D00 T09 §8`  | Claude triage in the morning report                       |   6   |
+| [ ] | `D00 T09 §8`  | Claude triage in the morning report                       |  10   |
 
 > **Moved:** `D00 T01 §8` -- 2026-09-14 to docs/testing.md (operator instruction: Conclave-PC VM testing retired; input capability proven by the local host suite instead, UI 18/18 with zero skips).
 
