@@ -1435,7 +1435,9 @@ $result = [pscustomobject]@{
   # Night grouping by run identity plus timezone (D00 T02 §25 item 3).
   startUtc = $runStart.ToUniversalTime().ToString('o')
   tz = $(($runStart - $runStart.ToUniversalTime()).ToString('hh\:mm').Insert(0, $(if (($runStart - $runStart.ToUniversalTime()).Ticks -lt 0) { '-' } else { '+' })))
-  night = (Get-NightKey $runStart)
+  # A timer run serves its scheduled trigger's night, however late it
+  # started (D00 T02 section 32 R5-C1); other launches keep the noon rule.
+  night = $(if (("$($launch.Verdict)" -eq 'timer') -and (@($triggerTODs).Count -gt 0)) { Get-ScheduledNight $runStart @($triggerTODs) } else { Get-NightKey $runStart })
   report = "build/nightly/morning-$stamp.md"
   note = ''
 }

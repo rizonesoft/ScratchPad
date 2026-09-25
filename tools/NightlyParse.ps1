@@ -2124,6 +2124,24 @@ function Get-NightKey([datetime]$LocalStart) {
   return $LocalStart.Date.ToString('yyyy-MM-dd')
 }
 
+function Get-ScheduledNight([datetime]$LocalStart, [string[]]$TriggerTimes) {
+  # A timer launch serves the latest trigger instant at or before its
+  # start (section 32 R5-C1): the task's StartWhenAvailable can run a
+  # missed 02:30 trigger hours late, and that late run still belongs to
+  # the trigger's own night. Falls back to Get-NightKey when no trigger
+  # time reads.
+  $best = $null
+  foreach ($tt in @($TriggerTimes)) {
+    $ts = [TimeSpan]::Zero
+    if (-not [TimeSpan]::TryParse("$tt", [ref]$ts)) { continue }
+    $cand = $LocalStart.Date + $ts
+    if ($cand -gt $LocalStart) { $cand = $cand.AddDays(-1) }
+    if (($null -eq $best) -or ($cand -gt $best)) { $best = $cand }
+  }
+  if ($null -eq $best) { return (Get-NightKey $LocalStart) }
+  return $best.Date.ToString('yyyy-MM-dd')
+}
+
 function Get-ResultNight($Result) {
   # Grouping key for a result: its recorded night, else the night
   # derived from startUtc plus its tz offset, else the legacy day.
@@ -2301,6 +2319,9 @@ function Test-MetricsRowShape($Row) {
     # Whole numbers that fit the Int32 the renderer casts to (section 32
     # R4-A1): a longer digit string would render as zero and look healthy.
     foreach ($k in @('passed', 'failed', 'skipped')) { $v = $o.$k; if (($null -ne $v) -and ("$v" -notmatch '^\d{1,9}$')) { return $false } }
+    # Execution flags are booleans or absent (section 32 R5-A1): an array
+    # or string would cast to false and hide the leg's failures.
+    foreach ($k in @('ran', 'killed', 'cut', 'enforcementRed')) { $v = $o.$k; if (($null -ne $v) -and (-not ($v -is [bool]))) { return $false } }
     $ts = $o.testSeconds
     if (($null -ne $ts) -and ("$ts" -notmatch '^\d+(\.\d+)?$')) { return $false }
   }
@@ -2817,7 +2838,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     try {
       $soak = "$($r.soak.verdict)"
       $fraw = $r.soak.failed
-      if ($fraw -is [array]) { $sfn = @($fraw | Where-Object { $_ -is [string] }); if ($sfn.Count -gt 0) { $soak += ' ' + ($sfn -join ',') } }
+      if ($fraw -is [array]) { $sfn = @($fraw | Where-Object { $_ -is [string] }); if ($sfn.Count -gt 0) { $soak += ' ' + (Protect-DisclosedText ($sfn -join ',')) } }
       elseif (([int]$fraw) -gt 0) { $soak += " failed=$fraw" }
       $skn = @($r.soak.killed | Where-Object { $null -ne $_ }).Count; $scn = @($r.soak.cut | Where-Object { $null -ne $_ }).Count
       if ($skn -gt 0) { $soak += " killed=$skn" }
@@ -2999,7 +3020,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
           if ($null -ne $vv) { $tp += "$k=${vv}s" }
         }
       }
-      if ($tp.Count -gt 0) { $ph = ($tp -join ' ') }
+      if ($tp.Count -gt 0) { $ph = Protect-DisclosedText ($tp -join ' ') }
     } catch { }
     $bud = 'budget unknown'
     try {

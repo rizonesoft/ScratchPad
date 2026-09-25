@@ -482,6 +482,19 @@ $om.PSObject.Properties.Remove('omissionOk')
 $omRow = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $om)) -Depth 8 -Compress) | ConvertFrom-Json)
 Assert ((Classify-NightlyOutcome $om).Class -eq (Classify-NightlyOutcome $omRow).Class) 'missing-omission-field-classifies-the-same-from-metrics' "$((Classify-NightlyOutcome $om).Class) vs $((Classify-NightlyOutcome $omRow).Class)"
 
+# ---- section 32 round 5 ----
+$flagRows = Join-Path $dir 'flags.jsonl'
+'{"schema":"metrics/1","identity":"f","stamp":"s","night":"2026-09-20","verdict":"green","legs":{"run-a":{"ran":[],"passed":100,"failed":5}}}' | Set-Content -Path $flagRows -Encoding UTF8
+Assert ((Read-MetricsStore $flagRows).Rows.Count -eq 0) 'metrics-non-boolean-flags-are-malformed'
+$sp = New-Night '2026-09-22' '2026-09-22-023000'
+$sp.soak = [pscustomobject]@{ ran = $true; verdict = 'red'; failed = @('C:\Users\someone\Private\soak.log'); killed = @(); cut = @() }
+$sp.timings = @{ 'C:\Users\someone\Private\phase' = 3 }
+$spOut = (Format-TrendTable @($sp) $Q $today) -join "`n"
+Assert ($spOut -notlike '*someone*') 'raw-soak-and-timing-text-disclosed'
+$late = [datetime]::ParseExact('2026-09-25 13:00', 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
+$early = [datetime]::ParseExact('2026-09-26 01:10', 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
+Assert (((Get-ScheduledNight $late @('02:30')) -eq '2026-09-25') -and ((Get-ScheduledNight $early @('02:30')) -eq '2026-09-25') -and ((Get-NightKey $late) -eq '2026-09-26')) 'late-timer-run-keeps-its-trigger-night' "$(Get-ScheduledNight $late @('02:30')) $(Get-ScheduledNight $early @('02:30'))"
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTrend.Tests: all green'
