@@ -2648,6 +2648,35 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   return $map
 }
 
+function Get-TrapDisposition([string]$NightDir, [string]$Stamp) {
+  # What the cancellation trap may write (D00 T02 section 24 redesign,
+  # operator decision 2026-09-25): the run's own result file is the
+  # durable publication receipt. Write-AtomicReport lands it by an atomic
+  # rename, so it either exists whole or not at all; once it exists for
+  # this stamp, the run's evidence is on disk and nothing the trap does
+  # may replace it or the report built from it. No in-memory flag and no
+  # ordering against the journal decides this. Returns Landed, ResultPath,
+  # and Reason. A leftover `.tmp` never counts; a file that exists but no
+  # longer parses still counts as landed (the trap never overwrites it:
+  # the corruption lifecycle owns it).
+  $p = Join-Path $NightDir "morning-$Stamp.result.json"
+  if (("$Stamp" -eq '') -or (-not (Test-Path -LiteralPath $p -PathType Leaf))) { return [pscustomobject]@{ Landed = $false; ResultPath = $p; Reason = 'no result landed for this run' } }
+  $o = $null
+  try { $o = Get-Content -LiteralPath $p -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Landed = $true; ResultPath = $p; Reason = 'result landed but no longer parses (left for the corruption record)' } }
+  if (("$($o.stamp)" -ne '') -and ("$($o.stamp)" -ne $Stamp)) { return [pscustomobject]@{ Landed = $true; ResultPath = $p; Reason = "result file names stamp $($o.stamp) (left untouched)" } }
+  return [pscustomobject]@{ Landed = $true; ResultPath = $p; Reason = "result landed (verdict $($o.verdict))" }
+}
+
+function Write-PostResultFailure([string]$NightDir, [string]$Stamp, [string]$Day, [string]$Message) {
+  # The failure record for a run whose result already landed (section 24
+  # redesign): a stamp-scoped note beside the run, never the day report
+  # and never the result, so the landed evidence and its acknowledgement
+  # checksum stand. Returns the note's path.
+  $path = Join-Path $NightDir "morning-$Stamp-failure.md"
+  Write-AtomicReport @("# Run failure after its result landed: $Stamp", 'Status: failed-after-result', '', "- Day: $Day", "- Failure: $Message", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", "- Result: morning-$Stamp.result.json (left untouched; its report may be missing, and next-start recovery records the unfinished run)") $path
+  return $path
+}
+
 function Write-IncidentLedger([hashtable]$Incidents, [string]$Path, [string]$Stamp = '') {
   # Atomic write plus read-back: a ledger that cannot be read back is a
   # failed write the caller reports, never a silent loss. The optional

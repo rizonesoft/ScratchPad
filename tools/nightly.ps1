@@ -410,11 +410,22 @@ trap {
   # silence, distinguishable from a crash by its Status line. The guard
   # only fires once the evidence dir exists; helper functions are
   # defined by then (they live above the leg block).
-  if ($script:finalPublished) {
-    # A failure after the final publication (D00 T02 §24 R4-F2) never
-    # rewrites the completed run's report or result: its counts,
-    # incidents, budget, environment, and ack checksum stand.
-    Write-Output "nightly: post-publication failure (record stands): $($_.Exception.Message)"
+  # The result file is the publication receipt (D00 T02 §24 redesign):
+  # once this run's result has landed, a failure never rewrites the day
+  # report or the result (its counts, incidents, budget, environment, and
+  # ack checksum stand). The failure lands in a stamp-scoped note, the
+  # journal records it, and the alert still goes out from the landed
+  # result (notification is idempotent per run and checksum), so neither
+  # the record nor the alert is lost, whatever threw and wherever.
+  $disp = $null
+  if ((-not [string]::IsNullOrWhiteSpace($nightDir)) -and (-not [string]::IsNullOrWhiteSpace($stamp))) { try { $disp = Get-TrapDisposition $nightDir $stamp } catch { $disp = $null } }
+  if (($null -ne $disp) -and $disp.Landed) {
+    $msg = "$($_.Exception.Message)"
+    $note = ''
+    try { $note = Write-PostResultFailure $nightDir $stamp $day $msg } catch { }
+    try { Write-RunJournal $nightDir $stamp $PID $runStart 'failed-after-result' } catch { }
+    try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $disp.ResultPath -Class 'cancelled' -Title "Nightly $day : FAILED after its result landed" -Lines @("Run failed after its result landed: $msg", "Record: build/nightly/morning-$stamp-failure.md", "Result: build/nightly/morning-$stamp.result.json (untouched)") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { }
+    Write-Output "nightly: failure after the result landed (record stands; $($disp.Reason)): $msg$(if ($note -ne '') { "; note $note" })"
     if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
     exit 1
   }
@@ -1592,6 +1603,10 @@ $result = [pscustomobject]@{
 }
 $resultPath = Join-Path $nightDir "morning-$stamp.result.json"
 Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
+# Fault seam for the publication-receipt proof (D00 T02 §24 redesign):
+# SCRATCHPAD_NIGHTLY_FAULT=after-result throws right after the result lands,
+# in the window the old in-memory flag left unguarded.
+if ($env:SCRATCHPAD_NIGHTLY_FAULT -eq 'after-result') { throw 'injected fault after the result landed (SCRATCHPAD_NIGHTLY_FAULT=after-result)' }
 # The queue this result is published into (D00 T02 section 39 item 10):
 # recorded once, so a later relabel to proof cannot move a RED out of the
 # operational queue.
@@ -1657,10 +1672,8 @@ $report += '## Evidence completeness'
 $report += ''
 $report += @(Format-EvidenceSummary $report $stamp)
 Publish-NightlyReport $report ''
-# Set the moment the final record lands (D00 T02 §24 R5-F1): anything
-# that throws after this line, the journal update included, leaves the
-# published report and result untouched.
-$script:finalPublished = $true
+# The landed result already protects the record (the trap reads it from
+# disk: D00 T02 §24 redesign), so no flag is needed here.
 if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
 Write-Output "nightly: report at $reportPath"
 if ((-not $Smoke) -and (-not $simMode)) {

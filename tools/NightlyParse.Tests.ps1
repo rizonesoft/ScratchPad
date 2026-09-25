@@ -1907,6 +1907,27 @@ $sumLines = @('- run-a : CAPTURE-REFUSED screenshot and dump (binaryCaptures is 
 $sumBlock = @(Format-EvidenceSummary $sumLines '2026-09-25-023001')
 $sumClean = @(Format-EvidenceSummary @('- run-a : window metadata run-a-windows.txt'))
 Assert (($sumBlock[0] -eq '- Evidence DEGRADED for 2026-09-25-023001: 2 class(es)') -and ((@($sumBlock | Where-Object { $_ -like '- capture refusals: 1 (next: *' })).Count -eq 1) -and ((@($sumBlock | Where-Object { $_ -like '- overdue incidents: 1 (next: *' })).Count -eq 1) -and ($sumClean.Count -eq 1) -and ($sumClean[0] -like '- Evidence complete:*')) 's45-one-summary-names-degraded-evidence' ($sumBlock -join ' | ')
+# D00 T02 §24 redesign: the landed result is the publication receipt. No
+# result (or only a .tmp) lets the trap write its cancelled record; a
+# landed result, even one that no longer parses, is never replaced, and
+# the failure note leaves the day report and the result byte-identical.
+$trDir = Join-Path $dir 's24-trap'
+$null = New-Item -ItemType Directory -Force -Path $trDir
+$trStamp = '2026-10-22-023001'
+$d0 = Get-TrapDisposition $trDir $trStamp
+'{ partial' | Set-Content -Path (Join-Path $trDir "morning-$trStamp.result.json.tmp") -Encoding UTF8
+$dTmp = Get-TrapDisposition $trDir $trStamp
+$landedJson = (ConvertTo-Json ([pscustomobject]@{ version = 1; stamp = $trStamp; verdict = 'red'; exit = 1 }))
+Write-AtomicReport @($landedJson) (Join-Path $trDir "morning-$trStamp.result.json")
+'# Morning report: 2026-10-22' | Set-Content -Path (Join-Path $trDir 'morning-2026-10-22.md') -Encoding UTF8
+$shaRes = Get-FileSha256 (Join-Path $trDir "morning-$trStamp.result.json")
+$shaDay = Get-FileSha256 (Join-Path $trDir 'morning-2026-10-22.md')
+$d1 = Get-TrapDisposition $trDir $trStamp
+$note = Write-PostResultFailure $trDir $trStamp '2026-10-22' 'journal write failed'
+$sameRes = ((Get-FileSha256 (Join-Path $trDir "morning-$trStamp.result.json")) -eq $shaRes) -and ((Get-FileSha256 (Join-Path $trDir 'morning-2026-10-22.md')) -eq $shaDay)
+'{ corrupt' | Set-Content -Path (Join-Path $trDir "morning-$trStamp.result.json") -Encoding UTF8
+$d2 = Get-TrapDisposition $trDir $trStamp
+Assert ((-not $d0.Landed) -and (-not $dTmp.Landed) -and $d1.Landed -and ($d1.Reason -like 'result landed (verdict red)*') -and $sameRes -and ((Get-Content $note -Raw) -like '*Status: failed-after-result*journal write failed*') -and $d2.Landed -and ($d2.Reason -like '*no longer parses*')) 's24-landed-result-is-the-receipt' "$($d0.Reason) | $($dTmp.Reason) | $($d1.Reason) | $($d2.Reason) | same=$sameRes"
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyParse.Tests: all green'
