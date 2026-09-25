@@ -1080,44 +1080,92 @@ function Get-CaseIdentityRows($Cases, [string]$Assembly = 'UI') {
   return $rows
 }
 
+function Get-SourceMemberBlock([string[]]$Lines, [int]$Start) {
+  # One C# member's full text from its declaration line (D00 T02 section
+  # 44 R2-F1): braces are balanced across lines (string and char literals
+  # aside), and an expression-bodied or field member ends at the `;` that
+  # closes it at depth zero. Bounded at 4000 lines.
+  $out = New-Object System.Collections.Generic.List[string]
+  $depth = 0
+  $opened = $false
+  for ($i = $Start; ($i -lt $Lines.Count) -and ($i -lt ($Start + 4000)); $i++) {
+    $ln = $Lines[$i]
+    $out.Add($ln)
+    $bare = [regex]::Replace($ln, '"(?:[^"\\]|\\.)*"|''(?:[^''\\]|\\.)*''', '""')
+    $bare = [regex]::Replace($bare, '//.*$', '')
+    foreach ($ch in $bare.ToCharArray()) {
+      if ($ch -eq '{') { $depth++; $opened = $true }
+      elseif ($ch -eq '}') { $depth-- }
+    }
+    if ($opened -and ($depth -le 0)) { break }
+    if ((-not $opened) -and ($depth -le 0) -and $bare.TrimEnd().EndsWith(';')) { break }
+  }
+  return ($out -join "`n")
+}
+
 function Get-TruncatedCaseSourceRows([string]$TestDir, $Cases) {
   # Identity for argument text a display name leaves out (D00 T02 section
-  # 44 R1-F1). xunit cuts a long argument at 50 characters and marks the
-  # cut with an ellipsis (U+00B7 x3 or '...'); for each method with such a
-  # row, the rows return `<Class.Method>#args-source <hash>` over the
-  # method's data attributes (the attribute lines above its signature) and
-  # the source of every MemberData member they name, read from the test
-  # sources. A method whose source cannot be found reads `unresolved`.
+  # 44 R1-F1, R2-F1). xunit cuts a long argument at 50 characters and
+  # marks the cut with an ellipsis (U+00B7 x3 or '...'); for each method
+  # with such a row, the rows return `<Class.Method>#args-source <hash>`
+  # over the method's whole attribute block (every line back to the
+  # previous member, so multiline attributes count), the full text of
+  # every data member the attributes name (MemberData, ClassData, and any
+  # typeof(T) source, whose declaring file counts whole), and, followed
+  # transitively, the full text of every static member of the class those
+  # blocks reference. A method whose source cannot be found reads
+  # `unresolved`.
   $cut = ([string][char]0xB7) * 3
   $methods = @(@($Cases) | Where-Object { ("$_".Contains($cut)) -or ("$_".Contains('"...')) } | ForEach-Object { ("$_" -split '\(', 2)[0].Trim() } | Sort-Object -Unique)
   if ($methods.Count -eq 0) { return @() }
   $sources = @{}
-  foreach ($f in @(Get-ChildItem -Path $TestDir -Filter '*.cs' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' })) { $sources[$f.FullName] = @(Get-Content -LiteralPath $f.FullName -Encoding UTF8) }
+  foreach ($f in @(Get-ChildItem -Path $TestDir -Filter '*.cs' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } | Sort-Object FullName)) { $sources[$f.FullName] = @(Get-Content -LiteralPath $f.FullName -Encoding UTF8) }
   $rows = @()
   foreach ($m in $methods) {
     $name = ($m -split '\.')[-1]
     $cls = ($m -split '\.')[-2]
     $block = $null
-    foreach ($kv in $sources.GetEnumerator()) {
-      $lines = $kv.Value
+    foreach ($key in @($sources.Keys | Sort-Object)) {
+      $lines = $sources[$key]
       if (-not (@($lines) -match "\bclass $cls\b")) { continue }
       for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match "\b(void|Task)\s+$name\s*\(") {
-          $j = $i - 1
-          $attrs = @()
-          while (($j -ge 0) -and ($lines[$j].Trim().StartsWith('[') -or $lines[$j].Trim().StartsWith('//'))) { $attrs = @($lines[$j]) + $attrs; $j-- }
-          $members = @()
-          foreach ($a in $attrs) {
-            foreach ($mm in [regex]::Matches($a, 'MemberData\(\s*(?:nameof\(\s*(\w+)\s*\)|"(\w+)")')) {
-              $mem = if ($mm.Groups[1].Success) { $mm.Groups[1].Value } else { $mm.Groups[2].Value }
-              for ($k = 0; $k -lt $lines.Count; $k++) {
-                if ($lines[$k] -match "\bstatic\b.*\b$mem\b") { $members += @($lines[$k..([math]::Min($lines.Count - 1, $k + 40))]); break }
-              }
-            }
-          }
-          $block = (@($attrs) + @($members)) -join "`n"
-          break
+        if ($lines[$i] -notmatch "\b(void|Task)\s+$name\s*\(") { continue }
+        # The attribute block: every line back to the previous member's
+        # end (a line ending in `}` or `;`, an opening brace, or a blank).
+        $j = $i - 1
+        while (($j -ge 0) -and ($lines[$j].Trim() -ne '') -and (-not ($lines[$j].TrimEnd() -match '[;{}]$'))) { $j-- }
+        $attrs = if (($j + 1) -le ($i - 1)) { @($lines[($j + 1)..($i - 1)]) } else { @() }
+        $parts = New-Object System.Collections.Generic.List[string]
+        $parts.Add(($attrs -join "`n"))
+        $attrText = $attrs -join "`n"
+        # Static members of the class file, by name.
+        $statics = @{}
+        for ($k = 0; $k -lt $lines.Count; $k++) {
+          $sm = [regex]::Match($lines[$k], '\bstatic\b[^=(;{]*?\b([A-Za-z_]\w*)\s*(?:\(|=>|=|\{|;)')
+          if ($sm.Success -and (-not $statics.ContainsKey($sm.Groups[1].Value))) { $statics[$sm.Groups[1].Value] = $k }
         }
+        $queue = New-Object System.Collections.Generic.Queue[string]
+        foreach ($mm in [regex]::Matches($attrText, '(?:MemberData|ClassData)\(\s*(?:nameof\(\s*(\w+)\s*\)|"(\w+)"|typeof\(\s*(\w+)\s*\))')) {
+          foreach ($g in 1..3) { if ($mm.Groups[$g].Success) { $queue.Enqueue($mm.Groups[$g].Value) } }
+        }
+        # A data source on another type (MemberType = typeof(T), ClassData)
+        # counts its declaring file whole.
+        foreach ($tm in [regex]::Matches($attrText, 'typeof\(\s*(\w+)\s*\)')) {
+          $t = $tm.Groups[1].Value
+          foreach ($k2 in @($sources.Keys | Sort-Object)) { if (@($sources[$k2]) -match "\b(class|record|struct) $t\b") { $parts.Add("file " + (Split-Path -Leaf $k2) + "`n" + ($sources[$k2] -join "`n")) } }
+        }
+        $seen = @{}
+        while ($queue.Count -gt 0) {
+          $mem = $queue.Dequeue()
+          if ($seen.ContainsKey($mem) -or (-not $statics.ContainsKey($mem))) { continue }
+          $seen[$mem] = $true
+          $body = Get-SourceMemberBlock $lines $statics[$mem]
+          $parts.Add($body)
+          # Transitive: static members the body names are data too.
+          foreach ($idm in [regex]::Matches($body, '\b([A-Za-z_]\w*)\b')) { $id = $idm.Groups[1].Value; if ($statics.ContainsKey($id) -and (-not $seen.ContainsKey($id))) { $queue.Enqueue($id) } }
+        }
+        $block = $parts -join "`n----`n"
+        break
       }
       if ($null -ne $block) { break }
     }
@@ -1544,7 +1592,7 @@ function Test-BuildInputsDigest([string]$Root, [string]$DigestFile, [string]$Sdk
   # The content freshness check: the digest recorded beside the binary at
   # build time must equal the inputs' digest now. Names the first
   # differing entry so the refusal says what changed.
-  if (-not (Test-Path $DigestFile)) { return [pscustomobject]@{ Ok = $false; Error = "UI build has no content digest ($DigestFile); rebuild: dotnet build src/ScratchPad.slnx" } }
+  if (-not (Test-Path $DigestFile)) { return [pscustomobject]@{ Ok = $false; Error = "UI build has no content digest ($DigestFile); an incremental build that compiles nothing writes none, so rebuild: dotnet build src/ScratchPad.slnx --no-incremental" } }
   $recorded = @(Get-Content -LiteralPath $DigestFile)
   $now = Get-BuildInputsDigest $Root $Sdk $Inputs
   if (($recorded.Count -gt 0) -and ($recorded[0].Trim() -eq $now.Digest)) { return [pscustomobject]@{ Ok = $true; Error = '' } }
@@ -1614,18 +1662,32 @@ function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
   return $rows
 }
 
-function Close-OwedCases([string[]]$OwedCases, [string[]]$PassedNames) {
+function Close-OwedCases([string[]]$OwedCases, [string[]]$PassedNames, $ListedCases = $null) {
   # Per-case closure (D00 T02 §44 item 5): the collector reruns the
   # method, and each owed case closes only when its own row executed
-  # green (by count, so one pass closes one owed copy of a duplicated
-  # name). Returns the cases still owed.
+  # green. A display name the listing carries more than once (R2-F2)
+  # names indistinguishable twins, so no single green row can tell which
+  # twin ran: its owed copies close only when every listed copy of the
+  # name ran green in the same collection. Without a listing each name
+  # counts as listed once (the §44 item 5 behavior). Returns the cases
+  # still owed.
   $green = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::Ordinal)
   foreach ($p in @($PassedNames)) { if ($null -ne $p) { $k = "$p".Trim(); $green[$k] = $(if ($green.ContainsKey($k)) { $green[$k] } else { 0 }) + 1 } }
+  $listed = New-Object 'System.Collections.Generic.Dictionary[string,int]' ([StringComparer]::Ordinal)
+  foreach ($l in @($ListedCases)) { if ($null -ne $l) { $k = "$l".Trim(); $listed[$k] = $(if ($listed.ContainsKey($k)) { $listed[$k] } else { 0 }) + 1 } }
   $left = @()
   foreach ($c in @($OwedCases)) {
     if ($null -eq $c) { continue }
     $k = "$c".Trim()
-    if ($green.ContainsKey($k) -and ($green[$k] -gt 0)) { $green[$k]-- } else { $left += $k }
+    $g = if ($green.ContainsKey($k)) { $green[$k] } else { 0 }
+    $copies = if ($listed.ContainsKey($k)) { $listed[$k] } else { 1 }
+    if ($copies -gt 1) {
+      # Twins: all or nothing.
+      if ($g -ge $copies) { continue }
+      $left += $k
+      continue
+    }
+    if ($g -gt 0) { $green[$k] = $g - 1 } else { $left += $k }
   }
   return $left
 }
@@ -1648,7 +1710,7 @@ function Get-TrxPassedNames([string]$TrxPath) {
   return @(@($t.TestRun.Results.UnitTestResult) | Where-Object { ($null -ne $_) -and ($_.outcome -eq 'Passed') } | ForEach-Object { "$($_.testName)" })
 }
 
-function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan) {
+function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan, $ListedCases = $null) {
   # Per-case debt across nights (D00 T02 section 44 R1-F4): the cases the
   # last result still owed close only on their own green row tonight
   # (Close-OwedCases); when the interactive leg did not run, all stay owed.
@@ -1656,9 +1718,35 @@ function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]
   $prev = @(@($PreviousOwed) | Where-Object { "$_" -ne '' })
   if ($prev.Count -eq 0) { return [pscustomobject]@{ Still = @(); Line = '' } }
   # Wrapped whole: an if expression unrolls a one-element array.
-  $still = @(if ($InteractiveRan) { Close-OwedCases $prev $PassedTonight } else { $prev })
+  $still = @(if ($InteractiveRan) { Close-OwedCases $prev $PassedTonight $ListedCases } else { $prev })
   $closed = $prev.Count - $still.Count
   return [pscustomobject]@{ Still = $still; Line = "- Carried per-case debt: $closed of $($prev.Count) earlier owed case(s) closed on their own green rows; $($still.Count) still owed" }
+}
+
+function Merge-OwedCases($Tonight, $Carried) {
+  # One obligation per case (D00 T02 section 44 R2-F4): tonight's owed
+  # cases and the earlier ones still owed overlap when a case went
+  # unexecuted on both nights, so each name counts at its larger count,
+  # never the sum (Merge-AttemptNames' rule).
+  return @(Merge-AttemptNames (@(, @($Tonight)) + @(, @($Carried))))
+}
+
+function Read-PreviousOwedCases([string]$NightDir, [string]$Stamp) {
+  # The earlier owed cases (section 44 R2-F5): the newest result before
+  # $Stamp that reads; an unreadable newer result is named, never taken
+  # as no debt, and the walk continues to the next older result, so a
+  # corrupt result cannot erase outstanding obligations. Returns Owed,
+  # From (the result read), and Unreadable (names).
+  $bad = @()
+  $cands = @(Get-ChildItem -LiteralPath $NightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $Stamp) } | Sort-Object Name -Descending)
+  foreach ($f in $cands) {
+    try {
+      $o = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+      if ($null -eq $o) { throw 'empty document' }
+      return [pscustomobject]@{ Owed = @(@($o.owedCases) | Where-Object { "$_" -ne '' }); From = $f.Name; Unreadable = $bad }
+    } catch { $bad += "$($f.Name) ($($_.Exception.Message))" }
+  }
+  return [pscustomobject]@{ Owed = @(); From = ''; Unreadable = $bad }
 }
 
 function Get-PopulationIdentity([string]$FingerprintPath) {
@@ -1967,7 +2055,7 @@ function Read-IncidentLedger([string]$Path) {
       if ($map.ContainsKey("$($e.id)")) { return (& $bad "duplicate id $($e.id)") }
       $occ = @()
       foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
-      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)"; due = "$($e.due)"; finding = "$($e.finding)" }
+      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)"; due = "$($e.due)"; finding = "$($e.finding)"; streakPopulation = "$(if ($null -ne $e.PSObject.Properties['streakPopulation']) { $e.streakPopulation })" }
     }
     return [pscustomobject]@{ Ok = $true; Error = ''; Incidents = $map }
   } catch { return [pscustomobject]@{ Ok = $false; Error = "incident ledger unreadable: $($_.Exception.Message)"; Incidents = @{} } }
@@ -2065,7 +2153,7 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
     # Lossless (section 38 item 5): the key, closure, last pass, and each
     # occurrence's wheres ride the row too, so a rebuild reproduces every
     # ledger field.
-    [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; occurrenceStamps = @(@($e.occurrences) | ForEach-Object { "$($_.stamp)" }); occurrenceWheres = @(@($e.occurrences) | ForEach-Object { (@($_.wheres) | Where-Object { $null -ne $_ } | ForEach-Object { "$_" }) -join ',' }); firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)"; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
+    [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; occurrenceStamps = @(@($e.occurrences) | ForEach-Object { "$($_.stamp)" }); occurrenceWheres = @(@($e.occurrences) | ForEach-Object { (@($_.wheres) | Where-Object { $null -ne $_ } | ForEach-Object { "$_" }) -join ',' }); firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; passStreak = [int]$e.passStreak; streakPopulation = "$(if ($null -ne $e.PSObject.Properties['streakPopulation']) { $e.streakPopulation })"; lastPassStamp = "$($e.lastPassStamp)"; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
   })
 }
 
@@ -2345,7 +2433,7 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
       $occ += [pscustomobject]@{ stamp = $stamps[$i]; wheres = $w }
     }
     if (-not $full) { $occ = @($occ | Sort-Object stamp) }
-    $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = $(if ($full) { "$($row.key)" } else { '' }); owner = "$($row.owner)"; state = $(if ($closed) { 'closed' } else { 'open' }); firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = $(if ($full) { "$($row.closedAt)" } elseif ($closed) { $snap.Stamp } else { '' }); closedBy = $(if ($full) { "$($row.closedBy)" } elseif ($closed) { "restored from the $($snap.Stamp) result snapshot" } else { '' }); occurrences = $occ; passStreak = [int]$row.passStreak; lastPassStamp = $(if ($full) { "$($row.lastPassStamp)" } else { '' }); due = "$($row.due)"; finding = "$($row.finding)" }
+    $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = $(if ($full) { "$($row.key)" } else { '' }); owner = "$($row.owner)"; state = $(if ($closed) { 'closed' } else { 'open' }); firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = $(if ($full) { "$($row.closedAt)" } elseif ($closed) { $snap.Stamp } else { '' }); closedBy = $(if ($full) { "$($row.closedBy)" } elseif ($closed) { "restored from the $($snap.Stamp) result snapshot" } else { '' }); occurrences = $occ; passStreak = [int]$row.passStreak; streakPopulation = "$(if ($null -ne $row.PSObject.Properties['streakPopulation']) { $row.streakPopulation })"; lastPassStamp = $(if ($full) { "$($row.lastPassStamp)" } else { '' }); due = "$($row.due)"; finding = "$($row.finding)" }
   }
   foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
     if (($null -ne $snap.Stamp) -and ($r.Stamp -le $snap.Stamp)) { continue }

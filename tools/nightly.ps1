@@ -1356,13 +1356,16 @@ if ($stagedStubs.Count -gt 0) {
 # last result's owed cases close only on their own green rows tonight,
 # and the rest stay owed beside tonight's new rows.
 $owedCasesTonight = @(Get-OwedCaseNames $nightOwedRows)
-try {
-  $prevResult = @(Get-ChildItem -Path $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "morning-$stamp.result.json" } | Sort-Object Name) | Select-Object -Last 1
-  $prevOwed = @()
-  if ($null -ne $prevResult) { try { $prevOwed = @((Get-Content -LiteralPath $prevResult.FullName -Raw | ConvertFrom-Json).owedCases) } catch { $prevOwed = @() } }
-  $carry = Resolve-CarriedCaseDebt $prevOwed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx')) ([bool]$interactiveRan)
-  if ($carry.Line -ne '') { $nightOwedRows += $carry.Line; $owedCasesTonight += @($carry.Still) }
-} catch { $nightOwedRows += "- Carried per-case debt: unreadable ($_); the earlier owed cases are not closed" }
+# An unreadable earlier result is named and skipped, never read as no
+# debt (R2-F5); the obligations merge per case, never summed (R2-F4);
+# twins close only when every listed copy ran green (R2-F2).
+$prevRead = Read-PreviousOwedCases $nightDir $stamp
+if (@($prevRead.Unreadable).Count -gt 0) { $failed = $true; $nightOwedRows += "- Carried per-case debt: RED: unreadable result(s) $($prevRead.Unreadable -join '; '); owed cases carried from $(if ($prevRead.From -ne '') { $prevRead.From } else { 'no readable result' }) instead; repair the result" }
+$carryListed = @()
+try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
+$carry = Resolve-CarriedCaseDebt $prevRead.Owed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx')) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
+if ($carry.Line -ne '') { $nightOwedRows += $carry.Line }
+$owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))
 if ($nightOwedRows.Count -gt 0) {
   $report += '### Night-owed (staged; triage files via add-todo)'
   $report += $nightOwedRows

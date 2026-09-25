@@ -267,7 +267,7 @@ run-a:
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-a-methods: 258
 run-a-cases: 322
-run-a-case-hash: be34c12d9cdde8c1
+run-a-case-hash: 8d07cf3c1a2c29a1
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -364,7 +364,7 @@ run-a-case-rows:
   UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/MyUiLaunch.cs", clean: False)
   UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/Sub/Helper.cs", clean: False)
   UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/UiLaunch.cs", clean: True)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard#args-source a809d1e432a6237c
+  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard#args-source 544a87f6ebdf891e
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { [Xunit.Fact] public void LaunchAppendsTa"···)
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var a = FlaUI.Core.Applicatio"···)
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var ps = System.Diagnostics.P"···)
@@ -372,7 +372,7 @@ run-a-case-rows:
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M(FlaUI.Core.AutomationElements.But"···)
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "using System.Reflection; class Q { void M() { fore"···)
   UI|UI.LaunchGuardTests.LiveTreeScansClean
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard#args-source c1171a6747a2903b
+  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard#args-source 4eeb3c4066a8784b
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class P { void M() { System.Diagnostics.Process.St"···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [global::System.Runtime.InteropServices."···)

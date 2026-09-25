@@ -51,11 +51,13 @@
        digest of the build inputs' content plus the SDK version lands
        beside the binary, and the population gate's freshness check
        compares it, so timestamps never decide freshness alone. It is
-       rewritten only when this build compiled the UI assembly or copied
-       a referenced assembly into its output (R1-F3): an incremental build
-       that compiled nothing keeps the digest of what it last compiled, so
-       an edit whose timestamp was restored still reads stale. -->
-  <Target Name="WriteBuildInputsDigest" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and ('$(_AssemblyTimestampBeforeCompile)' != '$(_AssemblyTimestampAfterCompile)' or '$(WroteAtLeastOneFile)' == 'true' or !Exists('$(OutputPath)build-inputs.digest'))">
+       rewritten only when this build compiled the UI assembly (R1-F3,
+       R2-F3): an incremental build that compiled nothing, even one that
+       copied a changed reference or found no digest, keeps the digest of
+       what it last compiled (or none), so an edit whose timestamp was
+       restored still reads stale and the refusal names a rebuild with
+       no incremental skips. -->
+  <Target Name="WriteBuildInputsDigest" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and '$(_AssemblyTimestampBeforeCompile)' != '$(_AssemblyTimestampAfterCompile)'">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Write-BuildInputsDigest.ps1&quot; -Root &quot;$(MSBuildThisFileDirectory)..\..&quot; -Out &quot;$(OutputPath)build-inputs.digest&quot; -Sdk &quot;$(NETCoreSdkVersion)&quot;" StandardOutputImportance="low" />
   </Target>
 

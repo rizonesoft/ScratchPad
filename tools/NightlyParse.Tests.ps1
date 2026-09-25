@@ -633,6 +633,47 @@ Assert (($rowA.Count -eq 1) -and ($rowA[0] -like 'UI.TruncTests.Long#args-source
 $carried = Resolve-CarriedCaseDebt @('UI.T.M(x: 1)', 'UI.T.M(x: 2)', 'UI.T.M(x: 3)') @('UI.T.M(x: 1)', 'UI.T.M(x: 3)') $true
 $idle = Resolve-CarriedCaseDebt @('UI.T.M(x: 2)') @('UI.T.M(x: 2)') $false
 Assert ((@($carried.Still).Count -eq 1) -and ($carried.Still[0] -eq 'UI.T.M(x: 2)') -and ($carried.Line -eq '- Carried per-case debt: 2 of 3 earlier owed case(s) closed on their own green rows; 1 still owed') -and (@($idle.Still).Count -eq 1) -and (@(Get-OwedCaseNames @('- Night-owed: UI.T.M | 2 of 3 cases unexecuted (x) | collector filter: FullyQualifiedName=UI.T.M | cases: UI.T.M(x: 1) ;; UI.T.M(x: 2)')).Count -eq 2)) 's44-carried-debt-closes-per-case' $carried.Line
+# D00 T02 §44 R2-F6: the streak's population persists through the
+# ledger file, the lifecycle row, and a rebuild, so an unchanged
+# population keeps counting across nights.
+$spDir = Join-Path $dir 's44-streakpop'
+$null = New-Item -ItemType Directory -Force -Path $spDir
+$spLed = @{ 'INC-0000f001' = [pscustomobject]@{ id = 'INC-0000f001'; test = 'UI.SP.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = ''; finding = '' } }
+$spPass = @{ 'run-a' = @('UI.SP.T') }
+$sp1 = Update-IncidentLedger $spLed @() 's1' $spPass @{} 3 @{} 'pop-a'
+$null = Write-IncidentLedger $sp1.Incidents (Join-Path $spDir 'incidents.json')
+$spRead = Read-IncidentLedger (Join-Path $spDir 'incidents.json')
+$sp2 = Update-IncidentLedger $spRead.Incidents @() 's2' $spPass @{} 3 @{} 'pop-a'
+$spRow = @(ConvertTo-IncidentLifecycle $sp2.Incidents)[0]
+Assert (($spRead.Incidents['INC-0000f001'].streakPopulation -eq 'pop-a') -and ([int]$sp2.Incidents['INC-0000f001'].passStreak -eq 2) -and ((@($sp2.Lines) -join '') -notlike '*streak reset*') -and ($spRow.streakPopulation -eq 'pop-a')) 's44-streak-population-persists' ((@($sp2.Lines) -join ' | ') + " row=$($spRow.streakPopulation)")
+# D00 T02 §44 R2-F2: an owed twin closes only when every listed copy of
+# its display name ran green in one collection.
+$tw1 = @(Close-OwedCases @('UI.D.Dup') @('UI.D.Dup') @('UI.D.Dup', 'UI.D.Dup'))
+$tw2 = @(Close-OwedCases @('UI.D.Dup') @('UI.D.Dup', 'UI.D.Dup') @('UI.D.Dup', 'UI.D.Dup'))
+$tw3 = @(Close-OwedCases @('UI.D.One') @('UI.D.One') @('UI.D.One'))
+Assert (($tw1.Count -eq 1) -and ($tw2.Count -eq 0) -and ($tw3.Count -eq 0)) 's44-twin-closes-only-when-every-copy-ran' "tw1=$($tw1.Count) tw2=$($tw2.Count) tw3=$($tw3.Count)"
+# D00 T02 §44 R2-F4 and R2-F5: carried obligations merge per case, and an
+# unreadable newer result is named while the older one's debt carries.
+$mo = @(Merge-OwedCases @('UI.M.A', 'UI.M.B') @('UI.M.A'))
+$poDir = Join-Path $dir 's44-prevowed'
+$null = New-Item -ItemType Directory -Force -Path $poDir
+[pscustomobject]@{ version = 1; stamp = '2026-09-20-023001'; owedCases = @('UI.P.X(a: 1)') } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $poDir 'morning-2026-09-20-023001.result.json') -Encoding UTF8
+'{ not json' | Set-Content -Path (Join-Path $poDir 'morning-2026-09-21-023001.result.json') -Encoding UTF8
+$po = Read-PreviousOwedCases $poDir '2026-09-22-023001'
+Assert (($mo.Count -eq 2) -and (@($mo | Where-Object { $_ -eq 'UI.M.A' }).Count -eq 1) -and (@($po.Owed).Count -eq 1) -and ($po.Owed[0] -eq 'UI.P.X(a: 1)') -and ($po.From -eq 'morning-2026-09-20-023001.result.json') -and (@($po.Unreadable).Count -eq 1) -and ($po.Unreadable[0] -like 'morning-2026-09-21-023001.result.json*')) 's44-carried-debt-merges-and-survives-a-corrupt-result' "mo=$($mo -join ',') from=$($po.From) bad=$($po.Unreadable -join ',')"
+# D00 T02 §44 R2-F1: the args-source digest covers a multiline attribute
+# and a data member's transitive static helpers.
+$msDir = Join-Path $dir 'trunc-multi'
+$null = New-Item -ItemType Directory -Force -Path $msDir
+$msA = @('public sealed class MultiTests', '{', '    static string Tail() => "AAA";', '    public static IEnumerable<object[]> Rows()', '    {', '        yield return new object[] { "a long argument well beyond the fifty character cut " + Tail() };', '    }', '', '    [Theory]', '    [InlineData("first",', '        "second line CCC")]', '    [MemberData(nameof(Rows))]', '    public void Long(string s, string t = "") { }', '}')
+$msA | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
+$msName = 'UI.MultiTests.Long(s: "a long argument well beyond the fifty character c"' + ([string][char]0xB7 * 3) + ')'
+$msRow1 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
+($msA -replace 'AAA', 'BBB') | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
+$msRow2 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
+($msA -replace 'CCC', 'DDD') | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
+$msRow3 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
+Assert (($msRow1.Count -eq 1) -and ($msRow1[0] -notlike '*unresolved') -and ($msRow1[0] -ne $msRow2[0]) -and ($msRow1[0] -ne $msRow3[0])) 's44-args-source-covers-multiline-and-helpers' (($msRow1 + $msRow2 + $msRow3) -join ' | ')
 # D00 T02 §44 item 7: a count-only (versionless) fingerprint refuses,
 # naming its version and the regen command.
 $fpOld = Join-Path $dir 'pop-old.fingerprint'
