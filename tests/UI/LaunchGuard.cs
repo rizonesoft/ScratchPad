@@ -45,7 +45,29 @@ internal static class LaunchGuard
     };
 
 
-    internal static IReadOnlyList<string> FindViolations(string source, string fileName)
+    // Cross-file global aliases (D00 T02 §34 item 6): every `global using`
+    // directive in the scanned tree, so an alias declared in one file and
+    // used in another resolves like a per-file alias. The live scan
+    // collects them first and hands them to every file's scan.
+    internal static IReadOnlyList<string> CollectGlobalUsings(IEnumerable<string> sources)
+    {
+        var found = new List<string>();
+        foreach (string source in sources)
+        {
+            SyntaxNode r = CSharpSyntaxTree.ParseText(source).GetRoot();
+            foreach (UsingDirectiveSyntax d in r.DescendantNodes().OfType<UsingDirectiveSyntax>())
+            {
+                if (d.GlobalKeyword != default)
+                {
+                    found.Add(d.ToString());
+                }
+            }
+        }
+
+        return found;
+    }
+
+    internal static IReadOnlyList<string> FindViolations(string source, string fileName, IReadOnlyList<string>? globalUsings = null)
     {
         // Exact sanctioned-path exemption (D00 T02 §18 R1-F1): only
         // the central helper's own relative path skips the scan. A
@@ -68,7 +90,14 @@ internal static class LaunchGuard
         var namespaceAliases = new Dictionary<string, string>(Ordinal);
         bool staticProcess = false;
         bool staticApplication = false;
-        foreach (UsingDirectiveSyntax directive in root.DescendantNodes().OfType<UsingDirectiveSyntax>())
+        // Directives from this file plus the tree's global ones (§34 item 6).
+        IEnumerable<UsingDirectiveSyntax> directives = root.DescendantNodes().OfType<UsingDirectiveSyntax>();
+        if (globalUsings is { Count: > 0 })
+        {
+            directives = directives.Concat(CSharpSyntaxTree.ParseText(string.Join("\n", globalUsings)).GetRoot().DescendantNodes().OfType<UsingDirectiveSyntax>());
+        }
+
+        foreach (UsingDirectiveSyntax directive in directives)
         {
             string target = directive.Name?.ToString() ?? string.Empty;
             if (directive.Alias is null)
@@ -201,8 +230,9 @@ internal static class LaunchGuard
             // declarator type written through `using P =
             // ...Process` is still a Process. Chained aliases
             // resolve to a fixpoint; the loop is bounded by the
-            // alias count. Cross-file global aliases stay outside
-            // the syntax-plus-alias boundary by design.
+            // alias count. Cross-file global aliases resolve too:
+            // the live scan hands every file the tree's `global
+            // using` directives (D00 T02 §34 item 6).
             string text = type?.ToString() ?? string.Empty;
             string resolved = text;
             for (int i = 0; i <= namespaceAliases.Count; i++)

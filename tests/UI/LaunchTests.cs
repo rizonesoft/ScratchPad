@@ -1038,6 +1038,7 @@ public sealed class LaunchTests
         string file = Path.Combine(dir, "w26.txt");
         File.WriteAllText(file, "two");
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow }, drainLaunchDrops: true);
+        using var sweepLog = new SweepLogScope();
         try
         {
             nint fgBefore = UiForeground.Capture();
@@ -1049,6 +1050,20 @@ public sealed class LaunchTests
             try
             {
                 Assert.Equal(1, WaitForTabCount(window, 1));
+                nint firstMain = window.Properties.NativeWindowHandle.Value;
+
+                // D00 T02 §34 item 3: WinUI creates its helper windows once per
+                // UI thread, with the first window, so the first birth is where
+                // constructor-born helpers exist; each still sits at its sweep
+                // target, so narrowing never silently disabled placement.
+                SweepLine own = sweepLog.ReadBirth(firstMain);
+                Assert.True(own.Pinned.Count > 0, $"the first birth pinned no helper, so background placement is untested: {own.Raw}");
+                foreach (nint hwnd in own.Pinned)
+                {
+                    Assert.True(own.PinnedAt.TryGetValue(hwnd, out var at), $"the sweep logged no readback for helper 0x{hwnd:X}: {own.Raw}");
+                    Assert.True(at.X == own.TargetX && at.Y == own.TargetY, $"the first window's helper 0x{hwnd:X} read back at ({at.X},{at.Y}) right after its pin, not the sweep target ({own.TargetX},{own.TargetY})");
+                }
+
                 HashSet<nint> before = HelperWindows(first.ProcessId).Keys.ToHashSet();
                 var menu = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFile"));
                 Assert.NotNull(menu);
@@ -1083,6 +1098,20 @@ public sealed class LaunchTests
                     Assert.True(rect.Left == now.Left && rect.Top == now.Top, $"helper 0x{hwnd:X} moved from ({rect.Left},{rect.Top}) to ({now.Left},{now.Top}) when another window was born");
                 }
 
+                // D00 T02 §34 item 5: the sweep's own decision, read from its
+                // log, never rests on a missed WinEvent: the second birth
+                // skipped every one of the first window's helpers.
+                SweepLine birth = sweepLog.ReadBirthOtherThan(firstMain);
+                foreach (nint hwnd in helpers.Keys)
+                {
+                    Assert.DoesNotContain(hwnd, birth.Pinned);
+                    Assert.True(birth.Skipped.ContainsKey(hwnd), $"the second birth's sweep never considered helper 0x{hwnd:X}: {birth.Raw}");
+                }
+
+                // The second birth creates no top-level helper of its own (the
+                // thread's helpers already exist), so it pins nothing.
+                Assert.Empty(birth.Pinned);
+
                 foreach (Window w in windows)
                 {
                     UiForeground.Background(w, fgBefore);
@@ -1097,6 +1126,162 @@ public sealed class LaunchTests
         {
             SessionData.Delete();
             DeleteDir(dir);
+        }
+    }
+
+    // D00 T02 §34 item 2: a live owned dialog (the File > Open picker, a
+    // real owned HWND unlike an in-window ContentDialog) keeps its rect
+    // while another window is born. Fenced: the picker takes the
+    // foreground. Night-owed D00-T02-S34-N1.
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
+    public void WindowBirthLeavesAnOwnedDialogInPlace()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "w34.txt");
+        File.WriteAllText(file, "two");
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow }, drainLaunchDrops: true);
+        using var sweepLog = new SweepLogScope();
+        try
+        {
+            using var first = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                nint firstMain = window.Properties.NativeWindowHandle.Value;
+                HashSet<nint> before = HelperWindows(first.ProcessId).Keys.ToHashSet();
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileOpen");
+                var dialogs = Retry.While(
+                    () => HelperWindows(first.ProcessId).Where(kv => !before.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value),
+                    found => found.Count == 0,
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(250),
+                    lastValueOnTimeout: true).Result ?? [];
+                Assert.True(dialogs.Count > 0, "File > Open raised no owned dialog window");
+                using var moves = new LocationRecorder((uint)first.ProcessId, dialogs.Keys);
+                using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
+                Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
+                Thread.Sleep(1500);
+                var moved = moves.Stop();
+                Assert.True(moves.Hooked, "the location-change recorder never hooked; the proof would read vacuous");
+                Assert.True(moved.Count == 0, $"another window's birth moved the owned dialog: {string.Join("; ", moved)}");
+                SweepLine birth = sweepLog.ReadBirthOtherThan(firstMain);
+                foreach (nint hwnd in dialogs.Keys)
+                {
+                    Assert.DoesNotContain(hwnd, birth.Pinned);
+                }
+
+                var cancel = Retry.WhileNull(
+                    () => automation.GetDesktop().FindFirstDescendant(cf => cf.ByAutomationId("2").And(cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button))),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromMilliseconds(250)).Result;
+                cancel?.Patterns.Invoke.PatternOrDefault?.Invoke();
+            }
+            finally
+            {
+                CloseAll(first, automation);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    // One parsed sweep-log line (D00 T02 §34): the birth's main, target,
+    // the handles it pinned, and every skip with its reason.
+    internal sealed record SweepLine(nint Main, int TargetX, int TargetY, List<nint> Pinned, Dictionary<nint, (int X, int Y)> PinnedAt, Dictionary<nint, string> Skipped, string Raw);
+
+    // Arms the app's test-only sweep log (the run marker plus the log path,
+    // both inherited by the launched app) and restores both on dispose.
+    internal sealed class SweepLogScope : IDisposable
+    {
+        readonly string? priorLog = Environment.GetEnvironmentVariable("SCRATCHPAD_SWEEP_LOG");
+        readonly string? priorMarker = Environment.GetEnvironmentVariable(Notepad.Core.LaunchCapture.RunMarkerVariable);
+
+        internal SweepLogScope()
+        {
+            Path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"scratchpad-sweep-{Guid.NewGuid():N}.log");
+            Environment.SetEnvironmentVariable("SCRATCHPAD_SWEEP_LOG", Path);
+            Environment.SetEnvironmentVariable(Notepad.Core.LaunchCapture.RunMarkerVariable, "1");
+        }
+
+        internal string Path { get; }
+
+        internal SweepLine ReadBirth(nint main) => Read(line => line.Main == main, $"no sweep line for the birth of 0x{main:X}");
+
+        internal SweepLine ReadBirthOtherThan(nint main) => Read(line => line.Main != main, $"no sweep line for a birth other than 0x{main:X}");
+
+        SweepLine Read(Func<SweepLine, bool> wanted, string missing)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (File.Exists(Path))
+                {
+                    foreach (string line in File.ReadAllLines(Path))
+                    {
+                        SweepLine? parsed = Parse(line);
+                        if (parsed is not null && wanted(parsed))
+                        {
+                            return parsed;
+                        }
+                    }
+                }
+
+                Thread.Sleep(200);
+            }
+
+            Assert.Fail($"{missing} in {Path}");
+            return null!;
+        }
+
+        static SweepLine? Parse(string line)
+        {
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"^sweep main=0x([0-9A-F]+) target=(-?\d+),(-?\d+) pinned=([^ ]*) skipped=(.*)$");
+            if (!m.Success)
+            {
+                return null;
+            }
+
+            nint Hex(string h) => (nint)long.Parse(h, System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+            // Pinned entries read 0xHANDLE or 0xHANDLE@x,y (the position
+            // read back right after the pin).
+            var pinned = new List<nint>();
+            var pinnedAt = new Dictionary<nint, (int X, int Y)>();
+            foreach (System.Text.RegularExpressions.Match pm in System.Text.RegularExpressions.Regex.Matches(m.Groups[4].Value, @"0x([0-9A-F]+)(?:@(-?\d+),(-?\d+))?"))
+            {
+                nint h = Hex(pm.Groups[1].Value);
+                pinned.Add(h);
+                if (pm.Groups[2].Success)
+                {
+                    pinnedAt[h] = (int.Parse(pm.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(pm.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture));
+                }
+            }
+            var skipped = new Dictionary<nint, string>();
+            foreach (System.Text.RegularExpressions.Match sm in System.Text.RegularExpressions.Regex.Matches(m.Groups[5].Value, @"0x([0-9A-F]+)\(([a-z-]+)\)"))
+            {
+                skipped[Hex(sm.Groups[1].Value)] = sm.Groups[2].Value;
+            }
+
+            return new SweepLine(Hex(m.Groups[1].Value), int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture), pinned, pinnedAt, skipped, line);
+        }
+
+        public void Dispose()
+        {
+            Environment.SetEnvironmentVariable("SCRATCHPAD_SWEEP_LOG", priorLog);
+            Environment.SetEnvironmentVariable(Notepad.Core.LaunchCapture.RunMarkerVariable, priorMarker);
+            try
+            {
+                File.Delete(Path);
+            }
+            catch (IOException)
+            {
+                // Best effort: the assertions already ran.
+            }
         }
     }
 
@@ -1276,6 +1461,11 @@ public sealed class LaunchTests
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern bool IsWindowVisible(nint hwnd);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool IsWindow(nint hwnd);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

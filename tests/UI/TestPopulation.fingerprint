@@ -75,6 +75,7 @@ run-a:
   UI.LaunchDropsTests.DefaultSeedPreservesDrops
   UI.LaunchDropsTests.OptInLaunchDrainsBeforeActivation
   UI.LaunchDropsTests.OptInSeedDrainsExactlyOnce
+  UI.LaunchGuardTests.CrossFileGlobalAliasIsCaught
   UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath
   UI.LaunchGuardTests.LegitimateShapesPassTheGuard
   UI.LaunchGuardTests.LiveTreeScansClean
@@ -236,8 +237,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 230
-run-a-cases: 283
+run-a-methods: 231
+run-a-cases: 284
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -258,6 +259,7 @@ interactive:
   UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
   UI.LaunchTests.ForegroundDefaultsLandOnScreen
   UI.LaunchTests.MissingFileOfferEnterAcceptsAsYes
+  UI.LaunchTests.WindowBirthLeavesAnOwnedDialogInPlace
   UI.MenuBarTests.AccessKeysOpenEachMenu
   UI.MenuBarTests.FileMenuLiveAcceleratorsWork
   UI.MenuBarTests.FileOpenLoadsFileWithForcedEncoding
@@ -285,5 +287,5 @@ interactive:
   UI.TabBarTests.NumberShortcutsCoverMiddlePositions
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
-interactive-methods: 39
-interactive-cases: 44
+interactive-methods: 40
+interactive-cases: 45

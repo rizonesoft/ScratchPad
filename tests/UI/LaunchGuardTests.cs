@@ -76,15 +76,31 @@ public sealed class LaunchGuardTests
 
         Assert.NotNull(dir);
         var failures = new List<string>();
-        foreach (string file in Directory.EnumerateFiles(Path.Combine(dir!, "tests", "UI"), "*.cs", SearchOption.AllDirectories))
+        var files = Directory.EnumerateFiles(Path.Combine(dir!, "tests", "UI"), "*.cs", SearchOption.AllDirectories).ToList();
+        IReadOnlyList<string> globals = LaunchGuard.CollectGlobalUsings(files.Select(File.ReadAllText));
+        foreach (string file in files)
         {
             string rel = Path.GetRelativePath(dir!, file).Replace(Path.DirectorySeparatorChar, '/');
-            foreach (string violation in LaunchGuard.FindViolations(File.ReadAllText(file), rel))
+            foreach (string violation in LaunchGuard.FindViolations(File.ReadAllText(file), rel, globals))
             {
                 failures.Add(violation);
             }
         }
 
         Assert.Empty(failures);
+    }
+
+    // D00 T02 §34 item 6: an alias declared by `global using` in one file
+    // and used in another resolves, so the guard's no-alias promise holds
+    // across files.
+    [Fact]
+    public void CrossFileGlobalAliasIsCaught()
+    {
+        const string declaring = "global using P = System.Diagnostics.Process;";
+        const string using_ = "class C { void M() { var p = new P(); p.StartInfo.FileName = \"x\"; p.Start(); } }";
+        IReadOnlyList<string> globals = LaunchGuard.CollectGlobalUsings([declaring, using_]);
+        Assert.Equal(["global using P = System.Diagnostics.Process;"], globals);
+        Assert.NotEmpty(LaunchGuard.FindViolations(using_, "tests/UI/Other.cs", globals));
+        Assert.Empty(LaunchGuard.FindViolations("class C { void M() { } }", "tests/UI/Other.cs", globals));
     }
 }

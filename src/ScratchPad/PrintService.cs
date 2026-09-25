@@ -286,6 +286,9 @@ internal static class PrintService
         Exception? failure = null;
         var thread = new Thread(() =>
         {
+            // A print window born while a background window is being
+            // constructed is never that window's helper (D00 T02 §34).
+            using IDisposable worker = SiblingSelection.RegisterWorkerThread(GetCurrentThreadId());
             try
             {
                 action();
@@ -595,4 +598,8 @@ internal static class PrintService
     }
 
     #endregion
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    static extern uint GetCurrentThreadId();
 }

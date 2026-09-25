@@ -219,6 +219,10 @@ public sealed partial class MainWindow : Window, IDisposable
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
 
+        [DllImport("kernel32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetCurrentThreadId();
+
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern nint GetAncestor(nint hWnd, uint flags);
@@ -311,16 +315,15 @@ public sealed partial class MainWindow : Window, IDisposable
         static int targetX;
         static int targetY;
 
-        // Top-level windows the process owned before this window's
-        // construction began (D00 T02 §26): the sweep leaves them alone,
-        // so a birth never moves another window's live popups or dialogs.
-        // Constructions run one at a time on the UI thread, so one
-        // snapshot per construction is enough.
-        static HashSet<nint> preexisting = [];
+        // The construction in flight (D00 T02 §26, §34 item 4): taken when
+        // the constructor begins and consumed once by its sweep, so a failed
+        // or overlapping construction never lends its snapshot to the next
+        // birth; a sweep with no fresh snapshot pins nothing.
+        static readonly SiblingSnapshotSlot Pending = new();
 
         internal static void NoteTarget()
         {
-            preexisting = ProcessTopLevels();
+            Pending.Begin(SiblingSelection.Begin(ProcessTopLevels().Select(w => w.Handle), NativeMethods.GetCurrentThreadId()));
             ShellSettings live = SettingsStore.Shared.Current;
             int width = Math.Max(100, live.Width);
             int height = Math.Max(100, live.Height);
@@ -333,17 +336,17 @@ public sealed partial class MainWindow : Window, IDisposable
             (targetX, targetY) = BirthOrigin(live, width, height);
         }
 
-        static HashSet<nint> ProcessTopLevels()
+        static List<SiblingTopLevel> ProcessTopLevels()
         {
             uint pid = (uint)Environment.ProcessId;
-            var found = new HashSet<nint>();
+            var found = new List<SiblingTopLevel>();
             _ = NativeMethods.EnumWindows((hwnd, unused) =>
             {
                 _ = unused;
-                _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint windowPid);
+                uint thread = NativeMethods.GetWindowThreadProcessId(hwnd, out uint windowPid);
                 if (windowPid == pid)
                 {
-                    _ = found.Add(hwnd);
+                    found.Add(new SiblingTopLevel(hwnd, NativeMethods.GetAncestor(hwnd, 3), thread, NativeMethods.ClassName(hwnd) == MainClass));
                 }
 
                 return true;
@@ -352,26 +355,47 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         // Pins only the constructor-born helpers of the window being born
-        // (D00 T02 §26): windows that existed before its construction
-        // began are skipped, and so is any window whose root owner is a
-        // different main, so a second background birth never moves the
-        // first window's live flyouts, popups, or dialogs.
+        // (D00 T02 §26, §34): SiblingSelection skips windows that existed
+        // before its construction began, windows another main owns, windows
+        // another thread created, and mains. Under the test-run marker the
+        // decision is appended to SCRATCHPAD_SWEEP_LOG, so the UI suite reads
+        // which handles the sweep chose instead of inferring it from moves.
         internal static void Sweep(nint main)
         {
-            foreach (nint hwnd in ProcessTopLevels())
+            SiblingSnapshot? snapshot = Pending.Take();
+            IReadOnlyList<SiblingDecision> decisions = SiblingSelection.Decide(ProcessTopLevels(), snapshot, main);
+            var pinnedAt = new Dictionary<nint, (int X, int Y)>();
+            foreach (SiblingDecision d in decisions)
             {
-                if (preexisting.Contains(hwnd))
+                if (d.Reason == SiblingSelection.Pin)
                 {
-                    continue;
+                    PinSibling(d.Handle);
+                    if (NativeMethods.GetWindowRect(d.Handle, out NativeMethods.Rect at))
+                    {
+                        pinnedAt[d.Handle] = (at.Left, at.Top);
+                    }
                 }
+            }
 
-                nint root = NativeMethods.GetAncestor(hwnd, 3);
-                if (root != nint.Zero && root != hwnd && root != main)
-                {
-                    continue;
-                }
+            LogSweep(main, decisions, pinnedAt);
+        }
 
-                PinSibling(hwnd);
+        static void LogSweep(nint main, IReadOnlyList<SiblingDecision> decisions, Dictionary<nint, (int X, int Y)> pinnedAt)
+        {
+            string? log = Environment.GetEnvironmentVariable("SCRATCHPAD_SWEEP_LOG");
+            if (string.IsNullOrWhiteSpace(log) || Environment.GetEnvironmentVariable(LaunchCapture.RunMarkerVariable) != "1")
+            {
+                return;
+            }
+
+            try
+            {
+                File.AppendAllText(log, SiblingSelection.Describe(main, targetX, targetY, decisions, pinnedAt) + "\n");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Diagnostics only: the sweep already ran; the UI test
+                // reading the log fails loud on a missing line.
             }
         }
 
