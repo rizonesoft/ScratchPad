@@ -66,7 +66,7 @@ track: W0
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [x]   |
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [x]   |
-|   26  |   §26   | Sibling sweep narrowing | §18 |  [ ]   |
+|   26  |   §26   | Sibling sweep narrowing | §18 |  [x]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
@@ -74,6 +74,7 @@ track: W0
 |   31  |   §31   | Acknowledgement residuals | §23 |  [ ]   |
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
+|   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
 
 ---
 
@@ -839,6 +840,7 @@ Why this section exists: the §18 sign-off (R3-F2) found SiblingPin.Sweep pinnin
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §34 -- residual follow-ups filed from this section's plan review.
 - -> XREF: D00 T02 §18 -- filed from its sign-off (R3-F2 below-bar; the sweep it narrows shipped there).
 
 - [x] SiblingPin.Sweep pins only constructor-born helpers: snapshot top-level handles at MainWindow construction and sweep the diff at pin time, or limit PinSibling by owner chain to unowned and this-owned windows; a probe on a two-window background run picks the mechanism that leaves foreign helpers untouched. Done when: a second background window birth leaves the first window's live popup and dialog positions untouched. Done: both mechanisms, combined: `SiblingPin.NoteTarget` snapshots the process's top-level windows as construction begins and `Sweep(main)` pins only windows born since, skipping any whose root owner (`GetAncestor` GA_ROOTOWNER) is a different main (`src/ScratchPad/MainWindow.xaml.cs`). The probe on a two-window background run chose the combination: the snapshot keeps pre-existing helpers still, the owner check covers a popup a first window opens mid-construction.
@@ -846,6 +848,13 @@ Why this section exists: the §18 sign-off (R3-F2) found SiblingPin.Sweep pinnin
 - [x] Commit: `"workspace: narrow the sibling sweep to constructor-born helpers"` Done: 95fdf99. Full Run A on 95fdf99 under the foreground gate (`ForegroundLog 1200`, the four projects with `Category!=Interactive&Category!=Primary` and `-e SCRATCHPAD_BACKGROUND=1`): Smoke 1/0/0, Unit 361/0/0, Protocol 35/0/0, UI 252 passed, 0 failed, 14 skipped (266 with the new test); gate exit 0 `flagged=0; census=211 primary=0 events=220 event-primary=0 uncovered=4 uncovered-primary=0 mismatch=0` (zero primary births, zero foreground holds).
 
 **Test checkpoint:** Narrowing pinned red/green; full Run A still green with zero primary births (no regression in background births).
+
+> **Verified:** 2026-09-25 | §26 | the sibling sweep pins only windows born since the construction began and not owned by another main; `UI.LaunchTests.WindowBirthLeavesOtherWindowsHelpersInPlace` reds on the pre-fix sweep (the first window's live flyout moved to the sweep target, then snapped back) and greens on the fix; full Run A under the foreground gate: Smoke 1/0/0, Unit 361/0/0, Protocol 35/0/0, UI 252/0/14, gate exit 0 with census primary=0 and event-primary=0; fingerprint run-a 213/266
+> **Review:** round 3 (Full), candidates `95fdf99` `dfddd7e` -- GPT R1 bulk needs-attention (R1-F1 record: Run A evidence, answered in `dfddd7e`), GPT R2 bulk approve, GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s26.md
+> **Plan review:** GPT medium, filed D00 T02 §34 (run 20260925-D00-T02-S26-codex-c06751119-r4)
+> **CRUD:** not-applicable | a test-mode window placement rule plus its UI test; no user record is created, updated, or deleted
+> **Duration:** 2026-09-25T04:21:26Z to 2026-09-25T04:58:05Z
+> **Reviewed-tip:** dfddd7ea82182da3d5a7415db81047159de5ea50
 
 ## 27. Night-Debt Escalation Lifecycle
 
@@ -1000,6 +1009,24 @@ Why this section exists: the §25 plan review read §24's notification surface a
 - [ ] Commit: `"workspace: close the notification residuals"`
 
 **Test checkpoint:** The trend and notifications pick one run, alerts renotify only on change, agreement coverage is enumerated and pinned, and persistent toast failure escalates elsewhere. Cheaper substitute that fails: a longer toast.
+
+## 34. Sibling Sweep Residuals
+
+Why this section exists: the §26 plan review returned 8 findings; 6 file here and 2 are rejected with reasons in the §26 findings file. §26 narrowed the sweep to windows born since construction began and not owned by another main; these pin the edges that narrowing left implicit. -> SOURCE: plan-review-D00-T02-s26-2026-09-25-s34 D00-T02-S26-PR1 D00-T02-S26-PR2 D00-T02-S26-PR3 D00-T02-S26-PR4 D00-T02-S26-PR5 D00-T02-S26-PR7 (interleaving attribution, dialog coverage, positive pinning, snapshot lifecycle, deterministic selection, and the §18 alias guard from the §26 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §26 -- filed from its plan review; pins the edges of the sweep it narrowed.
+
+- [ ] An unowned helper another window creates while a construction is in flight is attributed correctly (by creating thread or a birth tag), with an interleaving fixture, so it is never swept as this window's own. Done when: the interleaving fixture leaves the other window's helper in place. (D00-T02-S26-PR1.)
+- [ ] The birth test gains an owned-dialog case beside the File flyout. Done when: a live dialog on the first window records no move during a second birth. (D00-T02-S26-PR2.)
+- [ ] A positive assertion proves the new window's own constructor-born helpers are still pinned off-screen, so narrowing cannot silently disable background placement. Done when: a birth fixture reads every new helper at the sweep target. (D00-T02-S26-PR3.)
+- [ ] Snapshot lifetime is per construction, with defined behavior for failed or overlapping constructions and stale handles. Done when: a failed construction leaves no snapshot the next birth reuses. (D00-T02-S26-PR4.)
+- [ ] The sweep's selection is testable deterministically (a seam that reports which handles it chose), and the WinEvent recorder's readiness is asserted, so the proof never rests on a missed asynchronous event alone. Done when: the selection seam reports the chosen set for a two-window birth. (D00-T02-S26-PR5.)
+- [ ] The §18 launch guard's promise that aliases and wrappers cannot bypass it is reconciled with its recorded exclusion of cross-file global aliases: either the guard covers them or §18's criterion is narrowed in place with the gap named. Done when: the guard and the criterion agree. (D00-T02-S26-PR7.)
+- [ ] Commit: `"workspace: close the sibling sweep residuals"`
+
+**Test checkpoint:** Interleaving attributes, dialogs stay, own helpers pin, snapshots do not leak, selection reads deterministically, and the §18 guard matches its criterion. Cheaper substitute that fails: another flyout-only birth test.
 
 ## Verification
 
