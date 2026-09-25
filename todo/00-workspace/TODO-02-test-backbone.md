@@ -69,7 +69,7 @@ track: W0
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [x]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [x]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [x]   |
-|   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
+|   29  |   §29   | Population fingerprint gate before the night | §15 |  [x]   |
 |   30  |   §30   | Nightly evidence residuals | §22 |  [ ]   |
 |   31  |   §31   | Acknowledgement residuals | §23 |  [ ]   |
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
@@ -77,6 +77,7 @@ track: W0
 |   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
 |   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
+|   37  |   §37   | Population gate residuals | §29 |  [ ]   |
 
 ---
 
@@ -932,6 +933,7 @@ Why this section exists: the population fingerprint (`tests/UI/TestPopulation.fi
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §37 -- residual follow-ups filed from this section's plan review.
 - -> XREF: D00 T02 §15 -- ships the fingerprint and the comparer this section runs earlier.
 
 - [x] `tools/Test-TestPopulation.ps1` dot-sources `tools/NightlyParse.ps1`, runs `Read-TestPopulationFile`, `Get-UiTestDiscovery`, and `Compare-TestPopulation` against the built UI binaries, prints `population OK run-a=M/C run-b=M/C interactive=M/C` or the drift lines, and exits nonzero on drift or on an unreadable fingerprint. Done when: it prints OK on HEAD and reproduces the 2026-09-25 drift line against a fingerprint with `interactive-cases: 37`.
@@ -943,6 +945,13 @@ Why this section exists: the population fingerprint (`tests/UI/TestPopulation.fi
 - [x] Commit: `"workspace: gate the population fingerprint before the night"`
 
 **Test checkpoint:** The script prints OK on HEAD, reproduces the exact 2026-09-25 drift line against the stale count, the CI step runs green, a methods-only plant fails the fixture suite, and a stale-build regen refuses. Cheaper substitute that fails: a comment telling the next author to rebuild before regenerating.
+
+> **Verified:** 2026-09-25 | §29 | `tools/Test-TestPopulation.ps1` prints `population OK run-a=230/283 run-b=4/4 interactive=39/44` on HEAD, `interactive-cases: fingerprinted 37 vs discovered 44` on a planted stale count (exit 1), UNCHECKED exit 2 on unreadable input; the exact 2026-09-25 line reproduces in fixture; CI run 36103701013 ran the step green; methods-only drift fails; a stale-build regen refuses with the build instruction; discovery forces and restores `SCRATCHPAD_INTERACTIVE_FORCE`, and a daytime regen matches the night (39/44, no diff); NightlyParse.Tests all green
+> **Review:** round 3 (Full), candidates `e35e801` `75e300e` -- GPT R1 bulk needs-attention (R1-F1 fixed, R1-F2 answered by CI run 36103701013, advisory R1-A1 fixed), GPT R2 bulk approve, GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s29.md
+> **Plan review:** GPT medium, filed D00 T02 §37 (run 20260925-D00-T02-S29-codex-c06751119-r4)
+> **CRUD:** applicable | the regen writes the fingerprint only after the freshness check passes; the check script reads only; discovery restores the caller's environment variable in a finally block
+> **Duration:** 2026-09-25T06:33:29Z to 2026-09-25T06:44:56Z
+> **Reviewed-tip:** 75e300e2b3b1ec81cef61dc5421ed466f267531d
 
 ## 30. Nightly Evidence Residuals
 
@@ -1093,6 +1102,22 @@ Why this section exists: the §28 plan review returned 14 findings; 8 file here,
 - [ ] Commit: `"workspace: settle the binding guard residuals"`
 
 **Test checkpoint:** The mutation run catches the constant-local assertion, physical identity holds, the layout matrix reads, the routing oracle is per command, double registration fails, partial sends release exactly their keys, owner states read, and wheel injection is checked. Cheaper substitute that fails: a longer list of static assertion shapes.
+
+## 37. Population Gate Residuals
+
+Why this section exists: the §29 plan review returned 10 findings; 6 file here and 4 are rejected with reasons in the §29 findings file. §29 runs the population check in CI and locally, makes discovery time-independent, and refuses stale-build regens; these settle enforcement, input identity, and population identity past aggregate counts. -> SOURCE: plan-review-D00-T02-s29-2026-09-25-s37 D00-T02-S29-PR1 D00-T02-S29-PR2 D00-T02-S29-PR4 D00-T02-S29-PR5 D00-T02-S29-PR7 D00-T02-S29-PR9 (merge enforcement, build-input identity, dynamic Theory rows, restoration fixtures, case identity, and per-case debt from the §29 plan review).
+
+- -> XREF: D00 T02 §29 -- filed from its plan review; settles the residuals of the gate it shipped.
+
+- [ ] The population check gates what reaches the night: the nightly's candidate selection (or a branch rule on `main`) requires the CI step green for the commit it runs, so a red check cannot be bypassed by pushing on. Done when: a planted red check on a candidate makes the nightly name it and refuse the population. (D00-T02-S29-PR1.)
+- [ ] Freshness covers every build input and configuration identity (shared props, `Directory.Build.*`, project references, the build configuration), not only `tests/UI` sources and project files. Done when: touching a shared build input without rebuilding makes the regen refuse. (D00-T02-S29-PR2.)
+- [ ] Theory rows that depend on capabilities or runtime data are defined for discovery (listed, skipped, or excluded by rule), so identical binaries list the same population on CI and nightly hosts. Done when: a capability-gated Theory fixture lists identically with the capability present and absent. (D00-T02-S29-PR4.)
+- [ ] Force-variable restoration has failure-path fixtures: a prior unset value stays unset, and a discovery that throws still restores. Done when: both fixtures pass. (D00-T02-S29-PR5.)
+- [ ] Population identity covers case rows, not only aggregate counts, so replacing Theory rows with an equal total stales prior proofs. Done when: a fixture swapping one InlineData row at equal count drifts. (D00-T02-S29-PR7.)
+- [ ] §15's debt promise for every unexecuted case matches the collector's per-method rows: a partially executed Theory keeps its unexecuted cases owed. Done when: a fixture with one of three rows run keeps two owed. (D00-T02-S29-PR9.)
+- [ ] Commit: `"workspace: settle the population gate residuals"`
+
+**Test checkpoint:** A red check stops the night's population, a shared-input touch refuses the regen, capability rows list identically, restoration holds on failure, a row swap drifts, and a partial Theory keeps its owed cases. Cheaper substitute that fails: a doc note asking authors to wait for CI.
 
 ## Verification
 
