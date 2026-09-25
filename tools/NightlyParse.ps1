@@ -1971,6 +1971,19 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   }
   # An unproven night (a killed or budget-cut leg) contributes no rate,
   # matching the table's denominator rule (R1-F3).
+  # Change-point (sustained shift): with at least 10 measured nights,
+  # the median of the last 3 against the median of the 7 before them,
+  # past 120% and at least 60 s over, so a step that one noisy night
+  # would not trip still surfaces (D00 T02 §25 item 6, plan review PR8).
+  $allSec = @($r | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
+  if ($allSec.Count -ge 10) {
+    $recentMed = Get-Percentile @($allSec | Select-Object -Last 3) 50
+    $priorMed = Get-Percentile @($allSec | Select-Object -Last 10 | Select-Object -First 7) 50
+    if (($recentMed -gt 1.2 * $priorMed) -and (($recentMed - $priorMed) -ge 60)) {
+      $shift = if ($priorMed -gt 0) { "+$([int][math]::Round(100 * ($recentMed - $priorMed) / $priorMed))%" } else { "+$([int]($recentMed - $priorMed))s over a zero baseline" }
+      $alerts += "- ALERT runa-shift: last 3 nights median $([int]$recentMed)s vs the prior 7 nights median $([int]$priorMed)s ($shift, sustained)"
+    }
+  }
   $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
   $lr = & $rate $latest
   $pr = @($prev | ForEach-Object { & $rate $_ } | Where-Object { $null -ne $_ })

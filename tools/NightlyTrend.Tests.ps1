@@ -199,6 +199,14 @@ $win16[15].legs.'run-a'.testSeconds = $null
 $tw = @(Format-TrendTable $win16 $Q $today)
 Assert (@($tw | Where-Object { $_ -like '- RunA test-seconds (canonical native nights, last 14): n=12,*max 514' }).Count -eq 1) 'percentile-window-counts-unmeasured-nights' (($tw | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
 
+# Change-point: a sustained step (three nights at 800 after seven at 600)
+# alerts as a shift even when the latest night alone stays under the
+# single-night threshold; a steady series stays quiet.
+$stepNights = @(11..17 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 }) + @(18..20 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 740 })
+$sa = @(Get-TrendAlerts $stepNights)
+Assert ((@($sa | Where-Object { $_ -eq '- ALERT runa-shift: last 3 nights median 740s vs the prior 7 nights median 600s (+23%, sustained)' }).Count -eq 1) -and (@($sa | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0)) 'alert-change-point-sustained-shift' ($sa -join ' | ')
+Assert (@(Get-TrendAlerts @(11..22 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 }) | Where-Object { $_ -like '*runa-shift*' }).Count -eq 0) 'alert-change-point-quiet-when-steady'
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTrend.Tests: all green'
