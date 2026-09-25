@@ -1521,6 +1521,7 @@ $exitCode = if ($failed) { 1 } else { 0 }
 # only. Past-due demands escalate and stage a finding stub.
 $ackResultFiles = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $ackResultFiles += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$null = Register-UnclassifiedResults $nightDir $ackResultFiles
 $ackDemands = Get-AckDemands $ackResultFiles (Read-ResultClassifications $nightDir)
 # Section 31 item 8: §24's severity SLA (the strictest of the run's
 # outcome labels) shortens the day-plus-three default where it is shorter.

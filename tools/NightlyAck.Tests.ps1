@@ -233,6 +233,65 @@ Save-All 'add y late' '2026-09-30T09:00:00+02:00'
 $gxy = Get-Gate
 Assert ((@($gxy.Lines | Where-Object { $_ -like "*LATE response: $runY first acknowledged 2026-09-30*" }).Count -eq 1) -and (@($gxy.Lines | Where-Object { $_ -like "*LATE response: $runX*" }).Count -eq 0)) 's39-run-added-to-an-older-ack-reads-its-own-time' ($gxy.Lines -join ' | ')
 Remove-Item (Join-Path $acks 'ack-xy.md'); Save-All 'drop xy'
+# ---- Round 2 (section 39 R2-F1..F4) ----
+$runZ = '2026-09-26-023001-pid30'
+$zPath = Join-Path $nd 'morning-2026-09-26-023001.result.json'
+[pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-26-023001'; day = '2026-09-26'; identity = $runZ; verdict = 'red'; exit = 1; incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom', '- INC-bbbb2222 `UI.B` x1 (Run A): bang') } | ConvertTo-Json -Depth 5 | Set-Content -Path $zPath -Encoding UTF8
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $ws 'tests\UI')
+'class A { }' | Set-Content -Path (Join-Path $ws 'tests\UI\A.cs') -Encoding UTF8
+Save-All 'fix the A test'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $shaA = ((& git -C $ws rev-parse HEAD) | Out-String).Trim().Substring(0, 12); $ErrorActionPreference = $eap
+# R2-F1: a cover's evidence answers for its own incident.
+$dem = Get-Dem
+Write-Ack 'ack-z.md' @("run: $runZ sha256:$($dem[$runZ].Current)", 'incidents: INC-aaaa1111, INC-bbbb2222', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $shaA", "cover: INC-aaaa1111 fixed $shaA", "cover: INC-bbbb2222 fixed $shaA", 'signed: 2026-09-26')
+Save-All 'ack z fixed both by the A commit'
+$gz = Get-Gate
+Assert ((@($gz.Lines | Where-Object { $_ -like "*ack-z.md: INVALID (*cover INC-bbbb2222: fixed needs a commit that touches the failing test's file or names the test or incident*" }).Count -eq 1) -and (@($gz.Lines | Where-Object { $_ -like '*cover INC-aaaa1111:*' }).Count -eq 0)) 's39-cover-evidence-answers-for-its-own-incident' ($gz.Lines -join ' | ')
+# R2-F2: an edit that drops a cover keeps that cover's action open.
+Write-Ack 'ack-z.md' @("run: $runZ sha256:$($dem[$runZ].Current)", 'incidents: INC-aaaa1111, INC-bbbb2222', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", "cover: INC-aaaa1111 filed $fnd", "cover: INC-bbbb2222 filed $fnd", 'signed: 2026-09-26')
+Save-All 'ack z filed'
+[pscustomobject]@{ version = 1; revision = 2; stamp = '2026-09-26-023001'; day = '2026-09-26'; identity = $runZ; verdict = 'red'; exit = 1; incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom') } | ConvertTo-Json -Depth 5 | Set-Content -Path $zPath -Encoding UTF8
+$dem = Get-Dem
+Write-Ack 'ack-z.md' @("run: $runZ sha256:$($dem[$runZ].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", 'signed: 2026-09-27')
+Save-All 'ack z re-signed without B'
+$gzd = Get-Gate
+Assert (($gzd.Unacked -notcontains $runZ) -and (@($gzd.Lines | Where-Object { $_ -like '*CORRECTIVE ack-z.md (INC-bbbb2222*dropped from the ack*): open*' }).Count -eq 1)) 's39-dropped-cover-keeps-its-action' ($gzd.Lines -join ' | ')
+Remove-Item (Join-Path $acks 'ack-z.md'); Save-All 'drop z'
+# R2-F3: acks on incomparable merged branches tie.
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$mainBr = ((& git -C $ws rev-parse --abbrev-ref HEAD) | Out-String).Trim()
+$base = ((& git -C $ws rev-parse HEAD) | Out-String).Trim()
+$ErrorActionPreference = $eap
+$dem = Get-Dem
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $null = & git -C $ws checkout -q -b b1 2>&1; $ErrorActionPreference = $eap
+Write-Ack 'ack-z1.md' @("run: $runZ sha256:$($dem[$runZ].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", 'signed: 2026-09-27')
+Save-All 'b1 ack'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $null = & git -C $ws checkout -q -b b2 $base 2>&1; $ErrorActionPreference = $eap
+Write-Ack 'ack-z2.md' @("run: $runZ sha256:$($dem[$runZ].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-11', "finding: $fnd", 'signed: 2026-09-27')
+Save-All 'b2 ack'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$null = & git -C $ws checkout -q $mainBr 2>&1; $null = & git -C $ws merge -q --no-edit b1 2>&1; $null = & git -C $ws merge -q --no-edit b2 2>&1
+$ErrorActionPreference = $eap
+$gb = Get-Gate
+Assert ((@($gb.Lines | Where-Object { ($_ -like "*$runZ TIE: ack-z*") -and ($_ -like "*ack-z1.md*") -and ($_ -like "*ack-z2.md*") }).Count -eq 1) -and ($gb.Unacked -contains $runZ)) 's39-incomparable-branches-tie' ($gb.Lines -join ' | ')
+Remove-Item (Join-Path $acks 'ack-z1.md'), (Join-Path $acks 'ack-z2.md'); Save-All 'drop z1 z2'
+# R2-F4: first sight records an unclassified result, so a later proof
+# relabel stays operational; after the cutover an unrecorded one is
+# operational anyway.
+$nrPath = Join-Path $nd 'morning-2026-09-27-120001.result.json'
+$nr = [pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-27-120001'; day = '2026-09-27'; identity = '2026-09-27-120001-pid31'; verdict = 'red'; exit = 1; incidents = @() }
+$nr | ConvertTo-Json -Depth 5 | Set-Content -Path $nrPath -Encoding UTF8
+$reg = Register-UnclassifiedResults $nd @($nrPath)
+$nr | Add-Member -NotePropertyName proof -NotePropertyValue $true -Force
+$nr | Add-Member -NotePropertyName proofSource -NotePropertyValue 'switches' -Force
+$nr | ConvertTo-Json -Depth 5 | Set-Content -Path $nrPath -Encoding UTF8
+$q1 = (Get-Dem)['2026-09-27-120001-pid31'].Queue
+$lpPath = Join-Path $nd 'morning-2026-09-27-130001.result.json'
+[pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-27-130001'; day = '2026-09-27'; identity = '2026-09-27-130001-pid32'; verdict = 'red'; exit = 1; proof = $true; proofSource = 'switches'; incidents = @() } | ConvertTo-Json -Depth 5 | Set-Content -Path $lpPath -Encoding UTF8
+$q2 = (Get-Dem)['2026-09-27-130001-pid32'].Queue
+Remove-Item $nrPath, $lpPath, $zPath
+Assert (($reg -ge 1) -and ($q1 -eq 'operational') -and ($q2 -eq 'operational')) 's39-unclassified-results-cannot-be-relabeled' "$reg $q1 $q2"
+
 # Item 6: an unreadable result is recorded and, once repaired, maps to
 # its identity with the corruption kept on record.
 $badPath = Join-Path $nd 'morning-2026-09-23-023001.result.json'
