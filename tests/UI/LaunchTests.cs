@@ -1058,6 +1058,17 @@ public sealed class LaunchTests
                 // target, so narrowing never silently disabled placement.
                 SweepLine own = sweepLog.ReadBirth(firstMain);
                 Assert.True(own.Pinned.Count > 0, $"the first birth pinned no helper, so background placement is untested: {own.Raw}");
+                // The expected set, read independently of the selection (§34
+                // R1-F3): every window the sweep saw that the first main owns,
+                // or that owns itself, and that is no main, must be pinned; a
+                // helper the selection wrongly skipped fails here.
+                foreach (nint hwnd in own.Skipped.Keys.Where(h => HelperNative.IsWindow(h)))
+                {
+                    nint rootOwner = HelperNative.GetAncestor(hwnd, 3);
+                    bool main = HelperClass(hwnd) == "WinUIDesktopWin32WindowClass";
+                    bool ownedHere = rootOwner == hwnd || rootOwner == firstMain;
+                    Assert.False(ownedHere && !main && own.Skipped[hwnd] != "preexisting", $"the first birth skipped its own helper 0x{hwnd:X} ({own.Skipped[hwnd]}): {own.Raw}");
+                }
                 foreach (nint hwnd in own.Pinned)
                 {
                     Assert.True(own.PinnedAt.TryGetValue(hwnd, out var at), $"the sweep logged no readback for helper 0x{hwnd:X}: {own.Raw}");
@@ -1159,7 +1170,10 @@ public sealed class LaunchTests
                     TimeSpan.FromSeconds(10),
                     TimeSpan.FromMilliseconds(250),
                     lastValueOnTimeout: true).Result ?? [];
-                Assert.True(dialogs.Count > 0, "File > Open raised no owned dialog window");
+                // Only the picker: a #32770 dialog whose root owner is the
+                // first main, never a menu popup that also appeared (§34 R1-F2).
+                dialogs = dialogs.Where(kv => HelperClass(kv.Key) == "#32770" && HelperNative.GetAncestor(kv.Key, 3) == firstMain).ToDictionary(kv => kv.Key, kv => kv.Value);
+                Assert.True(dialogs.Count > 0, "File > Open raised no #32770 dialog owned by the first main window");
                 using var moves = new LocationRecorder((uint)first.ProcessId, dialogs.Keys);
                 using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
@@ -1189,6 +1203,13 @@ public sealed class LaunchTests
             SessionData.Delete();
             DeleteDir(dir);
         }
+    }
+
+    static string HelperClass(nint hwnd)
+    {
+        var name = new char[256];
+        int n = HelperNative.GetClassName(hwnd, name, name.Length);
+        return n > 0 ? new string(name, 0, n) : string.Empty;
     }
 
     // One parsed sweep-log line (D00 T02 §34): the birth's main, target,
@@ -1466,6 +1487,10 @@ public sealed class LaunchTests
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool IsWindow(nint hwnd);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint GetAncestor(nint hwnd, uint flags);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

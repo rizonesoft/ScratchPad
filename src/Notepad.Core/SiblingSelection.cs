@@ -115,19 +115,30 @@ public readonly record struct SiblingTopLevel(nint Handle, nint RootOwner, uint 
 
 public readonly record struct SiblingDecision(nint Handle, string Reason);
 
-// The construction in flight (D00 T02 §34 item 4): Begin replaces any
-// snapshot a failed construction left behind, and Take hands the snapshot
-// to exactly one sweep, so no birth ever reuses another's.
+// The construction in flight (D00 T02 §34 item 4): each construction
+// keeps the snapshot Begin returned as its token, and Take hands it back
+// only to that construction, only while it is still the one in flight. A
+// failed construction's snapshot is replaced by the next Begin; an
+// overlapping construction's sweep gets nothing rather than another
+// construction's snapshot (§34 R1-F1).
 public sealed class SiblingSnapshotSlot
 {
     SiblingSnapshot? pending;
 
-    public void Begin(SiblingSnapshot snapshot) => pending = snapshot;
-
-    public SiblingSnapshot? Take()
+    public SiblingSnapshot Begin(SiblingSnapshot snapshot)
     {
-        SiblingSnapshot? taken = pending;
+        pending = snapshot;
+        return snapshot;
+    }
+
+    public SiblingSnapshot? Take(SiblingSnapshot? token)
+    {
+        if (token is null || !ReferenceEquals(token, pending))
+        {
+            return null;
+        }
+
         pending = null;
-        return taken;
+        return token;
     }
 }

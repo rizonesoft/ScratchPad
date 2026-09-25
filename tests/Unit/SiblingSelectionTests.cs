@@ -59,14 +59,25 @@ public sealed class SiblingSelectionTests
     public void FailedConstructionLeavesNoSnapshotForTheNextBirth()
     {
         var slot = new SiblingSnapshotSlot();
-        SiblingSnapshot failed = SiblingSelection.Begin([], UiThread);
-        slot.Begin(failed);
-        SiblingSnapshot next = SiblingSelection.Begin([0x300], UiThread);
-        slot.Begin(next);
-        Assert.Same(next, slot.Take());
-        Assert.Null(slot.Take());
-        var d = SiblingSelection.Decide([new(0x500, 0x500, UiThread, IsMain: false)], slot.Take(), Main);
+        SiblingSnapshot failed = slot.Begin(SiblingSelection.Begin([], UiThread));
+        SiblingSnapshot next = slot.Begin(SiblingSelection.Begin([0x300], UiThread));
+        Assert.Null(slot.Take(failed));
+        Assert.Same(next, slot.Take(next));
+        Assert.Null(slot.Take(next));
+        var d = SiblingSelection.Decide([new(0x500, 0x500, UiThread, IsMain: false)], slot.Take(next), Main);
         Assert.Equal("no-snapshot", d.Single().Reason);
+    }
+
+    // §34 R1-F1: overlapping constructions never trade snapshots: A's sweep
+    // after B began gets nothing, and B's sweep still gets B's.
+    [Fact]
+    public void OverlappingConstructionsNeverTradeSnapshots()
+    {
+        var slot = new SiblingSnapshotSlot();
+        SiblingSnapshot a = slot.Begin(SiblingSelection.Begin([0x1], UiThread));
+        SiblingSnapshot b = slot.Begin(SiblingSelection.Begin([0x2], UiThread));
+        Assert.Null(slot.Take(a));
+        Assert.Same(b, slot.Take(b));
     }
 
     // §34 item 5: the decision renders deterministically for the log.

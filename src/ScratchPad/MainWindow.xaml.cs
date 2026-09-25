@@ -41,6 +41,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private MiddleClickHook? middleClick;
 
+    // This construction's sibling-sweep snapshot (D00 T02 §34): only this
+    // window's sweep may consume it.
+    private readonly SiblingSnapshot? siblingSnapshot;
+
     private bool closed;
 
     // firstWindow selects first-launch behavior: only the first window of the
@@ -139,7 +143,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // Siblings born before the main (helpers arrive during the
         // constructor) never surface on their own: sweep once here, where
         // the main pin just landed.
-        SiblingPin.Sweep(hwnd);
+        SiblingPin.Sweep(hwnd, siblingSnapshot);
         return true;
     }
 
@@ -321,19 +325,20 @@ public sealed partial class MainWindow : Window, IDisposable
         // birth; a sweep with no fresh snapshot pins nothing.
         static readonly SiblingSnapshotSlot Pending = new();
 
-        internal static void NoteTarget()
+        internal static SiblingSnapshot NoteTarget()
         {
-            Pending.Begin(SiblingSelection.Begin(ProcessTopLevels().Select(w => w.Handle), NativeMethods.GetCurrentThreadId()));
+            SiblingSnapshot token = Pending.Begin(SiblingSelection.Begin(ProcessTopLevels().Select(w => w.Handle), NativeMethods.GetCurrentThreadId()));
             ShellSettings live = SettingsStore.Shared.Current;
             int width = Math.Max(100, live.Width);
             int height = Math.Max(100, live.Height);
             if (!NativeMethods.OutsideVirtualScreen(live.X, live.Y, width, height))
             {
                 (targetX, targetY) = NativeMethods.OffScreenOrigin(width, height);
-                return;
+                return token;
             }
 
             (targetX, targetY) = BirthOrigin(live, width, height);
+            return token;
         }
 
         static List<SiblingTopLevel> ProcessTopLevels()
@@ -360,9 +365,9 @@ public sealed partial class MainWindow : Window, IDisposable
         // another thread created, and mains. Under the test-run marker the
         // decision is appended to SCRATCHPAD_SWEEP_LOG, so the UI suite reads
         // which handles the sweep chose instead of inferring it from moves.
-        internal static void Sweep(nint main)
+        internal static void Sweep(nint main, SiblingSnapshot? token)
         {
-            SiblingSnapshot? snapshot = Pending.Take();
+            SiblingSnapshot? snapshot = Pending.Take(token);
             IReadOnlyList<SiblingDecision> decisions = SiblingSelection.Decide(ProcessTopLevels(), snapshot, main);
             var pinnedAt = new Dictionary<nint, (int X, int Y)>();
             foreach (SiblingDecision d in decisions)
@@ -420,7 +425,7 @@ public sealed partial class MainWindow : Window, IDisposable
     public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {
         this.firstWindow = firstWindow;
-        SiblingPin.NoteTarget();
+        siblingSnapshot = SiblingPin.NoteTarget();
         InitializeComponent();
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;
