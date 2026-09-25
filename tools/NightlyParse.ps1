@@ -1984,7 +1984,8 @@ function Get-AckDemands($ResultFiles) {
   # checksum covers the schema version field, so the key is run,
   # checksum, and version). $ResultFiles are paths; unreadable files
   # are skipped (the result gate reds them elsewhere). Returns a
-  # hashtable identity -> Day, Shas, Incidents, Paths.
+  # hashtable identity -> Day, Shas, Incidents, Paths, Current (the
+  # checksum of the most recently written copy).
   $demands = @{}
   foreach ($p in @($ResultFiles)) {
     if (-not (Test-Path $p -PathType Leaf)) { continue }
@@ -1995,11 +1996,16 @@ function Get-AckDemands($ResultFiles) {
     $id = "$($r.identity)"
     if ($id -eq '') { $id = "$($r.stamp)" }
     if ($id -eq '') { continue }
-    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Shas = @(); Incidents = @(); Paths = @() } }
+    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Shas = @(); Incidents = @(); Paths = @(); Current = ''; CurrentTime = [datetime]::MinValue } }
     $d = $demands[$id]
     $sha = Get-FileSha256 $p
     if ($d.Shas -notcontains $sha) { $d.Shas += $sha }
     $d.Paths += $p
+    # The most recently written copy is the run's current result: an ack
+    # must match it, so an older retained copy can never keep a changed
+    # result acknowledged.
+    $wt = (Get-Item -LiteralPath $p).LastWriteTimeUtc
+    if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt }
     foreach ($ln in @($r.incidents)) {
       $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8})')
       if ($m.Success -and ($d.Incidents -notcontains $m.Groups[1].Value)) { $d.Incidents += $m.Groups[1].Value }
@@ -2072,7 +2078,7 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
     $named += $id
     if (-not $Demands.ContainsKey($id)) { $errs += "run $id is not a known RED"; continue }
     $d = $Demands[$id]
-    if ($d.Shas -notcontains $sha) { $stale += $id; continue }
+    if ($d.Current -ne $sha) { $stale += $id; continue }
     $acked += $id
   }
   if ($f.ContainsKey('incidents') -and ($errs.Count -eq 0)) {
@@ -2100,16 +2106,49 @@ function Get-AckHistory([string]$Root, [string]$RelPath) {
   try {
     $ErrorActionPreference = 'Continue'
     $log = @(git -C $Root log --format='%H|%an|%aI' -- $RelPath 2>$null)
-    if ($LASTEXITCODE -ne 0) { $out.Error = 'git log failed'; return $out }
+    if ($LASTEXITCODE -ne 0) {
+      # A repository with no commits yet fails `git log`; that history
+      # is empty (uncommitted), not unverifiable.
+      $null = git -C $Root rev-parse -q --verify HEAD 2>$null
+      if ($LASTEXITCODE -ne 0) { return $out }
+      $out.Error = 'git log failed'; return $out
+    }
     foreach ($l in $log) {
       $p = "$l" -split '\|', 3
       if ($p.Count -eq 3) { $out.Entries += [pscustomobject]@{ Commit = $p[0]; Author = $p[1]; Date = $p[2] } }
     }
     $out.Committed = ($out.Entries.Count -gt 0)
     $st = @(git -C $Root status --porcelain -- $RelPath 2>$null)
+    if ($LASTEXITCODE -ne 0) { $out.Error = 'git status failed'; $out.Committed = $false; return $out }
     $out.Dirty = ($st.Count -gt 0)
   } catch { $out.Error = "git unavailable: $($_.Exception.Message)" } finally { $ErrorActionPreference = $eap }
   return $out
+}
+
+function Test-FindingExists([string]$Root, [string]$Finding, [string[]]$KnownIncidents) {
+  # Existence behind a linked finding (D00 T02 §23 R1-F2): a section ref
+  # names a real `## N.` heading in its TODO file, an INC id is one this
+  # tree has seen (the run demands or the incident ledger), and a commit
+  # resolves in the repository. Syntax alone links nothing.
+  $m = [regex]::Match($Finding, '^D(\d{2}) T(\d{2}) \u00A7(\d+)$')
+  if ($m.Success) {
+    $files = @(Get-ChildItem (Join-Path $Root 'todo') -Directory -Filter "$($m.Groups[1].Value)-*" -ErrorAction SilentlyContinue | ForEach-Object { Get-ChildItem $_.FullName -File -Filter "TODO-$($m.Groups[2].Value)-*.md" -ErrorAction SilentlyContinue })
+    foreach ($f in $files) {
+      foreach ($ln in [System.IO.File]::ReadAllLines($f.FullName)) { if ($ln -match "^## $($m.Groups[3].Value)\. ") { return $true } }
+    }
+    return $false
+  }
+  if ($Finding -match '^INC-[0-9a-f]{8}$') { return (@($KnownIncidents) -contains $Finding) }
+  if ($Finding -match '^[0-9a-f]{7,40}$') {
+    # Windows PowerShell turns native stderr into a terminating error
+    # under Stop even when redirected, so the probe runs with the
+    # preference scoped to Continue and reads only the exit code.
+    $found = $false
+    $eap = $ErrorActionPreference
+    try { $ErrorActionPreference = 'Continue'; $null = git -C $Root cat-file -e "$Finding^{commit}" 2>&1; $found = ($LASTEXITCODE -eq 0) } catch { $found = $false } finally { $ErrorActionPreference = $eap }
+    return $found
+  }
+  return $false
 }
 
 function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Demands, [datetime]$Today) {
@@ -2122,11 +2161,16 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
   $acked = @{}
   $lines = @()
   $staged = @()
+  $knownIncidents = @()
+  foreach ($id in @($Demands.Keys)) { $knownIncidents += @($Demands[$id].Incidents) }
+  $ledgerRead = Read-IncidentLedger (Join-Path $Root 'build\nightly\incidents.json')
+  if ($ledgerRead.Ok) { $knownIncidents += @($ledgerRead.Incidents.Keys) }
   foreach ($file in @(Get-ChildItem $AckDir -Filter 'ack-*.md' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
     $rel = ($file.FullName.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
     $text = ''
     try { $text = [System.IO.File]::ReadAllText($file.FullName) } catch { $lines += "- $($file.Name): unreadable (ignored)"; continue }
-    if ($file.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') {
+    $isV2 = ($text -match '\A\s*---\r?\n')
+    if ((-not $isV2) -and ($file.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$')) {
       $day = $Matches[1]
       if ([string]::CompareOrdinal($day, $script:AckV1Cutover) -gt 0) { $lines += "- $($file.Name): v1 day file after the $($script:AckV1Cutover) cutover (ignored; write a v2 ack naming each run)"; continue }
       if (-not (Test-AckFile $file.FullName $day).Ok) { $lines += "- $($file.Name): v1 ack invalid (ignored)"; continue }
@@ -2136,23 +2180,16 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       continue
     }
     $hist = Get-AckHistory $Root $rel
+    if ($hist.Error -ne '') { $lines += "- $($file.Name): history unverifiable ($($hist.Error)); ignored"; continue }
     if (-not $hist.Committed) { $lines += "- $($file.Name): uncommitted (ignored until committed: git history is the integrity record)"; continue }
     if ($hist.Dirty) { $lines += "- $($file.Name): edited since its last commit (ignored until committed)"; continue }
     $v = Test-AckV2 $text $Demands
     $histText = (@($hist.Entries | ForEach-Object { "$($_.Commit.Substring(0, 7)) $($_.Author) $($_.Date)" }) -join '; ')
     if ($v.Ok) {
-      # A commit-shaped finding must resolve in this repository: an
-      # invented hash links nothing.
+      # The linked finding must exist: an invented section, incident, or
+      # commit links no corrective work.
       $fnd = "$((Read-AckFrontmatter $text).Fields['finding'])"
-      if ($fnd -match '^[0-9a-f]{7,40}$') {
-        # Windows PowerShell turns native stderr into a terminating
-        # error under Stop even when redirected, so the probe runs with
-        # the preference scoped to Continue and reads only the exit code.
-        $found = $false
-        $eap = $ErrorActionPreference
-        try { $ErrorActionPreference = 'Continue'; $null = git -C $Root cat-file -e "$fnd^{commit}" 2>&1; $found = ($LASTEXITCODE -eq 0) } catch { $found = $false } finally { $ErrorActionPreference = $eap }
-        if (-not $found) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding commit $fnd not found") } }
-      }
+      if (-not (Test-FindingExists $Root $fnd $knownIncidents)) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding $fnd not found") } }
     }
     if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
     foreach ($id in $v.Acked) { $acked[$id] = $file.Name }

@@ -959,6 +959,8 @@ $null = New-Item -ItemType Directory -Force -Path $ackDir
 & git -C $repo config user.email 'fixture@example.invalid'
 & git -C $repo config commit.gpgsign false
 & git -C $repo config core.autocrlf false
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'todo\00-workspace')
+@('# fixture', '', '## 9. Nine', '', '## 29. Twenty-nine') | Set-Content -Path (Join-Path $repo 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-a.md'), $ackOne)
 $g0 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ((@($g0.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: uncommitted*' }).Count -eq 1) -and ($g0.Unacked -contains $runA1)) 'ack-uncommitted-ignored' ($g0.Lines -join ' | ')
@@ -984,16 +986,44 @@ Assert ((@($g4.Overdue).Count -eq 0) -and (@($g4.Lines | Where-Object { $_ -like
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'deadbeef'; incidents = 'none' }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b bogus commit' 2>$null
 $g4b = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
-Assert (($g4b.Unacked -contains $runA2) -and (@($g4b.Lines | Where-Object { $_ -like '*ack-2026-09-22-b.md: INVALID (finding commit deadbeef not found)*' }).Count -eq 1)) 'ack-invented-commit-fails' ($g4b.Lines -join ' | ')
+Assert (($g4b.Unacked -contains $runA2) -and (@($g4b.Lines | Where-Object { $_ -like '*ack-2026-09-22-b.md: INVALID (finding deadbeef not found)*' }).Count -eq 1)) 'ack-invented-commit-fails' ($g4b.Lines -join ' | ')
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = "D99 T99 $([char]0xA7)999"; incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b bogus section' 2>$null
+Assert (@((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Lines | Where-Object { $_ -like '*ack-2026-09-22-b.md: INVALID (finding D99 T99*999 not found)*' }).Count -eq 1) 'ack-invented-section-fails'
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'INC-deadbeef'; incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b bogus incident' 2>$null
+Assert (@((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Lines | Where-Object { $_ -like '*ack-2026-09-22-b.md: INVALID (finding INC-deadbeef not found)*' }).Count -eq 1) 'ack-invented-incident-fails'
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'INC-aaaa1111'; incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b known incident' 2>$null
+Assert ((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Unacked -notcontains $runA2) 'ack-known-incident-passes'
 $realSha = ((& git -C $repo rev-parse HEAD) | Out-String).Trim()
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = $realSha.Substring(0, 12); incidents = 'none' }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b real commit' 2>$null
 $g4c = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ($g4c.Unacked -notcontains $runA2) 'ack-real-commit-finding-passes' ($g4c.Lines -join ' | ')
 & git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-b.md') 2>$null; & git -C $repo commit -q -m 'drop ack b' 2>$null
+# R1-F3: a v2 ack with a day-shaped name is still v2.
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-23.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'v2 with a day name' 2>$null
+$g4d = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (($g4d.Unacked -notcontains $runA2) -and (@($g4d.Lines | Where-Object { $_ -like "*ack-2026-09-23.md: acknowledges $runA2*" }).Count -eq 1)) 'ack-v2-day-named-file-counts' ($g4d.Lines -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-23.md') 2>$null; & git -C $repo commit -q -m 'drop day-named v2' 2>$null
 $g5 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-28')
 Assert ((($g5.Overdue) -contains $runA2) -and (@($g5.Lines | Where-Object { $_ -like "*OVERDUE ack: $runA2 (RED 2026-09-22, due 2026-09-25, 3 day(s) overdue): escalate operator*" }).Count -eq 1)) 'ack-past-deadline-escalates' ($g5.Lines -join ' | ')
 Assert (@($g5.Staged | Where-Object { $_ -like "*STAGED ack-overdue $runA2 *" }).Count -eq 1) 'ack-past-deadline-stages-finding' ($g5.Staged -join ' | ')
+# R1-F1: a newer rewrite of the result makes an ack that matches only the
+# older retained copy stale.
+$primaryA1 = Join-Path $nd "morning-$($runA1.Substring(0, 17)).result.json"
+(Get-Item (Join-Path $nd 'retained\copy\result.json')).LastWriteTimeUtc = (Get-Date).ToUniversalTime().AddMinutes(-10)
+New-RedResult $primaryA1 $runA1 '2026-09-22' @('- INC-aaaa1111 `UI.A` x1 (Run A): boom', '- INC-bbbb2222 `UI.B` x1 (Run A): later')
+$demNew = Get-AckDemands $resFiles
+Assert ((@($demNew[$runA1].Shas).Count -eq 2) -and ($demNew[$runA1].Current -ne $shaA1)) 'ack-current-is-newest-copy' "shas $(@($demNew[$runA1].Shas).Count)"
+$staleOld = Test-AckV2 $ackOne $demNew
+Assert ((@($staleOld.Stale) -join ',') -eq $runA1) 'ack-older-copy-cannot-ack-changed-result' ("stale $(@($staleOld.Stale) -join ',') acked $(@($staleOld.Acked) -join ',')")
+# R1-F4: a history git cannot verify never counts.
+[System.IO.File]::WriteAllText((Join-Path $repo '.git\index'), 'not an index')
+$g6 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert ((@($g6.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: history unverifiable (git status failed); ignored*' }).Count -eq 1) -and ($g6.Unacked -contains $runA1)) 'ack-unverifiable-history-ignored' ($g6.Lines -join ' | ')
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyParse.Tests: all green'
