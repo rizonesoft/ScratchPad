@@ -1836,7 +1836,9 @@ Assert (($alMoved.Incidents.Count -eq 1) -and ($mv.finding -eq 'abc1234') -and (
 $alOld3 = [pscustomobject]@{ id = 'INC-0000a111'; test = 'UI.Al.T'; phase = 'run-a'; key = ''; owner = 'operator'; state = 'open'; firstSeen = '2026-09-20-023001'; lastSeen = '2026-09-26-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-26-023001'; wheres = @('run-a') }); passStreak = 1; lastPassStamp = '2026-09-27-023001'; due = ''; finding = '' }
 $alNew3 = [pscustomobject]@{ id = 'INC-0000b222'; test = 'UI.Al.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-25-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-25-023001'; wheres = @('run-a') }); passStreak = 2; lastPassStamp = '2026-09-27-023001'; due = ''; finding = '' }
 $alM3 = (Move-AliasedIncidents @{ 'INC-0000a111' = $alOld3; 'INC-0000b222' = $alNew3 } @{ 'INC-0000a111' = 'INC-0000b222' } @{}).Incidents['INC-0000b222']
-Assert (([int]$mg.passStreak -eq 0) -and ([int]$alM3.passStreak -eq 1)) 's45-alias-merge-never-carries-a-streak-past-a-newer-failure' "mg=$($mg.passStreak) m3=$($alM3.passStreak)"
+$alOld3 | Add-Member -NotePropertyName streakPopulation -NotePropertyValue 'pop-v1' -Force
+$alM4 = (Move-AliasedIncidents @{ 'INC-0000a111' = $alOld3; 'INC-0000b222' = ([pscustomobject]@{ id = 'INC-0000b222'; test = 'UI.Al.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-25-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-25-023001'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = ''; finding = ''; streakPopulation = 'pop-other' }) } @{ 'INC-0000a111' = 'INC-0000b222' } @{}).Incidents['INC-0000b222']
+Assert (([int]$mg.passStreak -eq 0) -and ([int]$alM3.passStreak -eq 1) -and ($alM4.streakPopulation -eq 'pop-v1')) 's45-alias-merge-never-carries-a-streak-past-a-newer-failure' "mg=$($mg.passStreak) m3=$($alM3.passStreak)"
 # D00 T02 §45 R1-F5: a checkpoint newer than the ledger rolls the run
 # forward; a current ledger stands.
 $rfDir = Join-Path $dir 's45-rollforward'
@@ -1887,6 +1889,12 @@ Write-TrackedWriteManifest $tw $twMan
 $twDoc = Get-Content -LiteralPath $twMan -Raw | ConvertFrom-Json
 Assert ((@($twDoc.writes).Count -eq 1) -and ($twDoc.writes[0].before -eq $twBefore) -and ($twDoc.writes[0].beforeSha256 -eq (Get-BytesSha256 ([System.Text.Encoding]::UTF8.GetBytes($twBefore)))) -and (@($twDoc.writes[0].lines)[0] -eq $twLine)) 's45-manifest-keeps-the-pre-write-text' ($twDoc.writes[0].beforeSha256)
 Assert ($twOk.Ok -and ($twOk.Line -like 'clean at start and end; collector wrote 1 line(s) to todo/x.md, verified; triage commits them: tools/NightlyTriage.ps1 -Commit') -and (-not $twBad.Ok) -and ($twBad.Line -like 'MUTATED (todo/x.md changed beyond*') -and (-not $twOther.Ok)) 's45-tree-check-expects-collector-lines' "$($twOk.Line) || $($twBad.Line)"
+# R2-F1: an edit between the run's start and the collector's write never
+# joins the accepted baseline.
+[System.IO.File]::WriteAllText($twFile, "# x`n- Night-owed: a`n$twLine`nend`n")
+$twStartOk = Compare-TreeWithTrackedWrites $twRoot $twStart $twEnd $tw @{ 'todo/x.md' = $twBefore }
+$twStartBad = Compare-TreeWithTrackedWrites $twRoot $twStart $twEnd $tw @{ 'todo/x.md' = "# x`n- Night-owed: a`nend`n(edited before the write)`n" }
+Assert ($twStartOk.Ok -and (-not $twStartBad.Ok) -and ($twStartBad.Line -like 'MUTATED (todo/x.md*')) 's45-tree-check-pins-the-start-text' "$($twStartOk.Line) || $($twStartBad.Line)"
 # D00 T02 §45 item 8: one summary block names a refused dump and an
 # overdue incident together; a clean run reads complete.
 $sumLines = @('- run-a : CAPTURE-REFUSED screenshot and dump (binaryCaptures is off)', '- OVERDUE: INC-0000e001 `UI.S.T` triage due 2026-09-20 (owner operator)', '- run-a : window metadata run-a-windows.txt')

@@ -2799,7 +2799,7 @@ function Test-TrackedWriteOnly([string]$Before, [string]$After, [string[]]$Lines
   return ((@($a) -join "`n") -eq (@("$Before" -split "`r?`n") -join "`n"))
 }
 
-function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$Writes) {
+function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$Writes, $StartTexts = $null) {
   # The tree check expects the collector's writes (section 45 item 7):
   # a file the run wrote counts as expected when its text is its
   # pre-write text plus exactly the registered lines; the start and end
@@ -2812,6 +2812,10 @@ function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$
     if (@($w.Lines).Count -eq 0) { continue }
     $full = Join-Path $Root $w.File
     $now = if (Test-Path -LiteralPath $full) { [System.IO.File]::ReadAllText($full) } else { '' }
+    # The pre-write text must be the file as the run found it (R2-F1):
+    # an edit between the start fingerprint and the collector's write
+    # would otherwise join the accepted baseline.
+    if (($null -ne $StartTexts) -and ((-not $StartTexts.ContainsKey($w.File)) -or ("$($StartTexts[$w.File])" -ne "$($w.Before)"))) { $bad += $w.File; continue }
     if (Test-TrackedWriteOnly $w.Before $now @($w.Lines)) { $expected += $w.File } else { $bad += $w.File }
   }
   $drop = { param($rows) @(@($rows) | Where-Object { $p = ("$_" -split '\|')[1]; $expected -notcontains ($p -replace '\\', '/') }) }
@@ -4426,7 +4430,12 @@ function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtab
       if (("$($n.state)" -eq 'open') -and ($lastBySide.n -eq $lf)) { $cand += $n }
       $best = $null
       foreach ($c in $cand) { if (($null -eq $best) -or ([int]$c.passStreak -gt [int]$best.passStreak)) { $best = $c } }
-      if ($null -ne $best) { $n.passStreak = [int]$best.passStreak; $n.lastPassStamp = $best.lastPassStamp } else { $n.passStreak = 0 }
+      # The streak moves with its population provenance (R2-F2).
+      if ($null -ne $best) {
+        $n.passStreak = [int]$best.passStreak; $n.lastPassStamp = $best.lastPassStamp
+        $pop = if ($null -ne $best.PSObject.Properties['streakPopulation']) { "$($best.streakPopulation)" } else { '' }
+        if ($null -eq $n.PSObject.Properties['streakPopulation']) { $n | Add-Member -NotePropertyName streakPopulation -NotePropertyValue $pop } else { $n.streakPopulation = $pop }
+      } else { $n.passStreak = 0 }
       $n.state = 'open'; $n.closedAt = ''; $n.closedBy = ''
     }
     $map.Remove($old)

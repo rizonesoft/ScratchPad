@@ -647,6 +647,7 @@ $nightOwedRows = @()
 # start state, never a mid-run re-read. A failed query reds the run
 # but the report still lands (report-always outranks attribution).
 $debtSnapshot = @()
+$trackedStartText = @{}
 $debtQueryError = ''
 $debtDoc = $null
 try { $debtDoc = Get-NightDebtDocument $Root; $debtSnapshot = @(Get-OpenNightDebts $Root 'py' $debtDoc) } catch { $debtQueryError = "$_"; $failed = $true }
@@ -744,6 +745,13 @@ try {
   # fingerprint (D00 T02 §16 item 16), not just a count, and the
   # end-of-run re-check compares against it.
   $treeStart = Get-TreeFingerprint $Root
+  # The text of every file the collector may write, as the run found it
+  # (D00 T02 section 45 R2-F1): the tree check accepts a collector write
+  # only over this text.
+  foreach ($d in @($debtSnapshot)) {
+    $rel = ("$($d.File)" -replace '\\', '/')
+    if (($rel -ne '') -and (-not $trackedStartText.ContainsKey($rel))) { try { $trackedStartText[$rel] = [System.IO.File]::ReadAllText((Join-Path $Root $rel)) } catch { } }
+  }
   $dirtyState = 'clean'
   if ($treeStart.State -eq 'dirty') { $dirtyState = "dirty:$($treeStart.Count):$($treeStart.Fingerprint)" }
   elseif ($treeStart.State -eq 'unknown') { $dirtyState = 'unknown' }
@@ -1234,8 +1242,10 @@ if (-not $ledgerRead.Ok) {
   # two leaves the checkpoint as the later state, which the next run rolls
   # forward to and a rebuild restores.
   try { $cpErr = Write-IncidentLedger $ledgerUpd.Incidents (Join-Path $trxDir $script:LedgerCheckpointName) $stamp } catch { $cpErr = "$($_.Exception.Message)" }
-  if ($cpErr -ne '') { $report += "- ledger checkpoint write failed: $cpErr (a rebuild falls back to the results)" }
-  try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath $stamp } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
+  # No checkpoint, no ledger write (R2-F3): the ledger stays at its last
+  # recoverable state and the run reds.
+  if ($cpErr -ne '') { $ledgerErr = "ledger checkpoint write failed: $cpErr; the incident ledger was left at its previous state" }
+  else { try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath $stamp } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" } }
   if ($ledgerErr -ne '') { $failed = $true; $report += "- RED: $ledgerErr" }
   $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
   if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }
@@ -1427,7 +1437,7 @@ $treeEnd = Get-TreeFingerprint $Root
 # writes are the collector's recorded lines, which the tree check
 # expects and the triage step commits (section 45 item 7).
 try { Write-TrackedWriteManifest $trackedWrites (Join-Path $trxDir 'tracked-writes.json') } catch { $failed = $true; $report += "- RED: tracked-write manifest failed: $($_.Exception.Message)" }
-$treeCmp = Compare-TreeWithTrackedWrites $Root $treeStart $treeEnd $trackedWrites
+$treeCmp = Compare-TreeWithTrackedWrites $Root $treeStart $treeEnd $trackedWrites $trackedStartText
 $treeLine = $treeCmp.Line
 $reserveLeft = [int](($deadline - (Get-Date)).TotalSeconds)
 $consumedSecs = [int]((Get-Date) - $runStart).TotalSeconds
