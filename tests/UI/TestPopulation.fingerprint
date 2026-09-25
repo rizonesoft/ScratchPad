@@ -266,4 +266,4 @@ interactive:
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
 interactive-methods: 37
-interactive-cases: 37
+interactive-cases: 42
