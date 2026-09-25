@@ -1420,62 +1420,56 @@ function Get-IncidentResultRows([string[]]$ResultFiles, [string]$Since) {
   return @($rows | Sort-Object Stamp)
 }
 
+function Get-LatestLifecycleSnapshot([string[]]$ResultFiles, [string]$Since) {
+  # The newest incidentLifecycle block that is the ledger's own state
+  # (source `ledger`, section 30 R2-F1): a run whose ledger was missing
+  # or unreadable publishes `unavailable` and never counts. Returns
+  # Stamp plus Rows ($null Stamp when no snapshot exists).
+  $snap = @()
+  $snapStamp = $null
+  foreach ($f in @($ResultFiles)) {
+    try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycle') -and ("$($o.incidentLifecycleSource)" -eq 'ledger') -and ("$($o.stamp)" -ge $Since) -and (($null -eq $snapStamp) -or ("$($o.stamp)" -gt $snapStamp))) { $snap = @($o.incidentLifecycle | Where-Object { $null -ne $_ }); $snapStamp = "$($o.stamp)" }
+  }
+  return [pscustomobject]@{ Stamp = $snapStamp; Rows = $snap }
+}
+
 function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles, [string]$Since) {
   # A missing ledger reads as empty only when no earlier result carries
-  # incidents (section 30 item 4); otherwise every failure would re-file
-  # as new, so the run reds with the rebuild instruction.
+  # incidents, either as incident lines or in its published lifecycle
+  # snapshot (section 30 item 4, R3-F1: a snapshot outlives the failure
+  # results it summarizes); otherwise every failure would re-file as
+  # new, so the run reds with the rebuild instruction.
   if (Test-Path -LiteralPath $LedgerPath) { return [pscustomobject]@{ Ok = $true; Error = '' } }
   $rows = @(Get-IncidentResultRows $ResultFiles $Since)
-  if ($rows.Count -eq 0) { return [pscustomobject]@{ Ok = $true; Error = '' } }
-  return [pscustomobject]@{ Ok = $false; Error = "incident ledger missing while $($rows.Count) earlier result(s) carry incidents (latest $($rows[-1].Stamp)); rebuild: powershell -NoProfile -ExecutionPolicy Bypass -File tools/NightlyLedger.ps1 -Rebuild" }
+  $snap = Get-LatestLifecycleSnapshot $ResultFiles $Since
+  if (($rows.Count -eq 0) -and (@($snap.Rows).Count -eq 0)) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+  $what = @()
+  if ($rows.Count -gt 0) { $what += "$($rows.Count) earlier result(s) carry incidents (latest $($rows[-1].Stamp))" }
+  if (@($snap.Rows).Count -gt 0) { $what += "the $($snap.Stamp) lifecycle snapshot holds $(@($snap.Rows).Count) incident(s)" }
+  return [pscustomobject]@{ Ok = $false; Error = "incident ledger missing while $($what -join ' and '); rebuild: powershell -NoProfile -ExecutionPolicy Bypass -File tools/NightlyLedger.ps1 -Rebuild" }
 }
 
 function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [hashtable]$Owners, [hashtable]$Links = @{}) {
-  # Rebuild (section 30 item 4): replays every retained result's
-  # incidents through Update-IncidentLedger in stamp order, restoring
-  # each incident with its occurrences, then overlays the latest
-  # published incidentLifecycle snapshot for state, owner, pass streak,
-  # due date, and finding. A result set with no snapshot restarts
-  # recovery from zero (documented).
+  # Rebuild (section 30 item 4, R3-F2): the newest ledger-sourced
+  # incidentLifecycle snapshot is the last published state, so it is
+  # restored first (identity, state, owner, occurrence stamps, pass
+  # streak, due date, finding; incidents whose failure results aged out
+  # included), and only results stamped after it replay on top through
+  # Update-IncidentLedger. A closed incident that recurred later reopens
+  # with its history instead of being overwritten back to closed. With
+  # no snapshot, every result replays and recovery restarts from zero.
   $map = @{}
-  foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
-    $map = (Update-IncidentLedger $map $r.Groups $r.Stamp @{} $Owners 3 $Links).Incidents
-  }
-  # The latest result's incidentLifecycle block (section 30 R1-I1) is the
-  # last published state: restore each incident's state, owner, pass
-  # streak, due date, and finding from it instead of the replay's
-  # defaults, so a closed incident stays closed and recovery progress
-  # and historical owners survive the loss. Only incidents the replay
-  # restored are touched; the snapshot never invents one.
-  $snap = $null
-  $snapStamp = ''
-  foreach ($f in @($ResultFiles)) {
-    try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
-    # Only a block that is the ledger's state counts (R2-F1): a run whose
-    # ledger was missing or unreadable publishes source `unavailable`.
-    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycle') -and ("$($o.incidentLifecycleSource)" -eq 'ledger') -and ("$($o.stamp)" -ge $Since) -and ("$($o.stamp)" -gt $snapStamp)) { $snap = @($o.incidentLifecycle); $snapStamp = "$($o.stamp)" }
-  }
-  foreach ($row in @($snap)) {
-    if ($null -eq $row) { continue }
+  $snap = Get-LatestLifecycleSnapshot $ResultFiles $Since
+  foreach ($row in @($snap.Rows)) {
     $stamps = @(@($row.occurrenceStamps) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
-    if (-not $map.ContainsKey("$($row.id)")) {
-      # An incident whose failure results aged out lives on in the
-      # snapshot (R2-F2): restore it from the row's identity and history.
-      if (($stamps.Count -eq 0) -or ("$($row.test)" -eq '') -or ("$($row.phase)" -eq '')) { continue }
-      $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = ''; owner = "$($row.owner)"; state = 'open'; firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = ''; closedBy = ''; occurrences = @($stamps | ForEach-Object { [pscustomobject]@{ stamp = $_; wheres = @() } }); passStreak = 0; lastPassStamp = ''; due = ''; finding = '' }
-    } else {
-      $e0 = $map["$($row.id)"]
-      $have = @(@($e0.occurrences) | ForEach-Object { "$($_.stamp)" })
-      $extra = @($stamps | Where-Object { $have -notcontains $_ } | ForEach-Object { [pscustomobject]@{ stamp = $_; wheres = @() } })
-      if ($extra.Count -gt 0) { $e0.occurrences = @(@($e0.occurrences) + $extra | Sort-Object stamp) }
-      if (("$($row.firstSeen)" -ne '') -and ("$($row.firstSeen)" -lt "$($e0.firstSeen)")) { $e0.firstSeen = "$($row.firstSeen)" }
-    }
-    $e = $map["$($row.id)"]
-    $e.owner = "$($row.owner)"; $e.due = "$($row.due)"; $e.finding = "$($row.finding)"; $e.passStreak = [int]$row.passStreak
-    if ("$($row.state)" -eq 'closed') {
-      $e.state = 'closed'
-      if ("$($e.closedAt)" -eq '') { $e.closedAt = $snapStamp; $e.closedBy = "restored from the $snapStamp result snapshot" }
-    }
+    if (($stamps.Count -eq 0) -or ("$($row.test)" -eq '') -or ("$($row.phase)" -eq '') -or ("$($row.id)" -notmatch '^INC-[0-9a-f]{8}$')) { continue }
+    $closed = ("$($row.state)" -eq 'closed')
+    $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = ''; owner = "$($row.owner)"; state = $(if ($closed) { 'closed' } else { 'open' }); firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = $(if ($closed) { $snap.Stamp } else { '' }); closedBy = $(if ($closed) { "restored from the $($snap.Stamp) result snapshot" } else { '' }); occurrences = @($stamps | Sort-Object | ForEach-Object { [pscustomobject]@{ stamp = $_; wheres = @() } }); passStreak = [int]$row.passStreak; lastPassStamp = ''; due = "$($row.due)"; finding = "$($row.finding)" }
+  }
+  foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
+    if (($null -ne $snap.Stamp) -and ($r.Stamp -le $snap.Stamp)) { continue }
+    $map = (Update-IncidentLedger $map $r.Groups $r.Stamp @{} $Owners 3 $Links).Incidents
   }
   return $map
 }

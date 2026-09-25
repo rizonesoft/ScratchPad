@@ -485,6 +485,21 @@ $se = $snapMap['INC-1a2b3c4d']
 Assert (($se.state -eq 'closed') -and ($se.passStreak -eq 3) -and ($se.finding -eq 'abc1234') -and ($se.closedAt -eq '2026-09-28-023001') -and (@($se.occurrences).Count -eq 3) -and ($se.firstSeen -eq '2026-09-25-023001')) 'ledger-rebuild-restores-snapshot-past-an-unavailable-run' "$($se.state) $($se.passStreak) $($se.finding) $($se.closedAt) $(@($se.occurrences).Count)"
 $ag = $snapMap['INC-0000aced']
 Assert (($null -ne $ag) -and ($ag.test -eq 'UI.Aged.T') -and ($ag.passStreak -eq 1) -and ($ag.due -eq '2026-09-27') -and (@($ag.occurrences).Count -eq 1)) 'ledger-rebuild-restores-aged-out-incident' "$($ag.test) $($ag.passStreak)"
+# R3-F2: a closed incident that recurs after the snapshot (during a
+# ledger-unavailable run) rebuilds reopened with its later occurrence.
+[pscustomobject]@{ version = 1; stamp = '2026-09-30-023001'; incidents = @('- INC-1a2b3c4d `UI.X.Y` x1 (ui-soak-1): Assert.NotNull() Failure'); incidentLifecycleSource = 'unavailable'; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-30-023001.result.json') -Encoding UTF8
+$reFiles = @(Get-ChildItem $ledDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
+$reMap = New-IncidentLedgerFromResults $reFiles '2026-09-25-000000' @{} @{}
+$re = $reMap['INC-1a2b3c4d']
+Assert (($re.state -eq 'open') -and ($re.passStreak -eq 0) -and (@($re.occurrences).Count -eq 4) -and ($re.lastSeen -eq '2026-09-30-023001') -and ($re.closedAt -eq '') -and ($re.finding -eq 'abc1234')) 'ledger-rebuild-replays-recurrence-after-snapshot' "$($re.state) $($re.passStreak) $(@($re.occurrences).Count) $($re.lastSeen)"
+Remove-Item (Join-Path $ledDir 'morning-2026-09-30-023001.result.json')
+# R3-F1: with the failure results aged out, a surviving snapshot still
+# makes a missing ledger red.
+$snapOnly = Join-Path $dir 'ledger-snaponly'
+$null = New-Item -ItemType Directory -Force -Path $snapOnly
+Copy-Item (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') $snapOnly
+$soPres = Test-IncidentLedgerPresence (Join-Path $snapOnly 'incidents.json') @(Get-ChildItem $snapOnly -Filter '*.result.json' | ForEach-Object { $_.FullName }) '2026-09-25-000000'
+Assert (($soPres.Ok -eq $false) -and ($soPres.Error -like 'incident ledger missing while the 2026-09-28-023001 lifecycle snapshot holds 2 incident(s); rebuild:*')) 'ledger-missing-with-snapshot-only-reds' $soPres.Error
 $agErr = Write-IncidentLedger $snapMap (Join-Path $ledDir 'rebuilt.json')
 Assert ($agErr -eq '') 'ledger-rebuild-with-snapshot-writes-back' $agErr
 # Item 3: release candidates name the oldest exemptions and citations.
