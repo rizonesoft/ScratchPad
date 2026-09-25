@@ -29,7 +29,7 @@ param(
   [string]$Owner = '',
   [string]$CorrectiveOwner = '',
   [string]$Due = '',
-  [string[]]$Cover = @(),
+  [string]$Cover = '',
   [switch]$CoversAll,
   [string]$Out = '',
   [string]$Today = '',
@@ -62,17 +62,20 @@ if ($Draft) {
   if ($Evidence -ne '') { $lines += "evidence: $Evidence" }
   # A run with several incidents needs per-incident coverage (R1-I2).
   if ($CoversAll) { $lines += 'covers-all: yes' }
-  foreach ($c in @($Cover)) { if ("$c" -ne '') { $lines += "cover: $c" } }
+  # -Cover takes `INC-<id> <disposition> <finding>` entries separated by ';'.
+  foreach ($c in @($Cover -split ';')) { if ("$c".Trim() -ne '') { $lines += "cover: $("$c".Trim())" } }
   $lines += @("signed: $signed", '---', '', "# Acknowledgement: $Run", '', "Drafted by tools/NightlyAck.ps1 from the run's current result (checksum $($d.Current.Substring(0, 12))); state the cause and what the finding changes here before committing.")
   $text = ($lines -join "`n") + "`n"
   $v = Test-AckV2 $text $demands
   $errs = @($v.Errors)
   if ($v.Ok -and ($Disposition -ne 'withdrawn')) {
-    $fm = Read-AckFrontmatter $text
-    $errs += @(Test-DispositionEvidence $fm.Fields @($v.Acked) $demands $Root)
+    # The gate's own evidence check (R2-F3), so a draft the helper
+    # accepts is one the gate accepts once committed.
     $known = @()
     foreach ($k in @($demands.Keys)) { $known += @($demands[$k].Incidents) }
-    if (-not (Test-FindingExists $Root $Finding $known)) { $errs += "finding $Finding not found" }
+    $ledger = Read-IncidentLedger (Join-Path $nightDir 'incidents.json')
+    if ($ledger.Ok) { $known += @($ledger.Incidents.Keys) }
+    $errs += @(Test-AckEvidence $Root (Read-AckFrontmatter $text) @($v.Acked) $demands $known)
   }
   if (@($errs).Count -gt 0) { Write-Output "ack: draft refused ($(@($errs) -join '; ')); nothing written"; exit 1 }
   if ($Out -eq '') { $Out = Join-Path $ackDir ("ack-{0}.md" -f ($Run -replace '[^0-9A-Za-z-]', '-')) }
@@ -126,5 +129,5 @@ if ($FileOverdue) {
   exit 0
 }
 
-Write-Output 'usage: NightlyAck.ps1 -Draft -Run <identity> -Disposition <d> -Owner <o> [-Finding <f>] [-Evidence <e>] [-Cover "INC-<id> <disposition> <finding>", ...] [-CoversAll] [-CorrectiveOwner <c>] [-Due YYYY-MM-DD] [-Out <path>] | -FileOverdue [-Commit] [-Today YYYY-MM-DD] [-WorkspaceRoot <dir>]'
+Write-Output 'usage: NightlyAck.ps1 -Draft -Run <identity> -Disposition <d> -Owner <o> [-Finding <f>] [-Evidence <e>] [-Cover "INC-<id> <disposition> <finding>; ..."] [-CoversAll] [-CorrectiveOwner <c>] [-Due YYYY-MM-DD] [-Out <path>] | -FileOverdue [-Commit] [-Today YYYY-MM-DD] [-WorkspaceRoot <dir>]'
 exit 2

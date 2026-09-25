@@ -1052,7 +1052,7 @@ Assert ((-not (Test-Path (Join-Path $capFx 'run-a-failure.png'))) -and (@($capNo
 $s23 = Join-Path $dir 's23'
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $s23 'build\nightly\retained\copy')
 function New-RedResult([string]$Path, [string]$Identity, [string]$Day, [string[]]$Incidents, [string]$Verdict = 'red') {
-  $o = [pscustomobject]@{ version = 1; stamp = $Identity.Substring(0, 17); day = $Day; identity = $Identity; verdict = $Verdict; exit = 1; incidents = @($Incidents) }
+  $o = [pscustomobject]@{ version = 1; stamp = $Identity.Substring(0, 17); day = $Day; identity = $Identity; verdict = $Verdict; exit = $(if ($Verdict -eq 'green') { 0 } else { 1 }); incidents = @($Incidents) }
   (ConvertTo-Json $o -Depth 5) | Set-Content -Path $Path -Encoding UTF8
 }
 $runA1 = '2026-09-22-023001-pid100'
@@ -1308,6 +1308,21 @@ Remove-Item Env:\GIT_AUTHOR_DATE; Remove-Item Env:\GIT_COMMITTER_DATE
 $gT = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert (($gT.Unacked -contains $runA2) -and (@($gT.Lines | Where-Object { $_ -like "*$runA2 released by ack-2026-09-22-a2.md (withdrawn)*" }).Count -eq 1)) 'ack-commit-graph-order-governs-over-equal-timestamps' ($gT.Lines -join ' | ')
 & git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-z.md') (Join-Path $ackDir 'ack-2026-09-22-a2.md') 2>$null; & git -C $repo commit -q -m 'drop z a2' 2>$null
+# R2-F1: contradictory or mis-versioned results demand as invalid.
+$rBadEx = New-Res31 'morning-2026-09-26-160000.result.json' @{ identity = '2026-09-26-160000-pid7'; exit = 0 }
+$rBadVer = New-Res31 'morning-2026-09-26-170000.result.json' @{ identity = '2026-09-26-170000-pid8'; version = 9 }
+$rBadRev = New-Res31 'morning-2026-09-26-180000.result.json' @{ identity = '2026-09-26-180000-pid9'; revision = 0 }
+$dBad = Get-AckDemands @($rBadEx, $rBadVer, $rBadRev)
+Assert (($dBad['unreadable:morning-2026-09-26-160000.result.json'].Invalid -eq 'verdict red contradicts exit 0') -and ($dBad['unreadable:morning-2026-09-26-170000.result.json'].Invalid -like "schema version '9'*") -and ($dBad['unreadable:morning-2026-09-26-180000.result.json'].Invalid -like "revision '0'*")) 'ack-invalid-shapes-demand-with-their-reason' ((@($dBad.Keys) | Sort-Object) -join ',')
+# R2-F2: the queue follows the current copy.
+$rqOld = New-Res31 'retained\c\result.json' @{ identity = '2026-09-26-190000-pid10'; revision = 1; proof = $true }
+$rqNew = New-Res31 'morning-2026-09-26-190000.result.json' @{ identity = '2026-09-26-190000-pid10'; revision = 2; proof = $false }
+Assert ((Get-AckDemands @($rqOld, $rqNew))['2026-09-26-190000-pid10'].Queue -eq 'operational') 'ack-queue-follows-the-current-revision'
+Remove-Item $rqOld
+# R2-F3: a cover line carries the evidence its own disposition needs.
+$fmCov = Read-AckFrontmatter ((New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'none' }).Replace("`n---`n", "`ncover: INC-aaaa1111 fixed D00 T02 ${S}9`n---`n"))
+$covErr = @(Test-AckEvidence $repo $fmCov @($runA2) $dem @('INC-aaaa1111'))
+Assert (($covErr -join '') -like '*cover INC-aaaa1111: fixed needs a commit*') 'ack-cover-disposition-needs-its-evidence' ($covErr -join '; ')
 # Item 1: overdue filings dedupe to one row updated per night.
 $of1 = Update-OverdueFindings @() @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-24'
 $of2 = Update-OverdueFindings $of1.Lines @([pscustomobject]@{ Id = 'run-x'; What = 'RED 2026-09-20'; Incidents = 'none' }) '2026-09-25'

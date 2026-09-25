@@ -91,6 +91,9 @@ $run3 = '2026-09-27-023001-pid9'
 [pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-27-023001'; day = '2026-09-27'; identity = $run3; verdict = 'red'; exit = 1; startUtc = '2026-09-27T00:30:01.0000000Z'; tz = '+02:00'; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; failed = 1; gate = 0 }; 'run-b' = [pscustomobject]@{ ran = $true; failed = 0; gate = 0 }; interactive = [pscustomobject]@{ ran = $false } } } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $nd 'morning-2026-09-27-023001.result.json') -Encoding UTF8
 $fs = Invoke-Helper @('-FileOverdue', '-Today', '2026-09-28', '-WorkspaceRoot', $ws)
 Assert (($fs.Code -eq 0) -and (@(Get-Content $table | Where-Object { $_ -like "| $run3 |*" }).Count -eq 1)) 'file-overdue-uses-the-nightly-sla' $fs.Text
+# R2 parity: the helper refuses a cover the gate would refuse.
+$badCover = Invoke-Helper @('-Draft', '-Run', $run2, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', "D00 T02 ${S}9", '-Cover', "INC-aaaa1111 filed D99 T99 ${S}999; INC-bbbb2222 filed D00 T02 ${S}9", '-Today', '2026-09-22', '-WorkspaceRoot', $ws)
+Assert (($badCover.Code -eq 1) -and ($badCover.Text -like '*cover INC-aaaa1111 finding D99 T99*999 not found*')) 'draft-refuses-a-cover-the-gate-refuses' $badCover.Text
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyAck.Tests: all green'

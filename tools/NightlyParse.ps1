@@ -2704,6 +2704,26 @@ function Test-ProofResult($Result) {
   return $false
 }
 
+function Test-AckResultShape($Result) {
+  # What an acknowledgement binds to must itself be sound (section 31
+  # R2-F1): schema version 1, a known verdict whose exit agrees with it,
+  # an identity or stamp on a RED, and a positive whole revision when
+  # one is recorded. Returns '' when sound, else the reason. The full
+  # nightly schema (legs, env, timings) is Test-ResultFile's job; results
+  # written before those fields existed still acknowledge.
+  if ($null -eq $Result) { return 'unreadable' }
+  if ("$($Result.version)" -ne '1') { return "schema version '$($Result.version)' (want 1)" }
+  $v = "$($Result.verdict)"
+  if (@('green', 'red', 'stood-down', 'cancelled') -notcontains $v) { return "unknown verdict '$v'" }
+  $ex = "$($Result.exit)"
+  if ($ex -notmatch '^-?\d+$') { return "exit '$ex' is not a number" }
+  if ((@('green', 'stood-down') -contains $v) -and ([int]$ex -ne 0)) { return "verdict $v contradicts exit $ex" }
+  if ((@('red', 'cancelled') -contains $v) -and ([int]$ex -eq 0)) { return "verdict $v contradicts exit $ex" }
+  if ((@('red', 'cancelled') -contains $v) -and ("$($Result.identity)" -eq '') -and ("$($Result.stamp)" -eq '')) { return 'a RED with no identity or stamp' }
+  if ((@($Result.PSObject.Properties.Name) -contains 'revision') -and ("$($Result.revision)" -notmatch '^[1-9]\d*$')) { return "revision '$($Result.revision)' is not a positive whole number" }
+  return ''
+}
+
 function Get-AckDemands($ResultFiles) {
   # One demand per RED or cancelled run identity (D00 T02 §23 items 1
   # and 4): retained copies, reruns, and re-emitted results of one run
@@ -2728,15 +2748,14 @@ function Get-AckDemands($ResultFiles) {
     $r = $null
     $readErr = ''
     try { $r = Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $readErr = $_.Exception.Message }
-    $invalid = ($null -eq $r) -or ($readErr -ne '') -or (@('green', 'red', 'stood-down', 'cancelled') -notcontains "$($r.verdict)")
-    if ((-not $invalid) -and (@('red', 'cancelled') -contains "$($r.verdict)") -and ("$($r.identity)" -eq '') -and ("$($r.stamp)" -eq '')) { $invalid = $true }
-    if ($invalid) {
+    $why = if ($readErr -ne '') { 'unreadable' } else { Test-AckResultShape $r }
+    if ($why -ne '') {
       $name = Split-Path -Leaf $p
       $id = "unreadable:$name"
       $dm = [regex]::Match($name, '(\d{4}-\d{2}-\d{2})')
       $day = if ($dm.Success) { $dm.Groups[1].Value } else { '' }
       $sha = Get-FileSha256 $p
-      if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = $day; Queue = 'operational'; Shas = @($sha); Incidents = @(); Paths = @($p); Current = $sha; CurrentTime = [datetime]::MinValue; AllIncidents = @(); Conflict = @(); Unreadable = $true; SchemaVersion = ''; Result = $null; Revision = 0 } }
+      if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = $day; Queue = 'operational'; Shas = @($sha); Incidents = @(); Paths = @($p); Current = $sha; CurrentTime = [datetime]::MinValue; AllIncidents = @(); Conflict = @(); Unreadable = $true; Invalid = $why; SchemaVersion = ''; Result = $null; Revision = 0 } }
       continue
     }
     if (@('red', 'cancelled') -notcontains "$($r.verdict)") { continue }
@@ -2760,12 +2779,12 @@ function Get-AckDemands($ResultFiles) {
     if ($hasRev) { try { $rev = [int]$r.revision } catch { $rev = 0 } }
     $wt = (Get-Item -LiteralPath $p).LastWriteTimeUtc
     if ($hasRev -and ($rev -gt 0)) {
-      if ($rev -gt $d.Revision) { $d.Revision = $rev; $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc; $d.Result = $r; $d.Conflict = @() }
+      if ($rev -gt $d.Revision) { $d.Revision = $rev; $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc; $d.Result = $r; $d.Conflict = @(); $d.Queue = $queue }
       elseif (($rev -eq $d.Revision) -and ($sha -ne $d.Current)) { if ($d.Conflict -notcontains $sha) { $d.Conflict += $sha } }
     } elseif ($d.Revision -le 0) {
       # Legacy copies: the most recently written is current, so an older
       # retained copy can never keep a changed result acknowledged.
-      if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc; $d.Result = $r; $d.Revision = 0 }
+      if ($wt -ge $d.CurrentTime) { $d.Current = $sha; $d.CurrentTime = $wt; $d.Incidents = $copyInc; $d.Result = $r; $d.Revision = 0; $d.Queue = $queue }
     }
   }
   return $demands
@@ -2989,6 +3008,26 @@ function Test-DispositionEvidence($Fields, [string[]]$Runs, [hashtable]$Demands,
   return @()
 }
 
+function Test-AckEvidence([string]$Root, $Frontmatter, [string[]]$Acked, [hashtable]$Demands, [string[]]$KnownIncidents) {
+  # Everything an ack claims beyond its shape, shared by the gate and
+  # tools/NightlyAck.ps1 -Draft (section 31 R2-F3): the linked finding
+  # exists, the disposition carries its evidence, and every cover line's
+  # finding exists and carries the evidence its own disposition needs.
+  # Returns error strings.
+  $f = $Frontmatter.Fields
+  $errs = @()
+  $fnd = "$($f['finding'])"
+  if (-not (Test-FindingExists $Root $fnd $KnownIncidents)) { return @("finding $fnd not found") }
+  $errs += @(Test-DispositionEvidence $f $Acked $Demands $Root)
+  foreach ($c in @($Frontmatter.Covers)) {
+    $cm = [regex]::Match("$c", '^(INC-[0-9a-f]{8})\s+(\S+)\s+(.+?)\s*$')
+    if (-not $cm.Success) { continue }
+    if (-not (Test-FindingExists $Root $cm.Groups[3].Value $KnownIncidents)) { $errs += "cover $($cm.Groups[1].Value) finding $($cm.Groups[3].Value) not found"; continue }
+    foreach ($e in @(Test-DispositionEvidence @{ disposition = $cm.Groups[2].Value; finding = $cm.Groups[3].Value } $Acked $Demands $Root)) { $errs += "cover $($cm.Groups[1].Value): $e" }
+  }
+  return $errs
+}
+
 function Get-AckDue($Demand, [int]$SlaHours = 0) {
   # The deadline as an explicit timestamp (section 31 item 8): the end
   # of the run's day plus $script:AckDueDays (23:59:59 in the run's own
@@ -3063,15 +3102,8 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     if ($v.Ok -and ($v.Disposition -ne 'withdrawn')) {
       # The linked finding must exist, and the disposition must carry its
       # own evidence (section 31 item 3).
-      $fnd = "$($fm.Fields['finding'])"
-      # Every per-incident cover finding must exist as well (R1-F3).
-      $missingCover = @(@($fm.Covers) | ForEach-Object { $cm = [regex]::Match("$_", '^(INC-[0-9a-f]{8})\s+\S+\s+(.+?)\s*$'); if ($cm.Success -and (-not (Test-FindingExists $Root $cm.Groups[2].Value $knownIncidents))) { "cover $($cm.Groups[1].Value) finding $($cm.Groups[2].Value) not found" } })
-      if (-not (Test-FindingExists $Root $fnd $knownIncidents)) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding $fnd not found"); Disposition = $v.Disposition } }
-      elseif ($missingCover.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $missingCover; Disposition = $v.Disposition } }
-      else {
-        $evErr = @(Test-DispositionEvidence $fm.Fields @($v.Acked) $Demands $Root)
-        if ($evErr.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition } }
-      }
+      $evErr = @(Test-AckEvidence $Root $fm @($v.Acked) $Demands $knownIncidents)
+      if ($evErr.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition } }
     }
     if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
     $when = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Date)" } else { '' }
@@ -3137,7 +3169,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     $isProof = ($d.Queue -eq 'proof')
     if ($isProof) { $proofUnacked += $id } else { $unacked += $id }
     $tag = if ($isProof) { ' (proof queue)' } else { '' }
-    $what = if ($d.Unreadable) { "UNREADABLE result $($id.Substring(11))" } else { "RED $($d.Day)" }
+    $what = if ($d.Unreadable) { "UNREADABLE result $($id.Substring(11)): $($d.Invalid)" } else { "RED $($d.Day)" }
     $sla = 0
     if (($null -ne $SlaFor) -and ($null -ne $d.Result)) { try { $sla = [int](& $SlaFor $d.Result) } catch { $sla = 0 } }
     $due = Get-AckDue $d $sla
