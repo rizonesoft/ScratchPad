@@ -87,7 +87,19 @@ public partial class App : Application
 
     private void AddWindow(SessionWindow? restore)
     {
-        var window = new MainWindow(firstWindow: windows.Count == 0, restore: restore);
+        MainWindow window;
+        try
+        {
+            window = new MainWindow(firstWindow: windows.Count == 0, restore: restore);
+        }
+        catch
+        {
+            // A construction that threw before its sweep leaves nothing for
+            // the next birth (D00 T02 §48 item 6).
+            MainWindow.AbandonPendingSweep();
+            throw;
+        }
+
         windows.Add(window);
         window.Closed += (_, _) => windows.Remove(window);
         ShowWindow(window);

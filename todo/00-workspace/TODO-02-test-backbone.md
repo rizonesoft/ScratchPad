@@ -1526,20 +1526,22 @@ Why this section exists: the §40 plan review returned 16 findings; 14 file here
 
 ## 48. Sibling Sweep Third Residuals
 
+> **Started:** 2026-09-25T23:39:18Z
+
 Why this section exists: the §41 plan review returned 12 findings; 9 file here and 3 are rejected with reasons in the §41 findings file. §41 made the sweep decide by provenance (generations, marks, claims), revalidate before moving, run a delayed pass, and prove the first birth from outside; these carry that through overlap placement, containment, recorder guarantees, failure cleanup, correlation, topology, and cost. -> SOURCE: plan-review-D00-T02-s41-2026-09-25-s48 D00-T02-S41-PR1 D00-T02-S41-PR2 D00-T02-S41-PR3 D00-T02-S41-PR5 D00-T02-S41-PR6 D00-T02-S41-PR7 D00-T02-S41-PR8 D00-T02-S41-PR11 D00-T02-S41-PR12
 
 - -> XREF: D00 T02 §41 -- filed from its plan review; carries the sweep it made provenance-based.
 
-- [ ] Overlapping constructions have a placement policy beyond pinning nothing: an overlapped birth's helpers are deferred to a later owned pass or the launch fails loud, so safety never silently disappears. Done when: an overlapped birth's helper lands at the target or the launch reports it. (D00-T02-S41-PR1.)
-- [ ] Ambiguous and late-unplaced helpers carry a containment and failure policy: a background launch with a visible unplaced helper never passes placement. Done when: an ambiguous visible helper fails the background placement verdict. (D00-T02-S41-PR2.)
-- [ ] Claim attribution is proven on shared framework threads: a two-construction fixture shows foreign helpers stay untouched and each construction's own helpers still pin. Done when: both constructions' helpers read correctly in one fixture. (D00-T02-S41-PR3.)
-- [ ] The location recorder states its delivery guarantees, fails on timeout or overflow, and carries a planted move-and-snap-back control. Done when: a planted move-and-snap-back is recorded, and a recorder overflow fails the proof. (D00-T02-S41-PR5.)
-- [ ] The first-birth proof requires every independently observed base-constructor helper to reach the target, catching helpers missing from both the snapshot and the sweep log. Done when: a helper absent from the sweep log fails the first-birth proof. (D00-T02-S41-PR6.)
-- [ ] A construction that fails before its constructor body runs leaves no snapshot token or claim that contaminates the next birth. Done when: a base-constructor-failure fixture leaves the next birth's sweep clean. (D00-T02-S41-PR7.)
-- [ ] Launch diagnostics correlate concurrent launches by construction generation and state complete sweep outcomes and missing or truncated logs explicitly. Done when: two concurrent launches' records each quote only their own generation. (D00-T02-S41-PR8.)
-- [ ] The delayed pass revalidates the target against the current topology before moving, so a monitor change never makes an obsolete target visible. Done when: a target now on a connected monitor is recomputed before the move. (D00-T02-S41-PR11.)
-- [ ] Enumeration, attribution, and delayed passes have a bounded cost: repeated multi-window birth and teardown stays within a latency and retained-state budget. Done when: twenty births and teardowns keep the claim table and the pass latency within budget. (D00-T02-S41-PR12.)
-- [ ] Commit: `"workspace: settle the third sibling sweep residuals"`
+- [x] Overlapping constructions have a placement policy beyond pinning nothing: an overlapped birth's helpers are deferred to a later owned pass or the launch fails loud, so safety never silently disappears. Done when: an overlapped birth's helper lands at the target or the launch reports it. (D00-T02-S41-PR1.)
+- [x] Ambiguous and late-unplaced helpers carry a containment and failure policy: a background launch with a visible unplaced helper never passes placement. Done when: an ambiguous visible helper fails the background placement verdict. (D00-T02-S41-PR2.)
+- [x] Claim attribution is proven on shared framework threads: a two-construction fixture shows foreign helpers stay untouched and each construction's own helpers still pin. Done when: both constructions' helpers read correctly in one fixture. (D00-T02-S41-PR3.)
+- [x] The location recorder states its delivery guarantees, fails on timeout or overflow, and carries a planted move-and-snap-back control. Done when: a planted move-and-snap-back is recorded, and a recorder overflow fails the proof. (D00-T02-S41-PR5.)
+- [x] The first-birth proof requires every independently observed base-constructor helper to reach the target, catching helpers missing from both the snapshot and the sweep log. Done when: a helper absent from the sweep log fails the first-birth proof. (D00-T02-S41-PR6.)
+- [x] A construction that fails before its constructor body runs leaves no snapshot token or claim that contaminates the next birth. Done when: a base-constructor-failure fixture leaves the next birth's sweep clean. (D00-T02-S41-PR7.)
+- [x] Launch diagnostics correlate concurrent launches by construction generation and state complete sweep outcomes and missing or truncated logs explicitly. Done when: two concurrent launches' records each quote only their own generation. (D00-T02-S41-PR8.)
+- [x] The delayed pass revalidates the target against the current topology before moving, so a monitor change never makes an obsolete target visible. Done when: a target now on a connected monitor is recomputed before the move. (D00-T02-S41-PR11.)
+- [x] Enumeration, attribution, and delayed passes have a bounded cost: repeated multi-window birth and teardown stays within a latency and retained-state budget. Done when: twenty births and teardowns keep the claim table and the pass latency within budget. (D00-T02-S41-PR12.)
+- [x] Commit: `"workspace: settle the third sibling sweep residuals"`
 
 **Test checkpoint:** Overlapped births place or fail loud, unplaced visible helpers fail the verdict, shared-thread attribution holds both ways, the recorder proves delivery with a control, the first birth's helpers all reach the target, failed constructions leave nothing behind, records correlate by generation, targets follow topology, and cost stays bounded. Cheaper substitute that fails: more reasons in the sweep log with no fixture that forces them.
 

@@ -150,6 +150,12 @@ internal static class UiLaunchDiagnostics
             ["seedY"] = seedY,
             ["sweep"] = SweepLines(sweepLog, hwnd, ownsSweepLog),
         };
+        // Correlation and completeness (D00 T02 §48 item 7): the record
+        // quotes the generation its own lines carry and states the sweep
+        // outcome, so concurrent launches never borrow each other's lines.
+        var summary = SweepSummary((string[])record["sweep"]!, hwnd);
+        record["generation"] = summary.Generation;
+        record["sweepOutcome"] = summary.Outcome;
         string path = LogPath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.AppendAllText(path, JsonSerializer.Serialize(record) + Environment.NewLine);
@@ -225,6 +231,45 @@ internal static class UiLaunchDiagnostics
         }
 
         return found;
+    }
+
+    // One record's sweep summary (D00 T02 §48 item 7): only lines naming
+    // this main count; the generation is theirs (null when none, or
+    // "conflict" when they disagree); the outcome is complete (a sweep
+    // and its delayed pass), late-missing, log-missing (no line for a
+    // background birth), truncated (a line the parser cannot read), or
+    // none (no background birth).
+    internal static (object? Generation, string Outcome) SweepSummary(string[] lines, nint main)
+    {
+        if (main == nint.Zero || Environment.GetEnvironmentVariable(UiLaunch.BackgroundVariable) != "1")
+        {
+            return (null, lines.Length == 0 ? "none" : "unexpected-lines");
+        }
+
+        string prefix = $" main=0x{(long)main:X} ";
+        var mine = lines.Where(l => l.Contains(prefix, StringComparison.Ordinal)).ToList();
+        if (mine.Count == 0)
+        {
+            return (null, "log-missing");
+        }
+
+        var gens = new HashSet<long>();
+        foreach (string l in mine)
+        {
+            var m = Regex.Match(l, @" gen=(\d+) ");
+            if (m.Success)
+            {
+                gens.Add(long.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
+            }
+            else if (!l.Contains(" missing:", StringComparison.Ordinal))
+            {
+                return (null, "truncated");
+            }
+        }
+
+        object? gen = gens.Count == 1 ? gens.First() : gens.Count == 0 ? null : "conflict";
+        bool late = mine.Any(l => l.StartsWith("sweep-late ", StringComparison.Ordinal) && !l.Contains(" missing:", StringComparison.Ordinal));
+        return (gen, late ? "complete" : "late-missing");
     }
 
     internal static bool IsVisible(nint hwnd) => Native.IsWindowVisible(hwnd);

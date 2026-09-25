@@ -25,6 +25,37 @@ public sealed class LaunchDiagnosticsTests
         Assert.Equal(expected, UiLaunchDiagnostics.RedactArgs(args));
     }
 
+    // D00 T02 §48 item 7: two concurrent launches' lines in one log; each
+    // record quotes only its own generation, and outcomes say what is
+    // missing.
+    [Fact]
+    public void ConcurrentLaunchRecordsQuoteOnlyTheirOwnGeneration()
+    {
+        string? saved = Environment.GetEnvironmentVariable(UiLaunch.BackgroundVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, "1");
+            string[] log =
+            [
+                "sweep main=0xA1 target=-32000,-32000 gen=7 pinned=0x10@-32000,-32000 skipped= verdict=pass",
+                "sweep main=0xB2 target=-32000,-32000 gen=8 pinned= skipped=0x20(ambiguous) verdict=pass",
+                "sweep-late main=0xA1 target=-32000,-32000 gen=7 pinned= skipped= verdict=pass",
+            ];
+            var a = UiLaunchDiagnostics.SweepSummary(log, 0xA1);
+            var b = UiLaunchDiagnostics.SweepSummary(log, 0xB2);
+            var c = UiLaunchDiagnostics.SweepSummary(log, 0xC3);
+            var t = UiLaunchDiagnostics.SweepSummary(["sweep main=0xD4 target=-32000,-3"], 0xD4);
+            Assert.Equal((7L, "complete"), ((long)a.Generation!, a.Outcome));
+            Assert.Equal((8L, "late-missing"), ((long)b.Generation!, b.Outcome));
+            Assert.Equal("log-missing", c.Outcome);
+            Assert.Equal("truncated", t.Outcome);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(UiLaunch.BackgroundVariable, saved);
+        }
+    }
+
     [Fact]
     public void ForcedFailureQuotesAllSeven()
     {
@@ -67,6 +98,11 @@ public sealed class LaunchDiagnosticsTests
                 Assert.Contains(sweep, l => l.StartsWith($"sweep main=0x{main:X} ", StringComparison.Ordinal) && l.Contains(" gen=", StringComparison.Ordinal) && l.Contains(" skipped=", StringComparison.Ordinal));
                 // R3-F3: the delayed pass is in the record, or named missing.
                 Assert.Contains(sweep, l => l.StartsWith($"sweep-late main=0x{main:X} ", StringComparison.Ordinal));
+                // D00 T02 §48 items 2 and 7: the verdict passes, and the record
+                // names its generation and a complete sweep.
+                Assert.All(sweep.Where(l => l.StartsWith("sweep", StringComparison.Ordinal) && !l.Contains(" missing:", StringComparison.Ordinal)), l => Assert.EndsWith(" verdict=pass", l, StringComparison.Ordinal));
+                Assert.Equal(JsonValueKind.Number, record.GetProperty("generation").ValueKind);
+                Assert.Equal("complete", record.GetProperty("sweepOutcome").GetString());
                 Assert.Equal("seeded-offscreen", record.GetProperty("move").GetString());
                 Assert.NotNull(record.GetProperty("hwnd").ValueKind == JsonValueKind.Number
                     ? record.GetProperty("hwnd")

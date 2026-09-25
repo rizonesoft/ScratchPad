@@ -255,6 +255,11 @@ public sealed partial class MainWindow : Window, IDisposable
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool IsWindow(nint hWnd);
 
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool IsWindowVisible(nint hWnd);
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateWindowExW", SetLastError = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern nint CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint param);
@@ -419,7 +424,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             nint rootOwner = NativeMethods.GetAncestor(hwnd, 3);
             string cls = NativeMethods.ClassName(hwnd);
-            return new SiblingTopLevel(hwnd, rootOwner, thread, cls == MainClass, (long)NativeMethods.GetProp(hwnd, MarkProperty), thread != 0 && rootOwner != 0, cls, (long)NativeMethods.GetProp(hwnd, ClaimProperty));
+            return new SiblingTopLevel(hwnd, rootOwner, thread, cls == MainClass, (long)NativeMethods.GetProp(hwnd, MarkProperty), thread != 0 && rootOwner != 0, cls, (long)NativeMethods.GetProp(hwnd, ClaimProperty), NativeMethods.IsWindowVisible(hwnd));
         }
 
         static SiblingTopLevel? ReadNow(nint hwnd)
@@ -456,7 +461,18 @@ public sealed partial class MainWindow : Window, IDisposable
                 PendingLate[main] = (snapshot, final.Where(d => seen.ContainsKey(d.Handle)).ToDictionary(d => d.Handle, d => seen[d.Handle]));
             }
 
-            LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep", generation));
+            LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep", generation, SiblingSelection.PlacementVerdict(final, windows.ToDictionary(w => w.Handle))));
+        }
+
+        // A construction that failed before its sweep (§48 item 6): the
+        // window factory calls this when the constructor threw, so the
+        // failed birth's snapshot never reaches the next one.
+        internal static void Abandon()
+        {
+            if (Pending.Abandon())
+            {
+                LogSweep("abandoned construction: pending snapshot cleared");
+            }
         }
 
         // Pins each selected window after revalidating it (§41 item 5): a
@@ -505,9 +521,21 @@ public sealed partial class MainWindow : Window, IDisposable
 
             List<SiblingTopLevel> windows = ProcessTopLevels();
             IReadOnlyList<SiblingDecision> decisions = SiblingSelection.DecideLate(windows, last.Snapshot, main, last.Decided, Pending.Claims, Pending.BegunSince(last.Snapshot));
+            // The target follows the current topology (§48 item 8): a
+            // monitor attached since the snapshot never receives a helper.
+            ShellSettings live = SettingsStore.Shared.Current;
+            int width = Math.Max(100, live.Width);
+            int height = Math.Max(100, live.Height);
+            var (rx, ry, recomputed) = SiblingSelection.Retarget(targetX, targetY, (x, y) => NativeMethods.OutsideVirtualScreen(x, y, width, height), () => NativeMethods.OffScreenOrigin(width, height));
+            if (recomputed)
+            {
+                LogSweep($"retarget main=0x{((long)main).ToString("X", System.Globalization.CultureInfo.InvariantCulture)} from={targetX},{targetY} to={rx},{ry}");
+                (targetX, targetY) = (rx, ry);
+            }
+
             var (final, pinnedAt) = PinDecided(main, windows, decisions);
             ClaimAll(last.Snapshot.Generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle));
-            LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep-late", last.Snapshot.Generation));
+            LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep-late", last.Snapshot.Generation, SiblingSelection.PlacementVerdict(final, windows.ToDictionary(w => w.Handle))));
         }
 
         // Records the claims and stamps each window with its claim mark.
@@ -578,6 +606,10 @@ public sealed partial class MainWindow : Window, IDisposable
             _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, targetX, targetY, 0, 0, noSizeNoZOrderNoActivate);
         }
     }
+
+    // The factory's cleanup for a construction that threw (D00 T02 §48
+    // item 6): the pending sweep snapshot clears.
+    internal static void AbandonPendingSweep() => SiblingPin.Abandon();
 
     public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {

@@ -34,6 +34,44 @@ public static class SiblingSelection
 {
     public const string Pin = "pin";
 
+    // A helper an overlapped birth could not attribute, so could not place
+    // (§48 item 1): reported, never pinned blind.
+    public const string OverlapUnplaced = "overlap-unplaced";
+
+    // The placement verdict (§48 items 1 and 2): a background birth passes
+    // only when no visible window it could not place remains. Ambiguous
+    // windows (provenance unreadable or unmarked) and overlap-unplaced ones
+    // fail it when visible; hidden ones are reported but cannot leak onto
+    // the operator's screen. Returns "pass" or "fail(0xH:reason,...)".
+    public static string PlacementVerdict(IReadOnlyList<SiblingDecision> decisions, IReadOnlyDictionary<nint, SiblingTopLevel> windows)
+    {
+        ArgumentNullException.ThrowIfNull(decisions);
+        ArgumentNullException.ThrowIfNull(windows);
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var bad = decisions
+            .Where(d => (d.Reason == "ambiguous" || d.Reason == OverlapUnplaced) && windows.TryGetValue(d.Handle, out SiblingTopLevel w) && w.Visible)
+            .Select(d => "0x" + ((long)d.Handle).ToString("X", inv) + ":" + d.Reason)
+            .ToList();
+        return bad.Count == 0 ? "pass" : "fail(" + string.Join(",", bad) + ")";
+    }
+
+    // Topology revalidation before a delayed move (§48 item 8): the target
+    // chosen at the snapshot is kept only while it still lies outside every
+    // connected monitor; a monitor attached since makes it visible, so the
+    // target is recomputed from the current topology before anything moves.
+    public static (int X, int Y, bool Recomputed) Retarget(int x, int y, Func<int, int, bool> stillOutside, Func<(int X, int Y)> recompute)
+    {
+        ArgumentNullException.ThrowIfNull(stillOutside);
+        ArgumentNullException.ThrowIfNull(recompute);
+        if (stillOutside(x, y))
+        {
+            return (x, y, false);
+        }
+
+        (int nx, int ny) = recompute();
+        return (nx, ny, true);
+    }
+
     static long generations;
 
     public static SiblingSnapshot Begin(IEnumerable<nint> current, uint constructingThread)
@@ -202,7 +240,12 @@ public static class SiblingSelection
         var late = current.Where(w => !(decided.TryGetValue(w.Handle, out SiblingTopLevel was) && was.ThreadId == w.ThreadId && string.Equals(was.ClassName, w.ClassName, StringComparison.Ordinal))).ToList();
         if (anotherConstructionBegan)
         {
-            return [.. late.OrderBy(w => w.Handle).Select(w => new SiblingDecision(w.Handle, w.IsMain ? "main" : "late-skipped-overlap"))];
+            // An overlapped birth never pins blind (§41), and never drops a
+            // helper silently either (§48 item 1): a window this pass would
+            // have pinned reads overlap-unplaced, which the placement
+            // verdict fails when it is visible; every other window keeps
+            // the reason the selection gives it.
+            return [.. Decide(late, snapshot, main, claims).Select(d => d.Reason == Pin ? d with { Reason = OverlapUnplaced } : d)];
         }
 
         return Decide(late, snapshot, main, claims);
@@ -214,7 +257,7 @@ public static class SiblingSelection
     // (@x,y), so the log proves the pin landed at the target (§34 item 3)
     // even though a helper later follows its main. The phase (`sweep` or
     // `sweep-late`) and the construction generation lead the line (§41).
-    public static string Describe(nint main, int targetX, int targetY, IReadOnlyList<SiblingDecision> decisions, IReadOnlyDictionary<nint, (int X, int Y)>? pinnedAt = null, string phase = "sweep", long generation = 0)
+    public static string Describe(nint main, int targetX, int targetY, IReadOnlyList<SiblingDecision> decisions, IReadOnlyDictionary<nint, (int X, int Y)>? pinnedAt = null, string phase = "sweep", long generation = 0, string verdict = "")
     {
         ArgumentNullException.ThrowIfNull(decisions);
         var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -222,7 +265,10 @@ public static class SiblingSelection
         string At(nint h) => pinnedAt is not null && pinnedAt.TryGetValue(h, out var p) ? $"@{p.X.ToString(inv)},{p.Y.ToString(inv)}" : string.Empty;
         string pinned = string.Join(",", decisions.Where(d => d.Reason == Pin).Select(d => Hex(d.Handle) + At(d.Handle)));
         string skipped = string.Join(",", decisions.Where(d => d.Reason != Pin).Select(d => $"{Hex(d.Handle)}({d.Reason})"));
-        return $"{phase} main={Hex(main)} target={targetX.ToString(inv)},{targetY.ToString(inv)} gen={generation.ToString(inv)} pinned={pinned} skipped={skipped}";
+        // The placement verdict (§48 item 2) trails the line, so readers
+        // of the older shape keep parsing it.
+        string tail = string.IsNullOrEmpty(verdict) ? string.Empty : " verdict=" + verdict;
+        return $"{phase} main={Hex(main)} target={targetX.ToString(inv)},{targetY.ToString(inv)} gen={generation.ToString(inv)} pinned={pinned} skipped={skipped}{tail}";
     }
 }
 
@@ -253,7 +299,8 @@ public sealed class SiblingSnapshot
 // claim the window carries (0 when none); Readable is false when the
 // window's thread or owner could not be read (it was being destroyed
 // mid-enumeration); ClassName is the window class, part of its identity.
-public readonly record struct SiblingTopLevel(nint Handle, nint RootOwner, uint ThreadId, bool IsMain, long Mark = 0, bool Readable = true, string ClassName = "", long ClaimMark = 0);
+// Visible is whether the window was visible when read (§48 item 2).
+public readonly record struct SiblingTopLevel(nint Handle, nint RootOwner, uint ThreadId, bool IsMain, long Mark = 0, bool Readable = true, string ClassName = "", long ClaimMark = 0, bool Visible = false);
 
 public readonly record struct SiblingDecision(nint Handle, string Reason);
 
@@ -277,6 +324,18 @@ public sealed class SiblingSnapshotSlot
         pending = snapshot;
         latestBegun = Math.Max(latestBegun, snapshot.Generation);
         return snapshot;
+    }
+
+    // A construction that failed before its sweep (its base constructor
+    // threw) abandons its snapshot (§48 item 6): the pending token clears,
+    // so nothing it began can lend itself to the next birth. Its marks
+    // are rewritten by the next snapshot, and it made no claims (claims
+    // are made only at a sweep). Returns true when a token was pending.
+    public bool Abandon()
+    {
+        bool had = pending is not null;
+        pending = null;
+        return had;
     }
 
     public SiblingSnapshot? Take(SiblingSnapshot? token)

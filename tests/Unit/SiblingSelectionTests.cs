@@ -173,7 +173,9 @@ public sealed class SiblingSelectionTests
         Assert.Equal(SiblingSelection.Pin, late.Single().Reason);
         Assert.Equal((nint)0x600, late.Single().Handle);
         var overlap = SiblingSelection.DecideLate(now, snap, Main, decided, null, anotherConstructionBegan: true);
-        Assert.Equal("late-skipped-overlap", overlap.Single().Reason);
+        // §48 item 1: an overlapped birth reports the helper it could not
+        // place instead of dropping it silently.
+        Assert.Equal(SiblingSelection.OverlapUnplaced, overlap.Single().Reason);
 
         // R3-F1: a decided handle reused by a new window (another thread) is
         // decided again, never silently skipped.
@@ -217,5 +219,111 @@ public sealed class SiblingSelectionTests
         Assert.Null(TestHold.Armed(k => k == TestHold.Variable ? "h" : null));
         Assert.Equal("h", TestHold.Armed(k => k == TestHold.Variable ? "h" : k == LaunchCapture.RunMarkerVariable ? "1" : null));
         Assert.False(TestHold.WaitIfArmed(k => null));
+    }
+
+    // §48 items 1 and 2: the placement verdict fails on a visible window
+    // the birth could not place (overlap-unplaced or ambiguous), and passes
+    // when such a window is hidden.
+    [Fact]
+    public void PlacementVerdictFailsOnlyOnVisibleUnplacedWindows()
+    {
+        SiblingDecision[] decisions = [new(0x300, SiblingSelection.OverlapUnplaced), new(0x400, "ambiguous"), new(0x500, SiblingSelection.Pin)];
+        var visible = new Dictionary<nint, SiblingTopLevel> { [0x300] = new(0x300, 0x300, UiThread, false, Visible: true), [0x400] = new(0x400, 0x400, UiThread, false, Visible: true), [0x500] = new(0x500, 0x500, UiThread, false, Visible: true) };
+        var hidden = new Dictionary<nint, SiblingTopLevel> { [0x300] = new(0x300, 0x300, UiThread, false), [0x400] = new(0x400, 0x400, UiThread, false), [0x500] = new(0x500, 0x500, UiThread, false, Visible: true) };
+        Assert.Equal("fail(0x300:overlap-unplaced,0x400:ambiguous)", SiblingSelection.PlacementVerdict(decisions, visible));
+        Assert.Equal("pass", SiblingSelection.PlacementVerdict(decisions, hidden));
+        Assert.EndsWith(" verdict=pass", SiblingSelection.Describe(Main, 1, 2, decisions, verdict: "pass"), StringComparison.Ordinal);
+    }
+
+    // §48 item 3: two constructions whose helpers come from one shared
+    // framework thread: each sweep pins its own helper and leaves the other
+    // construction's claimed helper untouched, both ways.
+    [Fact]
+    public void SharedFrameworkThreadAttributionHoldsBothWays()
+    {
+        const uint Framework = 30;
+        var slot = new SiblingSnapshotSlot();
+        SiblingSnapshot a = slot.Begin(SiblingSelection.Begin([], UiThread));
+        SiblingSnapshot aTaken = slot.Take(a)!;
+        var aDecided = SiblingSelection.Decide([new(Main, Main, UiThread, true), new(0x700, 0x700, Framework, false)], aTaken, Main, slot.Claims).ToDictionary(d => d.Handle, d => d.Reason);
+        Assert.Equal(SiblingSelection.Pin, aDecided[0x700]);
+        slot.Claim(aTaken.Generation, [0x700, Main]);
+        SiblingSnapshot b = slot.Begin(SiblingSelection.Begin([], UiThread));
+        SiblingSnapshot bTaken = slot.Take(b)!;
+        SiblingTopLevel[] seenByB = [new(Main, Main, UiThread, true), new(OtherMain, OtherMain, UiThread, true), new(0x700, 0x700, Framework, false, ClaimMark: aTaken.Generation), new(0x800, 0x800, Framework, false)];
+        var bDecided = SiblingSelection.Decide(seenByB, bTaken, OtherMain, slot.Claims).ToDictionary(d => d.Handle, d => d.Reason);
+        Assert.Equal("other-construction", bDecided[0x700]);
+        Assert.Equal(SiblingSelection.Pin, bDecided[0x800]);
+        slot.Claim(bTaken.Generation, [0x800, OtherMain]);
+        SiblingTopLevel[] seenByALate = [new(0x700, 0x700, Framework, false, ClaimMark: aTaken.Generation), new(0x800, 0x800, Framework, false, ClaimMark: bTaken.Generation)];
+        var aLate = SiblingSelection.Decide(seenByALate, aTaken, Main, slot.Claims).ToDictionary(d => d.Handle, d => d.Reason);
+        Assert.Equal("other-construction", aLate[0x800]);
+    }
+
+    // §48 item 6: a construction that failed before its sweep leaves no
+    // pending snapshot and no claim for the next birth.
+    [Fact]
+    public void FailedConstructionLeavesNothingForTheNextBirth()
+    {
+        var slot = new SiblingSnapshotSlot();
+        SiblingSnapshot failed = slot.Begin(SiblingSelection.Begin([0x300], UiThread));
+        Assert.True(slot.Abandon());
+        Assert.False(slot.Abandon());
+        Assert.Null(slot.Take(failed));
+        Assert.Empty(slot.Claims);
+        SiblingSnapshot next = slot.Begin(SiblingSelection.Begin([0x300], UiThread));
+        SiblingSnapshot? taken = slot.Take(next);
+        Assert.NotNull(taken);
+        var d = SiblingSelection.Decide([new(0x300, 0x300, UiThread, false), new(0x900, 0x900, UiThread, false)], taken, Main, slot.Claims).ToDictionary(x => x.Handle, x => x.Reason);
+        Assert.Equal("preexisting", d[0x300]);
+        Assert.Equal(SiblingSelection.Pin, d[0x900]);
+    }
+
+    // §48 item 8: a target a monitor attached since now shows is recomputed
+    // before the delayed move; one still off-screen is kept.
+    [Fact]
+    public void DelayedTargetFollowsTheTopology()
+    {
+        var kept = SiblingSelection.Retarget(-40000, -40000, (x, y) => true, () => (1, 1));
+        Assert.Equal((-40000, -40000, false), kept);
+        var moved = SiblingSelection.Retarget(-1920, 1080, (x, y) => x < -3000, () => (-40000, -40000));
+        Assert.Equal((-40000, -40000, true), moved);
+    }
+
+    // §48 item 9: twenty births and teardowns keep the claim table bounded
+    // by the live windows and each decision within its latency budget.
+    [Fact]
+    public void RepeatedBirthsKeepClaimsAndLatencyBounded()
+    {
+        var slot = new SiblingSnapshotSlot();
+        var live = new Dictionary<nint, long>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        long worst = 0;
+        for (int i = 0; i < 20; i++)
+        {
+            nint main = 0x10000 + (i * 0x100);
+            SiblingSnapshot t = slot.Begin(SiblingSelection.Begin(live.Keys, UiThread));
+            SiblingSnapshot taken = slot.Take(t)!;
+            var windows = live.Keys.Select(h => new SiblingTopLevel(h, h, UiThread, false, ClaimMark: live[h])).Append(new SiblingTopLevel(main, main, UiThread, true)).Append(new SiblingTopLevel(main + 1, main + 1, UiThread, false)).ToList();
+            long before = sw.ElapsedTicks;
+            _ = SiblingSelection.Decide(windows, taken, main, slot.Claims);
+            worst = Math.Max(worst, sw.ElapsedTicks - before);
+            slot.Claim(taken.Generation, [main, main + 1]);
+            live[main] = taken.Generation;
+            live[main + 1] = taken.Generation;
+            if (i % 2 == 1)
+            {
+                // Tear down the previous window and its helper.
+                nint gone = 0x10000 + ((i - 1) * 0x100);
+                _ = live.Remove(gone);
+                _ = live.Remove(gone + 1);
+            }
+
+            slot.Release((h, gen) => live.TryGetValue(h, out long g) && g == gen);
+            Assert.True(slot.Claims.Count <= live.Count, $"claims {slot.Claims.Count} exceed live windows {live.Count} after birth {i}");
+        }
+
+        double worstMs = worst * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        Assert.True(worstMs < 50, $"a decision took {worstMs:F1} ms (budget 50 ms)");
     }
 }

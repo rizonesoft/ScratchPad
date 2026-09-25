@@ -82,6 +82,7 @@ run-a:
   UI.JumpListTaskTests.PinTaskArgsOpenTheFile
   UI.JumpListTaskTests.RecentTaskArgsOpenTheFile
   UI.JumpListTaskTests.TaskbarCarriesNewNotePinnedAndRecent
+  UI.LaunchDiagnosticsTests.ConcurrentLaunchRecordsQuoteOnlyTheirOwnGeneration
   UI.LaunchDiagnosticsTests.ForcedFailureQuotesAllSeven
   UI.LaunchDiagnosticsTests.PruneOldLaunchesKeepsFresh
   UI.LaunchDiagnosticsTests.RedactArgsShapes
@@ -98,11 +99,13 @@ run-a:
   UI.LaunchTests.AssociationVerbsCycleCleanly
   UI.LaunchTests.BareSecondLaunchOpensNewWindow
   UI.LaunchTests.DoubleClickCommandOpensTab
+  UI.LaunchTests.FirstBirthGapsNameAHelperAbsentFromTheSweepLog
   UI.LaunchTests.FirstBirthPreexistingSetMatchesAnOutsideObservation
   UI.LaunchTests.FreshLaunchHoldsFilesInOneWindowInNewWindowMode
   UI.LaunchTests.HelperBornAfterTheSweepIsParkedByTheDelayedPass
   UI.LaunchTests.JumpListCommitsRecentsAndPinsFromStore
   UI.LaunchTests.LargeFileOpensResponsively
+  UI.LaunchTests.LocationRecorderSeesAPlantedMoveAndFailsOnOverflow
   UI.LaunchTests.LockedFileReportsLocked
   UI.LaunchTests.MissingFileOfferNoCreatesNothing
   UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates
@@ -265,9 +268,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 258
-run-a-cases: 322
-run-a-case-hash: 8d07cf3c1a2c29a1
+run-a-methods: 261
+run-a-cases: 325
+run-a-case-hash: c156a4078a6ff01d
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -347,6 +350,7 @@ run-a-case-rows:
   UI|UI.JumpListTaskTests.PinTaskArgsOpenTheFile
   UI|UI.JumpListTaskTests.RecentTaskArgsOpenTheFile
   UI|UI.JumpListTaskTests.TaskbarCarriesNewNotePinnedAndRecent
+  UI|UI.LaunchDiagnosticsTests.ConcurrentLaunchRecordsQuoteOnlyTheirOwnGeneration
   UI|UI.LaunchDiagnosticsTests.ForcedFailureQuotesAllSeven
   UI|UI.LaunchDiagnosticsTests.PruneOldLaunchesKeepsFresh
   UI|UI.LaunchDiagnosticsTests.RedactArgsShapes(args: "--api-key: \"quoted secret\"", expected: "--api-key: ***")
@@ -407,11 +411,13 @@ run-a-case-rows:
   UI|UI.LaunchTests.AssociationVerbsCycleCleanly
   UI|UI.LaunchTests.BareSecondLaunchOpensNewWindow
   UI|UI.LaunchTests.DoubleClickCommandOpensTab
+  UI|UI.LaunchTests.FirstBirthGapsNameAHelperAbsentFromTheSweepLog
   UI|UI.LaunchTests.FirstBirthPreexistingSetMatchesAnOutsideObservation
   UI|UI.LaunchTests.FreshLaunchHoldsFilesInOneWindowInNewWindowMode
   UI|UI.LaunchTests.HelperBornAfterTheSweepIsParkedByTheDelayedPass
   UI|UI.LaunchTests.JumpListCommitsRecentsAndPinsFromStore
   UI|UI.LaunchTests.LargeFileOpensResponsively
+  UI|UI.LaunchTests.LocationRecorderSeesAPlantedMoveAndFailsOnOverflow
   UI|UI.LaunchTests.LockedFileReportsLocked
   UI|UI.LaunchTests.MissingFileOfferNoCreatesNothing
   UI|UI.LaunchTests.MissingFileOfferYesBindsTabAndSaveCreates

@@ -1218,6 +1218,67 @@ public sealed class LaunchTests
         }
     }
 
+    // D00 T02 §48 item 4: the location recorder's planted control. A
+    // background-born main (off-screen, so the gate never sees it) moves a
+    // pixel and snaps back; the recorder must hold both moves at its
+    // barrier, and a recorder whose capacity the moves exceed fails the
+    // proof instead of reading its silence as no movement.
+    [Fact]
+    public void LocationRecorderSeesAPlantedMoveAndFailsOnOverflow()
+    {
+        SeedFresh();
+        nint fgBefore = UiForeground.Capture();
+        using var app = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
+        Assert.NotNull(window);
+        try
+        {
+            nint main = window.Properties.NativeWindowHandle.Value;
+            var start = default(HelperRect);
+            Assert.True(HelperNative.GetWindowRect(main, ref start), "the main window's rect could not be read");
+            const uint noSizeNoZNoActivate = 0x0001 | 0x0004 | 0x0010;
+            using (var control = new LocationRecorder((uint)app.ProcessId, [main]))
+            {
+                Assert.True(control.Hooked, "the control recorder never hooked");
+                Assert.True(HelperNative.SetWindowPos(main, nint.Zero, start.Left + 1, start.Top, 0, 0, noSizeNoZNoActivate), "the planted move failed");
+                Assert.True(HelperNative.SetWindowPos(main, nint.Zero, start.Left, start.Top, 0, 0, noSizeNoZNoActivate), "the planted snap-back failed");
+                int drained = control.DrainToBarrier([main]);
+                var seen = control.Stop();
+                Assert.True(drained >= 2 && seen.Count >= 2, $"the recorder missed the planted move and snap-back (drained {drained}): {string.Join("; ", seen)}");
+                // Each event reads the rect at delivery (asynchronous), so both
+                // may quote the final position: the count proves delivery.
+                Assert.All(seen, m => Assert.StartsWith($"0x{main:X} to (", m, StringComparison.Ordinal));
+            }
+
+            using (var tiny = new LocationRecorder((uint)app.ProcessId, [main], capacity: 1))
+            {
+                Assert.True(HelperNative.SetWindowPos(main, nint.Zero, start.Left + 1, start.Top, 0, 0, noSizeNoZNoActivate), "the overflow move failed");
+                Assert.True(HelperNative.SetWindowPos(main, nint.Zero, start.Left, start.Top, 0, 0, noSizeNoZNoActivate), "the overflow snap-back failed");
+                _ = tiny.DrainToBarrier([main]);
+                Assert.True(tiny.Overflowed, "two moves past a capacity of one did not overflow the recorder");
+                _ = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => tiny.Stop());
+            }
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
+    }
+
+    // D00 T02 §48 item 5: the completeness check fails on a helper the sweep
+    // log never names, whatever the snapshot said.
+    [Fact]
+    public void FirstBirthGapsNameAHelperAbsentFromTheSweepLog()
+    {
+        var birth = new SweepLine(0x100, -32000, -32000, [0x300], new() { [0x300] = (-32000, -32000) }, new() { [0x200] = "preexisting" }, "sweep");
+        var late = new SweepLine(0x100, -32000, -32000, [], [], new() { [0x400] = "other-owner" }, "sweep-late") { Phase = "sweep-late" };
+        var gaps = FirstBirthGaps([0x100, 0x200, 0x300, 0x400, 0x500], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late);
+        Assert.Equal(new List<nint> { 0x500 }, gaps);
+        Assert.Empty(FirstBirthGaps([0x100, 0x200, 0x300, 0x400], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late));
+    }
+
     // D00 T02 §41 item 9: the first birth's preexisting set, checked against
     // an outside observation. The hold seam stops the app just before its
     // first window; the test reads every window of the process from
@@ -1261,6 +1322,23 @@ public sealed class LaunchTests
                 {
                     Assert.True(outside.Contains(hwnd), $"the sweep read 0x{hwnd:X} as preexisting, but the outside observation before the construction never saw it: {birth.Raw}");
                 }
+
+                // D00 T02 §48 item 5: every window born during the
+                // construction, observed from outside, is named by the sweep
+                // or its delayed pass, and each such helper the birth owns
+                // reached the target; the verdict passes.
+                SweepLine late = sweepLog.ReadLate(main);
+                var after = ProcessWindows(app.ProcessId).Where(h => HelperNative.IsWindow(h)).ToList();
+                var mains = after.Where(h => HelperClass(h) == "WinUIDesktopWin32WindowClass").ToHashSet();
+                var gaps = FirstBirthGaps(after, outside, mains, birth, late);
+                Assert.True(gaps.Count == 0, $"window(s) born during the first construction escaped both the snapshot and the sweep log: {string.Join(", ", gaps.Select(h => $"0x{h:X}"))}; {birth.Raw} | {late.Raw}");
+                foreach (nint hwnd in birth.Pinned.Concat(late.Pinned))
+                {
+                    var at = birth.PinnedAt.TryGetValue(hwnd, out var b) ? b : late.PinnedAt.TryGetValue(hwnd, out var l) ? l : (X: int.MinValue, Y: int.MinValue);
+                    Assert.True(at.X == birth.TargetX && at.Y == birth.TargetY, $"first-birth helper 0x{hwnd:X} read back at ({at.X},{at.Y}), not the target ({birth.TargetX},{birth.TargetY})");
+                }
+
+                Assert.True(birth.Verdict == "pass" && late.Verdict == "pass", $"the first birth's placement verdict did not pass: {birth.Raw} | {late.Raw}");
             }
             finally
             {
@@ -1376,6 +1454,27 @@ public sealed class LaunchTests
         internal string Phase { get; init; } = "sweep";
 
         internal long Generation { get; init; }
+
+        // The placement verdict the app logged (D00 T02 §48 item 2), empty
+        // on lines written before it.
+        internal string Verdict { get; init; } = string.Empty;
+    }
+
+    // The first-birth completeness check (D00 T02 §48 item 5): every
+    // window observed from outside after the birth that the outside
+    // observation before it never saw, and that is no main, must appear
+    // in the birth's sweep or its delayed pass; one the sweep log never
+    // names escaped both the snapshot and the sweep. Returns the missed
+    // handles.
+    internal static List<nint> FirstBirthGaps(IEnumerable<nint> observedAfter, ISet<nint> observedBefore, ISet<nint> mains, SweepLine birth, SweepLine? late)
+    {
+        var named = new HashSet<nint>(birth.Pinned.Concat(birth.Skipped.Keys));
+        if (late is not null)
+        {
+            named.UnionWith(late.Pinned.Concat(late.Skipped.Keys));
+        }
+
+        return [.. observedAfter.Where(h => !observedBefore.Contains(h) && !mains.Contains(h) && !named.Contains(h))];
     }
 
     // Arms the app's test-only sweep log (the run marker plus the log path,
@@ -1475,10 +1574,12 @@ public sealed class LaunchTests
                 skipped[Hex(sm.Groups[1].Value)] = sm.Groups[2].Value;
             }
 
+            var verdict = System.Text.RegularExpressions.Regex.Match(line, @" verdict=(\S+)$");
             return new SweepLine(Hex(m.Groups[2].Value), int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(m.Groups[4].Value, System.Globalization.CultureInfo.InvariantCulture), pinned, pinnedAt, skipped, line)
             {
                 Phase = m.Groups[1].Value,
                 Generation = long.Parse(m.Groups[5].Value, System.Globalization.CultureInfo.InvariantCulture),
+                Verdict = verdict.Success ? verdict.Groups[1].Value : string.Empty,
             };
         }
 
@@ -1529,8 +1630,23 @@ public sealed class LaunchTests
     // Records location changes of chosen windows through an out-of-context
     // WinEvent hook on a dedicated message-pumping thread (D00 T02 §26).
     // Stop unhooks, ends the pump, and returns each move as text.
-    sealed class LocationRecorder : IDisposable
+    // Delivery guarantees (D00 T02 §48 item 4): an out-of-context
+    // WinEvent hook delivers asynchronously through this thread's queue,
+    // so an event is observed only once DrainToBarrier returns (the app's
+    // windows answered, then a barrier queued behind every pending event
+    // arrived); a recorder that never hooked, never reached its barrier,
+    // or overflowed its capacity fails the proof instead of reading
+    // silence as no movement. Each event's rect is read when it is
+    // delivered, so a record proves that a move happened, not where each
+    // intermediate position was. The planted move-and-snap-back control
+    // (LocationRecorderSeesAPlantedMoveAndFailsOnOverflow) proves the
+    // recorder delivers a real move.
+    internal sealed class LocationRecorder : IDisposable
     {
+        readonly int capacity;
+
+        internal bool Overflowed { get; private set; }
+
         const uint EventObjectLocationChange = 0x800B;
         const uint WineventOutOfContext = 0x0000;
         const int ObjIdWindow = 0;
@@ -1549,8 +1665,9 @@ public sealed class LaunchTests
 
         internal bool Hooked { get; private set; }
 
-        internal LocationRecorder(uint pid, IEnumerable<nint> hwnds)
+        internal LocationRecorder(uint pid, IEnumerable<nint> hwnds, int capacity = 4096)
         {
+            this.capacity = capacity;
             this.pid = pid;
             watch = hwnds.ToHashSet();
             pump = new Thread(Run) { IsBackground = true };
@@ -1569,7 +1686,14 @@ public sealed class LaunchTests
                     _ = HelperNative.GetWindowRect(hwnd, ref rect);
                     lock (moves)
                     {
-                        moves.Add($"0x{hwnd:X} to ({rect.Left},{rect.Top})");
+                        if (moves.Count >= capacity)
+                        {
+                            Overflowed = true;
+                        }
+                        else
+                        {
+                            moves.Add($"0x{hwnd:X} to ({rect.Left},{rect.Top})");
+                        }
                     }
                 }
             };
@@ -1629,6 +1753,25 @@ public sealed class LaunchTests
                 _ = pump.Join(TimeSpan.FromSeconds(5));
             }
 
+            // An overflowed recorder dropped events, so its record cannot
+            // prove absence of movement (§48 item 4).
+            Assert.False(Overflowed, $"the location recorder overflowed its capacity of {capacity} event(s); the proof cannot read its silence");
+            lock (moves)
+            {
+                return [.. moves];
+            }
+        }
+
+        // The raw record without the overflow check, for the control fixture.
+        internal List<string> StopUnchecked()
+        {
+            if (!stopped)
+            {
+                stopped = true;
+                _ = HelperNative.PostThreadMessage(threadId, WmQuit, nint.Zero, nint.Zero);
+                _ = pump.Join(TimeSpan.FromSeconds(5));
+            }
+
             lock (moves)
             {
                 return [.. moves];
@@ -1637,7 +1780,7 @@ public sealed class LaunchTests
 
         public void Dispose()
         {
-            _ = Stop();
+            _ = StopUnchecked();
             ready.Dispose();
             barrier.Dispose();
         }
@@ -1730,6 +1873,20 @@ public sealed class LaunchTests
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern int GetClassName(nint hwnd, [Out] char[] name, int max);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateWindowExW", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint param);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetWindowPos(nint hwnd, nint after, int x, int y, int cx, int cy, uint flags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DestroyWindow(nint hwnd);
     }
 
 }
