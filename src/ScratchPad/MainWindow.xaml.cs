@@ -575,7 +575,10 @@ public sealed partial class MainWindow : Window, IDisposable
     // is unprobed. Attached to the root so they fire from any focus.
     private static void AddTabAccelerators(UIElement scope, TabBar bar)
     {
-        mutationBar = bar;
+        if (TestMutation.Active(Environment.GetEnvironmentVariable) is not null)
+        {
+            mutationBar = new WeakReference<TabBar>(bar);
+        }
         AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);
         // D01 T02 §1: Ctrl+W belongs to File > Close tab now.
         AddAccel(scope, VirtualKey.Tab, VirtualKeyModifiers.Control, bar.CycleNext);
@@ -592,8 +595,12 @@ public sealed partial class MainWindow : Window, IDisposable
     // T02 §36 items 1 and 4): a targeted accelerator runs a different tab
     // command instead (a new tab; the next tab when it is Ctrl+T itself),
     // and observe mode runs nothing and logs the dispatch. The bar is the
-    // last window's (child mutation runs drive one window).
-    private static TabBar? mutationBar;
+    // last window's (child mutation runs drive one window), held weakly and
+    // only while the seam is armed, so a production run keeps no static
+    // reference to any window's controls (§36 R3-F3).
+    private static WeakReference<TabBar>? mutationBar;
+
+    private static TabBar? Bar() => mutationBar is not null && mutationBar.TryGetTarget(out TabBar? bar) ? bar : null;
 
     private static bool MutationHandled(VirtualKey key, VirtualKeyModifiers modifiers)
     {
@@ -603,11 +610,11 @@ public sealed partial class MainWindow : Window, IDisposable
             case MutationEffect.Swap:
                 if (key == VirtualKey.T && modifiers == VirtualKeyModifiers.Control)
                 {
-                    mutationBar?.CycleNext();
+                    Bar()?.CycleNext();
                 }
                 else
                 {
-                    mutationBar?.NewTab();
+                    Bar()?.NewTab();
                 }
 
                 return true;

@@ -234,17 +234,23 @@ public sealed class ChordRoutingTests
         nint hwnd = window.Properties.NativeWindowHandle.Value;
         uint thread = Native.GetWindowThreadProcessId(hwnd, out _);
         nint original = Native.GetKeyboardLayout(thread);
-        bool preloaded = InstalledLayouts().Contains(GermanHkl());
+        var installed = InstalledLayouts();
+        bool preloaded = installed.Contains(GermanHkl());
+        bool usPreloaded = installed.Contains(UsHkl());
         nint german = Native.LoadKeyboardLayoutW("00000407", KlfNoTellShell);
         Assert.NotEqual(0, german);
+        nint us = Native.LoadKeyboardLayoutW("00000409", KlfNoTellShell);
+        Assert.NotEqual(0, us);
         try
         {
             window.Focus();
             Thread.Sleep(300);
 
             // US English, Shift-dependent plus (layout matrix, D00 T02 §36
-            // item 3): Ctrl+Shift+OEM_PLUS reaches no command while zoom
+            // item 3): under layout 00000409, switched to and verified
+            // (§36 R3-F2), Ctrl+Shift+OEM_PLUS reaches no command while zoom
             // ships disabled, so the editor text holds.
+            SwitchLayout(hwnd, thread, us);
             var usBox = ContentBox(window);
             usBox.Focus();
             Thread.Sleep(200);
@@ -309,6 +315,11 @@ public sealed class ChordRoutingTests
                     _ = Native.UnloadKeyboardLayout(german);
                 }
 
+                if (!usPreloaded)
+                {
+                    _ = Native.UnloadKeyboardLayout(us);
+                }
+
                 if (!app.HasExited)
                 {
                     app.Kill();
@@ -338,6 +349,8 @@ public sealed class ChordRoutingTests
     const uint WmInputLangChangeRequest = 0x0050;
 
     static nint GermanHkl() => unchecked((nint)0x04070407);
+
+    static nint UsHkl() => unchecked((nint)0x04090409);
 
     static HashSet<nint> InstalledLayouts()
     {

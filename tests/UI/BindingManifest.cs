@@ -96,8 +96,8 @@ internal static class BindingManifest
 
         return k switch
         {
-            "Add" or "ADD" or "OEM_PLUS" => "Plus",
-            "Subtract" or "SUBTRACT" or "OEM_MINUS" => "Minus",
+            "Add" or "ADD" or "OEM_PLUS" or "187" => "Plus",
+            "Subtract" or "SUBTRACT" or "OEM_MINUS" or "189" => "Minus",
             "TAB" => "Tab",
             "DELETE" => "Delete",
             "Escape" or "ESCAPE" or "ESC" or "Esc" => "Esc",
@@ -877,10 +877,19 @@ internal static class BindingManifest
                     }
 
                     var pressed = PressedChords(src, method);
-                    if (pressed.Contains(row.Chord) && decl is not null
-                        && !PressedIdentities(src, method).Contains((row.Chord, decl.Physical)))
+                    if (pressed.Contains(row.Chord))
                     {
-                        problems.Add($"{at}: {cls}.{method} presses {row.Chord} only on another physical key; the declaration binds the {decl.Physical} key");
+                        // Every distinct physical declaration of the row
+                        // (an item may bind both NumPad and main-row plus)
+                        // needs its own press (§36 R3-F1).
+                        var identities = PressedIdentities(src, method);
+                        foreach (string physical in inp.Declarations.Where(d => d.Chord == row.Chord && d.Command == row.Command).Select(d => d.Physical).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+                        {
+                            if (!identities.Contains((row.Chord, physical)))
+                            {
+                                problems.Add($"{at}: {cls}.{method} never presses {row.Chord} on the {physical} key; the declaration binds the {physical} key");
+                            }
+                        }
                     }
 
                     if (!pressed.Contains(row.Chord))

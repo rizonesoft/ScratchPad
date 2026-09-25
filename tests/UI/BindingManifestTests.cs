@@ -396,7 +396,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
             testSource: (cls, src) => cls == "AcceleratorTests"
                 ? src.Replace("VirtualKeyShort.KEY_G, withControl: true, withShift: true", "VirtualKeyShort.OEM_PLUS, withControl: true", StringComparison.Ordinal)
                 : src);
-        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("ChordCtrlShiftGOpensStats presses Ctrl+Plus only on another physical key; the declaration binds the numpad key", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("ChordCtrlShiftGOpensStats never presses Ctrl+Plus on the numpad key", StringComparison.Ordinal));
         var (numpad, _) = LiveInputs(
             audit: a => a.Replace(
                 "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |",
@@ -405,7 +405,21 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
             testSource: (cls, src) => cls == "AcceleratorTests"
                 ? src.Replace("VirtualKeyShort.KEY_G, withControl: true, withShift: true", "VirtualKeyShort.ADD, withControl: true", StringComparison.Ordinal)
                 : src);
-        Assert.DoesNotContain(BindingManifest.Check(numpad), p => p.Contains("only on another physical key", StringComparison.Ordinal));
+        Assert.DoesNotContain(BindingManifest.Check(numpad), p => p.Contains("never presses Ctrl+Plus", StringComparison.Ordinal));
+        // R3-F1: an item binding both variants (NumPad Add plus main-row
+        // Key="187", VK_OEM_PLUS) needs a press of each.
+        var (both, _) = LiveInputs(
+            xaml: x => x.Replace("<KeyboardAccelerator Modifiers=\"Control\" Key=\"Add\" />", "<KeyboardAccelerator Modifiers=\"Control\" Key=\"Add\" /><KeyboardAccelerator Modifiers=\"Control\" Key=\"187\" />", StringComparison.Ordinal),
+            audit: a => a.Replace(
+                "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |",
+                "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | covered | `AcceleratorTests.ChordCtrlShiftGOpensStats` | - | - |",
+                StringComparison.Ordinal),
+            testSource: (cls, src) => cls == "AcceleratorTests"
+                ? src.Replace("VirtualKeyShort.KEY_G, withControl: true, withShift: true", "VirtualKeyShort.ADD, withControl: true", StringComparison.Ordinal)
+                : src);
+        var bothProblems = BindingManifest.Check(both);
+        Assert.Contains(bothProblems, p => p.Contains("never presses Ctrl+Plus on the main key", StringComparison.Ordinal));
+        Assert.DoesNotContain(bothProblems, p => p.Contains("never presses Ctrl+Plus on the numpad key", StringComparison.Ordinal));
     }
 
     // D00 T02 §36 item 1: every bound handler opens with the mutation
