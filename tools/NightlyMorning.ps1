@@ -61,7 +61,9 @@ try {
     $al = @()
     if ($ai -ge 0) { for ($i = $ai + 1; $i -lt $tl.Count; $i++) { if ($tl[$i] -like '## *') { break }; if ($tl[$i] -like '- ALERT *') { $al += $tl[$i].Substring(2) } } }
     if ($al.Count -gt 0) {
-      $ta = Invoke-NightlyNotify -Phase 'final' -RunId "trend-alert-$day" -ResultPath $tPath -Class 'trend-regression' -Title "Nightly trend $day : $($al.Count) alert(s)" -Lines (@($al) + @('Report: build/nightly/trend.md')) -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
+      # Keyed on the day alone (no result checksum), so a re-rendered
+      # trend never notifies twice on one day (R1-F5).
+      $ta = Invoke-NightlyNotify -Phase 'final' -RunId "trend-alert-$day" -ResultPath '' -Class 'trend-regression' -Title "Nightly trend $day : $($al.Count) alert(s)" -Lines (@($al) + @('Report: build/nightly/trend.md')) -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
       $log += "trend alerts: $($al.Count) ($($ta.Status))"
     } else { $log += 'trend alerts: none' }
   }

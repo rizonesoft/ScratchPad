@@ -238,6 +238,8 @@ $timings = @{}
 if ($null -ne $legA.testSeconds) { $timings['run-a'] = $legA.testSeconds }
 if ($null -ne $legB.testSeconds) { $timings['run-b'] = $legB.testSeconds }
 if ($null -ne $legI.testSeconds) { $timings['interactive'] = $legI.testSeconds }
+# Artifact names relative to the run directory, for provenance.
+$artifacts = { param($pattern) $names = @(Get-ChildItem $RunDir -Filter $pattern -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($RunDir.TrimEnd('\', '/').Length).TrimStart('\', '/') } | Sort-Object); if ($names.Count -eq 0) { "(none matching $pattern)" } else { $names -join ', ' } }
 $result = [pscustomobject]@{
   version = 1; stamp = $stamp; day = $day; identity = $identity
   verdict = $verdict; exit = if ($verdict -eq 'red') { 1 } else { 0 }
@@ -257,12 +259,14 @@ $result = [pscustomobject]@{
   # Per-field provenance (D00 T02 §25 item 9): source artifact plus
   # confidence (native, derived, or unknown), so a transcript-derived
   # value never poses as a native measurement.
+  # Sources name the actual artifacts, relative to the run directory
+  # (R1-F6), so every reconstructed field traces to its evidence.
   provenance = [pscustomobject]@{
-    'legs.counts' = [pscustomobject]@{ source = $(if ($countNotes.Count -gt 0) { 'leg transcripts (report rows cross-checked)' } else { 'report leg rows' }); confidence = 'derived' }
-    'legs.gates' = [pscustomobject]@{ source = 'report gate cells'; confidence = $(if (($legA.ran -and ($null -eq $legA.gate)) -or ($legB.ran -and ($null -eq $legB.gate))) { 'unknown' } else { 'derived' }) }
-    'timings' = [pscustomobject]@{ source = 'leg transcript test-seconds'; confidence = 'derived' }
-    'incidents' = [pscustomobject]@{ source = $(if ($incidentsDerived) { 'trx failures' } else { 'report INC lines' }); confidence = $(if ($incidentsDerived) { 'derived' } else { 'native' }) }
-    'soak' = [pscustomobject]@{ source = 'soak trx files'; confidence = 'derived' }
+    'legs.counts' = [pscustomobject]@{ source = $(if ($countNotes.Count -gt 0) { "transcripts $(& $artifacts '*-default*.log'), $(& $artifacts '*-primary*.log'), $(& $artifacts '*-full*.log'); rows in $($reportFile[0].Name)" } else { "rows in $($reportFile[0].Name)" }); confidence = 'derived' }
+    'legs.gates' = [pscustomobject]@{ source = "gate cells in $($reportFile[0].Name)"; confidence = $(if (($legA.ran -and ($null -eq $legA.gate)) -or ($legB.ran -and ($null -eq $legB.gate))) { 'unknown' } else { 'derived' }) }
+    'timings' = [pscustomobject]@{ source = "test-seconds in $(& $artifacts '*-default*.log'), $(& $artifacts '*-primary*.log'), $(& $artifacts '*-full*.log')"; confidence = 'derived' }
+    'incidents' = [pscustomobject]@{ source = $(if ($incidentsDerived) { "trx failures in $(& $artifacts '*.trx')" } else { "INC lines in $($reportFile[0].Name)" }); confidence = $(if ($incidentsDerived) { 'derived' } else { 'native' }) }
+    'soak' = [pscustomobject]@{ source = "soak trx $(& $artifacts '*-soak-*.trx')"; confidence = 'derived' }
     'env' = [pscustomobject]@{ source = 'none (run-night environment unrecoverable)'; confidence = 'unknown' }
     'verdict' = [pscustomobject]@{ source = 'derived from the fields above'; confidence = 'derived' }
   }

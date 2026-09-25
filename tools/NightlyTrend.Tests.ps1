@@ -142,6 +142,34 @@ Assert ($pathOnly.settings -eq 'BACKGROUND= WINDOW= SPEC=[path]') 'env-path-reda
 $leak = $goodEnv.PSObject.Copy(); $leak.adapters = 'GPU ' + 'ghp_' + ('A1b2C3d4E5' * 4)
 Assert ((Test-EnvironmentFields $leak).Error -eq 'env adapters carries a secret-shaped value') 'env-secret-fails-validation' ((Test-EnvironmentFields $leak).Error)
 
+# R1-F1: a path with spaces redacts whole, and the next field survives.
+$sp = Protect-EnvironmentBlock ([pscustomobject]@{ settings = 'BACKGROUND= WINDOW=C:\Users\Private Person\confidential.txt SPEC=x' })
+Assert ($sp.settings -eq 'BACKGROUND= WINDOW=[path] SPEC=x') 'env-path-with-spaces-redacted-whole' $sp.settings
+$unc = Protect-EnvironmentBlock ([pscustomobject]@{ adapters = 'GPU \\fileserver\Share Name\doc.txt' })
+Assert ($unc.adapters -eq 'GPU [path]') 'env-unc-path-redacted' $unc.adapters
+# R1-F2: the basis note is secret-scanned too.
+$bs = [pscustomobject]@{ os = 'unknown'; basis = ('note ' + 'ghp_' + ('A1b2C3d4E5' * 4)) }
+Assert ((Test-EnvironmentFields $bs).Error -eq 'env basis carries a secret-shaped value') 'env-basis-secret-fails' ((Test-EnvironmentFields $bs).Error)
+# R1-F3: an unproven night neither sets nor breaks the pass-rate baseline.
+$pr = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$uk = New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 10 50 5
+$uk.legs.'run-a'.cut = $true
+Assert (@(Get-TrendAlerts (@($pr) + @($uk)) | Where-Object { $_ -like '- ALERT pass-rate*' }).Count -eq 0) 'alert-unproven-night-has-no-rate'
+# R1-F4: a pruned backfill keeps its marker and provenance.
+$bfr = New-Night '2026-09-24' '2026-09-24-023000' 5000
+$bfr | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'rows in morning-x.md'; confidence = 'derived' } })
+$mrow = (ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $bfr)) -Depth 6 -Compress) | ConvertFrom-Json
+$back = ConvertFrom-MetricsRow $mrow
+$tb = @(Format-TrendTable @($back) $Q $today)
+Assert ((@($tb | Where-Object { $_ -like '| 2026-09-24 (backfill) (metrics) |*' }).Count -eq 1) -and (@($tb | Where-Object { $_ -like '- Backfill provenance (2026-09-24 2026-09-24-023000): legs.counts derived from rows in morning-x.md' }).Count -eq 1)) 'metrics-backfill-keeps-marker-and-provenance' (($tb | Where-Object { ($_ -like '| 2026*') -or ($_ -like '*provenance*') }) -join ' || ')
+# R1-F6: a real backfill names its actual artifacts.
+$bfOut = Join-Path $dir 'backfill.result.json'
+$null = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyBackfill.ps1') -RunDir (Join-Path (Split-Path -Parent $PSScriptRoot) 'build\nightly\retained\nightly-taskrun-2026-09-20') -OutFile $bfOut 2>&1
+if (Test-Path $bfOut) {
+  $bfj = Get-Content $bfOut -Raw | ConvertFrom-Json
+  Assert (("$($bfj.provenance.'legs.gates'.source)" -like 'gate cells in morning-*.md') -and ("$($bfj.provenance.soak.source)" -like 'soak trx *soak*.trx*') -and ("$($bfj.provenance.'legs.counts'.source)" -like '*.md*')) 'backfill-provenance-names-artifacts' ("gates: $($bfj.provenance.'legs.gates'.source) | soak: $($bfj.provenance.soak.source)")
+} else { Assert $false 'backfill-provenance-names-artifacts' 'backfill wrote no result (retained run missing?)' }
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTrend.Tests: all green'

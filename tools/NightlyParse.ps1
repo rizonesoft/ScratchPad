@@ -1808,6 +1808,7 @@ function Test-IsBackfill($Result) {
   # fields carry provenance and it never poses as a native measurement.
   try { if ($null -ne $Result.provenance) { return $true } } catch { }
   try { if ("$($Result.note)" -like 'backfilled*') { return $true } } catch { }
+  try { if ([bool]$Result.metricsBackfill) { return $true } } catch { }
   return $false
 }
 
@@ -1847,8 +1848,11 @@ function Protect-EnvironmentBlock($Env) {
     if ($v -eq '') { $v = 'unknown' }
     $hits = @(Test-CaptureSecrets $v)
     if ($hits.Count -gt 0) { $v = "[redacted: $($hits -join ', ')]" }
-    $v = [regex]::Replace($v, '(?<![\\.])\b[A-Za-z]:\\[^\s;|]*', '[path]')
-    $v = [regex]::Replace($v, '\\\\(?!\.\\)[^\s;|\\]+\\[^\s;|]*', '[path]')
+    # A path runs to the next field boundary (a ' KEY=' token, ';', '|',
+    # or the end), spaces included, so a path with spaces never leaks
+    # its tail (R1-F1).
+    $v = [regex]::Replace($v, '(?<![\\.])\b[A-Za-z]:\\.*?(?=( [A-Z][A-Z0-9_]*=)|[;|]|$)', '[path]')
+    $v = [regex]::Replace($v, '\\\\(?!\.\\)[^\\;|]+\\.*?(?=( [A-Z][A-Z0-9_]*=)|[;|]|$)', '[path]')
     $out[$k] = $v
   }
   return [pscustomobject]$out
@@ -1862,6 +1866,8 @@ function Test-EnvironmentFields($Env) {
   if ($null -eq $Env) { return [pscustomobject]@{ Ok = $false; Error = 'env missing' } }
   foreach ($name in @($Env.PSObject.Properties.Name)) {
     if (($script:EnvFields -notcontains $name) -and ($name -ne 'basis')) { return [pscustomobject]@{ Ok = $false; Error = "env field not allowlisted: $name" } }
+    # Every allowlisted field, the backfill basis note included (R1-F2).
+    if (@(Test-CaptureSecrets "$($Env.$name)").Count -gt 0) { return [pscustomobject]@{ Ok = $false; Error = "env $name carries a secret-shaped value" } }
   }
   foreach ($k in $script:EnvFields) {
     if (@($Env.PSObject.Properties.Name) -notcontains $k) { continue }
@@ -1893,6 +1899,7 @@ function ConvertTo-MetricsRow($Result) {
     legs = $legs; soak = [ordered]@{ verdict = $(try { "$($Result.soak.verdict)" } catch { '' }) }
     incidents = $incs; reserve = $(try { & $num $Result.reserve } catch { $null }); consumed = $(try { & $num $Result.consumed } catch { $null })
     env = [ordered]@{ os = $(try { "$($Result.env.os)" } catch { 'unknown' }); dpi = $(try { "$($Result.env.dpi)" } catch { 'unknown' }) }
+    provenance = $(try { $Result.provenance } catch { $null })
   }
 }
 
@@ -1928,7 +1935,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = [pscustomobject]@{ os = "$($Row.env.os)"; dpi = "$($Row.env.dpi)" }; fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; timings = $null; recovered = 'none'; omissionOk = $true; buildError = ''; scheduler = [pscustomobject]@{ voted = $false; faults = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() } }
+  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = [pscustomobject]@{ os = "$($Row.env.os)"; dpi = "$($Row.env.dpi)" }; fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $null; recovered = 'none'; omissionOk = $true; buildError = ''; scheduler = [pscustomobject]@{ voted = $false; faults = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() } }
 }
 
 function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
@@ -1950,7 +1957,9 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
     $med = Get-Percentile $pa 50
     if (($la -gt 1.25 * $med) -and (($la - $med) -ge 60)) { $alerts += "- ALERT runa-duration: $([int]$la)s on $(Get-ResultNight $latest) vs baseline $([int]$med)s (+$([int][math]::Round(100 * ($la - $med) / $med))%, median of $($pa.Count) night(s))" }
   }
-  $rate = { param($x) $p = 0; $f = 0; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed } } catch { } }; if (($p + $f) -gt 0) { 100.0 * $p / ($p + $f) } else { $null } }
+  # An unproven night (a killed or budget-cut leg) contributes no rate,
+  # matching the table's denominator rule (R1-F3).
+  $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
   $lr = & $rate $latest
   $pr = @($prev | ForEach-Object { & $rate $_ } | Where-Object { $null -ne $_ })
   if (($null -ne $lr) -and ($pr.Count -gt 0)) {
