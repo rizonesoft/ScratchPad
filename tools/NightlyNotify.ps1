@@ -470,13 +470,21 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   $envLine = @($ReportLines | Where-Object { "$_" -like '- Environment: *' }) | Select-Object -First 1
   if ($null -eq $envLine) { $breaks += 'environment: report carries no Environment line' }
   else {
-    foreach ($k in $envKeys) {
-      $want = ''
-      try { $want = "$($Result.env.$k)" } catch { }
-      $got = $null
-      foreach ($part in ("$envLine".Substring(15) -split '; ')) { if ($part.StartsWith("$k ")) { $got = $part.Substring($k.Length + 1) } elseif ($part -eq $k) { $got = '' } }
-      if ($null -eq $got) { $breaks += "environment ${k}: report omits it" }
-      elseif ($got -ne $want) { $breaks += "environment ${k}: report '$got' vs result '$want'" }
+    # Fields ride ' | ' in a fixed key order: values such as topology
+    # carry '; ' themselves, so the separator is not ';', and a value
+    # that ever carried ' | ' changes the field count and breaks loud.
+    $parts = @("$envLine".Substring(15) -split ' \| ')
+    if ($parts.Count -ne $envKeys.Count) { $breaks += "environment: report has $($parts.Count) fields, want $($envKeys.Count) ($($envKeys -join ', '))" }
+    else {
+      for ($i = 0; $i -lt $envKeys.Count; $i++) {
+        $k = $envKeys[$i]
+        $want = ''
+        try { $want = "$($Result.env.$k)" } catch { }
+        $part = $parts[$i]
+        if (($part -ne $k) -and (-not $part.StartsWith("$k "))) { $breaks += "environment ${k}: report field $($i + 1) reads '$part'"; continue }
+        $got = if ($part -eq $k) { '' } else { $part.Substring($k.Length + 1) }
+        if ($got -ne $want) { $breaks += "environment ${k}: report '$got' vs result '$want'" }
+      }
     }
   }
   $xm = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Exit: (\d+)$') } | Where-Object { $_.Success }) | Select-Object -First 1

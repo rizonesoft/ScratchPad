@@ -1303,7 +1303,7 @@ try {
 $report += "- Catalog: $catalogLine"
 # One environment object feeds both surfaces (D00 T02 §24 item 12).
 $envBlock = Get-EnvironmentBlock "$env:SCRATCHPAD_INTERACTIVE_WINDOW"
-$report += ('- Environment: ' + ((@('os', 'powershell', 'dotnet', 'session', 'topology', 'dpi', 'adapters', 'settings') | ForEach-Object { "$_ $($envBlock.$_)" }) -join '; '))
+$report += ('- Environment: ' + ((@('os', 'powershell', 'dotnet', 'session', 'topology', 'dpi', 'adapters', 'settings') | ForEach-Object { "$_ $($envBlock.$_)" }) -join ' | '))
 # Delivery health (D00 T02 §24 item 3): undelivered notifications
 # escalate in every report until the morning reconciler delivers them.
 $delivery = Get-DeliveryHealth $nightDir

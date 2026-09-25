@@ -171,7 +171,7 @@ Assert ((($short -join '|') -eq 'counts|Report: r.md')) 'cap-short-body-untrunca
 # Item 12: report and result agree field by field.
 $agreeRes = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
 $agreeRes.incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom')
-$rep = @('| Run A (default) | 10 passed, 0 failed, 1 skipped (UI.dll 10/0/1) | exit 0 changes logged | - | log |', '| Run B (primary) | 4 passed, 0 failed, 0 skipped (UI.dll 4/0/0) | exit 0 x | - | log |', '| Interactive (collection) | 3 passed, 0 failed, 0 skipped (UI.dll 3/0/0) | n/a (owns the foreground) | - | log |', '', '## Incidents', '', '- INC-aaaa1111 `UI.A` x1 (Run A): boom', '', '## Soak', '', '- Verdict: GREEN (10/10 iterations proved)', '', '## Run integrity', '- Timings: build=1s reserve=900s', '- Budget: consumed=600s reserve=900s', '- Environment: os 10.0.26200.0; powershell 5.1; dotnet 10.0.400; session op/; topology D1 primary; dpi primary 96x96; adapters GPU; settings BACKGROUND=', '- Exit: 1')
+$rep = @('| Run A (default) | 10 passed, 0 failed, 1 skipped (UI.dll 10/0/1) | exit 0 changes logged | - | log |', '| Run B (primary) | 4 passed, 0 failed, 0 skipped (UI.dll 4/0/0) | exit 0 x | - | log |', '| Interactive (collection) | 3 passed, 0 failed, 0 skipped (UI.dll 3/0/0) | n/a (owns the foreground) | - | log |', '', '## Incidents', '', '- INC-aaaa1111 `UI.A` x1 (Run A): boom', '', '## Soak', '', '- Verdict: GREEN (10/10 iterations proved)', '', '## Run integrity', '- Timings: build=1s reserve=900s', '- Budget: consumed=600s reserve=900s', '- Environment: os 10.0.26200.0 | powershell 5.1 | dotnet 10.0.400 | session op/ | topology D1 primary | dpi primary 96x96 | adapters GPU | settings BACKGROUND=', '- Exit: 1')
 Assert ((Test-ReportResultAgreement $rep $agreeRes).Ok) 'agree-consistent-report-passes' ((Test-ReportResultAgreement $rep $agreeRes).Breaks -join '; ')
 $bad = @($rep | ForEach-Object { $_ -replace '^\| Run B \(primary\) \| 4 passed', '| Run B (primary) | 5 passed' })
 Assert (@((Test-ReportResultAgreement $bad $agreeRes).Breaks | Where-Object { $_ -eq 'run-b passed: report 5 vs result 4' }).Count -eq 1) 'agree-count-contradiction-fails' ((Test-ReportResultAgreement $bad $agreeRes).Breaks -join '; ')
@@ -190,6 +190,17 @@ $b8 = @((Test-ReportResultAgreement @($rep | ForEach-Object { $_ -replace 'topol
 Assert (@($b8 | Where-Object { $_ -eq "environment topology: report 'D2 primary' vs result 'D1 primary'" }).Count -eq 1) 'agree-environment-field-contradiction-fails' ($b8 -join '; ')
 $bad4 = @($rep | Where-Object { $_ -notlike '- Environment:*' })
 Assert (@((Test-ReportResultAgreement $bad4 $agreeRes).Breaks | Where-Object { $_ -eq 'environment: report carries no Environment line' }).Count -eq 1) 'agree-missing-environment-fails'
+
+# A real topology carries '; ' (two monitors); the Environment line
+# must still agree field by field.
+$multiMon = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
+$multiMon.incidents = $agreeRes.incidents
+$multiMon.env.topology = '\.\DISPLAY1 2560x1440+0+0 primary; \.\DISPLAY2 1920x1080+-1920+1080'
+$repMM = @($rep | ForEach-Object { $_ -replace 'topology D1 primary', ('topology ' + $multiMon.env.topology.Replace('$', '$$')) })
+$bMM = @((Test-ReportResultAgreement $repMM $multiMon).Breaks)
+Assert ($bMM.Count -eq 0) 'agree-multi-monitor-topology-passes' ($bMM -join '; ')
+$repPipe = @($repMM | ForEach-Object { $_ -replace 'adapters GPU', 'adapters GPU | extra' })
+Assert (@((Test-ReportResultAgreement $repPipe $multiMon).Breaks | Where-Object { $_ -like 'environment: report has 9 fields, want 8*' }).Count -eq 1) 'agree-environment-field-count-fails-loud'
 
 # R2-F3: a numeric gate replaced by n/a, soak names out of step either
 # way, and a Timings reserve that disagrees all break.
