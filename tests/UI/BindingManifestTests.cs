@@ -315,7 +315,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     {
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D { void M() { box.KeyDown += OnKey; } }"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs", "class W { void Other() { root.KeyboardAccelerators.Add(a); } }"));
-        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { if (!TestMutation.Suppresses(TestMutation.Key((int)key, (int)modifiers), Environment.GetEnvironmentVariable)) { action(); } args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
+        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { if (!MutationHandled(key, modifiers)) { action(); } args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
         const string Tab = BindingManifest.TabSourcePath;
         Assert.Empty(BindingManifest.UndeclaredKeyHandling(Tab,
             "class W { static void AddTabAccelerators(UIElement scope) { AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, N); } " + Helper + " }"));
@@ -428,6 +428,12 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
             "<KeyboardAccelerator Modifiers=\"Control,Shift\" Key=\"N\" /><KeyboardAccelerator Modifiers=\"Control\" Key=\"N\" />",
             StringComparison.Ordinal));
         Assert.Contains(BindingManifest.Check(inputs), p => p.StartsWith("exactly-once: Ctrl+N is declared 2 times", StringComparison.Ordinal));
+        // R1-F2: an exactly-once test that asserts only that an outcome
+        // exists fails; the live Ctrl+E proof counts one captured URI.
+        var (weak, _) = LiveInputs(testSource: (cls, src) => cls == "AcceleratorTests"
+            ? src.Replace("Assert.Equal([BingSearch.SearchUrl(\"ctrl e\").AbsoluteUri], seam.WaitForCapture(TimeSpan.FromSeconds(1.5)));", "Assert.NotEmpty(seam.WaitForCapture(TimeSpan.FromSeconds(1.5)));", StringComparison.Ordinal)
+            : src);
+        Assert.Contains(BindingManifest.Check(weak), p => p.StartsWith("exactly-once: AcceleratorTests.ChordCtrlEOpensBingSearch presses Ctrl+E but asserts no count of one", StringComparison.Ordinal));
         Assert.Empty(BindingManifest.ExactlyOnceProblems(LiveInputs().Inputs.Declarations, BindingManifest.ExactlyOnce, LiveInputs().Inputs.TestSource));
     }
 

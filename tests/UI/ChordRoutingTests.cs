@@ -94,6 +94,130 @@ public sealed class ChordRoutingTests
         }
     }
 
+    // D00 T02 §36 item 4 (R1-F4): every live chord's routing is proved on
+    // every surface against the oracle, not only Ctrl+T's. Observe mode
+    // (DispatchLogScope) suppresses every bound command and logs each
+    // dispatch, so each chord is pressed on the editor, a tab-strip item,
+    // an open menu, and a modal dialog (What's New, shown at launch) with
+    // no command's side effects, and the log says whether it reached its
+    // command. Mismatches are collected so one run names them all.
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
+    public void EveryLiveChordRoutesPerTheOracle()
+    {
+        var oracle = BindingManifest.SubTable(File.ReadAllText(Path.Combine(BindingManifestTests.RepoRoot(), "docs", "ui-input-audit.md")), "Routing oracle", 6, out var parse);
+        Assert.Empty(parse);
+        var live = oracle.Where(r => r[2] != "n/a").Select(r => (Chord: r[0], Command: System.Text.RegularExpressions.Regex.Match(r[1], "`([^`]+)`").Groups[1].Value)).ToList();
+        Assert.NotEmpty(live);
+        var mismatches = new List<string>();
+        using var log = new DispatchLogScope();
+
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using (var app = UiLaunch.LaunchApp())
+        using (var automation = new UIA3Automation())
+        {
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                window.Focus();
+                Thread.Sleep(300);
+                var box = ContentBox(window);
+                foreach (var (chord, command) in live)
+                {
+                    box.Focus();
+                    Thread.Sleep(150);
+                    Observe(log, oracle, chord, command, "editor", () => PressChord(box, chord), mismatches);
+                }
+
+                foreach (var (chord, command) in live)
+                {
+                    var tab = TabItems(window)[0];
+                    tab.Focus();
+                    Thread.Sleep(150);
+                    Observe(log, oracle, chord, command, "tab strip", () => PressChord(tab, chord), mismatches);
+                }
+
+                foreach (var (chord, command) in live)
+                {
+                    var file = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFile"));
+                    Assert.NotNull(file);
+                    if (file.Patterns.ExpandCollapse.PatternOrDefault?.ExpandCollapseState != ExpandCollapseState.Expanded)
+                    {
+                        file.Patterns.Invoke.Pattern.Invoke();
+                        Thread.Sleep(500);
+                    }
+
+                    Observe(log, oracle, chord, command, "open menu", () => PressChord(window, chord), mismatches);
+                }
+
+                var menu = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFile"));
+                if (menu?.Patterns.ExpandCollapse.PatternOrDefault?.ExpandCollapseState == ExpandCollapseState.Expanded)
+                {
+                    UiInput.PressKey(window, VirtualKeyShort.ESCAPE);
+                }
+            }
+            finally
+            {
+                if (!app.HasExited)
+                {
+                    app.Kill();
+                }
+            }
+        }
+
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = false });
+        using (var app = UiLaunch.LaunchApp())
+        using (var automation = new UIA3Automation())
+        {
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                window.Focus();
+                var modal = Retry.WhileNull(
+                    () => window.FindFirstDescendant(cf => cf.ByAutomationId("WhatsNewDialog")),
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(250)).Result;
+                Assert.NotNull(modal);
+                foreach (var (chord, command) in live)
+                {
+                    Observe(log, oracle, chord, command, "modal", () => PressChord(modal, chord), mismatches);
+                }
+            }
+            finally
+            {
+                if (!app.HasExited)
+                {
+                    app.Kill();
+                }
+            }
+        }
+
+        Assert.Empty(mismatches);
+    }
+
+    static void Observe(DispatchLogScope log, List<string[]> oracle, string chord, string command, string surface, Action press, List<string> mismatches)
+    {
+        _ = log.Next(TimeSpan.Zero);
+        press();
+        string[] fresh = log.Next(TimeSpan.FromMilliseconds(500));
+        bool reached = fresh.Contains(BindingMutation.Target(chord, command), StringComparer.Ordinal);
+        string want = BindingManifest.RoutingExpectation(oracle, chord, command, surface);
+        if (reached != (want == "execute"))
+        {
+            mismatches.Add($"{chord} -> {command} on {surface}: oracle says {want}, the press {(reached ? "reached" : "did not reach")} the command (logged: {string.Join(", ", fresh)})");
+        }
+    }
+
+    // Presses a declared chord (letters, digits, Tab) into a target.
+    static void PressChord(FlaUI.Core.AutomationElements.AutomationElement target, string chord)
+    {
+        var (vk, mods) = BindingMutation.VirtualKeyOf(chord);
+        var key = vk == 9 ? VirtualKeyShort.TAB : (VirtualKeyShort)vk;
+        UiInput.PressKey(target, key, withControl: (mods & 1) != 0, withShift: (mods & 4) != 0, withAlt: (mods & 2) != 0);
+    }
+
     [InteractiveFact]
     [Trait("Category", "Interactive")]
     public void LayoutAltGrAndNumpadKeepTheirIdentity()

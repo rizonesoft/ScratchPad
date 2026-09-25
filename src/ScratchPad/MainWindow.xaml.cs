@@ -575,6 +575,7 @@ public sealed partial class MainWindow : Window, IDisposable
     // is unprobed. Attached to the root so they fire from any focus.
     private static void AddTabAccelerators(UIElement scope, TabBar bar)
     {
+        mutationBar = bar;
         AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);
         // D01 T02 §1: Ctrl+W belongs to File > Close tab now.
         AddAccel(scope, VirtualKey.Tab, VirtualKeyModifiers.Control, bar.CycleNext);
@@ -587,12 +588,43 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    // The binding mutation seam for the programmatic tab accelerators (D00
+    // T02 §36 items 1 and 4): a targeted accelerator runs a different tab
+    // command instead (a new tab; the next tab when it is Ctrl+T itself),
+    // and observe mode runs nothing and logs the dispatch. The bar is the
+    // last window's (child mutation runs drive one window).
+    private static TabBar? mutationBar;
+
+    private static bool MutationHandled(VirtualKey key, VirtualKeyModifiers modifiers)
+    {
+        string target = TestMutation.Key((int)key, (int)modifiers);
+        switch (TestMutation.For(target, Environment.GetEnvironmentVariable))
+        {
+            case MutationEffect.Swap:
+                if (key == VirtualKey.T && modifiers == VirtualKeyModifiers.Control)
+                {
+                    mutationBar?.CycleNext();
+                }
+                else
+                {
+                    mutationBar?.NewTab();
+                }
+
+                return true;
+            case MutationEffect.Observe:
+                _ = TestMutation.Record(target, Environment.GetEnvironmentVariable);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action)
     {
         var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
         accel.Invoked += (_, args) =>
         {
-            if (!TestMutation.Suppresses(TestMutation.Key((int)key, (int)modifiers), Environment.GetEnvironmentVariable))
+            if (!MutationHandled(key, modifiers))
             {
                 action();
             }

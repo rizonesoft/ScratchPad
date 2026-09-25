@@ -161,11 +161,36 @@ internal sealed partial class AppMenuBar : MenuBar
         MenuFileRecent.Items.Add(clear);
     }
 
-    // The binding mutation seam (D00 T02 §36 item 1): under a test run that
-    // targets this item, its handler returns before the host call, so the
-    // covering chord test must fail. Every bound handler checks it first
-    // (the binding manifest refuses one that does not).
-    static bool Mutated(string id) => TestMutation.Suppresses(id, Environment.GetEnvironmentVariable);
+    // The binding mutation seam (D00 T02 §36 items 1 and 4): under a test
+    // run that targets this item, its handler runs a different host member
+    // instead (a new tab; a new window when the item is New tab itself), so
+    // the covering chord test must fail; in observe mode every bound
+    // handler runs nothing and logs its dispatch for the routing oracle.
+    // Every bound handler checks it first (the binding manifest refuses one
+    // that does not). A lost log line surfaces as a missing dispatch where
+    // the oracle expects one, so the record result is not re-reported here.
+    bool Mutated(string id)
+    {
+        switch (TestMutation.For(id, Environment.GetEnvironmentVariable))
+        {
+            case MutationEffect.Swap:
+                if (id == "MenuFileNewTab")
+                {
+                    host?.NewWindow();
+                }
+                else
+                {
+                    host?.NewTab();
+                }
+
+                return true;
+            case MutationEffect.Observe:
+                _ = TestMutation.Record(id, Environment.GetEnvironmentVariable);
+                return true;
+            default:
+                return false;
+        }
+    }
 
     void Register(MenuFlyoutItemBase item)
     {

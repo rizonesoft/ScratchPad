@@ -45,10 +45,9 @@ run-a:
   UI.BindingManifestTests.StateConditionalEnablementPlantFails
   UI.BindingManifestTests.WrongKeyMutationFailsTheGate
   UI.BindingMutationTests.ChildRunReadsAPassingPureTest
-  UI.BindingMutationTests.EveryCoveredRowHasAMutationCase
-  UI.BindingMutationTests.OutcomeParseSeparatesKilledSurvivedAndInconclusive
-  UI.BindingMutationTests.PlantedConstantLocalPassesTheStaticRuleButFailsTheMutationRun
+  UI.BindingMutationTests.EveryCoveredRowHasAMutationCaseWithItsPressLine
   UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey
+  UI.BindingMutationTests.VerdictsSeparateKilledSurvivedAndInconclusive
   UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser
   UI.BingLaunchTests.FailingCaptureWriteReportsInTheWindow
   UI.ChromeTests.FullStripParksAddButtonLeftOfCaption
@@ -135,6 +134,7 @@ run-a:
   UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
   UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI.MultiWindowTests.WindowsKeepIndependentTabs
+  UI.MutationPlantTests.PlantedConstantLocalAssertion
   UI.NightlyPartitionTests.EveryUiTestBelongsToExactlyOneNightlyLeg
   UI.OffScreenBirthTests.BackgroundRestoreLandsOnTheSuiteDisplay
   UI.OffScreenBirthTests.NegativeOriginKeepsTheWindowOutside
@@ -268,7 +268,9 @@ interactive:
   UI.AcceleratorTests.ChordCtrlShiftLOpensLock
   UI.AcceleratorTests.ChordCtrlShiftNOpensSecondWindow
   UI.AcceleratorTests.ChordCtrlShiftXOpensExport
-  UI.BindingMutationTests.CoveringTestFailsWithItsCommandSuppressed
+  UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped
+  UI.BindingMutationTests.PlantedConstantLocalSurvivesTheMutationRun
+  UI.ChordRoutingTests.EveryLiveChordRoutesPerTheOracle
   UI.ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity
   UI.ChordRoutingTests.WindowGlobalChordRoutesPerSurface
   UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
@@ -302,5 +304,5 @@ interactive:
   UI.TabBarTests.NumberShortcutsCoverMiddlePositions
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
-interactive-methods: 41
-interactive-cases: 72
+interactive-methods: 43
+interactive-cases: 74

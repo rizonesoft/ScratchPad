@@ -400,7 +400,7 @@ internal static class BindingManifest
     }
 
     internal const string SanctionedHelperBody =
-        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{if(!TestMutation.Suppresses(TestMutation.Key((int)key,(int)modifiers),Environment.GetEnvironmentVariable)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
+        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{if(!MutationHandled(key,modifiers)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
 
     static List<string> TabHomeProblems(string source)
     {
@@ -1036,6 +1036,12 @@ internal static class BindingManifest
             {
                 problems.Add($"exactly-once: {test} does not press {group.Key} and assert after it");
             }
+            else if (!AssertsExactlyOnce(src, parts[1], group.Key))
+            {
+                // R1-F2: an assertion that an outcome exists passes a double
+                // dispatch; the proof must count one.
+                problems.Add($"exactly-once: {test} presses {group.Key} but asserts no count of one after it (Assert.Single, Assert.Equal(1, ...), or Assert.Equal with a one-element expected collection)");
+            }
         }
 
         foreach (string stale in exactlyOnce.Keys.Where(k => decls.Count(d => d.Chord == k) < 2).Order(StringComparer.Ordinal))
@@ -1044,6 +1050,48 @@ internal static class BindingManifest
         }
 
         return problems;
+    }
+
+    // A count-of-one assertion after the chord's press: Assert.Single, or
+    // Assert.Equal whose expected value is the literal 1 or a one-element
+    // collection ([x], new[] { x }).
+    internal static bool AssertsExactlyOnce(string source, string method, string chord)
+    {
+        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        foreach (MethodDeclarationSyntax m in root.DescendantNodes().OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == method))
+        {
+            var presses = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(c => c.Expression.ToString() is "UiInput.Press" or "UiInput.PressKey" && PressedChords(PressOnly(m, c), method).Contains(chord)).ToList();
+            if (presses.Count == 0)
+            {
+                continue;
+            }
+
+            int after = presses.Min(c => c.SpanStart);
+            foreach (InvocationExpressionSyntax a in m.DescendantNodes().OfType<InvocationExpressionSyntax>().Where(c => c.SpanStart > after))
+            {
+                string name = a.Expression.ToString();
+                var args = a.ArgumentList.Arguments;
+                if (name == "Assert.Single")
+                {
+                    return true;
+                }
+
+                if (name == "Assert.Equal" && args.Count >= 2 && args[0].Expression switch
+                {
+                    LiteralExpressionSyntax { Token.ValueText: "1" } => true,
+                    CollectionExpressionSyntax ce => ce.Elements.Count == 1,
+                    ImplicitArrayCreationExpressionSyntax ia => ia.Initializer.Expressions.Count == 1,
+                    ArrayCreationExpressionSyntax ac => ac.Initializer?.Expressions.Count == 1,
+                    _ => false,
+                })
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // ---- audit sub-tables (D00 T02 §36 items 3, 4, 7) ----------------
