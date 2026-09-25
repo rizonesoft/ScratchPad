@@ -806,14 +806,20 @@ $u2 = Update-IncidentLedger $l1.Incidents @(Get-IncidentGroups @($eqB)) '2026-09
 $eqId = (@(Get-IncidentGroups @($eqA)))[0].Id
 $hrId = (@(Get-IncidentGroups @($hrA)))[0].Id
 Assert (($u2.Incidents.Count -eq 2) -and (@($u2.Incidents[$eqId].occurrences).Count -eq 2) -and ($u2.Incidents[$eqId].state -eq 'open')) 'lifecycle-repeat-appends' ($u2.Lines -join ' | ')
-Assert (($u2.Incidents[$hrId].state -eq 'closed') -and (@($u2.Lines | Where-Object { $_ -like "*$hrId*CLOSED (verified recovery: passed in run-a*" }).Count -eq 1)) 'lifecycle-recovery-closes' ($u2.Lines -join ' | ')
+Assert (($u2.Incidents[$hrId].state -eq 'open') -and (@($u2.Lines | Where-Object { $_ -like "*$hrId*recovering (passed in run-a on 1 of 3 runs)*" }).Count -eq 1)) 'lifecycle-one-pass-is-not-recovery' ($u2.Lines -join ' | ')
 $null = Write-IncidentLedger $u2.Incidents $ledgerFx
 $l2 = Read-IncidentLedger $ledgerFx
-$u2b = Update-IncidentLedger $l2.Incidents @(Get-IncidentGroups @($eqB)) '2026-09-26-023005' @{} $owners
-Assert (@($u2b.Incidents[$eqId].occurrences).Count -eq 2) 'lifecycle-idempotent-per-stamp' "$(@($u2b.Incidents[$eqId].occurrences).Count)"
-$u3 = Update-IncidentLedger $l2.Incidents @() '2026-09-27-023005' @{ 'run-a' = @('UI.T.Counts') } $owners
+Assert ([int]$l2.Incidents[$hrId].passStreak -eq 1) 'lifecycle-streak-persists' "$($l2.Incidents[$hrId].passStreak)"
+$u2b = Update-IncidentLedger $l2.Incidents @(Get-IncidentGroups @($eqB)) '2026-09-26-023005' @{ 'run-a' = @('UI.LaunchTests.LargeFileOpensResponsively') } $owners
+Assert ((@($u2b.Incidents[$eqId].occurrences).Count -eq 2) -and ([int]$u2b.Incidents[$hrId].passStreak -eq 1)) 'lifecycle-idempotent-per-stamp' "occ $(@($u2b.Incidents[$eqId].occurrences).Count) streak $($u2b.Incidents[$hrId].passStreak)"
+$u3 = Update-IncidentLedger $l2.Incidents @() '2026-09-27-023005' @{ 'run-a' = @('UI.T.Counts', 'UI.LaunchTests.LargeFileOpensResponsively') } $owners
 Assert ($u3.Incidents[$eqId].state -eq 'open') 'lifecycle-other-phase-pass-keeps-open' $u3.Incidents[$eqId].state
-$u4 = Update-IncidentLedger $l2.Incidents @(Get-IncidentGroups @($hrRepeat)) '2026-09-28-023005' @{} $owners
+$u3b = Update-IncidentLedger $u3.Incidents @() '2026-09-28-023005' @{ 'run-a' = @('UI.LaunchTests.LargeFileOpensResponsively') } $owners
+Assert (($u3b.Incidents[$hrId].state -eq 'closed') -and (@($u3b.Lines | Where-Object { $_ -like "*$hrId*CLOSED (verified recovery: passed in run-a on 3 runs*" }).Count -eq 1)) 'lifecycle-recovery-closes' ($u3b.Lines -join ' | ')
+$lR = Read-IncidentLedger $ledgerFx
+$uReset = Update-IncidentLedger $lR.Incidents @(Get-IncidentGroups @($hrRepeat)) '2026-09-28-023005' @{} $owners
+Assert (($uReset.Incidents[$hrId].state -eq 'open') -and ([int]$uReset.Incidents[$hrId].passStreak -eq 0)) 'lifecycle-failure-resets-streak' "$($uReset.Incidents[$hrId].state) $($uReset.Incidents[$hrId].passStreak)"
+$u4 = Update-IncidentLedger $u3b.Incidents @(Get-IncidentGroups @($hrRepeat)) '2026-09-29-023005' @{} $owners
 Assert (($u4.Incidents[$hrId].state -eq 'open') -and (@($u4.Lines | Where-Object { $_ -like "*$hrId*REOPENED*" }).Count -eq 1) -and (@($u4.Incidents[$hrId].occurrences).Count -eq 2)) 'lifecycle-reopens-with-history' ($u4.Lines -join ' | ')
 '{ not json' | Set-Content -Path (Join-Path $s22 'bad.json') -Encoding UTF8
 Assert ((Read-IncidentLedger (Join-Path $s22 'bad.json')).Ok -eq $false) 'lifecycle-corrupt-fails-closed'
@@ -825,6 +831,7 @@ Assert (@(Test-CaptureSecrets 'pid=4 ScratchPad: Untitled - ScratchPad').Count -
 Assert (@(Test-CaptureSecrets ('password = ' + 'hunter2hunter2')).Count -eq 1) 'capture-assigned-secret'
 Assert ((Format-WindowRow 7 'chrome' 'Bank statement - Chrome') -eq 'pid=7 chrome: [title redacted]') 'capture-foreign-title-redacted'
 Assert ((Format-WindowRow 9 'ScratchPad' 'big8.txt - ScratchPad') -eq 'pid=9 ScratchPad: big8.txt - ScratchPad') 'capture-owned-title-kept'
+Assert ((Format-WindowRow 3 'pwsh' 'R:\private\path - pwsh') -eq 'pid=3 pwsh: [title redacted]') 'capture-operator-shell-title-redacted'
 $capFx = Join-Path $s22 'captures-run-a'
 $null = New-Item -ItemType Directory -Force -Path $capFx
 $planted | Set-Content -Path (Join-Path $capFx 'run-a-windows.txt') -Encoding UTF8

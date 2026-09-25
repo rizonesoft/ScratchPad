@@ -510,7 +510,7 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
 # redacted at write, every text capture is secret-scanned and redacted
 # on a hit, and a capture directory over its size cap drops its
 # screenshots. Retention follows the run evidence (30 days, prune).
-$script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'dotnet', 'ForegroundLog', 'JobControl', 'powershell', 'pwsh')
+$script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'ForegroundLog', 'JobControl')
 $script:CaptureMaxBytes = 25MB
 $script:SecretPatterns = @(
   @('github-token', 'gh[pousr]_[A-Za-z0-9]{36,}'),
@@ -1024,22 +1024,26 @@ function Read-IncidentLedger([string]$Path) {
       if ($null -eq $e) { continue }
       $occ = @()
       foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
-      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ }
+      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)" }
     }
     return [pscustomobject]@{ Ok = $true; Error = ''; Incidents = $map }
   } catch { return [pscustomobject]@{ Ok = $false; Error = "incident ledger unreadable: $($_.Exception.Message)"; Incidents = @{} } }
 }
 
-function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners) {
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3) {
   # Incident lifecycle (D00 T02 §22 item 6, D00-T02-S17-PR27): an
   # incident is created once; later sightings append an occurrence to
   # it (never a second incident, so §9's file-every-failure rule files
   # each incident once). Ownership comes from the quarantine list when
   # the test sits there, else stays as recorded, else unassigned. An
-  # open incident closes only on verified recovery: this run executed
-  # its test in the same phase and it passed. A closed incident seen
-  # again reopens with its history. Idempotent per stamp: re-running a
-  # stamp appends nothing twice. Returns the updated map plus lines.
+  # open incident closes only on verified recovery: its test executed
+  # and passed in the same phase on $RecoveryRuns separate runs with no
+  # failure between (a failure resets the streak; a run that never
+  # executed the test neither counts nor resets), so a flake that
+  # passes most nights cannot close and reopen nightly. A closed
+  # incident seen again reopens with its history. Idempotent per
+  # stamp: re-running a stamp appends or counts nothing twice.
+  # Returns the updated map plus lines.
   $map = @{}
   foreach ($k in $Ledger.Keys) { $map[$k] = $Ledger[$k] }
   $lines = @()
@@ -1050,7 +1054,7 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     $owner = 'unassigned'
     if ($Owners -and $Owners.ContainsKey($g.Test)) { $owner = $Owners[$g.Test] }
     if (-not $map.ContainsKey($g.Id)) {
-      $map[$g.Id] = [pscustomobject]@{ id = $g.Id; test = $g.Test; phase = $g.Phase; key = $g.Key; owner = $owner; state = 'open'; firstSeen = $Stamp; lastSeen = $Stamp; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
+      $map[$g.Id] = [pscustomobject]@{ id = $g.Id; test = $g.Test; phase = $g.Phase; key = $g.Key; owner = $owner; state = 'open'; firstSeen = $Stamp; lastSeen = $Stamp; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }); passStreak = 0; lastPassStamp = '' }
       $lines += "- $($g.Id) ``$($g.Test)``: new (owner $owner)"
       continue
     }
@@ -1059,6 +1063,7 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     $already = @($e.occurrences | Where-Object { "$($_.stamp)" -eq $Stamp }).Count -gt 0
     if (-not $already) { $e.occurrences = @($e.occurrences) + @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
     $e.lastSeen = $Stamp
+    $e.passStreak = 0
     $n = @($e.occurrences).Count
     if ($e.state -eq 'closed') {
       $e.state = 'open'; $e.closedAt = ''; $e.closedBy = ''
@@ -1072,9 +1077,13 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     if (($e.state -ne 'open') -or $seen.ContainsKey($id)) { continue }
     $passed = @()
     if ($PassedByPhase -and $PassedByPhase.ContainsKey($e.phase)) { $passed = @($PassedByPhase[$e.phase]) }
-    if ($passed -contains $e.test) {
-      $e.state = 'closed'; $e.closedAt = $Stamp; $e.closedBy = "passed in $($e.phase)"
-      $lines += "- $id ``$($e.test)``: CLOSED (verified recovery: passed in $($e.phase) at $Stamp; $(@($e.occurrences).Count) occurrences since $($e.firstSeen))"
+    if ($passed -notcontains $e.test) { continue }
+    if ($e.lastPassStamp -ne $Stamp) { $e.passStreak = [int]$e.passStreak + 1; $e.lastPassStamp = $Stamp }
+    if ([int]$e.passStreak -ge $RecoveryRuns) {
+      $e.state = 'closed'; $e.closedAt = $Stamp; $e.closedBy = "passed in $($e.phase) on $($e.passStreak) runs"
+      $lines += "- $id ``$($e.test)``: CLOSED (verified recovery: passed in $($e.phase) on $($e.passStreak) runs through $Stamp; $(@($e.occurrences).Count) occurrences since $($e.firstSeen))"
+    } else {
+      $lines += "- $id ``$($e.test)``: recovering (passed in $($e.phase) on $($e.passStreak) of $RecoveryRuns runs)"
     }
   }
   return [pscustomobject]@{ Incidents = $map; Lines = $lines }
