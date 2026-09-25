@@ -67,7 +67,7 @@ track: W0
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [x]   |
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [x]   |
-|   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
+|   27  |   §27   | Night-debt escalation lifecycle | §19 |  [x]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
 |   30  |   §30   | Nightly evidence residuals | §22 |  [ ]   |
@@ -75,6 +75,7 @@ track: W0
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
 |   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
+|   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
 
 ---
 
@@ -862,6 +863,7 @@ Why this section exists: the §18 sign-off (R3-F2) found SiblingPin.Sweep pinnin
 
 Why this section exists: §19 gave every open night debt a due date and an OVERDUE escalation line, but the §19 plan review found the escalation is a print, not a lifecycle: it names no owner, response deadline, or acknowledgement; risk acceptance has no schema or effect on debt state; a rerun that stays red can satisfy the escalation forever; the three-night window leaves timezone and inclusivity implicit; a malformed or extended due override is silent; and the morning report does not carry the same obligations as the queries. This section turns the escalation into tracked, accountable work without changing §10's information-only gate contract (debt never blocks validate, stamps, or plan progression). -> SOURCE: plan-review-D00-T02-s19-2026-09-24-s27 D00-T02-S19-PR1 D00-T02-S19-PR2 D00-T02-S19-PR3 D00-T02-S19-PR4 D00-T02-S19-PR5 D00-T02-S19-PR7 D00-T02-S19-PR8 (escalation owner, risk-acceptance lifecycle, red-rerun follow-up, window semantics, override audit, morning-report parity, and fixture coverage from the §19 plan review).
 
+- -> XREF: D00 T02 §35 -- residual follow-ups filed from this section's plan review.
 - -> XREF: D00 T02 §19 -- filed from its plan review; hardens the due-date escalation §19 shipped.
 
 - [x] An OVERDUE debt names an accountable owner (the owning section's stamp owner, else `operator`), a response deadline, and an acknowledgement record, so the escalation produces a trackable action. Done when: an overdue fixture quotes owner plus response-by date and an acknowledged fixture drops the escalation. (D00-T02-S19-PR1.) Done: every debt line carries `owner <name> state <state>`, and an overdue one `OVERDUE escalate <owner> by <respond-by>: <action>` (response within 2 days of due); `**Night-ack:**` reads `acknowledged` and drops the escalation until the deadline, then `response-overdue`. The owner is the owed line's `owner <name>` chunk, else `operator` (a recorded default: no section records an owner; cost of changing: an owner field in TODO frontmatter). Self-test: `an overdue debt names its owner, state, and response-by date`, `an acknowledged debt drops the escalation until its response deadline`, `an acknowledgement past its response deadline escalates again`.
@@ -874,6 +876,13 @@ Why this section exists: §19 gave every open night debt a due date and an OVERD
 - [x] Commit: `"workspace: give night-debt escalation a lifecycle"` Done: e4e45ca.
 
 **Test checkpoint:** The mixed-debt fixture agrees across all three surfaces, an overdue debt names owner plus response-by, an accepted debt reads accepted not collected, and a two-red debt escalates as red-repeat; `validate` still exits 0 with overdue debt present. Cheaper substitute that fails: more text on the OVERDUE line with no owner, state, or follow-up.
+
+> **Verified:** 2026-09-25 | §27 | every open debt reads one line (owner, state, due, and `OVERDUE escalate <owner> by <respond-by>: <action>`) identical across `query night-debt`, `query summary`, and the morning report (the JSON `report_block` written verbatim, WARN lines included); Night-ack, Night-accepted, and Night-red drive acknowledged, response-overdue, accepted (with approver and expiry), acceptance-expired, red, and red-repeat, all failing closed on incomplete, non-canonical, or future records; malformed and reason-less due overrides warn; the collector reads the JSON (fix-forward: it had parsed 0 of 4 debts since §19); self-test 1626/0, NightDebt fixtures 11/0; live run 2026-09-25-065954-pid58116 lists all four debts identical to the query
+> **Review:** round 3 (Full), candidates `2269257` `e4e45ca` `ba2103f` `9de1a5a` `b343dbf` -- GPT R1-R2 bulk needs-attention (R1-F1..F6, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s27.md
+> **Plan review:** GPT medium, filed D00 T02 §35 (run 20260925-D00-T02-S27-codex-c06751119-r4)
+> **CRUD:** applicable | the collector appends Night-red lines (atomic with readback, once per id and date) beside Night-collected; lifecycle lines are read back by every query; no line is edited or removed
+> **Duration:** 2026-09-25T04:33:31Z to 2026-09-25T05:24:23Z
+> **Reviewed-tip:** b343dbf57ed1ce59f1b8bf28ac3a3447a818e581
 
 ## 28. Binding Guard and Funnel Hardening
 
@@ -1027,6 +1036,28 @@ Why this section exists: the §26 plan review returned 8 findings; 6 file here a
 - [ ] Commit: `"workspace: close the sibling sweep residuals"`
 
 **Test checkpoint:** Interleaving attributes, dialogs stay, own helpers pin, snapshots do not leak, selection reads deterministically, and the §18 guard matches its criterion. Cheaper substitute that fails: another flyout-only birth test.
+
+## 35. Night-Debt Lifecycle Residuals
+
+Why this section exists: the §27 plan review returned 14 findings; 12 file here and 2 are rejected with reasons in the §27 findings file. §27 gave night debt owners, states, deadlines, acknowledgement, acceptance, and red tracking; these settle the contract questions it left as recorded defaults or single-attempt semantics. -> SOURCE: plan-review-D00-T02-s27-2026-09-25-s35 D00-T02-S27-PR1 D00-T02-S27-PR3 D00-T02-S27-PR4 D00-T02-S27-PR5 D00-T02-S27-PR6 D00-T02-S27-PR7 D00-T02-S27-PR8 D00-T02-S27-PR9 D00-T02-S27-PR10 D00-T02-S27-PR12 D00-T02-S27-PR13 D00-T02-S27-PR14 (owner source, repeat-red anchoring, attempt identity, transitions, acceptance eligibility, acceptance governance, window boundaries, override history, post-run status, remediation linkage, record diagnostics, and the §10 back-reference from the §27 plan review).
+
+- -> XREF: D00 T02 §27 -- filed from its plan review; settles the lifecycle contract it shipped.
+
+- [ ] The owner comes from a recorded owner field (TODO frontmatter or the owning section) with reassignment, replacing the `operator` default §27 recorded, so an escalation reaches the section's accountable owner. Done when: a fixture section with an owner field names that owner on its overdue debt. (D00-T02-S27-PR1.)
+- [ ] The red-repeat deadline anchors on the first unresolved repeat and requires a tracked remediation action, so successive reds cannot postpone it. Done when: a third red leaves the deadline where the second set it. (D00-T02-S27-PR3.)
+- [ ] Red attempts are distinguished by run identity, so two failed collections on one day count as two. Done when: two same-day reds escalate as red-repeat. (D00-T02-S27-PR4.)
+- [ ] A transition table defines precedence among collection, acceptance, acknowledgement, and red records, with conflicting-record fixtures. Done when: the table reads in `docs/testing.md` and each conflicting pair has a fixture. (D00-T02-S27-PR5.)
+- [ ] Accepted debt stays eligible for collection, and a green collection during acceptance closes it as collected. Done when: an accepted debt collected green reads collected. (D00-T02-S27-PR6.)
+- [ ] Acceptance governance: approver authority, maximum duration, renewal as a new line, and revocation. Done when: a renewal and a revocation each read correctly. (D00-T02-S27-PR7.)
+- [ ] The three-collector-night window is pinned against owed-before-02:30, a moved trigger, and a timezone change, reconciled with §10's collection window. Done when: the three boundary fixtures read their due days. (D00-T02-S27-PR8.)
+- [ ] Due overrides keep an append-only history (who, when, previous deadline), so repeated extensions stay accountable. Done when: a twice-extended debt quotes both extensions. (D00-T02-S27-PR9.)
+- [ ] The morning report carries a post-run debt status beside the run-start one, so a debt collected green that night never reads with a stale escalation. Done when: a collected-tonight debt reads collected in the post-run block. (D00-T02-S27-PR10.)
+- [ ] A red-repeat debt links its remediation owner, finding reference, and next action to the staged findings and morning triage. Done when: a red-repeat debt quotes its finding reference. (D00-T02-S27-PR12.)
+- [ ] Query-side diagnostics flag orphan lifecycle lines (an id with no owed line) and duplicates, information only. Done when: an orphan ack and a duplicate acceptance each warn. (D00-T02-S27-PR13.)
+- [ ] §10 carries the reciprocal XREF to §27 for the collector and report contracts §27 changed. Done when: `validate` reads the pair. (D00-T02-S27-PR14.)
+- [ ] Commit: `"workspace: settle the night-debt lifecycle residuals"`
+
+**Test checkpoint:** The owner field names the owner, repeats anchor, same-day reds count, transitions resolve, accepted debt collects, acceptance renews and revokes, boundaries pin, overrides keep history, post-run status reads, red-repeat links its finding, orphans and duplicates warn, and the XREF pair validates. Cheaper substitute that fails: more states with no transition rules.
 
 ## Verification
 
