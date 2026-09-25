@@ -152,6 +152,27 @@ function Add-RedLine([string]$TodoPath, [string]$DebtId, [string]$Date, [string]
   return "appended red line"
 }
 
+function Invoke-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
+  # The collector's write (D00 T02 §42 R1-F4): any failure of the append,
+  # the replacement, or the readback becomes a `write failed` note, so the
+  # green entry reads collected-unrecorded and the run reds instead of
+  # the collector stopping.
+  try { return (Add-CollectedLine $TodoPath $DebtId $Line) }
+  catch { return "write failed: $($_.Exception.Message)" }
+}
+
+function Get-ListedTestNames([string[]]$Output) {
+  # Test names from `dotnet test --list-tests` output: the indented lines
+  # after "The following Tests are available:".
+  $names = @()
+  $on = $false
+  foreach ($l in @($Output)) {
+    if ("$l" -match 'The following Tests are available:') { $on = $true; continue }
+    if ($on -and ("$l" -match '^\s{4}(\S.*)$')) { $names += $Matches[1].Trim() }
+  }
+  return $names
+}
+
 function Find-OwedLineIndex([string[]]$Lines, [string]$DebtId) {
   for ($i = 0; $i -lt $Lines.Count; $i++) {
     if ($Lines[$i] -match ('\*\*Night-owed:\*\*\s+' + [regex]::Escape($DebtId) + '\b')) { return $i }
@@ -171,8 +192,15 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
   # bound it, and the readback still guards the copy count.
   for ($attempt = 0; $attempt -lt 2; $attempt++) {
     $text = Get-Content $TodoPath -Raw -Encoding UTF8
-    if ($text -match ('\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b')) {
-      return "skip: $DebtId already carries a collected line"
+    # An existing record blocks a new one unless the new one carries a
+    # digest no existing record for the id carries (D00 T02 §42 R1-F5):
+    # a record the graph rejects for the wrong tests never blocks the
+    # valid evidence a later green run brings.
+    $existing = @([regex]::Matches($text, '\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b[^\r\n]*') | ForEach-Object { $_.Value })
+    $newDigest = [regex]::Match($Line, '\bdigest\s+([0-9a-f]+)')
+    if ($existing.Count -gt 0) {
+      $recorded = $newDigest.Success -and (@($existing | Where-Object { $_ -match ('\bdigest\s+' + $newDigest.Groups[1].Value + '\b') }).Count -gt 0)
+      if ((-not $newDigest.Success) -or $recorded) { return "skip: $DebtId already carries a collected line" }
     }
     $lines = @($text -split "`r?`n")
     $idx = Find-OwedLineIndex $lines $DebtId

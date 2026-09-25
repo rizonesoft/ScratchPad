@@ -4098,6 +4098,11 @@ NIGHT_DEBT_MAX_ACCEPT_DAYS = 30
 # extension dated after the due it moves (the response clock already
 # running) changes nothing.
 NIGHT_DEBT_MAX_EXTEND_DAYS = 21
+# Owed lines dated on or after this day must name their tests' digest
+# (D00 T02 §42 R1-F1): without one no collection can prove the owed
+# identities, so the debt stays open and warns. Earlier lines close on
+# counts as before. `tools/Get-DebtDigest.ps1 -Filter <filter>` prints it.
+NIGHT_DEBT_DIGEST_CUTOVER = "2026-09-26"
 NIGHT_DEBT_DEFAULT_TRIGGER = "02:30"
 NIGHT_DEBT_RED_ESCALATION = "fix the failing tests or record risk acceptance"
 
@@ -4402,6 +4407,13 @@ def night_debts(todos: list["Todo"], today_d):
         # Duplicates (§42 item 9): identical lines are one record, replayed
         # silently; lines of one kind on one date that disagree are
         # contradictory and warn, and the latest by record text reads.
+        _by_run: dict = {}
+        for _r in reds.get(did, []):
+            _key = (_r.get("date"), _r.get("run") or _r.get("log") or "")
+            _by_run.setdefault(_key, set()).add(_r.get("_raw", ""))
+        for (_rd, _run) in sorted(_by_run, key=lambda k: (k[0] or "", k[1])):
+            if len(_by_run[(_rd, _run)]) > 1:
+                warnings.append(f"CONTRADICTORY Night-red lines dated {_rd} for run {_run or '?'} ({len(_by_run[(_rd, _run)])} different records); the latest by record text reads")
         for _kind, _recs in (("Night-collected", collected_lists), ("Night-ack", ack_lists), ("Night-accepted", accept_lists),
                              ("Night-owner", owners_re), ("Night-extend", extends), ("Night-revoked", revokes)):
             _by_day: dict = {}
@@ -4413,8 +4425,18 @@ def night_debts(todos: list["Todo"], today_d):
         # Closure binds to the owed tests (§42 item 6): when the owed line
         # names its tests' digest, only a collection with the same digest
         # closes; an equally sized but different set keeps the debt open.
+        # Several collected records: the latest whose digest matches the
+        # owed one closes (R1-F5); a rejected record never masks it.
+        if o.get("digest"):
+            _match = [r for r in collected_lists.get(did, []) if r.get("digest") == o["digest"]]
+            if _match:
+                c = max(_match, key=lambda r: (r["date"], r["_raw"]))
         if c is not None and o.get("digest") and c.get("digest") != o["digest"]:
             warnings.append(f"Night-collected {c['date']} digest {c.get('digest') or 'missing'} differs from the owed tests' digest {o['digest']}; the debt stays open")
+            c = None
+        _owed_day = (o.get("owed") or "")[:10]
+        if not o.get("digest") and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _owed_day) and _owed_day >= NIGHT_DEBT_DIGEST_CUTOVER:
+            warnings.append(f"owed on {_owed_day} without a tests digest (required from {NIGHT_DEBT_DIGEST_CUTOVER}; tools/Get-DebtDigest.ps1 prints it); no collection can close it")
             c = None
         age = None
         due = None
@@ -4459,7 +4481,12 @@ def night_debts(todos: list["Todo"], today_d):
         # due, and a reason; the latest valid one sets the due, and every
         # valid one is quoted.
         extensions = []
+        _ext_seen: set = set()
         for x in sorted(extends.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+            # An identical replay is one record (R1-F2).
+            if x.get("_raw", "") in _ext_seen:
+                continue
+            _ext_seen.add(x.get("_raw", ""))
             xd = _strict_date(x.get("date"))
             xdue = _strict_date(x.get("due"))
             if not (xd and xd <= today_d and x.get("by") and xdue and x.get("reason")):
@@ -4584,7 +4611,7 @@ def night_debts(todos: list["Todo"], today_d):
                 acc = {}
             revoked_on = None
             acc_date = _strict_date(acc.get("date")) if acc else None
-            for v in revokes.get(did, []):
+            for v in sorted(revokes.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
                 vd = _strict_date(v.get("date"))
                 if not (vd and vd <= today_d and v.get("by") and v.get("reason")):
                     # Every field is required (§35 R2-F1): an incomplete or
@@ -26447,6 +26474,25 @@ track: Z1
             f"**Night-owed:** D90-T01-S1-N14 ({_o42}2026-09-15)",
             "**Night-ack:** D90-T01-S1-N14 (2026-09-19, owner operator, action rerun)",
             "**Night-ack:** D90-T01-S1-N14 (2026-09-19, owner operator, action wait)",
+            # R1-F1: an owed line after the cutover must name its digest.
+            f"**Night-owed:** D90-T01-S1-N16 ({_o42}2026-09-26)",
+            "**Night-collected:** 2026-09-27 D90-T01-S1-N16 (1 passed, 0 failed, 0 skipped; log build/nightly/ok.trx)",
+            # R1-F2: contradictory reds for one run warn; identical extends collapse.
+            f"**Night-owed:** D90-T01-S1-N17 ({_o42}2026-09-12)",
+            "**Night-red:** 2026-09-14 D90-T01-S1-N17 (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run q1)",
+            "**Night-red:** 2026-09-14 D90-T01-S1-N17 (0 passed, 2 failed, 0 skipped; log build/nightly/r.trx; run q1)",
+            f"**Night-owed:** D90-T01-S1-N18 ({_o42}2026-09-10)",
+            "**Night-extend:** D90-T01-S1-N18 (2026-09-12, by operator, due 2026-09-25, reason host rebuilt)",
+            "**Night-extend:** D90-T01-S1-N18 (2026-09-12, by operator, due 2026-09-25, reason host rebuilt)",
+            # R1-F3: two revocations read the same in any order.
+            f"**Night-owed:** D90-T01-S1-N19 ({_o42}2026-09-10)",
+            "**Night-accepted:** D90-T01-S1-N19 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale one)",
+            "**Night-revoked:** D90-T01-S1-N19 (2026-09-14, by operator, reason first)",
+            "**Night-revoked:** D90-T01-S1-N19 (2026-09-16, by operator, reason second)",
+            # R1-F5: a stale record never masks the later matching one.
+            f"**Night-owed:** D90-T01-S1-N20 ({_o42}2026-09-12, digest aaaa1111bbbb2222)",
+            "**Night-collected:** 2026-09-18 D90-T01-S1-N20 (1 passed, 0 failed, 0 skipped; log build/nightly/ok.trx; digest cccc3333dddd4444)",
+            "**Night-collected:** 2026-09-17 D90-T01-S1-N20 (1 passed, 0 failed, 0 skipped; log build/nightly/ok.trx; digest aaaa1111bbbb2222)",
         ]
 
         def _nd42_file(lines):
@@ -26546,6 +26592,27 @@ track: Z1
             "§42 item 8: a closed finding with no green collection stays open with a WARN",
             ("D90-T01-S1-N12" in _n42, _n42w("D90-T01-S1-N12", "finding D90-T01-S3 is closed")),
             (True, True),
+        )
+        check(
+            "§42 R1-F1: an owed line after the cutover without a digest stays open and warns",
+            ("D90-T01-S1-N16" in _n42, _n42w("D90-T01-S1-N16", "without a tests digest")),
+            (True, True),
+        )
+        check(
+            "§42 R1-F2: contradictory reds for one run warn; identical extends record one extension",
+            (_n42w("D90-T01-S1-N17", "CONTRADICTORY Night-red lines dated 2026-09-14 for run q1"),
+             _n42.get("D90-T01-S1-N18", "").count("by operator from"), _n42w("D90-T01-S1-N18", "CONTRADICTORY")),
+            (True, 1, False),
+        )
+        check(
+            "§42 R1-F3: the revocation reads the same whatever the line order",
+            _n42w("D90-T01-S1-N19", "revoked on 2026-09-16"),
+            True,
+        )
+        check(
+            "§42 R1-F5: a later matching record closes despite a stale mismatched one",
+            "D90-T01-S1-N20" in _n42,
+            False,
         )
         check(
             "§42 item 9: identical duplicate lines produce no WARN; contradictory ones warn",

@@ -1271,7 +1271,7 @@ if ($debtQueryError -ne '') {
       } elseif ($decision -eq 'close') {
         $greenIds += $debt.Id
         $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest
-        $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
+        $note = Invoke-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
         Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
         $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sub.Passed $sub.Failed $sub.Skipped $logRel $note
         $debtEntries += $pair[0]
@@ -1311,7 +1311,7 @@ if ($debtQueryError -ne '') {
     }
     $greenIds += $debt.Id
     $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest
-    $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
+    $note = Invoke-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
     Write-Output "nightly: night-debt $($debt.Id): $note"
     $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $note
     $debtEntries += $pair[0]

@@ -82,6 +82,23 @@ $idSwap = Test-DebtIdentity $dA @('UI.A.One', 'UI.A.Three')
 $idOk = Test-DebtIdentity $dA @('UI.A.Two', 'UI.A.One')
 $idLegacy = Test-DebtIdentity '' @('UI.A.One')
 Assert ((-not $idSwap.Ok) -and $idOk.Ok -and $idLegacy.Ok) 's42-swapped-test-at-same-count-keeps-debt-open'
+# D00 T02 §42 R1-F4: a failed write becomes a note, never a stop.
+$wf = Invoke-CollectedLine (Join-Path $env:TEMP "no-such-dir-$([guid]::NewGuid().ToString('N'))\x.md") 'D90-T01-S1-N1' '**Night-collected:** x'
+$gW = Format-DebtGreenEntry 'D90-T01-S1-N1' 's' 1 0 0 'log' $wf
+Assert (($wf -like 'write failed:*') -and ($gW[0] -like '*collected-unrecorded*') -and $gW[1]) 's42-failed-write-reads-collected-unrecorded' "$wf"
+# D00 T02 §42 R1-F5: a new record with an unrecorded digest appends; the
+# same digest again is skipped.
+$cdir = Join-Path $env:TEMP "s42-collect-$([guid]::NewGuid().ToString('N'))"
+$null = New-Item -ItemType Directory -Force -Path $cdir
+$ctodo = Join-Path $cdir 'TODO.md'
+@('## 1. W', '', '**Night-owed:** D90-T01-S1-N1 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-12, digest aaaa1111bbbb2222)', '**Night-collected:** 2026-09-18 D90-T01-S1-N1 (1 passed, 0 failed, 0 skipped; log a.trx; digest cccc3333dddd4444)', '') | Set-Content -Path $ctodo -Encoding UTF8
+$c1 = Invoke-CollectedLine $ctodo 'D90-T01-S1-N1' '**Night-collected:** 2026-09-20 D90-T01-S1-N1 (1 passed, 0 failed, 0 skipped; log b.trx; digest aaaa1111bbbb2222)'
+$c2 = Invoke-CollectedLine $ctodo 'D90-T01-S1-N1' '**Night-collected:** 2026-09-21 D90-T01-S1-N1 (1 passed, 0 failed, 0 skipped; log c.trx; digest aaaa1111bbbb2222)'
+Remove-Item $cdir -Recurse -Force
+Assert (($c1 -eq 'appended: D90-T01-S1-N1') -and ($c2 -like 'skip:*already carries*')) 's42-new-digest-appends-past-a-stale-record' "$c1 / $c2"
+# D00 T02 §42 R1-F1: the listing parser reads the available tests.
+$ln = Get-ListedTestNames @('Test run for x.dll', 'The following Tests are available:', '    UI.A.One', '    UI.A.Two(x: 1)')
+Assert (($ln.Count -eq 2) -and ($ln[1] -eq 'UI.A.Two(x: 1)')) 's42-listing-parser-reads-names' ($ln -join ';')
 Assert ((Format-CollectedLine '2026-09-20' 'D90-T01-S1-N1' 2 0 0 'build/x.trx' $dA) -eq "**Night-collected:** 2026-09-20 D90-T01-S1-N1 (2 passed, 0 failed, 0 skipped; log build/x.trx; digest $dA)") 's42-collected-line-carries-the-digest'
 $liveDoc = Get-NightDebtDocument $Root $py
 $liveText = @(& $py (Join-Path $Root 'scripts/todo-graph.py') query night-debt 2>&1 | Where-Object { "$_" -match '^\s{4}\S' } | ForEach-Object { "$_" })
