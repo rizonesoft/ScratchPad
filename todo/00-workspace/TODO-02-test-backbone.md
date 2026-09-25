@@ -80,13 +80,14 @@ track: W0
 |   37  |   §37   | Population gate residuals | §29 |  [x]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [x]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [x]   |
-|   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
+|   40  |   §40   | Trend and telemetry second residuals | §32 |  [x]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
+|   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
 
 ---
 
@@ -1291,6 +1292,7 @@ Why this section exists: the §31 plan review returned 17 findings; 12 file here
 Why this section exists: the §32 plan review returned 19 findings; 17 file here and 2 are rejected with reasons in the §32 findings file. §32 made the trend's night identity, windows, cohorts, calendar, store, equivalence, provenance, and disclosure honest; these carry the same surface through the cases its fixtures do not reach. -> SOURCE: plan-review-D00-T02-s32-2026-09-25-s40 D00-T02-S32-PR1 D00-T02-S32-PR2 D00-T02-S32-PR3 D00-T02-S32-PR4 D00-T02-S32-PR5 D00-T02-S32-PR6 D00-T02-S32-PR7 D00-T02-S32-PR8 D00-T02-S32-PR10 D00-T02-S32-PR11 D00-T02-S32-PR12 D00-T02-S32-PR13 D00-T02-S32-PR14 D00-T02-S32-PR15 D00-T02-S32-PR16 D00-T02-S32-PR17 D00-T02-S32-PR18 (composite keys, trigger edge cases, schedule history, cohort suppression, unknown cohorts, detector boundaries, coverage identity, exclusion states, archival concurrency, store failure modes, authority, mixed-corpus equivalence, durable source identity, disclosure scope, alert lifecycle, attribution, and storage policy from the §32 plan review).
 
 - -> XREF: D00 T02 §32 -- filed from its plan review; carries the trend and telemetry surface it hardened.
+- -> XREF: D00 T02 §47 -- its plan review's residuals.
 
 - [x] Night keys carry schedule and host identity as a composite, with a migration from the offset-based keys §25 recorded, so unrelated hosts' runs never merge. Done when: two hosts' runs on one night read as two keys. (D00-T02-S32-PR1.) **Corrected 2026-09-25:** the item said the key carries schedule and host identity; the key is `night|host`, because one host serves one schedule per night and the schedule history (item 3) already decides a night's due state, so a schedule part would add no discrimination. The migration reads pre-host results as host `legacy` (docs/testing.md).
 - [x] Catch-up runs, manual reruns, and a trigger repeated by a DST fall-back have defined night assignment and canonical selection. Done when: a repeated 02:30 across fall-back reads one canonical night. (D00-T02-S32-PR2.)
@@ -1312,6 +1314,13 @@ Why this section exists: the §32 plan review returned 19 findings; 17 file here
 - [x] Commit: `"workspace: settle the second trend and telemetry residuals"`
 
 **Test checkpoint:** Hosts key apart, trigger edge cases assign one night, schedule edits keep history, cohort changes rebaseline, unknowns read as changes, detector boundaries pin, coverage counts identities, exclusions never degrade, prune and archive interleave safely, store failures recover, authority keeps stronger evidence, mixed corpora compare, pruned values explain themselves, legacy rows redact, alerts close, attribution says correlation, and storage keeps its policy. Cheaper substitute that fails: more rows in the matrix with no fixtures behind them.
+
+> **Verified:** 2026-09-25 | §40 | night slots key by night plus host (identity@host in the store, legacy rows bare); repeated timer triggers read one canonical night; the schedule history decides due nights and each night's own deadline keeps a running job pending; cohort changes rebaseline and unknowns compare as changes; detector boundaries are pinned; coverage counts distinct executed tests; exclusions leave every series without degrading; prune re-verifies under the metrics lock; failed, over-capacity, interrupted, torn, and stale writes leave a readable, correct store; native rows keep backfill evidence; a mixed corpus compares rows, alerts, and the table; pruned nights name their source; compaction sanitizes rows, supersessions, and the backup; alerts carry host-scoped ids, occurrences, and delivery state; attribution records exact revisions and their ancestry as correlation
+> **Review:** round 5 (Full), candidates `5106710` `999db65` `e39b6f5` `ef5fb20` `e90b0dd` `8d8bbbf` -- GPT R1-R2 bulk needs-attention (R1-F1..F8, R2-F1..F3 fixed), GPT R3 sign-off needs-attention (R3-F1..F3 fixed), GPT R4-R5 depth: `adversarial` needs-attention · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); blocking R4-F1..F4 fixed and re-run; below-bar R5-F1, R5-F2 fixed in 8d8bbbf and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s40.md
+> **Plan review:** GPT medium, filed D00 T02 §47 (run 20260925-D00-T02-S40-codex-c06751119-r3)
+> **CRUD:** applicable | the metrics store appends under its lock and is cut back on a failed write; compaction and restore write atomically; the alert ledger writes atomically under the same lock and fails closed when unreadable; all under ignored build/nightly
+> **Duration:** 2026-09-25T14:22:12Z to 2026-09-25T15:27:14Z
+> **Reviewed-tip:** 8d8bbbf43d21595b5dcf0eb785b439ec0279e8ec
 
 ## 41. Sibling Sweep Second Residuals
 
@@ -1424,6 +1433,31 @@ Why this section exists: the §39 plan review returned 14 findings; 13 file here
 - [ ] Commit: `"workspace: settle the third acknowledgement residuals"`
 
 **Test checkpoint:** Duplicates link surviving actions, withdrawals keep remediation, deadlines inherit, receipt time governs lateness, §31's rule reads superseded, invalid revisions never win, corruption collisions merge, deleted damage stays demanded, fixes carry verification, provenance edits are detected, coverage overlaps refuse, filing crash points stay consistent, and status explains a run. Cheaper substitute that fails: more lines in the ack report.
+
+## 47. Trend and Telemetry Third Residuals
+
+Why this section exists: the §40 plan review returned 16 findings; 14 file here and 2 are rejected with reasons in the §40 findings file. §40 keyed nights by host, gave the schedule a history and a grace, rebaselined cohorts, counted coverage by identity, separated exclusions, made the store's failures recoverable, gave alerts a delivered lifecycle, and labeled attribution; these carry that surface through identity stability, acknowledgement, baseline reuse, merge semantics, and explanation. -> SOURCE: plan-review-D00-T02-s40-2026-09-25-s47 D00-T02-S40-PR1 D00-T02-S40-PR2 D00-T02-S40-PR3 D00-T02-S40-PR4 D00-T02-S40-PR6 D00-T02-S40-PR7 D00-T02-S40-PR8 D00-T02-S40-PR9 D00-T02-S40-PR10 D00-T02-S40-PR11 D00-T02-S40-PR12 D00-T02-S40-PR13 D00-T02-S40-PR14 D00-T02-S40-PR16
+
+- -> XREF: D00 T02 §40 -- filed from its plan review; carries the trend and telemetry surface it hardened.
+
+- [ ] Schedule identity is enforced or carried: one schedule per host per night is validated (a second governed trigger on a host is refused or flagged), or the slot key regains a schedule part, so overlapping trigger edits and catch-up runs cannot collide. Done when: two governed schedules on one host read as a named conflict, never one merged night. (D00-T02-S40-PR1.)
+- [ ] The `legacy` host migration has an ambiguity policy: pre-host results that cannot belong to one host (conflicting environments on one night) are detected and read unresolved instead of merging. Done when: two pre-host results with conflicting environments on one night read unresolved. (D00-T02-S40-PR2.)
+- [ ] Host identity has a stability contract across renames, reinstalls, cloned machines, and redaction (an operator alias file mapping old keys to new), so a rename never splits history and a clone never merges two hosts. Done when: a renamed host's old key maps to its new key through the alias file. (D00-T02-S40-PR3.)
+- [ ] A regression on an otherwise passing run (a duration shift, a recurring flake on a green night) is acknowledgeable: the alert ledger carries an acknowledgement state wired to the §39 gate. Done when: a persisting duration alert on green runs can be acknowledged and reads acknowledged. (D00-T02-S40-PR4.)
+- [ ] Rebaselining has rules for a returning cohort (reuse its earlier baseline), an expiry, and a visible prolonged-insufficiency state, so frequent harness changes cannot disable detection indefinitely. Done when: a cohort that returns reuses its baseline, and ten nights of cold start print a prolonged-insufficiency line. (D00-T02-S40-PR6.)
+- [ ] The native-over-backfill merge defines field dependencies (counts, population, and timings merge as a unit or not at all) and explicit deletions (a tombstone), so a merged row always describes one real execution. Done when: a native row with partial counts never mixes its counts with the backfill's population. (D00-T02-S40-PR7.)
+- [ ] Exclusion precedence is bounded against unproven runs: an entirely filtered or zero-execution run reads its own status and never appears healthy. Done when: a run whose every result is excluded reads excluded with zero executions, not green. (D00-T02-S40-PR8.)
+- [ ] Coverage's denominator accounts for sharded discovery: missing shards and partial discovery manifests read partial rather than overstating coverage. Done when: a missing shard manifest reads coverage partial. (D00-T02-S40-PR9.)
+- [ ] The calendar's state machine covers cancellation, disabled scheduling, overlapping jobs, and runs that exceed the grace window. Done when: a run still going past its grace reads overrun, and a disabled schedule reads disabled. (D00-T02-S40-PR10.)
+- [ ] Store recovery preserves acknowledged writes and reports unrecoverable loss: a restore names the rows it could not recover, and a stale backup never passes as current. Done when: a restore from a stale backup lists the rows lost since the backup. (D00-T02-S40-PR11.)
+- [ ] Disclosure migration covers existing backups and rejected-row archives on first run after the rule change, and a restore re-applies the contract, so no retained copy reintroduces a sensitive value. Done when: a restore from a pre-rule backup yields sanitized rows. (D00-T02-S40-PR12.)
+- [ ] Capacity has a low-space warning ahead of refusal and a defined interaction with archival (refusal never blocks pruning of already-archived stamps), with an operator recovery path. Done when: a store at 90 percent of its cap warns, and pruning of archived stamps still runs while writes are refused. (D00-T02-S40-PR13.)
+- [ ] Historical queries define their support across metrics derivation-version changes: a value computed under an older derivation reads incomparable where the meaning changed. Done when: a derivation-1 row beside derivation-2 rows reads its version where a series depends on the change. (D00-T02-S40-PR14.)
+- [ ] Alert drill-through explains the triggering calculation: baseline values, included sample count, excluded nights with reasons, and the recovery criterion. Done when: an alert context names its baseline values, samples, exclusions, and what recovers it. (D00-T02-S40-PR16.)
+- [ ] Commit: `"workspace: settle the third trend and telemetry residuals"`
+
+**Test checkpoint:** Schedules conflict by name, legacy ambiguity reads unresolved, host aliases hold, green-run alerts acknowledge, cohorts reuse and expire, merges stay whole, all-excluded runs never read healthy, partial discovery reads partial, the calendar names overruns, restores report loss, backups sanitize, capacity warns without blocking pruning, derivations read their version, and alerts explain themselves. Cheaper substitute that fails: more ledger fields with no fixtures behind them.
+
 
 ## Verification
 
