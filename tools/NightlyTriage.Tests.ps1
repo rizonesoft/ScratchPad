@@ -36,6 +36,10 @@ $null = New-Item -ItemType Directory -Force -Path $run
 
 $plan = Invoke-Triage @('-WorkspaceRoot', $ws)
 Assert (($plan.Code -eq 0) -and ($plan.Text -like '*todo/T.md ready (1 line(s) from 2026-09-25-023001)*plan only*')) 'triage-plan-names-the-recorded-lines' $plan.Text
+# R3-F1: a case-only edit beyond the recorded lines refuses.
+[System.IO.File]::WriteAllText($todo, "# t`n- Night-owed: a`n$line`nend`n")
+$caseEdit = Invoke-Triage @('-WorkspaceRoot', $ws)
+Assert (($caseEdit.Code -eq 1) -and ($caseEdit.Text -like '*REFUSED: todo/T.md differs from HEAD beyond*')) 'triage-refuses-a-case-only-edit' $caseEdit.Text
 
 # Anything beyond the recorded lines refuses and commits nothing.
 [System.IO.File]::WriteAllText($todo, "# T edited`n- Night-owed: a`n$line`nend`n")
@@ -58,13 +62,31 @@ $msg = (git -C $ws log -1 --format=%s 2>$null | Out-String).Trim()
 $files = @(git -C $ws show --name-only --format= HEAD 2>$null | Where-Object { $_ -ne '' })
 Assert (($ok.Code -eq 0) -and ($msg -eq "nightly: record the collector lines of $stamp") -and ($files.Count -eq 1) -and ($files[0] -eq 'todo/T.md')) 'triage-commits-only-the-recorded-file' "$($ok.Text) || $msg || $($files -join ',')"
 
+# R3-F2: two runs awaiting triage that wrote the same file, plus a newer
+# run that wrote nothing, commit together.
+$stamp2 = '2026-09-26-023001'
+$line2 = '**Night-collected:** 2026-09-26 b (1 passed, 0 failed, 0 skipped; log m)'
+$stamp3 = '2026-09-27-023001'
+$line3 = '**Night-red:** 2026-09-27 a (0 passed, 1 failed, 0 skipped; log n)'
+[System.IO.File]::WriteAllText($todo, "# T`n- Night-owed: a`n$line`n$line3`nend`n$line2`n")
+foreach ($pair in @(@($stamp2, $line2), @($stamp3, $line3))) {
+  $rd = Join-Path $ws "build\nightly\$($pair[0])"
+  $null = New-Item -ItemType Directory -Force -Path $rd
+  ([pscustomobject]@{ version = 1; writes = @([pscustomobject]@{ file = 'todo/T.md'; lines = @($pair[1]) }) } | ConvertTo-Json -Depth 5) | Set-Content -Path (Join-Path $rd 'tracked-writes.json') -Encoding UTF8
+}
+$rd4 = Join-Path $ws 'build\nightly\2026-09-28-023001'
+$null = New-Item -ItemType Directory -Force -Path $rd4
+([pscustomobject]@{ version = 1; writes = @() } | ConvertTo-Json -Depth 5) | Set-Content -Path (Join-Path $rd4 'tracked-writes.json') -Encoding UTF8
+$multi = Invoke-Triage @('-WorkspaceRoot', $ws, '-Commit')
+$msg2 = (git -C $ws log -1 --format=%s 2>$null | Out-String).Trim()
+Assert (($multi.Code -eq 0) -and ($msg2 -eq "nightly: record the collector lines of $stamp2, $stamp3")) 'triage-commits-every-pending-run-together' "$($multi.Text) || $msg2"
 # A second pass finds the lines committed and does nothing.
 $again = Invoke-Triage @('-WorkspaceRoot', $ws, '-Commit')
 Assert (($again.Code -eq 0) -and ($again.Text -like '*already carries*nothing to commit*')) 'triage-is-idempotent' $again.Text
 
 # A manifest naming a file outside todo/ refuses.
 ([pscustomobject]@{ version = 1; writes = @([pscustomobject]@{ file = '../x.md'; lines = @('x') }) } | ConvertTo-Json -Depth 5) | Set-Content -Path (Join-Path $run 'tracked-writes.json') -Encoding UTF8
-$esc = Invoke-Triage @('-WorkspaceRoot', $ws, '-Stamp', $stamp)
+$esc = Invoke-Triage @('-WorkspaceRoot', $ws)
 Assert (($esc.Code -eq 1) -and ($esc.Text -like '*REFUSED: ../x.md is not a TODO file*')) 'triage-refuses-paths-outside-todo' $esc.Text
 
 $env:CLAUDE_CODE_SESSION_ID = $savedSession

@@ -1820,6 +1820,12 @@ $gapThrow = ''
 try { $null = New-IncidentLedgerFromResults $rcFiles '2026-09-25-000000' @{} @{} (Get-LedgerCheckpoints $rcDir) } catch { $gapThrow = $_.Exception.Message }
 $gapMap = New-IncidentLedgerFromResults $rcFiles '2026-09-25-000000' @{} @{} (Get-LedgerCheckpoints $rcDir) -AcceptGaps
 Assert (($gapThrow -like '*rebuild refused: result 2026-10-03-023001 is missing (run 2026-10-04-023001 names it as its predecessor)*-AcceptGaps*') -and ($gapMap.Count -eq 2) -and (@($script:LedgerRebuildGaps).Count -eq 1)) 's45-gap-is-named-and-refuses' $gapThrow
+# R3-F3: the rebuilt ledger carries the latest stamp it applied, so the
+# older checkpoint never rolls it back.
+$rbStamp = $script:LedgerRebuildStamp
+$null = Write-IncidentLedger $gapMap (Join-Path $rcDir 'incidents.json') $rbStamp
+$rbRoll = Resolve-LedgerRollForward (Read-IncidentLedger (Join-Path $rcDir 'incidents.json')) (Get-LedgerCheckpoints $rcDir)
+Assert (($rbStamp -eq '2026-10-04-023001') -and ($rbRoll.Line -eq '')) 's45-rebuild-stamp-blocks-a-backward-roll' "stamp=$rbStamp line=$($rbRoll.Line)"
 # D00 T02 §45 item 5: a joined alias carries its link, owner, due date,
 # occurrences, and streak onto the v2 id without duplicating or closing.
 $alOld = [pscustomobject]@{ id = 'INC-0000a111'; test = 'UI.Al.T'; phase = 'run-a'; key = ''; owner = 'D01 T01 §9'; state = 'open'; firstSeen = '2026-09-20-023001'; lastSeen = '2026-09-22-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-20-023001'; wheres = @('run-a') }, [pscustomobject]@{ stamp = '2026-09-22-023001'; wheres = @('run-a') }); passStreak = 2; lastPassStamp = '2026-09-24-023001'; due = ''; finding = '' }

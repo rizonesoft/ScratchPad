@@ -41,7 +41,10 @@ try {
   Write-Output "ledger: $($_.Exception.Message)"
   exit 1
 }
-$err = Write-IncidentLedger $map $ledgerPath
+# The rebuilt ledger carries the latest stamp it applied (D00 T02
+# section 45 R3-F3), so the next run's roll-forward compares like with
+# like.
+$err = Write-IncidentLedger $map $ledgerPath $script:LedgerRebuildStamp
 if ($err -ne '') { Write-Output "ledger: rebuild FAILED: $err"; exit 1 }
 foreach ($g in @($script:LedgerRebuildGaps)) { Write-Output "ledger: GAP accepted: $g" }
 Write-Output "ledger: rebuilt $($map.Count) incident(s) from $($files.Count) result file(s) on $($script:LedgerRebuildBase) into $ledgerPath"

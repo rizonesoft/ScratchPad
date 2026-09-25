@@ -573,6 +573,7 @@ $script:CaptureStagingDir = '.staging'
 $script:LedgerCheckpointName = 'incidents.checkpoint.json'
 $script:LedgerRebuildGaps = @()
 $script:LedgerRebuildBase = ''
+$script:LedgerRebuildStamp = ''
 $script:CaptureBudgetMarker = 'CAPTURE-BUDGET-TRUNCATED.txt'
 $script:RunCaptureMaxBytes = 200MB
 # Per-capture cap and reservation (section 38 item 3): a dump over the
@@ -2607,6 +2608,11 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   $after = if ($null -ne $cp) { $cp.Stamp } elseif ($null -ne $base) { $base } else { '' }
   $script:LedgerRebuildGaps = @(Get-ResultChainGaps $ResultFiles (@($resultStamps) + @($cpStamps)) $after)
   if (($script:LedgerRebuildGaps.Count -gt 0) -and (-not $AcceptGaps)) { throw "rebuild refused: $($script:LedgerRebuildGaps -join '; '); restore the missing result(s), or pass -AcceptGaps to rebuild without them (their occurrences are lost)" }
+  # The rebuilt state's own stamp (R3-F3): the latest stamp the rebuild
+  # applied, over the restore point and every result replayed, so a
+  # later roll-forward never mistakes an older checkpoint for newer.
+  $script:LedgerRebuildStamp = "$(if ($null -ne $cp) { $cp.Stamp } elseif ($null -ne $base) { $base })"
+  foreach ($rs in @($resultStamps)) { if (("$rs" -ne '') -and ("$rs" -ge $Since) -and ("$rs" -gt $script:LedgerRebuildStamp)) { $script:LedgerRebuildStamp = "$rs" } }
   if ($null -ne $cp) {
     foreach ($k in @($cp.Incidents.Keys)) { $map[$k] = $cp.Incidents[$k] }
     foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
@@ -2796,7 +2802,8 @@ function Test-TrackedWriteOnly([string]$Before, [string]$After, [string[]]$Lines
   $a = New-Object System.Collections.Generic.List[string]
   foreach ($l in @("$After" -split "`r?`n")) { $a.Add($l) }
   foreach ($l in @($Lines)) { $i = $a.IndexOf("$l"); if ($i -lt 0) { return $false }; $a.RemoveAt($i) }
-  return ((@($a) -join "`n") -eq (@("$Before" -split "`r?`n") -join "`n"))
+  # Case-sensitive (R3-F1): a case-only edit is an edit.
+  return ((@($a) -join "`n") -ceq (@("$Before" -split "`r?`n") -join "`n"))
 }
 
 function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$Writes, $StartTexts = $null) {
@@ -2815,7 +2822,7 @@ function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$
     # The pre-write text must be the file as the run found it (R2-F1):
     # an edit between the start fingerprint and the collector's write
     # would otherwise join the accepted baseline.
-    if (($null -ne $StartTexts) -and ((-not $StartTexts.ContainsKey($w.File)) -or ("$($StartTexts[$w.File])" -ne "$($w.Before)"))) { $bad += $w.File; continue }
+    if (($null -ne $StartTexts) -and ((-not $StartTexts.ContainsKey($w.File)) -or ("$($StartTexts[$w.File])" -cne "$($w.Before)"))) { $bad += $w.File; continue }
     if (Test-TrackedWriteOnly $w.Before $now @($w.Lines)) { $expected += $w.File } else { $bad += $w.File }
   }
   $drop = { param($rows) @(@($rows) | Where-Object { $p = ("$_" -split '\|')[1]; $expected -notcontains ($p -replace '\\', '/') }) }
