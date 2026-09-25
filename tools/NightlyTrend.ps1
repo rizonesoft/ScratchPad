@@ -44,7 +44,9 @@ foreach ($p in ($paths | Sort-Object -Unique)) {
     # the JSON still parses, else the date in its file name.
     $night = ''
     try { $night = Get-ResultNight (Get-Content -LiteralPath $p -Raw | ConvertFrom-Json) } catch { }
-    if ($night -notmatch '^\d{4}-\d{2}-\d{2}$') { $m = [regex]::Match((Split-Path -Leaf $p), '(\d{4}-\d{2}-\d{2})'); if ($m.Success) { $night = $m.Groups[1].Value } }
+    # A retained copy is named result.json, so the date comes from the
+    # nearest path segment that carries one (section 32 R3-I3).
+    if ($night -notmatch '^\d{4}-\d{2}-\d{2}$') { $m = [regex]::Matches($p, '(\d{4}-\d{2}-\d{2})'); if ($m.Count -gt 0) { $night = $m[$m.Count - 1].Groups[1].Value } }
     if ($night -ne '') { $degraded += [pscustomobject]@{ Night = $night; Reason = "$(Split-Path -Leaf $p): $($chk.Error)" } }
   }
 }

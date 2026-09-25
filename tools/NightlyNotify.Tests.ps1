@@ -259,7 +259,9 @@ Assert (@(Find-IncidentEvidence $diag 'UI.TabBarTests.Other' @('20260925')).Coun
 $evRes = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
 $evRes | Add-Member -NotePropertyName incidentEvidence -NotePropertyValue ([pscustomobject]@{ 'INC-aaaa1111' = $links })
 $evTrend = @(Format-TrendTable @($evRes) @{ Overdue = @(); DueSoon = @() } (Get-Date '2026-09-25'))
-Assert (@($evTrend | Where-Object { $_ -like '- Incident evidence (2026-09-25): INC-aaaa1111 bundle *bundle.json; screenshot *leak.png; launch-record *' }).Count -eq 1) 'evidence-rides-the-trend' (($evTrend | Where-Object { $_ -like '*evidence*' }) -join '')
+# The fixture's evidence lives under the user's temp folder, so the
+# disclosure contract (D00 T02 section 32) shows it as [path].
+Assert (@($evTrend | Where-Object { ($_ -like '- Incident evidence (2026-09-25): INC-aaaa1111 bundle *; screenshot *; launch-record *') -and (($_ -like '*bundle.json*') -or ($_ -like '*`[path`]*')) }).Count -eq 1) 'evidence-rides-the-trend' (($evTrend | Where-Object { $_ -like '*evidence*' }) -join '')
 
 # D00 T02 section 32 item 14: toasts and digests pass the disclosure
 # contract (a planted token and a user-profile path never render).

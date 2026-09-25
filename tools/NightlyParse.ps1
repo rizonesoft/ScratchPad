@@ -2230,10 +2230,12 @@ function ConvertTo-MetricsRow($Result) {
     $o = $null
     try { $o = $Result.legs.$leg } catch { }
     if ($null -eq $o) { continue }
-    $legs[$leg] = [ordered]@{ ran = $(try { [bool]$o.ran } catch { $false }); passed = (& $num $o.passed); failed = (& $num $o.failed); skipped = (& $num $o.skipped); gate = $(try { $o.gate } catch { $null }); killed = $(try { [bool]$o.killed } catch { $false }); cut = $(try { [bool]$o.cut } catch { $false }); testSeconds = $(try { & $num $o.testSeconds } catch { $null }) }
+    $legs[$leg] = [ordered]@{ ran = $(try { [bool]$o.ran } catch { $false }); passed = (& $num $o.passed); failed = (& $num $o.failed); skipped = (& $num $o.skipped); gate = $(try { $o.gate } catch { $null }); killed = $(try { [bool]$o.killed } catch { $false }); cut = $(try { [bool]$o.cut } catch { $false }); testSeconds = $(try { & $num $o.testSeconds } catch { $null }); enforcementRed = $(try { [bool]$o.enforcementRed } catch { $false }) }
   }
   $incs = @()
-  foreach ($ln in @($Result.incidents)) { $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8}) `([^`]+)`'); if ($m.Success) { $incs += (Protect-DisclosedText "- $($m.Groups[1].Value) ``$($m.Groups[2].Value)``") } }
+  # Whole incident lines (disclosed), so phase and failure class survive
+  # for the alias map and recurrence (section 32 R3-I1).
+  foreach ($ln in @($Result.incidents)) { if ([regex]::IsMatch("$ln", '(INC-[0-9a-f]{8}) `([^`]+)`')) { $incs += (Protect-DisclosedText "$ln") } }
   # Provenance sources and locators pass the disclosure contract before
   # they persist (D00 T02 section 32 item 14).
   $prov = $null
@@ -2241,7 +2243,7 @@ function ConvertTo-MetricsRow($Result) {
   return [ordered]@{
     schema = 'metrics/1'; identity = "$($Result.identity)"; stamp = "$($Result.stamp)"; day = "$($Result.day)"; night = (Get-ResultNight $Result)
     verdict = "$($Result.verdict)"; launch = "$($Result.launch)"; simulated = $(try { [bool]$Result.simulated } catch { $false }); backfill = (Test-IsBackfill $Result)
-    legs = $legs; soak = [ordered]@{ verdict = $(try { "$($Result.soak.verdict)" } catch { '' }) }
+    legs = $legs; soak = [ordered]@{ verdict = $(try { "$($Result.soak.verdict)" } catch { '' }); ran = $(try { [bool]$Result.soak.ran } catch { $false }); failed = $(try { $sf0 = $Result.soak.failed; if ($sf0 -is [array]) { ,@($sf0 | ForEach-Object { Protect-DisclosedText "$_" }) } elseif ($null -eq $sf0) { 0 } else { [int]$sf0 } } catch { 0 }); killed = $(try { $k0 = @(@($Result.soak.killed) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); if ($k0.Count -gt 0) { ,$k0 } else { $null } } catch { $null }); cut = $(try { $c0 = @(@($Result.soak.cut) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); if ($c0.Count -gt 0) { ,$c0 } else { $null } } catch { $null }) }
     incidents = $incs; reserve = $(try { & $num $Result.reserve } catch { $null }); consumed = $(try { & $num $Result.consumed } catch { $null })
     env = $(try { $eo = [ordered]@{}; foreach ($k in $script:EnvFields) { $eo[$k] = Protect-DisclosedText $(try { "$($Result.env.$k)" } catch { 'unknown' }) }; $eo } catch { [ordered]@{ os = 'unknown'; dpi = 'unknown' } })
     quarantine = $(try { [ordered]@{ overdue = @(@($Result.quarantine.overdue) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); dueSoon = @(@($Result.quarantine.dueSoon) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); overdueDetail = @(@($Result.quarantine.overdueDetail) | Where-Object { $null -ne $_ } | ForEach-Object { [ordered]@{ Test = (Protect-DisclosedText "$($_.Test)"); Due = "$($_.Due)"; Owner = (Protect-DisclosedText "$($_.Owner)") } }) } } catch { $null })
@@ -2370,7 +2372,9 @@ function Sync-MetricsStore([string]$Path, $Results) {
     # timer-launched backfill. A manual retry later that day is another
     # run, never a replacement (live finding, section 32). Stored records
     # that no longer satisfy the rule are dropped, not trusted.
-    $replaces = { param($nat, $bf) ("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer')) }
+    # Only an executed native night replaces evidence: a stood-down or
+    # cancelled row carries none (R3-A3).
+    $replaces = { param($nat, $bf) (@('green', 'red') -contains "$($nat.verdict)") -and (("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer'))) }
     $sups = @($store.Supersessions | Where-Object { $sn = $store.Rows["$($_.native)"]; $sb = $store.Rows["$($_.backfill)"]; ($null -ne $sn) -and ($null -ne $sb) -and (& $replaces $sn $sb) })
     $known = @{}
     foreach ($s0 in $sups) { $known["$($s0.night)|$($s0.backfill)"] = $true }
@@ -2407,7 +2411,7 @@ function Compress-MetricsStore([string]$Path) {
     $store = Read-MetricsStore $Path
     $before = @([System.IO.File]::ReadAllLines($Path) | Where-Object { $_.Trim() -ne '' }).Count
     Copy-Item -LiteralPath $Path -Destination "$Path.bak" -Force
-    $replaces = { param($nat, $bf) ("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer')) }
+    $replaces = { param($nat, $bf) (@('green', 'red') -contains "$($nat.verdict)") -and (("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer'))) }
     $valid = @($store.Supersessions | Where-Object { $sn = $store.Rows["$($_.native)"]; $sb = $store.Rows["$($_.backfill)"]; ($null -ne $sn) -and ($null -ne $sb) -and (& $replaces $sn $sb) })
     $lines = @($store.Rows.Keys | ForEach-Object { $store.Raw[$_] }) + @($valid | ForEach-Object { ConvertTo-Json $_ -Compress })
     Write-AtomicReport $lines $Path
@@ -2445,7 +2449,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $true }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }) }
+  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $true }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }) }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -2512,8 +2516,11 @@ function Protect-DisclosedText([string]$Text) {
   $t = "$Text"
   $hits = @(Test-CaptureSecrets $t)
   foreach ($p in $script:SecretPatterns) { $t = [regex]::Replace($t, $p[1], "[redacted: $($p[0])]") }
-  $t = [regex]::Replace($t, '(?i)\b[A-Za-z]:\\Users\\[^\s;|,)]+', '[path]')
-  $t = [regex]::Replace($t, '\\\\(?!\.\\)[^\s\\;|,)]+\\[^\s;|,)]*', '[path]')
+  # A path runs through its spaces to the next field boundary (a ';',
+  # '|', ',', ')', a ' KEY=' token, or the end), so a folder name with a
+  # space never leaks its tail (section 32 R3-A2).
+  $t = [regex]::Replace($t, '(?i)\b[A-Za-z]:\\Users\\.*?(?=( [A-Z][A-Z0-9_]*=)|[;|,)]|$)', '[path]')
+  $t = [regex]::Replace($t, '\\\\(?!\.\\)[^\\;|,)]+\\.*?(?=( [A-Z][A-Z0-9_]*=)|[;|,)]|$)', '[path]')
   return $t
 }
 
@@ -2571,14 +2578,24 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   # the median of the last 3 against the median of the 7 before them,
   # past 120% and at least 60 s over, so a step that one noisy night
   # would not trip still surfaces (D00 T02 §25 item 6, plan review PR8).
-  $allSec = @($r | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
-  if ($allSec.Count -ge 10) {
-    $recentMed = Get-Percentile @($allSec | Select-Object -Last 3) 50
-    $priorMed = Get-Percentile @($allSec | Select-Object -Last 10 | Select-Object -First 7) 50
+  # Calendar windows (section 32 R3-I2): the last 3 nights (evaluated
+  # included) against the 7 nights before them; each window needs its own
+  # measured nights (3 recent, 5 prior), so old history never stands in.
+  $shiftOk = $false
+  if ($windowed) {
+    $recentFrom = $latestNight.AddDays(-2).ToString('yyyy-MM-dd')
+    $priorFrom = $latestNight.AddDays(-9).ToString('yyyy-MM-dd'); $priorTo = $latestNight.AddDays(-3).ToString('yyyy-MM-dd')
+    $recentRows = @($r | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $recentFrom) } | Where-Object { try { $null -ne $_.legs.'run-a'.testSeconds } catch { $false } })
+    $priorRows = @($r | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $priorFrom) -and ($nk -le $priorTo) } | Where-Object { try { $null -ne $_.legs.'run-a'.testSeconds } catch { $false } })
+    $shiftOk = ($recentRows.Count -ge 3) -and ($priorRows.Count -ge $script:TrendMinSamples)
+  }
+  if ($shiftOk) {
+    $recentMed = Get-Percentile @($recentRows | ForEach-Object { [double]$_.legs.'run-a'.testSeconds }) 50
+    $priorMed = Get-Percentile @($priorRows | ForEach-Object { [double]$_.legs.'run-a'.testSeconds }) 50
     if (($recentMed -gt 1.2 * $priorMed) -and (($recentMed - $priorMed) -ge 60)) {
       $shift = if ($priorMed -gt 0) { "+$([int][math]::Round(100 * ($recentMed - $priorMed) / $priorMed))%" } else { "+$([int]($recentMed - $priorMed))s over a zero baseline" }
       $alerts += "- ALERT runa-shift: last 3 nights median $([int]$recentMed)s vs the prior 7 nights median $([int]$priorMed)s ($shift, sustained)"
-      $alerts += Format-AlertContext $latest @($r | Select-Object -Last 10 | Select-Object -First 7) 'runa-shift'
+      $alerts += Format-AlertContext $latest (@($priorRows) + @($recentRows | Where-Object { $_ -ne $latest })) 'runa-shift'
     }
   }
   $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
@@ -2756,7 +2773,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # Degraded data (item 8): a corrupted or skipped result marks its night,
   # so broken evidence never makes a night look healthy.
   $degradedNights = @(@($Degraded) | ForEach-Object { "$($_.Night)" } | Where-Object { $_ -ne '' })
-  $lines = @('# Nightly trend', '', '- Pass rate: passed / (passed + failed) over executed tests; skips (quarantine, capability, fenced) are counted apart and never in the denominator; a night with a killed or budget-cut leg reads unproven; stand-downs and cancellations are marks.', '- Series: durations, percentiles, and alerts read canonical native nights (no simulation, stand-down, cancellation, retry, or backfill); pass rate and recurrence read canonical nights with backfills marked; every row renders, retries and extras marked.', '- Series matrix (D00 T02 section 32): [rate] pass rate: canonical nights, backfills marked; [coverage] executed of discovered: every night with a leg run; [native] RunA/RunB seconds, percentiles, alerts: canonical native nights; [recurrence] flake recurrence: canonical nights, aliases joined; [quarantine] quarantine age: each night''s own snapshot plus today''s ledger; [gates] gate verdicts: every night; [budget] budget telemetry: every night that is not a mark; [env] environment: every night; [excluded] smoke runs: never publish a result.', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | SoakFail | Env | Coverage |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+  $lines = @('# Nightly trend', '', '- Pass rate: passed / (passed + failed) over executed tests; skips (quarantine, capability, fenced) are counted apart and never in the denominator; a night with a killed or budget-cut leg reads unproven; stand-downs and cancellations are marks.', '- Series: durations, percentiles, and alerts read canonical native nights (no simulation, stand-down, cancellation, retry, or backfill); pass rate and recurrence read canonical nights with backfills marked; every row renders, retries and extras marked.', '- Series matrix (D00 T02 section 32): [rate] pass rate: canonical nights, backfills marked; [coverage] executed of discovered: every night with a leg run; [native] RunA/RunB seconds, percentiles, alerts: canonical native nights; [recurrence] flake recurrence: canonical nights, aliases joined; [quarantine] quarantine age: each night''s own snapshot plus today''s ledger; [gates] gate verdicts: every night; [budget] budget telemetry and Reserve: every night that is not a mark; [soak] Soak and SoakFail: every night that ran the soak; [env] environment: every night; [excluded] smoke runs: never publish a result.', '- Columns: Pass [rate]; Coverage [coverage]; RunA s, RunB s [native]; Soak, SoakFail [soak]; Gates [gates]; Reserve [budget]; Quar [quarantine]; Env [env].', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | SoakFail | Env | Coverage |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   $allA = @()
   $incNights = @{}
   foreach ($r in $rows) {
@@ -2838,7 +2855,16 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     if ([bool]$(try { $r.fromMetrics } catch { $false })) { $nightCell += ' (metrics)' }
     # Execution coverage (item 2): executed of discovered (executed plus
     # skipped), so a high rate over a shrunken population shows.
+    # Discovered is the recorded population's cases for the legs that ran
+    # when the result carries it (a killed or cut leg never reports the
+    # tests it did not reach), else executed plus skipped (R3-C2).
     $disc = $exec + $s
+    $popm = [regex]::Matches("$(try { $r.population } catch { '' })", '(run-a|run-b|interactive)=\d+/(\d+)')
+    if ($popm.Count -gt 0) {
+      $pd = 0
+      foreach ($pm in $popm) { $lg = $pm.Groups[1].Value; try { $lo = $r.legs.$lg; if (($null -ne $lo) -and (($null -eq $lo.ran) -or [bool]$lo.ran)) { $pd += [int]$pm.Groups[2].Value } } catch { } }
+      if ($pd -gt 0) { $disc = $pd }
+    }
     $cov = if ($disc -gt 0) { "$exec/$disc ($([math]::Round((100 * $exec) / $disc, 1))%)" } else { '-' }
     if ($degradedNights -contains $day) { $nightCell += ' (degraded)' }
     $rowEntries += [pscustomobject]@{ Night = $day; Stamp = "$($r.stamp)"; Line = "| $nightCell | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds$qage | $sf | $envShort | $cov |" }
@@ -2904,7 +2930,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     $ev = $null
     try { $ev = $latest.incidentEvidence } catch { }
     if ($null -ne $ev) {
-      foreach ($prop in @($ev.PSObject.Properties)) { $lines += "- Incident evidence ($($latest.day)): $($prop.Name) $(@($prop.Value) -join '; ')" }
+      foreach ($prop in @($ev.PSObject.Properties)) { $lines += (Protect-DisclosedText "- Incident evidence ($($latest.day)): $($prop.Name) $(@($prop.Value) -join '; ')") }
     }
   }
   # Tail percentiles over the last 14 canonical native nights (D00 T02
@@ -2945,11 +2971,13 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   $lines += ''
   $lines += '## Alerts'
   $lines += ''
+  $lines += '(series [native] and [rate] for regressions, [recurrence] for flakes)'
   $alerts = @(Get-TrendAlerts @($rows | Where-Object { & $isNative $_ }))
   if ($alerts.Count -eq 0) { $lines += '(none)' } else { $lines += $alerts }
   $lines += ''
   $lines += '## Budget'
   $lines += ''
+  $lines += '(series [budget])'
   $ranked = @($allA | Sort-Object)
   foreach ($r in $rows) {
     if ((("$($r.verdict)") -eq 'stood-down') -or (("$($r.verdict)") -eq 'cancelled')) { continue }
@@ -2996,6 +3024,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   $lines += ''
   $lines += '## Environments'
   $lines += ''
+  $lines += '(series [env])'
   foreach ($r in $rows) {
     if ((("$($r.verdict)") -eq 'stood-down') -or (("$($r.verdict)") -eq 'cancelled')) { continue }
     $e = 'unknown'

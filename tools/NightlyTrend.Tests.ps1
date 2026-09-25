@@ -57,7 +57,7 @@ $corpus += $bf
 $tc = @(Format-TrendTable $corpus $Q $today)
 Assert (@($tc | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=4, p50 610, p90 620, p95 620 (= max: n=4 < 20), max 620 [native]' }).Count -eq 1) 'series-native-canonical-only' (($tc | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
 $ai = [array]::IndexOf($tc, '## Alerts')
-Assert (($tc[$ai + 2] -like '- Insufficient data: runa-duration (3 measured baseline night(s) of 5 needed*') -and (@($tc | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 'series-mixed-corpus-no-false-slope' ($tc[$ai + 2])
+Assert (($tc[$ai + 3] -like '- Insufficient data: runa-duration (3 measured baseline night(s) of 5 needed*') -and (@($tc | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 'series-mixed-corpus-no-false-slope' ($tc[$ai + 2])
 Assert (@($tc | Where-Object { $_ -like '| 2026-09-24 (backfill) |*' }).Count -eq 1) 'series-backfill-marked'
 Assert (@($tc | Where-Object { $_ -like '- Series: durations, percentiles, and alerts read canonical native nights*' }).Count -eq 1) 'series-rule-reads'
 
@@ -180,7 +180,7 @@ $run = Join-Path $dir 'bfrun'
 $null = New-Item -ItemType Directory -Force -Path $run
 @('# Morning report: 2026-09-20', 'Status: final', '', '- HEAD: 0000000', '- Run identity: 2026-09-20-023000-pid7', '- Trigger: task \ScratchPad\Nightly UI (timer)', '', '| Leg | Counts | Gate | Infra | Log |', '| --- | --- | --- | --- | --- |', '| Run A (default) | 10 passed, 0 failed, 1 skipped | exit 0 | - | 2026-09-20-023000-default.log |', '| Run B (primary) | 4 passed, 0 failed, 0 skipped | exit 0 | - | 2026-09-20-023000-primary.log |', '| Interactive (collection) | 3 passed, 0 failed, 0 skipped | n/a | - | 2026-09-20-023000-full.log |') | Set-Content -Path (Join-Path $run 'morning-2026-09-20-023000.md') -Encoding UTF8
 'Passed!  - Failed:     0, Passed:    10, Skipped:     1, Total:    11, Duration: 1 s - UI.dll (net10.0)' | Set-Content -Path (Join-Path $run '2026-09-20-023000-default.log') -Encoding UTF8
-'Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - UI.dll (net10.0)' | Set-Content -Path (Join-Path $run '2026-09-20-023000-primary.log') -Encoding UTF8
+@('Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - UI.dll (net10.0)', 'test-seconds: 12') | Set-Content -Path (Join-Path $run '2026-09-20-023000-primary.log') -Encoding UTF8
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $run '2026-09-20-023000')
 '<TestRun><Results><UnitTestResult testName="UI.X" outcome="Passed" /></Results></TestRun>' | Set-Content -Path (Join-Path $run '2026-09-20-023000\ui-soak-1.trx') -Encoding UTF8
 $bfOut = Join-Path $dir 'backfill.result.json'
@@ -431,6 +431,42 @@ $zc = Select-CanonicalRuns @($z1, $z2, $z3)
 $zf = @($z1, $z2, $z3) | ForEach-Object { $zp = Join-Path $dir "$($_.identity).result.json"; ($_ | ConvertTo-Json) | Set-Content -Path $zp -Encoding UTF8; $zp }
 $zd = Get-AckDemands $zf
 Assert (($zc.Keys.Count -eq 1) -and ($zc.ContainsKey('2026-10-25')) -and ($zc['2026-10-25'].Canonical -eq 'z-1') -and ((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day } | Sort-Object -Unique) -eq '2026-10-25') -and (-not ((Get-NoStartVerdict @($z1, $z2, $z3) (Get-Date '2026-10-25 08:00') '06:50' 0).NoStart))) 'one-night-across-both-dst-offsets-and-zones' "$(@($zc.Keys) -join ',') / $((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day }) -join ',')"
+
+# ---- section 32 sign-off ----
+# R3-A2: a private path with spaces redacts whole.
+Assert (((Protect-DisclosedText 'dump C:\Users\Jane Doe\Private Data\dump.dmp; next') -eq 'dump [path]; next') -and ((Protect-DisclosedText 'at \\host\share\Jane Doe\x.dmp') -eq 'at [path]')) 'disclosure-paths-with-spaces'
+# R3-A3: a stood-down night never supersedes a timer backfill.
+$ss3 = Join-Path $dir 'supersede-standdown.jsonl'
+$bf3 = New-Night '2026-09-22' '2026-09-22-023003'
+$bf3.identity = 'backfill-2026-09-22'
+$bf3 | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'rows'; confidence = 'derived' } }) -Force
+$null = Sync-MetricsStore $ss3 @($bf3)
+$sd3 = New-Night '2026-09-22' '2026-09-22-023500' 600 'timer' 100 0 5 @() $false 'stood-down'
+$cur3 = @(Sync-MetricsStore $ss3 @($sd3))
+Assert (($cur3.Count -eq 2) -and (@([System.IO.File]::ReadAllLines($ss3) | Where-Object { $_ -like '*supersession/1*' }).Count -eq 0)) 'stood-down-never-supersedes'
+# R3-C2: coverage counts the recorded population for a killed leg.
+$kl = New-Night '2026-09-29' '2026-09-29-023000' 600 'timer' 54 0 0
+$kl.legs.'run-a'.killed = $true
+$kl | Add-Member -NotePropertyName population -NotePropertyValue 'run-a=100/100 run-b=4/4 interactive=39/44' -Force
+Assert (@(Format-TrendTable @($kl) $Q $today | Where-Object { $_ -like '| 2026-09-29 |*| 58/104 (55.8%) |' }).Count -eq 1) 'coverage-counts-the-population-for-a-killed-leg' ((Format-TrendTable @($kl) $Q $today | Where-Object { $_ -like '| 2026-09-29*' }) -join '')
+# R3-I1: enforcement, soak failures, and incident class survive metrics.
+$en = New-Night '2026-09-30' '2026-09-30-023000' 600 'timer' 100 0 5 @('- INC-aaaa1111 `UI.A` x1 (ui-soak-1): Assert.NotNull() Failure')
+$en.legs.interactive = [pscustomobject]@{ ran = $true; passed = 1; failed = 0; skipped = 0; killed = $false; cut = $false; enforcementRed = $true }
+$en.soak = [pscustomobject]@{ ran = $true; verdict = 'red'; failed = @('UI.Soak.T'); killed = @(); cut = @() }
+$enRow = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $en)) -Depth 8 -Compress) | ConvertFrom-Json)
+$enA = @(Format-TrendTable @($en) $Q $today | Where-Object { $_ -like '| 2026-09-30*' })
+$enB = @(Format-TrendTable @($enRow) $Q $today | Where-Object { $_ -like '| 2026-09-30*' } | ForEach-Object { $_.Replace(' (metrics)', '') })
+Assert ((($enA -join '') -eq ($enB -join '')) -and (($enA -join '') -like '*| enforcement |*') -and (($enA -join '') -like '*red UI.Soak.T*') -and ("$(@($enRow.incidents)[0])" -like '*(ui-soak-1): Assert.NotNull() Failure')) 'metrics-keep-enforcement-soak-and-incident-class' (($enA + $enB) -join ' || ')
+# R3-I2: August history cannot make a September shift.
+$aug = @(1..7 | ForEach-Object { New-Night ('2026-08-{0:d2}' -f $_) ('2026-08-{0:d2}-023000' -f $_) 600 })
+$sep = @(25..27 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 800 })
+Assert (@(Get-TrendAlerts (@($aug) + @($sep)) | Where-Object { $_ -like '- ALERT runa-shift*' }).Count -eq 0) 'shift-needs-its-own-calendar-windows'
+# R3-I3: a corrupt retained copy marks its night through the path's date.
+$rtd = Join-Path $dir 'retained-night'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $rtd 'retained\2026-09-21-023001-run')
+'{ truncated' | Set-Content -Path (Join-Path $rtd 'retained\2026-09-21-023001-run\result.json') -Encoding UTF8
+$null = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $rtd -OutFile (Join-Path $rtd 'trend.md') 2>&1
+Assert (@(Get-Content (Join-Path $rtd 'trend.md') | Where-Object { $_ -like '- Degraded data: night 2026-09-21 (*' }).Count -eq 1) 'corrupt-retained-copy-marks-its-night' ((Get-Content (Join-Path $rtd 'trend.md') | Where-Object { $_ -like '*Degraded*' }) -join '')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
