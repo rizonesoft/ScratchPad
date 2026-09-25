@@ -1088,6 +1088,9 @@ public sealed class LaunchTests
                 // moved it mid-birth; the location-change recorder sees
                 // every move of the helpers while the birth runs.
                 using var moves = new LocationRecorder((uint)first.ProcessId, helpers.Keys);
+                // The test's own pre-birth set (§34 R2-F2): every window of
+                // the process, visible or not, read before the second birth.
+                HashSet<nint> preBirth = ProcessWindows(first.ProcessId);
                 using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 var windows = Retry.While(
@@ -1122,6 +1125,21 @@ public sealed class LaunchTests
                 // The second birth creates no top-level helper of its own (the
                 // thread's helpers already exist), so it pins nothing.
                 Assert.Empty(birth.Pinned);
+                // Independently of the selection (§34 R2-F2): every handle the
+                // log calls preexisting was in the test's own pre-birth set,
+                // and every window born during the construction is a main or
+                // another main's, never a skipped helper of this birth.
+                foreach (var (hwnd, reason) in birth.Skipped)
+                {
+                    if (reason == "preexisting")
+                    {
+                        Assert.True(preBirth.Contains(hwnd), $"the sweep called 0x{hwnd:X} preexisting, but the test's own pre-birth set lacks it: {birth.Raw}");
+                    }
+                    else if (!preBirth.Contains(hwnd))
+                    {
+                        Assert.True(reason is "main" or "other-owner", $"a window born during the second construction, 0x{hwnd:X}, was skipped as {reason}: {birth.Raw}");
+                    }
+                }
 
                 foreach (Window w in windows)
                 {
@@ -1164,15 +1182,16 @@ public sealed class LaunchTests
                 nint firstMain = window.Properties.NativeWindowHandle.Value;
                 HashSet<nint> before = HelperWindows(first.ProcessId).Keys.ToHashSet();
                 UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileOpen");
+                // Only the picker: a #32770 dialog whose root owner is the
+                // first main, never a menu popup that also appeared; the
+                // filter rides the retry so a popup cannot end the wait early
+                // (§34 R1-F2, R2-F1).
                 var dialogs = Retry.While(
-                    () => HelperWindows(first.ProcessId).Where(kv => !before.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value),
+                    () => HelperWindows(first.ProcessId).Where(kv => !before.Contains(kv.Key) && HelperClass(kv.Key) == "#32770" && HelperNative.GetAncestor(kv.Key, 3) == firstMain).ToDictionary(kv => kv.Key, kv => kv.Value),
                     found => found.Count == 0,
                     TimeSpan.FromSeconds(10),
                     TimeSpan.FromMilliseconds(250),
                     lastValueOnTimeout: true).Result ?? [];
-                // Only the picker: a #32770 dialog whose root owner is the
-                // first main, never a menu popup that also appeared (§34 R1-F2).
-                dialogs = dialogs.Where(kv => HelperClass(kv.Key) == "#32770" && HelperNative.GetAncestor(kv.Key, 3) == firstMain).ToDictionary(kv => kv.Key, kv => kv.Value);
                 Assert.True(dialogs.Count > 0, "File > Open raised no #32770 dialog owned by the first main window");
                 using var moves = new LocationRecorder((uint)first.ProcessId, dialogs.Keys);
                 using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
@@ -1203,6 +1222,24 @@ public sealed class LaunchTests
             SessionData.Delete();
             DeleteDir(dir);
         }
+    }
+
+    // Every top-level window of the process, visible or not.
+    static HashSet<nint> ProcessWindows(int pid)
+    {
+        var found = new HashSet<nint>();
+        _ = HelperNative.EnumWindows((hwnd, param) =>
+        {
+            _ = param;
+            _ = HelperNative.GetWindowThreadProcessId(hwnd, out uint owner);
+            if (owner == (uint)pid)
+            {
+                _ = found.Add(hwnd);
+            }
+
+            return true;
+        }, nint.Zero);
+        return found;
     }
 
     static string HelperClass(nint hwnd)
