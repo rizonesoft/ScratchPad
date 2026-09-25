@@ -2540,6 +2540,24 @@ function Get-LedgerCheckpoints([string]$NightDir) {
   return @(Get-ChildItem -LiteralPath $NightDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$' } | ForEach-Object { Join-Path $_.FullName $script:LedgerCheckpointName } | Where-Object { Test-Path -LiteralPath $_ })
 }
 
+function Resolve-LedgerRollForward($LedgerRead, [string[]]$CheckpointFiles) {
+  # The checkpoint is written before the ledger (D00 T02 section 45 R1-F5),
+  # so a crash between the two leaves the checkpoint as the later state:
+  # when the newest readable checkpoint is newer than the ledger's own
+  # stamp, the run continues from the checkpoint and says so. Returns
+  # Incidents, Stamp, and Line ('' when the ledger is current).
+  $best = $null
+  foreach ($c in @($CheckpointFiles)) {
+    $r = Read-IncidentLedger $c
+    if ((-not $r.Ok) -or ("$($r.Stamp)" -eq '')) { continue }
+    if (($null -eq $best) -or ($r.Stamp -gt $best.Stamp)) { $best = $r }
+  }
+  if (($null -ne $best) -and ($best.Stamp -gt "$($LedgerRead.Stamp)")) {
+    return [pscustomobject]@{ Incidents = $best.Incidents; Stamp = $best.Stamp; Line = "- ledger rolled forward to checkpoint $($best.Stamp) (the ledger read $(if ("$($LedgerRead.Stamp)" -ne '') { $LedgerRead.Stamp } else { 'no stamp' }); a crash left it behind its checkpoint)" }
+  }
+  return [pscustomobject]@{ Incidents = $LedgerRead.Incidents; Stamp = "$($LedgerRead.Stamp)"; Line = '' }
+}
+
 function Get-ResultChainGaps([string[]]$ResultFiles, [string[]]$KnownStamps, [string]$After) {
   # Missing intermediate results (section 45 item 4): each result names
   # the result before it (previousStamp); a named predecessor after the
@@ -2813,7 +2831,9 @@ function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$
 function Write-TrackedWriteManifest([hashtable]$Writes, [string]$Path) {
   # The triage step's input (section 45 item 7): one entry per file with
   # its registered lines, written atomically beside the run.
-  $list = @($Writes.Keys | Sort-Object | ForEach-Object { $w = $Writes[$_]; if (@($w.Lines).Count -gt 0) { [pscustomobject]@{ file = $w.File; lines = @($w.Lines) } } })
+  # Each entry keeps the file's pre-write text and its SHA-256 (R1-F2),
+  # so the record alone shows what the run started from.
+  $list = @($Writes.Keys | Sort-Object | ForEach-Object { $w = $Writes[$_]; if (@($w.Lines).Count -gt 0) { [pscustomobject]@{ file = $w.File; beforeSha256 = (Get-BytesSha256 ([System.Text.Encoding]::UTF8.GetBytes("$($w.Before)"))); before = "$($w.Before)"; lines = @($w.Lines) } } })
   Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ version = 1; writes = @($list) }) -Depth 5)) $Path
 }
 
@@ -4383,6 +4403,8 @@ function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtab
       continue
     }
     $n = $map[$new]
+    # Each side's own last failure, before the merge widens lastSeen (R1-F3).
+    $lastBySide = @{ o = "$($o.lastSeen)"; n = "$($n.lastSeen)" }
     foreach ($field in @('due', 'finding', 'passStreak', 'lastPassStamp', 'closedAt', 'closedBy')) { if (@($n.PSObject.Properties.Name) -notcontains $field) { $n | Add-Member -NotePropertyName $field -NotePropertyValue $(if ($field -eq 'passStreak') { 0 } else { '' }) } }
     $byStamp = @{}
     foreach ($x in @($n.occurrences) + @($o.occurrences)) { if (($null -ne $x) -and (-not $byStamp.ContainsKey("$($x.stamp)"))) { $byStamp["$($x.stamp)"] = $x } }
@@ -4393,9 +4415,18 @@ function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtab
     elseif (("$($o.due)" -ne '') -and (("$($n.due)" -eq '') -or ("$($o.due)" -lt "$($n.due)")) -and ($n.owner -eq $script:TriageOwner)) { $n.due = $o.due }
     if ("$($n.finding)" -eq '') { $n.finding = $(if ("$($o.finding)" -ne '') { $o.finding } elseif ($lk.ContainsKey($new)) { $lk[$new] } else { '' }) }
     if (($o.state -eq 'open') -or ($n.state -eq 'open')) {
-      if (($o.state -eq 'open') -and ($n.state -eq 'open')) {
-        if ([int]$o.passStreak -gt [int]$n.passStreak) { $n.passStreak = [int]$o.passStreak; $n.lastPassStamp = $o.lastPassStamp }
-      } elseif ($n.state -ne 'open') { $n.passStreak = [int]$o.passStreak; $n.lastPassStamp = $o.lastPassStamp }
+      # A streak survives the merge only from a side whose own last
+      # failure is the newest of the two (R1-F3): a side that failed
+      # before the other's latest failure may count passes from before
+      # that failure, so its streak is void. Equal last failures keep
+      # the stronger streak.
+      $lf = if ($lastBySide.o -gt $lastBySide.n) { $lastBySide.o } else { $lastBySide.n }
+      $cand = @()
+      if (("$($o.state)" -eq 'open') -and ($lastBySide.o -eq $lf)) { $cand += $o }
+      if (("$($n.state)" -eq 'open') -and ($lastBySide.n -eq $lf)) { $cand += $n }
+      $best = $null
+      foreach ($c in $cand) { if (($null -eq $best) -or ([int]$c.passStreak -gt [int]$best.passStreak)) { $best = $c } }
+      if ($null -ne $best) { $n.passStreak = [int]$best.passStreak; $n.lastPassStamp = $best.lastPassStamp } else { $n.passStreak = 0 }
       $n.state = 'open'; $n.closedAt = ''; $n.closedBy = ''
     }
     $map.Remove($old)

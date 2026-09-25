@@ -43,6 +43,13 @@ $bad = Invoke-Triage @('-WorkspaceRoot', $ws, '-Commit')
 $head1 = (git -C $ws rev-list --count HEAD 2>$null | Out-String).Trim()
 Assert (($bad.Code -eq 1) -and ($bad.Text -like '*REFUSED: todo/T.md differs from HEAD beyond*') -and ($head1 -eq '1')) 'triage-refuses-other-changes' $bad.Text
 
+# Outside a Claude Code session the commit refuses (R1-F1).
+$savedSession = $env:CLAUDE_CODE_SESSION_ID
+$env:CLAUDE_CODE_SESSION_ID = ''
+[System.IO.File]::WriteAllText($todo, "# T`n- Night-owed: a`n$line`nend`n")
+$noSession = Invoke-Triage @('-WorkspaceRoot', $ws, '-Commit')
+Assert (($noSession.Code -eq 1) -and ($noSession.Text -like '*REFUSED: -Commit runs only inside a Claude Code session*')) 'triage-commit-needs-the-writer-session' $noSession.Text
+$env:CLAUDE_CODE_SESSION_ID = 'fixture-session'
 # The recorded lines alone commit, only that file, with the fixed message.
 [System.IO.File]::WriteAllText($todo, "# T`n- Night-owed: a`n$line`nend`n")
 'untracked' | Set-Content -Path (Join-Path $ws 'todo\other.md') -Encoding UTF8
@@ -60,6 +67,7 @@ Assert (($again.Code -eq 0) -and ($again.Text -like '*already carries*nothing to
 $esc = Invoke-Triage @('-WorkspaceRoot', $ws, '-Stamp', $stamp)
 Assert (($esc.Code -eq 1) -and ($esc.Text -like '*REFUSED: ../x.md is not a TODO file*')) 'triage-refuses-paths-outside-todo' $esc.Text
 
+$env:CLAUDE_CODE_SESSION_ID = $savedSession
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTriage.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTriage.Tests: all green'

@@ -1204,28 +1204,38 @@ if (-not $ledgerRead.Ok) {
 } else {
   # Recovery streaks stand on tonight's test population (D00 T02 section
   # 44 item 6): a streak built under another population resets.
+  # A crash between the checkpoint and the ledger write leaves the
+  # checkpoint newer: continue from it (D00 T02 section 45 R1-F5).
+  $roll = Resolve-LedgerRollForward $ledgerRead (Get-LedgerCheckpoints $nightDir)
+  if ($roll.Line -ne '') { $report += $roll.Line }
   # Alias joins move incident state onto the v2 id first (D00 T02
   # section 45 item 5), so the update below sees one entry per failure.
   $aliasRows = @(foreach ($f in $ledgerResults) { try { Get-Content -LiteralPath $f -Raw | ConvertFrom-Json } catch { } })
-  $moved = Move-AliasedIncidents $ledgerRead.Incidents (Get-IncidentAliases $aliasRows) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
+  $moved = Move-AliasedIncidents $roll.Incidents (Get-IncidentAliases $aliasRows) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
   # Only qualifying runs move a recovery streak (section 45 item 6).
   $notQual = @()
   if ($simMode) { $notQual += 'simulation or stubbed legs' }
   if (@($budgetCut).Count -gt 0) { $notQual += "budget-cut ($(@($budgetCut) -join ', '))" }
   if ($interactiveKilled) { $notQual += 'interactive leg killed' }
+  # Every leg's abort or invalid evidence disqualifies too (R1-F4).
+  if (($null -ne $gateA) -and ($gateA.Killed -or $gateA.Overrun)) { $notQual += 'run-a killed or overran' }
+  if (($null -ne $gateB) -and ($gateB.Killed -or $gateB.Overrun)) { $notQual += 'run-b killed or overran' }
+  if (($null -ne $gateA) -and ($gateA.GateCode -ne 0)) { $notQual += 'run-a foreground gate red' }
+  if (($null -ne $gateB) -and ($gateB.GateCode -ne 0)) { $notQual += 'run-b foreground gate red' }
+  if (@($soakKilled).Count -gt 0) { $notQual += "soak killed ($(@($soakKilled) -join ', '))" }
+  if (@($conservationNotes).Count -gt 0) { $notQual += 'count conservation broken' }
   if ("$buildError" -ne '') { $notQual += 'build failed' }
   if ("$placementError" -ne '') { $notQual += 'Primary placement invalid' }
   $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint')) ($notQual -join '; ')
   if (@($moved.Lines).Count -gt 0) { $ledgerUpd.Lines = @($moved.Lines) + @($ledgerUpd.Lines) }
   $ledgerErr = ''
+  # The run's checkpoint (D00 T02 section 45 item 4) lands first, in this
+  # run's stamp directory, then the ledger (R1-F5): a crash between the
+  # two leaves the checkpoint as the later state, which the next run rolls
+  # forward to and a rebuild restores.
+  try { $cpErr = Write-IncidentLedger $ledgerUpd.Incidents (Join-Path $trxDir $script:LedgerCheckpointName) $stamp } catch { $cpErr = "$($_.Exception.Message)" }
+  if ($cpErr -ne '') { $report += "- ledger checkpoint write failed: $cpErr (a rebuild falls back to the results)" }
   try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath $stamp } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
-  # The run's checkpoint (D00 T02 section 45 item 4): the same state in
-  # this run's stamp directory, so a crash before the result lands still
-  # rebuilds to it.
-  if ($ledgerErr -eq '') {
-    try { $cpErr = Write-IncidentLedger $ledgerUpd.Incidents (Join-Path $trxDir $script:LedgerCheckpointName) $stamp } catch { $cpErr = "$($_.Exception.Message)" }
-    if ($cpErr -ne '') { $report += "- ledger checkpoint write failed: $cpErr (a rebuild falls back to the results)" }
-  }
   if ($ledgerErr -ne '') { $failed = $true; $report += "- RED: $ledgerErr" }
   $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
   if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }

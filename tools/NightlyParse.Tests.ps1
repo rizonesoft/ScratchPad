@@ -1829,7 +1829,27 @@ $alOld2 = [pscustomobject]@{ id = 'INC-0000a111'; test = 'UI.Al.T'; phase = 'run
 $alNew = [pscustomobject]@{ id = 'INC-0000b222'; test = 'UI.Al.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-25-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-25-023001'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = '2026-09-27'; finding = '' }
 $alMerged = Move-AliasedIncidents @{ 'INC-0000a111' = $alOld2; 'INC-0000b222' = $alNew } @{ 'INC-0000a111' = 'INC-0000b222' } @{}
 $mg = $alMerged.Incidents['INC-0000b222']
-Assert (($alMoved.Incidents.Count -eq 1) -and ($mv.finding -eq 'abc1234') -and ([int]$mv.passStreak -eq 2) -and ($mv.state -eq 'open') -and ($alMoved.Links['INC-0000b222'] -eq 'abc1234') -and ($alMerged.Incidents.Count -eq 1) -and ([int]$mg.passStreak -eq 2) -and ($mg.finding -eq 'abc1234') -and ($mg.owner -eq 'D01 T01 §9') -and (@($mg.occurrences).Count -eq 3) -and ($mg.firstSeen -eq '2026-09-20-023001') -and ($mg.state -eq 'open')) 's45-joined-alias-carries-link-and-streak' (($alMoved.Lines + $alMerged.Lines) -join ' | ')
+Assert (($alMoved.Incidents.Count -eq 1) -and ($mv.finding -eq 'abc1234') -and ([int]$mv.passStreak -eq 2) -and ($mv.state -eq 'open') -and ($alMoved.Links['INC-0000b222'] -eq 'abc1234') -and ($alMerged.Incidents.Count -eq 1) -and ([int]$mg.passStreak -eq 0) -and ($mg.finding -eq 'abc1234') -and ($mg.owner -eq 'D01 T01 §9') -and (@($mg.occurrences).Count -eq 3) -and ($mg.firstSeen -eq '2026-09-20-023001') -and ($mg.state -eq 'open')) 's45-joined-alias-carries-link-and-streak' (($alMoved.Lines + $alMerged.Lines) -join ' | ')
+# D00 T02 §45 R1-F3: a streak survives an alias merge only from the side
+# whose last failure is the newest; the v2 side failed last above, so the
+# v1 side's two passes (from before that failure) do not carry.
+$alOld3 = [pscustomobject]@{ id = 'INC-0000a111'; test = 'UI.Al.T'; phase = 'run-a'; key = ''; owner = 'operator'; state = 'open'; firstSeen = '2026-09-20-023001'; lastSeen = '2026-09-26-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-26-023001'; wheres = @('run-a') }); passStreak = 1; lastPassStamp = '2026-09-27-023001'; due = ''; finding = '' }
+$alNew3 = [pscustomobject]@{ id = 'INC-0000b222'; test = 'UI.Al.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-25-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-25-023001'; wheres = @('run-a') }); passStreak = 2; lastPassStamp = '2026-09-27-023001'; due = ''; finding = '' }
+$alM3 = (Move-AliasedIncidents @{ 'INC-0000a111' = $alOld3; 'INC-0000b222' = $alNew3 } @{ 'INC-0000a111' = 'INC-0000b222' } @{}).Incidents['INC-0000b222']
+Assert (([int]$mg.passStreak -eq 0) -and ([int]$alM3.passStreak -eq 1)) 's45-alias-merge-never-carries-a-streak-past-a-newer-failure' "mg=$($mg.passStreak) m3=$($alM3.passStreak)"
+# D00 T02 §45 R1-F5: a checkpoint newer than the ledger rolls the run
+# forward; a current ledger stands.
+$rfDir = Join-Path $dir 's45-rollforward'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $rfDir '2026-10-06-023001')
+$rfOld = @{ 'INC-0000c001' = $rcRow }
+$rfNew = @{ 'INC-0000c001' = $rcRow; 'INC-0000c002' = $rcNew }
+$null = Write-IncidentLedger $rfOld (Join-Path $rfDir 'incidents.json') '2026-10-05-023001'
+$null = Write-IncidentLedger $rfNew (Join-Path $rfDir "2026-10-06-023001\$($script:LedgerCheckpointName)") '2026-10-06-023001'
+$rfRead = Read-IncidentLedger (Join-Path $rfDir 'incidents.json')
+$rf = Resolve-LedgerRollForward $rfRead (Get-LedgerCheckpoints $rfDir)
+$null = Write-IncidentLedger $rfNew (Join-Path $rfDir 'incidents.json') '2026-10-06-023001'
+$rf2 = Resolve-LedgerRollForward (Read-IncidentLedger (Join-Path $rfDir 'incidents.json')) (Get-LedgerCheckpoints $rfDir)
+Assert (($rf.Incidents.Count -eq 2) -and ($rf.Line -like '- ledger rolled forward to checkpoint 2026-10-06-023001 (the ledger read 2026-10-05-023001*') -and ($rf2.Line -eq '') -and ($rf2.Incidents.Count -eq 2)) 's45-crash-before-the-ledger-rolls-forward' $rf.Line
 # D00 T02 §45 item 6: a run that does not qualify neither advances nor
 # resets a streak, so a skipped middle run needs a third qualifying pass.
 $qLed = @{ 'INC-0000d001' = [pscustomobject]@{ id = 'INC-0000d001'; test = 'UI.Q.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = ''; finding = '' } }
@@ -1861,6 +1881,11 @@ $twOk = Compare-TreeWithTrackedWrites $twRoot $twStart $twEnd $tw
 [System.IO.File]::WriteAllText($twFile, "# x changed`n- Night-owed: a`n$twLine`nend`n")
 $twBad = Compare-TreeWithTrackedWrites $twRoot $twStart $twEnd $tw
 $twOther = Compare-TreeWithTrackedWrites $twRoot $twStart ([pscustomobject]@{ State = 'dirty'; Fingerprint = 'g'; Count = 1; Rows = @(' M|src/y.cs|h2') }) @{}
+# R1-F2: the manifest keeps each file's pre-write text and its digest.
+$twMan = Join-Path $twRoot 'tracked-writes.json'
+Write-TrackedWriteManifest $tw $twMan
+$twDoc = Get-Content -LiteralPath $twMan -Raw | ConvertFrom-Json
+Assert ((@($twDoc.writes).Count -eq 1) -and ($twDoc.writes[0].before -eq $twBefore) -and ($twDoc.writes[0].beforeSha256 -eq (Get-BytesSha256 ([System.Text.Encoding]::UTF8.GetBytes($twBefore)))) -and (@($twDoc.writes[0].lines)[0] -eq $twLine)) 's45-manifest-keeps-the-pre-write-text' ($twDoc.writes[0].beforeSha256)
 Assert ($twOk.Ok -and ($twOk.Line -like 'clean at start and end; collector wrote 1 line(s) to todo/x.md, verified; triage commits them: tools/NightlyTriage.ps1 -Commit') -and (-not $twBad.Ok) -and ($twBad.Line -like 'MUTATED (todo/x.md changed beyond*') -and (-not $twOther.Ok)) 's45-tree-check-expects-collector-lines' "$($twOk.Line) || $($twBad.Line)"
 # D00 T02 §45 item 8: one summary block names a refused dump and an
 # overdue incident together; a clean run reads complete.

@@ -55,8 +55,12 @@ foreach ($w in @($doc.writes)) {
 if ($refused -gt 0) { Write-Output "triage: $refused file(s) REFUSED; nothing committed"; exit 1 }
 if ($ready.Count -eq 0) { Write-Output 'triage: nothing to commit'; exit 0 }
 if (-not $Commit) { Write-Output "triage: plan only; re-run with -Commit to commit $($ready.Count) file(s)"; exit 0 }
+# Claude Code is the only writer (AGENTS.md, operator decision
+# 2026-09-23; section 45 R1-F1): the commit runs only inside a Claude
+# Code session, whose id rides the commit message.
+if ("$env:CLAUDE_CODE_SESSION_ID" -eq '') { Write-Output 'triage: REFUSED: -Commit runs only inside a Claude Code session (CLAUDE_CODE_SESSION_ID unset); the plan above stands; nothing committed'; exit 1 }
 $msg = "nightly: record the collector lines of $Stamp"
-$out = @(git -C $Root commit --only -m $msg -- @ready 2>&1 | ForEach-Object { "$_" })
+$out = @(git -C $Root commit --only -m $msg -m "Claude-Session: $env:CLAUDE_CODE_SESSION_ID" -- @ready 2>&1 | ForEach-Object { "$_" })
 if ($LASTEXITCODE -ne 0) { Write-Output "triage: commit FAILED: $(($out | Select-Object -Last 2) -join '; ')"; exit 1 }
 Write-Output "triage: committed $($ready.Count) file(s): $msg"
 exit 0
