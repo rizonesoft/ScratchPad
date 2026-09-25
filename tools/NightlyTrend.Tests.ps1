@@ -18,7 +18,7 @@ function New-Night([string]$Night, [string]$Stamp, [int]$RunA = 600, [string]$La
   $a = [pscustomobject]@{ ran = $true; passed = $Passed; failed = $Failed; skipped = $Skipped; gate = 0; killed = $false; cut = $false; testSeconds = $RunA }
   $b = [pscustomobject]@{ ran = $true; passed = 4; failed = 0; skipped = 0; gate = 0; killed = $false; cut = $false; testSeconds = 20 }
   $i = [pscustomobject]@{ ran = $false; passed = 0; failed = 0; skipped = 0; killed = $false; cut = $false; enforcementRed = $false }
-  return [pscustomobject]@{ version = 1; day = $Night; night = $Night; stamp = $Stamp; identity = "$Stamp-pid1"; verdict = $Verdict; exit = $(if ($Verdict -eq 'green') { 0 } else { 1 }); simulated = $Sim; launch = $Launch; trigger = 't'; buildError = ''; omissionOk = $true; recovered = 'none'; legs = [pscustomobject]@{ 'run-a' = $a; 'run-b' = $b; interactive = $i }; soak = [pscustomobject]@{ verdict = 'green'; failed = 0; killed = @(); cut = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; scheduler = [pscustomobject]@{ voted = $false; faults = @() }; incidents = @($Incidents); reserve = 900; consumed = 600; timings = @{ build = 1 }; env = [pscustomobject]@{ os = '10.0.26200.0'; dpi = 'primary 96x96' } }
+  return [pscustomobject]@{ version = 1; day = $Night; night = $Night; stamp = $Stamp; identity = "$Stamp-pid1"; verdict = $Verdict; exit = $(if ($Verdict -eq 'green') { 0 } else { 1 }); simulated = $Sim; launch = $Launch; trigger = 't'; buildError = ''; omissionOk = $true; recovered = 'none'; legs = [pscustomobject]@{ 'run-a' = $a; 'run-b' = $b; interactive = $i }; soak = [pscustomobject]@{ verdict = 'green'; failed = 0; killed = @(); cut = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() }; scheduler = [pscustomobject]@{ voted = $false; faults = @() }; incidents = @($Incidents); reserve = 900; consumed = 600; timings = @{ build = 1 }; env = [pscustomobject]@{ os = '10.0.26200.0'; dpi = 'primary 96x96'; dotnet = '10.0.400' }; harness = 'aaaa1111-bbbb2222'; populationHash = 'pop00001'; hostKey = 'h0st0001' }
 }
 $Q = @{ Overdue = @(); DueSoon = @() }
 $today = Get-Date '2026-09-30'
@@ -240,10 +240,18 @@ Assert ((@($tq | Where-Object { $_ -like '- Series matrix (D00 T02 section 32): 
 $cb = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n | Add-Member -NotePropertyName commit -NotePropertyValue ('aaaaaaa{0:d2}' -f $_) -Force; $n })
 $cl = New-Night '2026-09-27' '2026-09-27-023000' 900
 $cl | Add-Member -NotePropertyName commit -NotePropertyValue 'bbbbbbb27' -Force
-$cl.env = [pscustomobject]@{ os = '10.0.27000.0'; dpi = 'primary 96x96' }
 $ca = @(Get-TrendAlerts (@($cb) + @($cl)))
 $ctx = @($ca | Where-Object { $_ -like '  - runa-duration context:*' })
-Assert (($ctx.Count -eq 1) -and ($ctx[0] -like '*runs 2026-09-20-023000-pid1,*2026-09-27-023000-pid1;*commits aaaaaaa..bbbbbbb;*CROSS-COHORT (os 10.0.26200.0 -> 10.0.27000.0)*evidence raw results for every run')) 'alert-attribution-and-cross-cohort' ($ca -join ' | ')
+Assert (($ctx.Count -eq 1) -and ($ctx[0] -like '*runs 2026-09-20-023000-pid1,*2026-09-27-023000-pid1;*commits aaaaaaa..bbbbbbb;*same cohort*evidence raw results for every run*')) 'alert-attribution-same-cohort' ($ca -join ' | ')
+# Section 40 item 4: across an environment change the window rebaselines:
+# the new cohort alerts against nothing and names the change instead.
+$cl.env = [pscustomobject]@{ os = '10.0.27000.0'; dpi = 'primary 96x96'; dotnet = '10.0.400' }
+$cx = @(Get-TrendAlerts (@($cb) + @($cl)))
+Assert ((@($cx | Where-Object { $_ -like '- Rebaseline: cohort changed on 2026-09-27 (os 10.0.26200.0 -> 10.0.27000.0); 7 earlier night(s) leave the baseline' }).Count -eq 1) -and (@($cx | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 's40-cross-cohort-rebaselines' ($cx -join ' | ')
+# Section 40 item 5: an unknown dimension never establishes equivalence.
+$cu = $cl.PSObject.Copy(); $cu.env = [pscustomobject]@{ os = '10.0.26200.0'; dpi = 'primary 96x96'; dotnet = '10.0.400' }; $cu.populationHash = ''
+$cux = @(Get-TrendAlerts (@($cb) + @($cu)))
+Assert ((@($cux | Where-Object { $_ -like '- Rebaseline:*population pop00001 -> unknown*' }).Count -eq 1) -and (@($cux | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 's40-unknown-population-is-not-equivalent' ($cux -join ' | ')
 # Item 5: a short history reads insufficient data instead of alerting.
 $three = @(20..22 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
 $three += New-Night '2026-09-23' '2026-09-23-023000' 5000
@@ -359,7 +367,7 @@ Assert ((($nightsSch -join ',') -eq '2026-09-20,2026-09-22,2026-09-24,2026-09-26
 $hb = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n | Add-Member -NotePropertyName harness -NotePropertyValue 'aaaa1111-bbbb2222' -Force; $n })
 $hl = New-Night '2026-09-27' '2026-09-27-023000' 900
 $hl | Add-Member -NotePropertyName harness -NotePropertyValue 'cccc3333-bbbb2222' -Force
-Assert (@(Get-TrendAlerts (@($hb) + @($hl)) | Where-Object { $_ -like '*CROSS-COHORT (harness aaaa1111-bbbb2222 -> cccc3333-bbbb2222)*' }).Count -eq 1) 'harness-change-reads-cross-cohort'
+Assert (@(Get-TrendAlerts (@($hb) + @($hl)) | Where-Object { $_ -like '- Rebaseline:*(harness aaaa1111-bbbb2222 -> cccc3333-bbbb2222)*' }).Count -eq 1) 'harness-change-rebaselines'
 # R1-I2: series gate on their own samples: durations missing, rates present.
 $nd7 = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n.legs.'run-a'.testSeconds = $null; $n })
 $nl7 = New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 80 20 5
@@ -384,7 +392,7 @@ $dB.PSObject.Properties.Remove('night')
 $canonD = Select-CanonicalRuns @($dA, $dB)
 . (Join-Path $PSScriptRoot 'NightlyNotify.ps1')
 $ns = Get-NoStartVerdict @($dA, $dB) (Get-Date '2026-10-25 08:00') '06:50' 1
-Assert (($canonD.Keys.Count -eq 1) -and ($canonD.ContainsKey('2026-10-25')) -and ($canonD['2026-10-25'].Canonical -eq $dA.identity) -and (-not $ns.Missed -or (@($ns.Missed) -notcontains '2026-10-25'))) 'one-scheduled-night-across-dst-for-every-consumer' "$(@($canonD.Keys) -join ',') / $(@($ns.Missed) -join ',')"
+Assert (($canonD.Keys.Count -eq 1) -and ($canonD.ContainsKey('2026-10-25|h0st0001')) -and ($canonD['2026-10-25|h0st0001'].Canonical -eq $dA.identity) -and (-not $ns.Missed -or (@($ns.Missed) -notcontains '2026-10-25'))) 'one-scheduled-night-across-dst-for-every-consumer' "$(@($canonD.Keys) -join ',') / $(@($ns.Missed) -join ',')"
 # Record 2: the renderer's own loading path, before and after the raw
 # results are deleted, renders the same series and alerts.
 $eqDir = Join-Path $dir 'equiv-night'
@@ -396,7 +404,7 @@ $trendScript = Join-Path $PSScriptRoot 'NightlyTrend.ps1'
 $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $trendScript -NightDir $eqDir -OutFile (Join-Path $eqDir 'a.md') 2>&1
 Get-ChildItem $eqDir -Filter 'morning-*.result.json' | Remove-Item
 $null = & powershell -NoProfile -ExecutionPolicy Bypass -File $trendScript -NightDir $eqDir -OutFile (Join-Path $eqDir 'b.md') 2>&1
-$norm = { param($f) @(Get-Content $f | Where-Object { $_ -notlike '- Metrics store:*' } | ForEach-Object { ($_ -replace ' \(metrics\)', '') -replace '; evidence .*$', '' }) }
+$norm = { param($f) @(Get-Content $f | Where-Object { ($_ -notlike '- Metrics store:*') -and ($_ -notlike '- Pruned night*') -and ($_ -notlike '- Alert lifecycle:*') } | ForEach-Object { ($_ -replace ' \(metrics\)', '') -replace '; evidence .*$', '' }) }
 $ea = & $norm (Join-Path $eqDir 'a.md')
 $eb = & $norm (Join-Path $eqDir 'b.md')
 $ediff = @(Compare-Object $ea $eb | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
@@ -430,7 +438,7 @@ $z3 = [pscustomobject]@{ version = 1; identity = 'z-3'; stamp = '2026-10-24-2140
 $zc = Select-CanonicalRuns @($z1, $z2, $z3)
 $zf = @($z1, $z2, $z3) | ForEach-Object { $zp = Join-Path $dir "$($_.identity).result.json"; ($_ | ConvertTo-Json) | Set-Content -Path $zp -Encoding UTF8; $zp }
 $zd = Get-AckDemands $zf
-Assert (($zc.Keys.Count -eq 1) -and ($zc.ContainsKey('2026-10-25')) -and ($zc['2026-10-25'].Canonical -eq 'z-1') -and ((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day } | Sort-Object -Unique) -eq '2026-10-25') -and (-not ((Get-NoStartVerdict @($z1, $z2, $z3) (Get-Date '2026-10-25 08:00') '06:50' 0).NoStart))) 'one-night-across-both-dst-offsets-and-zones' "$(@($zc.Keys) -join ',') / $((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day }) -join ',')"
+Assert (($zc.Keys.Count -eq 1) -and ($zc.ContainsKey('2026-10-25|legacy')) -and ($zc['2026-10-25|legacy'].Canonical -eq 'z-1') -and ((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day } | Sort-Object -Unique) -eq '2026-10-25') -and (-not ((Get-NoStartVerdict @($z1, $z2, $z3) (Get-Date '2026-10-25 08:00') '06:50' 0).NoStart))) 'one-night-across-both-dst-offsets-and-zones' "$(@($zc.Keys) -join ',') / $((@('z-1', 'z-2', 'z-3') | ForEach-Object { $zd[$_].Day }) -join ',')"
 
 # ---- section 32 sign-off ----
 # R3-A2: a private path with spaces redacts whole.
@@ -494,6 +502,177 @@ Assert ($spOut -notlike '*someone*') 'raw-soak-and-timing-text-disclosed'
 $late = [datetime]::ParseExact('2026-09-25 13:00', 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
 $early = [datetime]::ParseExact('2026-09-26 01:10', 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
 Assert (((Get-ScheduledNight $late @('02:30')) -eq '2026-09-25') -and ((Get-ScheduledNight $early @('02:30')) -eq '2026-09-25') -and ((Get-NightKey $late) -eq '2026-09-26')) 'late-timer-run-keeps-its-trigger-night' "$(Get-ScheduledNight $late @('02:30')) $(Get-ScheduledNight $early @('02:30'))"
+
+# ---- D00 T02 section 40: trend and telemetry second residuals ----
+$s40 = Join-Path $dir 's40'
+$null = New-Item -ItemType Directory -Force -Path $s40
+# Item 1: two hosts' runs on one night read as two keys, and one host's
+# nights never join another's baseline.
+$hA = New-Night '2026-10-01' '2026-10-01-023000'
+$hB = New-Night '2026-10-01' '2026-10-01-023001'; $hB.identity = '2026-10-01-023001-pid2'; $hB.hostKey = 'h0st0002'
+$hc = Select-CanonicalRuns @($hA, $hB)
+Assert (($hc.Keys.Count -eq 2) -and $hc.ContainsKey('2026-10-01|h0st0001') -and $hc.ContainsKey('2026-10-01|h0st0002') -and ($hc['2026-10-01|h0st0002'].Canonical -eq $hB.identity)) 's40-two-hosts-key-apart' (@($hc.Keys) -join ',')
+$hBase = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$hOther = New-Night '2026-09-27' '2026-09-27-023000' 900; $hOther.hostKey = 'h0st0002'
+$hx = @(Get-TrendAlerts (@($hBase) + @($hOther)))
+Assert (@($hx | Where-Object { ($_ -like '- ALERT *') -or ($_ -like '- Rebaseline:*') }).Count -eq 0) 's40-other-host-never-joins-the-baseline' ($hx -join ' | ')
+# Item 2: a 02:30 trigger repeated by a DST fall-back reads one night.
+$rp1 = New-Night '2026-10-25' '2026-10-25-023000'
+$rp1 | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-10-25T00:30:00.0000000Z' -Force
+$rp2 = New-Night '2026-10-25' '2026-10-25-023000'; $rp2.identity = '2026-10-25-023000-pid2'
+$rp2 | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-10-25T01:30:00.0000000Z' -Force
+$rpc = Select-CanonicalRuns @($rp1, $rp2)
+$rpSlot = $rpc['2026-10-25|h0st0001']
+Assert (($rpc.Keys.Count -eq 1) -and ($rpSlot.Canonical -ne '') -and (@($rpSlot.Others.Values | Where-Object { "$_" -like 'repeated timer trigger*' }).Count -eq 1)) 's40-repeated-trigger-reads-one-night' "$(@($rpc.Keys) -join ',') / $(@($rpSlot.Others.Values) -join ';')"
+# Item 3: a trigger moved mid-history keeps the earlier nights' due state,
+# and a night still inside its run window reads pending, never missing.
+$shPath = Join-Path $s40 'schedule-history.md'
+@('| From | Trigger | Interval days |', '| --- | --- | --- |', '| 2026-09-01 | 02:30 | 1 |', '| 2026-09-10 | 04:00 | 2 |') | Set-Content -Path $shPath -Encoding UTF8
+$sh = Read-ScheduleHistory $shPath
+Assert (($sh.First -eq '2026-09-01') -and (Test-NightScheduled $sh '2026-09-05') -and (Test-NightScheduled $sh '2026-09-09') -and (-not (Test-NightScheduled $sh '2026-09-11')) -and (Test-NightScheduled $sh '2026-09-12') -and (-not (Test-NightScheduled $sh '2026-08-31'))) 's40-schedule-edit-keeps-history'
+$gr = @(20..29 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$grSched = [pscustomobject]@{ First = '2026-09-20'; Trigger = '02:30'; IntervalDays = 1 }
+$tRun = @(Format-TrendTable $gr $Q (Get-Date '2026-09-30 04:00') @{} @() @() $grSched)
+$tLate = @(Format-TrendTable $gr $Q (Get-Date '2026-09-30 07:30') @{} @() @() $grSched)
+Assert ((@($tRun | Where-Object { $_ -like '| 2026-09-30 | pending |*' }).Count -eq 1) -and (@($tRun | Where-Object { $_ -like '| 2026-09-30 | missing |*' }).Count -eq 0) -and (@($tLate | Where-Object { $_ -like '| 2026-09-30 | missing |*' }).Count -eq 1)) 's40-running-night-reads-pending' (($tRun + $tLate | Where-Object { $_ -like '| 2026-09-30*' }) -join ' || ')
+# Item 6: each detector's boundary reads its side.
+$bBase = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$at125 = @(Get-TrendAlerts (@($bBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 750)))
+$past125 = @(Get-TrendAlerts (@($bBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 751)))
+Assert ((@($at125 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($past125 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1)) 's40-boundary-exactly-125-percent' (($at125 + $past125) -join ' | ')
+$lowBase = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 100 })
+$at59 = @(Get-TrendAlerts (@($lowBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 159)))
+$at60 = @(Get-TrendAlerts (@($lowBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 160)))
+Assert ((@($at59 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($at60 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1)) 's40-boundary-sixty-second-floor' (($at59 + $at60) -join ' | ')
+$five = @(22..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$four = @(23..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$s5 = @(Get-TrendAlerts (@($five) + @(New-Night '2026-09-27' '2026-09-27-023000' 900)))
+$s4 = @(Get-TrendAlerts (@($four) + @(New-Night '2026-09-27' '2026-09-27-023000' 900)))
+Assert ((@($s5 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@($s4 | Where-Object { $_ -like '- Insufficient data: runa-duration (4 measured*' }).Count -eq 1) -and (@($s4 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0)) 's40-boundary-exactly-five-samples' (($s5 + $s4) -join ' | ')
+$pr2 = @(Get-TrendAlerts (@($bBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 94 2 5)))
+$pr3 = @(Get-TrendAlerts (@($bBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 94 3 5)))
+Assert ((@($pr2 | Where-Object { $_ -like '- ALERT pass-rate*' }).Count -eq 0) -and (@($pr3 | Where-Object { $_ -like '- ALERT pass-rate*' }).Count -eq 1)) 's40-boundary-exactly-two-points' (($pr2 + $pr3) -join ' | ')
+$shiftPrior = @(17..23 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$shAt = @(Get-TrendAlerts (@($shiftPrior) + @(24..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 720 })))
+$shPast = @(Get-TrendAlerts (@($shiftPrior) + @(24..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 721 })))
+Assert ((@($shAt | Where-Object { $_ -like '- ALERT runa-shift*' }).Count -eq 0) -and (@($shPast | Where-Object { $_ -like '- ALERT runa-shift*' }).Count -eq 1)) 's40-boundary-exactly-120-percent-shift' (($shAt + $shPast) -join ' | ')
+# Item 7: a duplicate execution cannot raise coverage; unknown discovery
+# reads unknown.
+$cvDup = New-Night '2026-09-28' '2026-09-28-023000' 600 'timer' 120 0 0
+$cvDup | Add-Member -NotePropertyName population -NotePropertyValue 'run-a=90/100 run-b=4/4 interactive=0/0' -Force
+$cvUnk = New-Night '2026-09-29' '2026-09-29-023000'
+$cvUnk | Add-Member -NotePropertyName populationState -NotePropertyValue 'unknown' -Force
+$tcv = @(Format-TrendTable @($cvDup, $cvUnk) $Q $today)
+Assert ((@($tcv | Where-Object { $_ -like '| 2026-09-28 |*| 104/104 (100%); 20 duplicate execution(s) not counted |' }).Count -eq 1) -and (@($tcv | Where-Object { $_ -like '| 2026-09-29 |*| unknown (discovery failed) |' }).Count -eq 1)) 's40-coverage-counts-unique-tests' (($tcv | Where-Object { $_ -like '| 2026-09-2*' }) -join ' || ')
+# Item 8: an excluded result leaves every series and never degrades.
+$exPath = Join-Path $s40 'exclusions.md'
+@('| Run identity | Reason |', '| --- | --- |', '| 2026-09-27-023000-pid1 | host rebuilt mid-run |') | Set-Content -Path $exPath -Encoding UTF8
+$exRows = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 }) + @(New-Night '2026-09-27' '2026-09-27-023000' 900)
+$exN = Set-ResultExclusions $exRows (Read-NightlyExclusions $exPath)
+$tex = @(Format-TrendTable $exRows $Q $today)
+Assert (($exN -eq 1) -and (@($tex | Where-Object { $_ -like '| 2026-09-27 (excluded) |*excluded: host rebuilt mid-run*' }).Count -eq 1) -and (@($tex | Where-Object { $_ -like '*(degraded)*' }).Count -eq 0) -and (@($tex | Where-Object { $_ -like '- ALERT *' }).Count -eq 0) -and (@($tex | Where-Object { $_ -like '- Excluded: 2026-09-27-023000-pid1 night 2026-09-27 (host rebuilt mid-run): out of *not degraded*' }).Count -eq 1) -and (@($tex | Where-Object { $_ -like '- 2026-09-27 2026-09-27-023000:*' }).Count -eq 0)) 's40-exclusion-never-degrades' (($tex | Where-Object { $_ -like '*2026-09-27*' }) -join ' || ')
+# Item 9: archival check and delete share the lock; a result changed in
+# between keeps its stamp.
+$arDir = Join-Path $s40 'archive'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $arDir '2026-09-20-023000')
+$arRes = New-Night '2026-09-20' '2026-09-20-023000'
+$arFile = Join-Path $arDir '2026-09-20-023000\result.json'
+($arRes | ConvertTo-Json -Depth 8) | Set-Content -Path $arFile -Encoding UTF8
+$arStore = Join-Path $arDir 'metrics.jsonl'
+$null = Sync-MetricsStore $arStore @(Read-ResultFile $arFile)
+$arKeep = Remove-ArchivedStamp $arDir '2026-09-20-023000' $arStore { $o = Get-Content $arFile -Raw | ConvertFrom-Json; $o.verdict = 'red'; $o.exit = 1; ($o | ConvertTo-Json -Depth 8) | Set-Content -Path $arFile -Encoding UTF8 }
+$arKept = Test-Path (Join-Path $arDir '2026-09-20-023000')
+$null = Sync-MetricsStore $arStore @(Read-ResultFile $arFile)
+$arGo = Remove-ArchivedStamp $arDir '2026-09-20-023000' $arStore
+Assert ((-not $arKeep.Deleted) -and ($arKeep.Reason -like '*changed since its metrics row*') -and $arKept -and $arGo.Deleted -and (-not (Test-Path (Join-Path $arDir '2026-09-20-023000')))) 's40-archive-and-prune-share-the-lock' "$($arKeep.Reason) / $($arGo.Reason)"
+# Item 10 and item 17: disk full, a stale lock, an interrupted
+# compaction, a restore, and capacity all end with a readable store.
+$fsDir = Join-Path $s40 'store'
+$null = New-Item -ItemType Directory -Force -Path $fsDir
+$fs = Join-Path $fsDir 'metrics.jsonl'
+$null = Sync-MetricsStore $fs @(New-Night '2026-09-20' '2026-09-20-023000')
+$fsBefore = [System.IO.File]::ReadAllText($fs)
+$null = Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000') { param($p, $t) throw 'There is not enough space on the disk.' }
+$fsErr = "$script:MetricsWriteError"
+$fsBack = Read-MetricsStore $fs
+Assert (($fsErr -like 'metrics append failed: There is not enough space*') -and ([System.IO.File]::ReadAllText($fs) -eq $fsBefore) -and ($fsBack.Rows.Count -eq 1) -and ($fsBack.Malformed.Count -eq 0)) 's40-disk-full-keeps-the-store' $fsErr
+$null = Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000') $null 10
+$capErr = "$script:MetricsWriteError"
+Assert (($capErr -like 'metrics store over capacity*history is never deleted*') -and ((Read-MetricsStore $fs).Rows.Count -eq 1)) 's40-capacity-refuses-by-policy' $capErr
+$lockJob = Start-Job -ScriptBlock { $m = New-Object System.Threading.Mutex($false, 'Local\ScratchPad.NightlyMetrics'); $null = $m.WaitOne(); 'held' }
+$null = Wait-Job $lockJob -Timeout 60; $null = Receive-Job $lockJob; Remove-Job $lockJob -Force
+$staleRows = @(Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000'))
+Assert ($staleRows.Count -eq 2) 's40-stale-lock-is-taken-over' "$($staleRows.Count)"
+$null = Compress-MetricsStore $fs
+[System.IO.File]::AppendAllText($fs, '{"schema":"metrics/1","identity":"half')
+'{"partial":' | Set-Content -Path "$fs.tmp" -Encoding UTF8
+$fsTorn = Read-MetricsStore $fs
+$fsRestore = Restore-MetricsStore $fs
+$fsFixed = Read-MetricsStore $fs
+Assert (($fsTorn.Malformed.Count -eq 1) -and ($fsRestore -like 'metrics: restored 2 row(s)*') -and ($fsFixed.Rows.Count -eq 2) -and ($fsFixed.Malformed.Count -eq 0)) 's40-interrupted-compaction-restores' "$fsRestore"
+# Item 11: a partial native row keeps the backfill's fields it lacks.
+$mgStore = Join-Path $s40 'merge.jsonl'
+$mgBf = New-Night '2026-09-22' '2026-09-22-023000'; $mgBf.identity = 'bf-2026-09-22'
+$mgBf | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ reserve = [pscustomobject]@{ confidence = 'high'; source = 'log' } }) -Force
+$mgBf.populationHash = 'popBF001'
+$mgNat = New-Night '2026-09-22' '2026-09-22-023000'; $mgNat.populationHash = ''; $mgNat.harness = ''
+$null = Sync-MetricsStore $mgStore @($mgBf)
+$mgRows = @(Sync-MetricsStore $mgStore @($mgNat))
+$mgRow = @($mgRows | Where-Object { "$($_.identity)" -eq $mgNat.identity }) | Select-Object -First 1
+Assert ((@($mgRows).Count -eq 1) -and ("$($mgRow.populationHash)" -eq 'popBF001') -and ("$($mgRow.harness)" -eq 'aaaa1111-bbbb2222') -and ("$($mgRow.mergedFrom)" -like 'bf-2026-09-22 (*populationHash*harness*)')) 's40-partial-native-keeps-backfill-evidence' (($mgRows | ConvertTo-Json -Depth 4 -Compress))
+# Item 12: a mixed corpus compares structured metrics and alerts, not
+# only text: corrections, two cohorts, a malformed row, a schedule edit.
+$mxStore = Join-Path $s40 'mixed.jsonl'
+$mx = @(10..16 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$mx += New-Night '2026-09-17' '2026-09-17-023000' 610
+$mx[-1].env = [pscustomobject]@{ os = '10.0.27000.0'; dpi = 'primary 96x96'; dotnet = '10.0.400' }
+$null = Sync-MetricsStore $mxStore @($mx)
+$mx[3].legs.'run-a'.testSeconds = 640
+[System.IO.File]::AppendAllText($mxStore, "{not json`n")
+$mxRows = @(Sync-MetricsStore $mxStore @($mx))
+$mxBack = @($mxRows | Sort-Object { "$($_.night)" } | ForEach-Object { ConvertFrom-MetricsRow $_ })
+$mxRawJ = @($mx | ForEach-Object { ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $_)) -Depth 6 -Compress })
+$mxBackJ = @($mxBack | ForEach-Object { ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $_)) -Depth 6 -Compress })
+$mxAlertsRaw = @(Get-TrendAlerts $mx) -join "`n"
+$mxAlertsBack = @(Get-TrendAlerts $mxBack) -join "`n"
+Assert ((($mxRawJ -join "`n") -eq ($mxBackJ -join "`n")) -and ($mxAlertsRaw -eq $mxAlertsBack) -and ($mxAlertsRaw -like '*Rebaseline: cohort changed on 2026-09-17*') -and (@($script:MetricsLastMalformed).Count -eq 1)) 's40-mixed-corpus-structured-equivalence' "$mxAlertsRaw || $mxAlertsBack"
+# Item 13: a pruned night names its source, derivation, and lost evidence.
+$pe = @(Format-PrunedEvidence @($mxBack[0]))
+Assert (($pe.Count -eq 1) -and ($pe[0] -eq '- Pruned night 2026-09-10 (2026-09-10-023000-pid1): values from morning-2026-09-10-023000.result.json, derivation 2; raw evidence pruned, metrics only')) 's40-pruned-value-explains-itself' ($pe -join ' | ')
+# Item 14: a planted path in a legacy row is redacted on compaction, in
+# the store and in its backup.
+$lgStore = Join-Path $s40 'legacy.jsonl'
+$lgRow = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow (New-Night '2026-09-18' '2026-09-18-023000'))) -Depth 6 -Compress
+$lgRow = $lgRow -replace '"incidents":\[\]', '"incidents":["- INC-aaaa1111 `UI.A` x1 (Run A): C:\\Users\\op\\secret\\notes.txt missing"]'
+[System.IO.File]::WriteAllText($lgStore, "$lgRow`n")
+$null = Compress-MetricsStore $lgStore
+$lgAll = [System.IO.File]::ReadAllText($lgStore) + [System.IO.File]::ReadAllText("$lgStore.bak")
+Assert (($lgRow -like '*Users\\op*') -and ($lgAll -notlike '*Users\\op*') -and ($lgAll -notlike '*secret*') -and ($lgAll -like '*`[path`]*')) 's40-legacy-row-redacted-on-compaction' $lgAll
+# Item 15: a persisting alert raises once; a recovered one closes; a
+# re-evaluated night closes as corrected.
+$alPath = Join-Path $s40 'alerts.json'
+$al1 = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-27 vs baseline 600s (+50%, median of 7 night(s))') $alPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'n27' })
+$al2 = Update-AlertLedger @('- ALERT runa-duration: 950s on 2026-09-28 vs baseline 600s (+58%, median of 7 night(s))') $alPath ([pscustomobject]@{ Night = '2026-09-28'; Host = 'h0st0001'; Identity = 'n28' })
+$al3 = Update-AlertLedger @() $alPath ([pscustomobject]@{ Night = '2026-09-29'; Host = 'h0st0001'; Identity = 'n29' })
+Assert ((@($al1.New).Count -eq 1) -and (@($al2.New).Count -eq 0) -and (@($al2.Persisting).Count -eq 1) -and (@($al3.Closed).Count -eq 1) -and ($al3.Closed[0].State -eq 'recovered') -and ($al3.Closed[0].Id -eq 'h0st0001|runa-duration')) 's40-alert-raises-once-and-closes'
+$al4 = Update-AlertLedger @('- ALERT recurring-flake: INC-aaaa1111 on 2026-09-30 and 2026-09-29') $alPath ([pscustomobject]@{ Night = '2026-09-30'; Host = 'h0st0001'; Identity = 'n30' })
+$al5 = Update-AlertLedger @() $alPath ([pscustomobject]@{ Night = '2026-09-30'; Host = 'h0st0001'; Identity = 'n30-rev2' })
+$al6 = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-10-01 vs baseline 600s (+50%, median of 7 night(s))') $alPath ([pscustomobject]@{ Night = '2026-10-01'; Host = 'h0st0002'; Identity = 'm01' })
+Assert ((@($al4.New).Count -eq 1) -and ($al5.Closed[0].State -eq 'corrected') -and ($al5.Closed[0].Id -eq 'h0st0001|recurring-flake|INC-aaaa1111') -and (@($al6.New).Count -eq 1) -and (@($al6.Closed).Count -eq 0)) 's40-alert-corrected-and-host-scoped'
+# Item 16: a rollback between baseline and latest reads non-linear, and
+# the context labels itself correlation, not cause.
+$savedProbe = $script:AncestryProbe
+$anc = @{ 'c1|c2' = $true; 'c2|c3' = $false; 'c3|c2' = $true; 'c1|c4' = $false; 'c4|c1' = $false }
+$script:AncestryProbe = { param($A, $B) if ($anc.ContainsKey("$A|$B")) { return $anc["$A|$B"] }; return $null }
+$shRoll = Get-CommitRangeShape @('c1', 'c1', 'c2', 'c3')
+$shDiv = Get-CommitRangeShape @('c1', 'c4')
+$shUnk = Get-CommitRangeShape @('c1', 'c9')
+$shLin = Get-CommitRangeShape @('c1', 'c2')
+$rbBase = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n | Add-Member -NotePropertyName commit -NotePropertyValue $(if ($_ -lt 24) { 'c1' } else { 'c2' }) -Force; $n })
+$rbLate = New-Night '2026-09-27' '2026-09-27-023000' 900; $rbLate | Add-Member -NotePropertyName commit -NotePropertyValue 'c3' -Force
+$rbCtx = @(Get-TrendAlerts (@($rbBase) + @($rbLate)) | Where-Object { $_ -like '  - runa-duration context:*' })
+$script:AncestryProbe = $savedProbe
+Assert (($shRoll -eq 'non-linear (rollback to c3)') -and ($shDiv -eq 'non-linear (divergent at c4)') -and ($shUnk -like 'ancestry unavailable*') -and ($shLin -eq 'linear') -and ($rbCtx.Count -eq 1) -and ($rbCtx[0] -like '*revisions c1..c3 (non-linear (rollback to c3))*correlation, not cause')) 's40-attribution-reads-rollback-as-correlation' "$shRoll / $shDiv / $shUnk / $shLin / $($rbCtx -join '')"
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }

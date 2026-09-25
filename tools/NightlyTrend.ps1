@@ -6,14 +6,21 @@ Best-effort: invalid results skip with a note, never fail the run, and
 the night each belongs to reads degraded (section 32 item 8). Recorded
 pauses in docs/nightly-pauses.md read paused, not missing (item 7).
 -Compact rewrites the metrics store to its current rows after a backup
-(item 10) and renders nothing.
+(item 10) and renders nothing; -Restore rewrites it from that backup
+(section 40 item 10). Operator exclusions in docs/nightly-exclusions.md
+leave every series (section 40 item 8); docs/nightly-schedule-history.md
+carries the schedule's trigger history (item 3); the alert lifecycle
+lands in build/nightly/alerts.json (item 15).
 #>
 param(
   [string]$NightDir = 'build/nightly',
   [string]$OutFile = 'build/nightly/trend.md',
   [string]$LedgerPath = 'docs/soak-and-quarantine.md',
   [string]$PausesPath = 'docs/nightly-pauses.md',
-  [switch]$Compact
+  [string]$ExclusionsPath = 'docs/nightly-exclusions.md',
+  [string]$ScheduleHistoryPath = 'docs/nightly-schedule-history.md',
+  [switch]$Compact,
+  [switch]$Restore
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
@@ -21,6 +28,10 @@ $ErrorActionPreference = 'Stop'
 $storePath = Join-Path $NightDir 'metrics.jsonl'
 if ($Compact) {
   Write-Output (Compress-MetricsStore $storePath)
+  exit 0
+}
+if ($Restore) {
+  Write-Output (Restore-MetricsStore $storePath)
   exit 0
 }
 
@@ -66,14 +77,30 @@ try {
   $superseded = @($supersessions | ForEach-Object { $_.Backfill })
   $results = @($results | Where-Object { $superseded -notcontains "$($_.identity)" })
   $metricsNote = "- Metrics store: $($mrows.Count) row(s), $($fromMetrics.Count) night(s) rendered from metrics after pruning"
+  if ("$script:MetricsWriteError" -ne '') { $metricsNote += "; $script:MetricsWriteError" }
   if (@($script:MetricsLastMalformed).Count -gt 0) { $metricsNote += "; $(@($script:MetricsLastMalformed).Count) malformed line(s) skipped (lines $(@($script:MetricsLastMalformed) -join ', '); run tools/NightlyTrend.ps1 -Compact)" }
 } catch { $metricsNote = "- Metrics store: unavailable ($($_.Exception.Message))" }
 $quar = Test-QuarantineWindows $LedgerPath (Get-Date)
 $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3
 # The governed task's own calendar decides which nights were due (R1-C1).
-$schedule = Get-NightlySchedule (Join-Path $PSScriptRoot 'tasks/nightly-ui.xml')
+# The recorded history wins over the task definition (section 40 item 3).
+$schedule = Read-ScheduleHistory $ScheduleHistoryPath
+if ($null -eq $schedule) { $schedule = Get-NightlySchedule (Join-Path $PSScriptRoot 'tasks/nightly-ui.xml') }
+$null = Set-ResultExclusions $results (Read-NightlyExclusions $ExclusionsPath)
+$script:LastTrendEvaluation = $null
 $lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) } (Get-Date) (Read-NightlyPauses $PausesPath) $degraded $supersessions $schedule
-if ($metricsNote -ne '') { $lines += ''; $lines += $metricsNote }
+if ($metricsNote -ne '') { $lines += ''; $lines += $metricsNote; $lines += @(Format-PrunedEvidence $results) }
+# The alert lifecycle (section 40 item 15): new alerts notify once,
+# persisting ones stay quiet, and closed ones name how they closed.
+if ($null -ne $script:LastTrendEvaluation) {
+  try {
+    $ai = [array]::IndexOf(@($lines), '## Alerts')
+    $cur = @()
+    if ($ai -ge 0) { for ($i = $ai + 1; $i -lt @($lines).Count; $i++) { if ("$($lines[$i])" -like '## *') { break }; if ("$($lines[$i])" -like '- ALERT *') { $cur += "$($lines[$i])" } } }
+    $life = Update-AlertLedger $cur (Join-Path $NightDir 'alerts.json') $script:LastTrendEvaluation @($supersessions | ForEach-Object { $_.Backfill })
+    $lines += "- Alert lifecycle: $(@($life.New).Count) new, $(@($life.Persisting).Count) persisting, $(@($life.Closed).Count) closed$(if (@($life.Closed).Count -gt 0) { ' (' + ((@($life.Closed) | ForEach-Object { "$($_.Id) $($_.State)" }) -join '; ') + ')' })"
+  } catch { $lines += "- Alert lifecycle: unavailable ($($_.Exception.Message))" }
+}
 if ($skipped.Count -gt 0) {
   $lines += ''
   $lines += (Protect-DisclosedText ("- Skipped invalid results: " + ($skipped -join '; ')))

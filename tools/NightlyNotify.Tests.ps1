@@ -33,9 +33,9 @@ $heavy = @(
   (New-Result '2026-09-24' '2026-09-24-121212' 'green' 'demand' $false 800)
 )
 $canon = Select-CanonicalRuns $heavy
-Assert ($canon['2026-09-23'].Canonical -eq '2026-09-23-023011-pid1') 'canonical-timer-wins' $canon['2026-09-23'].Canonical
-Assert ($canon['2026-09-24'].Canonical -eq '2026-09-24-121212-pid1') 'canonical-demand-beats-manual' $canon['2026-09-24'].Canonical
-Assert (($canon['2026-09-23'].Others['2026-09-23-050000-pid1'] -eq 'simulation') -and ($canon['2026-09-23'].Others['2026-09-23-060000-pid1'] -eq 'stood-down loser') -and ($canon['2026-09-23'].Others['2026-09-23-040435-pid1'] -like 'retry (manual launch*')) 'canonical-others-carry-reasons' (($canon['2026-09-23'].Others.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')
+Assert ($canon['2026-09-23|legacy'].Canonical -eq '2026-09-23-023011-pid1') 'canonical-timer-wins' $canon['2026-09-23|legacy'].Canonical
+Assert ($canon['2026-09-24|legacy'].Canonical -eq '2026-09-24-121212-pid1') 'canonical-demand-beats-manual' $canon['2026-09-24|legacy'].Canonical
+Assert (($canon['2026-09-23|legacy'].Others['2026-09-23-050000-pid1'] -eq 'simulation') -and ($canon['2026-09-23|legacy'].Others['2026-09-23-060000-pid1'] -eq 'stood-down loser') -and ($canon['2026-09-23|legacy'].Others['2026-09-23-040435-pid1'] -like 'retry (manual launch*')) 'canonical-others-carry-reasons' (($canon['2026-09-23|legacy'].Others.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')
 $trend = @(Format-TrendTable $heavy @{ Overdue = @(); DueSoon = @() } (Get-Date '2026-09-25'))
 Assert (@($trend | Where-Object { $_ -like '| 2026-09-23 (retry) |*' }).Count -eq 3) 'canonical-trend-marks-retries' (($trend | Where-Object { $_ -like '| 2026-09-23*' }) -join ' || ')
 Assert (@($trend | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=2, p50 600, p90 800, p95 800 (= max: n=2 < 20), max 800 [native]' }).Count -eq 1) 'canonical-p50-counts-nights-not-attempts' (($trend | Where-Object { $_ -like '*p50*' }) -join '')
@@ -245,6 +245,12 @@ Assert ($still.Count -eq 0) 'recovery-none-while-red'
 $retryDay = @((New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-093000' 'green' 'manual'))
 $rr = @(Get-RecoveryNotices (Select-CanonicalRuns $retryDay) $retryDay $retryDay[2] @())
 Assert ($rr.Count -eq 0) 'recovery-green-retry-is-not-a-recovered-night' ($rr -join ' | ')
+# D00 T02 section 40 item 1: another host's GREEN never recovers this
+# host's RED night; the previous night is the same host's.
+$hostRed = New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'; $hostRed | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0001' -Force
+$hostGreen = New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'; $hostGreen | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0002' -Force
+$hx = @(Get-RecoveryNotices (Select-CanonicalRuns @($hostRed, $hostGreen)) @($hostRed, $hostGreen) $hostGreen @())
+Assert ($hx.Count -eq 0) 's40-recovery-is-host-scoped' ($hx -join ' | ')
 
 # Item 14: launch evidence links end to end.
 $diag = Join-Path $dir 'launch-diagnostics'

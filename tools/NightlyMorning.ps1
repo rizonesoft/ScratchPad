@@ -61,12 +61,22 @@ try {
     $ai = [array]::IndexOf($tl, '## Alerts')
     $al = @()
     if ($ai -ge 0) { for ($i = $ai + 1; $i -lt $tl.Count; $i++) { if ($tl[$i] -like '## *') { break }; if ($tl[$i] -like '- ALERT *') { $al += $tl[$i].Substring(2) } } }
+    # The lifecycle ledger (section 40 item 15): only new alerts notify,
+    # a persisting one raised once already, and a closed one is named.
+    $lPath = Join-Path $NightDir 'alerts.json'
+    $persistN = 0
+    if (Test-Path $lPath) {
+      $lg = Get-Content -LiteralPath $lPath -Raw -Encoding UTF8 | ConvertFrom-Json
+      $newIds = @($lg.lastRun.new)
+      $al = @(@($lg.alerts) | Where-Object { $newIds -contains "$($_.id)" } | ForEach-Object { "$($_.line)" }) + @(@($lg.lastRun.closed) | ForEach-Object { "closed: $_" })
+      $persistN = @($lg.lastRun.persisting).Count
+    }
     if ($al.Count -gt 0) {
       # Keyed on the day alone (no result checksum), so a re-rendered
       # trend never notifies twice on one day (R1-F5).
       $ta = Invoke-NightlyNotify -Phase 'final' -RunId "trend-alert-$day" -ResultPath '' -Class 'trend-regression' -Title "Nightly trend $day : $($al.Count) alert(s)" -Lines (@($al) + @('Report: build/nightly/trend.md')) -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
       $log += "trend alerts: $($al.Count) ($($ta.Status))"
-    } else { $log += 'trend alerts: none' }
+    } else { $log += "trend alerts: none new$(if ($persistN -gt 0) { " ($persistN persisting, already raised)" })" }
   }
 } catch { $log += "trend alerts: failed: $($_.Exception.Message)" }
 

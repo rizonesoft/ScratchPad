@@ -165,7 +165,7 @@ if ($Prune) {
     $arch = Test-StampArchived $NightDir $d.Name $metricsStore
     if (-not $arch.Ok) { Write-Output "prune: REFUSED $($d.Name)/ ($($arch.Reason); run tools/NightlyTrend.ps1 to archive it first)"; $refused++; continue }
     $bytes = (Get-ChildItem -Path $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
-    $plan += [pscustomobject]@{ Kind = 'dir'; Path = $d.FullName; Display = "$($d.Name)/ (${age}d, $([int]($bytes / 1KB)) KB)" }
+    $plan += [pscustomobject]@{ Kind = 'dir'; Path = $d.FullName; Stamp = $d.Name; Display = "$($d.Name)/ (${age}d, $([int]($bytes / 1KB)) KB)" }
   }
   foreach ($f in @(Get-ChildItem -Path $NightDir -File -ErrorAction SilentlyContinue)) {
     $m = [regex]::Match($f.Name, '^(\d{4}-\d{2}-\d{2})-\d{6}-.+\.log$')
@@ -180,14 +180,22 @@ if ($Prune) {
   if ($plan.Count -eq 0) { Write-Output "prune: nothing older than $OlderThanDays days ($skipped unknown shapes skipped)$(if ($refused -gt 0) { "; $refused refused (unarchived)" })"; if ($refused -gt 0) { exit 1 }; exit 0 }
   foreach ($p in $plan) { Write-Output "prune: candidate $($p.Display)" }
   if (-not $Execute) { Write-Output "prune: plan only ($($plan.Count) candidates); re-run with -Execute to delete"; if ($refused -gt 0) { exit 1 }; exit 0 }
+  $deleted = 0
   foreach ($p in $plan) {
     try {
-      if ($p.Kind -eq 'dir') { Remove-Item -Path $p.Path -Recurse -Force } else { Remove-Item -Path $p.Path -Force }
+      # A stamp directory is re-verified and deleted under the metrics
+      # lock (section 40 item 9), so a result changed after the plan was
+      # drawn keeps its directory.
+      if ($p.Kind -eq 'dir') {
+        $rm = Remove-ArchivedStamp $NightDir $p.Stamp (Join-Path $NightDir 'metrics.jsonl')
+        if (-not $rm.Deleted) { Write-Output "prune: REFUSED $($p.Display) at delete ($($rm.Reason); run tools/NightlyTrend.ps1 to archive it first)"; $refused++; continue }
+      } else { Remove-Item -Path $p.Path -Force }
+      $deleted++
       Write-Output "prune: deleted $($p.Display)"
     } catch { Write-Output "prune: FAULT deleting $($p.Display): $_"; $faults++ }
   }
   if ($faults -gt 0) { Write-Output "prune: $faults FAULT(S)"; exit 1 }
-  Write-Output "prune: deleted $($plan.Count) paths"
+  Write-Output "prune: deleted $deleted paths"
   if ($refused -gt 0) { Write-Output "prune: $refused stamp dir(s) REFUSED (unarchived)"; exit 1 }
   exit 0
 }

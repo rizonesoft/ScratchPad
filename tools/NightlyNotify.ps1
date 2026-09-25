@@ -530,18 +530,20 @@ function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLi
   # closed on verified recovery rides the notification by id.
   $notices = @()
   # The shared night key (D00 T02 section 32 item 1): the canonical map
-  # is keyed by Get-ResultNight, so the lookup is too.
-  $day = Get-ResultNight $Current
+  # is keyed by night slot (night plus host, section 40 item 1), so the
+  # lookup is too, and the previous night is the same host's.
+  $day = Get-NightSlotKey $Current
+  $hostSuffix = '|' + (Get-ResultHostKey $Current)
   $curId = "$($Current.identity)"
   if ($curId -eq '') { $curId = "$($Current.stamp)" }
   # Only the night's canonical run speaks for the night (R1-F4): a GREEN
   # manual retry after a RED timer run is not a recovered night.
   $isCanonicalNow = $Canonical.ContainsKey($day) -and ($Canonical[$day].Canonical -eq $curId)
-  $prev = @($Canonical.Keys | Where-Object { [string]::CompareOrdinal($_, $day) -lt 0 } | Sort-Object -Descending) | Select-Object -First 1
+  $prev = @($Canonical.Keys | Where-Object { ($_.EndsWith($hostSuffix)) -and ([string]::CompareOrdinal($_, $day) -lt 0) } | Sort-Object -Descending) | Select-Object -First 1
   if ($isCanonicalNow -and ($null -ne $prev) -and ("$($Current.verdict)" -eq 'green')) {
     $pid0 = $Canonical[$prev].Canonical
     $pr = @(@($Results) | Where-Object { ("$($_.identity)" -eq $pid0) -or ("$($_.stamp)" -eq $pid0) }) | Select-Object -First 1
-    if (($null -ne $pr) -and (@('red', 'cancelled') -contains "$($pr.verdict)")) { $notices += "Recovered: night $prev was $($pr.verdict.ToString().ToUpper()), $day is GREEN" }
+    if (($null -ne $pr) -and (@('red', 'cancelled') -contains "$($pr.verdict)")) { $notices += "Recovered: night $($prev.Split('|')[0]) was $($pr.verdict.ToString().ToUpper()), $($day.Split('|')[0]) is GREEN" }
   }
   foreach ($ln in @($LedgerLines)) {
     $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)`: CLOSED')
