@@ -231,18 +231,38 @@ function Get-DeliveryHealth([string]$StateDir, [datetime]$Now = (Get-Date), [int
   return [pscustomobject]@{ Ok = $false; Count = $files.Count; Lines = $lines }
 }
 
-function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50') {
-  # The independent no-start check (item 4): after the window closes, a
-  # night with no scheduler- or demand-launched result for today is a
-  # suppressed night, alerted by the morning reconciler without any
-  # governed run firing. Manual runs do not count as the night's start.
-  $today = $Now.ToString('yyyy-MM-dd')
-  $by = [datetime]::ParseExact("$today $ExpectBy", 'yyyy-MM-dd HH:mm', $null)
-  if ($Now -lt $by) { return [pscustomobject]@{ NoStart = $false; Line = "no-start check waits for $ExpectBy" } }
-  $started = @(@($Results) | Where-Object { ($null -ne $_) -and ("$($_.day)" -eq $today) -and (@('timer', 'demand') -contains "$($_.launch)") })
-  $tomb = @(@($Results) | Where-Object { ($null -ne $_) -and ("$($_.day)" -eq $today) -and ("$($_.trigger)" -like 'supervisor tombstone*') })
-  if (($started.Count -gt 0) -or ($tomb.Count -gt 0)) { return [pscustomobject]@{ NoStart = $false; Line = "night $today started ($($started.Count + $tomb.Count) scheduled result(s))" } }
-  return [pscustomobject]@{ NoStart = $true; Line = "NO START: no scheduled nightly result for $today by $ExpectBy (check the task is enabled and fires; run the manual backup)" }
+function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50', [int]$LookbackDays = 7) {
+  # The independent no-start check (item 4): a night counts as started
+  # only by a governed result (timer- or demand-launched, not simulated,
+  # not a stood-down loser) or a supervisor tombstone. Every night in
+  # the lookback whose window has closed without one is missed (R2-F5:
+  # a logon days later still reports the nights it slept through, not
+  # only today), so the reconciler alerts each missed date once.
+  # Returns NoStart, Missed (dates), and Line.
+  $started = @{}
+  foreach ($r in @($Results)) {
+    if ($null -eq $r) { continue }
+    $sim = $false
+    try { $sim = [bool]$r.simulated } catch { }
+    $gov = (@('timer', 'demand') -contains "$($r.launch)") -and (-not $sim) -and ("$($r.verdict)" -ne 'stood-down')
+    $tomb = ("$($r.trigger)" -like 'supervisor tombstone*')
+    if ($gov -or $tomb) { $started["$($r.day)"] = $true }
+  }
+  $missed = @()
+  for ($i = $LookbackDays; $i -ge 0; $i--) {
+    $d = $Now.Date.AddDays(-$i)
+    $ds = $d.ToString('yyyy-MM-dd')
+    $by = [datetime]::ParseExact("$ds $ExpectBy", 'yyyy-MM-dd HH:mm', $null)
+    if ($Now -lt $by) { continue }
+    if (-not $started.ContainsKey($ds)) { $missed += $ds }
+  }
+  if ($missed.Count -eq 0) {
+    $today = $Now.ToString('yyyy-MM-dd')
+    $todayBy = [datetime]::ParseExact("$today $ExpectBy", 'yyyy-MM-dd HH:mm', $null)
+    $tail = if ($Now -lt $todayBy) { "; today waits for $ExpectBy" } else { '' }
+    return [pscustomobject]@{ NoStart = $false; Missed = @(); Line = "every closed night in the last $LookbackDays day(s) started$tail" }
+  }
+  return [pscustomobject]@{ NoStart = $true; Missed = $missed; Line = "NO START: no governed nightly result for $($missed -join ', ') (check the task is enabled and fires; run the manual backup)" }
 }
 
 function Invoke-DigestFlush {
@@ -261,12 +281,17 @@ function Invoke-DigestFlush {
     $queue = @(@(Read-JsonState $qPath @()) | Where-Object { $null -ne $_ })
     if ($queue.Count -eq 0) { $out.Notes += 'nothing queued'; return $out }
     $out.Count = $queue.Count
-    $dPath = Join-Path $StateDir "digest-$Day.md"
+    # One file per flush (R2-F4): a later flush the same day never
+    # overwrites an earlier digest a delivered toast already points at.
+    $flushId = "$Day-$($Now.ToString('HHmmss'))"
+    $dPath = Join-Path $StateDir "digest-$flushId.md"
+    $k = 1
+    while (Test-Path $dPath) { $k++; $flushId = "$Day-$($Now.ToString('HHmmss'))-$k"; $dPath = Join-Path $StateDir "digest-$flushId.md" }
     $out.DigestPath = $dPath
     $md = @("# Nightly digest: $Day", '', "$($queue.Count) routine notification(s), queued by the nightly for the morning digest (D00 T02 s24).", '')
     foreach ($e in $queue) { $md += "## $($e.title)"; $md += ''; $md += "- Run: $($e.run) (class $($e.class), queued $($e.at))"; foreach ($l in @($e.lines)) { $md += "- $l" }; $md += '' }
     $dg = Format-Digest $queue $Day
-    $lines = @($dg.Lines) + @("Digest: build/nightly/digest-$Day.md")
+    $lines = @($dg.Lines) + @("Digest: build/nightly/digest-$flushId.md")
     if (-not $NoPersist) { Write-AtomicReport $md $dPath }
     $ok = $false
     for ($i = 0; ($i -le $Retries) -and (-not $ok); $i++) {
@@ -277,12 +302,36 @@ function Invoke-DigestFlush {
     else {
       $out.Status = 'fallback'
       $uDir = Join-Path $StateDir 'undelivered'
-      $payload = [pscustomobject]@{ key = "digest-$Day"; run = "digest-$Day"; class = 'digest'; title = $dg.Title; lines = $lines; failedAt = $Now.ToString('o'); attempts = $out.Attempts }
-      if (-not $NoPersist) { $null = New-Item -ItemType Directory -Force -Path $uDir; Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "digest-$Day.json") }
-      $out.Notes += "digest delivery failed after $($out.Attempts) attempt(s); fallback undelivered/digest-$Day.json, the full digest stays in digest-$Day.md"
+      $payload = [pscustomobject]@{ key = "digest-$flushId"; run = "digest-$flushId"; class = 'digest'; title = $dg.Title; lines = $lines; failedAt = $Now.ToString('o'); attempts = $out.Attempts }
+      if (-not $NoPersist) { $null = New-Item -ItemType Directory -Force -Path $uDir; Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "digest-$flushId.json") }
+      $out.Notes += "digest delivery failed after $($out.Attempts) attempt(s); fallback undelivered/digest-$flushId.json, the full digest stays in digest-$flushId.md"
     }
     if (-not $NoPersist) { Write-AtomicReport @('[]') $qPath } else { $out.Notes += 'dry run: no state written' }
     return $out
+  })
+}
+
+function Invoke-UndeliveredResend {
+  # Re-sends every undelivered notification (item 3, R2-F1) with the
+  # read, the send, and the delete all under the notify lock, so two
+  # reconcilers never send one payload twice and a producer never has a
+  # newer payload deleted between the read and the delete. Returns
+  # Lines (one per payload).
+  param([string]$StateDir, [scriptblock]$Sender, [switch]$NoPersist)
+  return (Invoke-WithNotifyLock -Body {
+    $lines = @()
+    foreach ($u in @(Get-ChildItem (Join-Path $StateDir 'undelivered') -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+      try {
+        $raw = [System.IO.File]::ReadAllText($u.FullName)
+        $p = $raw | ConvertFrom-Json
+        $ok = [bool](& $Sender "$($p.title) (re-sent)" @($p.lines))
+        if ($ok) {
+          if (-not $NoPersist) { Remove-Item -LiteralPath $u.FullName -Force }
+          $lines += "undelivered $($u.Name): re-sent$(if ($NoPersist) { ' (dry run: kept)' })"
+        } else { $lines += "undelivered $($u.Name): still failing" }
+      } catch { $lines += "undelivered $($u.Name): unreadable or failed: $($_.Exception.Message)" }
+    }
+    return $lines
   })
 }
 
@@ -322,10 +371,13 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
       if ($rv -ne [int]$m.Groups[$pair[1]].Value) { $breaks += "$key $($pair[0]): report $($m.Groups[$pair[1]].Value) vs result $rv" }
     }
     $gm = [regex]::Match($m.Groups[5].Value, '^\s*exit (\d+)')
+    $rg = $null
+    try { $rg = $leg.gate } catch { }
     if ($gm.Success) {
-      $rg = $null
-      try { $rg = $leg.gate } catch { }
       if (($null -eq $rg) -or ([int]$rg -ne [int]$gm.Groups[1].Value)) { $breaks += "$key gate: report exit $($gm.Groups[1].Value) vs result $rg" }
+    } elseif ($null -ne $rg) {
+      # A gate the result recorded must read as its exit code (R2-F3).
+      $breaks += "$key gate: report '$($m.Groups[5].Value.Trim())' vs result $rg"
     }
   }
   # A leg the result says ran must have its counts row (R1-F3).
@@ -373,6 +425,33 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   try { $resSoak = "$($Result.soak.verdict)" } catch { }
   if (($repSoak -ne '') -or ($resSoak -ne '')) {
     if ($repSoak -ne $resSoak) { $breaks += "soak: report $(if ($repSoak -eq '') { 'no verdict' } else { $repSoak }) vs result $resSoak" }
+  }
+  # Soak names reconcile both ways (R2-F3): every FAILED, killed, or
+  # budget-cut row the report prints is backed by the result's lists,
+  # and every name the result lists appears in the report's soak rows.
+  $soakRows = @()
+  $inSoak = $false
+  foreach ($ln in $ReportLines) {
+    if ("$ln" -eq '## Soak') { $inSoak = $true; continue }
+    if ($inSoak -and ("$ln" -like '## *')) { break }
+    if ($inSoak) { $sm = [regex]::Match("$ln", '^- ((?:ui|protocol)-soak-[\d.]+) : (.*)$'); if ($sm.Success) { $soakRows += [pscustomobject]@{ Name = $sm.Groups[1].Value; Text = $sm.Groups[2].Value } } }
+  }
+  $rf = @(); $rk = @(); $rc = @()
+  try { $rf = @($Result.soak.failed | Where-Object { $_ -is [string] }) } catch { }
+  try { $rk = @($Result.soak.killed | Where-Object { $_ -is [string] }) } catch { }
+  try { $rc = @($Result.soak.cut | Where-Object { $_ -is [string] }) } catch { }
+  foreach ($row in $soakRows) {
+    if (($row.Text -like '*(FAILED)*') -and ($rf -notcontains $row.Name)) { $breaks += "soak $($row.Name): report FAILED, result failed list lacks it" }
+    if (($row.Text -like '*killed at cap*') -and ($rk -notcontains $row.Name)) { $breaks += "soak $($row.Name): report killed, result killed list lacks it" }
+    if (($row.Text -like 'budget-cut*') -and ($rc -notcontains $row.Name)) { $breaks += "soak $($row.Name): report budget-cut, result cut list lacks it" }
+  }
+  $rowNames = @($soakRows | ForEach-Object { $_.Name })
+  foreach ($nm in @($rf + $rk + $rc)) { if ($rowNames -notcontains $nm) { $breaks += "soak ${nm}: result lists it, report soak rows omit it" } }
+  $tm = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Timings: .*reserve=(-?\d+)s') } | Where-Object { $_.Success }) | Select-Object -First 1
+  if ($null -ne $tm) {
+    $tr = $null
+    try { $tr = [int]$Result.reserve } catch { }
+    if ($tr -ne [int]$tm.Groups[1].Value) { $breaks += "timings reserve: report $($tm.Groups[1].Value)s vs result $tr" }
   }
   # Environment (R1-F3): every field, from one line the run prints off
   # the same object it writes to the JSON.

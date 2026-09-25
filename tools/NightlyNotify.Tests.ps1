@@ -89,15 +89,28 @@ $null = New-Item -ItemType Directory -Force -Path $dgState
 @([pscustomobject]@{ key = 'k1'; run = 'r10'; class = 'test'; title = 'Nightly 2026-09-24 : RED (test)'; lines = @('INC-1 top incident [evidence: bundle x]', 'Also: degraded-soak', 'Report: build/nightly/morning-2026-09-24.md'); at = (Get-Date).AddHours(-2).ToString('o') },
   [pscustomobject]@{ key = 'k2'; run = 'r11'; class = 'green'; title = 'Nightly 2026-09-25 : GREEN (green)'; lines = @('Recovered: night 2026-09-24 was RED', 'Report: build/nightly/morning-2026-09-25.md'); at = (Get-Date).AddHours(-1).ToString('o') }) | ForEach-Object { $_ } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $dgState 'digest-queue.json') -Encoding UTF8
 $script:sent = 0
-$f1 = Invoke-DigestFlush -StateDir $dgState -Day '2026-09-25' -Sender $okSender
-$dmd = Get-Content (Join-Path $dgState 'digest-2026-09-25.md') -Raw
+$f1Now = Get-Date
+$f1 = Invoke-DigestFlush -StateDir $dgState -Day '2026-09-25' -Sender $okSender -Now $f1Now
+$dmd = Get-Content $f1.DigestPath -Raw
 Assert (($f1.Status -eq 'sent') -and ($f1.Count -eq 2) -and ($dmd -like '*INC-1 top incident `[evidence: bundle x`]*') -and ($dmd -like '*Report: build/nightly/morning-2026-09-24.md*') -and ($dmd -like '*Recovered: night 2026-09-24 was RED*')) 'digest-keeps-every-payload-whole' $f1.Status
 Assert ((@(Read-JsonState (Join-Path $dgState 'digest-queue.json') @()).Count -eq 0) -and ((Get-Content (Join-Path $dgState 'digest-queue.json') -Raw).Trim() -eq '[]')) 'digest-flush-clears-the-queue'
 @([pscustomobject]@{ key = 'k3'; run = 'r12'; class = 'test'; title = 't'; lines = @('x'); at = (Get-Date).ToString('o') }) | ForEach-Object { $_ } | ConvertTo-Json -Depth 5 | ForEach-Object { "[$_]" } | Set-Content -Path (Join-Path $dgState 'digest-queue.json') -Encoding UTF8
 $script:sent = 0
 $f2 = Invoke-DigestFlush -StateDir $dgState -Day '2026-09-26' -Sender $badSender
 $h2 = Get-DeliveryHealth $dgState
-Assert (($f2.Status -eq 'fallback') -and ($f2.Attempts -eq 3) -and (Test-Path (Join-Path $dgState 'undelivered\digest-2026-09-26.json')) -and (-not $h2.Ok)) 'digest-failure-retries-falls-back-escalates' "$($f2.Status) attempts=$($f2.Attempts) health=$($h2.Ok)"
+Assert (($f2.Status -eq 'fallback') -and ($f2.Attempts -eq 3) -and (@(Get-ChildItem (Join-Path $dgState 'undelivered') -Filter 'digest-2026-09-26-*.json').Count -eq 1) -and (-not $h2.Ok)) 'digest-failure-retries-falls-back-escalates' "$($f2.Status) attempts=$($f2.Attempts) health=$($h2.Ok)"
+# R2-F4: a second flush the same day writes its own file.
+@([pscustomobject]@{ key = 'k5'; run = 'r14'; class = 'test'; title = 'late'; lines = @('late line'); at = (Get-Date).ToString('o') }) | ForEach-Object { $_ } | ConvertTo-Json -Depth 5 | ForEach-Object { "[$_]" } | Set-Content -Path (Join-Path $dgState 'digest-queue.json') -Encoding UTF8
+$f3 = Invoke-DigestFlush -StateDir $dgState -Day '2026-09-25' -Sender $okSender -Now $f1Now
+Assert (($f3.DigestPath -ne $f1.DigestPath) -and ((Get-Content $f1.DigestPath -Raw) -like '*INC-1 top incident*') -and ((Get-Content $f3.DigestPath -Raw) -like '*late line*')) 'digest-second-flush-never-overwrites' "$($f1.DigestPath) vs $($f3.DigestPath)"
+# R2-F1: undelivered re-sends run under the lock and delete only on success.
+$uState = Join-Path $dir 'resend'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $uState 'undelivered')
+'{"title":"T","lines":["x"]}' | Set-Content -Path (Join-Path $uState 'undelivered\a.json') -Encoding UTF8
+$rs1 = @(Invoke-UndeliveredResend -StateDir $uState -Sender $badSender)
+$rs2 = @(Invoke-UndeliveredResend -StateDir $uState -Sender $okSender)
+Assert (($rs1 -join '') -eq 'undelivered a.json: still failing') 'resend-failure-keeps-payload' ($rs1 -join ' | ')
+Assert ((($rs2 -join '') -eq 'undelivered a.json: re-sent') -and (-not (Test-Path (Join-Path $uState 'undelivered\a.json')))) 'resend-success-deletes-payload' ($rs2 -join ' | ')
 $staleState = Join-Path $dir 'stale'
 $null = New-Item -ItemType Directory -Force -Path $staleState
 @([pscustomobject]@{ key = 'k4'; run = 'r13'; class = 'test'; title = 't'; lines = @('x'); at = (Get-Date).AddHours(-30).ToString('o') }) | ForEach-Object { $_ } | ConvertTo-Json -Depth 5 | ForEach-Object { "[$_]" } | Set-Content -Path (Join-Path $staleState 'digest-queue.json') -Encoding UTF8
@@ -105,15 +118,21 @@ $h3 = Get-DeliveryHealth $staleState
 Assert ((-not $h3.Ok) -and ($h3.Lines[0] -like '- Delivery RED: digest queue stale past 26h (r13)*')) 'delivery-stale-digest-queue-escalates' ($h3.Lines -join ' | ')
 
 # Item 4: the no-start check alerts without any governed run firing.
-$ns = Get-NoStartVerdict @((New-Result '2026-09-24' '2026-09-24-023000' 'green' 'timer')) (Get-Date '2026-09-25 07:05') '06:50'
-Assert ($ns.NoStart -and ($ns.Line -like 'NO START: no scheduled nightly result for 2026-09-25 by 06:50*')) 'nostart-suppressed-night-alerts' $ns.Line
-Assert (-not (Get-NoStartVerdict @() (Get-Date '2026-09-25 05:00') '06:50').NoStart) 'nostart-waits-for-the-window'
-Assert (-not (Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer')) (Get-Date '2026-09-25 07:05') '06:50').NoStart) 'nostart-started-night-passes'
-Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-043000' 'red' 'manual')) (Get-Date '2026-09-25 07:05') '06:50').NoStart) 'nostart-manual-run-is-not-a-start'
+$ns = Get-NoStartVerdict @((New-Result '2026-09-24' '2026-09-24-023000' 'green' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 0
+Assert ($ns.NoStart -and ((@($ns.Missed) -join ',') -eq '2026-09-25') -and ($ns.Line -like 'NO START: no governed nightly result for 2026-09-25*')) 'nostart-suppressed-night-alerts' $ns.Line
+Assert (-not (Get-NoStartVerdict @() (Get-Date '2026-09-25 05:00') '06:50' 0).NoStart) 'nostart-waits-for-the-window'
+Assert (-not (Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-started-night-passes'
+Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-043000' 'red' 'manual')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-manual-run-is-not-a-start'
+# R2-F2: simulated and stood-down results are not governed starts.
+Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer' $true)) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-simulation-is-not-a-start'
+Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'stood-down' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-stood-down-is-not-a-start'
+# R2-F5: a logon before today's deadline still reports the nights missed.
+$lb = Get-NoStartVerdict @((New-Result '2026-09-22' '2026-09-22-023000' 'red' 'timer')) (Get-Date '2026-09-25 05:00') '06:50' 3
+Assert ((@($lb.Missed) -join ',') -eq '2026-09-23,2026-09-24') 'nostart-lookback-reports-missed-nights' ((@($lb.Missed) -join ','))
 $mDir = Join-Path $dir 'morning'
 $null = New-Item -ItemType Directory -Force -Path $mDir
-$mOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyMorning.ps1') -DryRun -NightDir $mDir -ExpectBy '00:00' 2>&1 | ForEach-Object { "$_" })
-Assert ((@($mOut | Where-Object { $_ -like 'morning: no-start: NO START*' }).Count -eq 1) -and (@($mOut | Where-Object { $_ -like 'morning: no-start notify: sent*' }).Count -eq 1)) 'nostart-reconciler-alerts-with-no-run' ($mOut -join ' | ')
+$mOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyMorning.ps1') -DryRun -NightDir $mDir -ExpectBy '00:00' -LookbackDays 1 2>&1 | ForEach-Object { "$_" })
+Assert ((@($mOut | Where-Object { $_ -like 'morning: no-start: NO START*' }).Count -eq 1) -and (@($mOut | Where-Object { $_ -like 'morning: no-start notify *: sent*dry run*' }).Count -eq 2) -and (-not (Test-Path (Join-Path $mDir 'notify-ledger.json')))) 'nostart-reconciler-alerts-with-no-run' ($mOut -join ' | ')
 
 # Item 9: every outcome beside the precedence class.
 $multi = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
@@ -165,6 +184,21 @@ $b8 = @((Test-ReportResultAgreement @($rep | ForEach-Object { $_ -replace 'topol
 Assert (@($b8 | Where-Object { $_ -eq "environment topology: report 'D2 primary' vs result 'D1 primary'" }).Count -eq 1) 'agree-environment-field-contradiction-fails' ($b8 -join '; ')
 $bad4 = @($rep | Where-Object { $_ -notlike '- Environment:*' })
 Assert (@((Test-ReportResultAgreement $bad4 $agreeRes).Breaks | Where-Object { $_ -eq 'environment: report carries no Environment line' }).Count -eq 1) 'agree-missing-environment-fails'
+
+# R2-F3: a numeric gate replaced by n/a, soak names out of step either
+# way, and a Timings reserve that disagrees all break.
+$b9 = @((Test-ReportResultAgreement @($rep | ForEach-Object { $_ -replace '\| exit 0 changes logged \|', '| n/a |' }) $agreeRes).Breaks)
+Assert (@($b9 | Where-Object { $_ -eq "run-a gate: report 'n/a' vs result 0" }).Count -eq 1) 'agree-gate-cell-must-be-numeric' ($b9 -join '; ')
+$soakRes = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
+$soakRes.incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom')
+$soakRes.soak = [pscustomobject]@{ verdict = 'green'; failed = @('ui-soak-2'); killed = @(); cut = @() }
+$b10 = @((Test-ReportResultAgreement $rep $soakRes).Breaks)
+Assert (@($b10 | Where-Object { $_ -eq 'soak ui-soak-2: result lists it, report soak rows omit it' }).Count -eq 1) 'agree-soak-result-name-must-appear' ($b10 -join '; ')
+$repFail = @($rep | ForEach-Object { if ($_ -like '- Verdict: GREEN*') { $_; '- ui-soak-3 : 9 passed, 1 failed, 0 skipped (FAILED)' } else { $_ } })
+$b11 = @((Test-ReportResultAgreement $repFail $agreeRes).Breaks)
+Assert (@($b11 | Where-Object { $_ -eq 'soak ui-soak-3: report FAILED, result failed list lacks it' }).Count -eq 1) 'agree-soak-report-claim-must-be-backed' ($b11 -join '; ')
+$b12 = @((Test-ReportResultAgreement @($rep | ForEach-Object { $_ -replace 'build=1s reserve=900s', 'build=1s reserve=5s' }) $agreeRes).Breaks)
+Assert (@($b12 | Where-Object { $_ -eq 'timings reserve: report 5s vs result 900' }).Count -eq 1) 'agree-timings-reserve-still-checked' ($b12 -join '; ')
 
 # Item 13: recovery notices, night-level and incident-level.
 $hist = @((New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'))

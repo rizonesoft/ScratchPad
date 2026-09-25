@@ -18,6 +18,7 @@
 [CmdletBinding()]
 param(
   [string]$ExpectBy = '06:50',
+  [int]$LookbackDays = 7,
   [switch]$DryRun,
   [string]$NightDir = ''
 )
@@ -38,11 +39,15 @@ foreach ($f in @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -File -
 }
 
 # (1) No-start: independent of any governed run firing.
-$ns = Get-NoStartVerdict $results $now $ExpectBy
+$ns = Get-NoStartVerdict $results $now $ExpectBy $LookbackDays
 $log += "no-start: $($ns.Line)"
 if ($ns.NoStart) {
-  $r = Invoke-NightlyNotify -Phase 'final' -RunId "no-start-$day" -ResultPath '' -Class 'scheduler-no-start' -Title "Nightly $day : NO START (scheduler-no-start)" -Lines @($ns.Line, "Report: build/nightly/morning-reconcile.log") -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
-  $log += "no-start notify: $($r.Status) ($($r.Notes -join '; '))"
+  # One alert per missed date: the ledger key names the date, so a
+  # later reconcile never repeats it.
+  foreach ($md in $ns.Missed) {
+    $r = Invoke-NightlyNotify -Phase 'final' -RunId "no-start-$md" -ResultPath '' -Class 'scheduler-no-start' -Title "Nightly $md : NO START (scheduler-no-start)" -Lines @("No governed nightly result for $md.", 'Check the task is enabled and fires; run the manual backup.', 'Report: build/nightly/morning-reconcile.log') -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
+    $log += "no-start notify ${md}: $($r.Status) ($($r.Notes -join '; '))"
+  }
 }
 
 # (2) Digest: every queued routine notification, whole, in
@@ -53,15 +58,8 @@ try {
   $log += "digest: $($df.Status) ($($df.Notes -join '; '))"
 } catch { $log += "digest: failed: $($_.Exception.Message)" }
 
-# (3) Undelivered: re-send, remove on success.
-foreach ($u in @(Get-ChildItem (Join-Path $NightDir 'undelivered') -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
-  try {
-    $p = Get-Content $u.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
-    $ok = [bool](& $sender "$($p.title) (re-sent)" @($p.lines))
-    if ($ok) { if (-not $DryRun) { Invoke-WithNotifyLock -Body { Remove-Item $u.FullName -Force } }; $log += "undelivered $($u.Name): re-sent" }
-    else { $log += "undelivered $($u.Name): still failing" }
-  } catch { $log += "undelivered $($u.Name): unreadable or failed: $($_.Exception.Message)" }
-}
+# (3) Undelivered: re-send under the notify lock, remove on success.
+try { $log += @(Invoke-UndeliveredResend -StateDir $NightDir -Sender $sender -NoPersist:$DryRun) } catch { $log += "undelivered: failed: $($_.Exception.Message)" }
 
 $stampLine = "$($now.ToString('yyyy-MM-dd HH:mm:ss'))$(if ($DryRun) { ' (dry run)' })"
 $log | ForEach-Object { Write-Output "morning: $_" }
