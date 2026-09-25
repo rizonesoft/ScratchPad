@@ -896,7 +896,12 @@ function Get-CaseHash($Cases) {
   # (a Theory row's arguments included), first 16 hex; 'none' when the
   # discovery carries no case list (fixtures built by hand).
   if ($null -eq $Cases) { return 'none' }
-  $text = (@($Cases | Sort-Object -Unique) -join "`n")
+  # Ordinal identity (D00 T02 section 37 R2-F1): PowerShell sorting and
+  # uniqueness ignore case, which would fold rows differing only by a
+  # string argument's casing.
+  $set = New-Object 'System.Collections.Generic.SortedSet[string]' ([StringComparer]::Ordinal)
+  foreach ($c in @($Cases)) { if ($null -ne $c) { $null = $set.Add("$c") } }
+  $text = (@($set) -join "`n")
   $sha = [System.Security.Cryptography.SHA256]::Create()
   try { $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) } finally { $sha.Dispose() }
   return ([System.BitConverter]::ToString($bytes) -replace '-', '').Substring(0, 16).ToLowerInvariant()
@@ -1086,16 +1091,21 @@ function Get-UiBuildInputs([string]$Root) {
   # R1-F2: besides each project directory, every ancestor
   # Directory.Build.* between a project and the root, every file an
   # MSBuild file imports (<Import Project>), and every linked item outside
-  # the project directory (Compile, None, Content, Page, EmbeddedResource
-  # with a relative Include) count, followed transitively. Paths built
-  # from MSBuild properties ($(...)) cannot be resolved statically and
-  # are skipped (the shared files that define them are inputs already).
+  # the project directory (Compile, None, Content, Page, EmbeddedResource,
+  # Manifest, and the other file item types) count, followed transitively.
+  # Paths built from MSBuild properties resolve against the built-in
+  # directory properties and every literal property the visited files
+  # define (R2-F2); a path that still names an unresolved property lands
+  # in $script:UiBuildUnresolved, and freshness refuses rather than skip it.
   $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
   $dirs = @()
   $extra = @{}
+  $props = @{}
+  $pending = New-Object System.Collections.Generic.List[object]
   $queue = New-Object System.Collections.Generic.Queue[string]
   $queue.Enqueue((Join-Path $Root 'tests\UI\UI.csproj'))
   $seen = @{}
+  do {
   while ($queue.Count -gt 0) {
     $file = [System.IO.Path]::GetFullPath($queue.Dequeue())
     if ($seen.ContainsKey($file) -or -not (Test-Path $file)) { continue }
@@ -1103,9 +1113,12 @@ function Get-UiBuildInputs([string]$Root) {
     $extra[$file] = $true
     $here = Split-Path -Parent $file
     $text = Get-Content $file -Raw
+    foreach ($pm in [regex]::Matches($text, '<([A-Za-z_][\w.]*)>([^<]*)</\1>')) {
+      if (-not $props.ContainsKey($pm.Groups[1].Value)) { $props[$pm.Groups[1].Value] = $pm.Groups[2].Value.Trim() }
+    }
     if ($file -like '*proj') {
       $dirs += $here
-      foreach ($m in [regex]::Matches($text, '<ProjectReference\s+Include="([^"$]+)"')) { $queue.Enqueue((Join-Path $here $m.Groups[1].Value)) }
+      foreach ($m in [regex]::Matches($text, '<ProjectReference\s+Include="([^"]+)"')) { $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'queue'; From = $file }) }
       $d = $here
       while ($d.Length -ge $rootFull.Length) {
         foreach ($n in @('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props')) {
@@ -1117,12 +1130,24 @@ function Get-UiBuildInputs([string]$Root) {
         $d = $parent
       }
     }
-    foreach ($m in [regex]::Matches($text, '<Import\s+Project="([^"$]+)"')) { $queue.Enqueue((Join-Path $here $m.Groups[1].Value)) }
-    foreach ($m in [regex]::Matches($text, '<(?:Compile|None|Content|Page|EmbeddedResource|ApplicationDefinition)\s+Include="([^"$*]+)"')) {
-      $linked = [System.IO.Path]::GetFullPath((Join-Path $here $m.Groups[1].Value))
-      if (Test-Path $linked -PathType Leaf) { $extra[$linked] = $true }
+    foreach ($m in [regex]::Matches($text, '<Import\s+Project="([^"]+)"')) { $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'queue'; From = $file }) }
+    foreach ($m in [regex]::Matches($text, '<(?:Compile|None|Content|Page|EmbeddedResource|ApplicationDefinition|Manifest|Resource|AdditionalFiles|PRIResource)\s+Include="([^"*]+)"')) {
+      $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'file'; From = $file })
     }
   }
+  # The queue drained: resolve what the files seen so far reference, now
+  # that their literal properties are known; newly queued files may
+  # define more, so drain and resolve again until nothing new arrives.
+  $later = New-Object System.Collections.Generic.List[object]
+  foreach ($p in $pending) {
+    $path = Resolve-MsBuildPath $p.Raw $p.Dir $p.From $props
+    if ($null -eq $path) { $later.Add($p); continue }
+    if ($p.Kind -eq 'queue') { if (-not $seen.ContainsKey($path)) { $queue.Enqueue($path) } }
+    elseif (Test-Path $path -PathType Leaf) { $extra[$path] = $true }
+  }
+  $pending = $later
+  } while ($queue.Count -gt 0)
+  $script:UiBuildUnresolved = @($pending | ForEach-Object { "$($_.Raw) in $($_.From.Substring($rootFull.Length).TrimStart('\\'))" })
   $files = @()
   foreach ($d in ($dirs | Sort-Object -Unique)) {
     $files += @(Get-ChildItem -Path $d -Recurse -Include '*.cs', '*.csproj', '*.xaml', '*.props', '*.targets', '*.resw', '*.json' -File |
@@ -1136,10 +1161,36 @@ function Get-UiBuildInputs([string]$Root) {
   return $files
 }
 
+function Resolve-MsBuildPath([string]$Raw, [string]$Dir, [string]$From, $Props) {
+  # One MSBuild path: built-in directory properties, then literal
+  # properties, repeated until nothing changes; null while any $(...)
+  # stays unresolved.
+  $v = $Raw
+  $builtin = @{ MSBuildThisFileDirectory = ($Dir.TrimEnd('\') + '\'); MSBuildProjectDirectory = $Dir; MSBuildThisFileFullPath = $From }
+  for ($i = 0; $i -lt 8 -and $v -match '\$\(([\w.]+)\)'; $i++) {
+    $v = [regex]::Replace($v, '\$\(([\w.]+)\)', {
+      param($m)
+      $n = $m.Groups[1].Value
+      if ($builtin.ContainsKey($n)) { return $builtin[$n] }
+      if ($Props.ContainsKey($n)) { return $Props[$n] }
+      return $m.Value
+    })
+  }
+  if ($v -match '\$\(') { return $null }
+  if (-not [System.IO.Path]::IsPathRooted($v)) { $v = Join-Path $Dir $v }
+  return [System.IO.Path]::GetFullPath($v)
+}
+
 function Get-UiBuildFreshness([string]$Root) {
   $dll = Join-Path $Root 'Bin\UI\Debug\UI.dll'
   if (-not (Test-Path $dll)) { return [pscustomobject]@{ Ok = $false; Error = "UI build missing: $dll; run: dotnet build src/ScratchPad.slnx, then retry" } }
-  $newest = Get-UiBuildInputs $Root | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+  $inputs = @(Get-UiBuildInputs $Root)
+  if (@($script:UiBuildUnresolved).Count -gt 0) {
+    # An input the check cannot locate cannot be proved older than the
+    # binary (R2-F2): refuse, naming each.
+    return [pscustomobject]@{ Ok = $false; Error = "UI build freshness unprovable: unresolved build input path(s): $($script:UiBuildUnresolved -join '; ')" }
+  }
+  $newest = $inputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
   if ($null -eq $newest) { return [pscustomobject]@{ Ok = $true; Error = '' } }
   $r = Test-UiBuildFresh (Get-Item $dll).LastWriteTimeUtc $newest.LastWriteTimeUtc $dll
   if (-not $r.Ok) { $r.Error = $r.Error -replace 'the newest tests/UI source', "its newest build input ($($newest.FullName.Substring($Root.Length).TrimStart('\')))" }
@@ -1151,19 +1202,22 @@ function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
   # every listed case the leg never executed stays owed, grouped by
   # method, so a Theory with one of three rows run keeps two owed. The
   # collector reruns the method filter (every row of it).
-  $done = @{}
-  foreach ($e in @($ExecutedNames)) { if ($null -ne $e) { $done["$e".Trim()] = $true } }
-  $byMethod = [ordered]@{}
+  # Ordinal identity (R2-F1): a case differing only by casing is its own
+  # case, so executing one never discharges the other.
+  $done = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::Ordinal)
+  foreach ($e in @($ExecutedNames)) { if ($null -ne $e) { $null = $done.Add("$e".Trim()) } }
+  $byMethod = New-Object 'System.Collections.Generic.Dictionary[string,object]' ([StringComparer]::Ordinal)
+  $order = New-Object System.Collections.Generic.List[string]
   foreach ($c in @($ListedCases)) {
     if ($null -eq $c) { continue }
     $name = "$c".Trim()
     $method = ($name -split '\(', 2)[0].Trim()
-    if (-not $byMethod.Contains($method)) { $byMethod[$method] = @{ Listed = 0; Owed = 0 } }
+    if (-not $byMethod.ContainsKey($method)) { $byMethod[$method] = @{ Listed = 0; Owed = 0 }; $order.Add($method) }
     $byMethod[$method].Listed++
-    if (-not $done.ContainsKey($name)) { $byMethod[$method].Owed++ }
+    if (-not $done.Contains($name)) { $byMethod[$method].Owed++ }
   }
   $rows = @()
-  foreach ($k in $byMethod.Keys) {
+  foreach ($k in $order) {
     $v = $byMethod[$k]
     if ($v.Owed -gt 0) { $rows += "- Night-owed: $k | $($v.Owed) of $($v.Listed) cases unexecuted ($Why) | collector filter: FullyQualifiedName=$k" }
   }

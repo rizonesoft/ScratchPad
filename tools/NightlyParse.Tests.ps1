@@ -613,6 +613,23 @@ foreach ($f in @('tests\Directory.Build.props', 'build-shared\Extra.targets', 's
   (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld
 }
 Assert ($ancestorHits.Count -eq 3) 's37-ancestor-import-and-linked-inputs-refuse' ($ancestorHits -join '|')
+# R2-F2: a property-built import resolves (built-in directory property and
+# a literal property), and an unresolvable one refuses by name.
+'<Project><PropertyGroup><SharedDir>..\..\build-shared</SharedDir></PropertyGroup><Import Project="$(MSBuildThisFileDirectory)$(SharedDir)\Extra.targets" /></Project>' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+(Get-Item (Join-Path $bRoot 'src\App\App.csproj')).LastWriteTimeUtc = $tOld
+(Get-Item (Join-Path $bRoot 'build-shared\Extra.targets')).LastWriteTimeUtc = $tOld.AddMinutes(30)
+$propStale = Get-UiBuildFreshness $bRoot
+(Get-Item (Join-Path $bRoot 'build-shared\Extra.targets')).LastWriteTimeUtc = $tOld
+'<Project><Import Project="$(NotDefinedAnywhere)\x.targets" /></Project>' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+(Get-Item (Join-Path $bRoot 'src\App\App.csproj')).LastWriteTimeUtc = $tOld
+$propUnknown = Get-UiBuildFreshness $bRoot
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+(Get-Item (Join-Path $bRoot 'src\App\App.csproj')).LastWriteTimeUtc = $tOld
+Assert (($propStale.Ok -eq $false) -and ($propStale.Error -like '*build-shared\Extra.targets*') -and ($propUnknown.Ok -eq $false) -and ($propUnknown.Error -like '*unresolved build input path(s): $(NotDefinedAnywhere)\x.targets in src\App\App.csproj*')) 's37-property-paths-resolve-or-refuse' "$($propStale.Error) | $($propUnknown.Error)"
+# R2-F1: case-distinct Theory rows stay distinct in the hash and the debt.
+Assert ((Get-CaseHash @('UI.X.T(s: "a")', 'UI.X.T(s: "A")')) -ne (Get-CaseHash @('UI.X.T(s: "a")'))) 's37-case-hash-is-ordinal'
+$caseRows = @(Get-UnexecutedCaseRows @('UI.X.T(s: "a")', 'UI.X.T(s: "A")') @('UI.X.T(s: "a")') 'fixture')
+Assert (($caseRows.Count -eq 1) -and ($caseRows[0] -like '*UI.X.T | 1 of 2 cases unexecuted*')) 's37-debt-is-ordinal' ($caseRows -join '|')
 Assert (($freshB.Ok -eq $true) -and ($staleShared.Ok -eq $false) -and ($staleShared.Error -like '*newest build input (Directory.Build.props)*') -and ($staleRef.Ok -eq $false) -and ($staleRef.Error -like '*src\App\A.cs*')) 's37-shared-and-referenced-inputs-refuse' "$($staleShared.Error) | $($staleRef.Error)"
 # Item 6: one of three Theory rows run keeps two owed.
 $owedRows = @(Get-UnexecutedCaseRows @('UI.X.Theory(n: 1)', 'UI.X.Theory(n: 2)', 'UI.X.Theory(n: 3)', 'UI.X.Fact') @('UI.X.Theory(n: 2)', 'UI.X.Fact') 'fixture kill')
