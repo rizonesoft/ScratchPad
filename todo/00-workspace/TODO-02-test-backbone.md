@@ -69,6 +69,7 @@ track: W0
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [ ]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
+|   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
 
 ---
 
@@ -473,6 +474,7 @@ Why this section exists: the D00 T02 §9 R5 review left two advisories on the ne
 - -> XREF: D00 T02 §9 -- filed from its R5 review; hardens that candidate.
 - -> XREF: D00 T02 §14 -- owns the full fourth-phase soak reporting that section's `## Soak` ledger anticipates (contract: §14 marks killed plus budget-cut per iteration; §15 adds phase verdicts plus per-night incident recurrence without changing the mark vocabulary; cross-night trend surfaces belong to §17). (D00-T02-S15-PR18.)
 - -> XREF: D00 T02 §22 -- follow-up hardening filed from this section's plan review (capture policy, retention quota, incident keys).
+- -> XREF: D00 T02 §29 -- the population fingerprint this section ships is checked before the night, not only by it.
 - -> XREF: D00 T02 §16 -- supervisor tombstone deduped with next-start recovery (item 12).
 
 - [x] Capability skips are allowlisted in `Get-NonQuarantineSkips` (HookFact message plus any enumerated capability skips), preferring structured skip classifications or stable reason codes over free-text matching (PR21; free text only as fallback), and the Interactive bar in `docs/testing.md` names the allowlist. Done when: the allowlist plus a scratch proof (capability skip passes, bare skip still flags) is quoted. Done: `CAPABILITY:` reason code on HookFact plus PrinterFact skips (the enumerated capability set; placement plus quiet-hours skips stay flagging), matched first with legacy free-text fallback in `Get-NonQuarantineSkips` (`tools/NightlyParse.ps1`); fixture `skip-classes` green (coded, legacy, quarantine pass; bare plus quiet-hours flag); forced printer run renders the code in trx; Interactive bar in `docs/testing.md` names the allowlist. (FL2 R2-F1/F2 fix: missing/malformed trx returns unproven and reds the run; `QUARANTINED` requires stamp shape (date plus id), matching is case-sensitive, legacy anchored to message prefix). (FL4 R4-F2 fix: enforcement outcome drives Interactive capture via trigger matrix; enforcement-only reds capture).
@@ -698,6 +700,8 @@ Why this section exists: the §12 plan review returned 22 findings; 11 file here
 
 ## 22. Nightly Evidence Hardening Follow-Ups
 
+> **Started:** 2026-09-25T01:46:48Z
+
 Why this section exists: the §15 plan review returned 30 findings; 5 file here (3 plan-review plus 2 panel-R5), 17 shape §16, 5 shape §17, 1 corrects §15's wording in place, 3 are rejected with reasons in the §15 findings file, and PR27's separate-sections split is realized by this filing (follow-ups land in §16/§17/§22, never back in §15). §15 shipped as a 27-item catch-all; these five keep their own single-purpose home. -> SOURCE: plan-review-D00-T02-s15-2026-09-21-s22 D00-T02-S15-PR21 D00-T02-S15-PR22 D00-T02-S15-PR24 D00-T02-S15-PR27 (capture policy, retention quota, and incident keys from the §15 plan review). -> SOURCE: panel-R5-D00-T02-s15-2026-09-21-s22 D00-T02-S15-R5-F1 D00-T02-S15-R5-F2 (all-skipped banner plus out.log paragraph from the §15 panel round 5). -> SOURCE: plan-review-D00-T02-s17-2026-09-21-s22 D00-T02-S17-PR26 D00-T02-S17-PR27 D00-T02-S17-PR30 (identity contract, incident lifecycle, and manifest mechanics from the §17 plan review).
 
 **Needs:** Windows host (build/test)
@@ -834,6 +838,27 @@ Why this section exists: the §21 plan review returned 25 findings against the b
 - [ ] Commit: `"workspace: harden the binding guard and input funnel"`
 
 **Test checkpoint:** Wrong-handler plant fails, routing per surface passes, Ctrl+E dispatches once, layout cases read, wrong-control focus fails, chord interruption aborts cleanly, seam is test-only, accessible text checked, state-conditional enablement fails the exemption. Cheaper substitute that fails: more rows in the audit table with no behavior proven.
+
+## 29. Population Fingerprint Gate Before the Night
+
+Why this section exists: the population fingerprint (`tests/UI/TestPopulation.fingerprint`, shipped by §15) is only compared against live discovery inside the governed nightly, so a commit that leaves it stale poisons the next night whole: every leg refuses on drift and a full night of proof is lost. It happened on 2026-09-25: d21ae60 (§21 R5) recorded `interactive-cases: 37` while the `NumberShortcutsCoverMiddlePositions` Theory expands to 6 cases (37 methods, 42 cases), the 02:30 run reported `Population: DRIFT: population drift: interactive-cases: fingerprinted 37 vs discovered 42` with no legs run, and b9f1bee fixed it forward the next morning. The drift check already exists (`Read-TestPopulationFile`, `Get-UiTestDiscovery`, `Compare-TestPopulation` in `tools/NightlyParse.ps1`); it just runs too late. -> SOURCE: nightly-population-drift-2026-09-25 (`build/nightly/morning-2026-09-25-023005.md` Population line; fix-forward b9f1bee).
+
+**Job:** A stale population fingerprint fails before it reaches a night. Consumer: the governed nightly (D00 T02 §9, §15), which then only ever refuses on drift the day's work actually introduced.
+
+**Treatment:** One shared check script over the existing pures, run by the Windows CI build job after the UI build and callable locally; no second comparer. Cheaper substitute that fails the checkpoint: a reminder in the regen script's header comment.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §15 -- ships the fingerprint and the comparer this section runs earlier.
+
+- [ ] `tools/Test-TestPopulation.ps1` dot-sources `tools/NightlyParse.ps1`, runs `Read-TestPopulationFile`, `Get-UiTestDiscovery`, and `Compare-TestPopulation` against the built UI binaries, prints `population OK run-a=M/C run-b=M/C interactive=M/C` or the drift lines, and exits nonzero on drift or on an unreadable fingerprint. Done when: it prints OK on HEAD and reproduces the 2026-09-25 drift line against a fingerprint with `interactive-cases: 37`.
+- [ ] The Windows job in `.github/workflows/build.yml` runs the script after the UI build, so a push with a stale fingerprint goes red with the drift named. Done when: a CI run shows the step green on HEAD, and a planted stale count reds the step locally with the same script.
+- [ ] The comparer also checks `interactive-methods` and `run-b-methods` against discovery (today `Compare-TestPopulation` checks only `run-a-methods` plus the three case counts), so a methods-only drift cannot pass. Done when: a planted methods-count mismatch fails the parser fixture suite (`tools/NightlyParse.Tests.ps1`).
+- [ ] `tools/Update-TestFingerprint.ps1` refuses to write when the UI binaries are older than the newest `tests/UI/*.cs`, so a regen against a stale build cannot record the wrong counts again. Done when: touching a test file without rebuilding makes the regen refuse with the build instruction.
+- [ ] `docs/testing.md` names the check beside the regen procedure. Done when: the paragraph names the script and the CI step.
+- [ ] Commit: `"workspace: gate the population fingerprint before the night"`
+
+**Test checkpoint:** The script prints OK on HEAD, reproduces the exact 2026-09-25 drift line against the stale count, the CI step runs green, a methods-only plant fails the fixture suite, and a stale-build regen refuses. Cheaper substitute that fails: a comment telling the next author to rebuild before regenerating.
 
 ## Verification
 
