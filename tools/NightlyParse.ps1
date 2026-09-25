@@ -3111,7 +3111,8 @@ function Compress-MetricsStore([string]$Path, [scriptblock]$Fault = $null) {
     foreach ($k in @($store.Rows.Keys)) { $clean = ConvertTo-Json (Protect-DisclosedObject $store.Rows[$k]) -Depth 6 -Compress; if ($clean -ne (ConvertTo-Json $store.Rows[$k] -Depth 6 -Compress)) { $store.Raw[$k] = $clean } }
     $replaces = { param($nat, $bf) (@('green', 'red') -contains "$($nat.verdict)") -and (("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer'))) }
     $valid = @($store.Supersessions | Where-Object { $sn = $store.Rows["$($_.native)"]; $sb = $store.Rows["$($_.backfill)"]; ($null -ne $sn) -and ($null -ne $sb) -and (& $replaces $sn $sb) })
-    $lines = @($store.Rows.Keys | ForEach-Object { $store.Raw[$_] }) + @($valid | ForEach-Object { ConvertTo-Json $_ -Compress })
+    # Supersession records carry the disclosure contract too (R5-F1).
+    $lines = @($store.Rows.Keys | ForEach-Object { $store.Raw[$_] }) + @($valid | ForEach-Object { ConvertTo-Json (Protect-DisclosedObject $_) -Compress })
     $tmp = "$Path.tmp"
     $lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
     if ($null -ne $Fault) { & $Fault 'after-temp' }
@@ -3264,6 +3265,21 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
     }
     Write-AtomicReport @((ConvertTo-Json $lg -Depth 6)) $Path
   }
+}
+
+function Select-AuthoritativeResults($Results, $Rows, [string[]]$Stale = @()) {
+  # The render's evidence (section 40 R5-F2): a live result stands for
+  # its row unless the store holds a newer revision of it (the sync left
+  # it stale), in which case the stored row renders instead; rows with no
+  # live result render from metrics. Returns Results and FromMetrics.
+  $staleSet = @{}
+  foreach ($k in @($Stale)) { if ("$k" -ne '') { $staleSet["$k"] = $true } }
+  $keyOf = { param($r) Get-MetricsKey ([pscustomobject]@{ identity = "$($r.identity)"; hostKey = (Get-ResultHostKey $r) }) }
+  $kept = @($Results | Where-Object { -not $staleSet.ContainsKey((& $keyOf $_)) })
+  $live = @{}
+  foreach ($r in $kept) { $live[(& $keyOf $r)] = $true }
+  $fromMetrics = @($Rows | Where-Object { -not $live.ContainsKey((Get-MetricsKey $_)) } | ForEach-Object { ConvertFrom-MetricsRow $_ })
+  return [pscustomobject]@{ Results = @($kept); FromMetrics = @($fromMetrics) }
 }
 
 function Add-MergedEvidence($Results, $Rows) {

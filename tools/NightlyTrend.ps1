@@ -68,9 +68,9 @@ $metricsNote = ''
 $supersessions = @()
 try {
   $mrows = @(Sync-MetricsStore $storePath $results)
-  $live = @{}
-  foreach ($r in $results) { $live[(Get-MetricsKey ([pscustomobject]@{ identity = "$($r.identity)"; hostKey = (Get-ResultHostKey $r) }))] = $true }
-  $fromMetrics = @($mrows | Where-Object { -not $live.ContainsKey((Get-MetricsKey $_)) } | ForEach-Object { ConvertFrom-MetricsRow $_ })
+  $auth = Select-AuthoritativeResults $results $mrows @($script:MetricsStaleSkipped)
+  $results = @($auth.Results)
+  $fromMetrics = @($auth.FromMetrics)
   $null = Add-MergedEvidence $results $mrows
   $results += $fromMetrics
   # A backfill a native night superseded leaves the render (item 11).

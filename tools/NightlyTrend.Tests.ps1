@@ -658,6 +658,8 @@ $rv2 = New-Night '2026-09-23' '2026-09-23-023000' 700; $rv2 | Add-Member -NotePr
 $rv1 = New-Night '2026-09-23' '2026-09-23-023000' 600; $rv1 | Add-Member -NotePropertyName revision -NotePropertyValue 1 -Force
 $null = Sync-MetricsStore $rvStore @($rv2)
 $rvRows = @(Sync-MetricsStore $rvStore @($rv1))
+$rvAuth = Select-AuthoritativeResults @($rv1) $rvRows @($script:MetricsStaleSkipped)
+Assert ((@($rvAuth.Results).Count -eq 0) -and (@($rvAuth.FromMetrics).Count -eq 1) -and ("$($rvAuth.FromMetrics[0].revision)" -eq '2') -and ([int]$rvAuth.FromMetrics[0].legs.'run-a'.testSeconds -eq 700)) 's40-stale-live-result-renders-the-stored-revision' "$(@($rvAuth.Results).Count) $(@($rvAuth.FromMetrics).Count)"
 Assert ((@($rvRows).Count -eq 1) -and ("$($rvRows[0].revision)" -eq '2') -and ([int]$rvRows[0].legs.'run-a'.testSeconds -eq 700) -and (@($script:MetricsStaleSkipped).Count -eq 1)) 's40-lower-revision-never-replaces' "$($rvRows[0].revision)"
 Assert (($fsTorn.Malformed.Count -eq 1) -and ($fsRestore -like 'metrics: restored 2 row(s)*') -and ($fsFixed.Rows.Count -eq 2) -and ($fsFixed.Malformed.Count -eq 0)) 's40-torn-store-restores-from-backup' "$fsRestore"
 # Item 11: a partial native row keeps the backfill's fields it lacks.
@@ -698,6 +700,19 @@ Assert ((($mxRawJ -join "`n") -eq ($mxBackJ -join "`n")) -and ($mxAlertsRaw -eq 
 # Item 13: a pruned night names its source, derivation, and lost evidence.
 $pe = @(Format-PrunedEvidence @($mxBack[0]))
 Assert (($pe.Count -eq 1) -and ($pe[0] -eq '- Pruned night 2026-09-10 (2026-09-10-023000-pid1): values from morning-2026-09-10-023000.result.json, derivation 2; raw evidence pruned, metrics only')) 's40-pruned-value-explains-itself' ($pe -join ' | ')
+# R5-F1: a valid supersession record naming a planted path is sanitized.
+$lgSup = Join-Path $s40 'legacy-sup.jsonl'
+$lgNat = New-Night '2026-09-18' '2026-09-18-023000'
+$lgBf = New-Night '2026-09-18' '2026-09-18-023000'; $lgBf.identity = 'C:\Users\op\bf'
+$lgBf | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ reserve = [pscustomobject]@{ confidence = 'high'; source = 'log' } }) -Force
+$lgNatRow = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $lgNat)) -Depth 6 -Compress
+$lgBfRow = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $lgBf)) -Depth 6 -Compress
+$lgRec = ConvertTo-Json ([pscustomobject]@{ schema = 'supersession/1'; night = '2026-09-18'; native = '2026-09-18-023000-pid1@h0st0001'; backfill = 'C:\Users\op\bf@h0st0001'; recorded = '2026-09-18T00:00:00Z' }) -Compress
+[System.IO.File]::WriteAllText($lgSup, "$lgNatRow`n$lgBfRow`n$lgRec`n")
+$lgPre = Read-MetricsStore $lgSup
+$null = Compress-MetricsStore $lgSup
+$lgSupAfter = [System.IO.File]::ReadAllText($lgSup)
+Assert ((@($lgPre.Supersessions).Count -eq 1) -and ($lgSupAfter -like '*supersession/1*') -and ($lgSupAfter -notlike '*Users\op*')) 's40-supersession-records-sanitized-on-compaction' $lgSupAfter
 # Item 14: a planted path in a legacy row is redacted on compaction, in
 # the store and in its backup.
 $lgStore = Join-Path $s40 'legacy.jsonl'
