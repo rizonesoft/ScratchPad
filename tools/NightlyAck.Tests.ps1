@@ -292,6 +292,50 @@ $q2 = (Get-Dem)['2026-09-27-130001-pid32'].Queue
 Remove-Item $nrPath, $lpPath, $zPath
 Assert (($reg -ge 1) -and ($q1 -eq 'operational') -and ($q2 -eq 'operational')) 's39-unclassified-results-cannot-be-relabeled' "$reg $q1 $q2"
 
+# ---- Sign-off (section 39 R3-F1..F5) ----
+# R3-F1: a same-named file outside tests/ is not the test's file.
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $ws 'docs')
+'notes' | Set-Content -Path (Join-Path $ws 'docs\A.md') -Encoding UTF8
+Save-All 'docs page'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $docA = ((& git -C $ws rev-parse HEAD) | Out-String).Trim().Substring(0, 12); $ErrorActionPreference = $eap
+$dem = Get-Dem
+Write-Ack 'ack-y.md' @("run: $run sha256:$($dem[$run].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $docA", 'signed: 2026-09-25')
+Save-All 'ack fixed by docs A'
+$g31 = Get-Gate
+Assert (@($g31.Lines | Where-Object { $_ -like "*ack-y.md: INVALID (fixed needs a commit that touches the failing test's file*" }).Count -eq 1) 's39-same-named-file-outside-tests-is-no-fix' ($g31.Lines -join ' | ')
+Remove-Item (Join-Path $acks 'ack-y.md'); Save-All 'drop y'
+# R3-F2 and R3-F5: a single-incident ack revised to drop the incident and
+# replace its finding keeps the original action, shown with its own due.
+$runW = '2026-09-26-093001-pid33'
+$wPath = Join-Path $nd 'morning-2026-09-26-093001.result.json'
+[pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-26-093001'; day = '2026-09-26'; identity = $runW; verdict = 'red'; exit = 1; incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom') } | ConvertTo-Json -Depth 5 | Set-Content -Path $wPath -Encoding UTF8
+$dem = Get-Dem
+Write-Ack 'ack-w.md' @("run: $runW sha256:$($dem[$runW].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", 'signed: 2026-09-26')
+Save-All 'ack w filed'
+[pscustomobject]@{ version = 1; revision = 2; stamp = '2026-09-26-093001'; day = '2026-09-26'; identity = $runW; verdict = 'red'; exit = 1; incidents = @() } | ConvertTo-Json -Depth 5 | Set-Content -Path $wPath -Encoding UTF8
+$dem = Get-Dem
+Write-Ack 'ack-w.md' @("run: $runW sha256:$($dem[$runW].Current)", 'incidents: none', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-20', "finding: $docA", 'signed: 2026-09-27')
+Save-All 'ack w re-signed as fixed'
+$g32 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-12')
+Assert ((@($g32.Lines | Where-Object { $_ -like "*CORRECTIVE ack-w.md ($fnd (dropped from the ack, opened*)): OVERDUE since 2026-10-10*" }).Count -eq 1)) 's39-dropped-top-level-action-keeps-its-own-due' ($g32.Lines -join ' | ')
+Remove-Item (Join-Path $acks 'ack-w.md'), $wPath; Save-All 'drop w'
+# R3-F3: with an empty ledger, a post-cutover result relabeled proof is
+# operational, and first sight records it operational.
+$emptyNd = Join-Path $ws 'build\empty-nd'
+$null = New-Item -ItemType Directory -Force -Path $emptyNd
+$rp = Join-Path $emptyNd 'morning-2026-09-27-140001.result.json'
+[pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-27-140001'; day = '2026-09-27'; identity = '2026-09-27-140001-pid34'; verdict = 'red'; exit = 1; proof = $true; proofSource = 'switches'; incidents = @() } | ConvertTo-Json -Depth 5 | Set-Content -Path $rp -Encoding UTF8
+$qEmpty = (Get-AckDemands @($rp) (Read-ResultClassifications $emptyNd))['2026-09-27-140001-pid34'].Queue
+$null = Register-UnclassifiedResults $emptyNd @($rp)
+$qReg = (Read-ResultClassifications $emptyNd)['2026-09-27-140001-pid34'].Queue
+Remove-Item $emptyNd -Recurse
+Assert (($qEmpty -eq 'operational') -and ($qReg -eq 'operational')) 's39-empty-ledger-and-first-sight-stay-operational' "$qEmpty $qReg"
+# R3-F4: two uncommitted drafts for one run tie in the prediction.
+$d1 = Invoke-Helper @('-Draft', '-Run', $runY, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', $fnd, '-Out', (Join-Path $acks 'ack-d1.md'), '-Today', '2026-09-26', '-WorkspaceRoot', $ws)
+$d2 = Invoke-Helper @('-Draft', '-Run', $runY, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', $fnd, '-Out', (Join-Path $acks 'ack-d2.md'), '-Today', '2026-09-26', '-WorkspaceRoot', $ws)
+Remove-Item (Join-Path $acks 'ack-d1.md'), (Join-Path $acks 'ack-d2.md') -ErrorAction SilentlyContinue
+Assert (($d1.Code -eq 0) -and ($d2.Code -eq 1) -and ($d2.Text -like "*would NOT acknowledge $runY*TIE*")) 's39-staged-drafts-tie-in-the-prediction' "$($d1.Text) || $($d2.Text)"
+
 # Item 6: an unreadable result is recorded and, once repaired, maps to
 # its identity with the corruption kept on record.
 $badPath = Join-Path $nd 'morning-2026-09-23-023001.result.json'

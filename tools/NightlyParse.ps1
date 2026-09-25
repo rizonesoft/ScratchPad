@@ -3792,7 +3792,7 @@ function Test-AckResultShape($Result) {
   return ''
 }
 
-function Add-ResultClassification([string]$NightDir, $Result, [string]$Sha) {
+function Add-ResultClassification([string]$NightDir, $Result, [string]$Sha, [string]$ForceQueue = '') {
   # Records a published result's queue at publication (section 39 item
   # 10): one JSON line per identity, appended, first write wins. A result
   # edited to proof later cannot move its run out of the operational
@@ -3801,7 +3801,7 @@ function Add-ResultClassification([string]$NightDir, $Result, [string]$Sha) {
   $id = "$($Result.identity)"
   if ($id -eq '') { $id = "$($Result.stamp)" }
   if ($id -eq '') { return 'result has no identity or stamp' }
-  $queue = if (Test-ProofResult $Result) { 'proof' } else { 'operational' }
+  $queue = if ($ForceQueue -ne '') { $ForceQueue } elseif (Test-ProofResult $Result) { 'proof' } else { 'operational' }
   $line = ConvertTo-Json -Compress ([pscustomobject]@{ identity = $id; queue = $queue; source = "$($Result.proofSource)"; sha = $Sha; at = (Get-Date).ToUniversalTime().ToString('o') })
   try { [System.IO.File]::AppendAllText((Join-Path $NightDir $script:ResultClassLedger), $line + "`n", (New-Object System.Text.UTF8Encoding($false))); return '' } catch { return "result classification write failed: $($_.Exception.Message)" }
 }
@@ -3817,7 +3817,12 @@ function Register-UnclassifiedResults([string]$NightDir, [string[]]$ResultFiles)
     try { $r = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
     $id = "$($r.identity)"; if ($id -eq '') { $id = "$($r.stamp)" }
     if (($id -eq '') -or $known.ContainsKey($id)) { continue }
-    if ((Add-ResultClassification $NightDir $r (Get-FileSha256 $f)) -eq '') { $known[$id] = $true; $n++ }
+    # Past the cutover the nightly classifies at publication, so a result
+    # first seen unclassified was not published by it: operational,
+    # whatever its fields claim (R3-F3). Before the cutover the fields as
+    # first seen are all there is.
+    $force = if ("$($r.stamp)" -ge $script:ResultClassCutover) { 'operational' } else { '' }
+    if ((Add-ResultClassification $NightDir $r (Get-FileSha256 $f) $force) -eq '') { $known[$id] = $true; $n++ }
   }
   return $n
 }
@@ -3835,7 +3840,7 @@ function Read-ResultClassifications([string]$NightDir) {
   return $map
 }
 
-function Get-AckDemands($ResultFiles, [hashtable]$Classes = @{}) {
+function Get-AckDemands($ResultFiles, $Classes = $null) {
   # One demand per RED or cancelled run identity (D00 T02 §23 items 1
   # and 4): retained copies, reruns, and re-emitted results of one run
   # dedupe onto its identity, carrying every checksum seen for it. The
@@ -3876,8 +3881,13 @@ function Get-AckDemands($ResultFiles, [hashtable]$Classes = @{}) {
     $queue = if (Test-ProofResult $r) { 'proof' } else { 'operational' }
     # The queue recorded at publication governs (section 39 item 10): a
     # result relabeled proof after it was published stays operational.
-    if ($Classes.ContainsKey($id)) { $queue = $Classes[$id].Queue }
-    elseif (("$($r.stamp)" -ge $script:ResultClassCutover) -and ($Classes.Count -gt 0)) { $queue = 'operational' }
+    # With a classification ledger (the nightly and the helper always pass
+    # one, empty or not), a result past the cutover with no record is
+    # operational (R3-F3); a pure call with no ledger ($null) reads fields.
+    if ($null -ne $Classes) {
+      if ($Classes.ContainsKey($id)) { $queue = $Classes[$id].Queue }
+      elseif ("$($r.stamp)" -ge $script:ResultClassCutover) { $queue = 'operational' }
+    }
     # The night key every consumer shares (section 32 item 1): the
     # scheduled night from the run's own start and zone, else its day.
     if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = (Get-ResultNight $r); Queue = $queue; Shas = @(); Incidents = @(); Paths = @(); Current = ''; CurrentTime = [datetime]::MinValue; AllIncidents = @(); Conflict = @(); Unreadable = $false; SchemaVersion = "$($r.version)"; Result = $r; Revision = -1; Regressions = @() } }
@@ -4144,7 +4154,7 @@ function Test-CommitAddresses([string]$Root, [string]$Sha, [string[]]$Tests, [st
   # Namespace.Class.Method names the class second to last; a two-part
   # name (Namespace.Class) names it last.
   $classes = @($Tests | ForEach-Object { $parts = "$_" -split '\.'; if ($parts.Count -ge 3) { $parts[-2] } elseif ($parts.Count -eq 2) { $parts[-1] } })
-  foreach ($f in $files) { foreach ($c in $classes) { if ((Split-Path -Leaf $f) -like "$c.*") { return $true } } }
+  foreach ($f in $files) { foreach ($c in $classes) { if (($f -like 'tests/*') -and ((Split-Path -Leaf $f) -like "$c.*")) { return $true } } }
   foreach ($n in @(@($Tests) + @($Incidents))) { if (("$n" -ne '') -and $msg.Contains("$n")) { return $true } }
   return $false
 }
@@ -4291,6 +4301,8 @@ function Get-AckHistoricalTargets([string]$Root, [string]$RelPath) {
       if ($LASTEXITCODE -ne 0) { continue }
       $fm = Read-AckFrontmatter $text
       if (-not $fm.Ok) { continue }
+      $top = "$($fm.Fields['finding'])"
+      if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and (-not $targets.Contains($top))) { $targets[$top] = [pscustomobject]@{ Label = $top; Finding = $top; Disposition = "$($fm.Fields['disposition'])"; Evidence = "$($fm.Fields['evidence'])"; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])" } }
       foreach ($cv in @($fm.Covers)) {
         $cm = [regex]::Match("$cv", $script:AckCoverRe)
         if ($cm.Success) { $k = "$($cm.Groups[1].Value) $($cm.Groups[3].Value)"; if (-not $targets.Contains($k)) { $targets[$k] = [pscustomobject]@{ Label = $k; Finding = $cm.Groups[3].Value; Disposition = $cm.Groups[2].Value; Evidence = $cm.Groups[4].Value; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])" } } }
@@ -4344,7 +4356,10 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     $hist = Get-AckHistory $Root $rel
     # A draft judged as if committed now (section 39 R1-F5): what the gate
     # will read once it lands, governance included.
-    if (($Assume -ne '') -and ($file.Name -eq $Assume)) { $stamp = [DateTimeOffset]::new($Today).ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture); $hist = [pscustomobject]@{ Committed = $true; Dirty = $false; Entries = @([pscustomobject]@{ Commit = 'PENDING-DRAFT'; Author = 'draft'; Date = $stamp }); Error = ''; Added = $stamp } }
+    # With a draft assumed (R3-F4), every uncommitted or edited ack file
+    # is judged as landing in the same pending commit, so staged
+    # competitors tie as they will once committed together.
+    if (($Assume -ne '') -and (($file.Name -eq $Assume) -or ((-not $hist.Committed) -or $hist.Dirty))) { $stamp = [DateTimeOffset]::new($Today).ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture); $hist = [pscustomobject]@{ Committed = $true; Dirty = $false; Entries = @([pscustomobject]@{ Commit = 'PENDING-DRAFT'; Author = 'draft'; Date = $stamp }); Error = ''; Added = $stamp } }
     if ($hist.Error -ne '') { $lines += "- $($file.Name): history unverifiable ($($hist.Error)); ignored"; continue }
     if (-not $hist.Committed) { $lines += "- $($file.Name): uncommitted (ignored until committed: git history is the integrity record)"; continue }
     if ($hist.Dirty) { $lines += "- $($file.Name): edited since its last commit (ignored until committed)"; continue }
@@ -4492,8 +4507,8 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     foreach ($tg in $targets) {
       $fnd = $tg.Finding
       # A dropped cover keeps the due it was opened under.
-      $tgDue = $dueDate; $tgHasDue = $hasDue
-      if (($null -ne $tg.PSObject.Properties['Due']) -and ("$($tg.Due)" -ne '')) { $tgHasDue = [datetime]::TryParseExact("$($tg.Due)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$tgDue) }
+      $tgDue = $dueDate; $tgHasDue = $hasDue; $tgDueText = "$($f['due'])"
+      if (($null -ne $tg.PSObject.Properties['Due']) -and ("$($tg.Due)" -ne '')) { $tgHasDue = [datetime]::TryParseExact("$($tg.Due)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$tgDue); $tgDueText = "$($tg.Due)" }
       $closedBy = ''
       $ev = "$($tg.Evidence)"
       # Disposition-specific transitions (section 39 item 2): fixed closes
@@ -4510,9 +4525,9 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       $staleNote = if ($isStale) { '; its run was revised after signing, the action stays until closed' } else { '' }
       if ($tgHasDue -and ($Today.Date -gt $tgDue.Date)) {
         if ($corrOverdue -notcontains $file) { $corrOverdue += $file }
-        $corrective += "- CORRECTIVE $file ($($tg.Label)): OVERDUE since $($f['due']): escalate $($f['corrective-owner'])$(if ($fnd -match '^INC-') { ' (an incident closes its investigation only on a closed: commit, never on recovery)' })$staleNote"
+        $corrective += "- CORRECTIVE $file ($($tg.Label)): OVERDUE since $($tgDueText): escalate $($f['corrective-owner'])$(if ($fnd -match '^INC-') { ' (an incident closes its investigation only on a closed: commit, never on recovery)' })$staleNote"
       } else {
-        $corrective += "- CORRECTIVE $file ($($tg.Label)): open, due $($f['due']) (owner $($f['corrective-owner'])$staleNote)"
+        $corrective += "- CORRECTIVE $file ($($tg.Label)): open, due $tgDueText (owner $($f['corrective-owner'])$staleNote)"
       }
     }
   }
