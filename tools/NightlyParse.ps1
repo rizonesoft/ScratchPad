@@ -1431,11 +1431,34 @@ function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles
 function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [hashtable]$Owners, [hashtable]$Links = @{}) {
   # Rebuild (section 30 item 4): replays every retained result's
   # incidents through Update-IncidentLedger in stamp order, restoring
-  # each incident with its occurrences and owner. Pass streaks are not
-  # in the results, so recovery restarts from zero (documented).
+  # each incident with its occurrences, then overlays the latest
+  # published incidentLifecycle snapshot for state, owner, pass streak,
+  # due date, and finding. A result set with no snapshot restarts
+  # recovery from zero (documented).
   $map = @{}
   foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
     $map = (Update-IncidentLedger $map $r.Groups $r.Stamp @{} $Owners 3 $Links).Incidents
+  }
+  # The latest result's incidentLifecycle block (section 30 R1-I1) is the
+  # last published state: restore each incident's state, owner, pass
+  # streak, due date, and finding from it instead of the replay's
+  # defaults, so a closed incident stays closed and recovery progress
+  # and historical owners survive the loss. Only incidents the replay
+  # restored are touched; the snapshot never invents one.
+  $snap = $null
+  $snapStamp = ''
+  foreach ($f in @($ResultFiles)) {
+    try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycle') -and ("$($o.stamp)" -ge $Since) -and ("$($o.stamp)" -gt $snapStamp)) { $snap = @($o.incidentLifecycle); $snapStamp = "$($o.stamp)" }
+  }
+  foreach ($row in @($snap)) {
+    if (($null -eq $row) -or (-not $map.ContainsKey("$($row.id)"))) { continue }
+    $e = $map["$($row.id)"]
+    $e.owner = "$($row.owner)"; $e.due = "$($row.due)"; $e.finding = "$($row.finding)"; $e.passStreak = [int]$row.passStreak
+    if ("$($row.state)" -eq 'closed') {
+      $e.state = 'closed'
+      if ("$($e.closedAt)" -eq '') { $e.closedAt = $snapStamp; $e.closedBy = "restored from the $snapStamp result snapshot" }
+    }
   }
   return $map
 }
@@ -1935,6 +1958,14 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
       }
       if ("$($row.id)" -notmatch '^INC-[0-9a-f]{8}$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle id malformed: $($row.id)" } }
       if (@('open', 'closed') -notcontains "$($row.state)") { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) state $($row.state)" } }
+      # Values, not only presence (section 30 R1-F2): counts are whole
+      # numbers (occurrences at least 1), the contract is the one this
+      # code mints, and optional dates and findings keep their shapes.
+      if ("$($row.occurrences)" -notmatch '^[1-9]\d*$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) occurrences '$($row.occurrences)' is not a positive whole number" } }
+      if ("$($row.passStreak)" -notmatch '^\d+$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) passStreak '$($row.passStreak)' is not a whole number" } }
+      if ("$($row.contract)" -ne 'v2') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) contract '$($row.contract)' unsupported (want v2)" } }
+      if (("$($row.due)" -ne '') -and ("$($row.due)" -notmatch '^\d{4}-\d{2}-\d{2}$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) due '$($row.due)' is not YYYY-MM-DD" } }
+      if (("$($row.finding)" -ne '') -and ("$($row.finding)" -notmatch '^(D\d{2} T\d{2} \u00A7\d+|[0-9a-f]{7,40})$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) finding '$($row.finding)' is not a section ref or commit" } }
     }
   }
   return [pscustomobject]@{ Ok = $true; Error = '' }
