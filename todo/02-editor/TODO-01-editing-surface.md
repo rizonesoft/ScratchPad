@@ -170,6 +170,9 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 - [ ] Word-wrap persistence scope is explicit: behavior across existing tabs, other windows, a settings change, and restart, with the menu check state, the editor, and the stored preference kept in sync. Done when: a two-window fixture reads the same wrap state after a toggle and after restart. (D00-T02-S28-PR10.)
 - [ ] The shared word-wrap and Go To availability rule carries its reciprocal XREF to D02 T02 §4 and names the shared baseline and fixture owner. Done when: `validate` reads the XREF pair. (D00-T02-S28-PR11.)
 - [ ] F5 time/date insertion runs against a deterministic clock and locale fixture, and pins selection replacement and undo. Done when: the fixture inserts the expected string for a frozen instant and one undo restores the selection. (D00-T02-S28-PR12.)
+- [ ] Ctrl+wheel gesture semantics are owned here: wheel direction, partial-delta accumulation from high-resolution wheels, multi-detent input, and clamping at the zoom limits, with D00 T02 §36's `UiInput.Wheel` supplying delivery. Done when: a fixture with fractional deltas and a multi-detent turn reads the documented steps and stops at each limit. (D00-T02-S36-PR11.)
+- [ ] Zoom and wrap changes preserve the document: text, selection, undo history, dirty state, and the captured caret and viewport behavior. Done when: a zoom and a wrap toggle on a dirty document with a selection leave each unchanged. (D00-T02-S36-PR12.)
+- [ ] F5 formatting follows the user's current regional settings across timezone, daylight-saving boundaries, and a live locale change. Done when: the deterministic fixture reads the expected text on each boundary. (D00-T02-S36-PR13.)
 - [ ] Commit: `"editor: match zoom and word wrap"`
 
 **Test checkpoint:** Steps, shortcuts, persistence, and wrap math all driven; capture comparison passes. Cheaper substitute that fails: zoom that works but with different steps than Notepad.

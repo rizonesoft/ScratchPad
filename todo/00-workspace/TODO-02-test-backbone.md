@@ -76,13 +76,14 @@ track: W0
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
 |   34  |   §34   | Sibling sweep residuals | §26 |  [x]   |
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [x]   |
-|   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
+|   36  |   §36   | Binding guard residuals | §28 |  [x]   |
 |   37  |   §37   | Population gate residuals | §29 |  [ ]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
+|   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
 
 ---
 
@@ -1163,6 +1164,7 @@ Why this section exists: the §28 plan review returned 14 findings; 8 file here,
 
 - -> XREF: D00 T02 §28 -- filed from its plan review and sign-off; settles the residuals of the guard and funnel it hardened.
 - -> XREF: D02 T01 §5 -- shares the layout matrix's plus and minus rows and the Ctrl+wheel funnel with that section's zoom keys and limits.
+- -> XREF: D00 T02 §43 -- residual follow-ups filed from this section's plan review.
 
 - [x] Covering-test outcome evidence is proved by execution, not syntax: each covered chord gets a mutation run (the handler swapped to another host member under a test-only switch) that its covering test must fail, replacing the static assertion rule that a constant assigned after the press (`int observed = 0; Assert.Equal(0, observed);`) still satisfies; the rule stays as a cheap pre-check. Done when: a planted constant-local assertion passes the static rule but fails the mutation run. (D00-T02-S28-R3-F1, D00-T02-S28-PR4.)
 - [x] The manifest keeps physical key identity beside the canonical chord (`Add` versus `OEM_PLUS`), so a covering test pressing one variant cannot credit a declaration of the other. Done when: a NumPad-only declaration with a main-row covering press fails the guard. (D00-T02-S28-PR1.)
@@ -1177,6 +1179,13 @@ Why this section exists: the §28 plan review returned 14 findings; 8 file here,
 **Night-owed:** D00-T02-S36-N1 (31 FullyQualifiedName~BindingMutationTests.CoveringTestFailsWithItsCommandSwapped|FullyQualifiedName~BindingMutationTests.PlantedConstantLocalSurvivesTheMutationRun|FullyQualifiedName~ChordRoutingTests, collector Nightly UI 02:30, owed 2026-09-25). The mutation theory's 27 cases (each covered row's covering test re-run with its command swapped, item 1), the executed plant, and the three routing tests (the Ctrl+T surfaces and every live chord's surfaces against the oracle, item 4, and the layout matrix's US Shift-plus row, item 3) press physical chords, so they are fenced; the focus-free proofs (the manifest plants for items 1-5 and 7, the funnel fixtures for items 6 and 8, the child-run plumbing, and the live enablement states) ran in the default gate.
 
 **Test checkpoint:** The mutation run catches the constant-local assertion, physical identity holds, the layout matrix reads, the routing oracle is per command, double registration fails, partial sends release exactly their keys, owner states read, and wheel injection is checked. Cheaper substitute that fails: a longer list of static assertion shapes.
+
+> **Verified:** 2026-09-25 | §36 | covering tests are proved by execution: a marker-gated seam (`Notepad.Core.TestMutation`) swaps a bound command for another host member and `BindingMutationTests` requires each covering test to pass unmutated and fail on an assertion after its press under the swap, while the executed constant-local plant reads survived; the manifest keeps physical key identity per declaration, names an exactly-once test with a count of one for every multiply declared chord, and checks the routing oracle, layout matrix, and owner-declared enablement states tables; every live chord's routing is proved on four surfaces in observe mode; the funnel releases exactly the injected keys and runs Ctrl+wheel through the checked core; Run A green with a clean foreground log and population OK on d6f6130; physical halves Night-owed D00-T02-S36-N1
+> **Review:** round 3 (Full), candidates `d0aa13c` `805b31d` `c455fca` `d6f6130` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F1..F3 fixed in d6f6130 and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s36.md
+> **Plan review:** GPT medium, filed D00 T02 §43 and D02 T01 §5 (run 20260925-D00-T02-S36-codex-c06751119-r4)
+> **CRUD:** not applicable | test instrumentation and a marker-gated test seam; the dispatch log and plant are test-run scratch only
+> **Duration:** 2026-09-25T10:52:12Z to 2026-09-25T12:07:59Z
+> **Reviewed-tip:** d6f6130f28f87014e1516c57efc9a612b34bb7f6
 
 ## 37. Population Gate Residuals
 
@@ -1300,6 +1309,21 @@ Why this section exists: the §35 plan review returned 12 findings; 9 file here,
 - [ ] Commit: `"workspace: govern the night-debt overrides and closure evidence"`
 
 **Test checkpoint:** Replay order is stable, reassignment transfers its deadline, acceptance keeps remediation visible, missed nights and DST pin, extensions are governed, closure binds to test identity, unrecorded closures red the run, finding completion never closes debt, and duplicates split replay from contradiction. Cheaper substitute that fails: more lifecycle lines with no ordering rule.
+
+## 43. Binding Guard Second Residuals
+
+Why this section exists: the §36 plan review returned 14 findings; 5 file here, 3 file as items on D02 T01 §5, 2 are duplicates of open D02 T01 §5 items, and 4 are rejected with reasons in the §36 findings file. §36 proved covering tests by execution, recorded physical identity, and checked routing, layouts, and states; these settle activation evidence, in-app focus moves, cleanup failures, auto-repeat, and state transitions. -> SOURCE: plan-review-D00-T02-s36-2026-09-25-s43 D00-T02-S36-PR2 D00-T02-S36-PR5 D00-T02-S36-PR6 D00-T02-S36-PR7 D00-T02-S36-PR8 (mutation activation, in-app focus moves, cleanup failures, auto-repeat, and enablement transitions from the §36 plan review).
+
+- -> XREF: D00 T02 §36 -- filed from its plan review; carries the guard and funnel it proved.
+
+- [ ] Each mutation case proves the swap activated (the substitute's own effect is observed or the app records the swap in the dispatch log) and runs in a fresh child with no inherited target. Done when: a case whose target names no bound command reads inconclusive, never killed. (D00-T02-S36-PR2.)
+- [ ] A focus move to another control inside the app between key-down and key-up (or between Ctrl and the wheel) is defined and tested: the press either binds to its original target or aborts loud. Done when: a planted in-app focus move mid-chord reads its documented outcome. (D00-T02-S36-PR5.)
+- [ ] Cleanup failures are owned: a key-up that throws, a window closing during recovery, and a cancelled test each release what they can within a bound and report every key left down. Done when: a fixture whose release throws names the stuck key. (D00-T02-S36-PR6.)
+- [ ] Held keys are distinguished from duplicate delivery: press, hold (auto-repeat), and release are specified per command class, so repeatable commands (zoom) repeat and one-shot commands dispatch once. Done when: a held-chord fixture reads the documented count per class. (D00-T02-S36-PR7.)
+- [ ] Enablement is read across transitions, not only states: entering and leaving each owner-declared state restores the documented enablement. Done when: a read-only document closed back to a writable one reads the writable enablement again. (D00-T02-S36-PR8.)
+- [ ] Commit: `"workspace: settle the binding guard second residuals"`
+
+**Test checkpoint:** Mutations prove activation, in-app focus moves have an outcome, cleanup failures report their stuck keys, held keys repeat by class, and enablement survives transitions. Cheaper substitute that fails: more static rules over test source.
 
 ## Verification
 
