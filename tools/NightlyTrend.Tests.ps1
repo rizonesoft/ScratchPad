@@ -56,6 +56,10 @@ $tzA = [pscustomobject]@{ day = '2026-09-25'; startUtc = '2026-09-25T00:30:00Z';
 $tzB = [pscustomobject]@{ day = '2026-09-24'; startUtc = '2026-09-25T00:30:00Z'; tz = '-05:00' }
 Assert (((Get-ResultNight $tzA) -eq '2026-09-25') -and ((Get-ResultNight $tzB) -eq '2026-09-25')) 'night-timezone-move-groups-correctly' "$(Get-ResultNight $tzA) / $(Get-ResultNight $tzB)"
 Assert ((Get-ResultNight ([pscustomobject]@{ day = '2026-09-19' })) -eq '2026-09-19') 'night-legacy-result-uses-day'
+$jsonRound = ('{"day":"2026-09-24","startUtc":"2026-09-24T22:45:00.0000000Z","tz":"+02:00"}' | ConvertFrom-Json)
+Assert ((Get-ResultNight $jsonRound) -eq '2026-09-25') 'night-json-roundtrip-datetime' "$(Get-ResultNight $jsonRound) ($($jsonRound.startUtc.GetType().Name))"
+$ci = [System.Threading.Thread]::CurrentThread.CurrentCulture
+try { [System.Threading.Thread]::CurrentThread.CurrentCulture = 'en-GB'; Assert ((Get-ResultNight $jsonRound) -eq '2026-09-25') 'night-day-first-culture' (Get-ResultNight $jsonRound) } finally { [System.Threading.Thread]::CurrentThread.CurrentCulture = $ci }
 
 # Item 4: the seven correctness fixtures.
 $gap = @((New-Night '2026-09-22' '2026-09-22-023000'), (New-Night '2026-09-20' '2026-09-20-023000'))

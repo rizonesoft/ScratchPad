@@ -1789,7 +1789,12 @@ function Get-ResultNight($Result) {
   try { if ("$($Result.night)" -match '^\d{4}-\d{2}-\d{2}$') { return "$($Result.night)" } } catch { }
   try {
     if (("$($Result.startUtc)" -ne '') -and ("$($Result.tz)" -match '^[+-]\d{2}:\d{2}$')) {
-      $u = [datetime]::Parse("$($Result.startUtc)", $null, [System.Globalization.DateTimeStyles]::AdjustToUniversal -bor [System.Globalization.DateTimeStyles]::AssumeUniversal)
+      # Windows PowerShell's ConvertFrom-Json turns ISO strings into
+      # DateTime values; use those directly (a culture-formatted string
+      # would misparse on a day-first machine), else parse invariantly.
+      $raw = $Result.startUtc
+      if ($raw -is [datetime]) { $u = if ($raw.Kind -eq [System.DateTimeKind]::Local) { $raw.ToUniversalTime() } else { $raw } }
+      else { $u = [datetime]::Parse("$raw", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::AdjustToUniversal -bor [System.Globalization.DateTimeStyles]::AssumeUniversal) }
       $sign = if ("$($Result.tz)".StartsWith('-')) { -1 } else { 1 }
       $off = [TimeSpan]::Parse("$($Result.tz)".Substring(1))
       return (Get-NightKey ($u + ([TimeSpan]::FromTicks($sign * $off.Ticks))))
