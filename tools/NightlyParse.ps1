@@ -2230,7 +2230,7 @@ function ConvertTo-MetricsRow($Result) {
     $o = $null
     try { $o = $Result.legs.$leg } catch { }
     if ($null -eq $o) { continue }
-    $legs[$leg] = [ordered]@{ ran = $(try { [bool]$o.ran } catch { $false }); passed = (& $num $o.passed); failed = (& $num $o.failed); skipped = (& $num $o.skipped); gate = $(try { $o.gate } catch { $null }); killed = $(try { [bool]$o.killed } catch { $false }); cut = $(try { [bool]$o.cut } catch { $false }); testSeconds = $(try { & $num $o.testSeconds } catch { $null }); enforcementRed = $(try { [bool]$o.enforcementRed } catch { $false }) }
+    $legs[$leg] = [ordered]@{ ran = $(try { [bool]$o.ran } catch { $false }); passed = (& $num $o.passed); failed = (& $num $o.failed); skipped = (& $num $o.skipped); gate = $(try { $g0 = $o.gate; if ($null -eq $g0) { $null } elseif ("$g0" -match '^-?\d{1,9}$') { [int]$g0 } else { Protect-DisclosedText "$g0" } } catch { $null }); killed = $(try { [bool]$o.killed } catch { $false }); cut = $(try { [bool]$o.cut } catch { $false }); testSeconds = $(try { & $num $o.testSeconds } catch { $null }); enforcementRed = $(try { [bool]$o.enforcementRed } catch { $false }) }
   }
   $incs = @()
   # Whole incident lines (disclosed), so phase and failure class survive
@@ -2249,7 +2249,9 @@ function ConvertTo-MetricsRow($Result) {
     quarantine = $(try { [ordered]@{ overdue = @(@($Result.quarantine.overdue) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); dueSoon = @(@($Result.quarantine.dueSoon) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); overdueDetail = @(@($Result.quarantine.overdueDetail) | Where-Object { $null -ne $_ } | ForEach-Object { [ordered]@{ Test = (Protect-DisclosedText "$($_.Test)"); Due = "$($_.Due)"; Owner = (Protect-DisclosedText "$($_.Owner)") } }) } } catch { $null })
     recovered = $(try { Protect-DisclosedText "$($Result.recovered)" } catch { 'none' })
     buildError = $(try { Protect-DisclosedText "$($Result.buildError)" } catch { '' })
-    omissionOk = $(try { if ($null -eq $Result.omissionOk) { $true } else { [bool]$Result.omissionOk } } catch { $true })
+    # Absent stays absent (section 32 R4-I1): the classifier reads a
+    # missing field differently from a true one, so equivalence needs it.
+    omissionOk = $(try { if ($null -eq $Result.omissionOk) { $null } else { [bool]$Result.omissionOk } } catch { $null })
     scheduler = $(try { [ordered]@{ voted = [bool]$Result.scheduler.voted; faults = @(@($Result.scheduler.faults) | ForEach-Object { Protect-DisclosedText "$_" }) } } catch { [ordered]@{ voted = $false; faults = @() } })
     harness = $(try { Protect-DisclosedText "$($Result.harness)" } catch { '' })
     incidentEvidence = $(try { if ($null -eq $Result.incidentEvidence) { $null } else { $ie = [ordered]@{}; foreach ($pp in @($Result.incidentEvidence.PSObject.Properties)) { $ie[$pp.Name] = @(@($pp.Value) | ForEach-Object { Protect-DisclosedText "$_" }) }; [pscustomobject]$ie } } catch { $null })
@@ -2296,7 +2298,9 @@ function Test-MetricsRowShape($Row) {
   foreach ($lp in @($legs.PSObject.Properties)) {
     $o = $lp.Value
     if (($null -eq $o) -or ($o -is [string]) -or ($o -is [ValueType])) { return $false }
-    foreach ($k in @('passed', 'failed', 'skipped')) { $v = $o.$k; if (($null -ne $v) -and ("$v" -notmatch '^\d+$')) { return $false } }
+    # Whole numbers that fit the Int32 the renderer casts to (section 32
+    # R4-A1): a longer digit string would render as zero and look healthy.
+    foreach ($k in @('passed', 'failed', 'skipped')) { $v = $o.$k; if (($null -ne $v) -and ("$v" -notmatch '^\d{1,9}$')) { return $false } }
     $ts = $o.testSeconds
     if (($null -ne $ts) -and ("$ts" -notmatch '^\d+(\.\d+)?$')) { return $false }
   }
@@ -2449,7 +2453,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $true }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }) }
+  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }) }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -2822,8 +2826,8 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     $gates = '-'
     try {
       $ga = '-'; $gb = '-'
-      try { if ($null -ne $r.legs.'run-a') { $la = $r.legs.'run-a'; $ga = if ((($null -ne $la.ran) -and (-not [bool]$la.ran))) { 'skip' } elseif ($null -eq $la.gate) { 'null' } else { "$($la.gate)" } } } catch { }
-      try { if ($null -ne $r.legs.'run-b') { $lb = $r.legs.'run-b'; $gb = if ((($null -ne $lb.ran) -and (-not [bool]$lb.ran))) { 'skip' } elseif ($null -eq $lb.gate) { 'null' } else { "$($lb.gate)" } } } catch { }
+      try { if ($null -ne $r.legs.'run-a') { $la = $r.legs.'run-a'; $ga = if ((($null -ne $la.ran) -and (-not [bool]$la.ran))) { 'skip' } elseif ($null -eq $la.gate) { 'null' } else { Protect-DisclosedText "$($la.gate)" } } } catch { }
+      try { if ($null -ne $r.legs.'run-b') { $lb = $r.legs.'run-b'; $gb = if ((($null -ne $lb.ran) -and (-not [bool]$lb.ran))) { 'skip' } elseif ($null -eq $lb.gate) { 'null' } else { Protect-DisclosedText "$($lb.gate)" } } } catch { }
       $gates = "$ga/$gb"
     } catch { }
     $res = '-'

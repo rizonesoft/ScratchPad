@@ -468,6 +468,20 @@ $null = New-Item -ItemType Directory -Force -Path (Join-Path $rtd 'retained\2026
 $null = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $rtd -OutFile (Join-Path $rtd 'trend.md') 2>&1
 Assert (@(Get-Content (Join-Path $rtd 'trend.md') | Where-Object { $_ -like '- Degraded data: night 2026-09-21 (*' }).Count -eq 1) 'corrupt-retained-copy-marks-its-night' ((Get-Content (Join-Path $rtd 'trend.md') | Where-Object { $_ -like '*Degraded*' }) -join '')
 
+# ---- section 32 round 4 ----
+$big = Join-Path $dir 'bigcount.jsonl'
+'{"schema":"metrics/1","identity":"g","stamp":"s","night":"2026-09-20","verdict":"green","legs":{"run-a":{"failed":"99999999999999999999999999"}}}' | Set-Content -Path $big -Encoding UTF8
+Assert ((Read-MetricsStore $big).Rows.Count -eq 0) 'metrics-overflowing-count-is-malformed'
+$gp = New-Night '2026-09-20' '2026-09-20-023000'
+$gp.legs.'run-a'.gate = 'C:\Users\someone\Private\gate.log'
+$gpj = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $gp)) -Depth 6 -Compress
+$gpRaw = @(Format-TrendTable @($gp) $Q $today | Where-Object { $_ -like '| 2026-09-20*' })
+Assert (($gpj -notlike '*someone*') -and (($gpRaw -join '') -notlike '*someone*')) 'gate-text-passes-the-disclosure-contract' "$gpj || $($gpRaw -join '')"
+$om = New-Night '2026-09-21' '2026-09-21-023000'
+$om.PSObject.Properties.Remove('omissionOk')
+$omRow = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $om)) -Depth 8 -Compress) | ConvertFrom-Json)
+Assert ((Classify-NightlyOutcome $om).Class -eq (Classify-NightlyOutcome $omRow).Class) 'missing-omission-field-classifies-the-same-from-metrics' "$((Classify-NightlyOutcome $om).Class) vs $((Classify-NightlyOutcome $omRow).Class)"
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTrend.Tests: all green'
