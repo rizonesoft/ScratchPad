@@ -81,14 +81,15 @@ track: W0
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [x]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [x]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [x]   |
-|   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
+|   41  |   §41   | Sibling sweep second residuals | §34 |  [x]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
-|   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
+|   48  |   §48   | Sibling sweep third residuals | §41 |  [ ]   |
+|   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
 
 ---
 
@@ -1333,6 +1334,7 @@ Why this section exists: the §34 plan review returned 12 findings; 8 file here 
 
 - -> XREF: D00 T02 §34 -- filed from its plan review and sign-off; carries the sweep it made explicit.
 - -> XREF: D00 T02 §18 -- its launch-guard promise is stated here as the guard's threat model (item 7).
+- -> XREF: D00 T02 §48 -- its plan review's residuals.
 
 - [x] Same-thread exclusivity is proven, not assumed: a fixture shows no other window's construction can run between a construction's snapshot and its sweep (or construction-specific provenance replaces the assumption). Done when: a planted same-thread interleaving reads as another construction's window. (D00-T02-S34-PR1.) Construction-specific provenance replaces the assumption (claims per generation); the §34 fail-safe (an overlapped construction's sweep gets no snapshot) is kept.
 - [x] Snapshot lifecycle fixtures cover overlapping completion, cancellation, window destruction, and HWND reuse. Done when: a reused handle value never reads as preexisting for the new window. (D00-T02-S34-PR2.)
@@ -1346,6 +1348,13 @@ Why this section exists: the §34 plan review returned 12 findings; 8 file here 
 - [x] Commit: `"workspace: settle the second sibling sweep residuals"`
 
 **Test checkpoint:** Interleaving is proven exclusive, lifecycle edges hold, ambiguous helpers report, late helpers have an owner, moves revalidate, recorders drain to a barrier, §18 states its threat model, diagnostics quote the sweep, and the first birth is observed from outside. Cheaper substitute that fails: more assertions on the app's own log.
+
+> **Verified:** 2026-09-25 | §41 | the sweep decides by provenance: construction generations, a ScratchPad.SiblingMark on every snapshotted window (a reused handle reads new, an unmarkable or unreadable one reads ambiguous and is reported), and claims stamped with ScratchPad.SiblingClaim (another construction's window reads other-construction while it carries the claim); each selected window is re-read before its move; a delayed pass per main pins helpers born after the sweep and skips when any construction began since; the snapshot runs before the base Window constructor, proven by an outside observation that failed on the old snapshot point; the recorder drains to a barrier after the delayed pass; launch records quote the birth's sweep and delayed-pass lines (launch-diagnostics/2); the launch guard states its threat model and catches P/Invoke in every spelling
+> **Review:** round 3 (Full), candidates `7cda042` `f70aa49` `a13bb32` `e7ad95a` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F1..F3 fixed in e7ad95a and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s41.md
+> **Plan review:** GPT medium, filed D00 T02 §48 (run 20260925-D00-T02-S41-codex-c06751119-r3)
+> **CRUD:** not-applicable | test-harness placement of background test windows, window properties set on the app's own helper windows, test-only seams behind the run marker, and ignored per-launch sweep logs pruned after a day; no user data
+> **Duration:** 2026-09-25T15:33:14Z to 2026-09-25T17:15:54Z
+> **Reviewed-tip:** e7ad95abb59555fa229fd543ab02c098cb66c5ea
 
 ## 42. Night-Debt Governance Residuals
 
@@ -1465,6 +1474,26 @@ Why this section exists: the §40 plan review returned 16 findings; 14 file here
 - [ ] Commit: `"workspace: settle the third trend and telemetry residuals"`
 
 **Test checkpoint:** Schedules conflict by name, legacy ambiguity reads unresolved, host aliases hold, green-run alerts acknowledge, cohorts reuse and expire, merges stay whole, all-excluded runs never read healthy, partial discovery reads partial, the calendar names overruns, restores report loss, backups sanitize, capacity warns without blocking pruning, derivations read their version, and alerts explain themselves. Cheaper substitute that fails: more ledger fields with no fixtures behind them.
+
+
+## 48. Sibling Sweep Third Residuals
+
+Why this section exists: the §41 plan review returned 12 findings; 9 file here and 3 are rejected with reasons in the §41 findings file. §41 made the sweep decide by provenance (generations, marks, claims), revalidate before moving, run a delayed pass, and prove the first birth from outside; these carry that through overlap placement, containment, recorder guarantees, failure cleanup, correlation, topology, and cost. -> SOURCE: plan-review-D00-T02-s41-2026-09-25-s48 D00-T02-S41-PR1 D00-T02-S41-PR2 D00-T02-S41-PR3 D00-T02-S41-PR5 D00-T02-S41-PR6 D00-T02-S41-PR7 D00-T02-S41-PR8 D00-T02-S41-PR11 D00-T02-S41-PR12
+
+- -> XREF: D00 T02 §41 -- filed from its plan review; carries the sweep it made provenance-based.
+
+- [ ] Overlapping constructions have a placement policy beyond pinning nothing: an overlapped birth's helpers are deferred to a later owned pass or the launch fails loud, so safety never silently disappears. Done when: an overlapped birth's helper lands at the target or the launch reports it. (D00-T02-S41-PR1.)
+- [ ] Ambiguous and late-unplaced helpers carry a containment and failure policy: a background launch with a visible unplaced helper never passes placement. Done when: an ambiguous visible helper fails the background placement verdict. (D00-T02-S41-PR2.)
+- [ ] Claim attribution is proven on shared framework threads: a two-construction fixture shows foreign helpers stay untouched and each construction's own helpers still pin. Done when: both constructions' helpers read correctly in one fixture. (D00-T02-S41-PR3.)
+- [ ] The location recorder states its delivery guarantees, fails on timeout or overflow, and carries a planted move-and-snap-back control. Done when: a planted move-and-snap-back is recorded, and a recorder overflow fails the proof. (D00-T02-S41-PR5.)
+- [ ] The first-birth proof requires every independently observed base-constructor helper to reach the target, catching helpers missing from both the snapshot and the sweep log. Done when: a helper absent from the sweep log fails the first-birth proof. (D00-T02-S41-PR6.)
+- [ ] A construction that fails before its constructor body runs leaves no snapshot token or claim that contaminates the next birth. Done when: a base-constructor-failure fixture leaves the next birth's sweep clean. (D00-T02-S41-PR7.)
+- [ ] Launch diagnostics correlate concurrent launches by construction generation and state complete sweep outcomes and missing or truncated logs explicitly. Done when: two concurrent launches' records each quote only their own generation. (D00-T02-S41-PR8.)
+- [ ] The delayed pass revalidates the target against the current topology before moving, so a monitor change never makes an obsolete target visible. Done when: a target now on a connected monitor is recomputed before the move. (D00-T02-S41-PR11.)
+- [ ] Enumeration, attribution, and delayed passes have a bounded cost: repeated multi-window birth and teardown stays within a latency and retained-state budget. Done when: twenty births and teardowns keep the claim table and the pass latency within budget. (D00-T02-S41-PR12.)
+- [ ] Commit: `"workspace: settle the third sibling sweep residuals"`
+
+**Test checkpoint:** Overlapped births place or fail loud, unplaced visible helpers fail the verdict, shared-thread attribution holds both ways, the recorder proves delivery with a control, the first birth's helpers all reach the target, failed constructions leave nothing behind, records correlate by generation, targets follow topology, and cost stays bounded. Cheaper substitute that fails: more reasons in the sweep log with no fixture that forces them.
 
 
 ## 49. Gate Process Attribution Under PID Reuse
