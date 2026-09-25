@@ -1311,7 +1311,9 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
   # row per ledger incident, read by notify, trend, and triage.
   return @($Incidents.Keys | Sort-Object | ForEach-Object {
     $e = $Incidents[$_]
-    [pscustomobject]@{ id = "$($e.id)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; passStreak = [int]$e.passStreak; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
+    # Identity and history ride each row (section 30 R2-F2), so a rebuild
+    # restores an incident whose original results have aged out.
+    [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; occurrenceStamps = @(@($e.occurrences) | ForEach-Object { "$($_.stamp)" }); firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; passStreak = [int]$e.passStreak; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
   })
 }
 
@@ -1449,10 +1451,25 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   $snapStamp = ''
   foreach ($f in @($ResultFiles)) {
     try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
-    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycle') -and ("$($o.stamp)" -ge $Since) -and ("$($o.stamp)" -gt $snapStamp)) { $snap = @($o.incidentLifecycle); $snapStamp = "$($o.stamp)" }
+    # Only a block that is the ledger's state counts (R2-F1): a run whose
+    # ledger was missing or unreadable publishes source `unavailable`.
+    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycle') -and ("$($o.incidentLifecycleSource)" -eq 'ledger') -and ("$($o.stamp)" -ge $Since) -and ("$($o.stamp)" -gt $snapStamp)) { $snap = @($o.incidentLifecycle); $snapStamp = "$($o.stamp)" }
   }
   foreach ($row in @($snap)) {
-    if (($null -eq $row) -or (-not $map.ContainsKey("$($row.id)"))) { continue }
+    if ($null -eq $row) { continue }
+    $stamps = @(@($row.occurrenceStamps) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+    if (-not $map.ContainsKey("$($row.id)")) {
+      # An incident whose failure results aged out lives on in the
+      # snapshot (R2-F2): restore it from the row's identity and history.
+      if (($stamps.Count -eq 0) -or ("$($row.test)" -eq '') -or ("$($row.phase)" -eq '')) { continue }
+      $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = ''; owner = "$($row.owner)"; state = 'open'; firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = ''; closedBy = ''; occurrences = @($stamps | ForEach-Object { [pscustomobject]@{ stamp = $_; wheres = @() } }); passStreak = 0; lastPassStamp = ''; due = ''; finding = '' }
+    } else {
+      $e0 = $map["$($row.id)"]
+      $have = @(@($e0.occurrences) | ForEach-Object { "$($_.stamp)" })
+      $extra = @($stamps | Where-Object { $have -notcontains $_ } | ForEach-Object { [pscustomobject]@{ stamp = $_; wheres = @() } })
+      if ($extra.Count -gt 0) { $e0.occurrences = @(@($e0.occurrences) + $extra | Sort-Object stamp) }
+      if (("$($row.firstSeen)" -ne '') -and ("$($row.firstSeen)" -lt "$($e0.firstSeen)")) { $e0.firstSeen = "$($row.firstSeen)" }
+    }
     $e = $map["$($row.id)"]
     $e.owner = "$($row.owner)"; $e.due = "$($row.due)"; $e.finding = "$($row.finding)"; $e.passStreak = [int]$row.passStreak
     if ("$($row.state)" -eq 'closed') {
@@ -1949,11 +1966,15 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
   # the nightly's own green/red results, validated wherever present.
   $hasLife = @($o.PSObject.Properties.Name) -contains 'incidentLifecycle'
   if ($RequireLifecycle -and (@('green', 'red') -contains "$($o.verdict)") -and (-not $hasLife)) { return [pscustomobject]@{ Ok = $false; Error = 'result missing incidentLifecycle' } }
+  # The block names its source (section 30 R2-F1): `ledger` when it is
+  # the ledger's state, `unavailable` when the ledger could not be read,
+  # so a rebuild never mistakes a failed run's empty block for state.
+  if ($hasLife -and (@('ledger', 'unavailable') -notcontains "$($o.incidentLifecycleSource)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycleSource '$($o.incidentLifecycleSource)' unknown (want ledger or unavailable)" } }
   if ($hasLife) {
     foreach ($row in @($o.incidentLifecycle)) {
       if ($null -eq $row) { return [pscustomobject]@{ Ok = $false; Error = 'result incidentLifecycle has a null row' } }
       $names = @($row.PSObject.Properties.Name)
-      foreach ($f in @('id', 'state', 'owner', 'occurrences', 'passStreak', 'contract')) {
+      foreach ($f in @('id', 'test', 'phase', 'state', 'owner', 'occurrences', 'firstSeen', 'passStreak', 'contract')) {
         if (($names -notcontains $f) -or ("$($row.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle row $($row.id) missing $f" } }
       }
       if ("$($row.id)" -notmatch '^INC-[0-9a-f]{8}$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle id malformed: $($row.id)" } }
@@ -1962,6 +1983,7 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
       # numbers (occurrences at least 1), the contract is the one this
       # code mints, and optional dates and findings keep their shapes.
       if ("$($row.occurrences)" -notmatch '^[1-9]\d*$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) occurrences '$($row.occurrences)' is not a positive whole number" } }
+      if ((@($row.PSObject.Properties.Name) -notcontains 'occurrenceStamps') -or (@($row.occurrenceStamps).Count -ne [int]"$($row.occurrences)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) occurrenceStamps disagree with occurrences" } }
       if ("$($row.passStreak)" -notmatch '^\d+$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) passStreak '$($row.passStreak)' is not a whole number" } }
       if ("$($row.contract)" -ne 'v2') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) contract '$($row.contract)' unsupported (want v2)" } }
       if (("$($row.due)" -ne '') -and ("$($row.due)" -notmatch '^\d{4}-\d{2}-\d{2}$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) due '$($row.due)' is not YYYY-MM-DD" } }

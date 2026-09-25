@@ -1160,6 +1160,7 @@ $ledgerResults += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'resu
 $ledgerPresence = Test-IncidentLedgerPresence $ledgerPath $ledgerResults $script:IncidentContractV2Since
 $ledgerRead = if ($ledgerPresence.Ok) { Read-IncidentLedger $ledgerPath } else { [pscustomobject]@{ Ok = $false; Error = $ledgerPresence.Error; Incidents = @{} } }
 $incidentLifecycle = @()
+$incidentLifecycleSource = 'unavailable'
 if (-not $ledgerRead.Ok) {
   $failed = $true
   $report += "- RED: $($ledgerRead.Error) (ledger left untouched; repair or move it aside, then re-run)"
@@ -1171,7 +1172,7 @@ if (-not $ledgerRead.Ok) {
   $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
   if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }
   $report += @(Format-UnlinkedIncidents $ledgerUpd.Incidents)
-  $incidentLifecycle = @(ConvertTo-IncidentLifecycle $ledgerUpd.Incidents)
+  if ($ledgerErr -eq '') { $incidentLifecycle = @(ConvertTo-IncidentLifecycle $ledgerUpd.Incidents); $incidentLifecycleSource = 'ledger' }
 }
 $report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
@@ -1419,6 +1420,7 @@ $result = [pscustomobject]@{
   incidentEvidence = [pscustomobject]$incidentEvidence
   # The incident lifecycle machine contract (D00 T02 section 30 item 10).
   incidentLifecycle = @($incidentLifecycle)
+  incidentLifecycleSource = $incidentLifecycleSource
   # Night grouping by run identity plus timezone (D00 T02 §25 item 3).
   startUtc = $runStart.ToUniversalTime().ToString('o')
   tz = $(($runStart - $runStart.ToUniversalTime()).ToString('hh\:mm').Insert(0, $(if (($runStart - $runStart.ToUniversalTime()).Ticks -lt 0) { '-' } else { '+' })))

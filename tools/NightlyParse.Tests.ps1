@@ -461,15 +461,15 @@ $upd3 = Update-IncidentLedger $legacy @() '2026-09-27-023001' @{} @{} 3 @{}
 Assert (($upd3.Incidents['INC-0000000c'].owner -eq 'operator') -and ($upd3.Incidents['INC-0000000c'].due -eq '2026-09-28')) 'legacy-unassigned-upgrades-to-triage-owner'
 $life = @(ConvertTo-IncidentLifecycle $upd2.Incidents)
 $lifeRes = Join-Path $dir 'life.result.json'
-$lifeObj = [pscustomobject]@{ version = 1; stamp = 's'; day = 'd'; identity = 'i'; verdict = 'stood-down'; exit = 0; incidentLifecycle = $life }
+$lifeObj = [pscustomobject]@{ version = 1; stamp = 's'; day = 'd'; identity = 'i'; verdict = 'stood-down'; exit = 0; incidentLifecycle = $life; incidentLifecycleSource = 'ledger' }
 $lifeObj | ConvertTo-Json -Depth 6 | Set-Content -Path $lifeRes -Encoding UTF8
 Assert (((Test-ResultFile $lifeRes).Ok -eq $true) -and ($life.Count -eq 2) -and ($life[0].contract -eq 'v2') -and ($life[0].finding -eq $sec5)) 'lifecycle-block-validates' (Test-ResultFile $lifeRes).Error
-$lifeObj.incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a'; state = 'open'; owner = 'operator'; occurrences = 1; contract = 'v2' })
+$lifeObj.incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a'; test = 'UI.A.Owned'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('s1'); firstSeen = 's1'; contract = 'v2' })
 $lifeObj | ConvertTo-Json -Depth 6 | Set-Content -Path $lifeRes -Encoding UTF8
 Assert (((Test-ResultFile $lifeRes).Ok -eq $false) -and ((Test-ResultFile $lifeRes).Error -like '*incidentLifecycle row INC-0000000a missing passStreak*')) 'lifecycle-missing-field-fails' (Test-ResultFile $lifeRes).Error
 # R1-F2: lifecycle values validate, not only presence.
 foreach ($bad in @(@{ occurrences = -1 }, @{ passStreak = 'x' }, @{ contract = 'v9' }, @{ due = '26-09-2026' })) {
-  $row = [ordered]@{ id = 'INC-0000000a'; state = 'open'; owner = 'operator'; occurrences = 1; passStreak = 0; contract = 'v2'; due = ''; finding = '' }
+  $row = [ordered]@{ id = 'INC-0000000a'; test = 'UI.A.Owned'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('s1'); firstSeen = 's1'; passStreak = 0; contract = 'v2'; due = ''; finding = '' }
   foreach ($k in $bad.Keys) { $row[$k] = $bad[$k] }
   $lifeObj.incidentLifecycle = @([pscustomobject]$row)
   $lifeObj | ConvertTo-Json -Depth 6 | Set-Content -Path $lifeRes -Encoding UTF8
@@ -477,11 +477,16 @@ foreach ($bad in @(@{ occurrences = -1 }, @{ passStreak = 'x' }, @{ contract = '
   Assert (((Test-ResultFile $lifeRes).Ok -eq $false) -and ((Test-ResultFile $lifeRes).Error -like "*$bk*")) "lifecycle-bad-$bk-fails" (Test-ResultFile $lifeRes).Error
 }
 # R1-I1: the rebuild restores the latest lifecycle snapshot.
-[pscustomobject]@{ version = 1; stamp = '2026-09-28-023001'; incidents = @(); incidentLifecycle = @([pscustomobject]@{ id = 'INC-1a2b3c4d'; state = 'closed'; owner = $sec5; occurrences = 3; passStreak = 3; contract = 'v2'; due = ''; finding = 'abc1234' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-09-28-023001'; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-1a2b3c4d'; test = 'UI.X.Y'; phase = 'soak'; state = 'closed'; owner = $sec5; occurrences = 3; occurrenceStamps = @('2026-09-25-023001', '2026-09-26-023001', '2026-09-27-023001'); firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-27-023001'; passStreak = 3; contract = 'v2'; due = ''; finding = 'abc1234' }, [pscustomobject]@{ id = 'INC-0000aced'; test = 'UI.Aged.T'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('2026-09-25-120000'); firstSeen = '2026-09-25-120000'; lastSeen = '2026-09-25-120000'; passStreak = 1; contract = 'v2'; due = '2026-09-27'; finding = '' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-09-29-023001'; incidents = @(); incidentLifecycleSource = 'unavailable'; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-29-023001.result.json') -Encoding UTF8
 $snapFiles = @(Get-ChildItem $ledDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
 $snapMap = New-IncidentLedgerFromResults $snapFiles '2026-09-25-000000' @{} @{}
 $se = $snapMap['INC-1a2b3c4d']
-Assert (($se.state -eq 'closed') -and ($se.passStreak -eq 3) -and ($se.finding -eq 'abc1234') -and ($se.closedAt -eq '2026-09-28-023001') -and (@($se.occurrences).Count -eq 2)) 'ledger-rebuild-restores-snapshot' "$($se.state) $($se.passStreak) $($se.finding) $($se.closedAt)"
+Assert (($se.state -eq 'closed') -and ($se.passStreak -eq 3) -and ($se.finding -eq 'abc1234') -and ($se.closedAt -eq '2026-09-28-023001') -and (@($se.occurrences).Count -eq 3) -and ($se.firstSeen -eq '2026-09-25-023001')) 'ledger-rebuild-restores-snapshot-past-an-unavailable-run' "$($se.state) $($se.passStreak) $($se.finding) $($se.closedAt) $(@($se.occurrences).Count)"
+$ag = $snapMap['INC-0000aced']
+Assert (($null -ne $ag) -and ($ag.test -eq 'UI.Aged.T') -and ($ag.passStreak -eq 1) -and ($ag.due -eq '2026-09-27') -and (@($ag.occurrences).Count -eq 1)) 'ledger-rebuild-restores-aged-out-incident' "$($ag.test) $($ag.passStreak)"
+$agErr = Write-IncidentLedger $snapMap (Join-Path $ledDir 'rebuilt.json')
+Assert ($agErr -eq '') 'ledger-rebuild-with-snapshot-writes-back' $agErr
 # Item 3: release candidates name the oldest exemptions and citations.
 $wsR = Join-Path $dir 'ws-release'
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $wsR 'build\nightly\retained\fx-old'), (Join-Path $wsR 'build\nightly\2026-09-21-023001'), (Join-Path $wsR 'docs'), (Join-Path $wsR 'todo')
