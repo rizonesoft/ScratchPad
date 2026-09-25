@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **128 of 317 sections complete (40%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **129 of 318 sections complete (41%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -163,13 +163,14 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §35` | Night-debt lifecycle residuals                            |  13   |
 | [x] | `D00 T02 §36` | Binding guard residuals                                   |   9   |
 | [x] | `D00 T02 §37` | Population gate residuals                                 |   7   |
-| [ ] | `D00 T02 §38` | Nightly evidence second residuals                         |  10   |
+| [x] | `D00 T02 §38` | Nightly evidence second residuals                         |  10   |
 | [ ] | `D00 T02 §39` | Acknowledgement second residuals                          |  14   |
 | [ ] | `D00 T02 §40` | Trend and telemetry second residuals                      |  18   |
 | [ ] | `D00 T02 §41` | Sibling sweep second residuals                            |  10   |
 | [ ] | `D00 T02 §42` | Night-debt governance residuals                           |  10   |
 | [ ] | `D00 T02 §43` | Binding guard second residuals                            |   6   |
 | [ ] | `D00 T02 §44` | Population gate second residuals                          |   9   |
+| [ ] | `D00 T02 §45` | Nightly evidence third residuals                          |   9   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |

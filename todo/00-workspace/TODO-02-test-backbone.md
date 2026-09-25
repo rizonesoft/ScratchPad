@@ -78,13 +78,14 @@ track: W0
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [x]   |
 |   36  |   §36   | Binding guard residuals | §28 |  [x]   |
 |   37  |   §37   | Population gate residuals | §29 |  [x]   |
-|   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
+|   38  |   §38   | Nightly evidence second residuals | §30 |  [x]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
+|   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
 
 ---
 
@@ -1223,6 +1224,7 @@ Why this section exists: the §29 plan review returned 10 findings; 6 file here 
 Why this section exists: the §30 plan review returned 18 findings; 9 file here, 4 on D00 T09 §1, and 5 on D00 T09 §8. §30 staged text captures, budgeted a run's captures, gave quota refusals a release path, made ledger loss detectable and rebuildable, aliased incident identity across contracts, and published the lifecycle as JSON; these settle what those mechanisms still leave to trust. -> SOURCE: plan-review-D00-T02-s30-2026-09-25-s38 D00-T02-S30-PR1 D00-T02-S30-PR2 D00-T02-S30-PR3 D00-T02-S30-PR4 D00-T02-S30-PR5 D00-T02-S30-PR6 D00-T02-S30-PR7 D00-T02-S30-PR8 D00-T02-S30-PR9 (staging integrity, binary capture privacy, budget reservation, durable ledger initialization, lossless rebuild, alias migrations, consumer contract, owner accountability, and filing retry from the §30 plan review).
 
 - -> XREF: D00 T02 §30 -- filed from its plan review; settles the residuals of the evidence mechanisms it shipped.
+- -> XREF: D00 T02 §45 -- residual follow-ups filed from this section's plan review.
 
 - [x] Staging integrity: the `.staging` directory is created with the run's own ACL, a crash-left staging directory is swept at run start, and the rename publishes exactly the bytes scanned (scan the staged file's hash, compare before the move). Done when: a fixture that alters the staged file between scan and move refuses the publish. (D00-T02-S30-PR1.)
 - [x] Binary capture privacy: screenshots and dumps get a minimization rule (screenshot the app's windows only, dumps without full heap unless the leg asks) and a disclosure gate before any retain. Done when: a screenshot fixture captures only app-owned window bounds and a full-heap dump refuses retain without its gate. (D00-T02-S30-PR2.)
@@ -1236,6 +1238,13 @@ Why this section exists: the §30 plan review returned 18 findings; 9 file here,
 - [x] Commit: `"workspace: settle the second nightly evidence residuals"`
 
 **Test checkpoint:** A tampered stage refuses, binary captures minimize and gate, oversized dumps refuse at capture, a full wipe reds on the initialization record, the round trip is lossless, split and merge aliases read as defined, the consumer contract holds, overdue incidents notify, and filings retry once. Cheaper substitute that fails: more prose in the capture policy.
+
+> **Verified:** 2026-09-25 | §38 | staged captures publish only the bytes the scan hashed from an own-ACL staging directory swept at every run start; screenshots render app-owned windows' own content in a bounded job and every binary capture retains only behind CAPTURE-DISCLOSURE-APPROVED.txt; JobControl streams dumps through the IO callback and refuses one at the cap mid-write (proved against the real binary); docs/incident-ledger.md reds a full wipe unless a same-day or previous-day reset is recorded; lifecycle rows carry every ledger field so the rebuild round trip is lossless; alias merges, splits, and unmapped ids are named and only one-to-one joins; the lifecycle block is versioned and validated on read by the validator, the rebuild, the trend, and the morning reconcile; tools/incident-policy.json is the one triage policy and overdue incidents notify their owner; links record idempotently; every PowerShell suite green on 2075ef0
+> **Review:** round 3 (Full), candidates `27b721e` `6813305` `ba780b7` `2075ef0` -- GPT R1-R2 bulk needs-attention (R1-F1..F4, R2-F1..F3 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F1..F2 fixed in 2075ef0 and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s38.md
+> **Plan review:** GPT medium, filed D00 T02 §45 (run 20260925-D00-T02-S38-codex-c06751119-r4)
+> **CRUD:** applicable | captures stage and publish through temp plus rename with a hash compare; the ledger and links write atomically with read-back; the ledger record is tracked and edited by the operator only
+> **Duration:** 2026-09-25T13:04:24Z to 2026-09-25T13:33:44Z
+> **Reviewed-tip:** 2075ef0dcf0bc4c16fddb17f6c767a2bdd2e954b
 
 ## 39. Acknowledgement Second Residuals
 
@@ -1357,6 +1366,24 @@ Why this section exists: the §37 plan review returned 11 findings; 8 file here,
 - [ ] Commit: `"workspace: settle the population gate second residuals"`
 
 **Test checkpoint:** Content provenance catches restored timestamps, identity survives reordering and splits duplicates, capability skips carry owners, debt reconciles retries and closes per case, proofs stale with the population, old formats refuse with the command, and drift names cases. Cheaper substitute that fails: a longer hash.
+
+## 45. Nightly Evidence Third Residuals
+
+Why this section exists: the §38 plan review returned 14 findings; 8 file here, 1 was a duplicate, and 6 are rejected with reasons in the §38 findings file. §38 made staging tamper-evident, gated binary captures, capped dumps at capture, recorded the ledger's start, made the rebuild lossless, defined alias cases, versioned the lifecycle contract, centralized triage policy, and made links idempotent; these carry that through sweep safety, capture-time authorization, retention priorities, crash interleavings, alias migration, recovery eligibility, the no-commit promise, and one operator summary. -> SOURCE: plan-review-D00-T02-s38-2026-09-25-s45 D00-T02-S38-PR3 D00-T02-S38-PR4 D00-T02-S38-PR7 D00-T02-S38-PR8 D00-T02-S38-PR9 D00-T02-S38-PR11 D00-T02-S38-PR14 D00-T02-S38-PR15 (sweep safety, capture authorization, retention priority, crash interleavings, alias migration, recovery eligibility, commit ownership, and the operator summary from the §38 plan review).
+
+- -> XREF: D00 T02 §38 -- filed from its plan review; carries the evidence mechanisms it hardened.
+
+- [ ] The staging sweep deletes only `.staging` directories inside validated stamp directories of runs that are not active (the run journal names the live run), and never follows a reparse point. Done when: a junction planted as `.staging` and the live run's staging both survive the sweep. (D00-T02-S38-PR3.)
+- [ ] Binary captures are authorized at capture time, not only at retain: a policy switch decides whether screenshots and dumps are taken at all, their local copies expire with the run evidence, and a refused capture leaves no file. Done when: with captures disabled a failing leg records the refusal and writes no PNG or dump. (D00-T02-S38-PR4.)
+- [ ] Retention accounting names the protected snapshot and KEEP exemptions against its quotas: the snapshot result is replaced atomically and counts toward the budget, and a quota refusal lists it. Done when: a quota fixture over its cap names the snapshot and refuses rather than dropping it. (D00-T02-S38-PR7.)
+- [ ] Recovery survives crash interleavings and retention gaps: replay orders by stamp, detects a missing intermediate result, and a crash between the ledger write and the result write rebuilds to the later state. Done when: an interrupted-write fixture and a gap fixture each rebuild correctly or name what is missing. (D00-T02-S38-PR8.)
+- [ ] Alias migration moves incident state: when an alias joins, the finding link, owner, due date, occurrences, and recovery streak follow the v2 id without duplicating or closing work. Done when: a joined alias fixture carries its link and keeps its streak. (D00-T02-S38-PR9.)
+- [ ] Verified recovery counts only qualifying runs: a skipped, quarantined, aborted, or evidence-invalid run neither advances nor resets the streak, stated beside §22's three-run rule. Done when: a fixture with a skipped middle run needs a third qualifying pass to close. (D00-T02-S38-PR11.)
+- [ ] §22's unattended no-commit promise is reconciled with triage's tracked `Night-collected:` and link writes: the run stages, a named triage step commits, and the tree-clean check expects that. Done when: the promise and the triage step read consistently and a run's tree check stays clean. (D00-T02-S38-PR14.)
+- [ ] One operator summary line per run names evidence completeness: capture refusals, truncation, privacy gates, ledger faults, and overdue incidents, each with its next action. Done when: a run with a refused dump and an overdue incident prints both in one summary block. (D00-T02-S38-PR15.)
+- [ ] Commit: `"workspace: settle the third nightly evidence residuals"`
+
+**Test checkpoint:** The sweep spares live runs and junctions, captures obey capture-time policy, retention names the snapshot, interrupted writes rebuild, aliases carry their state, recovery counts qualifying runs, the commit promise holds, and one summary names degraded evidence. Cheaper substitute that fails: longer report prose.
 
 ## Verification
 
