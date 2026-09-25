@@ -2916,6 +2916,17 @@ function Test-MetricsRowShape($Row) {
   return $true
 }
 
+function Get-MetricsKey($Item) {
+  # The store key (section 40 R3-F3): a run identity is stamp plus pid,
+  # which two hosts can share, so a row with a recorded host keys as
+  # identity@host; a legacy row (no host) keeps its bare identity, so
+  # stores written before hosts were recorded read unchanged.
+  $id = "$($Item.identity)"
+  $h = "$(try { $Item.hostKey } catch { '' })"
+  if (($id -ne '') -and ($h -ne '') -and ($h -ne 'legacy')) { return "$id@$h" }
+  return $id
+}
+
 function Read-MetricsStore([string]$Path) {
   # Per-line validation (item 10): a line is a row only when it parses
   # with schema metrics/1 and an identity; supersession records
@@ -2937,8 +2948,9 @@ function Read-MetricsStore([string]$Path) {
     # A row is data only with the fields the trend and the archival gate
     # consume (section 32 R1-A2): identity, stamp, night, verdict, legs.
     if (-not (Test-MetricsRowShape $r)) { $out.Malformed += $i; continue }
-    $out.Rows["$($r.identity)"] = $r
-    $out.Raw["$($r.identity)"] = $ln.Trim()
+    $k = Get-MetricsKey $r
+    $out.Rows[$k] = $r
+    $out.Raw[$k] = $ln.Trim()
   }
   return $out
 }
@@ -2970,9 +2982,9 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     $add = @()
     foreach ($res in @($Results)) {
       if ($null -eq $res) { continue }
-      $id = "$($res.identity)"
-      if ($id -eq '') { continue }
+      if ("$($res.identity)" -eq '') { continue }
       $json = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $res)) -Depth 6 -Compress
+      $id = Get-MetricsKey ($json | ConvertFrom-Json)
       if ($store.Raw.Contains($id) -and ($store.Raw[$id] -eq $json)) { continue }
       $store.Raw[$id] = $json
       $store.Rows[$id] = ($json | ConvertFrom-Json)
@@ -2981,8 +2993,10 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     # Native supersedes backfill for the same night (item 11).
     $byNight = @{}
     foreach ($row in @($store.Rows.Values)) {
-      $n = "$($row.night)"
-      if ($n -eq '') { continue }
+      if ("$($row.night)" -eq '') { continue }
+      # One host's night (R3-F3): a native row never supersedes another
+      # host's backfill.
+      $n = "$($row.night)|$(Get-ResultHostKey $row)"
       if (-not $byNight.ContainsKey($n)) { $byNight[$n] = @() }
       $byNight[$n] += $row
     }
@@ -2997,18 +3011,19 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     $replaces = { param($nat, $bf) (@('green', 'red') -contains "$($nat.verdict)") -and (("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer'))) }
     $sups = @($store.Supersessions | Where-Object { $sn = $store.Rows["$($_.native)"]; $sb = $store.Rows["$($_.backfill)"]; ($null -ne $sn) -and ($null -ne $sb) -and (& $replaces $sn $sb) })
     $known = @{}
-    foreach ($s0 in $sups) { $known["$($s0.night)|$($s0.backfill)"] = $true }
+    foreach ($s0 in $sups) { $known["$($s0.backfill)"] = $true }
     foreach ($n in @($byNight.Keys)) {
       $backs = @($byNight[$n] | Where-Object { [bool]$_.backfill })
       foreach ($b in $backs) {
         $natives = @($byNight[$n] | Where-Object { (-not [bool]$_.backfill) -and (-not [bool]$_.simulated) -and (& $replaces $_ $b) })
         if ($natives.Count -eq 0) { continue }
-        $superseded["$($b.identity)"] = $true
-        if (-not $known.ContainsKey("$n|$($b.identity)")) {
-          $rec = [pscustomobject]@{ schema = 'supersession/1'; night = $n; native = "$($natives[0].identity)"; backfill = "$($b.identity)"; recorded = (Get-Date).ToUniversalTime().ToString('o') }
+        $bk = Get-MetricsKey $b
+        $superseded[$bk] = $true
+        if (-not $known.ContainsKey($bk)) {
+          $rec = [pscustomobject]@{ schema = 'supersession/1'; night = "$($b.night)"; native = (Get-MetricsKey $natives[0]); backfill = $bk; recorded = (Get-Date).ToUniversalTime().ToString('o') }
           $add += (ConvertTo-Json $rec -Compress)
           $sups += $rec
-          $known["$n|$($b.identity)"] = $true
+          $known[$bk] = $true
         }
       }
     }
@@ -3018,7 +3033,9 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
       $lead = if ($store.EndsClean) { '' } else { "`n" }
       $payload = $lead + ($add -join "`n") + "`n"
       $size = if (Test-Path $Path) { (Get-Item $Path).Length } else { 0 }
-      if (($size + $payload.Length) -gt $MaxBytes) { $script:MetricsWriteError = "metrics store over capacity ($size bytes + $($payload.Length) > $MaxBytes); run tools/NightlyTrend.ps1 -Compact, then raise the cap if it is still over (history is never deleted)" }
+      # Measured in the bytes written (R3-F1): the payload is UTF-8.
+      $payloadBytes = [System.Text.Encoding]::UTF8.GetByteCount($payload)
+      if (($size + $payloadBytes) -gt $MaxBytes) { $script:MetricsWriteError = "metrics store over capacity ($size bytes + $payloadBytes > $MaxBytes); run tools/NightlyTrend.ps1 -Compact, then raise the cap if it is still over (history is never deleted)" }
       else {
         # A failed append (a full disk) leaves the store as it was: the
         # write is one call, and a partial line is repaired by the clean-end
@@ -3039,8 +3056,9 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     # merge, so partial native evidence never erases stronger evidence.
     $out = @()
     foreach ($row in @($store.Rows.Values)) {
-      if ($superseded.ContainsKey("$($row.identity)")) { continue }
-      $sup = @($sups | Where-Object { "$($_.native)" -eq "$($row.identity)" }) | Select-Object -First 1
+      $rk = Get-MetricsKey $row
+      if ($superseded.ContainsKey($rk)) { continue }
+      $sup = @($sups | Where-Object { "$($_.native)" -eq $rk }) | Select-Object -First 1
       if ($null -ne $sup) {
         $bf = $store.Rows["$($sup.backfill)"]
         if ($null -ne $bf) {
@@ -3114,7 +3132,7 @@ function Read-NightlyExclusions([string]$Path) {
   $map = @{}
   if (-not (Test-Path $Path)) { return $map }
   foreach ($ln in (Get-Content $Path -Encoding UTF8)) {
-    $m = [regex]::Match($ln, '^\|\s*(\d{4}-\d{2}-\d{2}-\d{6}-pid\d+)\s*\|\s*([^|]*?)\s*\|')
+    $m = [regex]::Match($ln, '^\|\s*(\d{4}-\d{2}-\d{2}-\d{6}-pid\d+(?:@[0-9a-f]{8})?)\s*\|\s*([^|]*?)\s*\|')
     if ($m.Success -and ($m.Groups[2].Value -ne '')) { $map[$m.Groups[1].Value] = $m.Groups[2].Value }
   }
   return $map
@@ -3124,8 +3142,13 @@ function Set-ResultExclusions($Results, $Exclusions) {
   # Marks each excluded result in place and returns how many were marked.
   $n = 0
   foreach ($r in @($Results)) {
+    # A row names a bare identity (every host's run with it) or
+    # identity@host (that host's run only, section 40 R3-F3).
     $id = "$($r.identity)"
-    if (($id -ne '') -and $Exclusions.ContainsKey($id)) { $r | Add-Member -NotePropertyName excluded -NotePropertyValue $Exclusions[$id] -Force; $n++ }
+    if ($id -eq '') { continue }
+    $hk = Get-MetricsKey ([pscustomobject]@{ identity = $id; hostKey = (Get-ResultHostKey $r) })
+    $hit = if ($Exclusions.ContainsKey($hk)) { $hk } elseif ($Exclusions.ContainsKey($id)) { $id } else { '' }
+    if ($hit -ne '') { $r | Add-Member -NotePropertyName excluded -NotePropertyValue $Exclusions[$hit] -Force; $n++ }
   }
   return $n
 }
@@ -3163,10 +3186,12 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     foreach ($id in @($current.Keys)) {
       $e = @($entries | Where-Object { ("$($_.id)" -eq $id) -and ("$($_.state)" -eq 'open') }) | Select-Object -First 1
       if ($null -ne $e) { $e.lastNight = $night; $e.evaluated = $evalId; $e.line = $current[$id]; $persist += $id }
-      else { $entries += [pscustomobject]@{ id = $id; state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true }; $new += $id }
+      # Each opening is its own occurrence (R3-F2), so a reopening on the
+      # same night never shares a delivery key with the earlier one.
+      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true }; $new += $id }
     }
     foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
-      $state = if (@($SupersededIds) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
+      $state = if (@(@($SupersededIds) | ForEach-Object { "$_".Split('@')[0] }) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
       if ($state -eq '') { continue }
       $e.state = $state; $e.closedNight = $night
       $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $false -Force
@@ -3205,9 +3230,10 @@ function Get-PendingAlertNotifications([string]$Path) {
   $persisting = 0
   foreach ($e in @($lg.alerts)) {
     if ($null -eq $e) { continue }
-    if ($e.notifiedOpen -eq $false) { $lines += "$($e.line)"; $keys += "open|$($e.id)|$($e.firstNight)" }
+    $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
+    if ($e.notifiedOpen -eq $false) { $lines += "$($e.line)"; $keys += "open|$($e.id)|$occ" }
     elseif ("$($e.state)" -eq 'open') { $persisting++ }
-    if (("$($e.state)" -ne 'open') -and ($e.notifiedClose -eq $false)) { $lines += "closed ($($e.state) on $($e.closedNight)): $($e.id)"; $keys += "close|$($e.id)|$($e.firstNight)" }
+    if (("$($e.state)" -ne 'open') -and ($e.notifiedClose -eq $false)) { $lines += "closed ($($e.state) on $($e.closedNight)): $($e.id)"; $keys += "close|$($e.id)|$occ" }
   }
   return [pscustomobject]@{ Lines = $lines; Keys = $keys; Persisting = $persisting }
 }
@@ -3220,8 +3246,9 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
     $lg = Read-AlertLedger $Path
     foreach ($e in @($lg.alerts)) {
       if ($null -eq $e) { continue }
-      if (@($Keys) -contains "open|$($e.id)|$($e.firstNight)") { $e.notifiedOpen = $true }
-      if (@($Keys) -contains "close|$($e.id)|$($e.firstNight)") { $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $true -Force }
+      $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
+      if (@($Keys) -contains "open|$($e.id)|$occ") { $e.notifiedOpen = $true }
+      if (@($Keys) -contains "close|$($e.id)|$occ") { $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $true -Force }
     }
     Write-AtomicReport @((ConvertTo-Json $lg -Depth 6)) $Path
   }
@@ -3287,9 +3314,10 @@ function Test-StampArchived([string]$NightDir, [string]$Stamp, $Store) {
     # stored row must equal the row the current result computes (a result
     # rewritten after its archival is not archived).
     if ($id -eq '') { return [pscustomobject]@{ Ok = $false; Reason = "result $($f.Name) has no identity to archive under" } }
-    if (-not $Store.Rows.Contains($id)) { return [pscustomobject]@{ Ok = $false; Reason = "result $id has no metrics row" } }
+    $key = Get-MetricsKey ([pscustomobject]@{ identity = $id; hostKey = $(try { "$($o.hostKey)" } catch { '' }) })
+    if (-not $Store.Rows.Contains($key)) { return [pscustomobject]@{ Ok = $false; Reason = "result $id has no metrics row" } }
     $want = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $o)) -Depth 6 -Compress
-    if ("$($Store.Raw[$id])" -ne $want) { return [pscustomobject]@{ Ok = $false; Reason = "result $id changed since its metrics row was written" } }
+    if ("$($Store.Raw[$key])" -ne $want) { return [pscustomobject]@{ Ok = $false; Reason = "result $id changed since its metrics row was written" } }
   }
   return [pscustomobject]@{ Ok = $true; Reason = 'archived' }
 }

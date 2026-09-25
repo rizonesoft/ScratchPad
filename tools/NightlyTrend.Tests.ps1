@@ -295,7 +295,7 @@ $nat = New-Night '2026-09-24' '2026-09-24-023500'
 $cur = @(Sync-MetricsStore $ss @($nat))
 $null = Sync-MetricsStore $ss @($nat)
 $supLines = @([System.IO.File]::ReadAllLines($ss) | Where-Object { $_ -like '*supersession/1*' })
-Assert (($cur.Count -eq 1) -and ("$($cur[0].identity)" -eq '2026-09-24-023500-pid1') -and ($supLines.Count -eq 1) -and ($supLines[0] -like '*"native":"2026-09-24-023500-pid1","backfill":"backfill-2026-09-24"*')) 'native-supersedes-backfill-once' (($cur | ForEach-Object { $_.identity }) -join ',')
+Assert (($cur.Count -eq 1) -and ("$($cur[0].identity)" -eq '2026-09-24-023500-pid1') -and ($supLines.Count -eq 1) -and ($supLines[0] -like '*"native":"2026-09-24-023500-pid1@h0st0001","backfill":"backfill-2026-09-24@h0st0001"*')) 'native-supersedes-backfill-once' (($cur | ForEach-Object { $_.identity }) -join ',')
 # A manual retry later that night never supersedes the timer backfill.
 $ss2 = Join-Path $dir 'supersede-manual.jsonl'
 $bf2 = New-Night '2026-09-21' '2026-09-21-023003'
@@ -617,6 +617,14 @@ Assert (([System.IO.File]::ReadAllText($fs) -eq $fsBefore) -and ($fsPart.Malform
 $null = Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000') $null 10
 $capErr = "$script:MetricsWriteError"
 Assert (($capErr -like 'metrics store over capacity*history is never deleted*') -and ((Read-MetricsStore $fs).Rows.Count -eq 1)) 's40-capacity-refuses-by-policy' $capErr
+# R3-F1: capacity counts the UTF-8 bytes written, not characters.
+$u8 = New-Night '2026-09-22' '2026-09-22-023000' 600 'timer' 99 1 5 @('- INC-aaaa1111 `UI.A` x1 (Run A): ' + ([string][char]0x00E9 * 200))
+$u8Json = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $u8)) -Depth 6 -Compress
+$u8Size = (Get-Item $fs).Length
+$u8Cap = $u8Size + $u8Json.Length + 50
+$null = Sync-MetricsStore $fs @($u8) $null $u8Cap
+Assert (("$script:MetricsWriteError" -like 'metrics store over capacity*') -and ((Get-Item $fs).Length -eq $u8Size)) 's40-capacity-counts-utf8-bytes' "$script:MetricsWriteError"
+
 $lockJob = Start-Job -ScriptBlock { $m = New-Object System.Threading.Mutex($false, 'Local\ScratchPad.NightlyMetrics'); $null = $m.WaitOne(); 'held' }
 $null = Wait-Job $lockJob -Timeout 60; $null = Receive-Job $lockJob; Remove-Job $lockJob -Force
 $staleRows = @(Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000'))
@@ -723,6 +731,27 @@ $rvRow = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-Met
 $script:LastTrendEvaluation = $null
 $null = Get-TrendAlerts (@($rvBase) + @($rvRow))
 Assert ("$($script:LastTrendEvaluation.Identity)" -eq '2026-09-27-023000-pid1#r2') 's40-revision-survives-metrics' "$($script:LastTrendEvaluation.Identity)"
+# R3-F2: a reopening on the same night is its own occurrence and stays
+# pending after the first opening was delivered.
+$ocPath = Join-Path $s40 'occurrence.json'
+$ocAlert = '- ALERT runa-duration: 900s on 2026-09-27 vs baseline 600s (+50%, median of 7 night(s))'
+$null = Update-AlertLedger @($ocAlert) $ocPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'o#r1' })
+Confirm-AlertNotifications $ocPath @((Get-PendingAlertNotifications $ocPath).Keys)
+$null = Update-AlertLedger @() $ocPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'o#r2' })
+$null = Update-AlertLedger @($ocAlert) $ocPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'o#r3' })
+$ocPend = Get-PendingAlertNotifications $ocPath
+Assert ((@($ocPend.Lines | Where-Object { $_ -like 'ALERT runa-duration*' }).Count -eq 1) -and (@($ocPend.Lines | Where-Object { $_ -like 'closed (corrected on 2026-09-27)*' }).Count -eq 1) -and (@($ocPend.Keys | Sort-Object -Unique).Count -eq 2)) 's40-reopening-is-its-own-occurrence' ($ocPend.Lines -join ' | ')
+# R3-F3: two hosts' runs sharing stamp and pid keep separate rows, and an
+# identity@host exclusion reaches only that host.
+$twStore = Join-Path $s40 'twohosts.jsonl'
+$twA = New-Night '2026-09-25' '2026-09-25-023000'
+$twB = New-Night '2026-09-25' '2026-09-25-023000' 700; $twB.hostKey = 'h0st0002'
+$twRows = @(Sync-MetricsStore $twStore @($twA, $twB))
+$twBack = Read-MetricsStore $twStore
+$twEx = @{ '2026-09-25-023000-pid1@h0st0002' = 'rebuilt' }
+$twA2 = New-Night '2026-09-25' '2026-09-25-023000'; $twB2 = New-Night '2026-09-25' '2026-09-25-023000'; $twB2.hostKey = 'h0st0002'
+$twN = Set-ResultExclusions @($twA2, $twB2) $twEx
+Assert (($twRows.Count -eq 2) -and ($twBack.Rows.Count -eq 2) -and $twBack.Rows.Contains('2026-09-25-023000-pid1@h0st0001') -and $twBack.Rows.Contains('2026-09-25-023000-pid1@h0st0002') -and ($twN -eq 1) -and ("$($twB2.excluded)" -eq 'rebuilt') -and ("$(try { $twA2.excluded } catch { '' })" -eq '')) 's40-hosts-sharing-an-identity-keep-their-rows' (@($twBack.Rows.Keys) -join ',')
 # R1-F4: every host's series is evaluated in the table.
 $mhA = @(20..27 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
 $mhB = @(20..27 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023500' -f $_) $(if ($_ -eq 27) { 900 } else { 600 }); $n.identity = ('2026-09-{0:d2}-023500-pid2' -f $_); $n.hostKey = 'h0st0002'; $n })
