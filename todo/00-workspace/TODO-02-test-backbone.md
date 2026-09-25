@@ -84,7 +84,7 @@ track: W0
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [x]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [x]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [x]   |
-|   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
+|   44  |   §44   | Population gate second residuals | §37 |  [x]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
@@ -92,6 +92,7 @@ track: W0
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
 |   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
+|   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
 
 ---
 
@@ -1419,6 +1420,7 @@ Why this section exists: the §36 plan review returned 14 findings; 5 file here,
 Why this section exists: the §37 plan review returned 11 findings; 8 file here, 1 was applied (the §15 XREF pair), and 2 are rejected with reasons in the §37 findings file. §37 gated the night on green CI, widened freshness to every build input, made gated Theories list identically, and gave the population case identity and per-case debt; these carry that through content provenance, identity encoding, exclusion accountability, trx reconciliation, debt closure, proof validity, format migration, and diagnostics. -> SOURCE: plan-review-D00-T02-s37-2026-09-25-s44 D00-T02-S37-PR3 D00-T02-S37-PR4 D00-T02-S37-PR5 D00-T02-S37-PR6 D00-T02-S37-PR7 D00-T02-S37-PR8 D00-T02-S37-PR9 D00-T02-S37-PR10 (content provenance, identity encoding, exclusion accountability, trx reconciliation, debt closure, proof validity, format migration, and drift diagnostics from the §37 plan review).
 
 - -> XREF: D00 T02 §37 -- filed from its plan review; carries the gate it widened.
+- -> XREF: D00 T02 §52 -- its plan review's residuals.
 
 - [x] Freshness is content-based where timestamps lie: the regen records a digest over the build inputs (plus restore inputs and SDK identity) beside the binary, so preserved timestamps, deletions, and property changes are caught. Done when: a fixture editing an input with its timestamp restored refuses. (D00-T02-S37-PR3.)
 - [x] Case-row identity has a defined representation: assembly-qualified names, a deterministic argument encoding, and duplicate display names counted, independent of discovery order. Done when: two rows with one display name hash apart and a reordered listing hashes the same. (D00-T02-S37-PR4.)
@@ -1431,6 +1433,13 @@ Why this section exists: the §37 plan review returned 11 findings; 8 file here,
 - [x] Commit: `"workspace: settle the population gate second residuals"`
 
 **Test checkpoint:** Content provenance catches restored timestamps, identity survives reordering and splits duplicates, capability skips carry owners, debt reconciles retries and closes per case, proofs stale with the population, old formats refuse with the command, and drift names cases. Cheaper substitute that fails: a longer hash.
+
+> **Verified:** 2026-09-25 | §44 | UI build freshness is content-based (a digest of the build inputs, restore inputs, and SDK beside the binary, written only when the UI assembly compiled, so a timestamp-restored edit reads stale and the refusal names --no-incremental); case rows carry `<assembly>|<display name>` sorted ordinally with duplicates counted, plus an args-source digest per method whose display name is cut; every CAPABILITY skip names its owner and owing host; per-case debt reconciles by case (one entry per trx testId, twins close only when every copy ran green, obligations merge per case and carry across nights, a corrupt or `{}` result is named and never erases debt); a recovery streak stands on the population identity it was recorded against, persisted through the ledger, lifecycle, and rebuild; the fingerprint is schema population/2 and older versions refuse with the regen command; drift names removed and added rows per leg; Run A at 6831c40 (code identical to 60e4869) with the suite display attached: UI 304 passed, 16 skipped, 0 failed; Unit 387, Protocol 35, Smoke 1; foreground gate exit 0 (census 262, primary 0, event-primary 0)
+> **Review:** round 4 (Full), candidates `a7297b1` `987b4d9` `4b0d845` `60e4869` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1..F6: fixed or re-reported), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` needs-attention · `record` needs-attention (gpt-6-astra); blocking R3-F3 and R3-F5 fixed in 60e4869 and confirmed by the R4 depth round (`record` approve); below-bar R3-F1, R3-F2, R3-F4 filed to D00 T02 §52. Raw findings: docs/reviews/00-workspace/D00-T02-s44.md
+> **Plan review:** GPT medium, filed D00 T02 §52 (run 20260925-D00-T02-S44-codex-c06751119-r5)
+> **CRUD:** not-applicable | test-harness evidence (the population fingerprint, nightly results, and the ignored incident ledger); no user data
+> **Duration:** 2026-09-25T17:59:25Z to 2026-09-25T20:40:53Z
+> **Reviewed-tip:** 60e4869
 
 ## 45. Nightly Evidence Third Residuals
 
@@ -1574,6 +1583,27 @@ Why this section exists: the §43 plan review returned 13 findings; 12 file here
 - [ ] Commit: `"workspace: settle the binding guard third residuals"`
 
 **Test checkpoint:** Kills need executed substitutes and matching outcomes, negative routing proves zero dispatch, stuck keys reconcile and contain, holds reset, repeat classes carry captures, counting has one rule, transitions enumerate, held-key debt is owned, children are isolated, and combined matrices hold. Cheaper substitute that fails: more fixtures over the pure cores with no physical proof owed.
+
+## 52. Population Gate Third Residuals
+
+Why this section exists: the §44 plan review returned 12 findings; 11 file here and 1 is rejected with its reason in the §44 findings file, and three of the filed items absorb the §44 sign-off leftovers (R3-F1, R3-F2, R3-F4) that sat below the blocking bar. §44 made freshness content-based, gave case rows an identity, accounted capability skips, reconciled per-case debt across retries and nights, bound proofs to the population, versioned the fingerprint, and named drift; these carry that through proof binding beyond the population, binary-bound provenance, a canonical identity encoding, exclusion accountability, fail-closed trx reconciliation, failure-apart closure, capability debt escalation, debt migration, override scope, schema compatibility, and a durable handoff. -> SOURCE: plan-review-D00-T02-s44-2026-09-25-s52 D00-T02-S44-PR1 D00-T02-S44-PR2 D00-T02-S44-PR3 D00-T02-S44-PR4 D00-T02-S44-PR5 D00-T02-S44-PR6 D00-T02-S44-PR7 D00-T02-S44-PR8 D00-T02-S44-PR9 D00-T02-S44-PR10 D00-T02-S44-PR11
+
+- -> XREF: D00 T02 §44 -- filed from its plan review; carries the gate it settled.
+
+- [ ] Proof validity binds to more than the case population: a recovery proof records the build-input digest, the leg filters, the configuration, and the candidate, and reads stale when any of them changes even with identical cases. Done when: a proof recorded before a source edit with an unchanged population reads stale. (D00-T02-S44-PR1.)
+- [ ] The recorded build digest is bound to the binaries it describes: it records the output assembly hashes, and each referenced project's own compile evidence, taken from one consistent snapshot, so a UI recompile never blesses a reference source whose project did not recompile (absorbs sign-off R3-F2). Done when: a timestamp-restored reference edit followed by an ordinary UI edit reads stale. (D00-T02-S44-PR2.)
+- [ ] Case identity has a canonical encoding contract that does not depend on the display name's 50-character cut: nulls, types, culture-sensitive values, unsupported arguments, and identical duplicate rows each encode by rule, and an argument held in a constant or any other source counts (absorbs sign-off R3-F1; the args-source digest heuristic is replaced, not patched again). Done when: a constant argument changed past the cut changes the identity, and each encoding rule has a refusal fixture. (D00-T02-S44-PR3.)
+- [ ] Exclusions are accountable: a case excluded by rule (§37) lands in an exclusion ledger with its identity, reason, owner, and review expiry, beside §44's capability accounting. Done when: an exclusion with no owner or an expired review reds the gate. (D00-T02-S44-PR4.)
+- [ ] Trx reconciliation fails closed: outcome precedence is defined, and unmatched, ambiguous, or foreign results (another run's or build's) refuse instead of counting. Done when: a leftover trx from another run and an ambiguous result each refuse by name. (D00-T02-S44-PR5.)
+- [ ] Execution debt closes apart from failure resolution: a green re-execution closes the owed execution but never an earlier failure's incident or flakiness finding. Done when: a case that failed and later passed closes its debt while its incident stays open. (D00-T02-S44-PR6.)
+- [ ] Capability debt carries a due date, a capability check on the owing host, and escalation when that host stays unavailable. Done when: capability debt past its due date escalates in the morning report. (D00-T02-S44-PR7.)
+- [ ] Owed cases migrate across population changes by identity: a renamed, removed, or reparameterized case carries its obligation or retires it with evidence, and carried debt reconciles against the owed case's original identity, never a replacement sharing its truncated prefix (absorbs sign-off R3-F4). Done when: a regen that swaps an owed case for a same-prefix case keeps the original owed. (D00-T02-S44-PR8.)
+- [ ] The unverified-CI override (§37's -AllowUnverifiedCi) has a defined scope, audit evidence, and proof eligibility, so an overridden run never reads as governed proof. Done when: an overridden run's result is marked ineligible for recovery and stamps. (D00-T02-S44-PR9.)
+- [ ] The fingerprint schema has a compatibility contract across the checker, the nightly, the collector, and historical proof readers, with a coordinated migration and mixed-version fixtures. Done when: a mixed-version fixture neither strands debt nor misreads a retained proof. (D00-T02-S44-PR10.)
+- [ ] The staging-to-collection handoff is durable: staged debt carries an idempotent receipt the collector reconciles, so a crash or a missed triage never drops an obligation between report and collection. Done when: a crash between staging and collection keeps every obligation. (D00-T02-S44-PR11.)
+- [ ] Commit: `"workspace: settle the population gate third residuals"`
+
+**Test checkpoint:** Proofs read stale on any binding change, provenance names what compiled, identity encodes by rule, exclusions carry owners, trx reconciliation refuses the foreign, closure keeps failures, capability debt escalates, debt migrates by identity, overrides never prove, schemas read across versions, and the handoff survives a crash. Cheaper substitute that fails: one more heuristic over display names.
 
 ## Verification
 
