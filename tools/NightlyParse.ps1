@@ -883,7 +883,29 @@ function Read-TestPopulationFile([string]$Path) {
   if ($runA.Count -ne $counts['run-a-methods']) { return (& $bad "fingerprint run-a items $($runA.Count) != methods $($counts['run-a-methods'])") }
   if ($runB.Count -ne $counts['run-b-methods']) { return (& $bad "fingerprint run-b items $($runB.Count) != methods $($counts['run-b-methods'])") }
   if ($interactive.Count -ne $counts['interactive-methods']) { return (& $bad "fingerprint interactive items $($interactive.Count) != methods $($counts['interactive-methods'])") }
-  return [pscustomobject]@{ Ok = $true; Error = ''; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases'] }
+  # Case identity (D00 T02 section 37 item 5): each leg's case rows hash,
+  # so a Theory row swapped at an equal total still drifts.
+  foreach ($k in @('run-a-case-hash', 'run-b-case-hash', 'interactive-case-hash')) {
+    if (-not $filters.ContainsKey($k)) { return (& $bad "fingerprint missing $k") }
+  }
+  return [pscustomobject]@{ Ok = $true; Error = ''; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases']; RunACaseHash = $filters['run-a-case-hash']; RunBCaseHash = $filters['run-b-case-hash']; InteractiveCaseHash = $filters['interactive-case-hash'] }
+}
+
+function Get-CaseHash($Cases) {
+  # Case-row identity: SHA-256 over the sorted unique case display names
+  # (a Theory row's arguments included), first 16 hex; 'none' when the
+  # discovery carries no case list (fixtures built by hand).
+  if ($null -eq $Cases) { return 'none' }
+  $text = (@($Cases | Sort-Object -Unique) -join "`n")
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { $bytes = $sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) } finally { $sha.Dispose() }
+  return ([System.BitConverter]::ToString($bytes) -replace '-', '').Substring(0, 16).ToLowerInvariant()
+}
+
+function Get-DiscoveryCaseHash($Discovery, [string]$Leg) {
+  $p = $Discovery.PSObject.Properties[$Leg + 'CaseHash']
+  if ($null -eq $p -or [string]::IsNullOrEmpty("$($p.Value)")) { return 'none' }
+  return "$($p.Value)"
 }
 
 function Write-TestPopulationFile([string]$Path, [string]$RunAFilter, [string]$RunBFilter, [string]$InteractiveFilter, $Discovery) {
@@ -906,14 +928,17 @@ function Write-TestPopulationFile([string]$Path, [string]$RunAFilter, [string]$R
   foreach ($m in (@($Discovery.RunA) | Sort-Object -Unique)) { $lines += "  $m" }
   $lines += "run-a-methods: $($Discovery.RunAMethods)"
   $lines += "run-a-cases: $($Discovery.RunACases)"
+  $lines += "run-a-case-hash: $(Get-DiscoveryCaseHash $Discovery 'RunA')"
   $lines += 'run-b:'
   foreach ($m in (@($Discovery.RunB) | Sort-Object -Unique)) { $lines += "  $m" }
   $lines += "run-b-methods: $($Discovery.RunBMethods)"
   $lines += "run-b-cases: $($Discovery.RunBCases)"
+  $lines += "run-b-case-hash: $(Get-DiscoveryCaseHash $Discovery 'RunB')"
   $lines += 'interactive:'
   foreach ($m in (@($Discovery.Interactive) | Sort-Object -Unique)) { $lines += "  $m" }
   $lines += "interactive-methods: $($Discovery.InteractiveMethods)"
   $lines += "interactive-cases: $($Discovery.InteractiveCases)"
+  $lines += "interactive-case-hash: $(Get-DiscoveryCaseHash $Discovery 'Interactive')"
   $tmp = "$Path.tmp"
   $lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
   Move-Item -Path $tmp -Destination $Path -Force
@@ -948,6 +973,10 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
   $pairs = @( @('run-a-methods', $fp.RunAMethods, $Discovery.RunAMethods), @('run-a-cases', $fp.RunACases, $Discovery.RunACases), @('run-b-methods', $fp.RunBMethods, $Discovery.RunBMethods), @('run-b-cases', $fp.RunBCases, $Discovery.RunBCases), @('interactive-methods', $fp.InteractiveMethods, $Discovery.InteractiveMethods), @('interactive-cases', $fp.InteractiveCases, $Discovery.InteractiveCases) )
   foreach ($p in $pairs) {
     if ($p[1] -ne $p[2]) { $drifts += "$($p[0]): fingerprinted $($p[1]) vs discovered $($p[2])" }
+  }
+  foreach ($h in @(@('run-a', $fp.RunACaseHash, 'RunA'), @('run-b', $fp.RunBCaseHash, 'RunB'), @('interactive', $fp.InteractiveCaseHash, 'Interactive'))) {
+    $live = Get-DiscoveryCaseHash $Discovery $h[2]
+    if ($h[1] -ne $live) { $drifts += "$($h[0]) case rows changed: fingerprinted hash $($h[1]) vs discovered $live" }
   }
   if ($Discovery.RunAMethods -ne @($Discovery.RunA).Count) { $drifts += 'discovery run-a method list disagrees with its count (internal error)' }
   if ($Discovery.RunBMethods -ne @($Discovery.RunB).Count) { $drifts += 'discovery run-b method list disagrees with its count (internal error)' }
@@ -986,6 +1015,24 @@ function Invoke-BoundedCapture([string]$Exe, [string[]]$ArgList, [string]$WorkDi
   return [pscustomobject]@{ Text = $text; Code = $code; Killed = $killed }
 }
 
+function Invoke-WithForcedDiscovery([scriptblock]$Body) {
+  # Discovery-time environment (D00 T02 section 29, section 37 items 3
+  # and 4): the Interactive force opens the quiet-hours fence and the
+  # listing variable lifts every gated Theory's discovery-time skip, so a
+  # listing expands the same rows on every host at any hour. Both prior
+  # values come back whatever the body does: a prior unset stays unset,
+  # and a body that throws still restores before the throw propagates.
+  $names = @('SCRATCHPAD_INTERACTIVE_FORCE', 'SCRATCHPAD_DISCOVERY_LISTING')
+  $prior = @{}
+  foreach ($n in $names) { $prior[$n] = [Environment]::GetEnvironmentVariable($n, 'Process') }
+  try {
+    foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, '1', 'Process') }
+    return (& $Body)
+  } finally {
+    foreach ($n in $names) { [Environment]::SetEnvironmentVariable($n, $prior[$n], 'Process') }
+  }
+}
+
 function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [string]$What, [int]$TimeoutSeconds = 180) {
   # One --list-tests run against built binaries, parsed to sorted
   # unique method FQNs (theory case suffixes cut at the first paren)
@@ -999,27 +1046,23 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
   # daytime regen undercounted what the 02:30 night discovers. The force
   # variable makes the fence attributes expand everywhere; the prior
   # value is restored whatever happens.
-  $priorForce = $env:SCRATCHPAD_INTERACTIVE_FORCE
-  $env:SCRATCHPAD_INTERACTIVE_FORCE = '1'
-  try {
-    $cap = Invoke-BoundedCapture $Dotnet @('test', $Csproj, '--no-build', '--nologo', '--filter', $Filter, '--list-tests') (Split-Path -Parent $Csproj) $TimeoutSeconds
-  } finally {
-    $env:SCRATCHPAD_INTERACTIVE_FORCE = $priorForce
-  }
+  $cap = Invoke-WithForcedDiscovery { Invoke-BoundedCapture $Dotnet @('test', $Csproj, '--no-build', '--nologo', '--filter', $Filter, '--list-tests') (Split-Path -Parent $Csproj) $TimeoutSeconds }
   if ($cap.Killed) { throw "discovery timed out for $What filter '$Filter' after ${TimeoutSeconds}s" }
   $text = $cap.Text
   if ($cap.Code -ne 0) { throw "discovery failed for $What filter '$Filter': $text" }
   $methods = @()
+  $caseNames = @()
   $cases = 0
   foreach ($ln in ($text -split "`r?`n")) {
     $m = [regex]::Match($ln, '^    (\S[^(]*?)(?: \(|\(|$)')
     if (-not $m.Success) { continue }
     $cases++
+    $caseNames += $ln.Trim()
     $fq = $m.Groups[1].Value.Trim()
     if ($methods -notcontains $fq) { $methods += $fq }
   }
   $methods = @($methods | Sort-Object -Unique)
-  return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases }
+  return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $caseNames) }
 }
 
 function Test-UiBuildFresh([datetime]$BinaryTimeUtc, [datetime]$NewestSourceTimeUtc, [string]$BinaryPath) {
@@ -1032,13 +1075,119 @@ function Test-UiBuildFresh([datetime]$BinaryTimeUtc, [datetime]$NewestSourceTime
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }
 
+function Get-UiBuildInputs([string]$Root) {
+  # Every build input of the UI binaries (D00 T02 section 37 item 2):
+  # tests/UI plus each project it references, transitively (sources,
+  # XAML, project files), plus the shared build inputs at the root
+  # (Directory.Build.*, Directory.Packages.props, global.json,
+  # NuGet.config, .editorconfig). Configuration identity: discovery reads
+  # Bin/UI/Debug, the configuration the nightly builds (its snapshot line
+  # says config Debug), so a Release-only build reads as missing or stale.
+  $dirs = @()
+  $queue = New-Object System.Collections.Generic.Queue[string]
+  $queue.Enqueue((Join-Path $Root 'tests\UI\UI.csproj'))
+  $seen = @{}
+  while ($queue.Count -gt 0) {
+    $proj = [System.IO.Path]::GetFullPath($queue.Dequeue())
+    if ($seen.ContainsKey($proj) -or -not (Test-Path $proj)) { continue }
+    $seen[$proj] = $true
+    $dirs += (Split-Path -Parent $proj)
+    foreach ($m in [regex]::Matches((Get-Content $proj -Raw), '<ProjectReference\s+Include="([^"]+)"')) {
+      $queue.Enqueue((Join-Path (Split-Path -Parent $proj) $m.Groups[1].Value))
+    }
+  }
+  $files = @()
+  foreach ($d in $dirs) {
+    $files += @(Get-ChildItem -Path $d -Recurse -Include '*.cs', '*.csproj', '*.xaml', '*.props', '*.targets', '*.resw', '*.json' -File |
+      Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' })
+  }
+  foreach ($n in @('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json', 'NuGet.config', '.editorconfig')) {
+    $f = Join-Path $Root $n
+    if (Test-Path $f) { $files += Get-Item $f }
+  }
+  return $files
+}
+
 function Get-UiBuildFreshness([string]$Root) {
   $dll = Join-Path $Root 'Bin\UI\Debug\UI.dll'
   if (-not (Test-Path $dll)) { return [pscustomobject]@{ Ok = $false; Error = "UI build missing: $dll; run: dotnet build src/ScratchPad.slnx, then retry" } }
-  $newest = Get-ChildItem -Path (Join-Path $Root 'tests\UI') -Recurse -Include '*.cs', '*.csproj' -File |
-    Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+  $newest = Get-UiBuildInputs $Root | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
   if ($null -eq $newest) { return [pscustomobject]@{ Ok = $true; Error = '' } }
-  return Test-UiBuildFresh (Get-Item $dll).LastWriteTimeUtc $newest.LastWriteTimeUtc $dll
+  $r = Test-UiBuildFresh (Get-Item $dll).LastWriteTimeUtc $newest.LastWriteTimeUtc $dll
+  if (-not $r.Ok) { $r.Error = $r.Error -replace 'the newest tests/UI source', "its newest build input ($($newest.FullName.Substring($Root.Length).TrimStart('\')))" }
+  return $r
+}
+
+function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
+  # Per-case debt (D00 T02 section 37 item 6, section 15's promise):
+  # every listed case the leg never executed stays owed, grouped by
+  # method, so a Theory with one of three rows run keeps two owed. The
+  # collector reruns the method filter (every row of it).
+  $done = @{}
+  foreach ($e in @($ExecutedNames)) { if ($null -ne $e) { $done["$e".Trim()] = $true } }
+  $byMethod = [ordered]@{}
+  foreach ($c in @($ListedCases)) {
+    if ($null -eq $c) { continue }
+    $name = "$c".Trim()
+    $method = ($name -split '\(', 2)[0].Trim()
+    if (-not $byMethod.Contains($method)) { $byMethod[$method] = @{ Listed = 0; Owed = 0 } }
+    $byMethod[$method].Listed++
+    if (-not $done.ContainsKey($name)) { $byMethod[$method].Owed++ }
+  }
+  $rows = @()
+  foreach ($k in $byMethod.Keys) {
+    $v = $byMethod[$k]
+    if ($v.Owed -gt 0) { $rows += "- Night-owed: $k | $($v.Owed) of $($v.Listed) cases unexecuted ($Why) | collector filter: FullyQualifiedName=$k" }
+  }
+  return $rows
+}
+
+function Get-TrxExecutedNames([string]$TrxPath) {
+  # Test names the trx records as run (Passed or Failed); skipped rows
+  # never executed. Missing or truncated trx reads as none.
+  if (-not (Test-Path $TrxPath)) { return @() }
+  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return @() }
+  return @(@($t.TestRun.Results.UnitTestResult) | Where-Object { $_.outcome -in @('Passed', 'Failed') } | ForEach-Object { "$($_.testName)" })
+}
+
+function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check test population fingerprint') {
+  # The CI population check gates the night (D00 T02 section 37 item 1).
+  # $Runs is `gh run list --commit <sha> --workflow build.yml --json
+  # databaseId,status,conclusion` output (newest first); $Jobs is `gh run
+  # view <id> --json jobs` for the newest run. Returns State (green, red,
+  # pending, none) plus the line the report quotes. Only red refuses the
+  # population: pending or absent CI (an unpushed commit, no network)
+  # reads as not verified and the night's own population compare still
+  # gates (recorded default; cost of changing: a pending night waits).
+  $run = @($Runs) | Where-Object { $null -ne $_ } | Select-Object -First 1
+  if ($null -eq $run) { return [pscustomobject]@{ State = 'none'; Line = "CI population check not verified: no build.yml run for $Sha" } }
+  $found = $null
+  foreach ($j in @($Jobs.jobs)) { foreach ($s in @($j.steps)) { if ("$($s.name)" -eq $Step) { $found = $s } } }
+  if ($null -eq $found) {
+    if ("$($run.status)" -ne 'completed') { return [pscustomobject]@{ State = 'pending'; Line = "CI population check not verified: run $($run.databaseId) is $($run.status)" } }
+    return [pscustomobject]@{ State = 'none'; Line = "CI population check not verified: run $($run.databaseId) has no '$Step' step" }
+  }
+  $c = "$($found.conclusion)"
+  if ($c -eq 'success') { return [pscustomobject]@{ State = 'green'; Line = "CI population check green on $Sha (run $($run.databaseId))" } }
+  if ($c -in @('failure', 'cancelled', 'timed_out')) { return [pscustomobject]@{ State = 'red'; Line = "CI population check $c on $Sha (run $($run.databaseId)): the population is refused" } }
+  return [pscustomobject]@{ State = 'pending'; Line = "CI population check not verified: step '$Step' in run $($run.databaseId) reads '$c'" }
+}
+
+function Get-CandidateCiState([string]$Root, [string]$Sha) {
+  # Live read through gh; any failure reads as not verified, never red.
+  try {
+    $runs = & gh run list --commit $Sha --workflow build.yml --json databaseId,status,conclusion --limit 1 2>$null | Out-String | ConvertFrom-Json
+    if ($LASTEXITCODE -ne 0) { throw "gh run list exited $LASTEXITCODE" }
+    $jobs = $null
+    $first = @($runs) | Select-Object -First 1
+    if ($null -ne $first) {
+      $jobs = & gh run view $first.databaseId --json jobs 2>$null | Out-String | ConvertFrom-Json
+      if ($LASTEXITCODE -ne 0) { throw "gh run view exited $LASTEXITCODE" }
+    }
+    return Get-CandidateCiGate $runs $jobs $Sha
+  } catch {
+    return [pscustomobject]@{ State = 'none'; Line = "CI population check not verified: $($_.Exception.Message)" }
+  }
 }
 
 function Get-UiTestDiscovery([string]$Dotnet, [string]$UiCsproj, [string]$RunAFilter, [string]$RunBFilter, [string]$InteractiveFilter) {
@@ -1053,6 +1202,7 @@ function Get-UiTestDiscovery([string]$Dotnet, [string]$UiCsproj, [string]$RunAFi
     $out.($leg[0]) = $one.Methods
     $out.($leg[0] + 'Methods') = $one.MethodCount
     $out.($leg[0] + 'Cases') = $one.CaseCount
+    $out | Add-Member -NotePropertyName ($leg[0] + 'CaseHash') -NotePropertyValue $one.CaseHash -Force
   }
   return $out
 }

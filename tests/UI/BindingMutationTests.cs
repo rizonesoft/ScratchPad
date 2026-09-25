@@ -11,6 +11,7 @@ namespace UI;
 // survived (both fenced: the children press physical chords, so they
 // run in the quiet window and are Night-owed). The pure facts pin the
 // case table, the targets, the outcome parse, and the verdict rules.
+[Collection("UI tests")]
 public sealed class BindingMutationTests
 {
     public static TheoryData<string, string, string> CoveredCases()

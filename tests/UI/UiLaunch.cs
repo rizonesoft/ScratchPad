@@ -170,6 +170,7 @@ internal static class UiLaunch
         string filter,
         IReadOnlyDictionary<string, string> environment,
         TimeSpan timeout,
+        string extraArgs = "",
         [CallerMemberName] string? member = null,
         [CallerFilePath] string? file = null)
     {
@@ -186,7 +187,7 @@ internal static class UiLaunch
             ? host
             : Path.Combine(root, ".tools", "dotnet-win-x64", "dotnet.exe");
         string assembly = typeof(UiLaunch).Assembly.Location;
-        string args = $"test \"{assembly}\" --filter \"{filter}\"";
+        string args = $"test \"{assembly}\" --filter \"{filter}\"" + (extraArgs.Length > 0 ? " " + extraArgs : string.Empty);
         var info = new ProcessStartInfo(dotnet, args) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var (name, value) in environment)
         {

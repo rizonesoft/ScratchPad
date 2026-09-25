@@ -754,10 +754,16 @@ try {
       $fpPath = Join-Path $Root 'tests\UI\TestPopulation.fingerprint'
       $fpRead = Read-TestPopulationFile $fpPath
       if (-not $fpRead.Ok) { throw $fpRead.Error }
+      # The CI population check gates the night (D00 T02 section 37 item
+      # 1): a red check on the commit this run built refuses the
+      # population; pending or absent CI is quoted as not verified.
+      $ciGate = Get-CandidateCiState $Root $script:buildHead
+      Write-Output "nightly: $($ciGate.Line)"
+      if ($ciGate.State -eq 'red') { throw $ciGate.Line }
       $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fpRead.RunAFilter $fpRead.RunBFilter $fpRead.InteractiveFilter
       $pop = Compare-TestPopulation $fpPath (Join-Path $PSScriptRoot 'nightly.ps1') $disc
       if (-not $pop.Ok) { throw ("population drift: " + ($pop.Drifts -join '; ')) }
-      $populationLine = "OK (run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases))"
+      $populationLine = "OK (run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)); $($ciGate.Line)"
       # The population as a cohort dimension (D00 T02 section 32 item 4).
       $populationHash = Get-ShortHash $fpPath
       $populationCohort = "run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)"
@@ -849,7 +855,7 @@ try {
     try {
       $owed = Get-ListTestsCases $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $collectFilter 'cut-interactive'
       $nightOwedRows += "- $($owed.MethodCount) methods, $($owed.CaseCount) cases unexecuted (interactive budget-cut $stamp; collector runs each method filter)"
-      foreach ($fq in $owed.Methods) { $nightOwedRows += "- Night-owed: $fq | collector filter: FullyQualifiedName=$fq" }
+      $nightOwedRows += @(Get-UnexecutedCaseRows $owed.Cases @() "interactive budget-cut $stamp")
       Write-Output "nightly: interactive cut stages $($owed.MethodCount) Night-owed rows"
     } catch {
       $nightOwedRows += "- Night-owed: collection unverifiable ($_) | collector filter: $collectFilter (full collection re-owed)"
@@ -931,6 +937,18 @@ try {
   $completedA = ($null -ne $gateA) -and (-not $gateA.Killed)
   $completedB = ($null -ne $gateB) -and (-not $gateB.Killed)
   $completedI = $interactiveRan -and (-not $interactiveKilled)
+  # A killed Interactive leg owes every case it never executed, per case
+  # (D00 T02 section 37 item 6): a Theory cut mid-rows keeps its
+  # unexecuted rows owed.
+  if ($interactiveRan -and $interactiveKilled) {
+    try {
+      $listedI = Get-ListTestsCases $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $collectFilter 'killed-interactive'
+      $executedI = Get-TrxExecutedNames (Join-Path $trxDir 'interactive.trx')
+      $nightOwedRows += @(Get-UnexecutedCaseRows $listedI.Cases $executedI "interactive killed $stamp")
+    } catch {
+      $nightOwedRows += "- Night-owed: collection unverifiable after the kill ($_) | collector filter: $collectFilter (full collection re-owed)"
+    }
+  }
   $conLegs = @(
     [pscustomobject]@{ Leg = 'Run A'; Trx = $runATrx; Logs = $runALogs; Enforce = $completedA },
     [pscustomobject]@{ Leg = 'Run B'; Trx = @((Join-Path $trxDir 'run-b.trx')); Logs = @((Join-Path $nightDir "$stamp-primary.log")); Enforce = $completedB },

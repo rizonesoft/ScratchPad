@@ -553,6 +553,68 @@ $staleBuild = Test-UiBuildFresh $t0 $t0.AddMinutes(5) 'Bin\UI\Debug\UI.dll'
 $freshBuild = Test-UiBuildFresh $t0.AddMinutes(5) $t0 'Bin\UI\Debug\UI.dll'
 Assert (($staleBuild.Ok -eq $false) -and ($staleBuild.Error -like 'UI build is stale:*run: dotnet build src/ScratchPad.slnx*') -and ($freshBuild.Ok -eq $true)) 'fingerprint-stale-build-refuses' $staleBuild.Error
 
+# Population gate residuals (D00 T02 section 37).
+# Item 5: a Theory row swapped at an equal case count drifts by hash.
+$caseA = @('UI.A.T1', 'UI.A.T2(x: 1)', 'UI.A.T2(x: 2)')
+$caseSwap = @('UI.A.T1', 'UI.A.T2(x: 1)', 'UI.A.T2(x: 3)')
+$dh1 = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1; RunACaseHash = (Get-CaseHash $caseA); RunBCaseHash = (Get-CaseHash @('UI.B.P1')); InteractiveCaseHash = (Get-CaseHash @('UI.C.I1')) }
+$fpHash = Join-Path $dir 'pop-hash.fingerprint'
+Write-TestPopulationFile $fpHash 'Category!=Interactive&Category!=Primary' 'Category=Primary' 'Category=Interactive' $dh1
+$dh2 = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1; RunACaseHash = (Get-CaseHash $caseSwap); RunBCaseHash = (Get-CaseHash @('UI.B.P1')); InteractiveCaseHash = (Get-CaseHash @('UI.C.I1')) }
+$popSame = Compare-TestPopulation $fpHash $fakeNightly $dh1
+$popRow = Compare-TestPopulation $fpHash $fakeNightly $dh2
+Assert (($popSame.Ok -eq $true) -and ($popRow.Ok -eq $false) -and (@($popRow.Drifts).Count -eq 1) -and ($popRow.Drifts[0] -like 'run-a case rows changed: fingerprinted hash * vs discovered *')) 's37-theory-row-swap-at-equal-count-drifts' ($popRow.Drifts -join '|')
+$noHash = @(Get-Content $fpHash | Where-Object { $_ -notlike 'run-b-case-hash:*' })
+$noHash | Set-Content -Path (Join-Path $dir 'pop-nohash.fingerprint') -Encoding UTF8
+Assert ((Read-TestPopulationFile (Join-Path $dir 'pop-nohash.fingerprint')).Error -eq 'fingerprint missing run-b-case-hash') 's37-case-hash-required'
+# Item 4: forced discovery restores a prior unset value, and restores
+# when the body throws.
+[Environment]::SetEnvironmentVariable('SCRATCHPAD_INTERACTIVE_FORCE', $null, 'Process')
+[Environment]::SetEnvironmentVariable('SCRATCHPAD_DISCOVERY_LISTING', $null, 'Process')
+$inside = Invoke-WithForcedDiscovery { "$env:SCRATCHPAD_INTERACTIVE_FORCE/$env:SCRATCHPAD_DISCOVERY_LISTING" }
+Assert (($inside -eq '1/1') -and (-not (Test-Path Env:\SCRATCHPAD_INTERACTIVE_FORCE)) -and (-not (Test-Path Env:\SCRATCHPAD_DISCOVERY_LISTING))) 's37-forced-discovery-prior-unset-stays-unset' $inside
+$env:SCRATCHPAD_INTERACTIVE_FORCE = 'operator-value'
+$threwBody = ''
+try { Invoke-WithForcedDiscovery { throw 'discovery blew up' } } catch { $threwBody = "$_" }
+$afterThrow = $env:SCRATCHPAD_INTERACTIVE_FORCE
+$env:SCRATCHPAD_INTERACTIVE_FORCE = $priorForce
+Assert (($threwBody -eq 'discovery blew up') -and ($afterThrow -eq 'operator-value') -and (-not (Test-Path Env:\SCRATCHPAD_DISCOVERY_LISTING))) 's37-forced-discovery-restores-on-throw' "$threwBody / $afterThrow"
+# Item 2: a shared build input newer than the binary refuses.
+$bRoot = Join-Path $dir 'build-inputs'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $bRoot 'tests\UI'), (Join-Path $bRoot 'src\App'), (Join-Path $bRoot 'Bin\UI\Debug')
+'<Project><ItemGroup><ProjectReference Include="..\..\src\App\App.csproj" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $bRoot 'tests\UI\UI.csproj') -Encoding UTF8
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+'class A {}' | Set-Content -Path (Join-Path $bRoot 'src\App\A.cs') -Encoding UTF8
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'Directory.Build.props') -Encoding UTF8
+'dll' | Set-Content -Path (Join-Path $bRoot 'Bin\UI\Debug\UI.dll') -Encoding UTF8
+$tOld = [datetime]::new(2026, 9, 25, 9, 0, 0, [DateTimeKind]::Utc)
+foreach ($f in @('tests\UI\UI.csproj', 'src\App\App.csproj', 'src\App\A.cs', 'Directory.Build.props')) { (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld }
+(Get-Item (Join-Path $bRoot 'Bin\UI\Debug\UI.dll')).LastWriteTimeUtc = $tOld.AddMinutes(10)
+$freshB = Get-UiBuildFreshness $bRoot
+(Get-Item (Join-Path $bRoot 'Directory.Build.props')).LastWriteTimeUtc = $tOld.AddMinutes(20)
+$staleShared = Get-UiBuildFreshness $bRoot
+(Get-Item (Join-Path $bRoot 'Directory.Build.props')).LastWriteTimeUtc = $tOld
+(Get-Item (Join-Path $bRoot 'src\App\A.cs')).LastWriteTimeUtc = $tOld.AddMinutes(20)
+$staleRef = Get-UiBuildFreshness $bRoot
+Assert (($freshB.Ok -eq $true) -and ($staleShared.Ok -eq $false) -and ($staleShared.Error -like '*newest build input (Directory.Build.props)*') -and ($staleRef.Ok -eq $false) -and ($staleRef.Error -like '*src\App\A.cs*')) 's37-shared-and-referenced-inputs-refuse' "$($staleShared.Error) | $($staleRef.Error)"
+# Item 6: one of three Theory rows run keeps two owed.
+$owedRows = @(Get-UnexecutedCaseRows @('UI.X.Theory(n: 1)', 'UI.X.Theory(n: 2)', 'UI.X.Theory(n: 3)', 'UI.X.Fact') @('UI.X.Theory(n: 2)', 'UI.X.Fact') 'fixture kill')
+Assert (($owedRows.Count -eq 1) -and ($owedRows[0] -eq '- Night-owed: UI.X.Theory | 2 of 3 cases unexecuted (fixture kill) | collector filter: FullyQualifiedName=UI.X.Theory')) 's37-partial-theory-keeps-two-owed' ($owedRows -join '|')
+$trxPart = Join-Path $dir 'partial.trx'
+'<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results><UnitTestResult testName="UI.X.Theory(n: 2)" outcome="Passed" /><UnitTestResult testName="UI.X.Skip" outcome="NotExecuted" /></Results></TestRun>' | Set-Content -Path $trxPart -Encoding UTF8
+$exec = @(Get-TrxExecutedNames $trxPart)
+Assert (($exec.Count -eq 1) -and ($exec[0] -eq 'UI.X.Theory(n: 2)') -and (@(Get-TrxExecutedNames (Join-Path $dir 'no.trx')).Count -eq 0)) 's37-trx-executed-names' ($exec -join '|')
+# Item 1: a red CI population check refuses; green passes; pending and
+# absent read as not verified.
+$runsRed = @([pscustomobject]@{ databaseId = 42; status = 'completed'; conclusion = 'failure' })
+$jobsRed = [pscustomobject]@{ jobs = @([pscustomobject]@{ name = 'build-windows'; steps = @([pscustomobject]@{ name = 'Build solution'; conclusion = 'success' }, [pscustomobject]@{ name = 'Check test population fingerprint'; conclusion = 'failure' }) }) }
+$gRed = Get-CandidateCiGate $runsRed $jobsRed 'abc1234'
+$jobsGreen = [pscustomobject]@{ jobs = @([pscustomobject]@{ name = 'build-windows'; steps = @([pscustomobject]@{ name = 'Check test population fingerprint'; conclusion = 'success' }) }) }
+$gGreen = Get-CandidateCiGate @([pscustomobject]@{ databaseId = 43; status = 'completed'; conclusion = 'success' }) $jobsGreen 'abc1234'
+$gPending = Get-CandidateCiGate @([pscustomobject]@{ databaseId = 44; status = 'in_progress'; conclusion = '' }) ([pscustomobject]@{ jobs = @() }) 'abc1234'
+$gNone = Get-CandidateCiGate @() $null 'abc1234'
+Assert (($gRed.State -eq 'red') -and ($gRed.Line -eq 'CI population check failure on abc1234 (run 42): the population is refused') -and ($gGreen.State -eq 'green') -and ($gPending.State -eq 'pending') -and ($gNone.State -eq 'none') -and ($gNone.Line -like '*no build.yml run for abc1234*')) 's37-red-ci-check-refuses-the-population' "$($gRed.Line) | $($gGreen.Line) | $($gPending.Line) | $($gNone.Line)"
+
 # Filter partition: the fingerprinted Run A plus Run B filters select
 # the synthetic population soundly, and edits breaking the partition
 # surface as violations (D00-T02-S13-PR17).

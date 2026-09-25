@@ -1189,17 +1189,19 @@ Why this section exists: the §28 plan review returned 14 findings; 8 file here,
 
 ## 37. Population Gate Residuals
 
+> **Started:** 2026-09-25T12:12:38Z
+
 Why this section exists: the §29 plan review returned 10 findings; 6 file here and 4 are rejected with reasons in the §29 findings file. §29 runs the population check in CI and locally, makes discovery time-independent, and refuses stale-build regens; these settle enforcement, input identity, and population identity past aggregate counts. -> SOURCE: plan-review-D00-T02-s29-2026-09-25-s37 D00-T02-S29-PR1 D00-T02-S29-PR2 D00-T02-S29-PR4 D00-T02-S29-PR5 D00-T02-S29-PR7 D00-T02-S29-PR9 (merge enforcement, build-input identity, dynamic Theory rows, restoration fixtures, case identity, and per-case debt from the §29 plan review).
 
 - -> XREF: D00 T02 §29 -- filed from its plan review; settles the residuals of the gate it shipped.
 
-- [ ] The population check gates what reaches the night: the nightly's candidate selection (or a branch rule on `main`) requires the CI step green for the commit it runs, so a red check cannot be bypassed by pushing on. Done when: a planted red check on a candidate makes the nightly name it and refuse the population. (D00-T02-S29-PR1.)
-- [ ] Freshness covers every build input and configuration identity (shared props, `Directory.Build.*`, project references, the build configuration), not only `tests/UI` sources and project files. Done when: touching a shared build input without rebuilding makes the regen refuse. (D00-T02-S29-PR2.)
-- [ ] Theory rows that depend on capabilities or runtime data are defined for discovery (listed, skipped, or excluded by rule), so identical binaries list the same population on CI and nightly hosts. Done when: a capability-gated Theory fixture lists identically with the capability present and absent. (D00-T02-S29-PR4.)
-- [ ] Force-variable restoration has failure-path fixtures: a prior unset value stays unset, and a discovery that throws still restores. Done when: both fixtures pass. (D00-T02-S29-PR5.)
-- [ ] Population identity covers case rows, not only aggregate counts, so replacing Theory rows with an equal total stales prior proofs. Done when: a fixture swapping one InlineData row at equal count drifts. (D00-T02-S29-PR7.)
-- [ ] §15's debt promise for every unexecuted case matches the collector's per-method rows: a partially executed Theory keeps its unexecuted cases owed. Done when: a fixture with one of three rows run keeps two owed. (D00-T02-S29-PR9.)
-- [ ] Commit: `"workspace: settle the population gate residuals"`
+- [x] The population check gates what reaches the night: the nightly's candidate selection (or a branch rule on `main`) requires the CI step green for the commit it runs, so a red check cannot be bypassed by pushing on. Done when: a planted red check on a candidate makes the nightly name it and refuse the population. (D00-T02-S29-PR1.)
+- [x] Freshness covers every build input and configuration identity (shared props, `Directory.Build.*`, project references, the build configuration), not only `tests/UI` sources and project files. Done when: touching a shared build input without rebuilding makes the regen refuse. (D00-T02-S29-PR2.)
+- [x] Theory rows that depend on capabilities or runtime data are defined for discovery (listed, skipped, or excluded by rule), so identical binaries list the same population on CI and nightly hosts. Done when: a capability-gated Theory fixture lists identically with the capability present and absent. (D00-T02-S29-PR4.)
+- [x] Force-variable restoration has failure-path fixtures: a prior unset value stays unset, and a discovery that throws still restores. Done when: both fixtures pass. (D00-T02-S29-PR5.)
+- [x] Population identity covers case rows, not only aggregate counts, so replacing Theory rows with an equal total stales prior proofs. Done when: a fixture swapping one InlineData row at equal count drifts. (D00-T02-S29-PR7.)
+- [x] §15's debt promise for every unexecuted case matches the collector's per-method rows: a partially executed Theory keeps its unexecuted cases owed. Done when: a fixture with one of three rows run keeps two owed. (D00-T02-S29-PR9.)
+- [x] Commit: `"workspace: settle the population gate residuals"`
 
 **Test checkpoint:** A red check stops the night's population, a shared-input touch refuses the regen, capability rows list identically, restoration holds on failure, a row swap drifts, and a partial Theory keeps its owed cases. Cheaper substitute that fails: a doc note asking authors to wait for CI.
 

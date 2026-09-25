@@ -58,6 +58,9 @@ run-a:
   UI.DirtyPromptTests.KillRecoversBuffersSilentlyWithFilesUntouched
   UI.DirtyPromptTests.SaveOnPathedDirtyTabWritesBytesAndCloses
   UI.DirtyPromptTests.WindowCloseWithDirtyTabsIsSilentAndRestores
+  UI.DiscoveryListingTests.CapabilityGatedRows
+  UI.DiscoveryListingTests.EveryTheoryAttributeIsAGatedTheory
+  UI.DiscoveryListingTests.GatedTheoryListsIdenticallyWithAndWithoutTheCapability
   UI.EncryptedNotesTests.LockUnlockRoundTripsExactBytes
   UI.EncryptedNotesTests.PasswordNeverReachesDisk
   UI.EncryptedNotesTests.RelockOnCloseSaveKeepsCiphertext
@@ -251,8 +254,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 245
-run-a-cases: 298
+run-a-methods: 248
+run-a-cases: 303
+run-a-case-hash: f36194bcc99e79c6
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -260,6 +264,7 @@ run-b:
   UI.UiLeakBundleTests.ForcedLeakQuotesFullBundle
 run-b-methods: 4
 run-b-cases: 4
+run-b-case-hash: 5060a831f28bbeeb
 interactive:
   UI.AcceleratorTests.ChordCtrlEOpensBingSearch
   UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
@@ -306,3 +311,4 @@ interactive:
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
 interactive-methods: 43
 interactive-cases: 74
+interactive-case-hash: 582f7acd927a8963
