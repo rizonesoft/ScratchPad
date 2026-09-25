@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Diagnostics;
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
@@ -1023,4 +1024,266 @@ public sealed class LaunchTests
     [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     static extern bool CloseHandle(IntPtr handle);
+
+    // D00 T02 §26: a window birth sweeps only its own constructor-born
+    // helpers. The first window's live File flyout (a popup HWND the
+    // process owns) must keep its rect while a second window is born
+    // through a redirected launch (open-in-new-window mode), which
+    // touches neither window's UI; the pre-§26 sweep pinned every
+    // non-main top-level window in the process, this popup included.
+    [Fact]
+    public void WindowBirthLeavesOtherWindowsHelpersInPlace()
+    {
+        string dir = NewTempDir();
+        string file = Path.Combine(dir, "w26.txt");
+        File.WriteAllText(file, "two");
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh, OpenIn = OpenInRouting.NewWindow }, drainLaunchDrops: true);
+        try
+        {
+            nint fgBefore = UiForeground.Capture();
+            using var first = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(first, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(1, WaitForTabCount(window, 1));
+                HashSet<nint> before = HelperWindows(first.ProcessId).Keys.ToHashSet();
+                var menu = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFile"));
+                Assert.NotNull(menu);
+                menu.Patterns.Invoke.Pattern.Invoke();
+                Thread.Sleep(800);
+                var helpers = HelperWindows(first.ProcessId).Where(kv => !before.Contains(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+                Assert.True(helpers.Count > 0, $"the first window's File flyout opened no helper window ({before.Count} helpers before)");
+
+                // WinUI's popup host snaps a moved popup back to its anchor,
+                // so a before/after rect can read unchanged while the sweep
+                // moved it mid-birth; the location-change recorder sees
+                // every move of the helpers while the birth runs.
+                using var moves = new LocationRecorder((uint)first.ProcessId, helpers.Keys);
+                using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
+                Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
+                var windows = Retry.While(
+                    () => first.GetAllTopLevelWindows(automation).ToList(),
+                    found => found.Count != 2,
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(250),
+                    lastValueOnTimeout: true).Result ?? [];
+                Assert.Equal(2, windows.Count);
+                Thread.Sleep(800);
+
+                var moved = moves.Stop();
+                Assert.True(moves.Hooked, "the location-change recorder never hooked; the proof would read vacuous");
+                Assert.True(moved.Count == 0, $"another window's birth moved this window's live helpers: {string.Join("; ", moved)}");
+                var after = HelperWindows(first.ProcessId);
+                foreach (var (hwnd, rect) in helpers)
+                {
+                    Assert.True(after.TryGetValue(hwnd, out HelperRect now), $"helper 0x{hwnd:X} closed before the birth settled; the premise needs it live");
+                    Assert.True(rect.Left == now.Left && rect.Top == now.Top, $"helper 0x{hwnd:X} moved from ({rect.Left},{rect.Top}) to ({now.Left},{now.Top}) when another window was born");
+                }
+
+                foreach (Window w in windows)
+                {
+                    UiForeground.Background(w, fgBefore);
+                }
+            }
+            finally
+            {
+                CloseAll(first, automation);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    // Visible top-level windows of the process that are not a main
+    // window (popups, flyouts, helpers), with their rects.
+    static Dictionary<nint, HelperRect> HelperWindows(int pid)
+    {
+        var found = new Dictionary<nint, HelperRect>();
+        _ = HelperNative.EnumWindows((hwnd, param) =>
+        {
+            _ = param;
+            _ = HelperNative.GetWindowThreadProcessId(hwnd, out uint owner);
+            if (owner == (uint)pid && HelperNative.IsWindowVisible(hwnd))
+            {
+                var buffer = new char[256];
+                int length = HelperNative.GetClassName(hwnd, buffer, buffer.Length);
+                if ((length <= 0 ? string.Empty : new string(buffer, 0, length)) != "WinUIDesktopWin32WindowClass")
+                {
+                    var rect = default(HelperRect);
+                    if (HelperNative.GetWindowRect(hwnd, ref rect))
+                    {
+                        found[hwnd] = rect;
+                    }
+                }
+            }
+
+            return true;
+        }, nint.Zero);
+        return found;
+    }
+
+
+    // Records location changes of chosen windows through an out-of-context
+    // WinEvent hook on a dedicated message-pumping thread (D00 T02 §26).
+    // Stop unhooks, ends the pump, and returns each move as text.
+    sealed class LocationRecorder : IDisposable
+    {
+        const uint EventObjectLocationChange = 0x800B;
+        const uint WineventOutOfContext = 0x0000;
+        const int ObjIdWindow = 0;
+        const uint WmQuit = 0x0012;
+        readonly HashSet<nint> watch;
+        readonly uint pid;
+        readonly List<string> moves = [];
+        readonly ManualResetEventSlim ready = new(false);
+        readonly Thread pump;
+        uint threadId;
+        bool stopped;
+        HelperNative.WinEventProc? proc;
+
+        internal bool Hooked { get; private set; }
+
+        internal LocationRecorder(uint pid, IEnumerable<nint> hwnds)
+        {
+            this.pid = pid;
+            watch = hwnds.ToHashSet();
+            pump = new Thread(Run) { IsBackground = true };
+            pump.Start();
+            Assert.True(ready.Wait(TimeSpan.FromSeconds(5)), "the location-change recorder thread never started");
+        }
+
+        void Run()
+        {
+            threadId = HelperNative.GetCurrentThreadId();
+            proc = (hook, evt, hwnd, idObject, idChild, thread, time) =>
+            {
+                if (idObject == ObjIdWindow && watch.Contains(hwnd))
+                {
+                    var rect = default(HelperRect);
+                    _ = HelperNative.GetWindowRect(hwnd, ref rect);
+                    lock (moves)
+                    {
+                        moves.Add($"0x{hwnd:X} to ({rect.Left},{rect.Top})");
+                    }
+                }
+            };
+            nint hook = HelperNative.SetWinEventHook(EventObjectLocationChange, EventObjectLocationChange, nint.Zero, proc, pid, 0, WineventOutOfContext);
+            Hooked = hook != nint.Zero;
+            ready.Set();
+            while (HelperNative.GetMessage(out HelperMsg msg, nint.Zero, 0, 0) > 0)
+            {
+                _ = HelperNative.TranslateMessage(ref msg);
+                _ = HelperNative.DispatchMessage(ref msg);
+            }
+
+            if (hook != nint.Zero)
+            {
+                _ = HelperNative.UnhookWinEvent(hook);
+            }
+        }
+
+        internal List<string> Stop()
+        {
+            if (!stopped)
+            {
+                stopped = true;
+                _ = HelperNative.PostThreadMessage(threadId, WmQuit, nint.Zero, nint.Zero);
+                _ = pump.Join(TimeSpan.FromSeconds(5));
+            }
+
+            lock (moves)
+            {
+                return [.. moves];
+            }
+        }
+
+        public void Dispose()
+        {
+            _ = Stop();
+            ready.Dispose();
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct HelperMsg
+    {
+        public nint Hwnd;
+        public uint Message;
+        public nint WParam;
+        public nint LParam;
+        public uint Time;
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct HelperRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    static class HelperNative
+    {
+        internal delegate bool EnumWindowsProc(nint hwnd, nint param);
+
+        internal delegate void WinEventProc(nint hook, uint evt, nint hwnd, int idObject, int idChild, uint thread, uint time);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint SetWinEventHook(uint eventMin, uint eventMax, nint module, WinEventProc proc, uint pid, uint thread, uint flags);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern bool UnhookWinEvent(nint hook);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern int GetMessage(out HelperMsg msg, nint hwnd, uint min, uint max);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern bool TranslateMessage(ref HelperMsg msg);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint DispatchMessage(ref HelperMsg msg);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern bool PostThreadMessage(uint thread, uint msg, nint wParam, nint lParam);
+
+        [DllImport("kernel32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern bool EnumWindows(EnumWindowsProc callback, nint param);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetWindowThreadProcessId(nint hwnd, out uint pid);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern bool IsWindowVisible(nint hwnd);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern bool GetWindowRect(nint hwnd, ref HelperRect rect);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern int GetClassName(nint hwnd, [Out] char[] name, int max);
+    }
+
 }

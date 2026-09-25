@@ -86,6 +86,7 @@ run-a:
   UI.LaunchTests.PrintToBogusPrinterExits2
   UI.LaunchTests.SecondLaunchRedirectsFileIntoFirst
   UI.LaunchTests.SingleFileLaunchOpensTab
+  UI.LaunchTests.WindowBirthLeavesOtherWindowsHelpersInPlace
   UI.LockedResidueTests.DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost
   UI.LockedResidueTests.LockedTabRefusesTakesWithInlineNote
   UI.MainWindowTests.FirstRunShowsWhatsNewAndMegaphoneReopensIt
@@ -218,8 +219,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 212
-run-a-cases: 265
+run-a-methods: 213
+run-a-cases: 266
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

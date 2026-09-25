@@ -833,14 +833,16 @@ Why this section exists: the §17 plan review returned 37 findings; 10 file here
 
 ## 26. Sibling Sweep Narrowing
 
+> **Started:** 2026-09-25T04:21:26Z
+
 Why this section exists: the §18 sign-off (R3-F2) found SiblingPin.Sweep pinning every non-main top-level window in the process, not just the constructor-born helpers its comment claims, so opening a second background window can move the first window's live popups and dialogs off-screen mid-test. The sweep runs background-only (App.ShowWindow gates PinBirthBeforeShow on SCRATCHPAD_BACKGROUND=1) and no test fails from it, so the sign-off filed it below-bar instead of blocking the stamp. This section narrows the sweep to its claimed scope with a red/green multi-window pin. -> SOURCE: panel-D00-T02-s18-2026-09-23 D00-T02-S18-R3-F2 (sign-off finding; filed once, this section).
 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §18 -- filed from its sign-off (R3-F2 below-bar; the sweep it narrows shipped there).
 
-- [ ] SiblingPin.Sweep pins only constructor-born helpers: snapshot top-level handles at MainWindow construction and sweep the diff at pin time, or limit PinSibling by owner chain to unowned and this-owned windows; a probe on a two-window background run picks the mechanism that leaves foreign helpers untouched. Done when: a second background window birth leaves the first window's live popup and dialog positions untouched.
-- [ ] A multi-window background test pins the narrowing: two background windows plus a live helper on the first, birth the second, assert the helper never moved. Done when: the test reds on the current sweep and greens on the fix.
+- [x] SiblingPin.Sweep pins only constructor-born helpers: snapshot top-level handles at MainWindow construction and sweep the diff at pin time, or limit PinSibling by owner chain to unowned and this-owned windows; a probe on a two-window background run picks the mechanism that leaves foreign helpers untouched. Done when: a second background window birth leaves the first window's live popup and dialog positions untouched. Done: both mechanisms, combined: `SiblingPin.NoteTarget` snapshots the process's top-level windows as construction begins and `Sweep(main)` pins only windows born since, skipping any whose root owner (`GetAncestor` GA_ROOTOWNER) is a different main (`src/ScratchPad/MainWindow.xaml.cs`). The probe on a two-window background run chose the combination: the snapshot keeps pre-existing helpers still, the owner check covers a popup a first window opens mid-construction.
+- [x] A multi-window background test pins the narrowing: two background windows plus a live helper on the first, birth the second, assert the helper never moved. Done when: the test reds on the current sweep and greens on the fix. Done: `UI.LaunchTests.WindowBirthLeavesOtherWindowsHelpersInPlace` (default leg) opens the first window's File flyout, births a second window by a redirected launch in open-in-new-window mode (touching neither window's UI), and records every location change of the flyout through an out-of-context WinEvent hook (WinUI's popup host snaps a moved popup back to its anchor, so a before/after rect read the pre-fix sweep as unmoved). Red on the pre-fix sweep: `another window's birth moved this window's live helpers: 0x1DD1058 to (3160,0); 0x1DD1058 to (-1918,1154)`; green on the fix (11/11 with the window-birth neighbors, fenced categories excluded). The fingerprint carries it (run-a 213/266, population OK).
 - [ ] Commit: `"workspace: narrow the sibling sweep to constructor-born helpers"`
 
 **Test checkpoint:** Narrowing pinned red/green; full Run A still green with zero primary births (no regression in background births).

@@ -139,7 +139,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // Siblings born before the main (helpers arrive during the
         // constructor) never surface on their own: sweep once here, where
         // the main pin just landed.
-        SiblingPin.Sweep();
+        SiblingPin.Sweep(hwnd);
         return true;
     }
 
@@ -218,6 +218,10 @@ public sealed partial class MainWindow : Window, IDisposable
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint GetAncestor(nint hWnd, uint flags);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -307,8 +311,16 @@ public sealed partial class MainWindow : Window, IDisposable
         static int targetX;
         static int targetY;
 
+        // Top-level windows the process owned before this window's
+        // construction began (D00 T02 §26): the sweep leaves them alone,
+        // so a birth never moves another window's live popups or dialogs.
+        // Constructions run one at a time on the UI thread, so one
+        // snapshot per construction is enough.
+        static HashSet<nint> preexisting = [];
+
         internal static void NoteTarget()
         {
+            preexisting = ProcessTopLevels();
             ShellSettings live = SettingsStore.Shared.Current;
             int width = Math.Max(100, live.Width);
             int height = Math.Max(100, live.Height);
@@ -321,20 +333,46 @@ public sealed partial class MainWindow : Window, IDisposable
             (targetX, targetY) = BirthOrigin(live, width, height);
         }
 
-        internal static void Sweep()
+        static HashSet<nint> ProcessTopLevels()
         {
             uint pid = (uint)Environment.ProcessId;
+            var found = new HashSet<nint>();
             _ = NativeMethods.EnumWindows((hwnd, unused) =>
             {
                 _ = unused;
                 _ = NativeMethods.GetWindowThreadProcessId(hwnd, out uint windowPid);
                 if (windowPid == pid)
                 {
-                    PinSibling(hwnd);
+                    _ = found.Add(hwnd);
                 }
 
                 return true;
             }, nint.Zero);
+            return found;
+        }
+
+        // Pins only the constructor-born helpers of the window being born
+        // (D00 T02 §26): windows that existed before its construction
+        // began are skipped, and so is any window whose root owner is a
+        // different main, so a second background birth never moves the
+        // first window's live flyouts, popups, or dialogs.
+        internal static void Sweep(nint main)
+        {
+            foreach (nint hwnd in ProcessTopLevels())
+            {
+                if (preexisting.Contains(hwnd))
+                {
+                    continue;
+                }
+
+                nint root = NativeMethods.GetAncestor(hwnd, 3);
+                if (root != nint.Zero && root != hwnd && root != main)
+                {
+                    continue;
+                }
+
+                PinSibling(hwnd);
+            }
         }
 
         static void PinSibling(nint hwnd)
