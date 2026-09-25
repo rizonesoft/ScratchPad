@@ -128,15 +128,23 @@ $ns = Get-NoStartVerdict @((New-Result '2026-09-24' '2026-09-24-023000' 'green' 
 Assert ($ns.NoStart -and ((@($ns.Missed) -join ',') -eq '2026-09-25') -and ($ns.Line -like 'NO START: no governed nightly result for 2026-09-25*')) 'nostart-suppressed-night-alerts' $ns.Line
 Assert (-not (Get-NoStartVerdict @() (Get-Date '2026-09-25 05:00') '06:50' 0).NoStart) 'nostart-waits-for-the-window'
 Assert (-not (Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-started-night-passes'
-Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-043000' 'red' 'manual')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-manual-run-is-not-a-start'
+$enrolledNight = New-Result '2026-09-20' '2026-09-20-023000' 'green' 'timer'
+Assert ((Get-NoStartVerdict @($enrolledNight, (New-Result '2026-09-25' '2026-09-25-043000' 'red' 'manual')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-manual-run-is-not-a-start'
 # R2-F2: simulated and stood-down results are not governed starts.
-Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer' $true)) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-simulation-is-not-a-start'
-Assert ((Get-NoStartVerdict @((New-Result '2026-09-25' '2026-09-25-023000' 'stood-down' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-stood-down-is-not-a-start'
+Assert ((Get-NoStartVerdict @($enrolledNight, (New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer' $true)) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-simulation-is-not-a-start'
+Assert ((Get-NoStartVerdict @($enrolledNight, (New-Result '2026-09-25' '2026-09-25-023000' 'stood-down' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 0).NoStart) 'nostart-stood-down-is-not-a-start'
 # R2-F5: a logon before today's deadline still reports the nights missed.
 $lb = Get-NoStartVerdict @((New-Result '2026-09-22' '2026-09-22-023000' 'red' 'timer')) (Get-Date '2026-09-25 05:00') '06:50' 3
 Assert ((@($lb.Missed) -join ',') -eq '2026-09-23,2026-09-24') 'nostart-lookback-reports-missed-nights' ((@($lb.Missed) -join ','))
+# Enrollment: nights before the first governed result predate result
+# capture and are never reported (live false alarm 2026-09-25 07:05).
+$enr = Get-NoStartVerdict @((New-Result '2026-09-22' '2026-09-22-023000' 'red' 'timer'), (New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 7
+Assert ((@($enr.Missed) -join ',') -eq '2026-09-23,2026-09-25') 'nostart-skips-nights-before-enrollment' ((@($enr.Missed) -join ','))
+Assert (-not (Get-NoStartVerdict @() (Get-Date '2026-09-25 07:05') '06:50' 7).NoStart) 'nostart-no-governed-history-reports-nothing'
 $mDir = Join-Path $dir 'morning'
 $null = New-Item -ItemType Directory -Force -Path $mDir
+$enrolledMorning = New-Result ((Get-Date).AddDays(-3).ToString('yyyy-MM-dd')) ((Get-Date).AddDays(-3).ToString('yyyy-MM-dd') + '-023000') 'green' 'timer'
+(ConvertTo-Json $enrolledMorning -Depth 6) | Set-Content -Path (Join-Path $mDir ('morning-' + $enrolledMorning.stamp + '.result.json')) -Encoding UTF8
 $mOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyMorning.ps1') -DryRun -NightDir $mDir -ExpectBy '00:00' -LookbackDays 1 2>&1 | ForEach-Object { "$_" })
 Assert ((@($mOut | Where-Object { $_ -like 'morning: no-start: NO START*' }).Count -eq 1) -and (@($mOut | Where-Object { $_ -like 'morning: no-start notify *: sent*dry run*' }).Count -eq 2) -and (-not (Test-Path (Join-Path $mDir 'notify-ledger.json')))) 'nostart-reconciler-alerts-with-no-run' ($mOut -join ' | ')
 

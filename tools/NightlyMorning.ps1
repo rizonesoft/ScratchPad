@@ -34,7 +34,8 @@ $log = @()
 $sender = { param($t, $l) if ($DryRun) { return $true } else { return (Send-NightlyToast $t $l) } }
 
 $results = @()
-foreach ($f in @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue)) {
+$resultFiles = @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue) + @(Get-ChildItem (Join-Path $NightDir 'retained') -Filter 'result.json' -File -Recurse -ErrorAction SilentlyContinue)
+foreach ($f in $resultFiles) {
   try { $results += (Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { $log += "unreadable result $($f.Name)" }
 }
 

@@ -242,6 +242,19 @@ function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50
   # a logon days later still reports the nights it slept through, not
   # only today), so the reconciler alerts each missed date once.
   # Returns NoStart, Missed (dates), and Line.
+  # Enrollment (live false alarm 2026-09-25 07:05): nights before the
+  # first governed result predate result capture, so they are never
+  # reported as missed; only nights from that first result on count.
+  $enrolled = $null
+  foreach ($r in @($Results)) {
+    if ($null -eq $r) { continue }
+    $sim0 = $false
+    try { $sim0 = [bool]$r.simulated } catch { }
+    if ((@('timer', 'demand') -contains "$($r.launch)") -and (-not $sim0)) {
+      $d0 = "$($r.day)"
+      if (($d0 -match '^\d{4}-\d{2}-\d{2}$') -and (($null -eq $enrolled) -or ([string]::CompareOrdinal($d0, $enrolled) -lt 0))) { $enrolled = $d0 }
+    }
+  }
   $started = @{}
   foreach ($r in @($Results)) {
     if ($null -eq $r) { continue }
@@ -257,6 +270,7 @@ function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50
     $ds = $d.ToString('yyyy-MM-dd')
     $by = [datetime]::ParseExact("$ds $ExpectBy", 'yyyy-MM-dd HH:mm', $null)
     if ($Now -lt $by) { continue }
+    if (($null -eq $enrolled) -or ([string]::CompareOrdinal($ds, $enrolled) -lt 0)) { continue }
     if (-not $started.ContainsKey($ds)) { $missed += $ds }
   }
   if ($missed.Count -eq 0) {
