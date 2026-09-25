@@ -1519,7 +1519,7 @@ $null = New-Item -ItemType Directory -Force -Path $ackDir
 & git -C $repo config commit.gpgsign false
 & git -C $repo config core.autocrlf false
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'todo\00-workspace')
-@('# fixture', '', '## 9. Nine', '', 'Tracks INC-aaaa1111 (UI.A) and INC-bbbb2222 (UI.B).', '', '## 29. Twenty-nine', '', 'Tracks INC-aaaa1111 (UI.A) and INC-bbbb2222 (UI.B).') | Set-Content -Path (Join-Path $repo 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
+@('# fixture', '', '## 9. Nine', '', '- [ ] Fix INC-aaaa1111 (UI.A) and INC-bbbb2222 (UI.B).', '', '## 29. Twenty-nine', '', '- [ ] Fix INC-aaaa1111 (UI.A) and INC-bbbb2222 (UI.B).') | Set-Content -Path (Join-Path $repo 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-a.md'), $ackOne)
 $g0 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ((@($g0.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: uncommitted*' }).Count -eq 1) -and ($g0.Unacked -contains $runA1)) 'ack-uncommitted-ignored' ($g0.Lines -join ' | ')

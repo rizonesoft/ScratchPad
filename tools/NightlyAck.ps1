@@ -44,6 +44,7 @@ param(
   [switch]$CoversAll,
   [string]$Out = '',
   [string]$Today = '',
+  [int]$LockWaitSeconds = 60,
   [string]$WorkspaceRoot = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -79,6 +80,9 @@ if ($Draft) {
   $text = ($lines -join "`n") + "`n"
   $v = Test-AckV2 $text $demands
   $errs = @($v.Errors)
+  # A draft whose coverage rejects the run it names is refused (section 46
+  # item 11), even though the gate would still honor the file's other runs.
+  foreach ($rj in @($v.Rejected)) { $errs += "rejects $($rj.Run): $($rj.Why)" }
   if ($v.Ok -and ($Disposition -ne 'withdrawn')) {
     # The gate's own evidence check (R2-F3), so a draft the helper
     # accepts is one the gate accepts once committed.
@@ -114,6 +118,30 @@ if ($Status) {
   if ($Run -eq '') { Write-Output 'ack: -Status needs -Run'; exit 2 }
   if (-not $demands.ContainsKey($Run)) { Write-Output "ack: $Run is not a demanded RED"; exit 1 }
   $gate = Test-Acknowledgements $Root $ackDir $demands $now $ackSla
+  # The status view (section 46 item 13): the governing ack, each incident
+  # with its pending state, the owners, the deadline, and every gate line
+  # that blocks the run or its ack's actions.
+  $d = $demands[$Run]
+  $gov = if ($gate.Governing.ContainsKey($Run)) { "$($gate.Governing[$Run])" } else { '' }
+  $dueNow = Get-DemandDue $d $ackSla
+  Write-Output "status: $Run"
+  Write-Output "  governing: $(if ($gov -ne '') { $gov } else { 'none' })"
+  Write-Output "  deadline: $(if ($null -ne $dueNow) { $dueNow.ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) } else { 'unreadable (escalate operator)' })"
+  $govClaim = $null
+  if (($gov -ne '') -and $gate.Claims.ContainsKey($Run)) { $govClaim = @($gate.Claims[$Run] | Where-Object { $_.File -eq $gov }) | Select-Object -First 1 }
+  if ($null -ne $govClaim) { Write-Output "  owners: owner $($govClaim.Fields['owner']), corrective-owner $($govClaim.Fields['corrective-owner'])" } else { Write-Output '  owners: none (no governing ack)' }
+  foreach ($inc in @($d.Incidents)) {
+    # A cover line answers for its own incident; otherwise the ack's
+    # top-level action does.
+    $mine = @($gate.Corrective | Where-Object { ($gov -ne '') -and ($_ -like "*CORRECTIVE $gov ($inc *") })
+    if (($mine.Count -eq 0) -and ($gov -ne '')) { $mine = @($gate.Corrective | Where-Object { ($_ -like "*CORRECTIVE $gov (*") -and ($_ -notlike "*CORRECTIVE $gov (INC-*") }) }
+    $st = if ($gov -eq '') { 'pending (no governing ack)' } elseif ($mine.Count -eq 0) { 'closed (no action opened)' } elseif (@($mine | Where-Object { $_ -like '*: closed (*' }).Count -eq $mine.Count) { 'closed' } else { 'pending' }
+    Write-Output "  incident $inc`: $st"
+  }
+  # A plain acknowledgement line blocks nothing; a stale, invalid, tie, or
+  # open-action line does.
+  $block = @($gate.Lines | Where-Object { (($_ -like "*$Run*") -and (($_ -notmatch ': acknowledges ') -or ($_ -like '*STALE*'))) -or (($gov -ne '') -and ($_ -like "*CORRECTIVE $gov (*") -and ($_ -notlike '*: closed (*')) })
+  if ($block.Count -eq 0) { Write-Output '  blocking: none' } else { foreach ($b in $block) { Write-Output "  blocking: $("$b".TrimStart('-', ' '))" } }
   if ((@($gate.Unacked) -notcontains $Run) -and (@($gate.ProofUnacked) -notcontains $Run)) { Write-Output "ack: $Run EFFECTIVE (acknowledged now)"; exit 0 }
   $pending = @($gate.Lines | Where-Object { ($_ -like '*: uncommitted*') -or ($_ -like '*edited since its last commit*') } | Where-Object { $ln = $_; $f = [regex]::Match($ln, '^- (\S+?):').Groups[1].Value; ($f -ne '') -and (Test-Path (Join-Path $ackDir $f)) -and ((Get-Content (Join-Path $ackDir $f) -Raw) -match [regex]::Escape("run: $Run ")) })
   if ($pending.Count -gt 0) { Write-Output "ack: $Run PENDING (a draft names it but is not committed: $($pending -join '; '))"; exit 1 }
@@ -131,7 +159,17 @@ if ($FileOverdue) {
   # whole filing and released at exit.
   $null = New-Item -ItemType Directory -Force -Path $nightDir
   $lock = $null
-  try { $lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') } catch { Write-Output "ack: another filing holds $lockPath; retry when it finishes"; exit 1 }
+  # Concurrent filings both land (section 46 item 12): a filing waits for
+  # the lock (bounded by -LockWaitSeconds) and then files against the
+  # state as it is after the other one, instead of refusing.
+  $waitUntil = (Get-Date).AddSeconds([math]::Max(0, $LockWaitSeconds))
+  while ($null -eq $lock) {
+    try { $lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
+    catch {
+      if ((Get-Date) -ge $waitUntil) { Write-Output "ack: another filing held $lockPath for $LockWaitSeconds s; retry when it finishes"; exit 1 }
+      Start-Sleep -Milliseconds 250
+    }
+  }
   $rel = $tablePath.Substring($Root.Length).TrimStart('\', '/') -replace '\\', '/'
   $commitIt = {
     $eap = $ErrorActionPreference
@@ -148,6 +186,20 @@ if ($FileOverdue) {
       if ($LASTEXITCODE -ne 0) { return "git commit failed (exit $LASTEXITCODE)" }
       return ''
     } finally { $ErrorActionPreference = $eap }
+  }
+  if ($Commit -and (Test-Path $retryPath)) {
+    # A lost receipt (section 46 item 12): the commit landed but the retry
+    # record survived (a crash after the commit, or a reported failure that
+    # still committed). The table at HEAD already equals the filed table,
+    # so the retry commits nothing and says which case it was.
+    $eap = $ErrorActionPreference
+    $atHead = ''
+    try { $ErrorActionPreference = 'Continue'; $atHead = ((git -C $Root show "HEAD:$rel" 2>$null) | Out-String) } finally { $ErrorActionPreference = $eap }
+    $onDisk = if (Test-Path $tablePath) { [System.IO.File]::ReadAllText($tablePath) } else { '' }
+    if (($atHead -ne '') -and ((@($atHead -split "`r?`n" | Where-Object { $_ -ne '' }) -join "`n") -ceq (@($onDisk -split "`r?`n" | Where-Object { $_ -ne '' }) -join "`n"))) {
+      Remove-Item $retryPath -Force
+      Write-Output 'ack: lost commit receipt: the pending filing had already landed; nothing recommitted'
+    }
   }
   if ($Commit -and (Test-Path $retryPath)) {
     $err = & $commitIt
