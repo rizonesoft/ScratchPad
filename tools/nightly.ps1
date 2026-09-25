@@ -1223,6 +1223,9 @@ $report += ''
 # (vacuous proof); it reds as a collector bug.
 $debtEntries = @()
 $stagedStubs = @()
+# Debts collected green tonight (D00 T02 §42 item 7): the post-run block
+# checks each against the re-run query.
+$greenIds = @()
 if ($debtQueryError -ne '') {
   $debtEntries += "- debt query failed: $debtQueryError (debts neither attributed nor closed)"
 } else {
@@ -1261,8 +1264,13 @@ if ($debtQueryError -ne '') {
     if ($coverage -eq 'superset') {
       $sub = Get-TrxSubsetCounts (Join-Path $trxDir 'interactive.trx') $debtFilter
       $decision = Test-SubsetClose $sub $debt.Count
-      if ($decision -eq 'close') {
-        $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel
+      $subId = if ($decision -eq 'close') { Test-DebtIdentity $debt.Digest @($sub.Names) } else { $null }
+      if (($decision -eq 'close') -and -not $subId.Ok) {
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: identity mismatch (owed digest $($debt.Digest), executed $($subId.Digest)): debt stays open"
+        $failed = $true
+      } elseif ($decision -eq 'close') {
+        $greenIds += $debt.Id
+        $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest
         $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
         Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
         $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sub.Passed $sub.Failed $sub.Skipped $logRel $note
@@ -1294,7 +1302,15 @@ if ($debtQueryError -ne '') {
       $failed = $true
       continue
     }
-    $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel
+    # Closure binds to the owed test identities (§42 item 6).
+    $fullId = Test-DebtIdentity $debt.Digest @(Get-TrxExecutedNames (Join-Path $trxDir 'interactive.trx'))
+    if (-not $fullId.Ok) {
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: identity mismatch (owed digest $($debt.Digest), executed $($fullId.Digest)): debt stays open"
+      $failed = $true
+      continue
+    }
+    $greenIds += $debt.Id
+    $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest
     $note = Add-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
     Write-Output "nightly: night-debt $($debt.Id): $note"
     $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $note
@@ -1318,8 +1334,12 @@ if ($null -ne $debtDoc) {
   # The post-run status beside it (D00 T02 §35 item 9): tonight's
   # collected and red lines are on disk now, so the re-run query reads
   # them; a failed re-run says so rather than dropping the block.
-  try { $report += @(Format-NightDebtPostRun $debtDoc (Get-NightDebtDocument $Root)) }
-  catch { $report += "Debt status after the run: query failed: $_"; $report += ''; $failed = $true }
+  try {
+    $postBlock = @(Format-NightDebtPostRun $debtDoc (Get-NightDebtDocument $Root) $greenIds)
+    $report += $postBlock
+    if (@($postBlock | Where-Object { "$_" -like '*collected-unrecorded*' }).Count -gt 0) { $failed = $true }
+  }
+  catch { $report += @(Format-UnrecordedGreens $greenIds "$_"); $failed = $true }
 }
 $report += '## Filings'
 $report += ''

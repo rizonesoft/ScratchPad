@@ -29,7 +29,7 @@ function Format-NightDebtStatus($Doc, [string]$Heading = 'Debt status at run sta
   return @($Heading, '') + $block + @('')
 }
 
-function Format-NightDebtPostRun($StartDoc, $EndDoc) {
+function Format-NightDebtPostRun($StartDoc, $EndDoc, [string[]]$Greens = @()) {
   # The post-run debt status (D00 T02 §35 item 9): the query re-run after
   # tonight's Night-collected and Night-red lines landed, verbatim, plus one
   # line per debt open at run start that the post-run query no longer lists,
@@ -40,6 +40,11 @@ function Format-NightDebtPostRun($StartDoc, $EndDoc) {
   $closed = @()
   foreach ($d in @($StartDoc.debts)) {
     if (($null -ne $d) -and -not $endIds.ContainsKey("$($d.id)")) { $closed += "    $($d.id) state collected tonight (was $($d.state))" }
+  }
+  # A debt collected green tonight that the re-run query still lists open
+  # has an unrecorded closure (D00 T02 §42 item 7).
+  foreach ($g in @($Greens)) {
+    if ($endIds.ContainsKey("$g")) { $closed += "    $g state collected-unrecorded (green tonight; the query still reads it open, closure unrecorded)" }
   }
   $block = @($EndDoc.report_block | Where-Object { $null -ne $_ }) + $closed
   if ($block.Count -eq 0) { return @() }
@@ -63,6 +68,9 @@ function Get-OpenNightDebts {
       File = "$($d.file)"; Id = "$($d.id)"; Section = "$($d.section)"; Count = "$($d.count)"; Filter = "$($d.filter)"
       Age = $(if ($null -eq $d.age) { '?n' } else { "$($d.age)n" }); Due = "$($d.due)"; Owner = "$($d.owner)"; State = "$($d.state)"
       Overdue = [bool]$d.overdue; LastLog = $(if ($null -eq $d.last_log) { 'none' } else { "$($d.last_log)" }); Line = "$($d.line)"
+      # The owed tests' digest (D00 T02 §42 item 6), '' when the owed line
+      # names none.
+      Digest = $(if ($null -eq $d.digest) { '' } else { "$($d.digest)" })
     }
   }
   return $debts
@@ -76,8 +84,28 @@ function Get-DebtDotnetFilter([string]$Filter) {
   return "Category=$Filter"
 }
 
-function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log) {
-  return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log)"
+function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Digest = '') {
+  # The executed tests' digest rides the line (D00 T02 §42 item 6), so the
+  # graph can bind the closure to the owed test identities.
+  $dg = if ($Digest -ne '') { "; digest $Digest" } else { '' }
+  return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log$dg)"
+}
+
+function Get-TestNamesDigest([string[]]$Names) {
+  # The test-identity digest (D00 T02 §42 item 6): the first 16 hex of
+  # SHA-256 over the distinct names, ordinal-sorted, newline-joined, so an
+  # equally sized but different set never shares it.
+  $set = New-Object 'System.Collections.Generic.SortedSet[string]' ([System.StringComparer]::Ordinal)
+  foreach ($n in @($Names)) { if ("$n" -ne '') { $null = $set.Add("$n") } }
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { return ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes((@($set) -join "`n")))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
+}
+
+function Test-DebtIdentity([string]$OwedDigest, [string[]]$ExecutedNames) {
+  # Closure binds to the owed tests (§42 item 6): with an owed digest,
+  # the executed names must hash to it. Returns Ok plus the digest.
+  $dg = Get-TestNamesDigest $ExecutedNames
+  return [pscustomobject]@{ Ok = (($OwedDigest -eq '') -or ($OwedDigest -eq $dg)); Digest = $dg }
 }
 
 function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Run = '') {
@@ -186,6 +214,14 @@ function Test-DebtCoverage([string]$DebtFilter, [string]$CollectFilter, [string]
   return 'uncovered'
 }
 
+function Format-UnrecordedGreens([string[]]$Greens, [string]$Why) {
+  # The post-run block when the re-run query itself failed (§42 item 7):
+  # every debt collected green tonight reads collected-unrecorded.
+  $out = @("Debt status after the run: query failed: $Why", '')
+  foreach ($g in @($Greens)) { $out += "    $g state collected-unrecorded (green tonight; the re-run query failed, closure unrecorded)" }
+  return $out + @('')
+}
+
 function Get-TrxSubsetCounts([string]$TrxPath, [string]$DebtFilter) {
   # Subset counts for a superset run (R2-F4): AND-only
   # FullyQualifiedName/Name constraints matched against trx test
@@ -209,6 +245,7 @@ function Get-TrxSubsetCounts([string]$TrxPath, [string]$DebtFilter) {
   try { [xml]$x = Get-Content $TrxPath -Raw } catch { return $null }
   $rows = @(Select-Xml -Xml $x -XPath '//*[local-name()="UnitTestResult"]' | ForEach-Object { $_.Node })
   $p = 0; $f = 0; $s = 0
+  $names = @()
   foreach ($r in $rows) {
     $name = "$($r.testName)"
     $hit = $true
@@ -224,12 +261,12 @@ function Get-TrxSubsetCounts([string]$TrxPath, [string]$DebtFilter) {
     }
     if (-not $hit) { continue }
     switch ("$($r.outcome)") {
-      'Passed' { $p++ }
-      'Failed' { $f++ }
+      'Passed' { $p++; $names += $name }
+      'Failed' { $f++; $names += $name }
       default { $s++ }
     }
   }
-  return @{ Passed = $p; Failed = $f; Skipped = $s }
+  return @{ Passed = $p; Failed = $f; Skipped = $s; Names = $names }
 }
 
 function Format-DebtGreenEntry([string]$Id, [string]$Section, [int]$P, [int]$F, [int]$S, [string]$LogRel, [string]$Note) {
@@ -243,7 +280,9 @@ function Format-DebtGreenEntry([string]$Id, [string]$Section, [int]$P, [int]$F, 
   if ($Note -like '*already carries*') {
     return @("- $Id ($Section): collection green ($counts); already closed (Night-collected present)", $false)
   }
-  return @("- $Id ($Section): collection green ($counts); close-loop skipped ($Note)", $true)
+  # A green collection whose Night-collected write failed is closed in
+  # fact and unrecorded on disk (D00 T02 §42 item 7): the run reds.
+  return @("- $Id ($Section): collected-unrecorded: collection green ($counts) but the Night-collected write failed ($Note); closure unrecorded", $true)
 }
 
 function Split-DebtSkips([string[]]$SkipLines) {

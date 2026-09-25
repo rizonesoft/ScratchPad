@@ -65,6 +65,24 @@ $endDoc = [pscustomobject]@{ debts = @([pscustomobject]@{ id = 'D90-T01-S1-N2'; 
 $post = @(Format-NightDebtPostRun $startDoc $endDoc)
 Assert (($post[0] -like 'Debt status after the run*') -and ($post -contains '    todo/x.md D90-T01-S1-N2 state red-repeat') -and ($post -contains '    D90-T01-S1-N1 state collected tonight (was open)')) 'post-run-reads-collected-tonight' ($post -join ' | ')
 Assert (@(Format-NightDebtPostRun ([pscustomobject]@{ debts = @(); report_block = @() }) ([pscustomobject]@{ debts = @(); report_block = @() })).Count -eq 0) 'post-run-empty-when-no-debt'
+# D00 T02 §42 item 7: a green collection whose write or re-query failed
+# reads collected-unrecorded.
+$postU = @(Format-NightDebtPostRun $startDoc $endDoc @('D90-T01-S1-N2'))
+Assert (($postU -contains '    D90-T01-S1-N2 state collected-unrecorded (green tonight; the query still reads it open, closure unrecorded)')) 's42-green-still-open-reads-collected-unrecorded' ($postU -join ' | ')
+$postQ = @(Format-UnrecordedGreens @('D90-T01-S1-N1') 'boom')
+Assert (($postQ[0] -eq 'Debt status after the run: query failed: boom') -and ($postQ -contains '    D90-T01-S1-N1 state collected-unrecorded (green tonight; the re-run query failed, closure unrecorded)')) 's42-failed-requery-reads-collected-unrecorded' ($postQ -join ' | ')
+$gU = Format-DebtGreenEntry 'D90-T01-S1-N1' 's' 1 0 0 'log' 'skipped: write failed'
+Assert (($gU[0] -like '*collected-unrecorded*closure unrecorded') -and ($gU[1] -eq $true)) 's42-failed-write-entry-reds' "$($gU[0])"
+# D00 T02 §42 item 6: closure binds to the owed test identities.
+$dA = Get-TestNamesDigest @('UI.A.One', 'UI.A.Two')
+$dB = Get-TestNamesDigest @('UI.A.Two', 'UI.A.One', 'UI.A.One')
+$dC = Get-TestNamesDigest @('UI.A.One', 'UI.A.Three')
+Assert (($dA -eq $dB) -and ($dA -ne $dC) -and ($dA -match '^[0-9a-f]{16}$')) 's42-digest-is-order-free-and-set-exact' "$dA $dC"
+$idSwap = Test-DebtIdentity $dA @('UI.A.One', 'UI.A.Three')
+$idOk = Test-DebtIdentity $dA @('UI.A.Two', 'UI.A.One')
+$idLegacy = Test-DebtIdentity '' @('UI.A.One')
+Assert ((-not $idSwap.Ok) -and $idOk.Ok -and $idLegacy.Ok) 's42-swapped-test-at-same-count-keeps-debt-open'
+Assert ((Format-CollectedLine '2026-09-20' 'D90-T01-S1-N1' 2 0 0 'build/x.trx' $dA) -eq "**Night-collected:** 2026-09-20 D90-T01-S1-N1 (2 passed, 0 failed, 0 skipped; log build/x.trx; digest $dA)") 's42-collected-line-carries-the-digest'
 $liveDoc = Get-NightDebtDocument $Root $py
 $liveText = @(& $py (Join-Path $Root 'scripts/todo-graph.py') query night-debt 2>&1 | Where-Object { "$_" -match '^\s{4}\S' } | ForEach-Object { "$_" })
 Assert ((@($liveDoc.report_block) -join "`n") -eq ($liveText -join "`n")) 'live-report-block-equals-query-text' "block $(@($liveDoc.report_block).Count) text $($liveText.Count)"
