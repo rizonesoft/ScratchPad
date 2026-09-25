@@ -72,7 +72,7 @@ track: W0
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [x]   |
 |   30  |   §30   | Nightly evidence residuals | §22 |  [x]   |
 |   31  |   §31   | Acknowledgement residuals | §23 |  [x]   |
-|   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
+|   32  |   §32   | Trend and telemetry residuals | §25 |  [x]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
 |   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
@@ -80,6 +80,7 @@ track: W0
 |   37  |   §37   | Population gate residuals | §29 |  [ ]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
+|   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
 
 ---
 
@@ -1036,6 +1037,7 @@ Why this section exists: the §25 plan review returned 22 findings; 15 file here
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §40 -- residual follow-ups filed from this section's plan review.
 - -> XREF: D00 T02 §25 -- filed from its plan review; carries the trend and telemetry surface it shipped.
 
 - [x] Night identity survives daylight-saving transitions and timezone moves by keying on the scheduled night (the task trigger's calendar date) rather than a recorded offset alone, and notification and acknowledgement consumers read the same key. Done when: a DST-transition fixture and a timezone-move fixture keep one night each. (D00-T02-S25-PR2.)
@@ -1056,6 +1058,13 @@ Why this section exists: the §25 plan review returned 22 findings; 15 file here
 - [x] Commit: `"workspace: close the trend and telemetry residuals"`
 
 **Test checkpoint:** DST keeps nights, coverage reads, the matrix cites, cohorts flag, windows state insufficiency, tails label honestly, pauses read paused, degraded data marks, prune waits on archival, the store recovers, native supersedes backfill, renders match after deletion, provenance locates, every channel redacts, and alerts attribute. Cheaper substitute that fails: more columns over the same untrusted windows.
+
+> **Verified:** 2026-09-25 | §32 | every consumer keys a run by one night (DST, zone moves, and late timer launches keep their trigger's night); the trend shows coverage over the recorded population, a series matrix every column and section cites, honest tails, calendar-windowed per-series alerts with cohort (harness and population hashes) and attribution context, the task's own calendar from enrollment with pauses and degraded nights; the metrics store locks, validates every value, recovers truncation, compacts with a backup, and supersedes a backfill only with an executed same-run native row; prune waits for a fresh archive; metrics-only renders match raw renders through the renderer's own path, alerts included; backfill provenance is per value; one disclosure contract covers every channel; six nightly suites green; proof run 2026-09-25-105145-pid43948 agrees
+> **Review:** round 5 (Full), candidates `8d5ffd9` `06da07a` `cb9a7d2` `f78e547` `c3fc1df` `09459ca` -- GPT R1-R2 bulk needs-attention (R1-F1..F11, R2-F1..F6 fixed), GPT R3 sign-off needs-attention (R3-F1..F9 fixed as blocking), GPT R4 depth (R4-F1, F2, F4 fixed, F3 rejected), GPT R5 depth governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` approve · `record` approve (gpt-6-astra); below-bar R5-F1..F3 fixed in `09459ca` and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s32.md
+> **Plan review:** GPT medium, filed D00 T02 §40 (run 20260925-D00-T02-S32-codex-c06751119-r6)
+> **CRUD:** applicable | the metrics store appends under a lock, starts a fresh line after a truncation, compacts atomically after a backup with read-back, and records each supersession once; prune deletes only archived stamps; the backfill writes its result atomically
+> **Duration:** 2026-09-25T07:58:52Z to 2026-09-25T08:54:59Z
+> **Reviewed-tip:** 09459cae4606af4e4e4726f84b5ce6da813190f4
 
 ## 33. Notification Residuals
 
@@ -1191,6 +1200,33 @@ Why this section exists: the §31 plan review returned 17 findings; 12 file here
 - [ ] Commit: `"workspace: settle the second acknowledgement residuals"`
 
 **Test checkpoint:** The key prose agrees, dispositions transition as defined, the two clocks stay apart, ties fail closed, revisions keep open actions, repairs map, evidence addresses its incidents, filing survives interruption, the helper's commits stay scoped, proof relabeling is refused, the XREFs validate, the helper reports effectiveness, and mixed covers validate. Cheaper substitute that fails: more frontmatter fields with no transitions behind them.
+
+## 40. Trend and Telemetry Second Residuals
+
+Why this section exists: the §32 plan review returned 19 findings; 17 file here and 2 are rejected with reasons in the §32 findings file. §32 made the trend's night identity, windows, cohorts, calendar, store, equivalence, provenance, and disclosure honest; these carry the same surface through the cases its fixtures do not reach. -> SOURCE: plan-review-D00-T02-s32-2026-09-25-s40 D00-T02-S32-PR1 D00-T02-S32-PR2 D00-T02-S32-PR3 D00-T02-S32-PR4 D00-T02-S32-PR5 D00-T02-S32-PR6 D00-T02-S32-PR7 D00-T02-S32-PR8 D00-T02-S32-PR10 D00-T02-S32-PR11 D00-T02-S32-PR12 D00-T02-S32-PR13 D00-T02-S32-PR14 D00-T02-S32-PR15 D00-T02-S32-PR16 D00-T02-S32-PR17 D00-T02-S32-PR18 (composite keys, trigger edge cases, schedule history, cohort suppression, unknown cohorts, detector boundaries, coverage identity, exclusion states, archival concurrency, store failure modes, authority, mixed-corpus equivalence, durable source identity, disclosure scope, alert lifecycle, attribution, and storage policy from the §32 plan review).
+
+- -> XREF: D00 T02 §32 -- filed from its plan review; carries the trend and telemetry surface it hardened.
+
+- [ ] Night keys carry schedule and host identity as a composite, with a migration from the offset-based keys §25 recorded, so unrelated hosts' runs never merge. Done when: two hosts' runs on one night read as two keys. (D00-T02-S32-PR1.)
+- [ ] Catch-up runs, manual reruns, and a trigger repeated by a DST fall-back have defined night assignment and canonical selection. Done when: a repeated 02:30 across fall-back reads one canonical night. (D00-T02-S32-PR2.)
+- [ ] The schedule carries its history (effective dates per trigger edit) and a completion grace period, so a schedule edit never rewrites past nights and a running job never reads missing. Done when: a trigger moved mid-history keeps earlier nights' due state. (D00-T02-S32-PR3.)
+- [ ] Cross-cohort comparisons suppress or rebaseline (a new cohort starts its own baseline after a cold start) instead of alerting with a flag. Done when: an environment change followed by a normal night raises no regression. (D00-T02-S32-PR4.)
+- [ ] Unknown environment fields and a missing population hash never establish cohort equivalence: an unknown compares as a change. Done when: unknown to known reads cross-cohort. (D00-T02-S32-PR5.)
+- [ ] Each detector's sample rule, missing-night rule, and window is pinned with threshold-boundary fixtures (exactly at 125 percent, exactly five samples). Done when: each boundary fixture reads its side. (D00-T02-S32-PR6.)
+- [ ] Coverage's denominator is defined across retries, shards, disabled tests, and discovery failures by unique test identity, with an unknown-discovery state. Done when: a duplicate execution cannot raise coverage. (D00-T02-S32-PR7.)
+- [ ] Intentional exclusion (a quarantined or filtered result) is distinct from unusable evidence, and each series states its effect. Done when: an excluded result never marks its night degraded. (D00-T02-S32-PR8.)
+- [ ] Archival verification and pruning share a lock, so a result changed between the check and the delete cannot lose evidence. Done when: an interleaving fixture keeps the changed result's stamp. (D00-T02-S32-PR10.)
+- [ ] The store proves disk-full handling, stale-lock recovery, an interrupted compaction, and a restore from its backup. Done when: each failure fixture ends with a readable store. (D00-T02-S32-PR11.)
+- [ ] Native-over-backfill authority resolves corrected native rows and partial native evidence by revision, preserving the stronger evidence. Done when: a partial native row keeps the backfill's fields it lacks. (D00-T02-S32-PR12.)
+- [ ] Equivalence is proven on a mixed corpus (corrections, cohorts, malformed rows, schedule changes) by comparing structured metrics and alerts as well as the rendered text. Done when: the mixed-corpus fixture compares both. (D00-T02-S32-PR13.)
+- [ ] Historical values stay explainable after pruning: rows keep a durable source identity, a derivation version, and an evidence-availability state. Done when: a pruned night's value names its source and says the raw evidence is gone. (D00-T02-S32-PR14.)
+- [ ] The disclosure contract covers backups, diagnostics, rejected rows, and legacy stored values, sanitizing before persistence. Done when: a planted path in a legacy row is redacted on compaction. (D00-T02-S32-PR15.)
+- [ ] Alerts get stable identities and a lifecycle (persisting, recovered, corrected, superseded) wired to the §25 reconciler and acknowledgement. Done when: a persisting alert raises once and a recovered one closes. (D00-T02-S32-PR16.)
+- [ ] Attribution records exact revisions and ancestry availability and labels itself as correlation, not cause. Done when: a rollback between baseline and latest reads as a non-linear range. (D00-T02-S32-PR17.)
+- [ ] Long-term storage has a retention, deletion, and capacity policy with its effect on historical confidence stated. Done when: a store past capacity compacts or refuses by policy. (D00-T02-S32-PR18.)
+- [ ] Commit: `"workspace: settle the second trend and telemetry residuals"`
+
+**Test checkpoint:** Hosts key apart, trigger edge cases assign one night, schedule edits keep history, cohort changes rebaseline, unknowns read as changes, detector boundaries pin, coverage counts identities, exclusions never degrade, prune and archive interleave safely, store failures recover, authority keeps stronger evidence, mixed corpora compare, pruned values explain themselves, legacy rows redact, alerts close, attribution says correlation, and storage keeps its policy. Cheaper substitute that fails: more rows in the matrix with no fixtures behind them.
 
 ## Verification
 
