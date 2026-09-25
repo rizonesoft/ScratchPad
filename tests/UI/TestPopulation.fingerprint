@@ -14,30 +14,41 @@ run-a:
   UI.BindingManifestTests.AccessibleTextMismatchFails
   UI.BindingManifestTests.AKeyTheManifestCannotBindCreditsNothing
   UI.BindingManifestTests.AnXrefAloneDoesNotOweTheChordTest
+  UI.BindingManifestTests.BoundHandlerWithoutTheMutationGuardFails
   UI.BindingManifestTests.ConstantAssertionDoesNotCountAsAnOutcome
   UI.BindingManifestTests.CoveringMethodThatNeverRunsFails
   UI.BindingManifestTests.CoveringTestWithoutAnOutcomeAssertionFails
   UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
   UI.BindingManifestTests.DuplicateWithAnUnresolvedOwnerFails
+  UI.BindingManifestTests.EnablementStatePlantsFail
   UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
   UI.BindingManifestTests.KeyHandlingOutsideTheTwoHomesFails
+  UI.BindingManifestTests.LayoutMatrixPlantsFail
   UI.BindingManifestTests.LiveCoveringTestsAssertAfterTheirPress
   UI.BindingManifestTests.LiveSourceHasNoUndeclaredKeyHandling
   UI.BindingManifestTests.LiveTreeDeclaresFortyFourBindings
   UI.BindingManifestTests.LiveTreeManifestIsClean
   UI.BindingManifestTests.MismatchedMenuLabelFails
+  UI.BindingManifestTests.NumPadDeclarationWithMainRowPressFails
   UI.BindingManifestTests.OwnerStillClaimingTheLiveCommandShipsDisabledFails
   UI.BindingManifestTests.OwnerThatNoLongerOwesTheChordFails
   UI.BindingManifestTests.PlantedAccessKeyCollisionFails
   UI.BindingManifestTests.PlantedConflictFails
+  UI.BindingManifestTests.PlantedDoubleRegistrationFails
   UI.BindingManifestTests.PlantedEnabledButExemptCommandFails
   UI.BindingManifestTests.PlantedHandlerBodySwapFails
   UI.BindingManifestTests.PlantedHandlerSwapFails
   UI.BindingManifestTests.PlantedOsReservedChordFails
   UI.BindingManifestTests.PlantedUndeclaredBindingFails
   UI.BindingManifestTests.ReservedChordsMatchWhateverSpellingTheyAreDeclaredIn
+  UI.BindingManifestTests.RoutingOraclePlantsFail
   UI.BindingManifestTests.StateConditionalEnablementPlantFails
   UI.BindingManifestTests.WrongKeyMutationFailsTheGate
+  UI.BindingMutationTests.ChildRunReadsAPassingPureTest
+  UI.BindingMutationTests.EveryCoveredRowHasAMutationCase
+  UI.BindingMutationTests.OutcomeParseSeparatesKilledSurvivedAndInconclusive
+  UI.BindingMutationTests.PlantedConstantLocalPassesTheStaticRuleButFailsTheMutationRun
+  UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey
   UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser
   UI.BingLaunchTests.FailingCaptureWriteReportsInTheWindow
   UI.ChromeTests.FullStripParksAddButtonLeftOfCaption
@@ -223,12 +234,15 @@ run-a:
   UI.UiInputFunnelTests.ModifierPressedMidInjectionOutsideTheChordIsNotReleased
   UI.UiInputFunnelTests.OnlyTheFunnelTouchesTheKeyboard
   UI.UiInputFunnelTests.OperatorHeldModifierIsNeverReleased
+  UI.UiInputFunnelTests.PartialSendReleasesExactlyTheInjectedKeys
   UI.UiInputFunnelTests.PlantedFocusOnTheWrongControlFailsThePrecondition
   UI.UiInputFunnelTests.PreconditionSettlingWithinTheWaitStillSends
   UI.UiInputFunnelTests.StuckModifierIsReleasedAndFailsLoud
   UI.UiInputFunnelTests.TheAppsOtherWindowFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.ThrowingSenderStillSendsKeyUpReleasesModifiersAndKeepsItsFailure
   UI.UiInputFunnelTests.TypedTextOwnsOnlyItsCharactersModifiers
+  UI.UiInputFunnelTests.WheelOnTargetScrollsOnceBetweenCtrlDownAndUp
+  UI.UiInputFunnelTests.WheelWithFocusLostScrollsNothing
   UI.UiLeakBundleTests.EventSlicesFillFromGateLog
   UI.UiLeakBundleTests.EventSlicesScrubTitles
   UI.UiLeakBundleTests.RetentionPrunesOldBundles
@@ -237,8 +251,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 231
-run-a-cases: 284
+run-a-methods: 245
+run-a-cases: 298
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -254,6 +268,7 @@ interactive:
   UI.AcceleratorTests.ChordCtrlShiftLOpensLock
   UI.AcceleratorTests.ChordCtrlShiftNOpensSecondWindow
   UI.AcceleratorTests.ChordCtrlShiftXOpensExport
+  UI.BindingMutationTests.CoveringTestFailsWithItsCommandSuppressed
   UI.ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity
   UI.ChordRoutingTests.WindowGlobalChordRoutesPerSurface
   UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
@@ -287,5 +302,5 @@ interactive:
   UI.TabBarTests.NumberShortcutsCoverMiddlePositions
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
-interactive-methods: 40
-interactive-cases: 45
+interactive-methods: 41
+interactive-cases: 72

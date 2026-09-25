@@ -44,34 +44,37 @@ public sealed class ChordRoutingTests
             window.Focus();
             Thread.Sleep(300);
             Assert.Equal(1, WaitForTabCount(window, 1));
+            // Expectations per surface come from the routing oracle in
+            // docs/ui-input-audit.md (D00 T02 §36 item 4).
+            var oracle = BindingManifest.SubTable(File.ReadAllText(Path.Combine(BindingManifestTests.RepoRoot(), "docs", "ui-input-audit.md")), "Routing oracle", 6, out var parse);
+            Assert.Empty(parse);
+            int tabs = 1;
 
-            // Editor: dispatches.
+            // Editor.
             var box = ContentBox(window);
             box.Focus();
             Thread.Sleep(200);
             UiInput.PressKey(box, VirtualKeyShort.KEY_T, withControl: true);
-            Assert.Equal(2, WaitForTabCount(window, 2));
+            tabs = ExpectRouting(window, oracle, "editor", tabs);
 
-            // Tab strip: dispatches.
+            // Tab strip.
             var tab = TabItems(window)[0];
             tab.Focus();
             Thread.Sleep(200);
             UiInput.PressKey(tab, VirtualKeyShort.KEY_T, withControl: true);
-            Assert.Equal(3, WaitForTabCount(window, 3));
+            tabs = ExpectRouting(window, oracle, "tab strip", tabs);
 
-            // Open menu: suppressed (recorded default), and the menu closes
-            // cleanly afterwards.
+            // Open menu, and the menu closes cleanly afterwards.
             var file = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFile"));
             Assert.NotNull(file);
             file.Patterns.Invoke.Pattern.Invoke();
             Thread.Sleep(600);
             UiInput.PressKey(window, VirtualKeyShort.KEY_T, withControl: true);
-            Thread.Sleep(800);
-            Assert.Equal(3, TabItems(window).Count);
+            tabs = ExpectRouting(window, oracle, "open menu", tabs);
             UiInput.PressKey(window, VirtualKeyShort.ESCAPE);
             Thread.Sleep(400);
 
-            // Modal dialog: suppressed.
+            // Modal dialog.
             UiInput.InvokeMenuItem(window, "MenuTools", "MenuToolsStats");
             var modal = Retry.WhileNull(
                 () => window.FindFirstDescendant(cf => cf.ByAutomationId("StatsDialog")),
@@ -79,8 +82,7 @@ public sealed class ChordRoutingTests
                 TimeSpan.FromMilliseconds(250)).Result;
             Assert.NotNull(modal);
             UiInput.PressKey(modal, VirtualKeyShort.KEY_T, withControl: true);
-            Thread.Sleep(800);
-            Assert.Equal(3, TabItems(window).Count);
+            _ = ExpectRouting(window, oracle, "modal", tabs);
             UiInput.PressKey(modal, VirtualKeyShort.ESCAPE);
         }
         finally
@@ -112,6 +114,19 @@ public sealed class ChordRoutingTests
         {
             window.Focus();
             Thread.Sleep(300);
+
+            // US English, Shift-dependent plus (layout matrix, D00 T02 §36
+            // item 3): Ctrl+Shift+OEM_PLUS reaches no command while zoom
+            // ships disabled, so the editor text holds.
+            var usBox = ContentBox(window);
+            usBox.Focus();
+            Thread.Sleep(200);
+            string usBefore = usBox.Text ?? string.Empty;
+            UiInput.PressKey(usBox, VirtualKeyShort.OEM_PLUS, withControl: true, withShift: true);
+            Thread.Sleep(600);
+            Assert.Equal(usBefore, usBox.Text ?? string.Empty);
+            window.Focus();
+            Thread.Sleep(200);
             SwitchLayout(hwnd, thread, german);
 
             // Declared chords dispatch by virtual key under the layout.
@@ -173,6 +188,23 @@ public sealed class ChordRoutingTests
                 }
             }
         }
+    }
+
+    // One Ctrl+T press's outcome against the oracle: execute adds a tab,
+    // suppress leaves the count; returns the count now expected.
+    static int ExpectRouting(Window window, List<string[]> oracle, string surface, int before)
+    {
+        string want = BindingManifest.RoutingExpectation(oracle, "Ctrl+T", "Tabs.NewTab", surface);
+        Assert.True(want is "execute" or "suppress", $"the routing oracle has no Ctrl+T outcome on {surface} (read '{want}')");
+        if (want == "execute")
+        {
+            Assert.Equal(before + 1, WaitForTabCount(window, before + 1));
+            return before + 1;
+        }
+
+        Thread.Sleep(800);
+        Assert.Equal(before, TabItems(window).Count);
+        return before;
     }
 
     const uint KlfNoTellShell = 0x80;

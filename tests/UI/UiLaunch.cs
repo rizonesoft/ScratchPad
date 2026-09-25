@@ -161,6 +161,53 @@ internal static class UiLaunch
         }
     }
 
+    // Child test runs (D00 T02 §36 item 1): the binding mutation run
+    // executes one covering test in a child `dotnet test` over this
+    // assembly with extra environment (the mutation target and the run
+    // marker), which the app it launches inherits. Output is read to the
+    // end on both streams; a run past the timeout is killed and reported.
+    internal static (int Exit, string Output) RunChildTest(
+        string filter,
+        IReadOnlyDictionary<string, string> environment,
+        TimeSpan timeout,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        TakeSeed();
+        string testId = TestId(member, file);
+        string root = AppContext.BaseDirectory;
+        while (!Directory.Exists(Path.Combine(root, "tests", "UI")))
+        {
+            root = Path.GetDirectoryName(root) ?? throw new InvalidOperationException("repo root not found above the test assembly");
+        }
+
+        string dotnet = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") is { Length: > 0 } host && File.Exists(host)
+            ? host
+            : Path.Combine(root, ".tools", "dotnet-win-x64", "dotnet.exe");
+        string assembly = typeof(UiLaunch).Assembly.Location;
+        string args = $"test \"{assembly}\" --filter \"{filter}\"";
+        var info = new ProcessStartInfo(dotnet, args) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var (name, value) in environment)
+        {
+            info.Environment[name] = value;
+        }
+
+        using var process = Process.Start(info);
+        Assert.NotNull(process);
+        UiLaunchDiagnostics.Record(testId, args, process.Id, null, "child-test", 0, 0, expectWindow: false);
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(timeout))
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit();
+            return (-1, $"child test run killed after {timeout.TotalSeconds:0} s: {filter}\n{stdout.Result}{stderr.Result}");
+        }
+
+        return (process.ExitCode, stdout.Result + stderr.Result);
+    }
+
     // Tool runs (D00 T02 §18 item 8): gate and probe subprocesses.
     // The caller owns the process (wait plus dispose); the start
     // itself stays in the one home, so the guard sees no bypass.

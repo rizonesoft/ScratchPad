@@ -175,6 +175,7 @@ Why this section exists: zoom and wrap are small, visible, and easy to get subtl
 **Test checkpoint:** Steps, shortcuts, persistence, and wrap math all driven; capture comparison passes. Cheaper substitute that fails: zoom that works but with different steps than Notepad.
 
 - -> XREF: D00 T02 §21 -- the binding manifest guard holds this section's F5, Ctrl+Plus, Ctrl+Minus, and Ctrl+0 chord exemption open until the chord test above lands.
+- -> XREF: D00 T02 §36 -- the layout matrix's plus and minus rows and the Ctrl+wheel funnel path in `docs/ui-input-audit.md` turn into this section's zoom rows when zoom ships.
 
 
 ## 6. Context Menu and Mouse Behaviors

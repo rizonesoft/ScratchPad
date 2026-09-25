@@ -121,7 +121,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     [Fact]
     public void PlantedHandlerBodySwapFails()
     {
-        var (_, parse) = LiveInputs(menuCode: c => c.Replace("void OnFileNewTab(object sender, RoutedEventArgs e) => host?.NewTab();", "void OnFileNewTab(object sender, RoutedEventArgs e) => host?.CloseTab();", StringComparison.Ordinal));
+        var (_, parse) = LiveInputs(menuCode: c => c.Replace("        host?.NewTab();", "        host?.CloseTab();", StringComparison.Ordinal));
         Assert.Contains(parse, p => p.Contains("MenuFileNewTab: handler OnFileNewTab calls host CloseTab, the manifest says NewTab", StringComparison.Ordinal));
         var table = new Dictionary<string, string>(BindingManifest.HostCalls, StringComparer.Ordinal);
         table.Remove("MenuFileSave");
@@ -315,7 +315,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     {
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D { void M() { box.KeyDown += OnKey; } }"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs", "class W { void Other() { root.KeyboardAccelerators.Add(a); } }"));
-        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { action(); args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
+        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { if (!TestMutation.Suppresses(TestMutation.Key((int)key, (int)modifiers), Environment.GetEnvironmentVariable)) { action(); } args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
         const string Tab = BindingManifest.TabSourcePath;
         Assert.Empty(BindingManifest.UndeclaredKeyHandling(Tab,
             "class W { static void AddTabAccelerators(UIElement scope) { AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, N); } " + Helper + " }"));
@@ -381,6 +381,93 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.Equal(
             ["MenuFileSave: displays 'Ctrl+Shift+S', manifest says 'Ctrl+S'"],
             LabelMismatches(expected, new Dictionary<string, string>(StringComparer.Ordinal) { ["MenuFileSave"] = "Ctrl+Shift+S", ["MenuViewZoomIn"] = "Ctrl++" }));
+    }
+
+    // D00 T02 §36 item 2: a NumPad-only declaration is not covered by a
+    // main-row press of the same canonical chord.
+    [Fact]
+    public void NumPadDeclarationWithMainRowPressFails()
+    {
+        var (inputs, _) = LiveInputs(
+            audit: a => a.Replace(
+                "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |",
+                "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | covered | `AcceleratorTests.ChordCtrlShiftGOpensStats` | - | - |",
+                StringComparison.Ordinal),
+            testSource: (cls, src) => cls == "AcceleratorTests"
+                ? src.Replace("VirtualKeyShort.KEY_G, withControl: true, withShift: true", "VirtualKeyShort.OEM_PLUS, withControl: true", StringComparison.Ordinal)
+                : src);
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("ChordCtrlShiftGOpensStats presses Ctrl+Plus only on another physical key; the declaration binds the numpad key", StringComparison.Ordinal));
+        var (numpad, _) = LiveInputs(
+            audit: a => a.Replace(
+                "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | disabled | disabled until its owner lands; the owner's checklist owes the physical-chord test | operator | D02 T01 §5 |",
+                "| Ctrl+Plus | View: Zoom in (`MenuViewZoomIn`) | covered | `AcceleratorTests.ChordCtrlShiftGOpensStats` | - | - |",
+                StringComparison.Ordinal),
+            testSource: (cls, src) => cls == "AcceleratorTests"
+                ? src.Replace("VirtualKeyShort.KEY_G, withControl: true, withShift: true", "VirtualKeyShort.ADD, withControl: true", StringComparison.Ordinal)
+                : src);
+        Assert.DoesNotContain(BindingManifest.Check(numpad), p => p.Contains("only on another physical key", StringComparison.Ordinal));
+    }
+
+    // D00 T02 §36 item 1: every bound handler opens with the mutation
+    // guard, so the mutation run can suppress the command it names.
+    [Fact]
+    public void BoundHandlerWithoutTheMutationGuardFails()
+    {
+        var (_, parse) = LiveInputs(menuCode: c => Regex.Replace(c, "if \\(Mutated\\(\"MenuFileNewTab\"\\)\\)\\s*\\{\\s*return;\\s*\\}", string.Empty));
+        Assert.Contains(parse, p => p.StartsWith("MenuFileNewTab: handler OnFileNewTab does not open with", StringComparison.Ordinal));
+        Assert.Empty(LiveInputs().Parse);
+    }
+
+    // D00 T02 §36 item 5: a chord registered twice with no exactly-once
+    // test fails.
+    [Fact]
+    public void PlantedDoubleRegistrationFails()
+    {
+        var (inputs, _) = LiveInputs(xaml => xaml.Replace(
+            "<KeyboardAccelerator Modifiers=\"Control,Shift\" Key=\"N\" />",
+            "<KeyboardAccelerator Modifiers=\"Control,Shift\" Key=\"N\" /><KeyboardAccelerator Modifiers=\"Control\" Key=\"N\" />",
+            StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(inputs), p => p.StartsWith("exactly-once: Ctrl+N is declared 2 times", StringComparison.Ordinal));
+        Assert.Empty(BindingManifest.ExactlyOnceProblems(LiveInputs().Inputs.Declarations, BindingManifest.ExactlyOnce, LiveInputs().Inputs.TestSource));
+    }
+
+    // D00 T02 §36 item 4: the routing oracle needs a row per declaration,
+    // valid outcomes, and n/a exactly for disabled commands.
+    [Fact]
+    public void RoutingOraclePlantsFail()
+    {
+        var (missing, _) = LiveInputs(audit: a => a.Replace("| Ctrl+T | `Tabs.NewTab` | execute | execute | suppress | suppress |\n", string.Empty, StringComparison.Ordinal)
+            .Replace("| Ctrl+T | `Tabs.NewTab` | execute | execute | suppress | suppress |\r\n", string.Empty, StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(missing), p => p == "routing oracle: Ctrl+T -> Tabs.NewTab has no row");
+        var (wrong, _) = LiveInputs(audit: a => a.Replace("| Ctrl+T | `Tabs.NewTab` | execute | execute | suppress | suppress |", "| Ctrl+T | `Tabs.NewTab` | execute | maybe | n/a | suppress |", StringComparison.Ordinal));
+        var problems = BindingManifest.Check(wrong);
+        Assert.Contains(problems, p => p.Contains("on tab strip reads 'maybe'", StringComparison.Ordinal));
+        Assert.Contains(problems, p => p.Contains("on open menu reads 'n/a' but the command is live", StringComparison.Ordinal));
+    }
+
+    // D00 T02 §36 item 3: a layout row naming an unfenced case, or a case
+    // that never presses the row's physical key, fails.
+    [Fact]
+    public void LayoutMatrixPlantsFail()
+    {
+        var (unfenced, _) = LiveInputs(audit: a => a.Replace(
+            "| German (00000407) | Ctrl+T@main | a new tab: dispatch by virtual key | D00 T02 §28 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |",
+            "| German (00000407) | Ctrl+T@main | a new tab: dispatch by virtual key | D00 T02 §28 | `BindingManifestTests.LiveTreeManifestIsClean` |",
+            StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(unfenced), p => p.Contains("LiveTreeManifestIsClean` is not fenced", StringComparison.Ordinal));
+        var (wrongKey, _) = LiveInputs(audit: a => a.Replace("| Ctrl+Plus@numpad |", "| Ctrl+Plus@main |", StringComparison.Ordinal));
+        Assert.Contains(BindingManifest.Check(wrongKey), p => p.Contains("never presses Ctrl+Plus@main", StringComparison.Ordinal));
+    }
+
+    // D00 T02 §36 item 7: an owner-declared state needs a known setup and
+    // a resolving owner.
+    [Fact]
+    public void EnablementStatePlantsFail()
+    {
+        var (unknown, _) = LiveInputs(audit: a => a.Replace("| read-only document | open-read-only | D01 T01 §5 |", "| clipboard has text | set-clipboard | D02 T09 §99 |", StringComparison.Ordinal));
+        var problems = BindingManifest.Check(unknown);
+        Assert.Contains(problems, p => p.Contains("names setup 'set-clipboard'", StringComparison.Ordinal));
+        Assert.Contains(problems, p => p.Contains("names owner 'D02 T09 §99'", StringComparison.Ordinal));
     }
 
     internal static List<string> LabelMismatches(Dictionary<string, string> expected, Dictionary<string, string> seen) =>
@@ -452,6 +539,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
             {
                 var s = BindingManifest.ReadSection(root, reference);
                 return section?.Invoke(reference, s) ?? s;
-            }), parse);
+            },
+            auditText), parse);
     }
 }

@@ -17,6 +17,9 @@ namespace UI;
 // accessible name and description against the XAML, and reads every
 // disabled exemption in three representative states (fresh window,
 // file open, selection present), failing as soon as one is usable.
+// Since D00 T02 §36 item 7 the states come from the audit's Enablement
+// states table, where owners declare their own (read-only document,
+// text edited twice).
 [Collection("UI tests")]
 public sealed class MenuLabelTests
 {
@@ -56,35 +59,67 @@ public sealed class MenuLabelTests
         Assert.Empty(parse);
         var ids = rows.Where(r => r.Class == "disabled").Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
         Assert.NotEmpty(ids);
+        // The states come from the audit's Enablement states table: §28's
+        // three plus owner-declared ones (D00 T02 §36 item 7).
+        var states = BindingManifest.SubTable(File.ReadAllText(Path.Combine(root, "docs", "ui-input-audit.md")), "Enablement states", 3, out var stateParse);
+        Assert.Empty(stateParse);
         var observations = new List<BindingManifest.StateObservation>();
-
-        WithApp(null, window =>
+        foreach (string[] state in states)
         {
-            Observe(observations, "fresh window", ReadBound(window, ids));
-            var box = ContentBox(window);
-            UiInput.AppendText(box, "selected text");
-            UiInput.SelectAllText(box);
-            Assert.False(string.IsNullOrEmpty(box.Patterns.Text.Pattern.GetSelection().FirstOrDefault()?.GetText(-1)), "the selection state has no selection");
-            Observe(observations, "selection present", ReadBound(window, ids));
-            return 0;
-        });
-
-        string file = Path.Combine(Path.GetTempPath(), $"scratchpad-enablement-{Guid.NewGuid():N}.txt");
-        File.WriteAllText(file, "file open state\n");
-        try
-        {
-            WithApp($"\"{file}\"", window =>
-            {
-                Observe(observations, "file open", ReadBound(window, ids));
-                return 0;
-            });
-        }
-        finally
-        {
-            File.Delete(file);
+            Observe(observations, state[0], BuildState(state[1], window => ReadBound(window, ids)));
         }
 
-        Assert.Empty(BindingManifest.EnablementProblems(rows, observations));
+        Assert.Empty(BindingManifest.EnablementProblems(rows, observations, states.Select(s => s[0])));
+    }
+
+    // Builds one named setup in a fresh app and reads the bound items there.
+    static Dictionary<string, Read> BuildState(string setup, Func<Window, Dictionary<string, Read>> read)
+    {
+        switch (setup)
+        {
+            case "launch":
+                return WithApp(null, read);
+            case "select-text":
+                return WithApp(null, window =>
+                {
+                    var box = ContentBox(window);
+                    UiInput.AppendText(box, "selected text");
+                    UiInput.SelectAllText(box);
+                    Assert.False(string.IsNullOrEmpty(box.Patterns.Text.Pattern.GetSelection().FirstOrDefault()?.GetText(-1)), "the selection state has no selection");
+                    return read(window);
+                });
+            case "edit-twice":
+                return WithApp(null, window =>
+                {
+                    var box = ContentBox(window);
+                    UiInput.AppendText(box, "first edit");
+                    UiInput.AppendText(box, " second edit");
+                    Assert.Equal("first edit second edit", box.Text);
+                    return read(window);
+                });
+            case "open-file":
+            case "open-read-only":
+                string file = Path.Combine(Path.GetTempPath(), $"scratchpad-enablement-{Guid.NewGuid():N}.txt");
+                File.WriteAllText(file, "file open state\n");
+                try
+                {
+                    if (setup == "open-read-only")
+                    {
+                        File.SetAttributes(file, FileAttributes.ReadOnly);
+                    }
+
+                    return WithApp($"\"{file}\"", read);
+                }
+                finally
+                {
+                    File.SetAttributes(file, FileAttributes.Normal);
+                    File.Delete(file);
+                }
+
+            default:
+                Assert.Fail($"enablement setup '{setup}' has no builder");
+                return [];
+        }
     }
 
     static void Observe(List<BindingManifest.StateObservation> into, string state, Dictionary<string, Read> reads)

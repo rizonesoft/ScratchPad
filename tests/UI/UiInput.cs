@@ -54,6 +54,64 @@ internal static class UiInput
         Send(target, key, withControl, withShift, withAlt);
     }
 
+    // Ctrl+mouse-wheel through the funnel (D00 T02 §36 item 8): the same
+    // precondition as a key press (foreground root, focus target, no held
+    // modifier), the cursor moved over the target, Ctrl down and up as an
+    // injected chord, and no modifier left behind. Fenced like Press: it
+    // moves the real cursor.
+    internal static void Wheel(AutomationElement target, int clicks, bool withControl)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        WheelChecked(
+            target.Properties.ProcessId.Value,
+            ExpectedRoot(target),
+            ForegroundProbe,
+            () => ReadFocus(target),
+            withControl,
+            Keyboard.Press,
+            Keyboard.Release,
+            () =>
+            {
+                Mouse.MoveTo(target.GetClickablePoint());
+                Mouse.Scroll(clicks);
+            },
+            () => ModifiersReleased(AllModifiers));
+    }
+
+    // The checked wheel core, pure over its probes and senders.
+    internal static void WheelChecked(
+        int expectedPid,
+        nint expectedRoot,
+        Func<(nint Root, int Pid)> foreground,
+        Func<FocusRead> focus,
+        bool withControl,
+        Action<VirtualKeyShort> press,
+        Action<VirtualKeyShort> release,
+        Action scroll,
+        Func<bool> noModifierHeld)
+    {
+        ArgumentNullException.ThrowIfNull(press);
+        ArgumentNullException.ThrowIfNull(release);
+        ArgumentNullException.ThrowIfNull(scroll);
+        List<VirtualKeyShort> mods = withControl ? [VirtualKeyShort.CONTROL] : [];
+        var injected = new List<VirtualKeyShort>();
+        var everInjected = new HashSet<VirtualKeyShort>();
+        SendChecked(
+            expectedPid,
+            expectedRoot,
+            foreground,
+            focus,
+            () =>
+            {
+                ChordDown(mods, k => { press(k); everInjected.Add(k); }, injected);
+                scroll();
+            },
+            () => ChordUp(injected, release),
+            noModifierHeld,
+            () => everInjected.Count == 0 || ModifiersReleased(mods.Where(everInjected.Contains)),
+            () => ReleaseModifiers(mods.Where(everInjected.Contains)));
+    }
+
     // Physical typing into a focused element of the app, checked before
     // every character so a focus loss mid-string sends nothing further.
     internal static void Type(AutomationElement target, string text)
@@ -150,33 +208,51 @@ internal static class UiInput
 
         // Keyboard.Press is key-down only and Keyboard.Release key-up
         // only, so the chord is down (modifiers, then the key) and up
-        // (the key, then the modifiers in reverse).
+        // (the key, then the modifiers in reverse). Partial-send recovery
+        // (D00 T02 §36 item 6): only keys whose key-down went out
+        // are released, in reverse, so a sender failing mid-chord never
+        // sends a key-up for a key the operator holds.
+        var chord = new List<VirtualKeyShort>(mods) { key };
+        var injected = new List<VirtualKeyShort>();
+        var everInjected = new HashSet<VirtualKeyShort>();
         SendChecked(
             target.Properties.ProcessId.Value,
             ExpectedRoot(target),
             ForegroundProbe,
             () => ReadFocus(target),
-            () =>
-            {
-                foreach (var mod in mods)
-                {
-                    Keyboard.Press(mod);
-                }
-
-                Keyboard.Press(key);
-            },
-            () =>
-            {
-                Keyboard.Release(key);
-                for (int i = mods.Count - 1; i >= 0; i--)
-                {
-                    Keyboard.Release(mods[i]);
-                }
-            },
+            () => ChordDown(chord, k => { Keyboard.Press(k); everInjected.Add(k); }, injected),
+            () => ChordUp(injected, Keyboard.Release),
             () => ModifiersReleased(AllModifiers),
-            () => ModifiersReleased(mods),
-            () => ReleaseModifiers(mods),
+            () => ModifiersReleased(mods.Where(everInjected.Contains)),
+            () => ReleaseModifiers(mods.Where(everInjected.Contains)),
             () => Native.IsWindow(ExpectedRoot(target)));
+    }
+
+    // Presses each key in order and records it once its key-down went out;
+    // a throwing press stops the chord with only the sent keys recorded.
+    internal static void ChordDown(IReadOnlyList<VirtualKeyShort> keys, Action<VirtualKeyShort> press, List<VirtualKeyShort> injected)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        ArgumentNullException.ThrowIfNull(press);
+        ArgumentNullException.ThrowIfNull(injected);
+        foreach (var k in keys)
+        {
+            press(k);
+            injected.Add(k);
+        }
+    }
+
+    // Releases exactly the injected keys, last first, and forgets them.
+    internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release)
+    {
+        ArgumentNullException.ThrowIfNull(injected);
+        ArgumentNullException.ThrowIfNull(release);
+        for (int i = injected.Count - 1; i >= 0; i--)
+        {
+            release(injected[i]);
+        }
+
+        injected.Clear();
     }
 
     // What the UIA focus probe read: the focused element's pid (null when

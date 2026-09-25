@@ -1,6 +1,7 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Notepad.Core;
 
 namespace ScratchPad;
 
@@ -160,18 +161,45 @@ internal sealed partial class AppMenuBar : MenuBar
         MenuFileRecent.Items.Add(clear);
     }
 
+    // The binding mutation seam (D00 T02 §36 item 1): under a test run that
+    // targets this item, its handler returns before the host call, so the
+    // covering chord test must fail. Every bound handler checks it first
+    // (the binding manifest refuses one that does not).
+    static bool Mutated(string id) => TestMutation.Suppresses(id, Environment.GetEnvironmentVariable);
+
     void Register(MenuFlyoutItemBase item)
     {
         string id = AutomationProperties.GetAutomationId(item);
         commands[id] = item;
     }
 
-    void OnFileNewTab(object sender, RoutedEventArgs e) => host?.NewTab();
+    void OnFileNewTab(object sender, RoutedEventArgs e)
+    {
+        if (Mutated("MenuFileNewTab"))
+        {
+            return;
+        }
 
-    void OnFileNewWindow(object sender, RoutedEventArgs e) => host?.NewWindow();
+        host?.NewTab();
+    }
+
+    void OnFileNewWindow(object sender, RoutedEventArgs e)
+    {
+        if (Mutated("MenuFileNewWindow"))
+        {
+            return;
+        }
+
+        host?.NewWindow();
+    }
 
     void OnFileOpen(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuFileOpen"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.OpenAsync();
@@ -180,6 +208,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnFileSave(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuFileSave"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.SaveAsync();
@@ -188,6 +221,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnFileSaveAs(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuFileSaveAs"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.SaveAsAsync();
@@ -196,6 +234,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnFileSaveAll(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuFileSaveAll"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.SaveAllAsync();
@@ -206,23 +249,60 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnFilePrint(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuFilePrint"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.PrintAsync();
         }
     }
 
-    void OnFileCloseTab(object sender, RoutedEventArgs e) => host?.CloseTab();
+    void OnFileCloseTab(object sender, RoutedEventArgs e)
+    {
+        if (Mutated("MenuFileCloseTab"))
+        {
+            return;
+        }
 
-    void OnFileCloseWindow(object sender, RoutedEventArgs e) => host?.CloseWindow();
+        host?.CloseTab();
+    }
+
+    void OnFileCloseWindow(object sender, RoutedEventArgs e)
+    {
+        if (Mutated("MenuFileCloseWindow"))
+        {
+            return;
+        }
+
+        host?.CloseWindow();
+    }
 
     void OnFileExit(object sender, RoutedEventArgs e) => host?.Exit();
 
-    void OnEditSearchBing(object sender, RoutedEventArgs e) => host?.SearchBing();
+    void OnEditSearchBing(object sender, RoutedEventArgs e)
+    {
+        if (Mutated("MenuEditSearchBing"))
+        {
+            return;
+        }
+
+        host?.SearchBing();
+    }
 
     void OnEditFont(object sender, RoutedEventArgs e) => host?.ShowFontSettings();
 
-    void OnEditDefineBing(object sender, RoutedEventArgs e) => host?.DefineBing();
+    void OnEditDefineBing(object sender, RoutedEventArgs e)
+    {
+        if (Mutated("MenuEditDefineBing"))
+        {
+            return;
+        }
+
+        host?.DefineBing();
+    }
 
     // D01 T02 §4: ToggleMenuFlyoutItem flips IsChecked before Click
     // fires, so the handler reads the new state straight off the item.
@@ -230,6 +310,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnToolsStats(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuToolsStats"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.ShowStatsAsync();
@@ -238,6 +323,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnToolsSnapshots(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuToolsSnapshots"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.ShowSnapshotsAsync();
@@ -246,6 +336,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnToolsTemplates(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuToolsTemplates"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.ShowTemplatesAsync();
@@ -254,6 +349,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnToolsExport(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuToolsExport"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.ShowExportAsync();
@@ -262,6 +362,11 @@ internal sealed partial class AppMenuBar : MenuBar
 
     void OnToolsLock(object sender, RoutedEventArgs e)
     {
+        if (Mutated("MenuToolsLock"))
+        {
+            return;
+        }
+
         if (host is not null)
         {
             _ = host.LockFileAsync();

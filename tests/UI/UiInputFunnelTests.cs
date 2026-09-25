@@ -321,4 +321,63 @@ public sealed class UiInputFunnelTests
             UiInput.PreconditionWait = saved;
         }
     }
+
+    // D00 T02 §36 item 6: a sender failing after the second key-down
+    // releases exactly the keys it injected, in reverse, and never the
+    // key it failed on or a modifier the operator holds.
+    [Fact]
+    public void PartialSendReleasesExactlyTheInjectedKeys()
+    {
+        var chord = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_S };
+        var injected = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort>();
+        var released = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort>();
+        int presses = 0;
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            UiInput.SendChecked(
+                App,
+                Target,
+                () => (Target, App),
+                Focus(App),
+                () => UiInput.ChordDown(chord, k =>
+                {
+                    if (++presses == 3)
+                    {
+                        throw new InvalidOperationException("sender died");
+                    }
+                }, injected),
+                () => UiInput.ChordUp(injected, released.Add),
+                () => true,
+                () => true,
+                () => { }));
+        Assert.Equal("sender died", ex.Message);
+        Assert.Equal([FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT, FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL], released);
+        Assert.DoesNotContain(FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_S, released);
+        Assert.DoesNotContain(FlaUI.Core.WindowsAPI.VirtualKeyShort.ALT, released);
+        Assert.Empty(injected);
+    }
+
+    // D00 T02 §36 item 8: Ctrl+wheel binds to the target like a key press;
+    // a planted focus loss scrolls nothing and presses no Ctrl.
+    [Fact]
+    public void WheelWithFocusLostScrollsNothing()
+    {
+        int scrolls = 0;
+        var pressed = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort>();
+        WithShortWait(() =>
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                UiInput.WheelChecked(App, Target, () => (0x200, Thief), Focus(App), true, pressed.Add, _ => { }, () => scrolls++, () => true));
+            Assert.Contains("key not sent", ex.Message, StringComparison.Ordinal);
+        });
+        Assert.Equal(0, scrolls);
+        Assert.Empty(pressed);
+    }
+
+    [Fact]
+    public void WheelOnTargetScrollsOnceBetweenCtrlDownAndUp()
+    {
+        var log = new List<string>();
+        UiInput.WheelChecked(App, Target, () => (Target, App), Focus(App), true, k => log.Add($"down {k}"), k => log.Add($"up {k}"), () => log.Add("scroll"), () => true);
+        Assert.Equal(["down CONTROL", "scroll", "up CONTROL"], log);
+    }
 }

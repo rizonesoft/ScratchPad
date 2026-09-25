@@ -592,7 +592,11 @@ public sealed partial class MainWindow : Window, IDisposable
         var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
         accel.Invoked += (_, args) =>
         {
-            action();
+            if (!TestMutation.Suppresses(TestMutation.Key((int)key, (int)modifiers), Environment.GetEnvironmentVariable))
+            {
+                action();
+            }
+
             args.Handled = true;
         };
         scope.KeyboardAccelerators.Add(accel);

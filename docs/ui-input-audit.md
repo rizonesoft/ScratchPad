@@ -285,6 +285,83 @@ Approver: `operator` on every exemption, under the single-operator trust model (
 
 `BindingManifest.Conflicts` groups every declared chord across the menu bar and the root tab bindings: each chord has exactly one unaudited owner, no chord is OS-reserved (Alt+F4, Alt+Tab, Alt+Shift+Tab, Alt+Esc, Alt+Space, Ctrl+Esc, Ctrl+Alt+Delete, Ctrl+Shift+Esc, Ctrl+Alt+Tab, F1, F10, Shift+F10), the four menu access keys (F, E, V, T) are distinct, and no Alt+letter binding shadows an access key. Context routing: both homes are window-global (menu-bar accelerators and `AddTabAccelerators` on the window root fire from any focus, the editor included); no dialog, the editor, or the tab strip declares its own bindings, and the undeclared-key-handling scan keeps it that way. The one duplicate today is Ctrl+E (Search with Bing owns it; Define with Bing is the audited `duplicate`). `LiveTreeManifestIsClean` prints the full matrix to the test output.
 
+### Routing oracle (D00 T02 §36 item 4)
+
+Per command and surface, where each window-global chord executes or is suppressed; `n/a` marks a command that ships disabled (no dispatch to route). `BindingManifest.RoutingOracleProblems` requires one row per declaration, `n/a` exactly when the command is disabled, and nothing but `execute`, `suppress`, or `n/a`; `ChordRoutingTests.WindowGlobalChordRoutesPerSurface` reads its Ctrl+T expectations from this table. Recorded default (replacing §28's single Ctrl+T default; no stock capture of Notepad's open-menu or modal routing exists yet; cost of changing: one cell per surface): a live chord executes from the editor and the tab strip and is suppressed while a menu is open or a modal dialog holds the window; the Ctrl+E duplicate (Define with Bing) never executes from the chord, since the chord reaches Search with Bing. Live assertion today covers Ctrl+T on all four surfaces; the other rows are the contract their chord tests read as they land.
+
+| Binding | Command | Editor | Tab strip | Open menu | Modal |
+| ------- | ------- | ------ | --------- | --------- | ----- |
+| Ctrl+N | `MenuFileNewTab` | execute | execute | suppress | suppress |
+| Ctrl+Shift+N | `MenuFileNewWindow` | execute | execute | suppress | suppress |
+| Ctrl+O | `MenuFileOpen` | execute | execute | suppress | suppress |
+| Ctrl+S | `MenuFileSave` | execute | execute | suppress | suppress |
+| Ctrl+Shift+S | `MenuFileSaveAs` | execute | execute | suppress | suppress |
+| Ctrl+Alt+S | `MenuFileSaveAll` | execute | execute | suppress | suppress |
+| Ctrl+P | `MenuFilePrint` | execute | execute | suppress | suppress |
+| Ctrl+W | `MenuFileCloseTab` | execute | execute | suppress | suppress |
+| Ctrl+Shift+W | `MenuFileCloseWindow` | execute | execute | suppress | suppress |
+| Ctrl+Z | `MenuEditUndo` | n/a | n/a | n/a | n/a |
+| Ctrl+X | `MenuEditCut` | n/a | n/a | n/a | n/a |
+| Ctrl+C | `MenuEditCopy` | n/a | n/a | n/a | n/a |
+| Ctrl+V | `MenuEditPaste` | n/a | n/a | n/a | n/a |
+| Delete | `MenuEditDelete` | n/a | n/a | n/a | n/a |
+| Ctrl+E | `MenuEditSearchBing` | execute | execute | suppress | suppress |
+| Ctrl+E | `MenuEditDefineBing` | suppress | suppress | suppress | suppress |
+| Ctrl+F | `MenuEditFind` | n/a | n/a | n/a | n/a |
+| F3 | `MenuEditFindNext` | n/a | n/a | n/a | n/a |
+| Shift+F3 | `MenuEditFindPrevious` | n/a | n/a | n/a | n/a |
+| Ctrl+H | `MenuEditReplace` | n/a | n/a | n/a | n/a |
+| Ctrl+G | `MenuEditGoTo` | n/a | n/a | n/a | n/a |
+| Ctrl+A | `MenuEditSelectAll` | n/a | n/a | n/a | n/a |
+| F5 | `MenuEditTimeDate` | n/a | n/a | n/a | n/a |
+| Ctrl+Plus | `MenuViewZoomIn` | n/a | n/a | n/a | n/a |
+| Ctrl+Minus | `MenuViewZoomOut` | n/a | n/a | n/a | n/a |
+| Ctrl+0 | `MenuViewZoomRestore` | n/a | n/a | n/a | n/a |
+| Ctrl+Shift+G | `MenuToolsStats` | execute | execute | suppress | suppress |
+| Ctrl+Shift+H | `MenuToolsSnapshots` | execute | execute | suppress | suppress |
+| Ctrl+Shift+E | `MenuToolsTemplates` | execute | execute | suppress | suppress |
+| Ctrl+Shift+X | `MenuToolsExport` | execute | execute | suppress | suppress |
+| Ctrl+Shift+L | `MenuToolsLock` | execute | execute | suppress | suppress |
+| Ctrl+T | `Tabs.NewTab` | execute | execute | suppress | suppress |
+| Ctrl+Tab | `Tabs.CycleNext` | execute | execute | suppress | suppress |
+| Ctrl+Shift+Tab | `Tabs.CyclePrevious` | execute | execute | suppress | suppress |
+| Ctrl+Shift+T | `Tabs.ReopenLast` | execute | execute | suppress | suppress |
+| Ctrl+1 | `Tabs.GotoNumber(1)` | execute | execute | suppress | suppress |
+| Ctrl+2 | `Tabs.GotoNumber(2)` | execute | execute | suppress | suppress |
+| Ctrl+3 | `Tabs.GotoNumber(3)` | execute | execute | suppress | suppress |
+| Ctrl+4 | `Tabs.GotoNumber(4)` | execute | execute | suppress | suppress |
+| Ctrl+5 | `Tabs.GotoNumber(5)` | execute | execute | suppress | suppress |
+| Ctrl+6 | `Tabs.GotoNumber(6)` | execute | execute | suppress | suppress |
+| Ctrl+7 | `Tabs.GotoNumber(7)` | execute | execute | suppress | suppress |
+| Ctrl+8 | `Tabs.GotoNumber(8)` | execute | execute | suppress | suppress |
+| Ctrl+9 | `Tabs.GotoNumber(9)` | execute | execute | suppress | suppress |
+
+### Layout matrix (D00 T02 §36 item 3)
+
+Each row names a keyboard layout, the press as `<canonical chord>@<main|numpad>` (the physical key, since the canonical chord folds NumPad and main-row plus together), the expected dispatch or character, the owner, and the fenced case that presses it; `BindingManifest.LayoutMatrixProblems` requires every fenced case to exist, carry the Interactive fence, and press the row's physical key. Shared with D02 T01 §5's zoom keys: the plus and minus rows read `no command` while zoom ships disabled and turn into zoom rows when that section enables it.
+
+| Layout | Press | Expected | Owner | Fenced case |
+| ------ | ----- | -------- | ----- | ----------- |
+| German (00000407) | Ctrl+T@main | a new tab: dispatch by virtual key | D00 T02 §28 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+| German (00000407) | Ctrl+NUMPAD1@numpad | no tab switch: only the main-row digit is declared | D00 T02 §28 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+| German (00000407) | Ctrl+1@main | the first tab | D00 T02 §28 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+| German (00000407) | Ctrl+Alt+E@main | AltGr types the euro sign; no Bing launch | D00 T02 §28 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+| German (00000407) | Ctrl+Plus@numpad | no command while zoom ships disabled (then zoom in) | D02 T01 §5 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+| German (00000407) | Ctrl+Minus@numpad | no command while zoom ships disabled (then zoom out) | D02 T01 §5 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+| US English (00000409) | Ctrl+Shift+Plus@main | Shift-dependent plus: no command while zoom ships disabled (main-row parity owed by D02 T01 §5) | D02 T01 §5 | `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` |
+
+### Enablement states (D00 T02 §36 item 7)
+
+The states every `disabled` exemption is read in by `MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates`: §28's three representative states plus owner-declared ones. Each row names a setup the test knows how to build (`launch`, `open-file`, `select-text`, `open-read-only`, `edit-twice`) and the owner that declared it; `BindingManifest.EnablementStateProblems` refuses an unknown setup or an unresolved owner, and an owner adds a state by adding a row (and, for a new setup, the builder beside it). Clipboard contents are not a state here: building one would overwrite the operator's clipboard in a background test, so D02 T01 §3's paste chord test owns that case.
+
+| State | Setup | Owner |
+| ----- | ----- | ----- |
+| fresh window | launch | D00 T02 §28 |
+| file open | open-file | D00 T02 §28 |
+| selection present | select-text | D00 T02 §28 |
+| read-only document | open-read-only | D01 T01 §5 |
+| text edited twice | edit-twice | D02 T01 §4 |
+
 ### Framework chords (D00 T02 §21 item 5)
 
 Pressed by tests but not declared by the app: the framework or a control owns the behavior, so the manifest does not list them. Each names its owner, so a future app declaration of the same chord lands in the table above instead of double-covering.
@@ -306,3 +383,12 @@ Pressed by tests but not declared by the app: the framework or a control owns th
 - Accessible text: every bound item's UIA Name and HelpText match the XAML (`AutomationProperties.Name` or `Text`; `AutomationProperties.HelpText` or empty) beside its AcceleratorKey (`MenuLabelTests.DisplayedShortcutTextMatchesTheManifest`).
 - Enablement states: every `disabled` row is read in a fresh window, with a file open, and with a selection present, and fails when usable in any of them or unread in one (`MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates`, fixture `StateConditionalEnablementPlantFails`).
 - Ctrl+P owner: the owner-owed row stays consistent with D01 T02 §5: while that section owes its enablement reconciliation its historical `ships disabled` note stands; once the reconciliation closes with the note uncorrected, the guard fails (`OwnerStillClaimingTheLiveCommandShipsDisabledFails`).
+
+### Binding guard residuals (D00 T02 §36)
+
+- Mutation run: syntax cannot prove a covering assertion observes the command (`int observed = 0; Assert.Equal(0, observed);` passes `AssertsAfterPress`), so `BindingMutationTests.CoveringTestFailsWithItsCommandSuppressed` runs each covered row's covering test in a child test run (`UiLaunch.RunChildTest`) whose app suppresses the row's command through `Notepad.Core.TestMutation` (active only with `SCRATCHPAD_TEST_MUTATE` and `SCRATCHPAD_TEST_RUN=1`), and requires it to fail; a pass reads survived and an unrun case reads inconclusive. A menu item mutates by its AutomationId (every bound handler opens with `if (Mutated("<id>")) { return; }`, which `BindingManifest.HandlerRouting` requires), a tab accelerator by `vk:<key>:<modifiers>` inside the sanctioned `AddAccel` body. Recorded default: the mutation suppresses the command rather than swapping in another host member (cost of changing: a substitute table beside `HostCalls`). The static rule stays as the cheap pre-check. The theory is fenced and Night-owed; `ChildRunReadsAPassingPureTest` proves the child-run plumbing focus-free.
+- Physical identity: each declaration and each press keeps its physical key beside the canonical chord (`Add` and `OEM_PLUS` are both `Plus`; `BindingManifest.Physical` reads `numpad` or `main`), and a covering test pressing only the other variant fails the guard.
+- Exactly once: every chord declared more than once (a menu item plus a root route, two items, or two accelerators on one item) names its exactly-once test in `BindingManifest.ExactlyOnce` (today Ctrl+E, `AcceleratorTests.ChordCtrlEOpensBingSearch`); a double registration without one fails.
+- Partial sends: the funnel records each key whose key-down went out (`UiInput.ChordDown`) and releases exactly those, last first (`UiInput.ChordUp`), so a sender failing mid-chord never sends a key-up for a key the operator holds.
+- Ctrl+mouse-wheel: `UiInput.Wheel` goes through the same checked core (`WheelChecked`: foreground root, focus target, no held modifier, Ctrl as an injected chord); a planted focus loss scrolls nothing. Inventory row: `tests/UI/UiInput.cs:76` | Wheel | Mouse.MoveTo + Mouse.Scroll | fence | Ctrl+wheel zoom IS the point (D02 T01 §5 owns the zoom limits the wheel reaches).
+- Routing oracle, layout matrix, and enablement states: the three tables above, each checked by `BindingManifest.Check` against the live declarations and tests.

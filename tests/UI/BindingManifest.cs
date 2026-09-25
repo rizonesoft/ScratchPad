@@ -49,7 +49,7 @@ internal static class BindingManifest
         return Chord(parts[..^1], parts[^1]);
     }
 
-    internal sealed record Declaration(string Chord, string Command, string Source, bool XamlEnabled, string? AccessKey);
+    internal sealed record Declaration(string Chord, string Command, string Source, bool XamlEnabled, string? AccessKey, string Physical = "main");
 
     internal sealed record AuditRow(string Chord, string Command, string Class, string Detail, string Approver, string Owner, int Line, string Label = "");
 
@@ -62,7 +62,8 @@ internal static class BindingManifest
     // (D00 T02 §28 item 9).
     internal sealed record StateObservation(string State, string Command, bool Enabled);
 
-    // The representative states every disabled exemption is read in.
+    // The representative states every disabled exemption is read in; owners
+    // add their own through the audit's Enablement states table (§36 item 7).
     internal static readonly string[] EnablementStates = ["fresh window", "file open", "selection present"];
 
     internal sealed record MenuAccessKey(string Menu, string Key);
@@ -95,8 +96,8 @@ internal static class BindingManifest
 
         return k switch
         {
-            "Add" or "OEM_PLUS" => "Plus",
-            "Subtract" or "OEM_MINUS" => "Minus",
+            "Add" or "ADD" or "OEM_PLUS" => "Plus",
+            "Subtract" or "SUBTRACT" or "OEM_MINUS" => "Minus",
             "TAB" => "Tab",
             "DELETE" => "Delete",
             "Escape" or "ESCAPE" or "ESC" or "Esc" => "Esc",
@@ -106,6 +107,23 @@ internal static class BindingManifest
             _ when k.Length == 1 => k.ToUpperInvariant(),
             _ => k,
         };
+    }
+
+    // Physical key identity (D00 T02 §36 item 2): the canonical chord folds
+    // the NumPad and main-row variants together (Add and OEM_PLUS are both
+    // Plus), so the manifest keeps which key a declaration or a press uses.
+    internal static string Physical(string key)
+    {
+        string k = key.Trim();
+        if (k.StartsWith("KEY_", StringComparison.Ordinal))
+        {
+            return "main";
+        }
+
+        string u = k.ToUpperInvariant();
+        return u is "ADD" or "SUBTRACT" or "MULTIPLY" or "DIVIDE" or "DECIMAL" || u.StartsWith("NUMPAD", StringComparison.Ordinal) || u.StartsWith("NUMBERPAD", StringComparison.Ordinal)
+            ? "numpad"
+            : "main";
     }
 
     // The label WinUI derives from a KeyboardAccelerator when no text
@@ -152,7 +170,7 @@ internal static class BindingManifest
                 string key = el.Attribute("Key")?.Value ?? string.Empty;
                 bool enabled = !string.Equals(owner!.Attribute("IsEnabled")?.Value, "False", StringComparison.Ordinal);
                 decls.Add(new Declaration(
-                    Chord(mods.Split(',', StringSplitOptions.RemoveEmptyEntries), key), id, MenuXamlPath, enabled, null));
+                    Chord(mods.Split(',', StringSplitOptions.RemoveEmptyEntries), key), id, MenuXamlPath, enabled, null, Physical(key)));
                 // D00 T02 §28 item 1: a bound item's Click handler is the
                 // one its id names (MenuFileNewTab -> OnFileNewTab), so a
                 // chord re-wired to another command's handler fails here
@@ -225,13 +243,14 @@ internal static class BindingManifest
     // D00 T02 §28 item 9: a disabled exemption holds only while its
     // command is unusable in every representative state. Enabled in any
     // state, or never read in one, fails before the owner closes.
-    internal static List<string> EnablementProblems(IEnumerable<AuditRow> rows, IEnumerable<StateObservation> observations)
+    internal static List<string> EnablementProblems(IEnumerable<AuditRow> rows, IEnumerable<StateObservation> observations, IEnumerable<string>? states = null)
     {
         var problems = new List<string>();
         var seen = observations.ToList();
+        var wanted = (states ?? EnablementStates).ToList();
         foreach (AuditRow row in rows.Where(r => r.Class == "disabled"))
         {
-            foreach (string state in EnablementStates)
+            foreach (string state in wanted)
             {
                 var reads = seen.Where(o => o.Command == row.Command && o.State == state).ToList();
                 if (reads.Count == 0)
@@ -280,7 +299,7 @@ internal static class BindingManifest
             string command = CommandName(call.ArgumentList.Arguments[3].Expression);
             if (keyExpr is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "VirtualKey" } } vk)
             {
-                decls.Add(new Declaration(Chord(mods, vk.Name.Identifier.Text), command, TabSourcePath, true, null));
+                decls.Add(new Declaration(Chord(mods, vk.Name.Identifier.Text), command, TabSourcePath, true, null, Physical(vk.Name.Identifier.Text)));
             }
             else if (keyExpr.ToString().Replace(" ", string.Empty, StringComparison.Ordinal) == "(VirtualKey)(0x30+captured)"
                 && call.Ancestors().OfType<ForStatementSyntax>().FirstOrDefault() is ForStatementSyntax loop
@@ -381,7 +400,7 @@ internal static class BindingManifest
     }
 
     internal const string SanctionedHelperBody =
-        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{action();args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
+        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{if(!TestMutation.Suppresses(TestMutation.Key((int)key,(int)modifiers),Environment.GetEnvironmentVariable)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
 
     static List<string> TabHomeProblems(string source)
     {
@@ -497,15 +516,28 @@ internal static class BindingManifest
                 .Any(n => n.EndsWith("Fact", StringComparison.Ordinal) || n.EndsWith("Theory", StringComparison.Ordinal)
                     || n.EndsWith("FactAttribute", StringComparison.Ordinal) || n.EndsWith("TheoryAttribute", StringComparison.Ordinal)));
 
-    internal static HashSet<string> PressedChords(string source, string method)
+    // A fenced test: an Interactive attribute or Category=Interactive trait.
+    internal static bool IsFenced(string source, string method) =>
+        CSharpSyntaxTree.ParseText(source).GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
+            .Where(m => m.Identifier.Text == method)
+            .Any(m => m.AttributeLists.SelectMany(l => l.Attributes).Any(a =>
+                a.Name.ToString().Split('.')[^1].StartsWith("Interactive", StringComparison.Ordinal)
+                || (a.Name.ToString() == "Trait" && a.ArgumentList?.Arguments.Count == 2
+                    && a.ArgumentList.Arguments[0].ToString() == "\"Category\"" && a.ArgumentList.Arguments[1].ToString() == "\"Interactive\"")));
+
+    internal static HashSet<string> PressedChords(string source, string method) =>
+        PressedIdentities(source, method).Select(p => p.Chord).ToHashSet(StringComparer.Ordinal);
+
+    // Each press as (canonical chord, physical key): §36 item 2.
+    internal static HashSet<(string Chord, string Physical)> PressedIdentities(string source, string method)
     {
-        var chords = new HashSet<string>(StringComparer.Ordinal);
+        var chords = new HashSet<(string Chord, string Physical)>();
         SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
         foreach (MethodDeclarationSyntax m in root.DescendantNodes().OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == method))
         {
             foreach (InvocationExpressionSyntax call in m.DescendantNodes().OfType<InvocationExpressionSyntax>())
             {
-                if (call.Expression.ToString() != "UiInput.Press")
+                if (call.Expression.ToString() is not ("UiInput.Press" or "UiInput.PressKey"))
                 {
                     continue;
                 }
@@ -530,7 +562,8 @@ internal static class BindingManifest
                 int param = m.ParameterList.Parameters.IndexOf(p => p.Identifier.Text == keyText);
                 if (keyText.StartsWith("VirtualKeyShort.", StringComparison.Ordinal))
                 {
-                    chords.Add(Chord(mods, keyText["VirtualKeyShort.".Length..]));
+                    string vk = keyText["VirtualKeyShort.".Length..];
+                    chords.Add((Chord(mods, vk), Physical(vk)));
                 }
                 else if (param >= 0)
                 {
@@ -541,15 +574,15 @@ internal static class BindingManifest
                         var rowArgs = attr.ArgumentList?.Arguments ?? default;
                         string v = param < rowArgs.Count ? rowArgs[param].Expression.ToString() : string.Empty;
                         chords.Add(v.StartsWith("VirtualKeyShort.", StringComparison.Ordinal)
-                            ? Chord(mods, v["VirtualKeyShort.".Length..])
-                            : $"?unresolved:{keyText}");
+                            ? (Chord(mods, v["VirtualKeyShort.".Length..]), Physical(v["VirtualKeyShort.".Length..]))
+                            : ($"?unresolved:{keyText}", "?"));
                     }
                 }
                 else
                 {
                     // A local, field, or computed key the manifest cannot
                     // read: it credits nothing, so the row fails loud.
-                    chords.Add($"?unresolved:{keyText}");
+                    chords.Add(($"?unresolved:{keyText}", "?"));
                 }
             }
         }
@@ -573,7 +606,7 @@ internal static class BindingManifest
         foreach (MethodDeclarationSyntax m in root.DescendantNodes().OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == method))
         {
             var presses = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
-                .Where(c => c.Expression.ToString() == "UiInput.Press" && PressedChords(PressOnly(m, c), method).Contains(chord)).ToList();
+                .Where(c => c.Expression.ToString() is "UiInput.Press" or "UiInput.PressKey" && PressedChords(PressOnly(m, c), method).Contains(chord)).ToList();
             if (presses.Count == 0)
             {
                 continue;
@@ -683,6 +716,14 @@ internal static class BindingManifest
             {
                 problems.Add($"{id}: handler {handler} calls host {(calls.Count == 0 ? "nothing" : string.Join(", ", calls))}, the manifest says {want}");
             }
+
+            // The mutation seam guards every bound handler first (§36 item 1),
+            // so the mutation run can suppress the command it names.
+            if (m.Body?.Statements.FirstOrDefault() is not IfStatementSyntax { Condition: InvocationExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "Mutated" } } guard, Statement: BlockSyntax { Statements: [ReturnStatementSyntax] } }
+                || guard.ArgumentList.Arguments.Count != 1 || guard.ArgumentList.Arguments[0].ToString() != $"\"{id}\"")
+            {
+                problems.Add($"{id}: handler {handler} does not open with `if (Mutated(\"{id}\")) {{ return; }}`, so the mutation run cannot suppress it");
+            }
         }
 
         foreach (string stale in hostCalls.Keys.Where(k => !handlers.ContainsKey(k)).Order(StringComparer.Ordinal))
@@ -698,7 +739,7 @@ internal static class BindingManifest
     static string PressOnly(MethodDeclarationSyntax m, InvocationExpressionSyntax keep)
     {
         var others = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
-            .Where(c => c.Expression.ToString() == "UiInput.Press" && c != keep)
+            .Where(c => c.Expression.ToString() is "UiInput.Press" or "UiInput.PressKey" && c != keep)
             .Select(c => c.Parent).OfType<ExpressionStatementSyntax>().ToList();
         MethodDeclarationSyntax pruned = m.RemoveNodes(others, SyntaxRemoveOptions.KeepNoTrivia) ?? m;
         return "class P { " + pruned.ToFullString() + " }";
@@ -775,7 +816,8 @@ internal static class BindingManifest
         HashSet<string> RuntimeEnabled,
         List<AuditRow> Rows,
         Func<string, string?> TestSource,
-        Func<string, (bool Found, bool Open, string Body)> Section);
+        Func<string, (bool Found, bool Open, string Body)> Section,
+        string AuditText = "");
 
     internal static List<string> Check(Inputs inp)
     {
@@ -835,6 +877,12 @@ internal static class BindingManifest
                     }
 
                     var pressed = PressedChords(src, method);
+                    if (pressed.Contains(row.Chord) && decl is not null
+                        && !PressedIdentities(src, method).Contains((row.Chord, decl.Physical)))
+                    {
+                        problems.Add($"{at}: {cls}.{method} presses {row.Chord} only on another physical key; the declaration binds the {decl.Physical} key");
+                    }
+
                     if (!pressed.Contains(row.Chord))
                     {
                         problems.Add($"{at}: {cls}.{method} does not press {row.Chord} (presses {(pressed.Count == 0 ? "nothing" : string.Join(", ", pressed.OrderBy(p => p, StringComparer.Ordinal)))})");
@@ -904,6 +952,18 @@ internal static class BindingManifest
         }
 
         problems.AddRange(Conflicts(inp.Declarations, inp.AccessKeys, inp.Rows));
+        problems.AddRange(ExactlyOnceProblems(inp.Declarations, ExactlyOnce, inp.TestSource));
+        if (inp.AuditText.Length > 0)
+        {
+            // The audit's sub-tables (D00 T02 §36 items 3, 4, 7).
+            problems.AddRange(RoutingOracleProblems(SubTable(inp.AuditText, "Routing oracle", 6, out var p1), inp.Declarations, inp.RuntimeEnabled));
+            problems.AddRange(p1);
+            problems.AddRange(LayoutMatrixProblems(SubTable(inp.AuditText, "Layout matrix", 5, out var p2), inp.TestSource));
+            problems.AddRange(p2);
+            problems.AddRange(EnablementStateProblems(SubTable(inp.AuditText, "Enablement states", 3, out var p3), inp.Section));
+            problems.AddRange(p3);
+        }
+
         return problems;
     }
 
@@ -939,6 +999,209 @@ internal static class BindingManifest
             foreach (Declaration d in decls.Where(d => d.Chord == alt))
             {
                 problems.Add($"conflict: {alt} ({d.Command}) collides with the {ak.Menu} access key");
+            }
+        }
+
+        return problems;
+    }
+
+    // ---- exactly once (D00 T02 §36 item 5) --------------------------
+
+    // Every chord declared more than once (a menu item plus a root route,
+    // two items, or two accelerators on one item) names the test proving
+    // one press yields one outcome.
+    internal static readonly Dictionary<string, string> ExactlyOnce = new(StringComparer.Ordinal)
+    {
+        ["Ctrl+E"] = "AcceleratorTests.ChordCtrlEOpensBingSearch",
+    };
+
+    internal static List<string> ExactlyOnceProblems(List<Declaration> decls, IReadOnlyDictionary<string, string> exactlyOnce, Func<string, string?> testSource)
+    {
+        var problems = new List<string>();
+        foreach (var group in decls.GroupBy(d => d.Chord).Where(g => g.Count() > 1).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            if (!exactlyOnce.TryGetValue(group.Key, out string? test))
+            {
+                problems.Add($"exactly-once: {group.Key} is declared {group.Count()} times ({string.Join(", ", group.Select(d => $"{d.Command} ({d.Source})"))}) with no exactly-once test named in BindingManifest.ExactlyOnce");
+                continue;
+            }
+
+            string[] parts = test.Split('.');
+            string? src = parts.Length == 2 ? testSource(parts[0]) : null;
+            if (src is null || !IsDiscoverableTest(src, parts[1]))
+            {
+                problems.Add($"exactly-once: {group.Key} names {test}, which is not a discoverable test in tests/UI");
+            }
+            else if (!PressedChords(src, parts[1]).Contains(group.Key) || !AssertsAfterPress(src, parts[1], group.Key))
+            {
+                problems.Add($"exactly-once: {test} does not press {group.Key} and assert after it");
+            }
+        }
+
+        foreach (string stale in exactlyOnce.Keys.Where(k => decls.Count(d => d.Chord == k) < 2).Order(StringComparer.Ordinal))
+        {
+            problems.Add($"exactly-once: {stale} is declared once; drop its BindingManifest.ExactlyOnce entry");
+        }
+
+        return problems;
+    }
+
+    // ---- audit sub-tables (D00 T02 §36 items 3, 4, 7) ----------------
+
+    // The rows of a `### <heading>` table in the audit, cells trimmed.
+    internal static List<string[]> SubTable(string markdown, string heading, int cells, out List<string> problems)
+    {
+        problems = [];
+        var rows = new List<string[]>();
+        string[] lines = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        int start = Array.FindIndex(lines, l => l.StartsWith("### " + heading, StringComparison.Ordinal));
+        if (start < 0)
+        {
+            problems.Add($"docs/ui-input-audit.md: the {heading} table is missing");
+            return rows;
+        }
+
+        int header = Array.FindIndex(lines, start, l => l.StartsWith('|'));
+        if (header < 0)
+        {
+            problems.Add($"docs/ui-input-audit.md: the {heading} table has no rows");
+            return rows;
+        }
+
+        for (int i = header + 2; i < lines.Length && lines[i].StartsWith('|'); i++)
+        {
+            string[] c = lines[i].Trim().Trim('|').Split('|').Select(x => x.Trim()).ToArray();
+            if (c.Length != cells)
+            {
+                problems.Add($"docs/ui-input-audit.md:{i + 1}: a {heading} row needs {cells} cells, found {c.Length}");
+                continue;
+            }
+
+            rows.Add(c);
+        }
+
+        return rows;
+    }
+
+    internal static readonly string[] Surfaces = ["editor", "tab strip", "open menu", "modal"];
+
+    // The routing oracle (item 4): one row per declared chord and command,
+    // an outcome per surface (execute, suppress, or n/a for a command that
+    // ships disabled), so each window-global chord's routing is recorded.
+    internal static List<string> RoutingOracleProblems(List<string[]> oracle, List<Declaration> decls, HashSet<string> runtimeEnabled)
+    {
+        var problems = new List<string>();
+        var seen = new HashSet<(string, string)>();
+        foreach (string[] r in oracle)
+        {
+            Match id = Regex.Match(r[1], "`([^`]+)`");
+            string command = id.Success ? id.Groups[1].Value : r[1];
+            if (!seen.Add((r[0], command)))
+            {
+                problems.Add($"routing oracle: {r[0]} -> {command} has two rows");
+            }
+
+            Declaration? d = decls.FirstOrDefault(x => x.Chord == r[0] && x.Command == command);
+            if (d is null)
+            {
+                problems.Add($"routing oracle: {r[0]} -> {command} is not declared");
+                continue;
+            }
+
+            bool live = d.XamlEnabled || runtimeEnabled.Contains(d.Command);
+            for (int s = 0; s < Surfaces.Length; s++)
+            {
+                string v = r[2 + s];
+                if (v is not ("execute" or "suppress" or "n/a"))
+                {
+                    problems.Add($"routing oracle: {r[0]} -> {command} on {Surfaces[s]} reads '{v}', not execute, suppress, or n/a");
+                }
+                else if ((v == "n/a") == live)
+                {
+                    problems.Add($"routing oracle: {r[0]} -> {command} on {Surfaces[s]} reads '{v}' but the command is {(live ? "live" : "disabled")}");
+                }
+            }
+        }
+
+        foreach (Declaration d in decls.Where(d => !seen.Contains((d.Chord, d.Command))))
+        {
+            problems.Add($"routing oracle: {d.Chord} -> {d.Command} has no row");
+        }
+
+        return problems;
+    }
+
+    // The expected outcome on one surface, read from the oracle.
+    internal static string RoutingExpectation(List<string[]> oracle, string chord, string command, string surface)
+    {
+        int s = Array.IndexOf(Surfaces, surface);
+        string[]? row = oracle.FirstOrDefault(r => r[0] == chord && r[1].Contains($"`{command}`", StringComparison.Ordinal));
+        return row is null || s < 0 ? "missing" : row[2 + s];
+    }
+
+    // The layout matrix (item 3): each row names a fenced case that
+    // presses the row's physical key.
+    internal static List<string> LayoutMatrixProblems(List<string[]> matrix, Func<string, string?> testSource)
+    {
+        var problems = new List<string>();
+        foreach (string[] r in matrix)
+        {
+            Match t = Regex.Match(r[4], "`(\\w+)\\.(\\w+)`");
+            if (!t.Success)
+            {
+                problems.Add($"layout matrix: {r[0]} {r[1]} names no `Class.Method` fenced case");
+                continue;
+            }
+
+            string? src = testSource(t.Groups[1].Value);
+            string method = t.Groups[2].Value;
+            if (src is null || !IsDiscoverableTest(src, method))
+            {
+                problems.Add($"layout matrix: {r[0]} {r[1]} names {t.Value}, which is not a discoverable test");
+                continue;
+            }
+
+            if (!IsFenced(src, method))
+            {
+                problems.Add($"layout matrix: {t.Value} is not fenced (Category=Interactive)");
+            }
+
+            Match press = Regex.Match(r[1], "^(?<chord>.+)@(?<phys>main|numpad)$");
+            if (!press.Success)
+            {
+                problems.Add($"layout matrix: {r[0]} press '{r[1]}' is not <chord>@<main|numpad>");
+            }
+            else if (!PressedIdentities(src, method).Contains((press.Groups["chord"].Value, press.Groups["phys"].Value)))
+            {
+                problems.Add($"layout matrix: {t.Value} never presses {r[1]}");
+            }
+        }
+
+        return problems;
+    }
+
+    // Owner-declared enablement states (item 7): each row names a state,
+    // its setup keyword, and the owner that declared it.
+    internal static readonly HashSet<string> StateSetups = new(["launch", "open-file", "select-text", "open-read-only", "edit-twice"], StringComparer.Ordinal);
+
+    internal static List<string> EnablementStateProblems(List<string[]> states, Func<string, (bool Found, bool Open, string Body)> section)
+    {
+        var problems = new List<string>();
+        foreach (string state in EnablementStates.Where(s => !states.Any(r => r[0] == s)))
+        {
+            problems.Add($"enablement states: the representative state '{state}' has no row");
+        }
+
+        foreach (string[] r in states)
+        {
+            if (!StateSetups.Contains(r[1]))
+            {
+                problems.Add($"enablement states: '{r[0]}' names setup '{r[1]}', which the enablement test cannot build ({string.Join(", ", StateSetups)})");
+            }
+
+            if (!section(r[2]).Found)
+            {
+                problems.Add($"enablement states: '{r[0]}' names owner '{r[2]}', which does not resolve to a TODO section");
             }
         }
 
