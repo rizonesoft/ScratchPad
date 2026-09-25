@@ -269,13 +269,26 @@ internal static class UiInput
                 continue;
             }
 
+            // A release that blocks never holds the pass (R2-F1): it runs
+            // with the time left, and one that has not returned by then is
+            // reported and left behind.
+            VirtualKeyShort key = injected[i];
+            TimeSpan left = limit - now();
+            var attempt = Task.Run(() => release(key));
+            bool returned;
             try
             {
-                release(injected[i]);
+                returned = attempt.Wait(left > TimeSpan.Zero ? left : TimeSpan.Zero);
             }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
+            catch (AggregateException agg) when (agg.InnerException is not null and not OutOfMemoryException)
             {
-                stuck.Add($"{injected[i]} ({ex.GetType().Name}: {ex.Message})");
+                stuck.Add($"{key} ({agg.InnerException.GetType().Name}: {agg.InnerException.Message})");
+                continue;
+            }
+
+            if (!returned)
+            {
+                stuck.Add($"{key} (release did not return within the {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound)");
             }
         }
 

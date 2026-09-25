@@ -400,10 +400,39 @@ public sealed class UiInputFunnelTests
 
         var slow = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT };
         int calls = 0;
-        var ticks = new Queue<TimeSpan>([TimeSpan.Zero, TimeSpan.FromSeconds(3)]);
+        var ticks = new Queue<TimeSpan>([TimeSpan.Zero, TimeSpan.Zero, TimeSpan.FromSeconds(3)]);
         var bounded = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(slow, _ => calls++, TimeSpan.FromSeconds(2), () => ticks.Dequeue()));
         Assert.Equal(1, calls);
         Assert.Contains("CONTROL (not attempted: the release pass passed its 2 s bound)", bounded.Message, StringComparison.Ordinal);
+    }
+
+    // D00 T02 §43 R2-F1: a release that blocks never holds the pass; it is
+    // reported once the bound passes and the remaining keys still release.
+    [Fact]
+    public void BlockingReleaseIsReportedWithinTheBound()
+    {
+        var keys = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT };
+        var released = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort>();
+        using var never = new ManualResetEventSlim(false);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var ex = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(keys, k =>
+        {
+            if (k == FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT)
+            {
+                never.Wait(TimeSpan.FromSeconds(30));
+                return;
+            }
+
+            lock (released)
+            {
+                released.Add(k);
+            }
+        }, TimeSpan.FromMilliseconds(300)));
+        clock.Stop();
+        never.Set();
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"the pass took {clock.Elapsed}");
+        Assert.Contains("SHIFT (release did not return within the 0.3 s bound)", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("CONTROL (not attempted", ex.Message, StringComparison.Ordinal);
     }
 
     // D00 T02 §43 R1-F3: the target window closing while the press

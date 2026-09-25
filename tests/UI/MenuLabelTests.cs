@@ -109,7 +109,14 @@ public sealed class MenuLabelTests
                 Assert.True(inReadOnly.TryGetValue(id, out Read? r) && !r.Enabled, $"{id} is documented disabled but reads {(r?.Enabled == true ? "enabled" : "unread")} in the read-only document");
             }
 
-            Assert.True(baseline.Count >= all.Count - disabled.Count, $"the writable baseline read only {baseline.Count} of {all.Count} items");
+            // Every expected item is read in every state before any
+            // comparison (R2-F2), so a command missing from a read never
+            // escapes the check.
+            foreach (var (name, reads) in new[] { ("the writable baseline", baseline), ("the read-only document", inReadOnly), ("the writable tab after leaving", afterLeaving) })
+            {
+                var missing = all.Where(id => !reads.ContainsKey(id)).ToList();
+                Assert.True(missing.Count == 0, $"{name} did not read {missing.Count} bound item(s): {string.Join(", ", missing)}");
+            }
             foreach (var (id, read) in baseline)
             {
                 Assert.True(afterLeaving.TryGetValue(id, out Read? back), $"{id} was not read after leaving the read-only document");
@@ -126,7 +133,11 @@ public sealed class MenuLabelTests
                 UiInput.ClearSelection(box);
                 return (pre, sel, ReadBound(window, all));
             });
-            Assert.NotEmpty(selected);
+            foreach (var (name, reads) in new[] { ("before the selection", before), ("with the selection", selected), ("after clearing it", cleared) })
+            {
+                var missing = all.Where(id => !reads.ContainsKey(id)).ToList();
+                Assert.True(missing.Count == 0, $"{name} did not read {missing.Count} bound item(s): {string.Join(", ", missing)}");
+            }
             foreach (var (id, read) in before)
             {
                 Assert.True(cleared.TryGetValue(id, out Read? back) && back.Enabled == read.Enabled, $"{id} reads {(cleared.TryGetValue(id, out Read? c) && c.Enabled ? "enabled" : "disabled")} after the selection was cleared, but {(read.Enabled ? "enabled" : "disabled")} before it was made");
