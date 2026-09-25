@@ -657,7 +657,7 @@ Assert (($tw1.Count -eq 1) -and ($tw2.Count -eq 0) -and ($tw3.Count -eq 0)) 's44
 $mo = @(Merge-OwedCases @('UI.M.A', 'UI.M.B') @('UI.M.A'))
 $poDir = Join-Path $dir 's44-prevowed'
 $null = New-Item -ItemType Directory -Force -Path $poDir
-[pscustomobject]@{ version = 1; stamp = '2026-09-20-023001'; owedCases = @('UI.P.X(a: 1)') } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $poDir 'morning-2026-09-20-023001.result.json') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-09-20-023001'; day = '2026-09-20'; identity = '2026-09-20-023001-pid1'; verdict = 'stood-down'; exit = 0; owedCases = @('UI.P.X(a: 1)') } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $poDir 'morning-2026-09-20-023001.result.json') -Encoding UTF8
 '{ not json' | Set-Content -Path (Join-Path $poDir 'morning-2026-09-21-023001.result.json') -Encoding UTF8
 $po = Read-PreviousOwedCases $poDir '2026-09-22-023001'
 Assert (($mo.Count -eq 2) -and (@($mo | Where-Object { $_ -eq 'UI.M.A' }).Count -eq 1) -and (@($po.Owed).Count -eq 1) -and ($po.Owed[0] -eq 'UI.P.X(a: 1)') -and ($po.From -eq 'morning-2026-09-20-023001.result.json') -and (@($po.Unreadable).Count -eq 1) -and ($po.Unreadable[0] -like 'morning-2026-09-21-023001.result.json*')) 's44-carried-debt-merges-and-survives-a-corrupt-result' "mo=$($mo -join ',') from=$($po.From) bad=$($po.Unreadable -join ',')"
@@ -674,6 +674,26 @@ $msRow2 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
 ($msA -replace 'CCC', 'DDD') | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
 $msRow3 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
 Assert (($msRow1.Count -eq 1) -and ($msRow1[0] -notlike '*unresolved') -and ($msRow1[0] -ne $msRow2[0]) -and ($msRow1[0] -ne $msRow3[0])) 's44-args-source-covers-multiline-and-helpers' (($msRow1 + $msRow2 + $msRow3) -join ' | ')
+# D00 T02 §44 R3-R1: a newer result that parses but is no result (`{}`)
+# is refused like corrupt JSON, and the older result's debt carries.
+'{}' | Set-Content -Path (Join-Path $poDir 'morning-2026-09-21-120000.result.json') -Encoding UTF8
+$po2 = Read-PreviousOwedCases $poDir '2026-09-22-023001'
+Assert ((@($po2.Owed).Count -eq 1) -and ($po2.From -eq 'morning-2026-09-20-023001.result.json') -and (@($po2.Unreadable).Count -eq 2) -and ((@($po2.Unreadable) -join '|') -like '*morning-2026-09-21-120000.result.json*')) 's44-empty-object-result-never-erases-debt' ($po2.Unreadable -join ' | ')
+# D00 T02 §44 R3-I1: the runtime trx readers count a retried case once by
+# its testId, so a retry never discharges an identically named twin.
+$rtTrx = Join-Path $dir 's44-retry.trx'
+@'
+<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results>
+<UnitTestResult testName="UI.D.Dup" testId="aaaa0001" executionId="e1" outcome="Failed" />
+<UnitTestResult testName="UI.D.Dup" testId="aaaa0001" executionId="e2" outcome="Passed" />
+<UnitTestResult testName="UI.D.Dup" testId="aaaa0002" executionId="e3" outcome="NotExecuted" />
+<UnitTestResult testName="UI.D.Solo" testId="aaaa0003" executionId="e4" outcome="Passed" />
+</Results></TestRun>
+'@ | Set-Content -Path $rtTrx -Encoding UTF8
+$rtExec = @(Get-TrxExecutedNames $rtTrx)
+$rtPass = @(Get-TrxPassedNames $rtTrx)
+$rtOwed = @(Get-UnexecutedCaseRows @('UI.D.Dup', 'UI.D.Dup', 'UI.D.Solo') $rtExec 'fixture')
+Assert ((@($rtExec | Where-Object { $_ -eq 'UI.D.Dup' }).Count -eq 1) -and (@($rtPass | Where-Object { $_ -eq 'UI.D.Dup' }).Count -eq 1) -and ($rtOwed.Count -eq 1) -and ($rtOwed[0] -like '*UI.D.Dup | 1 of 2 cases unexecuted*') -and (@(Close-OwedCases @('UI.D.Dup') $rtPass @('UI.D.Dup', 'UI.D.Dup')).Count -eq 1)) 's44-runtime-retry-counts-once-per-case' (($rtExec + @('||') + $rtOwed) -join ' ')
 # D00 T02 §44 item 7: a count-only (versionless) fingerprint refuses,
 # naming its version and the regen command.
 $fpOld = Join-Path $dir 'pop-old.fingerprint'

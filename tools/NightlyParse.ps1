@@ -1703,11 +1703,11 @@ function Get-OwedCaseNames([string[]]$Rows) {
 }
 
 function Get-TrxPassedNames([string]$TrxPath) {
-  # The rows a trx records green (outcome Passed); missing or unreadable
-  # reads as none.
-  if (-not (Test-Path $TrxPath)) { return @() }
-  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return @() }
-  return @(@($t.TestRun.Results.UnitTestResult) | Where-Object { ($null -ne $_) -and ($_.outcome -eq 'Passed') } | ForEach-Object { "$($_.testName)" })
+  # The cases a trx records green, once per test case (R3-I1): a case
+  # counts when its last result passed, so a retry that passed after a
+  # failure is one green case and never two. Missing or unreadable reads
+  # as none.
+  return @(Get-TrxCaseResults $TrxPath | Where-Object { $_.Last -eq 'Passed' } | ForEach-Object { $_.Name })
 }
 
 function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan, $ListedCases = $null) {
@@ -1741,8 +1741,15 @@ function Read-PreviousOwedCases([string]$NightDir, [string]$Stamp) {
   $cands = @(Get-ChildItem -LiteralPath $NightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $Stamp) } | Sort-Object Name -Descending)
   foreach ($f in $cands) {
     try {
+      # A result must validate as a result (R3-R1): `{}` or a partial
+      # document is refused like unparseable JSON, never read as no debt.
+      $v = Test-ResultFile $f.FullName
+      if (-not $v.Ok) { throw $v.Error }
       $o = Get-Content -LiteralPath $f.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-      if ($null -eq $o) { throw 'empty document' }
+      $fs = ($f.Name -replace '^morning-', '') -replace '\.result\.json$', ''
+      if ("$($o.stamp)" -ne $fs) { throw "stamp $($o.stamp) disagrees with its file name" }
+      $owedProp = $o.PSObject.Properties['owedCases']
+      if (($null -ne $owedProp) -and ($null -ne $owedProp.Value) -and (@(@($owedProp.Value) | Where-Object { $_ -isnot [string] }).Count -gt 0)) { throw 'owedCases is not a list of case names' }
       return [pscustomobject]@{ Owed = @(@($o.owedCases) | Where-Object { "$_" -ne '' }); From = $f.Name; Unreadable = $bad }
     } catch { $bad += "$($f.Name) ($($_.Exception.Message))" }
   }
@@ -1758,12 +1765,34 @@ function Get-PopulationIdentity([string]$FingerprintPath) {
   return (Get-CaseHash @("run-a=$($fp.RunACaseHash)", "run-b=$($fp.RunBCaseHash)", "interactive=$($fp.InteractiveCaseHash)"))
 }
 
-function Get-TrxExecutedNames([string]$TrxPath) {
-  # Test names the trx records as run (Passed or Failed); skipped rows
-  # never executed. Missing or truncated trx reads as none.
+function Get-TrxCaseResults([string]$TrxPath) {
+  # One entry per test case the trx records (D00 T02 section 44 R3-I1):
+  # results group by the case's testId (executionId when a row has none),
+  # so repeated results of one case (a retry) count once while two cases
+  # sharing a display name stay two. Each entry carries the name, whether
+  # any result executed (Passed or Failed), and the last result's outcome.
+  # Missing or truncated trx reads as none.
   if (-not (Test-Path $TrxPath)) { return @() }
   try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return @() }
-  return @(@($t.TestRun.Results.UnitTestResult) | Where-Object { $_.outcome -in @('Passed', 'Failed') } | ForEach-Object { "$($_.testName)" })
+  $byCase = [ordered]@{}
+  $n = 0
+  foreach ($r in @($t.TestRun.Results.UnitTestResult)) {
+    if ($null -eq $r) { continue }
+    $n++
+    $id = "$($r.testId)"
+    if ($id -eq '') { $id = "$($r.executionId)" }
+    if ($id -eq '') { $id = "row-$n" }
+    if (-not $byCase.Contains($id)) { $byCase[$id] = [pscustomobject]@{ Name = "$($r.testName)"; Executed = $false; Last = '' } }
+    if (@('Passed', 'Failed') -contains "$($r.outcome)") { $byCase[$id].Executed = $true }
+    $byCase[$id].Last = "$($r.outcome)"
+  }
+  return @($byCase.Values)
+}
+
+function Get-TrxExecutedNames([string]$TrxPath) {
+  # Test names the trx records as run (Passed or Failed), once per test
+  # case (R3-I1); skipped rows never executed.
+  return @(Get-TrxCaseResults $TrxPath | Where-Object { $_.Executed } | ForEach-Object { $_.Name })
 }
 
 function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check test population fingerprint') {
