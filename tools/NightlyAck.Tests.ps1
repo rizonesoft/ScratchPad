@@ -409,7 +409,7 @@ if (Test-Path $ws) { Remove-Item $ws -Recurse -Force }
 $nd = Join-Path $ws 'build\nightly'
 $acks = Join-Path $ws 'docs\nightly-acks'
 $null = New-Item -ItemType Directory -Force -Path $nd, $acks, (Join-Path $ws 'todo\00-workspace'), (Join-Path $ws 'tests\UI')
-@('# fixture', '', '## 9. Nine', '', '- [ ] Fix INC-cccc3333 (UI.C.T) and INC-dddd4444 (UI.C.T).', '', '## 10. Ten', '', 'Prose naming INC-eeee5555 without an item.', '', "|   9   |   ${S}9   | Nine | -- |  [ ]   |", "|   10  |   ${S}10  | Ten | -- |  [ ]   |") | Set-Content -Path (Join-Path $ws 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
+@('# fixture', '', '## 9. Nine', '', '- [ ] Fix INC-cccc3333 (UI.C.T) and INC-dddd4444 (UI.C.T).', '', '## 10. Ten', '', 'Prose naming INC-eeee5555 without an item.', '', '## 11. Eleven', '', '- [x] A stamped proof section.', '', "|   9   |   ${S}9   | Nine | -- |  [ ]   |", "|   10  |   ${S}10  | Ten | -- |  [ ]   |", "|   11  |   ${S}11  | Eleven | -- |  [x]   |") | Set-Content -Path (Join-Path $ws 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
 'build/' | Set-Content -Path (Join-Path $ws '.gitignore') -Encoding UTF8
 'class C { }' | Set-Content -Path (Join-Path $ws 'tests\UI\C.cs') -Encoding UTF8
 Invoke-Git @('init', '-q'); Invoke-Git @('config', 'user.name', 'Fixture Operator'); Invoke-Git @('config', 'user.email', 'fixture@example.invalid'); Invoke-Git @('config', 'commit.gpgsign', 'false')
@@ -648,6 +648,50 @@ Write-Ack 'ack-m.md' @("run: $runN sha256:$($dM[$runN].Current)", 'incidents: no
 Save-All 'ack m renamed to n'
 $stM = Invoke-Helper @('-Status', '-Run', $runM, '-Today', '2026-10-21', '-WorkspaceRoot', $ws)
 Assert ($stM.Text -like '*blocking: CORRECTIVE ack-m.md (D00 T02 *9): open*') 's46-status-finds-historical-acks' $stM.Text
+
+$fnd11 = "D00 T02 ${S}11"
+# Section 46 R3-F1: a result rewritten in place keeps the deadline it set.
+$runX2 = '2026-10-23-023001-pid60'
+New-Red $runX2 '2026-10-23' @()
+$gx1 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-23')
+$null = Update-DueRecord (Join-Path $nd 'ack-dues.json') $gx1.Dues
+New-Red $runX2 '2026-11-10' @() 2
+$gx2 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-28')
+Assert (@($gx2.Lines | Where-Object { $_ -like "*OVERDUE ack: $runX2 (RED*due 2026-10-26T23:59:59*" }).Count -eq 1) 's46-in-place-revision-keeps-its-deadline' ($gx2.Lines -join ' | ')
+Remove-Item (Join-Path $nd 'ack-dues.json')
+# Section 46 R3-F2: closed: never skips a fix's verification.
+$runY2 = '2026-10-24-023001-pid61'
+New-Red $runY2 '2026-10-24' @('- INC-dddd4444 `UI.C.T` x1 (Run A): boom')
+$dY2 = Get-Dem
+Write-Ack 'ack-y2.md' @("run: $runY2 sha256:$($dY2[$runY2].Current)", 'incidents: INC-dddd4444', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $shaC", "closed: $shaC", 'signed: 2026-10-24')
+Save-All 'ack y2 fixed and closed'
+$gy2 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-24')
+Assert (@($gy2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-y2.md ($shaC): open*awaiting a passing run of INC-dddd4444*" }).Count -eq 1) 's46-closed-never-skips-fix-verification' ($gy2.Lines -join ' | ')
+# Section 46 R3-C1: a disposition change under the same finding keeps the
+# earlier disposition's action.
+$runZ2 = '2026-10-25-023001-pid62'; $runOpen = '2026-10-25-120001-pid63'
+New-Red $runZ2 '2026-10-25' @(); New-Red $runOpen '2026-10-25' @()
+$dZ2 = Get-Dem
+Write-Ack 'ack-z2.md' @("run: $runZ2 sha256:$($dZ2[$runZ2].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runOpen", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd11", 'signed: 2026-10-25')
+Save-All 'ack z2 duplicate'
+Write-Ack 'ack-z2.md' @("run: $runZ2 sha256:$($dZ2[$runZ2].Current)", 'incidents: none', 'owner: operator', 'disposition: expected', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd11", 'signed: 2026-10-26')
+Save-All 'ack z2 now expected'
+$gz2 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-26')
+Assert ((@($gz2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-z2.md ($fnd11): closed*" }).Count -eq 1) -and (@($gz2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-z2.md ($fnd11 (as duplicate in an earlier version*): open (duplicate of $runOpen, which is not acknowledged*" }).Count -eq 1)) 's46-disposition-change-keeps-the-earlier-action' ($gz2.Lines -join ' | ')
+# Section 46 R3-I1: an ack reassigned to another run still answers, in
+# duplicate linkage, for the action it opened for the first run.
+$runA1 = '2026-10-27-023001-pid64'; $runB1 = '2026-10-27-120001-pid65'; $runD1 = '2026-10-27-180001-pid66'
+foreach ($r in @($runA1, $runB1, $runD1)) { New-Red $r '2026-10-27' @() }
+$dA1 = Get-Dem
+Write-Ack 'ack-hr.md' @("run: $runA1 sha256:$($dA1[$runA1].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-27')
+Save-All 'ack hr names a1'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $headA1 = ((& git -C $ws rev-parse HEAD) | Out-String).Trim().Substring(0, 12); $ErrorActionPreference = $eap
+Write-Ack 'ack-hr.md' @("run: $runB1 sha256:$($dA1[$runB1].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-27')
+Write-Ack 'ack-ga.md' @("run: $runA1 sha256:$($dA1[$runA1].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", "closed: $headA1", 'signed: 2026-10-28')
+Write-Ack 'ack-d1.md' @("run: $runD1 sha256:$($dA1[$runD1].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runA1", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-28')
+Save-All 'hr moves to b1; ga closes a1; d1 duplicates a1'
+$gA1 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-28')
+Assert (@($gA1.Lines | Where-Object { $_ -like "*CORRECTIVE ack-d1.md ($fnd9): open (duplicate of $runA1; open while its action ack-hr.md ($fnd9) is open*" }).Count -eq 1) 's46-reassigned-ack-still-links-its-first-run' ($gA1.Lines -join ' | ')
 
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }

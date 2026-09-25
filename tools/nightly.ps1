@@ -1653,6 +1653,9 @@ $ackDemands = Get-AckDemands $ackResultFiles (Read-ResultClassifications $nightD
 # outcome labels) shortens the day-plus-three default where it is shorter.
 $ackSla = { param($r) Get-AckSlaHours $r }
 $ackCheck = Test-Acknowledgements $Root (Join-Path $Root 'docs/nightly-acks') $ackDemands (Get-Date) $ackSla
+# Each identity's earliest deadline persists (D00 T02 section 46 R3-F1).
+$dueErr = Update-DueRecord (Join-Path $nightDir 'ack-dues.json') $ackCheck.Dues
+if ($dueErr -ne '') { $report += "- Due record: $dueErr (deadlines still computed from the copies on disk)" }
 $report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { "$($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue: $($ackCheck.Unacked -join ', ')" })"
 if (@($ackCheck.ProofUnacked).Count -gt 0) { $report += "- Proof queue: $(@($ackCheck.ProofUnacked).Count) unacked proof, simulation, or backfill run(s) (never escalated)" }
 if (@($ackCheck.CorrectiveOverdue).Count -gt 0) { $report += "- Corrective actions overdue: $(@($ackCheck.CorrectiveOverdue) -join ', ')" }

@@ -5673,6 +5673,60 @@ function Get-DemandDue($Demand, [scriptblock]$SlaFor = $null, $Inherited = $null
   return $best
 }
 
+function Read-DueRecord([string]$Path) {
+  # identity -> the earliest deadline ever computed for it (section 46
+  # R3-F1), as a DateTimeOffset. Missing or unreadable reads as none.
+  $map = @{}
+  if (-not (Test-Path -LiteralPath $Path)) { return $map }
+  try {
+    $j = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    foreach ($pr in @($j.dues.PSObject.Properties)) {
+      $t = [DateTimeOffset]::MinValue
+      if ([DateTimeOffset]::TryParse("$($pr.Value)", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$t)) { $map[$pr.Name] = $t }
+    }
+  } catch { }
+  return $map
+}
+
+function Update-DueRecord([string]$Path, [hashtable]$Dues) {
+  # Keeps each identity's earliest deadline across runs (section 46 R3-F1):
+  # a result rewritten in place with a later day or a laxer severity loses
+  # its earlier copy from disk, but never the deadline it already set.
+  # Atomic write. Returns '' or the error.
+  $rec = Read-DueRecord $Path
+  $changed = $false
+  foreach ($k in @($Dues.Keys)) {
+    $d = $Dues[$k]
+    if ($null -eq $d) { continue }
+    if ((-not $rec.ContainsKey($k)) -or ($d -lt $rec[$k])) { $rec[$k] = $d; $changed = $true }
+  }
+  if (-not $changed) { return '' }
+  $o = [ordered]@{}
+  foreach ($k in @($rec.Keys | Sort-Object)) { $o[$k] = $rec[$k].ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) }
+  try { Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ version = 1; dues = [pscustomobject]$o }) -Depth 4)) $Path; return '' } catch { return "due record write failed: $($_.Exception.Message)" }
+}
+
+function Get-AckHistoricalRuns([string]$Root, [string]$RelPath) {
+  # Every run any committed version of an ack file named (section 46
+  # R3-I1), so an ack reassigned to another run still answers for the
+  # actions it opened for the first.
+  $runs = @()
+  $eap = $ErrorActionPreference
+  $enc = [Console]::OutputEncoding
+  try {
+    $ErrorActionPreference = 'Continue'
+    try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+    foreach ($c in @(git -C $Root log --format=%H -- $RelPath 2>$null)) {
+      $text = (@(git -C $Root show "$($c):$RelPath" 2>$null) -join "`n")
+      if ($LASTEXITCODE -ne 0) { continue }
+      $fm = Read-AckFrontmatter $text
+      if (-not $fm.Ok) { continue }
+      foreach ($rv in @($fm.Runs)) { $m = [regex]::Match("$rv", '^(\S+)\s'); if ($m.Success -and ($runs -notcontains $m.Groups[1].Value)) { $runs += $m.Groups[1].Value } }
+    }
+  } catch { } finally { $ErrorActionPreference = $eap; try { [Console]::OutputEncoding = $enc } catch { } }
+  return $runs
+}
+
 function Get-RunFirstNamed([string]$Root, [string]$RelPath, [string]$Id, [string]$Since) {
   # The oldest commit of this file incarnation (on or after $Since, its
   # creation) whose change introduced `run: <id> ` (git's pickaxe): when
@@ -5762,7 +5816,8 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
   # deadline, and acks naming the damaged file stay on record (stale); a
   # damaged file deleted or renamed before any repair keeps its demand
   # from the record until an ack names it.
-  $inheritDue = @{}
+  # The earliest deadline each identity ever had (section 46 R3-F1).
+  $inheritDue = Read-DueRecord (Join-Path $Root 'build\nightly\ack-dues.json')
   $dues = @{}
   $corrAlias = @{}
   foreach ($e in @(Read-CorruptionRecord (Join-Path $Root 'build\nightly\ack-corruption.json'))) {
@@ -5824,7 +5879,8 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     foreach ($rj in @($v.Rejected)) { $lines += "- $($file.Name): REJECTS $($rj.Run) ($($rj.Why)); its other runs stand" }
     # Every valid file is remembered (section 46 item 2): one superseded or
     # withdrawn over still owes the remediation it opened.
-    $validFiles[$file.Name] = [pscustomobject]@{ File = $file.Name; Fields = $fm.Fields; Covers = @($fm.Covers); Disposition = $v.Disposition; Runs = @(@($v.Acked) + @($v.Stale)) }
+    $histRuns = @(Get-AckHistoricalRuns $Root $rel)
+    $validFiles[$file.Name] = [pscustomobject]@{ File = $file.Name; Fields = $fm.Fields; Covers = @($fm.Covers); Disposition = $v.Disposition; Runs = @(@($v.Acked) + @($v.Stale) + $histRuns | Sort-Object -Unique) }
     $when = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Date)" } else { '' }
     $commit = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Commit)" } else { '' }
     # The file's first commit is when it responded (section 39 item 3):
@@ -5971,6 +6027,14 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       # it (section 46 R2-C1), so narrowing A+B to A under the same fix
       # never drops B's verification.
       $cur = @($targets | Where-Object { $_.Label -eq $k })
+      # A label kept under another disposition is a different action
+      # (section 46 R3-C1): the earlier disposition's remediation stays
+      # its own target with its own closure rule.
+      if (($cur.Count -gt 0) -and (@($cur | Where-Object { "$($_.Disposition)" -eq "$($hist[$k].Disposition)" }).Count -eq 0)) {
+        $h = $hist[$k]
+        $targets += [pscustomobject]@{ Label = "$k (as $($h.Disposition) in an earlier version, opened $($h.Since.Substring(0, 10)))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = @($h.Incidents) }
+        continue
+      }
       if ($cur.Count -gt 0) {
         foreach ($ct in $cur) { foreach ($hi in @($hist[$k].Incidents)) { if (("$hi" -ne '') -and (@($ct.Incidents) -notcontains $hi)) { $ct.Incidents = @(@($ct.Incidents) + @($hi)) } } }
         continue
@@ -5993,7 +6057,16 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       # duplicate on the acknowledgement of the run it repeats; only
       # remediation still owed stays open.
       $fixWait = ''
-      if ($allClosed) { $closedBy = "closed: $closedField" }
+      if ($allClosed -and ($tg.Disposition -eq 'fixed')) {
+        # A `closed:` reference never skips a fix's verification (section
+        # 46 R3-F2): the fix commit (its finding or evidence, else the
+        # closed commit) still needs a passing run after it.
+        $fixSha = ''
+        foreach ($x in @($fnd, $ev, $closedField)) { if (($fixSha -eq '') -and ($x -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $x)) { $fixSha = $x } }
+        $vf = Test-FixVerified $Root $fixSha @($tg.Incidents) $(if ($ledgerRead.Ok) { $ledgerRead.Incidents } else { $null })
+        if ($vf.Ok) { $closedBy = "closed: $closedField, verified by a later pass" } else { $fixWait = $vf.Why }
+      }
+      elseif ($allClosed) { $closedBy = "closed: $closedField" }
       elseif ($tg.Disposition -eq 'duplicate') {
         # Decided once every other target's state is known (section 46
         # item 1): a duplicate closes only when the repeated run's own

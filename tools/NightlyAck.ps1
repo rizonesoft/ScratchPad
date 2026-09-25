@@ -236,6 +236,8 @@ if ($FileOverdue) {
     }
   }
   $gate = Test-Acknowledgements $Root $ackDir $demands $now $ackSla
+  # The filing records deadlines too (section 46 R3-F1).
+  $null = Update-DueRecord (Join-Path $nightDir 'ack-dues.json') $gate.Dues
   $over = @($gate.Overdue | ForEach-Object { $d = $demands[$_]; [pscustomobject]@{ Id = $_; What = $(if ($d.Unreadable) { 'unreadable result' } else { "RED $($d.Day)" }); Incidents = $(if (@($d.Incidents).Count -gt 0) { @($d.Incidents) -join ' ' } else { 'none' }) } })
   $existing = if (Test-Path $tablePath) { @(Get-Content $tablePath -Encoding UTF8) } else { @() }
   $ackedIds = @($demands.Keys | Where-Object { (@($gate.Unacked) -notcontains $_) -and (@($gate.ProofUnacked) -notcontains $_) })
