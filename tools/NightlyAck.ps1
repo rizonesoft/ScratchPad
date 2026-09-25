@@ -136,6 +136,14 @@ if ($Status) {
   $files = @()
   if ($gate.Claims.ContainsKey($Run)) { $files = @($gate.Claims[$Run] | ForEach-Object { $_.File } | Sort-Object -Unique) }
   if (($gov -ne '') -and ($files -notcontains $gov)) { $files += $gov }
+  # And every ack whose history ever named the run (section 46 R2-I1): an
+  # ack edited to name another run still owes what it opened for this one.
+  $eap = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    $relAcks = ($ackDir.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
+    foreach ($nm in @(git -C $Root log --format= --name-only -S "run: $Run " -- $relAcks 2>$null)) { $leaf = Split-Path -Leaf "$nm"; if (($leaf -like 'ack-*.md') -and ($files -notcontains $leaf) -and (Test-Path (Join-Path $ackDir $leaf))) { $files += $leaf } }
+  } catch { } finally { $ErrorActionPreference = $eap }
   $onFiles = { param($ln) @($files | Where-Object { $ln -like "*CORRECTIVE $_ (*" }).Count -gt 0 }
   foreach ($inc in @($d.Incidents)) {
     # A cover line answers for its own incident; otherwise each ack's

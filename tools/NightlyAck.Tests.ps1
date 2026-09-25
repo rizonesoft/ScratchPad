@@ -596,6 +596,59 @@ $rowsUV = @(Get-Content $tableS | Where-Object { ($_ -like "| $runU |*") -or ($_
 $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $dirtyUV = @(& git -C $ws status --porcelain -- docs/nightly-acks/overdue-findings.md 2>$null); $ErrorActionPreference = $eap
 Assert ((@($res | Where-Object { $_.Code -eq 0 }).Count -eq 2) -and (@($res | Where-Object { $_.Text -like '*another filing held*' }).Count -eq 0) -and ($rowsUV.Count -eq 2) -and ($dirtyUV.Count -eq 0)) 's46-concurrent-filings-both-record' (@($res | ForEach-Object { "$($_.Code): $($_.Text)" }) -join ' || ')
 
+# Section 46 R2-F1: a duplicate waits on a superseded ack's open action for
+# the repeated run, even when that run's governing action is closed.
+$runK = '2026-10-17-023001-pid55'; $runDK = '2026-10-17-120001-pid56'
+New-Red $runK '2026-10-17' @(); New-Red $runDK '2026-10-17' @()
+$dK = Get-Dem
+Write-Ack 'ack-k1.md' @("run: $runK sha256:$($dK[$runK].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-17')
+Save-All 'ack k1'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $headK = ((& git -C $ws rev-parse HEAD) | Out-String).Trim().Substring(0, 12); $ErrorActionPreference = $eap
+Write-Ack 'ack-k2.md' @("run: $runK sha256:$($dK[$runK].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", "closed: $headK", 'signed: 2026-10-18')
+Write-Ack 'ack-dk.md' @("run: $runDK sha256:$($dK[$runDK].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runK", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-18')
+Save-All 'ack k2 closes, dk duplicates k'
+$gK = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-18')
+Assert ((@($gK.Lines | Where-Object { $_ -like "*CORRECTIVE ack-k2.md ($fnd9): closed*" }).Count -eq 1) -and (@($gK.Lines | Where-Object { $_ -like "*CORRECTIVE ack-dk.md ($fnd9): open (duplicate of $runK; open while its action ack-k1.md ($fnd9) is open*" }).Count -eq 1)) 's46-duplicate-waits-on-a-superseded-open-action' ($gK.Lines -join ' | ')
+# Section 46 R2-F2: an edited legacy classification entry never survives a
+# broken anchor.
+$cls2 = Join-Path $ws 'cls2'
+$null = New-Item -ItemType Directory -Force -Path $cls2
+$legLine = '{"identity":"run-legacy","queue":"operational","source":"","sha":"' + ('3' * 64) + '","at":"2026-09-20T00:00:00Z"}'
+[System.IO.File]::WriteAllText((Join-Path $cls2 $script:ResultClassLedger), $legLine + "`n")
+$null = Add-ResultClassification $cls2 ([pscustomobject]@{ identity = 'run-new'; stamp = '2026-10-18-023001'; proof = $false }) ('4' * 64)
+$okLeg = Read-ResultClassifications $cls2
+$legOk = ($okLeg['run-legacy'].Queue -eq 'operational') -and ("$($script:ResultClassTampered)" -eq '')
+$l2 = [System.IO.File]::ReadAllLines((Join-Path $cls2 $script:ResultClassLedger))
+$l2[0] = $l2[0].Replace('"queue":"operational"', '"queue":"proof"')
+[System.IO.File]::WriteAllLines((Join-Path $cls2 $script:ResultClassLedger), $l2)
+$badLeg = Read-ResultClassifications $cls2
+Assert ($legOk -and (-not $badLeg.ContainsKey('run-legacy')) -and ("$($script:ResultClassTampered)" -like 'line 2 does not chain*')) 's46-edited-legacy-entry-never-survives' "$($script:ResultClassTampered)"
+# Section 46 R2-C1: narrowing a fixed ack from A+B to A under the same fix
+# keeps B's verification owed.
+$runW = '2026-10-19-023001-pid57'
+New-Red $runW '2026-10-19' @('- INC-dddd4444 `UI.C.T` x1 (Run A): boom', '- INC-f0000005 `UI.C.T` x1 (Run A): boom')
+$dW = Get-Dem
+Write-Ack 'ack-wab.md' @("run: $runW sha256:$($dW[$runW].Current)", 'incidents: INC-dddd4444, INC-f0000005', 'covers-all: yes', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $shaC", 'signed: 2026-10-19')
+Save-All 'ack w a+b'
+New-Red $runW '2026-10-19' @('- INC-dddd4444 `UI.C.T` x1 (Run A): boom') 2
+$dW2 = Get-Dem
+Write-Ack 'ack-wab.md' @("run: $runW sha256:$($dW2[$runW].Current)", 'incidents: INC-dddd4444', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $shaC", 'signed: 2026-10-20')
+Save-All 'ack w narrowed to a'
+[pscustomobject]@{ version = 1; incidents = @([pscustomobject]@{ id = 'INC-dddd4444'; test = 'UI.C.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-10-03-023001'; lastSeen = '2026-10-03-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-10-03-023001'; wheres = @('run-a') }); passStreak = 1; lastPassStamp = '2099-01-01-023001'; due = ''; finding = '' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $nd 'incidents.json') -Encoding UTF8
+$gW = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-20')
+Remove-Item (Join-Path $nd 'incidents.json')
+Assert (@($gW.Lines | Where-Object { $_ -like "*CORRECTIVE ack-wab.md ($shaC): open*awaiting a passing run of INC-f0000005*" }).Count -eq 1) 's46-narrowed-fix-keeps-the-dropped-incident-owed' ($gW.Lines -join ' | ')
+# Section 46 R2-I1: status finds an ack whose history named the run.
+$runM = '2026-10-21-023001-pid58'; $runN = '2026-10-21-120001-pid59'
+New-Red $runM '2026-10-21' @(); New-Red $runN '2026-10-21' @()
+$dM = Get-Dem
+Write-Ack 'ack-m.md' @("run: $runM sha256:$($dM[$runM].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-21')
+Save-All 'ack m'
+Write-Ack 'ack-m.md' @("run: $runN sha256:$($dM[$runN].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-21')
+Save-All 'ack m renamed to n'
+$stM = Invoke-Helper @('-Status', '-Run', $runM, '-Today', '2026-10-21', '-WorkspaceRoot', $ws)
+Assert ($stM.Text -like '*blocking: CORRECTIVE ack-m.md (D00 T02 *9): open*') 's46-status-finds-historical-acks' $stM.Text
+
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyAck.Tests: all green'

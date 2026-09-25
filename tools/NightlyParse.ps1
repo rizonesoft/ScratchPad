@@ -5099,6 +5099,12 @@ function Read-ResultClassifications([string]$NightDir) {
   $p = Join-Path $NightDir $script:ResultClassLedger
   if (-not (Test-Path $p)) { return $map }
   $legacy = @()
+  # Legacy (pre-chain) entries wait here (section 46 R2-F2): they join the
+  # map only once the first chained line verifies their anchor, or when
+  # no chained line exists at all (nothing can vouch for them then, as
+  # before the chain), so an edited legacy entry never survives a broken
+  # anchor.
+  $legacyEntries = @()
   $last = ''
   $n = 0
   foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
@@ -5110,17 +5116,20 @@ function Read-ResultClassifications([string]$NightDir) {
     if (-not $chained) {
       if ($last -ne '') { $script:ResultClassTampered = "line $n is unchained after the chain began"; break }
       $legacy += $ln
-      if ($null -eq $o) { continue }
+      if ($null -ne $o) { $legacyEntries += $o }
+      continue
     } else {
       $want = if ($last -ne '') { $last } else { Get-ClassLegacyAnchor $legacy }
       $body = [ordered]@{ identity = "$($o.identity)"; queue = "$($o.queue)"; source = "$($o.source)"; sha = "$($o.sha)"; at = "$($o.at)"; prev = "$($o.prev)" }
       $h = Get-ClassChainHash (ConvertTo-Json -Compress ([pscustomobject]$body))
       if ("$($o.prev)" -ne $want) { $script:ResultClassTampered = "line $n does not chain to the line before it (an earlier line was edited, removed, or inserted)"; break }
       if ("$($o.h)" -ne $h) { $script:ResultClassTampered = "line $n was edited after it was recorded"; break }
+      if ($last -eq '') { foreach ($le in $legacyEntries) { if (("$($le.identity)" -ne '') -and (-not $map.ContainsKey("$($le.identity)"))) { $map["$($le.identity)"] = [pscustomobject]@{ Queue = "$($le.queue)"; Source = "$($le.source)" } } } }
       $last = "$($o.h)"
     }
     if (("$($o.identity)" -ne '') -and (-not $map.ContainsKey("$($o.identity)"))) { $map["$($o.identity)"] = [pscustomobject]@{ Queue = "$($o.queue)"; Source = "$($o.source)" } }
   }
+  if (($last -eq '') -and ("$($script:ResultClassTampered)" -eq '')) { foreach ($le in $legacyEntries) { if (("$($le.identity)" -ne '') -and (-not $map.ContainsKey("$($le.identity)"))) { $map["$($le.identity)"] = [pscustomobject]@{ Queue = "$($le.queue)"; Source = "$($le.source)" } } } }
   return $map
 }
 
@@ -5683,6 +5692,9 @@ function Get-AckHistoricalTargets([string]$Root, [string]$RelPath) {
       # R1-C1), so a later edit that drops them never empties what a
       # historical action must verify.
       $verInc = @("$($fm.Fields['incidents'])" -split '[,\s]+' | Where-Object { ($_ -ne '') -and ($_ -ne 'none') })
+      # A label named again in a later version adds that version's
+      # incidents (section 46 R2-C1).
+      if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and $targets.Contains($top)) { foreach ($vi in $verInc) { if (@($targets[$top].Incidents) -notcontains $vi) { $targets[$top].Incidents = @(@($targets[$top].Incidents) + @($vi)) } } }
       if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and (-not $targets.Contains($top))) { $targets[$top] = [pscustomobject]@{ Label = $top; Finding = $top; Disposition = "$($fm.Fields['disposition'])"; Evidence = "$($fm.Fields['evidence'])"; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = $verInc } }
       foreach ($cv in @($fm.Covers)) {
         $cm = [regex]::Match("$cv", $script:AckCoverRe)
@@ -5926,7 +5938,14 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     $relAck = (($AckDir.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/') + "/$file"
     $hist = Get-AckHistoricalTargets $Root $relAck
     foreach ($k in $hist.Keys) {
-      if (@($targets | Where-Object { $_.Label -eq $k }).Count -gt 0) { continue }
+      # A label still current keeps every incident any version listed for
+      # it (section 46 R2-C1), so narrowing A+B to A under the same fix
+      # never drops B's verification.
+      $cur = @($targets | Where-Object { $_.Label -eq $k })
+      if ($cur.Count -gt 0) {
+        foreach ($ct in $cur) { foreach ($hi in @($hist[$k].Incidents)) { if (("$hi" -ne '') -and (@($ct.Incidents) -notcontains $hi)) { $ct.Incidents = @(@($ct.Incidents) + @($hi)) } } }
+        continue
+      }
       $h = $hist[$k]
       $hInc = if (($null -ne $h.PSObject.Properties['Incidents']) -and (@($h.Incidents).Count -gt 0)) { @($h.Incidents) } elseif ($k -match '^(INC-[0-9a-f]{8}) ') { @($Matches[1]) } else { @() }
       $targets += [pscustomobject]@{ Label = "$k (dropped from the ack, opened $($h.Since.Substring(0, 10)))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = $hInc }
@@ -5996,9 +6015,18 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     param($pd)
     $of = "$($pd.Of)"
     if (($of -eq '') -or (-not $acked.ContainsKey($of))) { return $null }
-    $gf = $acked[$of]
+    # Every ack that claims the repeated run (section 46 R2-F1), not only
+    # its governing one: a superseded ack's open action for the matching
+    # incident is outstanding remediation too.
     $inc = @($pd.Target.Incidents)
-    return @(@($targetsByFile[$gf]) | Where-Object { $t = $_; ($inc.Count -eq 0) -or (@($t.Incidents).Count -eq 0) -or (@($t.Incidents | Where-Object { $inc -contains $_ }).Count -gt 0) })
+    $out = @()
+    foreach ($ff in @($validFiles.Keys)) {
+      if (@($validFiles[$ff].Runs) -notcontains $of) { continue }
+      foreach ($t in @($targetsByFile[$ff])) {
+        if (($inc.Count -eq 0) -or (@($t.Incidents).Count -eq 0) -or (@($t.Incidents | Where-Object { $inc -contains $_ }).Count -gt 0)) { $out += [pscustomobject]@{ File = $ff; Target = $t } }
+      }
+    }
+    return $out
   }
   $changed = $true
   $guard = 0
@@ -6010,8 +6038,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       if ("$($targetState[$key])" -ne '') { continue }
       $surv = & $survFor $pd
       if ($null -eq $surv) { continue }
-      $gf = $acked["$($pd.Of)"]
-      if ((@($surv).Count -eq 0) -or (@($surv | Where-Object { "$($targetState["$gf|$($_.Label)"])" -eq '' }).Count -eq 0)) { $targetState[$key] = "duplicate of acknowledged $($pd.Of)"; $changed = $true }
+      if ((@($surv).Count -eq 0) -or (@($surv | Where-Object { "$($targetState["$($_.File)|$($_.Target.Label)"])" -eq '' }).Count -eq 0)) { $targetState[$key] = "duplicate of acknowledged $($pd.Of)"; $changed = $true }
     }
   }
   foreach ($pd in $pendingDup) {
@@ -6027,15 +6054,12 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       if ($late) { $corrective += ($label + ': OVERDUE since ' + $pd.DueText + ': ' + $body) } else { $corrective += ($label + ': open (' + $body + ')') }
       continue
     }
-    $gf = $acked[$of]
-    $inc = @($tg.Incidents)
-    $surv = @(@($targetsByFile[$gf]) | Where-Object { $t = $_; ($inc.Count -eq 0) -or (@($t.Incidents).Count -eq 0) -or (@($t.Incidents | Where-Object { $inc -contains $_ }).Count -gt 0) })
-    if ($surv.Count -eq 0) { $corrective += "$label`: closed (duplicate of acknowledged $of; its ack $gf opened no action for these incidents)"; continue }
-    $open = @($surv | Where-Object { "$($targetState["$gf|$($_.Label)"])" -eq '' })
-    if ("$($targetState["$($pd.File)|$($tg.Label)"])" -ne '') { $open = @() }
-    $names = (@($surv | ForEach-Object { "$gf ($($_.Label))" }) -join ', ')
-    if ($open.Count -eq 0) { $corrective += "$label`: closed (duplicate of acknowledged $of; its action $names closed)"; continue }
-    $openNames = (@($open | ForEach-Object { "$gf ($($_.Label))" }) -join ', ')
+    $surv = @(& $survFor $pd)
+    if ($surv.Count -eq 0) { $corrective += "$label`: closed (duplicate of acknowledged $of; no ack of it opened an action for these incidents)"; continue }
+    $names = (@($surv | ForEach-Object { "$($_.File) ($($_.Target.Label))" }) -join ', ')
+    if ("$($targetState["$($pd.File)|$($tg.Label)"])" -ne '') { $corrective += "$label`: closed (duplicate of acknowledged $of; its action $names closed)"; continue }
+    $open = @($surv | Where-Object { "$($targetState["$($_.File)|$($_.Target.Label)"])" -eq '' })
+    $openNames = (@($open | ForEach-Object { "$($_.File) ($($_.Target.Label))" }) -join ', ')
     $dupNote = ''
     if ($pd.Stale) { $dupNote += '; its run was revised after signing, the action stays until closed' }
     if ($superseded.ContainsKey($pd.File)) { $dupNote += '; this ack no longer governs its run (superseded or withdrawn over), the action stays until closed' }
