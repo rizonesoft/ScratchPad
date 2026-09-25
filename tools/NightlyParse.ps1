@@ -2842,7 +2842,7 @@ function ConvertTo-MetricsRow($Result) {
   $prov = $null
   try { if ($null -ne $Result.provenance) { $prov = [ordered]@{}; foreach ($pp in @($Result.provenance.PSObject.Properties)) { $pv = [ordered]@{}; foreach ($q in @($pp.Value.PSObject.Properties)) { $pv[$q.Name] = Protect-DisclosedText "$($q.Value)" }; $prov[$pp.Name] = [pscustomobject]$pv } } } catch { $prov = $null }
   return [ordered]@{
-    schema = 'metrics/1'; identity = "$($Result.identity)"; stamp = "$($Result.stamp)"; day = "$($Result.day)"; night = (Get-ResultNight $Result)
+    schema = 'metrics/1'; identity = "$($Result.identity)"; revision = $(try { $Result.revision } catch { $null }); stamp = "$($Result.stamp)"; day = "$($Result.day)"; night = (Get-ResultNight $Result)
     # Explainable after pruning (section 40 item 13): the row names its
     # source result (identity plus host) and the derivation that built it.
     source = "morning-$($Result.stamp).result.json"; hostKey = (Get-ResultHostKey $Result); derivation = $script:MetricsDerivation; excluded = "$(try { $Result.excluded } catch { '' })"
@@ -3152,8 +3152,9 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
   # sender confirms it, so a re-render never drops a transition. Runs
   # under the metrics lock and writes atomically; returns the transitions.
   return (Invoke-WithMetricsLock {
-    $ledger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @() }
-    if (Test-Path $Path) { try { $ledger = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $ledger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @() } } }
+    # An unreadable ledger fails closed (R2-F1): it is never replaced, so
+    # pending transitions and delivery history survive for repair.
+    $ledger = Read-AlertLedger $Path
     $entries = @(@($ledger.alerts) | Where-Object { $null -ne $_ })
     $night = "$($Evaluation.Night)"; $hk = "$($Evaluation.Host)"; $evalId = "$($Evaluation.Identity)"
     $current = [ordered]@{}
@@ -3177,6 +3178,17 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
   })
 }
 
+function Read-AlertLedger([string]$Path) {
+  # The lifecycle ledger, or an empty one when the file does not exist.
+  # A file that exists but does not parse as alerts/1 throws, naming the
+  # file, so no caller overwrites it or reads it as empty.
+  if (-not (Test-Path $Path)) { return [pscustomobject]@{ schema = 'alerts/1'; alerts = @() } }
+  $lg = $null
+  try { $lg = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { }
+  if (($null -eq $lg) -or ("$($lg.schema)" -ne 'alerts/1')) { throw "alert ledger $Path is unreadable; repair it or move it aside (its pending transitions and delivery history are kept, not overwritten)" }
+  return $lg
+}
+
 function Get-TextHash([string]$Text) {
   # First 8 hex of SHA-256 over a string (the pending-set notify key).
   $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -3189,7 +3201,7 @@ function Get-PendingAlertNotifications([string]$Path) {
   # and Keys to confirm afterwards.
   $lines = @(); $keys = @()
   if (-not (Test-Path $Path)) { return [pscustomobject]@{ Lines = @(); Keys = @(); Persisting = 0 } }
-  $lg = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+  $lg = Read-AlertLedger $Path
   $persisting = 0
   foreach ($e in @($lg.alerts)) {
     if ($null -eq $e) { continue }
@@ -3205,7 +3217,7 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
   # the sender accepted them; a transition opened since stays pending.
   if (@($Keys).Count -eq 0) { return }
   $null = Invoke-WithMetricsLock {
-    $lg = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    $lg = Read-AlertLedger $Path
     foreach ($e in @($lg.alerts)) {
       if ($null -eq $e) { continue }
       if (@($Keys) -contains "open|$($e.id)|$($e.firstNight)") { $e.notifiedOpen = $true }
@@ -3287,7 +3299,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }); hostKey = "$($Row.hostKey)"; populationState = "$($Row.populationState)"; executedUnique = $(try { $Row.executedUnique } catch { $null }); excluded = "$($Row.excluded)"; metricsSource = "$($Row.source)"; derivation = $(try { $Row.derivation } catch { $null }); mergedFrom = "$($Row.mergedFrom)" }
+  return [pscustomobject]@{ version = 1; revision = $(try { $Row.revision } catch { $null }); identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }); hostKey = "$($Row.hostKey)"; populationState = "$($Row.populationState)"; executedUnique = $(try { $Row.executedUnique } catch { $null }); excluded = "$($Row.excluded)"; metricsSource = "$($Row.source)"; derivation = $(try { $Row.derivation } catch { $null }); mergedFrom = "$($Row.mergedFrom)" }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -3924,11 +3936,19 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     # Completion grace (section 40 item 3): a night is due-through only
     # once its trigger plus the run's 4 h limit plus 30 min has passed; a
     # night still inside that window reads pending, never missing.
-    $trig = [TimeSpan]::FromHours(2.5)
-    try { $te = Get-ScheduleEntry $Schedule $Today.Date.ToString('yyyy-MM-dd'); if (($null -ne $te) -and (@($te.PSObject.Properties.Name) -contains 'Trigger')) { $trig = [TimeSpan]::Parse("$($te.Trigger)") } } catch { }
-    $graceEnd = $trig + [TimeSpan]::FromHours(4.5)
-    $dueThrough = if ($Today.TimeOfDay -ge $graceEnd) { $Today.Date } else { $Today.Date.AddDays(-1) }
-    $pendingNight = if ($Today.TimeOfDay -ge $trig -and $Today.TimeOfDay -lt $graceEnd) { $Today.Date.ToString('yyyy-MM-dd') } else { '' }
+    # Each night's deadline is computed from its own date and the trigger
+    # in force that night (R2-F2), so a trigger near midnight keeps the
+    # previous night pending past midnight instead of reading missing.
+    $dueThrough = $Today.Date.AddDays(-2)
+    $pendingNight = ''
+    foreach ($cand in @($Today.Date.AddDays(-1), $Today.Date)) {
+      $trig = [TimeSpan]::FromHours(2.5)
+      try { $te = Get-ScheduleEntry $Schedule $cand.ToString('yyyy-MM-dd'); if (($null -ne $te) -and (@($te.PSObject.Properties.Name) -contains 'Trigger')) { $trig = [TimeSpan]::Parse("$($te.Trigger)") } } catch { }
+      $startAt = $cand + $trig
+      $deadline = $startAt + [TimeSpan]::FromHours(4.5)
+      if ($Today -ge $deadline) { $dueThrough = $cand }
+      elseif ($Today -ge $startAt) { $pendingNight = $cand.ToString('yyyy-MM-dd') }
+    }
     if ($dueThrough -gt $d1) { $d1 = $dueThrough.AddDays(1) }
     if (($pendingNight -ne '') -and ($allNights -notcontains $pendingNight) -and (Test-NightScheduled $Schedule $pendingNight)) { $rowEntries += [pscustomobject]@{ Night = $pendingNight; Stamp = ''; Line = "| $pendingNight | pending | - | run window open | - | - | - | - | - | - | - | - | - |" } }
     for ($d = $d0; $d -lt $d1; $d = $d.AddDays(1)) {

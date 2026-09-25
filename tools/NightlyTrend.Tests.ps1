@@ -535,6 +535,13 @@ $grSched = [pscustomobject]@{ First = '2026-09-20'; Trigger = '02:30'; IntervalD
 $tRun = @(Format-TrendTable $gr $Q (Get-Date '2026-09-30 04:00') @{} @() @() $grSched)
 $tLate = @(Format-TrendTable $gr $Q (Get-Date '2026-09-30 07:30') @{} @() @() $grSched)
 Assert ((@($tRun | Where-Object { $_ -like '| 2026-09-30 | pending |*' }).Count -eq 1) -and (@($tRun | Where-Object { $_ -like '| 2026-09-30 | missing |*' }).Count -eq 0) -and (@($tLate | Where-Object { $_ -like '| 2026-09-30 | missing |*' }).Count -eq 1)) 's40-running-night-reads-pending' (($tRun + $tLate | Where-Object { $_ -like '| 2026-09-30*' }) -join ' || ')
+# R2-F2: a trigger near midnight keeps the previous night pending past
+# midnight, and it reads missing only after its own deadline.
+$mnRows = @(20..28 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-230000' -f $_) 600 })
+$mnSched = [pscustomobject]@{ First = '2026-09-20'; Trigger = '23:00'; IntervalDays = 1 }
+$mnEarly = @(Format-TrendTable $mnRows $Q (Get-Date '2026-09-30 01:00') @{} @() @() $mnSched)
+$mnLate = @(Format-TrendTable $mnRows $Q (Get-Date '2026-09-30 03:31') @{} @() @() $mnSched)
+Assert ((@($mnEarly | Where-Object { $_ -like '| 2026-09-29 | pending |*' }).Count -eq 1) -and (@($mnEarly | Where-Object { $_ -like '| 2026-09-29 | missing |*' }).Count -eq 0) -and (@($mnLate | Where-Object { $_ -like '| 2026-09-29 | missing |*' }).Count -eq 1)) 's40-late-trigger-grace-crosses-midnight' (($mnEarly + $mnLate | Where-Object { $_ -like '| 2026-09-29*' }) -join ' || ')
 # Item 6: each detector's boundary reads its side.
 $bBase = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
 $at125 = @(Get-TrendAlerts (@($bBase) + @(New-Night '2026-09-27' '2026-09-27-023000' 750)))
@@ -701,6 +708,21 @@ $null = Update-AlertLedger @() $dvPath ([pscustomobject]@{ Night = '2026-09-28';
 $null = Update-AlertLedger @() $dvPath ([pscustomobject]@{ Night = '2026-09-28'; Host = 'h0st0001'; Identity = 'b#r1' })
 $dv3 = Get-PendingAlertNotifications $dvPath
 Assert ((@($dv1.Lines).Count -eq 1) -and ($dv1.Lines[0] -like 'ALERT pass-rate*') -and (@($dv2.Lines).Count -eq 0) -and ($dv2.Persisting -eq 1) -and (@($dv3.Lines).Count -eq 1) -and ($dv3.Lines[0] -eq 'closed (recovered on 2026-09-28): h0st0001|pass-rate')) 's40-alert-delivery-survives-rerender' "$($dv1.Lines -join ';') / $($dv3.Lines -join ';')"
+# R2-F1: an unreadable ledger fails closed and is never overwritten.
+$bdPath = Join-Path $s40 'bad-ledger.json'
+'{"schema":"alerts/1","alerts":[{"id":' | Set-Content -Path $bdPath -Encoding UTF8
+$bdBefore = [System.IO.File]::ReadAllText($bdPath)
+$bdThrew = $false
+try { $null = Update-AlertLedger @('- ALERT pass-rate: 90% on 2026-09-27 vs baseline 100%') $bdPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'a#r1' }) } catch { $bdThrew = ("$($_.Exception.Message)" -like '*alert ledger*unreadable*') }
+$bdPendThrew = $false
+try { $null = Get-PendingAlertNotifications $bdPath } catch { $bdPendThrew = $true }
+Assert ($bdThrew -and $bdPendThrew -and ([System.IO.File]::ReadAllText($bdPath) -eq $bdBefore)) 's40-corrupt-ledger-fails-closed'
+# R2-F3: the revision survives the metrics row, so a metrics-only
+# evaluation still tells a corrected result apart.
+$rvRow = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $rvLate)) -Depth 6 -Compress) | ConvertFrom-Json)
+$script:LastTrendEvaluation = $null
+$null = Get-TrendAlerts (@($rvBase) + @($rvRow))
+Assert ("$($script:LastTrendEvaluation.Identity)" -eq '2026-09-27-023000-pid1#r2') 's40-revision-survives-metrics' "$($script:LastTrendEvaluation.Identity)"
 # R1-F4: every host's series is evaluated in the table.
 $mhA = @(20..27 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
 $mhB = @(20..27 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023500' -f $_) $(if ($_ -eq 27) { 900 } else { 600 }); $n.identity = ('2026-09-{0:d2}-023500-pid2' -f $_); $n.hostKey = 'h0st0002'; $n })
