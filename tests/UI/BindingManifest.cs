@@ -22,6 +22,7 @@ internal static class BindingManifest
     // anything else in src/ is an undeclared binding surface.
     internal const string MenuXamlPath = "src/ScratchPad/MenuBar.xaml";
     internal const string TabSourcePath = "src/ScratchPad/MainWindow.xaml.cs";
+    internal const string MenuCodeBehindPath = "src/ScratchPad/MenuBar.xaml.cs";
 
     internal static readonly string[] Classes = ["covered", "disabled", "owner-owed", "duplicate"];
 
@@ -559,7 +560,9 @@ internal static class BindingManifest
     // D00 T02 §28 item 1: a covering test asserts an observable outcome
     // after it presses the chord. A press followed by no assertion (an
     // Assert call, directly or inside a lambda) proves the key went out,
-    // not that the command ran.
+    // not that the command ran. An assertion over literals only
+    // (Assert.True(true), Assert.Equal(1, 1)) reads no app state and
+    // does not count (§28 R1-F1).
     internal static bool AssertsAfterPress(string source, string method, string chord)
     {
         SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
@@ -574,13 +577,99 @@ internal static class BindingManifest
 
             int after = presses.Max(c => c.SpanStart);
             if (m.DescendantNodes().OfType<InvocationExpressionSyntax>()
-                .Any(c => c.SpanStart > after && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal)))
+                .Any(c => c.SpanStart > after && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal)
+                    && c.ArgumentList.Arguments.Any(a => !IsConstant(a.Expression))))
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    static bool IsConstant(ExpressionSyntax e) => e switch
+    {
+        LiteralExpressionSyntax => true,
+        ParenthesizedExpressionSyntax p => IsConstant(p.Expression),
+        PrefixUnaryExpressionSyntax u => IsConstant(u.Operand),
+        BinaryExpressionSyntax b => IsConstant(b.Left) && IsConstant(b.Right),
+        _ => false,
+    };
+
+    // Host-member routing (§28 R1-F1): each bound menu item's handler must
+    // call exactly the host member this table names, so a handler body
+    // re-pointed at another command fails even when the handler's name
+    // still matches the item. A bound item missing from the table fails
+    // too, so a new binding declares its command here.
+    internal static readonly Dictionary<string, string> HostCalls = new(StringComparer.Ordinal)
+    {
+        ["MenuFileNewTab"] = "NewTab",
+        ["MenuFileNewWindow"] = "NewWindow",
+        ["MenuFileOpen"] = "OpenAsync",
+        ["MenuFileSave"] = "SaveAsync",
+        ["MenuFileSaveAs"] = "SaveAsAsync",
+        ["MenuFileSaveAll"] = "SaveAllAsync",
+        ["MenuFilePrint"] = "PrintAsync",
+        ["MenuFileCloseTab"] = "CloseTab",
+        ["MenuFileCloseWindow"] = "CloseWindow",
+        ["MenuEditSearchBing"] = "SearchBing",
+        ["MenuEditDefineBing"] = "DefineBing",
+        ["MenuToolsStats"] = "ShowStatsAsync",
+        ["MenuToolsSnapshots"] = "ShowSnapshotsAsync",
+        ["MenuToolsTemplates"] = "ShowTemplatesAsync",
+        ["MenuToolsExport"] = "ShowExportAsync",
+        ["MenuToolsLock"] = "LockFileAsync",
+    };
+
+    // Bound (accelerator-carrying) menu items with a Click handler.
+    internal static Dictionary<string, string> BoundHandlers(string xaml)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (XElement el in XDocument.Parse(xaml).Descendants().Where(e => e.Name.LocalName == "KeyboardAccelerator"))
+        {
+            XElement? owner = el.Parent?.Parent;
+            if (owner is not null && AutomationId(owner) is string id && owner.Attribute("Click")?.Value is string handler)
+            {
+                map[id] = handler;
+            }
+        }
+
+        return map;
+    }
+
+    internal static List<string> HandlerRouting(Dictionary<string, string> handlers, string codeBehind, IReadOnlyDictionary<string, string> hostCalls)
+    {
+        var problems = new List<string>();
+        SyntaxNode root = CSharpSyntaxTree.ParseText(codeBehind).GetRoot();
+        foreach (var (id, handler) in handlers.OrderBy(h => h.Key, StringComparer.Ordinal))
+        {
+            MethodDeclarationSyntax? m = root.DescendantNodes().OfType<MethodDeclarationSyntax>().FirstOrDefault(x => x.Identifier.Text == handler);
+            if (m is null)
+            {
+                problems.Add($"{id}: handler {handler} is not in the menu code-behind");
+                continue;
+            }
+
+            var calls = m.DescendantNodes().OfType<SimpleNameSyntax>()
+                .Where(n => n.Parent is MemberAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "host" } } ma && ma.Name == n
+                    || n.Parent is MemberBindingExpressionSyntax mb && mb.Name == n && mb.Parent?.Parent is ConditionalAccessExpressionSyntax { Expression: IdentifierNameSyntax { Identifier.Text: "host" } })
+                .Select(n => n.Identifier.Text).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+            if (!hostCalls.TryGetValue(id, out string? want))
+            {
+                problems.Add($"{id}: bound, but the manifest's host-call table names no command for it (handler calls {string.Join(", ", calls)})");
+            }
+            else if (calls.Count != 1 || calls[0] != want)
+            {
+                problems.Add($"{id}: handler {handler} calls host {(calls.Count == 0 ? "nothing" : string.Join(", ", calls))}, the manifest says {want}");
+            }
+        }
+
+        foreach (string stale in hostCalls.Keys.Where(k => !handlers.ContainsKey(k)).Order(StringComparer.Ordinal))
+        {
+            problems.Add($"{stale}: the host-call table names an item that carries no binding");
+        }
+
+        return problems.Order(StringComparer.Ordinal).ToList();
     }
 
     // The method with only one press kept, so PressedChords reads the

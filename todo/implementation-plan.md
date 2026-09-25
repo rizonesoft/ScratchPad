@@ -258,7 +258,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D02 T01 §2`  | Text buffer and caret model                                         |  10   |
 | [ ] | `D02 T01 §3`  | Rendering, selection, clipboard                                     |  13   |
 | [ ] | `D02 T01 §4`  | Undo and redo                                                       |   7   |
-| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |   9   |
+| [ ] | `D02 T01 §5`  | Zoom and word wrap                                                  |  10   |
 | [ ] | `D02 T01 §6`  | Context menu and mouse behaviors                                    |   5   |
 | [ ] | `D02 T01 §7`  | Large-file behavior and budget                                      |   5   |
 | [ ] | `D02 T01 §8`  | Selection utilities: case, sort, dedupe                             |   6   |

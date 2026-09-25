@@ -115,6 +115,51 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.Contains(parse, p => p.Contains("MenuFileNewTab is wired to handler OnFileOpen, not OnFileNewTab", StringComparison.Ordinal));
     }
 
+    // §28 R1-F1: a handler whose name still matches its item but whose
+    // body runs another command fails, and so does a bound item the
+    // host-call table does not name.
+    [Fact]
+    public void PlantedHandlerBodySwapFails()
+    {
+        var (_, parse) = LiveInputs(menuCode: c => c.Replace("void OnFileNewTab(object sender, RoutedEventArgs e) => host?.NewTab();", "void OnFileNewTab(object sender, RoutedEventArgs e) => host?.CloseTab();", StringComparison.Ordinal));
+        Assert.Contains(parse, p => p.Contains("MenuFileNewTab: handler OnFileNewTab calls host CloseTab, the manifest says NewTab", StringComparison.Ordinal));
+        var table = new Dictionary<string, string>(BindingManifest.HostCalls, StringComparer.Ordinal);
+        table.Remove("MenuFileSave");
+        table["MenuFileExit"] = "Exit";
+        string root = RepoRoot();
+        var problems = BindingManifest.HandlerRouting(
+            BindingManifest.BoundHandlers(File.ReadAllText(Path.Combine(root, BindingManifest.MenuXamlPath))),
+            File.ReadAllText(Path.Combine(root, BindingManifest.MenuCodeBehindPath)),
+            table);
+        Assert.Equal(
+            [
+                "MenuFileExit: the host-call table names an item that carries no binding",
+                "MenuFileSave: bound, but the manifest's host-call table names no command for it (handler calls SaveAsync)",
+            ],
+            problems);
+    }
+
+    // §28 R1-F1: an assertion over literals only reads no app state.
+    [Fact]
+    public void ConstantAssertionDoesNotCountAsAnOutcome()
+    {
+        var (inputs, _) = LiveInputs(testSource: (cls, src) =>
+        {
+            if (cls != "AcceleratorTests")
+            {
+                return src;
+            }
+
+            int a = src.IndexOf("public void ChordCtrlShiftGOpensStats()", StringComparison.Ordinal);
+            int b = src.IndexOf("[InteractiveFact]", a, StringComparison.Ordinal);
+            int press = src.IndexOf("UiInput.Press(", a, StringComparison.Ordinal);
+            int end = src.IndexOf(';', press) + 1;
+            string after = src[end..b].Replace("Assert.", "Skip.", StringComparison.Ordinal);
+            return src[..end] + " Assert.True(true); Assert.Equal(1, 1);" + after + src[b..];
+        });
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("AcceleratorTests.ChordCtrlShiftGOpensStats presses Ctrl+Shift+G but asserts nothing after it", StringComparison.Ordinal));
+    }
+
     // D00 T02 §28 item 1: a covering test that presses the chord but
     // asserts nothing after it cannot tell the right command from a
     // wrong one, so it covers nothing.
@@ -360,6 +405,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
     static (BindingManifest.Inputs Inputs, List<string> Parse) LiveInputs(
         Func<string, string>? xaml = null,
         Func<string, string>? tabSource = null,
+        Func<string, string>? menuCode = null,
         Func<string, string>? runtime = null,
         Func<string, string>? audit = null,
         Func<string, string, string>? testSource = null,
@@ -373,6 +419,8 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         var parse = new List<string>();
         var decls = BindingManifest.ParseMenuXaml(xamlText, out var accessKeys, out var p1);
         parse.AddRange(p1);
+        string codeText = File.ReadAllText(Path.Combine(root, BindingManifest.MenuCodeBehindPath));
+        parse.AddRange(BindingManifest.HandlerRouting(BindingManifest.BoundHandlers(xamlText), menuCode?.Invoke(codeText) ?? codeText, BindingManifest.HostCalls));
         decls.AddRange(BindingManifest.ParseTabAccelerators(tabText, out var p2));
         parse.AddRange(p2);
         var sources = Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)

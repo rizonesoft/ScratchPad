@@ -40,7 +40,7 @@ public sealed class UiInputFunnelTests
     {
         int down = 0;
         int up = 0;
-        UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => down++, () => up++, () => true, () => { });
+        UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => down++, () => up++, () => true, () => true, () => { });
         Assert.Equal(1, down);
         Assert.Equal(1, up);
     }
@@ -52,7 +52,7 @@ public sealed class UiInputFunnelTests
         WithShortWait(() =>
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
-                UiInput.SendChecked(App, Target, () => (0x200, Thief), Focus(App), () => sent++, () => sent++, () => true, () => { }));
+                UiInput.SendChecked(App, Target, () => (0x200, Thief), Focus(App), () => sent++, () => sent++, () => true, () => true, () => { }));
             Assert.Contains("key not sent", ex.Message, StringComparison.Ordinal);
             Assert.Contains("pid 777", ex.Message, StringComparison.Ordinal);
         });
@@ -64,7 +64,7 @@ public sealed class UiInputFunnelTests
     {
         int sent = 0;
         WithShortWait(() => Assert.Throws<InvalidOperationException>(() =>
-            UiInput.SendChecked(App, Target, () => (OtherWindow, App), Focus(App), () => sent++, () => sent++, () => true, () => { })));
+            UiInput.SendChecked(App, Target, () => (OtherWindow, App), Focus(App), () => sent++, () => sent++, () => true, () => true, () => { })));
         Assert.Equal(0, sent);
     }
 
@@ -75,11 +75,11 @@ public sealed class UiInputFunnelTests
         WithShortWait(() =>
         {
             Assert.Throws<InvalidOperationException>(() =>
-                UiInput.SendChecked(App, Target, () => (Target, App), Focus(Thief), () => sent++, () => sent++, () => true, () => { }));
+                UiInput.SendChecked(App, Target, () => (Target, App), Focus(Thief), () => sent++, () => sent++, () => true, () => true, () => { }));
             Assert.Throws<InvalidOperationException>(() =>
-                UiInput.SendChecked(App, Target, () => (0, App), Focus(App), () => sent++, () => sent++, () => true, () => { }));
+                UiInput.SendChecked(App, Target, () => (0, App), Focus(App), () => sent++, () => sent++, () => true, () => true, () => { }));
             Assert.Throws<InvalidOperationException>(() =>
-                UiInput.SendChecked(App, 0, () => (0, App), Focus(App), () => sent++, () => sent++, () => true, () => { }));
+                UiInput.SendChecked(App, 0, () => (0, App), Focus(App), () => sent++, () => sent++, () => true, () => true, () => { }));
         });
         Assert.Equal(0, sent);
     }
@@ -94,7 +94,7 @@ public sealed class UiInputFunnelTests
         WithShortWait(() =>
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
-                UiInput.SendChecked(App, Target, () => (Target, App), Focus(App, onTarget: false), () => sent++, () => sent++, () => true, () => { }));
+                UiInput.SendChecked(App, Target, () => (Target, App), Focus(App, onTarget: false), () => sent++, () => sent++, () => true, () => true, () => { }));
             Assert.Contains("not the focus target", ex.Message, StringComparison.Ordinal);
         });
         Assert.Equal(0, sent);
@@ -105,7 +105,7 @@ public sealed class UiInputFunnelTests
     {
         int polls = 0;
         int sent = 0;
-        UiInput.SendChecked(App, Target, () => ++polls < 3 ? (0x200, Thief) : (Target, App), Focus(App), () => sent++, NoKeyUp, () => true, () => { });
+        UiInput.SendChecked(App, Target, () => ++polls < 3 ? (0x200, Thief) : (Target, App), Focus(App), () => sent++, NoKeyUp, () => true, () => true, () => { });
         Assert.Equal(1, sent);
     }
 
@@ -114,7 +114,7 @@ public sealed class UiInputFunnelTests
     {
         var mods = new Mods();
         var ex = Assert.Throws<InvalidOperationException>(() =>
-            UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => mods.Down = true, NoKeyUp, mods.AllUp, mods.Release));
+            UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => mods.Down = true, NoKeyUp, () => true, mods.AllUp, mods.Release));
         Assert.Contains("modifier stayed down", ex.Message, StringComparison.Ordinal);
         Assert.Equal(1, mods.Released);
     }
@@ -129,7 +129,7 @@ public sealed class UiInputFunnelTests
             {
                 mods.Down = true;
                 throw new TimeoutException("injection died");
-            }, () => up++, mods.AllUp, mods.Release));
+            }, () => up++, () => true, mods.AllUp, mods.Release));
         Assert.Equal("injection died", ex.Message);
         Assert.Equal(1, up);
         Assert.Equal(1, mods.Released);
@@ -145,11 +145,59 @@ public sealed class UiInputFunnelTests
         WithShortWait(() =>
         {
             var ex = Assert.Throws<InvalidOperationException>(() =>
-                UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => sent++, () => sent++, () => false, () => released++));
+                UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => sent++, () => sent++, () => false, () => true, () => released++));
             Assert.Contains("already held", ex.Message, StringComparison.Ordinal);
         });
         Assert.Equal(0, sent);
         Assert.Equal(0, released);
+    }
+
+    // §28 R1-F2: a modifier the operator presses during the injection,
+    // outside the chord's own set, is left down; the funnel's own stuck
+    // modifier is still released.
+    [Fact]
+    public void ModifierPressedMidInjectionOutsideTheChordIsNotReleased()
+    {
+        bool ctrlDown = false;
+        bool operatorAlt = false;
+        int released = 0;
+        UiInput.SendChecked(
+            App,
+            Target,
+            () => (Target, App),
+            Focus(App),
+            () => operatorAlt = true,
+            NoKeyUp,
+            () => !ctrlDown && !operatorAlt,
+            () => !ctrlDown,
+            () =>
+            {
+                released++;
+                ctrlDown = false;
+            });
+        Assert.True(operatorAlt);
+        Assert.Equal(0, released);
+    }
+
+    // §28 R1-F4: focus moving to another element or window of the app
+    // between key-down and key-up is the command working (a new tab's
+    // editor, the app's new window), not an interruption.
+    [Fact]
+    public void CommandMovingFocusInsideTheAppIsNotAnInterruption()
+    {
+        bool pressed = false;
+        int up = 0;
+        UiInput.SendChecked(
+            App,
+            Target,
+            () => pressed ? (OtherWindow, App) : (Target, App),
+            () => new UiInput.FocusRead(App, !pressed),
+            () => pressed = true,
+            () => up++,
+            () => true,
+            () => true,
+            () => { });
+        Assert.Equal(1, up);
     }
 
     // D00 T02 §28 item 6: focus moving between key-down and key-up still
@@ -177,6 +225,7 @@ public sealed class UiInputFunnelTests
                     up++;
                     mods.Down = false;
                 },
+                () => true,
                 mods.AllUp,
                 mods.Release));
         Assert.Contains("chord interrupted between key-down and key-up", ex.Message, StringComparison.Ordinal);
@@ -191,7 +240,7 @@ public sealed class UiInputFunnelTests
         var typed = new List<char>();
         int probes = 0;
         WithShortWait(() => Assert.Throws<InvalidOperationException>(() =>
-            UiInput.TypeChecked(App, Target, "abc", () => (Target, App), () => new UiInput.FocusRead(++probes <= 2 ? App : Thief, true), typed.Add, () => true, () => { })));
+            UiInput.TypeChecked(App, Target, "abc", () => (Target, App), () => new UiInput.FocusRead(++probes <= 2 ? App : Thief, true), typed.Add, () => true, () => true, () => { })));
         Assert.Equal(['a'], typed);
     }
 

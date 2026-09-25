@@ -136,6 +136,23 @@ public sealed class ChordRoutingTests
             Assert.True(Retry.WhileFalse(() => (box.Text ?? string.Empty).Contains('€', StringComparison.Ordinal), TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(200)).Result, "AltGr+E did not type the euro sign");
             Thread.Sleep(800);
             Assert.Empty(seam.Lines());
+
+            // NumPad plus and minus (the zoom declarations bind VirtualKey
+            // Add and Subtract, NumPad only; main-row parity is owed by
+            // D02 T01 §5): with zoom still disabled the chords reach no
+            // command, so the editor text and the tab count hold.
+            string before = box.Text ?? string.Empty;
+            UiInput.PressKey(box, VirtualKeyShort.ADD, withControl: true);
+            UiInput.PressKey(box, VirtualKeyShort.SUBTRACT, withControl: true);
+            Thread.Sleep(600);
+            Assert.Equal(before, box.Text ?? string.Empty);
+            Assert.Equal(3, TabItems(window).Count);
+
+            // Labels under the layout: the displayed shortcut text is the
+            // manifest's, unchanged from US English.
+            Assert.Equal(BindingManifest.ExpectedLabel(BindingManifest.ParseChord("Ctrl+S")), MenuAccelerator(window, "MenuFile", null, "MenuFileSave"));
+            Assert.Equal(BindingManifest.ExpectedLabel(BindingManifest.ParseChord("Ctrl+Add")), MenuAccelerator(window, "MenuView", "MenuViewZoom", "MenuViewZoomIn"));
+            Assert.Equal(BindingManifest.ExpectedLabel(BindingManifest.ParseChord("Ctrl+Subtract")), MenuAccelerator(window, "MenuView", "MenuViewZoom", "MenuViewZoomOut"));
         }
         finally
         {
@@ -179,6 +196,35 @@ public sealed class ChordRoutingTests
         {
             Assert.True(switched, $"the app did not take keyboard layout 0x{hkl:X}");
         }
+    }
+
+    // Opens the menu (and submenu) by Invoke, reads the item's displayed
+    // shortcut text, and closes with Escape through the funnel.
+    static string MenuAccelerator(Window window, string topId, string? subId, string itemId)
+    {
+        var top = window.FindFirstDescendant(cf => cf.ByAutomationId(topId));
+        Assert.NotNull(top);
+        top.Patterns.Invoke.Pattern.Invoke();
+        Thread.Sleep(600);
+        if (subId is not null)
+        {
+            var sub = Retry.WhileNull(() => window.FindFirstDescendant(cf => cf.ByAutomationId(subId)), TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(250)).Result;
+            Assert.NotNull(sub);
+            sub.Patterns.ExpandCollapse.Pattern.Expand();
+            Thread.Sleep(600);
+        }
+
+        var item = Retry.WhileNull(() => window.FindFirstDescendant(cf => cf.ByAutomationId(itemId)), TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(item);
+        string text = item.Properties.AcceleratorKey.ValueOrDefault ?? string.Empty;
+        UiInput.PressKey(window, VirtualKeyShort.ESCAPE);
+        if (subId is not null)
+        {
+            UiInput.PressKey(window, VirtualKeyShort.ESCAPE);
+        }
+
+        Thread.Sleep(400);
+        return text;
     }
 
     static bool Selected(Window window, int index)

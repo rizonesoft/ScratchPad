@@ -67,8 +67,9 @@ internal static class UiInput
             ForegroundProbe,
             () => ReadFocus(target),
             ch => Keyboard.Type(ch.ToString()),
-            ModifiersReleased,
-            ReleaseModifiers);
+            () => ModifiersReleased(AllModifiers),
+            () => ModifiersReleased(AllModifiers),
+            () => ReleaseModifiers(AllModifiers));
     }
 
     internal static void TypeChecked(
@@ -78,6 +79,7 @@ internal static class UiInput
         Func<(nint Root, int Pid)> foreground,
         Func<FocusRead> focus,
         Action<char> sendChar,
+        Func<bool> noModifierHeld,
         Func<bool> modifiersReleased,
         Action releaseModifiers)
     {
@@ -87,7 +89,7 @@ internal static class UiInput
         {
             // Keyboard.Type sends a character's down and up together, so
             // the key-up half is empty.
-            SendChecked(expectedPid, expectedRoot, foreground, focus, () => sendChar(ch), () => { }, modifiersReleased, releaseModifiers);
+            SendChecked(expectedPid, expectedRoot, foreground, focus, () => sendChar(ch), () => { }, noModifierHeld, modifiersReleased, releaseModifiers);
         }
     }
 
@@ -134,8 +136,9 @@ internal static class UiInput
                     Keyboard.Release(mods[i]);
                 }
             },
-            ModifiersReleased,
-            ReleaseModifiers);
+            () => ModifiersReleased(AllModifiers),
+            () => ModifiersReleased(mods),
+            () => ReleaseModifiers(mods));
     }
 
     // What the UIA focus probe read: the focused element's pid (null when
@@ -155,6 +158,7 @@ internal static class UiInput
         Func<FocusRead> focus,
         Action keyDown,
         Action keyUp,
+        Func<bool> noModifierHeld,
         Func<bool> modifiersReleased,
         Action releaseModifiers)
     {
@@ -162,6 +166,7 @@ internal static class UiInput
         ArgumentNullException.ThrowIfNull(focus);
         ArgumentNullException.ThrowIfNull(keyDown);
         ArgumentNullException.ThrowIfNull(keyUp);
+        ArgumentNullException.ThrowIfNull(noModifierHeld);
         ArgumentNullException.ThrowIfNull(modifiersReleased);
         ArgumentNullException.ThrowIfNull(releaseModifiers);
         if (expectedRoot == 0)
@@ -174,7 +179,7 @@ internal static class UiInput
         {
             var fg = foreground();
             var f = focus();
-            bool held = !modifiersReleased();
+            bool held = !noModifierHeld();
             if (Bound(fg, f, expectedPid, expectedRoot) && !held)
             {
                 break;
@@ -194,8 +199,15 @@ internal static class UiInput
             Thread.Sleep(50);
         }
 
-        // Past the precondition no modifier was down, so any modifier
-        // down after the press is the funnel's own and is released.
+        // Past the precondition no modifier was down. Cleanup touches only
+        // the funnel's own modifiers (the chord's, or every modifier for
+        // typed text): one the operator presses mid-injection outside
+        // that set is never released (§28 R1-F2).
+        // Between key-down and key-up the press may legitimately move
+        // focus inside the app (Ctrl+T focuses the new tab's editor,
+        // Ctrl+Shift+N opens the app's second window), so the interruption
+        // check is input ownership leaving the app process, not the
+        // pre-press focus target (§28 R1-F4).
         string? interrupted = null;
         try
         {
@@ -204,7 +216,7 @@ internal static class UiInput
                 keyDown();
                 var fg = foreground();
                 var f = focus();
-                if (!Bound(fg, f, expectedPid, expectedRoot))
+                if (fg.Pid != expectedPid || f.Pid != expectedPid)
                 {
                     interrupted = Describe(fg, f, expectedPid, expectedRoot);
                 }
@@ -343,16 +355,20 @@ internal static class UiInput
         return (root, (int)pid);
     }
 
-    static bool ModifiersReleased() =>
-        (Native.GetAsyncKeyState(0x11) & 0x8000) == 0
-        && (Native.GetAsyncKeyState(0x10) & 0x8000) == 0
-        && (Native.GetAsyncKeyState(0x12) & 0x8000) == 0;
+    static readonly VirtualKeyShort[] AllModifiers = [VirtualKeyShort.CONTROL, VirtualKeyShort.SHIFT, VirtualKeyShort.ALT];
 
-    static void ReleaseModifiers()
+    static bool ModifiersReleased(IEnumerable<VirtualKeyShort> keys) =>
+        keys.All(k => (Native.GetAsyncKeyState((int)k) & 0x8000) == 0);
+
+    static void ReleaseModifiers(IEnumerable<VirtualKeyShort> keys)
     {
-        Keyboard.Release(VirtualKeyShort.CONTROL);
-        Keyboard.Release(VirtualKeyShort.SHIFT);
-        Keyboard.Release(VirtualKeyShort.ALT);
+        foreach (var k in keys)
+        {
+            if ((Native.GetAsyncKeyState((int)k) & 0x8000) != 0)
+            {
+                Keyboard.Release(k);
+            }
+        }
     }
 
     static class Native

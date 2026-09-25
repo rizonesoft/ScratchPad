@@ -14,6 +14,7 @@ run-a:
   UI.BindingManifestTests.AccessibleTextMismatchFails
   UI.BindingManifestTests.AKeyTheManifestCannotBindCreditsNothing
   UI.BindingManifestTests.AnXrefAloneDoesNotOweTheChordTest
+  UI.BindingManifestTests.ConstantAssertionDoesNotCountAsAnOutcome
   UI.BindingManifestTests.CoveringMethodThatNeverRunsFails
   UI.BindingManifestTests.CoveringTestWithoutAnOutcomeAssertionFails
   UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
@@ -30,6 +31,7 @@ run-a:
   UI.BindingManifestTests.PlantedAccessKeyCollisionFails
   UI.BindingManifestTests.PlantedConflictFails
   UI.BindingManifestTests.PlantedEnabledButExemptCommandFails
+  UI.BindingManifestTests.PlantedHandlerBodySwapFails
   UI.BindingManifestTests.PlantedHandlerSwapFails
   UI.BindingManifestTests.PlantedOsReservedChordFails
   UI.BindingManifestTests.PlantedUndeclaredBindingFails
@@ -210,11 +212,13 @@ run-a:
   UI.UiForegroundTests.LargestSecondaryWins
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI.UiInputFunnelTests.CommandMovingFocusInsideTheAppIsNotAnInterruption
   UI.UiInputFunnelTests.FocusChangeBetweenKeyDownAndKeyUpAbortsCleanly
   UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
   UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.MatchingWindowAndFocusSendsOnce
+  UI.UiInputFunnelTests.ModifierPressedMidInjectionOutsideTheChordIsNotReleased
   UI.UiInputFunnelTests.OnlyTheFunnelTouchesTheKeyboard
   UI.UiInputFunnelTests.OperatorHeldModifierIsNeverReleased
   UI.UiInputFunnelTests.PlantedFocusOnTheWrongControlFailsThePrecondition
@@ -230,8 +234,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 224
-run-a-cases: 277
+run-a-methods: 228
+run-a-cases: 281
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
