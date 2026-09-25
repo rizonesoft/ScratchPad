@@ -148,6 +148,14 @@ $enrolledMorning = New-Result ((Get-Date).AddDays(-3).ToString('yyyy-MM-dd')) ((
 $mOut = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyMorning.ps1') -DryRun -NightDir $mDir -ExpectBy '00:00' -LookbackDays 1 2>&1 | ForEach-Object { "$_" })
 Assert ((@($mOut | Where-Object { $_ -like 'morning: no-start: NO START*' }).Count -eq 1) -and (@($mOut | Where-Object { $_ -like 'morning: no-start notify *: sent*dry run*' }).Count -eq 2) -and (-not (Test-Path (Join-Path $mDir 'notify-ledger.json')))) 'nostart-reconciler-alerts-with-no-run' ($mOut -join ' | ')
 
+# D00 T02 section 40 R1-F6: the morning step reads pending alert
+# transitions from the lifecycle ledger, and a dry run confirms nothing.
+'## Alerts' | Set-Content -Path (Join-Path $mDir 'trend.md') -Encoding UTF8
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-27 vs baseline 600s (+50%, median of 7 night(s))') (Join-Path $mDir 'alerts.json') ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'x#r1' })
+$mAl = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyMorning.ps1') -DryRun -NightDir $mDir -ExpectBy '00:00' -LookbackDays 1 2>&1 | ForEach-Object { "$_" })
+$mPend = Get-PendingAlertNotifications (Join-Path $mDir 'alerts.json')
+Assert ((@($mAl | Where-Object { $_ -like 'morning: trend alerts: 1 (*' }).Count -eq 1) -and (@($mPend.Lines).Count -eq 1)) 's40-morning-sends-pending-and-dry-run-keeps-it' (($mAl | Where-Object { $_ -like '*trend*' }) -join ' | ')
+
 # Item 9: every outcome beside the precedence class.
 $multi = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
 $multi.legs.'run-a'.gate = 1

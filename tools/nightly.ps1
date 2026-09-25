@@ -1451,8 +1451,16 @@ try { $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3 } catch { }
 $odNames = @()
 try { $odNames = @($quar.Overdue | ForEach-Object { $_.Test }) } catch { }
 $schedVoted = ((@($schedFaults).Count -gt 0) -and $schedulerParented)
+# Distinct executed test names across the legs' trx files (D00 T02 §40
+# R1-F2), so coverage counts identities and a retry never raises it;
+# smoke is outside the population. $null when no trx was written.
+$executedUnique = $null
+try {
+  $trxAll = @(Get-ChildItem -Path $trxDir -Filter '*.trx' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'smoke.trx' })
+  if ($trxAll.Count -gt 0) { $executedUnique = @($trxAll | ForEach-Object { Get-TrxExecutedNames $_.FullName } | Sort-Object -Unique).Count }
+} catch { $executedUnique = $null }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

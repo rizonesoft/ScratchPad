@@ -87,18 +87,19 @@ $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3
 $schedule = Read-ScheduleHistory $ScheduleHistoryPath
 if ($null -eq $schedule) { $schedule = Get-NightlySchedule (Join-Path $PSScriptRoot 'tasks/nightly-ui.xml') }
 $null = Set-ResultExclusions $results (Read-NightlyExclusions $ExclusionsPath)
-$script:LastTrendEvaluation = $null
+$script:TrendAlertGroups = @()
 $lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) } (Get-Date) (Read-NightlyPauses $PausesPath) $degraded $supersessions $schedule
 if ($metricsNote -ne '') { $lines += ''; $lines += $metricsNote; $lines += @(Format-PrunedEvidence $results) }
 # The alert lifecycle (section 40 item 15): new alerts notify once,
 # persisting ones stay quiet, and closed ones name how they closed.
-if ($null -ne $script:LastTrendEvaluation) {
+if (@($script:TrendAlertGroups).Count -gt 0) {
   try {
-    $ai = [array]::IndexOf(@($lines), '## Alerts')
-    $cur = @()
-    if ($ai -ge 0) { for ($i = $ai + 1; $i -lt @($lines).Count; $i++) { if ("$($lines[$i])" -like '## *') { break }; if ("$($lines[$i])" -like '- ALERT *') { $cur += "$($lines[$i])" } } }
-    $life = Update-AlertLedger $cur (Join-Path $NightDir 'alerts.json') $script:LastTrendEvaluation @($supersessions | ForEach-Object { $_.Backfill })
-    $lines += "- Alert lifecycle: $(@($life.New).Count) new, $(@($life.Persisting).Count) persisting, $(@($life.Closed).Count) closed$(if (@($life.Closed).Count -gt 0) { ' (' + ((@($life.Closed) | ForEach-Object { "$($_.Id) $($_.State)" }) -join '; ') + ')' })"
+    $nNew = 0; $nPer = 0; $closedAll = @()
+    foreach ($g in @($script:TrendAlertGroups)) {
+      $life = Update-AlertLedger @($g.Alerts) (Join-Path $NightDir 'alerts.json') $g.Evaluation @($supersessions | ForEach-Object { $_.Backfill })
+      $nNew += @($life.NewIds).Count; $nPer += @($life.Persisting).Count; $closedAll += @($life.Closed)
+    }
+    $lines += "- Alert lifecycle: $nNew new, $nPer persisting, $(@($closedAll).Count) closed$(if (@($closedAll).Count -gt 0) { ' (' + ((@($closedAll) | ForEach-Object { "$($_.Id) $($_.State)" }) -join '; ') + ')' })"
   } catch { $lines += "- Alert lifecycle: unavailable ($($_.Exception.Message))" }
 }
 if ($skipped.Count -gt 0) {

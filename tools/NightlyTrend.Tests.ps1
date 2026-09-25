@@ -562,8 +562,16 @@ $cvDup = New-Night '2026-09-28' '2026-09-28-023000' 600 'timer' 120 0 0
 $cvDup | Add-Member -NotePropertyName population -NotePropertyValue 'run-a=90/100 run-b=4/4 interactive=0/0' -Force
 $cvUnk = New-Night '2026-09-29' '2026-09-29-023000'
 $cvUnk | Add-Member -NotePropertyName populationState -NotePropertyValue 'unknown' -Force
-$tcv = @(Format-TrendTable @($cvDup, $cvUnk) $Q $today)
-Assert ((@($tcv | Where-Object { $_ -like '| 2026-09-28 |*| 104/104 (100%); 20 duplicate execution(s) not counted |' }).Count -eq 1) -and (@($tcv | Where-Object { $_ -like '| 2026-09-29 |*| unknown (discovery failed) |' }).Count -eq 1)) 's40-coverage-counts-unique-tests' (($tcv | Where-Object { $_ -like '| 2026-09-2*' }) -join ' || ')
+$cvId = New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 120 0 0
+$cvId | Add-Member -NotePropertyName population -NotePropertyValue 'run-a=90/100 run-b=4/4 interactive=0/0' -Force
+$cvId | Add-Member -NotePropertyName executedUnique -NotePropertyValue 95 -Force
+$tcv = @(Format-TrendTable @($cvId, $cvDup, $cvUnk) $Q $today)
+Assert ((@($tcv | Where-Object { $_ -like '| 2026-09-27 |*| 95/104 (91.3%); 29 duplicate execution(s) not counted |' }).Count -eq 1) -and (@($tcv | Where-Object { $_ -like '| 2026-09-28 |*| 104/104 (100%); 20 duplicate execution(s) not counted; identities not recorded (count capped) |' }).Count -eq 1) -and (@($tcv | Where-Object { $_ -like '| 2026-09-29 |*| unknown (discovery failed) |' }).Count -eq 1)) 's40-coverage-counts-unique-tests'
+# R1-F5: the unknown state and the identity count survive the metrics row.
+$cvBack = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $cvUnk)) -Depth 6 -Compress) | ConvertFrom-Json)
+$cvIdBack = ConvertFrom-MetricsRow ((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $cvId)) -Depth 6 -Compress) | ConvertFrom-Json)
+$tcvB = @(Format-TrendTable @($cvIdBack, $cvBack) $Q $today)
+Assert ((@($tcvB | Where-Object { $_ -like '| 2026-09-29*| unknown (discovery failed) |' }).Count -eq 1) -and (@($tcvB | Where-Object { $_ -like '| 2026-09-27*| 95/104 (91.3%)*' }).Count -eq 1)) 's40-coverage-state-survives-metrics' (($tcvB | Where-Object { $_ -like '| 2026-09-2*' }) -join ' || ') (($tcv | Where-Object { $_ -like '| 2026-09-2*' }) -join ' || ')
 # Item 8: an excluded result leaves every series and never degrades.
 $exPath = Join-Path $s40 'exclusions.md'
 @('| Run identity | Reason |', '| --- | --- |', '| 2026-09-27-023000-pid1 | host rebuilt mid-run |') | Set-Content -Path $exPath -Encoding UTF8
@@ -596,6 +604,9 @@ $null = Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000') { pa
 $fsErr = "$script:MetricsWriteError"
 $fsBack = Read-MetricsStore $fs
 Assert (($fsErr -like 'metrics append failed: There is not enough space*') -and ([System.IO.File]::ReadAllText($fs) -eq $fsBefore) -and ($fsBack.Rows.Count -eq 1) -and ($fsBack.Malformed.Count -eq 0)) 's40-disk-full-keeps-the-store' $fsErr
+$null = Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000') { param($p, $t) [System.IO.File]::AppendAllText($p, $t.Substring(0, 40)); throw 'There is not enough space on the disk.' }
+$fsPart = Read-MetricsStore $fs
+Assert (([System.IO.File]::ReadAllText($fs) -eq $fsBefore) -and ($fsPart.Malformed.Count -eq 0) -and ($fsPart.Rows.Count -eq 1)) 's40-partial-write-is-cut-back' "$script:MetricsWriteError"
 $null = Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000') $null 10
 $capErr = "$script:MetricsWriteError"
 Assert (($capErr -like 'metrics store over capacity*history is never deleted*') -and ((Read-MetricsStore $fs).Rows.Count -eq 1)) 's40-capacity-refuses-by-policy' $capErr
@@ -603,13 +614,21 @@ $lockJob = Start-Job -ScriptBlock { $m = New-Object System.Threading.Mutex($fals
 $null = Wait-Job $lockJob -Timeout 60; $null = Receive-Job $lockJob; Remove-Job $lockJob -Force
 $staleRows = @(Sync-MetricsStore $fs @(New-Night '2026-09-21' '2026-09-21-023000'))
 Assert ($staleRows.Count -eq 2) 's40-stale-lock-is-taken-over' "$($staleRows.Count)"
-$null = Compress-MetricsStore $fs
+$fsPre = [System.IO.File]::ReadAllText($fs)
+$faultOk = $true
+foreach ($fp in @('after-backup', 'after-temp')) {
+  try { $null = Compress-MetricsStore $fs { param($pt) if ($pt -eq $fp) { throw "killed at $pt" } }; $faultOk = $false } catch { if ("$($_.Exception.Message)" -notlike "*killed at $fp*") { $faultOk = $false } }
+  $fsMid = Read-MetricsStore $fs
+  if (([System.IO.File]::ReadAllText($fs) -ne $fsPre) -or ($fsMid.Malformed.Count -gt 0) -or ($fsMid.Rows.Count -ne 2)) { $faultOk = $false }
+}
+$fsResume = Compress-MetricsStore $fs
+Assert ($faultOk -and ($fsResume -like 'metrics: compacted*') -and (-not (Test-Path "$fs.tmp")) -and ((Read-MetricsStore $fs).Rows.Count -eq 2)) 's40-interrupted-compaction-keeps-the-store' "$fsResume"
 [System.IO.File]::AppendAllText($fs, '{"schema":"metrics/1","identity":"half')
 '{"partial":' | Set-Content -Path "$fs.tmp" -Encoding UTF8
 $fsTorn = Read-MetricsStore $fs
 $fsRestore = Restore-MetricsStore $fs
 $fsFixed = Read-MetricsStore $fs
-Assert (($fsTorn.Malformed.Count -eq 1) -and ($fsRestore -like 'metrics: restored 2 row(s)*') -and ($fsFixed.Rows.Count -eq 2) -and ($fsFixed.Malformed.Count -eq 0)) 's40-interrupted-compaction-restores' "$fsRestore"
+Assert (($fsTorn.Malformed.Count -eq 1) -and ($fsRestore -like 'metrics: restored 2 row(s)*') -and ($fsFixed.Rows.Count -eq 2) -and ($fsFixed.Malformed.Count -eq 0)) 's40-torn-store-restores-from-backup' "$fsRestore"
 # Item 11: a partial native row keeps the backfill's fields it lacks.
 $mgStore = Join-Path $s40 'merge.jsonl'
 $mgBf = New-Night '2026-09-22' '2026-09-22-023000'; $mgBf.identity = 'bf-2026-09-22'
@@ -635,7 +654,12 @@ $mxRawJ = @($mx | ForEach-Object { ConvertTo-Json ([pscustomobject](ConvertTo-Me
 $mxBackJ = @($mxBack | ForEach-Object { ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $_)) -Depth 6 -Compress })
 $mxAlertsRaw = @(Get-TrendAlerts $mx) -join "`n"
 $mxAlertsBack = @(Get-TrendAlerts $mxBack) -join "`n"
-Assert ((($mxRawJ -join "`n") -eq ($mxBackJ -join "`n")) -and ($mxAlertsRaw -eq $mxAlertsBack) -and ($mxAlertsRaw -like '*Rebaseline: cohort changed on 2026-09-17*') -and (@($script:MetricsLastMalformed).Count -eq 1)) 's40-mixed-corpus-structured-equivalence' "$mxAlertsRaw || $mxAlertsBack"
+$mxSched = [pscustomobject]@{ First = '2026-09-10'; Entries = @([pscustomobject]@{ First = '2026-09-10'; Trigger = '02:30'; IntervalDays = 1 }, [pscustomobject]@{ First = '2026-09-14'; Trigger = '03:00'; IntervalDays = 2 }) }
+$mxNorm = { param($l) @($l | Where-Object { ($_ -notlike '- Metrics store:*') -and ($_ -notlike '- Pruned night*') } | ForEach-Object { ($_ -replace ' \(metrics\)', '') -replace '; evidence .*$', '' }) }
+$mxTextRaw = & $mxNorm @(Format-TrendTable $mx $Q $today @{} @() @() $mxSched)
+$mxTextBack = & $mxNorm @(Format-TrendTable $mxBack $Q $today @{} @() @() $mxSched)
+$mxTextDiff = @(Compare-Object $mxTextRaw $mxTextBack | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+Assert ((($mxRawJ -join "`n") -eq ($mxBackJ -join "`n")) -and ($mxAlertsRaw -eq $mxAlertsBack) -and ($mxAlertsRaw -like '*Rebaseline: cohort changed on 2026-09-17*') -and (@($script:MetricsLastMalformed).Count -eq 1) -and ($mxTextDiff.Count -eq 0) -and (@($mxTextRaw | Where-Object { $_ -like '| 2026-09-18 | missing |*' }).Count -eq 1) -and (@($mxTextRaw | Where-Object { $_ -like '| 2026-09-19 *' }).Count -eq 0)) 's40-mixed-corpus-structured-equivalence' "$mxAlertsRaw || $mxAlertsBack || $($mxTextDiff -join ' / ')"
 # Item 13: a pruned night names its source, derivation, and lost evidence.
 $pe = @(Format-PrunedEvidence @($mxBack[0]))
 Assert (($pe.Count -eq 1) -and ($pe[0] -eq '- Pruned night 2026-09-10 (2026-09-10-023000-pid1): values from morning-2026-09-10-023000.result.json, derivation 2; raw evidence pruned, metrics only')) 's40-pruned-value-explains-itself' ($pe -join ' | ')
@@ -655,10 +679,35 @@ $al1 = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-27 vs baseli
 $al2 = Update-AlertLedger @('- ALERT runa-duration: 950s on 2026-09-28 vs baseline 600s (+58%, median of 7 night(s))') $alPath ([pscustomobject]@{ Night = '2026-09-28'; Host = 'h0st0001'; Identity = 'n28' })
 $al3 = Update-AlertLedger @() $alPath ([pscustomobject]@{ Night = '2026-09-29'; Host = 'h0st0001'; Identity = 'n29' })
 Assert ((@($al1.New).Count -eq 1) -and (@($al2.New).Count -eq 0) -and (@($al2.Persisting).Count -eq 1) -and (@($al3.Closed).Count -eq 1) -and ($al3.Closed[0].State -eq 'recovered') -and ($al3.Closed[0].Id -eq 'h0st0001|runa-duration')) 's40-alert-raises-once-and-closes'
-$al4 = Update-AlertLedger @('- ALERT recurring-flake: INC-aaaa1111 on 2026-09-30 and 2026-09-29') $alPath ([pscustomobject]@{ Night = '2026-09-30'; Host = 'h0st0001'; Identity = 'n30' })
-$al5 = Update-AlertLedger @() $alPath ([pscustomobject]@{ Night = '2026-09-30'; Host = 'h0st0001'; Identity = 'n30-rev2' })
+$al4 = Update-AlertLedger @('- ALERT recurring-flake: INC-aaaa1111 on 2026-09-30 and 2026-09-29') $alPath ([pscustomobject]@{ Night = '2026-09-30'; Host = 'h0st0001'; Identity = 'n30#r1' })
+$al5 = Update-AlertLedger @() $alPath ([pscustomobject]@{ Night = '2026-09-30'; Host = 'h0st0001'; Identity = 'n30#r2' })
 $al6 = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-10-01 vs baseline 600s (+50%, median of 7 night(s))') $alPath ([pscustomobject]@{ Night = '2026-10-01'; Host = 'h0st0002'; Identity = 'm01' })
 Assert ((@($al4.New).Count -eq 1) -and ($al5.Closed[0].State -eq 'corrected') -and ($al5.Closed[0].Id -eq 'h0st0001|recurring-flake|INC-aaaa1111') -and (@($al6.New).Count -eq 1) -and (@($al6.Closed).Count -eq 0)) 's40-alert-corrected-and-host-scoped'
+# R1-F3: the evaluation identity carries the revision.
+$rvBase = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$rvLate = New-Night '2026-09-27' '2026-09-27-023000' 900; $rvLate | Add-Member -NotePropertyName revision -NotePropertyValue 2 -Force
+$script:LastTrendEvaluation = $null
+$null = Get-TrendAlerts (@($rvBase) + @($rvLate))
+Assert ("$($script:LastTrendEvaluation.Identity)" -eq '2026-09-27-023000-pid1#r2') 's40-evaluation-identity-carries-revision' "$($script:LastTrendEvaluation.Identity)"
+# R1-F6: transitions stay pending until delivery is confirmed, across
+# re-renders.
+$dvPath = Join-Path $s40 'delivery.json'
+$null = Update-AlertLedger @('- ALERT pass-rate: 90% on 2026-09-27 vs baseline 100% (-10 points, median of 7 night(s))') $dvPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'a#r1' })
+$null = Update-AlertLedger @('- ALERT pass-rate: 90% on 2026-09-27 vs baseline 100% (-10 points, median of 7 night(s))') $dvPath ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'a#r1' })
+$dv1 = Get-PendingAlertNotifications $dvPath
+Confirm-AlertNotifications $dvPath @($dv1.Keys)
+$dv2 = Get-PendingAlertNotifications $dvPath
+$null = Update-AlertLedger @() $dvPath ([pscustomobject]@{ Night = '2026-09-28'; Host = 'h0st0001'; Identity = 'b#r1' })
+$null = Update-AlertLedger @() $dvPath ([pscustomobject]@{ Night = '2026-09-28'; Host = 'h0st0001'; Identity = 'b#r1' })
+$dv3 = Get-PendingAlertNotifications $dvPath
+Assert ((@($dv1.Lines).Count -eq 1) -and ($dv1.Lines[0] -like 'ALERT pass-rate*') -and (@($dv2.Lines).Count -eq 0) -and ($dv2.Persisting -eq 1) -and (@($dv3.Lines).Count -eq 1) -and ($dv3.Lines[0] -eq 'closed (recovered on 2026-09-28): h0st0001|pass-rate')) 's40-alert-delivery-survives-rerender' "$($dv1.Lines -join ';') / $($dv3.Lines -join ';')"
+# R1-F4: every host's series is evaluated in the table.
+$mhA = @(20..27 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$mhB = @(20..27 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023500' -f $_) $(if ($_ -eq 27) { 900 } else { 600 }); $n.identity = ('2026-09-{0:d2}-023500-pid2' -f $_); $n.hostKey = 'h0st0002'; $n })
+$tmh = @(Format-TrendTable (@($mhA) + @($mhB)) $Q $today)
+$mhGroups = @($script:TrendAlertGroups)
+$mhIdx = [array]::IndexOf($tmh, '- Host h0st0002:')
+Assert (($mhGroups.Count -eq 2) -and (@($mhGroups | Where-Object { ($_.Evaluation.Host -eq 'h0st0002') -and (@($_.Alerts).Count -eq 1) }).Count -eq 1) -and (@($mhGroups | Where-Object { ($_.Evaluation.Host -eq 'h0st0001') -and (@($_.Alerts).Count -eq 0) }).Count -eq 1) -and ($mhIdx -ge 0) -and ($tmh[$mhIdx + 1] -like '- ALERT runa-duration: 900s*')) 's40-every-host-is-evaluated' (($tmh | Where-Object { ($_ -like '- Host*') -or ($_ -like '- ALERT*') }) -join ' | ')
 # Item 16: a rollback between baseline and latest reads non-linear, and
 # the context labels itself correlation, not cause.
 $savedProbe = $script:AncestryProbe

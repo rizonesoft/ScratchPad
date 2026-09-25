@@ -2860,6 +2860,8 @@ function ConvertTo-MetricsRow($Result) {
     harness = $(try { Protect-DisclosedText "$($Result.harness)" } catch { '' })
     incidentEvidence = $(try { if ($null -eq $Result.incidentEvidence) { $null } else { $ie = [ordered]@{}; foreach ($pp in @($Result.incidentEvidence.PSObject.Properties)) { $ie[$pp.Name] = @(@($pp.Value) | ForEach-Object { Protect-DisclosedText "$_" }) }; [pscustomobject]$ie } } catch { $null })
     populationHash = $(try { Protect-DisclosedText "$($Result.populationHash)" } catch { '' })
+    populationState = $(try { "$($Result.populationState)" } catch { '' })
+    executedUnique = $(try { $Result.executedUnique } catch { $null })
     provenance = $(if ($null -ne $prov) { [pscustomobject]$prov } else { $null })
     population = $(try { Protect-DisclosedText "$($Result.population)" } catch { '' })
     commit = $(try { Protect-DisclosedText "$($Result.commit)" } catch { '' })
@@ -3021,8 +3023,14 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
         # A failed append (a full disk) leaves the store as it was: the
         # write is one call, and a partial line is repaired by the clean-end
         # rule on the next append (section 40 item 10).
+        # A write that fails part-way (R1-F1) is cut back to the prior
+        # length, so the store's bytes are exactly what they were.
         try { if ($null -ne $Append) { & $Append $Path $payload } else { [System.IO.File]::AppendAllText($Path, $payload, (New-Object System.Text.UTF8Encoding($false))) } }
-        catch { $script:MetricsWriteError = "metrics append failed: $($_.Exception.Message); the store keeps its prior rows" }
+        catch {
+          $script:MetricsWriteError = "metrics append failed: $($_.Exception.Message); the store keeps its prior rows"
+          try { if (Test-Path $Path) { $fsx = [System.IO.File]::Open($Path, 'Open', 'ReadWrite'); try { if ($fsx.Length -gt $size) { $fsx.SetLength($size) } } finally { $fsx.Dispose() } } }
+          catch { $script:MetricsWriteError += "; truncation back to $size bytes failed ($($_.Exception.Message)), run tools/NightlyTrend.ps1 -Restore" }
+        }
       }
     }
     # A native row keeps the backfill's fields it lacks (section 40 item
@@ -3049,7 +3057,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
   })
 }
 
-function Compress-MetricsStore([string]$Path) {
+function Compress-MetricsStore([string]$Path, [scriptblock]$Fault = $null) {
   # The compaction verb (item 10): rewrites the store to its current row
   # per identity plus its supersession records, dropping revisions and
   # malformed lines, after copying the old file to <store>.bak; the
@@ -3064,6 +3072,9 @@ function Compress-MetricsStore([string]$Path) {
     # marker, so no legacy or rejected value survives in plain text.
     $bakLines = @($rawLines | ForEach-Object { try { $po = $_ | ConvertFrom-Json -ErrorAction Stop; $pc = ConvertTo-Json (Protect-DisclosedObject $po) -Depth 6 -Compress; if ($pc -eq (ConvertTo-Json $po -Depth 6 -Compress)) { $_ } else { $pc } } catch { '{"schema":"rejected/1","note":"malformed line dropped at compaction"}' } })
     Write-AtomicReport $bakLines "$Path.bak"
+    # Fault points (R1-F8): fixtures interrupt here, after the backup and
+    # after the rewrite's temp file, and the store must stay readable.
+    if ($null -ne $Fault) { & $Fault 'after-backup' }
     # A row is rewritten only when sanitizing changes it (a legacy value
     # stored before a rule existed), so clean rows keep their exact bytes
     # and the archive check still matches them.
@@ -3071,7 +3082,10 @@ function Compress-MetricsStore([string]$Path) {
     $replaces = { param($nat, $bf) (@('green', 'red') -contains "$($nat.verdict)") -and (("$($nat.stamp)" -eq "$($bf.stamp)") -or (("$($nat.launch)" -eq 'timer') -and ("$($bf.launch)" -eq 'timer'))) }
     $valid = @($store.Supersessions | Where-Object { $sn = $store.Rows["$($_.native)"]; $sb = $store.Rows["$($_.backfill)"]; ($null -ne $sn) -and ($null -ne $sb) -and (& $replaces $sn $sb) })
     $lines = @($store.Rows.Keys | ForEach-Object { $store.Raw[$_] }) + @($valid | ForEach-Object { ConvertTo-Json $_ -Compress })
-    Write-AtomicReport $lines $Path
+    $tmp = "$Path.tmp"
+    $lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
+    if ($null -ne $Fault) { & $Fault 'after-temp' }
+    Move-Item -Path $tmp -Destination $Path -Force
     $back = Read-MetricsStore $Path
     if (($back.Rows.Count -ne $store.Rows.Count) -or ($back.Malformed.Count -gt 0)) { throw "metrics compaction read-back mismatch ($($back.Rows.Count) rows vs $($store.Rows.Count))" }
     return "metrics: compacted $before line(s) to $($lines.Count) ($($store.Rows.Count) row(s), $($valid.Count) supersession(s), $($store.Malformed.Count) malformed dropped); backup $Path.bak"
@@ -3129,33 +3143,76 @@ function Get-AlertIdentity([string]$Line, [string]$HostKey) {
 
 function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [string[]]$SupersededIds = @()) {
   # The alert lifecycle (section 40 item 15) in build/nightly/alerts.json:
-  # a new id opens (New, notified once); an open id seen again persists
-  # (never re-notified); an open id of this host that no longer fires
-  # closes as recovered on a later night, corrected when the same night
-  # was re-evaluated from a revised result, or superseded when the result
-  # it was raised on was superseded. Written atomically; returns the
-  # transition lists.
-  $ledger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @() }
-  if (Test-Path $Path) { try { $ledger = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $ledger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @() } } }
-  $entries = @(@($ledger.alerts) | Where-Object { $null -ne $_ })
-  $night = "$($Evaluation.Night)"; $hk = "$($Evaluation.Host)"; $evalId = "$($Evaluation.Identity)"
-  $current = [ordered]@{}
-  foreach ($a in @($Alerts)) { $id = Get-AlertIdentity $a $hk; if ($id -ne '') { $current[$id] = $a.TrimStart('-', ' ') } }
-  $new = @(); $persist = @(); $closed = @()
-  foreach ($id in @($current.Keys)) {
-    $e = @($entries | Where-Object { ("$($_.id)" -eq $id) -and ("$($_.state)" -eq 'open') }) | Select-Object -First 1
-    if ($null -ne $e) { $e.lastNight = $night; $e.evaluated = $evalId; $e.line = $current[$id]; $persist += $id }
-    else { $entries += [pscustomobject]@{ id = $id; state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = '' }; $new += $id }
+  # a new id opens; an open id seen again persists; an open id of this
+  # host that no longer fires closes as recovered on a later night,
+  # corrected when the same night was re-evaluated from a revised result,
+  # or superseded when the result it was raised on was superseded.
+  # Delivery is tracked per entry (R1-F6): an opening or closing stays
+  # pending (notifiedOpen or notifiedClose false) until the morning
+  # sender confirms it, so a re-render never drops a transition. Runs
+  # under the metrics lock and writes atomically; returns the transitions.
+  return (Invoke-WithMetricsLock {
+    $ledger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @() }
+    if (Test-Path $Path) { try { $ledger = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json } catch { $ledger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @() } } }
+    $entries = @(@($ledger.alerts) | Where-Object { $null -ne $_ })
+    $night = "$($Evaluation.Night)"; $hk = "$($Evaluation.Host)"; $evalId = "$($Evaluation.Identity)"
+    $current = [ordered]@{}
+    foreach ($a in @($Alerts)) { $id = Get-AlertIdentity $a $hk; if ($id -ne '') { $current[$id] = $a.TrimStart('-', ' ') } }
+    $new = @(); $persist = @(); $closed = @()
+    foreach ($id in @($current.Keys)) {
+      $e = @($entries | Where-Object { ("$($_.id)" -eq $id) -and ("$($_.state)" -eq 'open') }) | Select-Object -First 1
+      if ($null -ne $e) { $e.lastNight = $night; $e.evaluated = $evalId; $e.line = $current[$id]; $persist += $id }
+      else { $entries += [pscustomobject]@{ id = $id; state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true }; $new += $id }
+    }
+    foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
+      $state = if (@($SupersededIds) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
+      if ($state -eq '') { continue }
+      $e.state = $state; $e.closedNight = $night
+      $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $false -Force
+      $closed += [pscustomobject]@{ Id = "$($e.id)"; State = $state; Line = "$($e.line)" }
+    }
+    $out = [pscustomobject]@{ schema = 'alerts/1'; alerts = @($entries) }
+    Write-AtomicReport @((ConvertTo-Json $out -Depth 6)) $Path
+    return [pscustomobject]@{ New = @($new | ForEach-Object { $current[$_] }); NewIds = @($new); Persisting = @($persist); Closed = @($closed) }
+  })
+}
+
+function Get-TextHash([string]$Text) {
+  # First 8 hex of SHA-256 over a string (the pending-set notify key).
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { return ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($Text))) -replace '-', '').Substring(0, 8).ToLowerInvariant() } finally { $sha.Dispose() }
+}
+
+function Get-PendingAlertNotifications([string]$Path) {
+  # The transitions not yet delivered (R1-F6): openings with notifiedOpen
+  # false and closings with notifiedClose false. Returns Lines to send
+  # and Keys to confirm afterwards.
+  $lines = @(); $keys = @()
+  if (-not (Test-Path $Path)) { return [pscustomobject]@{ Lines = @(); Keys = @(); Persisting = 0 } }
+  $lg = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+  $persisting = 0
+  foreach ($e in @($lg.alerts)) {
+    if ($null -eq $e) { continue }
+    if ($e.notifiedOpen -eq $false) { $lines += "$($e.line)"; $keys += "open|$($e.id)|$($e.firstNight)" }
+    elseif ("$($e.state)" -eq 'open') { $persisting++ }
+    if (("$($e.state)" -ne 'open') -and ($e.notifiedClose -eq $false)) { $lines += "closed ($($e.state) on $($e.closedNight)): $($e.id)"; $keys += "close|$($e.id)|$($e.firstNight)" }
   }
-  foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
-    $state = if (@($SupersededIds) -contains "$($e.evaluated)") { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
-    if ($state -eq '') { continue }
-    $e.state = $state; $e.closedNight = $night
-    $closed += [pscustomobject]@{ Id = "$($e.id)"; State = $state; Line = "$($e.line)" }
+  return [pscustomobject]@{ Lines = $lines; Keys = $keys; Persisting = $persisting }
+}
+
+function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
+  # Marks the named transitions delivered, under the metrics lock, after
+  # the sender accepted them; a transition opened since stays pending.
+  if (@($Keys).Count -eq 0) { return }
+  $null = Invoke-WithMetricsLock {
+    $lg = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+    foreach ($e in @($lg.alerts)) {
+      if ($null -eq $e) { continue }
+      if (@($Keys) -contains "open|$($e.id)|$($e.firstNight)") { $e.notifiedOpen = $true }
+      if (@($Keys) -contains "close|$($e.id)|$($e.firstNight)") { $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $true -Force }
+    }
+    Write-AtomicReport @((ConvertTo-Json $lg -Depth 6)) $Path
   }
-  $out = [pscustomobject]@{ schema = 'alerts/1'; alerts = @($entries); lastRun = [pscustomobject]@{ night = $night; host = $hk; new = @($new); persisting = @($persist); closed = @($closed | ForEach-Object { "$($_.Id) $($_.State)" }) } }
-  Write-AtomicReport @((ConvertTo-Json $out -Depth 6)) $Path
-  return [pscustomobject]@{ New = @($new | ForEach-Object { $current[$_] }); Persisting = @($persist); Closed = @($closed) }
 }
 
 function Remove-ArchivedStamp([string]$NightDir, [string]$Stamp, [string]$StorePath, [scriptblock]$BeforeDelete = $null) {
@@ -3230,7 +3287,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }); hostKey = "$($Row.hostKey)"; excluded = "$($Row.excluded)"; metricsSource = "$($Row.source)"; derivation = $(try { $Row.derivation } catch { $null }); mergedFrom = "$($Row.mergedFrom)" }
+  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }); hostKey = "$($Row.hostKey)"; populationState = "$($Row.populationState)"; executedUnique = $(try { $Row.executedUnique } catch { $null }); excluded = "$($Row.excluded)"; metricsSource = "$($Row.source)"; derivation = $(try { $Row.derivation } catch { $null }); mergedFrom = "$($Row.mergedFrom)" }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -3379,7 +3436,9 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   $r = @($r | Where-Object { $h2 = Get-ResultHostKey $_; ($h2 -eq $hk) -or ($h2 -eq 'legacy') })
   if ($r.Count -lt 2) { return $alerts }
   $latest = $r[-1]
-  $script:LastTrendEvaluation = [pscustomobject]@{ Night = (Get-ResultNight $latest); Host = $hk; Identity = "$($latest.identity)" }
+  # The evaluated result's identity carries its revision (R1-F3), so a
+  # corrected result on the same night reads as a re-evaluation.
+  $script:LastTrendEvaluation = [pscustomobject]@{ Night = (Get-ResultNight $latest); Host = $hk; Identity = "$($latest.identity)#r$(try { "$($latest.revision)" } catch { '' })" }
   # The baseline is a calendar window (section 32 R1-I3): the $Baseline
   # nights before the evaluated one, so a missing night consumes its slot
   # and an old measurement past the window never stands in for it.
@@ -3830,10 +3889,17 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     # Coverage counts unique tests (section 40 item 7): executions past
     # the discovered population are duplicates (retries, shards) and never
     # raise it; a failed discovery reads unknown.
+    # The numerator is the count of distinct executed test names the run
+    # recorded (executedUnique, from its trx files, R1-F2); a result
+    # without it falls back to executions capped at the population and
+    # says the identities were not recorded.
     $popState = "$(try { $r.populationState } catch { '' })"
-    $dup = [math]::Max(0, $exec - $disc)
-    $uniq = [math]::Min($exec, $disc)
-    $cov = if ($popState -eq 'unknown') { 'unknown (discovery failed)' } elseif ($disc -gt 0) { "$uniq/$disc ($([math]::Round((100 * $uniq) / $disc, 1))%)$(if ($dup -gt 0) { "; $dup duplicate execution(s) not counted" })" } else { '-' }
+    $eu = $null
+    try { if ($null -ne $r.executedUnique) { $eu = [int]$r.executedUnique } } catch { }
+    $idNote = ''
+    if ($null -ne $eu) { $uniq = [math]::Min($eu, $disc); $dup = [math]::Max(0, $exec - $eu) }
+    else { $uniq = [math]::Min($exec, $disc); $dup = [math]::Max(0, $exec - $disc); if ($exec -gt $disc) { $idNote = '; identities not recorded (count capped)' } }
+    $cov = if ($popState -eq 'unknown') { 'unknown (discovery failed)' } elseif ($disc -gt 0) { "$uniq/$disc ($([math]::Round((100 * $uniq) / $disc, 1))%)$(if ($dup -gt 0) { "; $dup duplicate execution(s) not counted" })$idNote" } else { '-' }
     if ($degradedNights -contains $day) { $nightCell += ' (degraded)' }
     $rowEntries += [pscustomobject]@{ Night = $day; Stamp = "$($r.stamp)"; Line = "| $nightCell | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds$qage | $sf | $envShort | $cov |" }
   }
@@ -3965,7 +4031,22 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   $lines += '## Alerts'
   $lines += ''
   $lines += '(series [native] and [rate] for regressions, [recurrence] for flakes)'
-  $alerts = @(Get-TrendAlerts @($rows | Where-Object { & $isNative $_ }))
+  # Every host's series is evaluated (R1-F4): one group per known host
+  # (legacy rows join each, reading as the migration's cohort change),
+  # or one group when no host is recorded.
+  $nativeRows = @($rows | Where-Object { & $isNative $_ })
+  $knownHosts = @($nativeRows | ForEach-Object { Get-ResultHostKey $_ } | Where-Object { $_ -ne 'legacy' } | Sort-Object -Unique)
+  $script:TrendAlertGroups = @()
+  $alerts = @()
+  $groups = if ($knownHosts.Count -le 1) { ,@('') } else { $knownHosts }
+  foreach ($gh in @($groups)) {
+    $grp = if ($gh -eq '') { $nativeRows } else { @($nativeRows | Where-Object { $h2 = Get-ResultHostKey $_; ($h2 -eq $gh) -or ($h2 -eq 'legacy') }) }
+    $script:LastTrendEvaluation = $null
+    $ga = @(Get-TrendAlerts $grp)
+    if ($null -ne $script:LastTrendEvaluation) { $script:TrendAlertGroups += [pscustomobject]@{ Evaluation = $script:LastTrendEvaluation; Alerts = @($ga | Where-Object { $_ -like '- ALERT *' }) } }
+    if ($knownHosts.Count -gt 1) { $alerts += "- Host ${gh}:" }
+    $alerts += $ga
+  }
   if ($alerts.Count -eq 0) { $lines += '(none)' } else { $lines += $alerts }
   $lines += ''
   $lines += '## Budget'
