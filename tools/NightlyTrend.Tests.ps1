@@ -57,7 +57,7 @@ $corpus += $bf
 $tc = @(Format-TrendTable $corpus $Q $today)
 Assert (@($tc | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=4, p50 610, p90 620, p95 620 (= max: n=4 < 20), max 620 [native]' }).Count -eq 1) 'series-native-canonical-only' (($tc | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
 $ai = [array]::IndexOf($tc, '## Alerts')
-Assert (($tc[$ai + 2] -like '- Insufficient data: (3 measured baseline night(s) of 5 needed*') -and (@($tc | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 'series-mixed-corpus-no-false-slope' ($tc[$ai + 2])
+Assert (($tc[$ai + 2] -like '- Insufficient data: runa-duration (3 measured baseline night(s) of 5 needed*') -and (@($tc | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 'series-mixed-corpus-no-false-slope' ($tc[$ai + 2])
 Assert (@($tc | Where-Object { $_ -like '| 2026-09-24 (backfill) |*' }).Count -eq 1) 'series-backfill-marked'
 Assert (@($tc | Where-Object { $_ -like '- Series: durations, percentiles, and alerts read canonical native nights*' }).Count -eq 1) 'series-rule-reads'
 
@@ -78,7 +78,7 @@ $gap = @((New-Night '2026-09-22' '2026-09-22-023000'), (New-Night '2026-09-20' '
 $tg = @(Format-TrendTable $gap $Q $today)
 Assert (@($tg | Where-Object { $_ -like '| 2026-09-21 | missing |*' }).Count -eq 1) 'fixture-missing-night'
 $rowsOnly = @($tg | Where-Object { $_ -like '| 2026-09-2*' })
-Assert ((($rowsOnly | ForEach-Object { $_.Substring(2, 10) }) -join ',') -eq '2026-09-20,2026-09-21,2026-09-22') 'fixture-out-of-order-sorted' (($rowsOnly | ForEach-Object { $_.Substring(2, 10) }) -join ',')
+Assert ((($rowsOnly | ForEach-Object { $_.Substring(2, 10) }) -join ',') -eq '2026-09-20,2026-09-21,2026-09-22,2026-09-23,2026-09-24,2026-09-25,2026-09-26,2026-09-27,2026-09-28,2026-09-29') 'fixture-out-of-order-sorted' (($rowsOnly | ForEach-Object { $_.Substring(2, 10) }) -join ',')
 $dup = @((New-Night '2026-09-20' '2026-09-20-023000' 600), (New-Night '2026-09-20' '2026-09-20-023000' 600))
 $dup[1].identity = '2026-09-20-023000-pid2'
 Assert (@(Format-TrendTable $dup $Q $today | Where-Object { $_ -like '| 2026-09-20 (retry) |*' }).Count -eq 1) 'fixture-duplicate-night-one-canonical'
@@ -187,7 +187,7 @@ $bfOut = Join-Path $dir 'backfill.result.json'
 $bfLog = @(& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'NightlyBackfill.ps1') -RunDir $run -OutFile $bfOut 2>&1 | ForEach-Object { "$_" })
 if (Test-Path $bfOut) {
   $bfj = Get-Content $bfOut -Raw | ConvertFrom-Json
-  Assert (("$($bfj.provenance.'legs.gates'.source)" -eq 'gate cells in morning-2026-09-20-023000.md') -and ("$($bfj.provenance.soak.source)" -eq 'soak trx 2026-09-20-023000\ui-soak-1.trx') -and ("$($bfj.provenance.timings.source)" -like 'test-seconds in 2026-09-20-023000-default.log, 2026-09-20-023000-primary.log, (none matching *-full*.log)')) 'backfill-provenance-names-artifacts' ("gates: $($bfj.provenance.'legs.gates'.source) | soak: $($bfj.provenance.soak.source) | timings: $($bfj.provenance.timings.source)")
+  Assert (("$($bfj.provenance.'legs.gates'.source)" -eq 'gate cells in morning-2026-09-20-023000.md') -and ("$($bfj.provenance.soak.source)" -eq 'soak trx 2026-09-20-023000\ui-soak-1.trx') -and ("$($bfj.provenance.'timings.run-a'.source)" -like 'test-seconds in 2026-09-20-023000-default.log*' -or "$($bfj.provenance.'timings.run-a'.source)" -like 'test-seconds in 2026-09-20-023000-primary.log, (none matching *-full*.log)')) 'backfill-provenance-names-artifacts' ("gates: $($bfj.provenance.'legs.gates'.source) | soak: $($bfj.provenance.soak.source) | timings: $($bfj.provenance.timings.source)")
 } else { Assert $false 'backfill-provenance-names-artifacts' ($bfLog -join ' | ') }
 # R2-F2: a stored row revises when its result gains a field; the last
 # row per identity wins and an unchanged result appends nothing.
@@ -248,7 +248,7 @@ Assert (($ctx.Count -eq 1) -and ($ctx[0] -like '*runs 2026-09-20-023000-pid1,*20
 $three = @(20..22 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
 $three += New-Night '2026-09-23' '2026-09-23-023000' 5000
 $ia = @(Get-TrendAlerts $three)
-Assert (($ia.Count -eq 1) -and ($ia[0] -like '- Insufficient data: (3 measured baseline night(s) of 5 needed; evaluated night 2026-09-23 excluded from its own baseline)*')) 'window-insufficient-data' ($ia -join ' | ')
+Assert (($ia.Count -eq 2) -and ($ia[0] -like '- Insufficient data: runa-duration (3 measured baseline night(s) of 5 needed, 4 of 7 window night(s) missing; evaluated night 2026-09-23 excluded from its own baseline)*') -and ($ia[1] -like '- Insufficient data: pass-rate (3 measured*') -and (@($ia | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 'window-insufficient-data' ($ia -join ' | ')
 # Items 7 and 8: a recorded pause reads paused; a degraded night marks.
 $gapA = New-Night '2026-09-20' '2026-09-20-023000'
 $gapB = New-Night '2026-09-24' '2026-09-24-023000'
@@ -321,8 +321,86 @@ Assert (((Protect-DisclosedText 'evidence \\host\share\user\dump.dmp; next') -eq
 # Item 13: a backfilled count quotes its locator and method.
 if (Test-Path $bfOut) {
   $bfj2 = Get-Content $bfOut -Raw | ConvertFrom-Json
-  Assert (("$($bfj2.provenance.'legs.counts'.method)" -eq 'report-row') -and ("$($bfj2.provenance.'legs.counts'.locator)" -like 'morning-2026-09-20-023000.md:*') -and ("$($bfj2.report)" -eq 'morning-2026-09-20-023000.md')) 'backfill-count-quotes-locator-and-method' "$($bfj2.provenance.'legs.counts'.method) $($bfj2.provenance.'legs.counts'.locator)"
+  Assert (("$($bfj2.provenance.'legs.run-a.counts'.method)" -eq 'report-row') -and ("$($bfj2.provenance.'legs.run-a.counts'.locator)" -like 'morning-2026-09-20-023000.md:*') -and ("$($bfj2.provenance.'legs.run-b.counts'.locator)" -like 'morning-2026-09-20-023000.md:*') -and ("$($bfj2.provenance.'timings.run-b'.locator)" -like '2026-09-20-023000-primary.log:*') -and ("$($bfj2.report)" -eq 'morning-2026-09-20-023000.md')) 'backfill-count-quotes-locator-and-method' "$($bfj2.provenance.'legs.run-a.counts'.method) $($bfj2.provenance.'legs.run-a.counts'.locator) $($bfj2.provenance.'timings.run-b'.locator)"
 } else { Assert $false 'backfill-count-quotes-locator-and-method' 'no backfill output' }
+
+# ---- section 32 round 1 ----
+# R1-A1: the archival gate refuses a stale row and an unidentifiable result.
+$gnd = Join-Path $dir 'gate-night'
+$null = New-Item -ItemType Directory -Force -Path $gnd
+$gres = New-Night '2026-07-02' '2026-07-02-023001'
+($gres | ConvertTo-Json -Depth 6) | Set-Content -Path (Join-Path $gnd 'morning-2026-07-02-023001.result.json') -Encoding UTF8
+$null = Sync-MetricsStore (Join-Path $gnd 'metrics.jsonl') @($gres)
+$gOk = Test-StampArchived $gnd '2026-07-02-023001' (Read-MetricsStore (Join-Path $gnd 'metrics.jsonl'))
+$gres.verdict = 'red'; $gres.exit = 1
+($gres | ConvertTo-Json -Depth 6) | Set-Content -Path (Join-Path $gnd 'morning-2026-07-02-023001.result.json') -Encoding UTF8
+$gStale = Test-StampArchived $gnd '2026-07-02-023001' (Read-MetricsStore (Join-Path $gnd 'metrics.jsonl'))
+'{"version":1,"stamp":"2026-07-03-023001","verdict":"green","exit":0}' | Set-Content -Path (Join-Path $gnd 'morning-2026-07-03-023001.result.json') -Encoding UTF8
+$gNoId = Test-StampArchived $gnd '2026-07-03-023001' (Read-MetricsStore (Join-Path $gnd 'metrics.jsonl'))
+Assert ($gOk.Ok -and (-not $gStale.Ok) -and ($gStale.Reason -like '*changed since its metrics row was written') -and (-not $gNoId.Ok) -and ($gNoId.Reason -like '*has no identity*')) 'archival-gate-refuses-stale-and-unidentified' "$($gStale.Reason) / $($gNoId.Reason)"
+# R1-A2: an incomplete row is malformed, never data.
+$inc = Join-Path $dir 'incomplete.jsonl'
+'{"schema":"metrics/1","identity":"x-1"}' | Set-Content -Path $inc -Encoding UTF8
+$rinc = Read-MetricsStore $inc
+Assert (($rinc.Rows.Count -eq 0) -and (@($rinc.Malformed).Count -eq 1)) 'metrics-incomplete-row-is-malformed'
+# R1-A3: every persisted metrics string passes the disclosure contract.
+$pl = New-Night '2026-09-26' '2026-09-26-023000'
+$pl | Add-Member -NotePropertyName population -NotePropertyValue ('C:\Users\someone\p ' + 'ghp_' + ('A1b2C3d4E5' * 4)) -Force
+$pl | Add-Member -NotePropertyName commit -NotePropertyValue 'C:\Users\someone\repo' -Force
+$plj = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $pl)) -Depth 6 -Compress
+Assert (($plj -notlike '*ghp_*') -and ($plj -notlike '*someone*')) 'metrics-population-and-commit-disclosed' $plj
+# R1-C1: an every-other-day schedule skips undue nights, and nights after
+# the last result through today read missing.
+$sch = [pscustomobject]@{ First = '2026-09-20'; IntervalDays = 2 }
+$tsch = @(Format-TrendTable @((New-Night '2026-09-20' '2026-09-20-023000'), (New-Night '2026-09-24' '2026-09-24-023000')) $Q (Get-Date '2026-09-28 08:00') @{} @() @() $sch)
+$nightsSch = @($tsch | Where-Object { $_ -like '| 2026-09-*' } | ForEach-Object { $_.Substring(2, 10) })
+Assert ((($nightsSch -join ',') -eq '2026-09-20,2026-09-22,2026-09-24,2026-09-26,2026-09-28') -and (@($tsch | Where-Object { $_ -like '| 2026-09-28 | missing |*' }).Count -eq 1)) 'schedule-aware-calendar' ($nightsSch -join ',')
+# R1-C2: a harness change reads cross-cohort.
+$hb = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n | Add-Member -NotePropertyName harness -NotePropertyValue 'aaaa1111-bbbb2222' -Force; $n })
+$hl = New-Night '2026-09-27' '2026-09-27-023000' 900
+$hl | Add-Member -NotePropertyName harness -NotePropertyValue 'cccc3333-bbbb2222' -Force
+Assert (@(Get-TrendAlerts (@($hb) + @($hl)) | Where-Object { $_ -like '*CROSS-COHORT (harness aaaa1111-bbbb2222 -> cccc3333-bbbb2222)*' }).Count -eq 1) 'harness-change-reads-cross-cohort'
+# R1-I2: series gate on their own samples: durations missing, rates present.
+$nd7 = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n.legs.'run-a'.testSeconds = $null; $n })
+$nl7 = New-Night '2026-09-27' '2026-09-27-023000' 600 'timer' 80 20 5
+$gs = @(Get-TrendAlerts (@($nd7) + @($nl7)))
+Assert ((@($gs | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured*' }).Count -eq 1) -and (@($gs | Where-Object { $_ -like '- ALERT pass-rate:*' }).Count -eq 1)) 'series-gate-on-their-own-samples' ($gs -join ' | ')
+# R1-I3: missing nights consume window slots; old measurements do not
+# stand in for them.
+$old7 = @(1..7 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$late = New-Night '2026-09-27' '2026-09-27-023000' 5000
+$gw = @(Get-TrendAlerts (@($old7) + @($late)))
+Assert ((@($gw | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured baseline night(s) of 5 needed, 7 of 7 window night(s) missing*' }).Count -eq 1) -and (@($gw | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0)) 'missing-nights-consume-window-slots' ($gw -join ' | ')
+# Record 1: a timer run and a retry of one scheduled night keep one night
+# across the DST change, in the trend, the ack gate, and notify.
+$dA = New-Night '2026-10-25' '2026-10-25-023000'
+$dA | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-10-25T01:30:00.0000000Z' -Force
+$dA | Add-Member -NotePropertyName tz -NotePropertyValue '+01:00' -Force
+$dA.PSObject.Properties.Remove('night')
+$dB = New-Night '2026-10-25' '2026-10-25-031000' 600 'manual'
+$dB | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-10-25T02:10:00.0000000Z' -Force
+$dB | Add-Member -NotePropertyName tz -NotePropertyValue '+01:00' -Force
+$dB.PSObject.Properties.Remove('night')
+$canonD = Select-CanonicalRuns @($dA, $dB)
+. (Join-Path $PSScriptRoot 'NightlyNotify.ps1')
+$ns = Get-NoStartVerdict @($dA, $dB) (Get-Date '2026-10-25 08:00') '06:50' 1
+Assert (($canonD.Keys.Count -eq 1) -and ($canonD.ContainsKey('2026-10-25')) -and ($canonD['2026-10-25'].Canonical -eq $dA.identity) -and (-not $ns.Missed -or (@($ns.Missed) -notcontains '2026-10-25'))) 'one-scheduled-night-across-dst-for-every-consumer' "$(@($canonD.Keys) -join ',') / $(@($ns.Missed) -join ',')"
+# Record 2: the renderer's own loading path, before and after the raw
+# results are deleted, renders the same series and alerts.
+$eqDir = Join-Path $dir 'equiv-night'
+$null = New-Item -ItemType Directory -Force -Path $eqDir
+$eqRes = @(10..16 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$eqRes += New-Night '2026-09-17' '2026-09-17-023000' 900 'timer' 90 10 5
+foreach ($er in $eqRes) { ($er | ConvertTo-Json -Depth 8) | Set-Content -Path (Join-Path $eqDir "morning-$($er.stamp).result.json") -Encoding UTF8 }
+$trendScript = Join-Path $PSScriptRoot 'NightlyTrend.ps1'
+$null = & powershell -NoProfile -ExecutionPolicy Bypass -File $trendScript -NightDir $eqDir -OutFile (Join-Path $eqDir 'a.md') 2>&1
+Get-ChildItem $eqDir -Filter 'morning-*.result.json' | Remove-Item
+$null = & powershell -NoProfile -ExecutionPolicy Bypass -File $trendScript -NightDir $eqDir -OutFile (Join-Path $eqDir 'b.md') 2>&1
+$norm = { param($f) @(Get-Content $f | Where-Object { $_ -notlike '- Metrics store:*' } | ForEach-Object { ($_ -replace ' \(metrics\)', '') -replace '; evidence .*$', '' }) }
+$ea = & $norm (Join-Path $eqDir 'a.md')
+$eb = & $norm (Join-Path $eqDir 'b.md')
+$ediff = @(Compare-Object $ea $eb | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+Assert (($ediff.Count -eq 0) -and (@($ea | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@(Get-Content (Join-Path $eqDir 'b.md') | Where-Object { $_ -like '*(metrics)*' }).Count -ge 8)) 'render-matches-after-raw-deletion-with-alerts' ($ediff -join ' || ')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }

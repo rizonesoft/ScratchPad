@@ -68,7 +68,9 @@ try {
 } catch { $metricsNote = "- Metrics store: unavailable ($($_.Exception.Message))" }
 $quar = Test-QuarantineWindows $LedgerPath (Get-Date)
 $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3
-$lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) } (Get-Date) (Read-NightlyPauses $PausesPath) $degraded $supersessions
+# The governed task's own calendar decides which nights were due (R1-C1).
+$schedule = Get-NightlySchedule (Join-Path $PSScriptRoot 'tasks/nightly-ui.xml')
+$lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) } (Get-Date) (Read-NightlyPauses $PausesPath) $degraded $supersessions $schedule
 if ($metricsNote -ne '') { $lines += ''; $lines += $metricsNote }
 if ($skipped.Count -gt 0) {
   $lines += ''

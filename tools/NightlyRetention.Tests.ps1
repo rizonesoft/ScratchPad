@@ -80,7 +80,9 @@ $null = New-Item -ItemType Directory -Force -Path $old
 [pscustomobject]@{ version = 1; stamp = '2026-07-01-023001'; day = '2026-07-01'; identity = '2026-07-01-023001-pid5'; verdict = 'green'; exit = 0 } | ConvertTo-Json | Set-Content -Path (Join-Path $night 'morning-2026-07-01-023001.result.json') -Encoding UTF8
 $pr1 = Invoke-Retention @('-Prune', '-Execute', '-WorkspaceRoot', $ws)
 Assert (($pr1.Code -eq 1) -and ($pr1.Text -like '*prune: REFUSED 2026-07-01-023001/ (result 2026-07-01-023001-pid5 has no metrics row; run tools/NightlyTrend.ps1 to archive it first)*') -and (Test-Path $old)) 'prune-refuses-unarchived-stamp' $pr1.Text
-'{"schema":"metrics/1","identity":"2026-07-01-023001-pid5","stamp":"2026-07-01-023001","night":"2026-07-01"}' | Set-Content -Path (Join-Path $night 'metrics.jsonl') -Encoding UTF8
+# Archive it the way the trend does: a full row computed from the result.
+. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+$null = Sync-MetricsStore (Join-Path $night 'metrics.jsonl') @((Get-Content (Join-Path $night 'morning-2026-07-01-023001.result.json') -Raw | ConvertFrom-Json))
 $pr2 = Invoke-Retention @('-Prune', '-Execute', '-WorkspaceRoot', $ws)
 Assert ((-not (Test-Path $old)) -and ($pr2.Text -like '*prune: deleted 2026-07-01-023001/*')) 'prune-proceeds-once-archived' $pr2.Text
 

@@ -623,6 +623,10 @@ if ($CollectDebt -ne '') { $invokedBits += "-CollectDebt $CollectDebt" }
 $invokedWith = if ($invokedBits.Count -eq 0) { '(full shape, no switches)' } else { ($invokedBits -join ' ') }
 $populationLine = 'not verified (check skipped)'
 $populationCohort = ''
+$populationHash = ''
+# The harness identity for cohort comparison (D00 T02 section 32 R1-C2):
+# the governed scripts' own hashes, so a harness change reads cross-cohort.
+$harnessId = "$(Get-ShortHash (Join-Path $PSScriptRoot 'nightly.ps1'))-$(Get-ShortHash (Join-Path $PSScriptRoot 'NightlyParse.ps1'))"
 $buildError = ''
 $gateA = $null
 $gateB = $null
@@ -755,6 +759,7 @@ try {
       if (-not $pop.Ok) { throw ("population drift: " + ($pop.Drifts -join '; ')) }
       $populationLine = "OK (run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases))"
       # The population as a cohort dimension (D00 T02 section 32 item 4).
+      $populationHash = Get-ShortHash $fpPath
       $populationCohort = "run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)"
       Write-Output "nightly: population fingerprint matches ($populationLine)"
     } catch {
@@ -1410,7 +1415,7 @@ $odNames = @()
 try { $odNames = @($quar.Overdue | ForEach-Object { $_.Test }) } catch { }
 $schedVoted = ((@($schedFaults).Count -gt 0) -and $schedulerParented)
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; population = "$populationCohort"; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; population = "$populationCohort"; populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

@@ -96,6 +96,7 @@ function Read-TranscriptCounts($runDir, $leg) {
   return [pscustomobject]@{ passed = $p; failed = $f; skipped = $s; assemblies = $rows.Count }
 }
 $countNotes = @()
+$transcriptLegs = @{}
 foreach ($leg in @('default', 'primary')) {
   $tc = Read-TranscriptCounts $RunDir $leg
   if ($null -eq $tc) { continue }
@@ -105,6 +106,7 @@ foreach ($leg in @('default', 'primary')) {
   if (($null -ne $row) -and ($row.passed -eq $tc.passed) -and ($row.failed -eq $tc.failed) -and ($row.skipped -eq $tc.skipped)) { continue }
   if ($null -ne $row) { $countNotes += "$nm counts from transcript ($($tc.passed)/$($tc.failed)/$($tc.skipped) across $($tc.assemblies) assemblies; row reads $($row.passed)/$($row.failed)/$($row.skipped))" }
   else { $countNotes += "$nm counts from transcript ($($tc.passed)/$($tc.failed)/$($tc.skipped) across $($tc.assemblies) assemblies; no row)" }
+  $transcriptLegs[$nm] = $true
   $newRow = [pscustomobject]@{ passed = $tc.passed; failed = $tc.failed; skipped = $tc.skipped; gate = $gate }
   if ($leg -eq 'default') { $rowA = $newRow } else { $rowB = $newRow }
 }
@@ -267,9 +269,14 @@ $result = [pscustomobject]@{
   # Sources name the actual artifacts, relative to the run directory
   # (R1-F6), so every reconstructed field traces to its evidence.
   provenance = [pscustomobject]@{
-    'legs.counts' = [pscustomobject]@{ source = $(if ($countNotes.Count -gt 0) { "transcripts $(& $artifacts '*-default*.log'), $(& $artifacts '*-primary*.log'), $(& $artifacts '*-full*.log'); rows in $($reportFile[0].Name)" } else { "rows in $($reportFile[0].Name)" }); method = $(if ($countNotes.Count -gt 0) { 'transcript-parse' } else { 'report-row' }); locator = (& $locate $reportFile[0].Name 'Run A \(default\)'); confidence = 'derived' }
+    # Per consumed value (D00 T02 section 32 R1-C3): each leg's counts
+    # and timings name their own method and the exact row or line.
+    'legs.run-a.counts' = [pscustomobject]@{ source = $(if ($transcriptLegs['run-a']) { "transcript $(& $artifacts '*-default.log')" } else { "Run A row in $($reportFile[0].Name)" }); method = $(if ($transcriptLegs['run-a']) { 'transcript-parse' } else { 'report-row' }); locator = $(if ($transcriptLegs['run-a']) { & $locate '*-default.log' '(Passed|Failed)!' } else { & $locate $reportFile[0].Name 'Run A \(default\)' }); confidence = 'derived' }
+    'legs.run-b.counts' = [pscustomobject]@{ source = $(if ($transcriptLegs['run-b']) { "transcript $(& $artifacts '*-primary.log')" } else { "Run B row in $($reportFile[0].Name)" }); method = $(if ($transcriptLegs['run-b']) { 'transcript-parse' } else { 'report-row' }); locator = $(if ($transcriptLegs['run-b']) { & $locate '*-primary.log' '(Passed|Failed)!' } else { & $locate $reportFile[0].Name 'Run B \(primary\)' }); confidence = 'derived' }
+    'legs.interactive.counts' = [pscustomobject]@{ source = "Interactive row in $($reportFile[0].Name)"; method = 'report-row'; locator = (& $locate $reportFile[0].Name 'Interactive \(collection\)'); confidence = 'derived' }
     'legs.gates' = [pscustomobject]@{ source = "gate cells in $($reportFile[0].Name)"; method = 'report-row'; locator = (& $locate $reportFile[0].Name '(?i)gate'); confidence = $(if (($legA.ran -and ($null -eq $legA.gate)) -or ($legB.ran -and ($null -eq $legB.gate))) { 'unknown' } else { 'derived' }) }
-    'timings' = [pscustomobject]@{ source = "test-seconds in $(& $artifacts '*-default*.log'), $(& $artifacts '*-primary*.log'), $(& $artifacts '*-full*.log')"; method = 'transcript-parse'; locator = (& $locate '*-default*.log' '(?i)test-seconds|Duration'); confidence = 'derived' }
+    'timings.run-a' = [pscustomobject]@{ source = "test-seconds in $(& $artifacts '*-default*.log')"; method = 'transcript-parse'; locator = (& $locate '*-default*.log' '(?i)Duration|test-seconds'); confidence = 'derived' }
+    'timings.run-b' = [pscustomobject]@{ source = "test-seconds in $(& $artifacts '*-primary*.log')"; method = 'transcript-parse'; locator = (& $locate '*-primary*.log' '(?i)Duration|test-seconds'); confidence = 'derived' }
     'incidents' = [pscustomobject]@{ source = $(if ($incidentsDerived) { "trx failures in $(& $artifacts '*.trx')" } else { "INC lines in $($reportFile[0].Name)" }); method = $(if ($incidentsDerived) { 'trx-parse' } else { 'report-line' }); locator = $(if ($incidentsDerived) { & $locate '*.trx' 'outcome="Failed"' } else { & $locate $reportFile[0].Name 'INC-[0-9a-f]{8}' }); confidence = $(if ($incidentsDerived) { 'derived' } else { 'native' }) }
     'soak' = [pscustomobject]@{ source = "soak trx $(& $artifacts '*-soak-*.trx')"; method = 'trx-parse'; locator = (& $locate '*-soak-*.trx' '<Counters'); confidence = 'derived' }
     'env' = [pscustomobject]@{ source = 'none (run-night environment unrecoverable)'; method = 'none'; locator = ''; confidence = 'unknown' }

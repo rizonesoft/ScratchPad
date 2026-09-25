@@ -2243,13 +2243,20 @@ function ConvertTo-MetricsRow($Result) {
     verdict = "$($Result.verdict)"; launch = "$($Result.launch)"; simulated = $(try { [bool]$Result.simulated } catch { $false }); backfill = (Test-IsBackfill $Result)
     legs = $legs; soak = [ordered]@{ verdict = $(try { "$($Result.soak.verdict)" } catch { '' }) }
     incidents = $incs; reserve = $(try { & $num $Result.reserve } catch { $null }); consumed = $(try { & $num $Result.consumed } catch { $null })
-    env = [ordered]@{ os = $(try { "$($Result.env.os)" } catch { 'unknown' }); dpi = $(try { "$($Result.env.dpi)" } catch { 'unknown' }) }
+    env = $(try { $eo = [ordered]@{}; foreach ($k in $script:EnvFields) { $eo[$k] = Protect-DisclosedText $(try { "$($Result.env.$k)" } catch { 'unknown' }) }; $eo } catch { [ordered]@{ os = 'unknown'; dpi = 'unknown' } })
+    quarantine = $(try { [ordered]@{ overdue = @(@($Result.quarantine.overdue) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); dueSoon = @(@($Result.quarantine.dueSoon) | Where-Object { $null -ne $_ } | ForEach-Object { Protect-DisclosedText "$_" }); overdueDetail = @(@($Result.quarantine.overdueDetail) | Where-Object { $null -ne $_ } | ForEach-Object { [ordered]@{ Test = (Protect-DisclosedText "$($_.Test)"); Due = "$($_.Due)"; Owner = (Protect-DisclosedText "$($_.Owner)") } }) } } catch { $null })
+    recovered = $(try { Protect-DisclosedText "$($Result.recovered)" } catch { 'none' })
+    buildError = $(try { Protect-DisclosedText "$($Result.buildError)" } catch { '' })
+    omissionOk = $(try { if ($null -eq $Result.omissionOk) { $true } else { [bool]$Result.omissionOk } } catch { $true })
+    scheduler = $(try { [ordered]@{ voted = [bool]$Result.scheduler.voted; faults = @(@($Result.scheduler.faults) | ForEach-Object { Protect-DisclosedText "$_" }) } } catch { [ordered]@{ voted = $false; faults = @() } })
+    harness = $(try { Protect-DisclosedText "$($Result.harness)" } catch { '' })
+    populationHash = $(try { Protect-DisclosedText "$($Result.populationHash)" } catch { '' })
     provenance = $(if ($null -ne $prov) { [pscustomobject]$prov } else { $null })
-    population = $(try { "$($Result.population)" } catch { '' })
-    commit = $(try { "$($Result.commit)" } catch { '' })
+    population = $(try { Protect-DisclosedText "$($Result.population)" } catch { '' })
+    commit = $(try { Protect-DisclosedText "$($Result.commit)" } catch { '' })
     # Phase timings ride the row so a metrics-only night renders its
     # budget line exactly as the raw result did (section 32 item 12).
-    timings = $(try { $tm = $Result.timings; if ($null -eq $tm) { $null } elseif ($tm -is [hashtable]) { [pscustomobject]$tm } else { $tm } } catch { $null })
+    timings = $(try { $tm = $Result.timings; if ($null -eq $tm) { $null } else { $to = [ordered]@{}; $names = if ($tm -is [hashtable]) { @($tm.Keys) } else { @($tm.PSObject.Properties.Name) }; foreach ($k in $names) { $vv = $(try { $tm.$k } catch { $tm[$k] }); $to[(Protect-DisclosedText "$k")] = $(try { [double]$vv } catch { $null }) }; [pscustomobject]$to } } catch { $null })
   }
 }
 
@@ -2288,7 +2295,10 @@ function Read-MetricsStore([string]$Path) {
     $r = $null
     try { $r = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $out.Malformed += $i; continue }
     if ("$($r.schema)" -eq 'supersession/1') { $out.Supersessions += $r; continue }
-    if (("$($r.schema)" -ne 'metrics/1') -or ("$($r.identity)" -eq '')) { $out.Malformed += $i; continue }
+    # A row is data only with the fields the trend and the archival gate
+    # consume (section 32 R1-A2): identity, stamp, night, verdict, legs.
+    $names = @($r.PSObject.Properties.Name)
+    if (("$($r.schema)" -ne 'metrics/1') -or ("$($r.identity)" -eq '') -or ("$($r.stamp)" -eq '') -or ("$($r.night)" -notmatch '^\d{4}-\d{2}-\d{2}$') -or ("$($r.verdict)" -eq '') -or ($names -notcontains 'legs')) { $out.Malformed += $i; continue }
     $out.Rows["$($r.identity)"] = $r
     $out.Raw["$($r.identity)"] = $ln.Trim()
   }
@@ -2396,7 +2406,13 @@ function Test-StampArchived([string]$NightDir, [string]$Stamp, $Store) {
     $o = $null
     try { $o = Get-Content -LiteralPath $f.FullName -Raw | ConvertFrom-Json } catch { return [pscustomobject]@{ Ok = $false; Reason = "result $($f.Name) unreadable" } }
     $id = "$($o.identity)"
-    if (($id -ne '') -and (-not $Store.Rows.Contains($id))) { return [pscustomobject]@{ Ok = $false; Reason = "result $id has no metrics row" } }
+    # Section 32 R1-A1: an unidentifiable result cannot be archived, and a
+    # stored row must equal the row the current result computes (a result
+    # rewritten after its archival is not archived).
+    if ($id -eq '') { return [pscustomobject]@{ Ok = $false; Reason = "result $($f.Name) has no identity to archive under" } }
+    if (-not $Store.Rows.Contains($id)) { return [pscustomobject]@{ Ok = $false; Reason = "result $id has no metrics row" } }
+    $want = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $o)) -Depth 6 -Compress
+    if ("$($Store.Raw[$id])" -ne $want) { return [pscustomobject]@{ Ok = $false; Reason = "result $id changed since its metrics row was written" } }
   }
   return [pscustomobject]@{ Ok = $true; Reason = 'archived' }
 }
@@ -2406,7 +2422,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = [pscustomobject]@{ os = "$($Row.env.os)"; dpi = "$($Row.env.dpi)" }; fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = 'none'; omissionOk = $true; buildError = ''; scheduler = [pscustomobject]@{ voted = $false; faults = @() }; quarantine = [pscustomobject]@{ overdue = @(); dueSoon = @() } }
+  return [pscustomobject]@{ version = 1; identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = [pscustomobject]@{ verdict = "$($Row.soak.verdict)" }; incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $true }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)" }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -2422,7 +2438,13 @@ function Get-RunCohort($Result) {
   # evaluated night and its baseline makes a comparison cross-cohort.
   $c = [ordered]@{}
   foreach ($k in @('os', 'dpi', 'dotnet')) { $c[$k] = $(try { "$($Result.env.$k)" } catch { '' }) }
-  $c['population'] = $(try { "$($Result.population)" } catch { '' })
+  # The harness (the governed scripts' own hash) and the population's
+  # identity (the accepted fingerprint's hash, so equal counts over
+  # replaced tests still differ); counts stay as a fallback for results
+  # written before the hash (R1-C2).
+  $c['harness'] = $(try { "$($Result.harness)" } catch { '' })
+  $ph = $(try { "$($Result.populationHash)" } catch { '' })
+  $c['population'] = if ($ph -ne '') { $ph } else { $(try { "$($Result.population)" } catch { '' }) }
   return $c
 }
 
@@ -2487,21 +2509,31 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   $r = @(@($Rows) | Where-Object { $null -ne $_ })
   if ($r.Count -lt 2) { return $alerts }
   $latest = $r[-1]
-  $prev = @($r[0..($r.Count - 2)] | Select-Object -Last $Baseline)
+  # The baseline is a calendar window (section 32 R1-I3): the $Baseline
+  # nights before the evaluated one, so a missing night consumes its slot
+  # and an old measurement past the window never stands in for it.
+  $latestNight = [datetime]::MinValue
+  $windowed = [datetime]::TryParseExact((Get-ResultNight $latest), 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$latestNight)
+  if ($windowed) {
+    $from = $latestNight.AddDays(-$Baseline).ToString('yyyy-MM-dd')
+    $to = $latestNight.AddDays(-1).ToString('yyyy-MM-dd')
+    $prev = @($r[0..($r.Count - 2)] | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $from) -and ($nk -le $to) })
+    $slotsFilled = @($prev | ForEach-Object { Get-ResultNight $_ } | Sort-Object -Unique).Count
+    $missingInWindow = [math]::Max(0, $Baseline - $slotsFilled)
+  } else {
+    $prev = @($r[0..($r.Count - 2)] | Select-Object -Last $Baseline)
+    $missingInWindow = 0
+  }
   $la = $null
   try { $la = [double]$latest.legs.'run-a'.testSeconds } catch { }
   $pa = @($prev | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
-  $spanNights = 0
-  try {
-    $n0 = [datetime]::ParseExact((Get-ResultNight $prev[0]), 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    $n1 = [datetime]::ParseExact((Get-ResultNight $latest), 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    $spanNights = [int]($n1 - $n0).TotalDays
-  } catch { $spanNights = $prev.Count }
-  $missingInWindow = [math]::Max(0, $spanNights - $prev.Count)
-  if ($pa.Count -lt $script:TrendMinSamples) {
-    return @("- Insufficient data: ($($pa.Count) measured baseline night(s) of $($script:TrendMinSamples) needed$(if ($missingInWindow -gt 0) { ", $missingInWindow missing in the window" }); evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no regression alert is actionable yet")
-  }
-  if (($null -ne $la) -and ($pa.Count -gt 0)) {
+  # Each series is gated on its own samples (R1-I2): a duration alert
+  # needs $script:TrendMinSamples measured durations, a pass-rate alert
+  # as many measured rates; recurrence needs none.
+  $gap = if ($missingInWindow -gt 0) { ", $missingInWindow of $Baseline window night(s) missing" } else { '' }
+  $insufficient = { param($series, $n) "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet" }
+  if ($pa.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'runa-duration' $pa.Count) }
+  elseif (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50
     if (($la -gt 1.25 * $med) -and (($la - $med) -ge 60)) {
       # A zero baseline has no percentage (R3-F1): the delta rides alone.
@@ -2529,7 +2561,8 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
   $lr = & $rate $latest
   $pr = @($prev | ForEach-Object { & $rate $_ } | Where-Object { $null -ne $_ })
-  if (($null -ne $lr) -and ($pr.Count -gt 0)) {
+  if ($pr.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'pass-rate' $pr.Count) }
+  elseif (($null -ne $lr) -and ($pr.Count -gt 0)) {
     $med = Get-Percentile $pr 50
     if ($lr -lt ($med - 2)) {
       $alerts += "- ALERT pass-rate: $([math]::Round($lr, 1))% on $(Get-ResultNight $latest) vs baseline $([math]::Round($med, 1))% ($([math]::Round($lr - $med, 1)) points, median of $($pr.Count) night(s))"
@@ -2617,6 +2650,32 @@ function Get-IncidentAliases($Rows, [string]$V2Since = $script:IncidentContractV
   return $aliases
 }
 
+function Get-NightlySchedule([string]$TaskXml) {
+  # The governed task's calendar (section 32 R1-C1): its first night and
+  # its day interval from the CalendarTrigger, so the trend knows which
+  # nights were due. $null when the definition cannot be read.
+  if (-not (Test-Path $TaskXml)) { return $null }
+  try {
+    [xml]$x = Get-Content -LiteralPath $TaskXml -Raw
+    $ns = New-Object System.Xml.XmlNamespaceManager($x.NameTable)
+    $ns.AddNamespace('t', $x.DocumentElement.NamespaceURI)
+    $start = $x.SelectSingleNode('//t:CalendarTrigger/t:StartBoundary', $ns).InnerText
+    $int = $x.SelectSingleNode('//t:CalendarTrigger/t:ScheduleByDay/t:DaysInterval', $ns)
+    $d = [DateTimeOffset]::Parse($start, [System.Globalization.CultureInfo]::InvariantCulture)
+    return [pscustomobject]@{ First = $d.Date.ToString('yyyy-MM-dd'); IntervalDays = $(if ($null -ne $int) { [int]$int.InnerText } else { 1 }) }
+  } catch { return $null }
+}
+
+function Test-NightScheduled($Schedule, [string]$Night) {
+  # True when the task was due on $Night (on or after its first night,
+  # on its interval); with no schedule every night is due.
+  if ($null -eq $Schedule) { return $true }
+  if ([string]::CompareOrdinal($Night, $Schedule.First) -lt 0) { return $false }
+  $d0 = [datetime]::ParseExact($Schedule.First, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+  $d = [datetime]::ParseExact($Night, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+  return ((([int]($d - $d0).TotalDays) % [math]::Max(1, $Schedule.IntervalDays)) -eq 0)
+}
+
 function Read-NightlyPauses([string]$Path) {
   # Recorded pauses (D00 T02 section 32 item 7): rows `| YYYY-MM-DD |
   # reason |` in docs/nightly-pauses.md name nights the nightly was
@@ -2640,7 +2699,7 @@ function Format-TailLine([double[]]$Window) {
   return "n=$n, p50 $(Get-Percentile $Window 50), p90 $(Get-Percentile $Window 90), $p95Text, max $max"
 }
 
-function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = (Get-Date), [hashtable]$Pauses = @{}, $Degraded = @(), $Supersessions = @()) {
+function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = (Get-Date), [hashtable]$Pauses = @{}, $Degraded = @(), $Supersessions = @(), $Schedule = $null) {
   # Renders nights as a Markdown trend (D00 T02 §17 items 2, 4, 9):
   # one row per run plus pass-rate, duration, quarantine-age, flake,
   # gate, budget-telemetry, and environment series. Pure over
@@ -2759,11 +2818,18 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # and last canonical night with no result at all renders as missing.
   $canonNights = @($canon.Keys | Where-Object { $canon[$_].Canonical -ne '' } | Sort-Object)
   $allNights = @($rowEntries | ForEach-Object { $_.Night })
-  if ($canonNights.Count -ge 2) {
-    $d0 = [datetime]::ParseExact($canonNights[0], 'yyyy-MM-dd', $null)
-    $d1 = [datetime]::ParseExact($canonNights[-1], 'yyyy-MM-dd', $null)
+  if ($canonNights.Count -ge 1) {
+    # Schedule-aware calendar (R1-C1): from enrollment (the first
+    # canonical night) through the latest night that is already due
+    # (today's once the quiet window has passed), only nights the
+    # task's trigger scheduled; the tail after the last result counts.
+    $d0 = [datetime]::ParseExact($canonNights[0], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    $d1 = [datetime]::ParseExact($canonNights[-1], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    $dueThrough = if ($Today.TimeOfDay -ge [TimeSpan]::FromHours(7)) { $Today.Date } else { $Today.Date.AddDays(-1) }
+    if ($dueThrough -gt $d1) { $d1 = $dueThrough.AddDays(1) }
     for ($d = $d0.AddDays(1); $d -lt $d1; $d = $d.AddDays(1)) {
       $ds = $d.ToString('yyyy-MM-dd')
+      if (-not (Test-NightScheduled $Schedule $ds)) { continue }
       if ($allNights -notcontains $ds) {
         # Schedule-aware calendar (item 7): a recorded pause reads paused,
         # a degraded night reads degraded, only the rest read missing.
