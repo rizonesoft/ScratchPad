@@ -2096,7 +2096,9 @@ function Get-AckHistory([string]$Root, [string]$RelPath) {
   # force-pushes, so the log only grows). Returns Committed, Dirty,
   # Entries (commit, author, date), and Error.
   $out = [pscustomobject]@{ Committed = $false; Dirty = $false; Entries = @(); Error = '' }
+  $eap = $ErrorActionPreference
   try {
+    $ErrorActionPreference = 'Continue'
     $log = @(git -C $Root log --format='%H|%an|%aI' -- $RelPath 2>$null)
     if ($LASTEXITCODE -ne 0) { $out.Error = 'git log failed'; return $out }
     foreach ($l in $log) {
@@ -2106,7 +2108,7 @@ function Get-AckHistory([string]$Root, [string]$RelPath) {
     $out.Committed = ($out.Entries.Count -gt 0)
     $st = @(git -C $Root status --porcelain -- $RelPath 2>$null)
     $out.Dirty = ($st.Count -gt 0)
-  } catch { $out.Error = "git unavailable: $($_.Exception.Message)" }
+  } catch { $out.Error = "git unavailable: $($_.Exception.Message)" } finally { $ErrorActionPreference = $eap }
   return $out
 }
 
@@ -2138,10 +2140,25 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     if ($hist.Dirty) { $lines += "- $($file.Name): edited since its last commit (ignored until committed)"; continue }
     $v = Test-AckV2 $text $Demands
     $histText = (@($hist.Entries | ForEach-Object { "$($_.Commit.Substring(0, 7)) $($_.Author) $($_.Date)" }) -join '; ')
+    if ($v.Ok) {
+      # A commit-shaped finding must resolve in this repository: an
+      # invented hash links nothing.
+      $fnd = "$((Read-AckFrontmatter $text).Fields['finding'])"
+      if ($fnd -match '^[0-9a-f]{7,40}$') {
+        # Windows PowerShell turns native stderr into a terminating
+        # error under Stop even when redirected, so the probe runs with
+        # the preference scoped to Continue and reads only the exit code.
+        $found = $false
+        $eap = $ErrorActionPreference
+        try { $ErrorActionPreference = 'Continue'; $null = git -C $Root cat-file -e "$fnd^{commit}" 2>&1; $found = ($LASTEXITCODE -eq 0) } catch { $found = $false } finally { $ErrorActionPreference = $eap }
+        if (-not $found) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = @("finding commit $fnd not found") } }
+      }
+    }
     if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
     foreach ($id in $v.Acked) { $acked[$id] = $file.Name }
     $staleNote = if ($v.Stale.Count -gt 0) { "; STALE for $($v.Stale -join ', ') (result changed after the ack: re-ack with the new checksum)" } else { '' }
-    $lines += "- $($file.Name): acknowledges $($v.Acked -join ', ')$staleNote; history $histText"
+    $ackedText = if (@($v.Acked).Count -gt 0) { $v.Acked -join ', ' } else { 'nothing current' }
+    $lines += "- $($file.Name): acknowledges $ackedText$staleNote; history $histText"
   }
   $unacked = @()
   $overdue = @()

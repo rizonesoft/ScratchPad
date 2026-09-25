@@ -981,6 +981,16 @@ $g4 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert (($g4.Unacked -notcontains $runOld) -and (@($g4.Lines | Where-Object { $_ -like '*ack-2026-09-20.md: v1 legacy, acknowledges 1 run(s)*' }).Count -eq 1)) 'ack-v1-before-cutover-counts' ($g4.Lines -join ' | ')
 Assert (($g4.Unacked -contains $runA2) -and (@($g4.Lines | Where-Object { $_ -like '*ack-2026-09-22.md: v1 day file after the 2026-09-21 cutover*' }).Count -eq 1)) 'ack-v1-after-cutover-ignored' ($g4.Lines -join ' | ')
 Assert ((@($g4.Overdue).Count -eq 0) -and (@($g4.Lines | Where-Object { $_ -like "*UNACKED $runA2 (RED 2026-09-22, due 2026-09-25)*" }).Count -eq 1)) 'ack-due-date-shown' ($g4.Lines -join ' | ')
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'deadbeef'; incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b bogus commit' 2>$null
+$g4b = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (($g4b.Unacked -contains $runA2) -and (@($g4b.Lines | Where-Object { $_ -like '*ack-2026-09-22-b.md: INVALID (finding commit deadbeef not found)*' }).Count -eq 1)) 'ack-invented-commit-fails' ($g4b.Lines -join ' | ')
+$realSha = ((& git -C $repo rev-parse HEAD) | Out-String).Trim()
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = $realSha.Substring(0, 12); incidents = 'none' }))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b real commit' 2>$null
+$g4c = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert ($g4c.Unacked -notcontains $runA2) 'ack-real-commit-finding-passes' ($g4c.Lines -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-b.md') 2>$null; & git -C $repo commit -q -m 'drop ack b' 2>$null
 $g5 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-28')
 Assert ((($g5.Overdue) -contains $runA2) -and (@($g5.Lines | Where-Object { $_ -like "*OVERDUE ack: $runA2 (RED 2026-09-22, due 2026-09-25, 3 day(s) overdue): escalate operator*" }).Count -eq 1)) 'ack-past-deadline-escalates' ($g5.Lines -join ' | ')
 Assert (@($g5.Staged | Where-Object { $_ -like "*STAGED ack-overdue $runA2 *" }).Count -eq 1) 'ack-past-deadline-stages-finding' ($g5.Staged -join ' | ')
