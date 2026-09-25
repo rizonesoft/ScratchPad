@@ -76,6 +76,23 @@ public static class TestMutation
         }
     }
 
+    // Swap evidence (D00 T02 §43 item 1): a swapped command appends
+    // `swap:<command>` to the dispatch log when one is set, so the mutation
+    // run can prove the substitute ran; best effort (a missing log leaves
+    // the case inconclusive, never killed).
+    public static string SwapLine(string command) => "swap:" + command;
+
+    public static void RecordSwap(string command, Func<string, string?> environment)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        if (string.IsNullOrWhiteSpace(environment(DispatchLogVariable)))
+        {
+            return;
+        }
+
+        _ = Record(SwapLine(command), environment);
+    }
+
     // The target naming a programmatic accelerator by its key and modifiers.
     public static string Key(int virtualKey, int modifiers) =>
         FormattableString.Invariant($"vk:{virtualKey}:{modifiers}");

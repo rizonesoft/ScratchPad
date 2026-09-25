@@ -356,6 +356,47 @@ public sealed class UiInputFunnelTests
         Assert.Empty(injected);
     }
 
+    // D00 T02 §43 item 3: a release that throws never stops the other
+    // releases, and the failure names every key left down.
+    [Fact]
+    public void ThrowingReleaseNamesTheStuckKeyAndReleasesTheRest()
+    {
+        var injected = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT, FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_S };
+        var released = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort>();
+        var ex = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(injected, k =>
+        {
+            if (k == FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT)
+            {
+                throw new InvalidOperationException("SendInput refused");
+            }
+
+            released.Add(k);
+        }));
+        Assert.Contains("key(s) left down", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("SHIFT (InvalidOperationException: SendInput refused)", ex.Message, StringComparison.Ordinal);
+        Assert.Equal([FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_S, FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL], released);
+        Assert.Empty(injected);
+    }
+
+    // D00 T02 §43 item 2: focus moving to another control inside the app
+    // between Ctrl-down and the wheel is not an interruption; the wheel
+    // still scrolls once (the cursor sits on the original target) between
+    // Ctrl down and up. Focus leaving the app aborts loud after the release.
+    [Fact]
+    public void InAppFocusMoveBetweenCtrlAndWheelStillScrollsOnce()
+    {
+        var log = new List<string>();
+        bool moved = false;
+        UiInput.WheelChecked(App, Target, () => (Target, App), () => new UiInput.FocusRead(App, !moved), true, k => { log.Add($"down {k}"); moved = true; }, k => log.Add($"up {k}"), () => log.Add("scroll"), () => true);
+        Assert.Equal(["down CONTROL", "scroll", "up CONTROL"], log);
+        var outLog = new List<string>();
+        bool left = false;
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            UiInput.WheelChecked(App, Target, () => left ? (0x200, Thief) : (Target, App), Focus(App), true, k => { outLog.Add($"down {k}"); left = true; }, k => outLog.Add($"up {k}"), () => outLog.Add("scroll"), () => true));
+        Assert.Contains("chord interrupted between key-down and key-up", ex.Message, StringComparison.Ordinal);
+        Assert.Equal("up CONTROL", outLog[^1]);
+    }
+
     // D00 T02 §36 item 8: Ctrl+wheel binds to the target like a key press;
     // a planted focus loss scrolls nothing and presses no Ctrl.
     [Fact]

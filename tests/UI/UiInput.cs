@@ -243,16 +243,34 @@ internal static class UiInput
     }
 
     // Releases exactly the injected keys, last first, and forgets them.
+    // Cleanup failures are owned (D00 T02 §43 item 3): a release that
+    // throws never stops the others (each key gets its attempt, so a
+    // bounded pass releases what it can), and the keys it could not
+    // release are named in the failure, so a stuck key is reported, never
+    // silent. The pass needs no window, so a target closing during
+    // recovery changes nothing.
     internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release)
     {
         ArgumentNullException.ThrowIfNull(injected);
         ArgumentNullException.ThrowIfNull(release);
+        var stuck = new List<string>();
         for (int i = injected.Count - 1; i >= 0; i--)
         {
-            release(injected[i]);
+            try
+            {
+                release(injected[i]);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                stuck.Add($"{injected[i]} ({ex.GetType().Name}: {ex.Message})");
+            }
         }
 
         injected.Clear();
+        if (stuck.Count > 0)
+        {
+            throw new InvalidOperationException($"input cleanup failed: key(s) left down after their release threw: {string.Join(", ", stuck)}");
+        }
     }
 
     // What the UIA focus probe read: the focused element's pid (null when

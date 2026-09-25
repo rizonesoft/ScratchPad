@@ -139,12 +139,21 @@ internal static class BindingMutation
     // failed after the press: null, good), survived (it passed with its
     // command swapped, so it covers nothing), or inconclusive (it did not
     // run, or it failed before the press or outside an assertion).
-    internal static string? Problem(Case c, ChildOutcome baseline, ChildOutcome o)
+    // `activated` is the swap evidence (§43 item 1): whether the child's
+    // dispatch log carries `swap:<target>`. Without it a failure or a pass
+    // proves nothing about the command (the target may name no bound
+    // command), so the case reads inconclusive, never killed or survived.
+    internal static string? Problem(Case c, ChildOutcome baseline, ChildOutcome o, bool activated)
     {
         string at = $"{c.Chord} -> {c.Command}: {c.TestClass}.{c.TestMethod}";
         if (baseline.Passed < 1 || baseline.Failed > 0)
         {
             return $"{at} did not pass unmutated (passed {baseline.Passed}, failed {baseline.Failed}, skipped {baseline.Skipped}: {baseline.FailureMessage ?? baseline.Tail}), so a failure under mutation proves nothing about the command";
+        }
+
+        if ((o.Failed > 0 || o.Passed > 0) && !activated)
+        {
+            return $"{at} is inconclusive: the swap never activated (no {TestMutation.SwapLine(c.Target)} in the child's dispatch log), so the target names no bound command or the press never reached it";
         }
 
         if (o.Failed > 0)

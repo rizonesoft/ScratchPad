@@ -32,8 +32,9 @@ public sealed class BindingMutationTests
     {
         var c = Assert.Single(LiveCases(), x => x.Chord == chord && x.Command == command && $"{x.TestClass}.{x.TestMethod}" == test);
         var baseline = Baseline(c.TestClass, c.TestMethod, plant: false);
-        var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{c.TestClass}.{c.TestMethod}", MutationEnv(c.Target, plant: false), TimeSpan.FromMinutes(4));
-        Assert.Null(BindingMutation.Problem(c, baseline, BindingMutation.ParseOutcome(output, c.TestClass, c.TestMethod)));
+        var (env, log) = MutationEnv(c.Target, plant: false);
+        var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{c.TestClass}.{c.TestMethod}", env, TimeSpan.FromMinutes(4));
+        Assert.Null(BindingMutation.Problem(c, baseline, BindingMutation.ParseOutcome(output, c.TestClass, c.TestMethod), SwapActivated(log, c.Target)));
     }
 
     // The plant, executed: it passes with Ctrl+Shift+G's command swapped,
@@ -47,10 +48,11 @@ public sealed class BindingMutationTests
         var c = new BindingMutation.Case("Ctrl+Shift+G", "MenuToolsStats", nameof(MutationPlantTests), nameof(MutationPlantTests.PlantedConstantLocalAssertion), "MenuToolsStats",
             BindingMutation.PressLine(src, nameof(MutationPlantTests.PlantedConstantLocalAssertion), "Ctrl+Shift+G"));
         var baseline = Baseline(c.TestClass, c.TestMethod, plant: true);
-        var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{c.TestClass}.{c.TestMethod}", MutationEnv(c.Target, plant: true), TimeSpan.FromMinutes(4));
+        var (env, log) = MutationEnv(c.Target, plant: true);
+        var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{c.TestClass}.{c.TestMethod}", env, TimeSpan.FromMinutes(4));
         var outcome = BindingMutation.ParseOutcome(output, c.TestClass, c.TestMethod);
         Assert.True(outcome.Passed == 1, $"the plant did not run to a pass under mutation: {outcome.Tail}");
-        Assert.Contains("observes nothing that tells the command apart", BindingMutation.Problem(c, baseline, outcome), StringComparison.Ordinal);
+        Assert.Contains("observes nothing that tells the command apart", BindingMutation.Problem(c, baseline, outcome, SwapActivated(log, c.Target)), StringComparison.Ordinal);
     }
 
     // The child-run plumbing, focus-free: a child run of a pure fact in
@@ -59,7 +61,7 @@ public sealed class BindingMutationTests
     [Fact]
     public void ChildRunReadsAPassingPureTest()
     {
-        var (exit, output) = UiLaunch.RunChildTest("FullyQualifiedName=UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey", MutationEnv("MenuFileNewTab", plant: false), TimeSpan.FromMinutes(2));
+        var (exit, output) = UiLaunch.RunChildTest("FullyQualifiedName=UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey", MutationEnv("MenuFileNewTab", plant: false).Env, TimeSpan.FromMinutes(2));
         var outcome = BindingMutation.ParseOutcome(output, nameof(BindingMutationTests), nameof(TargetsNameTheMenuItemOrTheAcceleratorKey));
         Assert.True(exit == 0 && outcome.Passed == 1 && outcome.Failed == 0, $"child run exit {exit}: {outcome.Tail}");
     }
@@ -91,13 +93,17 @@ public sealed class BindingMutationTests
         const string Summary = "Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1";
         string Failure(string message, int line) => $"  Failed UI.MenuBarTests.FileMenuLiveAcceleratorsWork [9 s]\n  Error Message:\n   {message}\n  Stack Trace:\n     at UI.MenuBarTests.FileMenuLiveAcceleratorsWork() in R:\\x\\tests\\UI\\MenuBarTests.cs:line {line}\n{Summary}";
         BindingMutation.ChildOutcome Parse(string output) => BindingMutation.ParseOutcome(output, "MenuBarTests", "FileMenuLiveAcceleratorsWork");
-        Assert.Null(BindingMutation.Problem(c, green, Parse(Failure("Assert.Equal() Failure: Values differ", 44))));
-        Assert.Contains("did not pass unmutated", BindingMutation.Problem(c, Parse(Failure("Assert.Equal() Failure: Values differ", 44)), Parse(Failure("Assert.Equal() Failure: Values differ", 44))), StringComparison.Ordinal);
-        Assert.Contains("not after the press", BindingMutation.Problem(c, green, Parse(Failure("Assert.NotNull() Failure: Value is null", 30))), StringComparison.Ordinal);
-        Assert.Contains("not on an assertion", BindingMutation.Problem(c, green, Parse(Failure("System.TimeoutException : UIA Timeout", 44))), StringComparison.Ordinal);
-        Assert.Contains("passed with its command swapped", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1")), StringComparison.Ordinal);
-        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     0, Skipped:     1, Total:     1")), StringComparison.Ordinal);
-        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, green, Parse("No test matches the given testcase filter")), StringComparison.Ordinal);
+        Assert.Null(BindingMutation.Problem(c, green, Parse(Failure("Assert.Equal() Failure: Values differ", 44)), activated: true));
+        // §43 item 1: without swap evidence a failure and a pass are both
+        // inconclusive, never killed or survived.
+        Assert.Contains("is inconclusive: the swap never activated", BindingMutation.Problem(c, green, Parse(Failure("Assert.Equal() Failure: Values differ", 44)), activated: false), StringComparison.Ordinal);
+        Assert.Contains("is inconclusive: the swap never activated", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1"), activated: false), StringComparison.Ordinal);
+        Assert.Contains("did not pass unmutated", BindingMutation.Problem(c, Parse(Failure("Assert.Equal() Failure: Values differ", 44)), Parse(Failure("Assert.Equal() Failure: Values differ", 44)), activated: true), StringComparison.Ordinal);
+        Assert.Contains("not after the press", BindingMutation.Problem(c, green, Parse(Failure("Assert.NotNull() Failure: Value is null", 30)), activated: true), StringComparison.Ordinal);
+        Assert.Contains("not on an assertion", BindingMutation.Problem(c, green, Parse(Failure("System.TimeoutException : UIA Timeout", 44)), activated: true), StringComparison.Ordinal);
+        Assert.Contains("passed with its command swapped", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1"), activated: true), StringComparison.Ordinal);
+        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     0, Skipped:     1, Total:     1"), activated: true), StringComparison.Ordinal);
+        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, green, Parse("No test matches the given testcase filter"), activated: true), StringComparison.Ordinal);
     }
 
     // One unmutated child run per covering test, cached for the run (the
@@ -127,11 +133,16 @@ public sealed class BindingMutationTests
         }
     }
 
-    static Dictionary<string, string> MutationEnv(string target, bool plant)
+    // A fresh child environment per case (§43 item 1): the target set
+    // explicitly (never inherited) and its own dispatch log for the swap
+    // evidence.
+    static (Dictionary<string, string> Env, string Log) MutationEnv(string target, bool plant)
     {
+        string log = Path.Combine(Path.GetTempPath(), $"scratchpad-swap-{Guid.NewGuid():N}.log");
         var env = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             [TestMutation.Variable] = target,
+            [TestMutation.DispatchLogVariable] = log,
             [LaunchCapture.RunMarkerVariable] = "1",
         };
         if (plant)
@@ -139,7 +150,26 @@ public sealed class BindingMutationTests
             env[MutationPlantFactAttribute.Variable] = "1";
         }
 
-        return env;
+        return (env, log);
+    }
+
+    static bool SwapActivated(string log, string target)
+    {
+        try
+        {
+            return File.Exists(log) && File.ReadAllLines(log).Contains(TestMutation.SwapLine(target));
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(log);
+            }
+            catch (IOException)
+            {
+                // Best effort.
+            }
+        }
     }
 
     static string PlantSource() => File.ReadAllText(Path.Combine(BindingManifestTests.RepoRoot(), "tests", "UI", "MutationPlantTests.cs"));

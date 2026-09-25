@@ -138,6 +138,7 @@ run-a:
   UI.MenuBarTests.ToolsMenuInvokesTemplates
   UI.MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates
   UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
+  UI.MenuLabelTests.LeavingAReadOnlyDocumentRestoresTheWritableEnablement
   UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI.MultiWindowTests.WindowsKeepIndependentTabs
   UI.MutationPlantTests.PlantedConstantLocalAssertion
@@ -236,6 +237,7 @@ run-a:
   UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
   UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.InAppFocusMoveBetweenCtrlAndWheelStillScrollsOnce
   UI.UiInputFunnelTests.MatchingWindowAndFocusSendsOnce
   UI.UiInputFunnelTests.ModifierPressedMidInjectionOutsideTheChordIsNotReleased
   UI.UiInputFunnelTests.OnlyTheFunnelTouchesTheKeyboard
@@ -245,6 +247,7 @@ run-a:
   UI.UiInputFunnelTests.PreconditionSettlingWithinTheWaitStillSends
   UI.UiInputFunnelTests.StuckModifierIsReleasedAndFailsLoud
   UI.UiInputFunnelTests.TheAppsOtherWindowFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.ThrowingReleaseNamesTheStuckKeyAndReleasesTheRest
   UI.UiInputFunnelTests.ThrowingSenderStillSendsKeyUpReleasesModifiersAndKeepsItsFailure
   UI.UiInputFunnelTests.TypedTextOwnsOnlyItsCharactersModifiers
   UI.UiInputFunnelTests.WheelOnTargetScrollsOnceBetweenCtrlDownAndUp
@@ -257,9 +260,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 251
-run-a-cases: 315
-run-a-case-hash: 86176dc2a0b57357
+run-a-methods: 254
+run-a-cases: 318
+run-a-case-hash: a896ef4a2819ccb9
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

@@ -1379,16 +1379,18 @@ Why this section exists: the §35 plan review returned 12 findings; 9 file here,
 
 ## 43. Binding Guard Second Residuals
 
+> **Started:** 2026-09-25T16:49:36Z
+
 Why this section exists: the §36 plan review returned 14 findings; 5 file here, 3 file as items on D02 T01 §5, 2 are duplicates of open D02 T01 §5 items, and 4 are rejected with reasons in the §36 findings file. §36 proved covering tests by execution, recorded physical identity, and checked routing, layouts, and states; these settle activation evidence, in-app focus moves, cleanup failures, auto-repeat, and state transitions. -> SOURCE: plan-review-D00-T02-s36-2026-09-25-s43 D00-T02-S36-PR2 D00-T02-S36-PR5 D00-T02-S36-PR6 D00-T02-S36-PR7 D00-T02-S36-PR8 (mutation activation, in-app focus moves, cleanup failures, auto-repeat, and enablement transitions from the §36 plan review).
 
 - -> XREF: D00 T02 §36 -- filed from its plan review; carries the guard and funnel it proved.
 
-- [ ] Each mutation case proves the swap activated (the substitute's own effect is observed or the app records the swap in the dispatch log) and runs in a fresh child with no inherited target. Done when: a case whose target names no bound command reads inconclusive, never killed. (D00-T02-S36-PR2.)
-- [ ] A focus move to another control inside the app between key-down and key-up (or between Ctrl and the wheel) is defined and tested: the press either binds to its original target or aborts loud. Done when: a planted in-app focus move mid-chord reads its documented outcome. (D00-T02-S36-PR5.)
-- [ ] Cleanup failures are owned: a key-up that throws, a window closing during recovery, and a cancelled test each release what they can within a bound and report every key left down. Done when: a fixture whose release throws names the stuck key. (D00-T02-S36-PR6.)
-- [ ] Held keys are distinguished from duplicate delivery: press, hold (auto-repeat), and release are specified per command class, so repeatable commands (zoom) repeat and one-shot commands dispatch once. Done when: a held-chord fixture reads the documented count per class. (D00-T02-S36-PR7.)
-- [ ] Enablement is read across transitions, not only states: entering and leaving each owner-declared state restores the documented enablement. Done when: a read-only document closed back to a writable one reads the writable enablement again. (D00-T02-S36-PR8.)
-- [ ] Commit: `"workspace: settle the binding guard second residuals"`
+- [x] Each mutation case proves the swap activated (the substitute's own effect is observed or the app records the swap in the dispatch log) and runs in a fresh child with no inherited target. Done when: a case whose target names no bound command reads inconclusive, never killed. (D00-T02-S36-PR2.)
+- [x] A focus move to another control inside the app between key-down and key-up (or between Ctrl and the wheel) is defined and tested: the press either binds to its original target or aborts loud. Done when: a planted in-app focus move mid-chord reads its documented outcome. (D00-T02-S36-PR5.)
+- [x] Cleanup failures are owned: a key-up that throws, a window closing during recovery, and a cancelled test each release what they can within a bound and report every key left down. Done when: a fixture whose release throws names the stuck key. (D00-T02-S36-PR6.)
+- [x] Held keys are distinguished from duplicate delivery: press, hold (auto-repeat), and release are specified per command class, so repeatable commands (zoom) repeat and one-shot commands dispatch once. Done when: a held-chord fixture reads the documented count per class. (D00-T02-S36-PR7.) Default recorded 2026-09-25: zoom in and out and tab cycling repeat, every other command is one-shot (stock Notepad's held-key behavior is not captured yet; changing a class is one entry in `HeldChord.Repeatable`). The physical held-key proof is Interactive and Night-owed with the §36 mutation run.
+- [x] Enablement is read across transitions, not only states: entering and leaving each owner-declared state restores the documented enablement. Done when: a read-only document closed back to a writable one reads the writable enablement again. (D00-T02-S36-PR8.)
+- [x] Commit: `"workspace: settle the binding guard second residuals"`
 
 **Test checkpoint:** Mutations prove activation, in-app focus moves have an outcome, cleanup failures report their stuck keys, held keys repeat by class, and enablement survives transitions. Cheaper substitute that fails: more static rules over test source.
 

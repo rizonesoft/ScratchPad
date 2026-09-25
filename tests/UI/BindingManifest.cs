@@ -357,6 +357,8 @@ internal static class BindingManifest
 
     // Key handling outside the two declared homes is an undeclared
     // binding surface (context routing the matrix cannot see).
+    static readonly Regex HeldChordObserver = new(@"^\s*scope\.PreviewKey(Down|Up) \+= \((_|e), (_|e)\) => HeldChord\.(NotePress\(e\.KeyStatus\.WasKeyDown\)|NoteRelease\(\));\s*$", RegexOptions.Compiled);
+
     internal static List<string> UndeclaredKeyHandling(string relPath, string text)
     {
         var found = new List<string>();
@@ -389,6 +391,14 @@ internal static class BindingManifest
             foreach (string line in scan.Split('\n'))
             {
                 string code = line.Split("//", 2)[0];
+                // The held-key observer (D00 T02 §43 item 4) binds no
+                // chord: a line whose only action feeds HeldChord's repeat
+                // flag is sanctioned; any other handler still reads here.
+                if (HeldChordObserver.IsMatch(code))
+                {
+                    continue;
+                }
+
                 if (code.Contains(token, StringComparison.Ordinal))
                 {
                     found.Add($"{relPath}: undeclared key handling ({token}) outside the menu bar and AddTabAccelerators: {code.Trim()}");
@@ -399,8 +409,10 @@ internal static class BindingManifest
         return found;
     }
 
+    // The held-key check (D00 T02 §43 item 4) is part of the sanctioned
+    // shape: it can only suppress, never re-key or add an accelerator.
     internal const string SanctionedHelperBody =
-        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{if(!MutationHandled(key,modifiers)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
+        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{if(!HeldChord.Suppress(TestMutation.Key((int)key,(int)modifiers))&&!MutationHandled(key,modifiers)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
 
     static List<string> TabHomeProblems(string source)
     {

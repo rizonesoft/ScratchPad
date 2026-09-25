@@ -735,6 +735,11 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             mutationBar = new WeakReference<TabBar>(bar);
         }
+        // Held keys (D00 T02 §43 item 4): the root notes each key-down's
+        // repeat flag before any accelerator runs, so one-shot commands
+        // dispatch once per physical press and repeatable ones repeat.
+        scope.PreviewKeyDown += (_, e) => HeldChord.NotePress(e.KeyStatus.WasKeyDown);
+        scope.PreviewKeyUp += (_, _) => HeldChord.NoteRelease();
         AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);
         // D01 T02 §1: Ctrl+W belongs to File > Close tab now.
         AddAccel(scope, VirtualKey.Tab, VirtualKeyModifiers.Control, bar.CycleNext);
@@ -764,6 +769,7 @@ public sealed partial class MainWindow : Window, IDisposable
         switch (TestMutation.For(target, Environment.GetEnvironmentVariable))
         {
             case MutationEffect.Swap:
+                TestMutation.RecordSwap(target, Environment.GetEnvironmentVariable);
                 if (key == VirtualKey.T && modifiers == VirtualKeyModifiers.Control)
                 {
                     Bar()?.CycleNext();
@@ -787,7 +793,7 @@ public sealed partial class MainWindow : Window, IDisposable
         var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
         accel.Invoked += (_, args) =>
         {
-            if (!MutationHandled(key, modifiers))
+            if (!HeldChord.Suppress(TestMutation.Key((int)key, (int)modifiers)) && !MutationHandled(key, modifiers))
             {
                 action();
             }

@@ -171,9 +171,17 @@ internal sealed partial class AppMenuBar : MenuBar
     // (TestMutation.RecordOrFail), which the routing test detects.
     bool Mutated(string id)
     {
+        // An auto-repeat of a one-shot command runs nothing (D00 T02 §43
+        // item 4); the guard every bound handler already calls carries it.
+        if (HeldChord.Suppress(id))
+        {
+            return true;
+        }
+
         switch (TestMutation.For(id, Environment.GetEnvironmentVariable))
         {
             case MutationEffect.Swap:
+                TestMutation.RecordSwap(id, Environment.GetEnvironmentVariable);
                 if (id == "MenuFileNewTab")
                 {
                     host?.NewWindow();

@@ -72,6 +72,49 @@ public sealed class MenuLabelTests
         Assert.Empty(BindingManifest.EnablementProblems(rows, observations, states.Select(s => s[0])));
     }
 
+    // D00 T02 §43 item 5: enablement is read across a transition, not only
+    // in a state. A writable document and a read-only one open as two
+    // tabs; the read-only tab is read, then closed back to the writable
+    // one, whose enablement must equal the writable baseline read in its
+    // own fresh window.
+    [Fact]
+    public void LeavingAReadOnlyDocumentRestoresTheWritableEnablement()
+    {
+        string root = BindingManifestTests.RepoRoot();
+        var rows = BindingManifest.ParseAudit(File.ReadAllText(Path.Combine(root, "docs", "ui-input-audit.md")), out var parse);
+        Assert.Empty(parse);
+        var ids = rows.Where(r => r.Class == "disabled").Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
+        string writable = Path.Combine(Path.GetTempPath(), $"scratchpad-transition-w-{Guid.NewGuid():N}.txt");
+        string readOnly = Path.Combine(Path.GetTempPath(), $"scratchpad-transition-r-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(writable, "writable" + Environment.NewLine);
+        File.WriteAllText(readOnly, "read-only" + Environment.NewLine);
+        File.SetAttributes(readOnly, FileAttributes.ReadOnly);
+        try
+        {
+            var baseline = WithApp($"\"{writable}\"", window => ReadBound(window, ids));
+            var (inReadOnly, afterLeaving) = WithApp($"\"{writable}\" \"{readOnly}\"", window =>
+            {
+                Assert.Contains("scratchpad-transition-r-", window.Title, StringComparison.Ordinal);
+                var ro = ReadBound(window, ids);
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
+                Assert.True(Retry.WhileFalse(() => window.Title.Contains("scratchpad-transition-w-", StringComparison.Ordinal), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200)).Result, $"closing the read-only tab did not return to the writable one: {window.Title}");
+                return (ro, ReadBound(window, ids));
+            });
+            Assert.NotEmpty(inReadOnly);
+            foreach (var (id, read) in baseline)
+            {
+                Assert.True(afterLeaving.TryGetValue(id, out Read? back), $"{id} was not read after leaving the read-only document");
+                Assert.True(back.Enabled == read.Enabled, $"{id} reads {(back.Enabled ? "enabled" : "disabled")} after leaving the read-only document, but {(read.Enabled ? "enabled" : "disabled")} in the writable baseline");
+            }
+        }
+        finally
+        {
+            File.SetAttributes(readOnly, FileAttributes.Normal);
+            File.Delete(readOnly);
+            File.Delete(writable);
+        }
+    }
+
     // Builds one named setup in a fresh app and reads the bound items there.
     static Dictionary<string, Read> BuildState(string setup, Func<Window, Dictionary<string, Read>> read)
     {
