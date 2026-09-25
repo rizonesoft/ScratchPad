@@ -43,6 +43,16 @@ jobs:
           $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH
           $env:DOTNET_MULTILEVEL_LOOKUP = "0"
           dotnet build src/ScratchPad.slnx --nologo
+      # Population fingerprint gate (D00 T02 §29): a stale
+      # tests/UI/TestPopulation.fingerprint reds here with the drift named,
+      # instead of costing the next governed night.
+      - name: Check test population fingerprint
+        shell: powershell
+        run: |
+          $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"
+          $env:DOTNET_MULTILEVEL_LOOKUP = "0"
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\Test-TestPopulation.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       # Bin layout guards (D00 T01 §41 items 2, 5, 8): green legs on the
       # tree plus red legs on the fixtures, so both directions run maintained.
       # Moved from the retired Linux job 2026-09-19 (Windows-only CI); bash

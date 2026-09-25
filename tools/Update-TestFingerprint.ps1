@@ -31,6 +31,10 @@ if ($existing.Ok) {
   $runB = 'Category=Primary'
   $interactive = $live.CollectDefault
 }
+# A regen against a stale build would record an older tree's counts
+# (D00 T02 §29): refuse with the build instruction instead.
+$fresh = Get-UiBuildFreshness $Root
+if (-not $fresh.Ok) { Write-Output "fingerprint not written: $($fresh.Error)"; exit 2 }
 $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $runA $runB $interactive
 Write-TestPopulationFile $Fingerprint $runA $runB $interactive $disc
 Write-Output "fingerprint written: run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)"

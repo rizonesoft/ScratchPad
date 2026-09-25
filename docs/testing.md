@@ -71,6 +71,8 @@ Closure-safe skips are quarantine-declared only: their proof transfers to the qu
 Worked example, from a `-CollectDebt D00-T02-S8-N1` night (second debt hypothetical):
 
 ```md
+Population fingerprint (D00 T02 §15, gated before the night by §29): `tests/UI/TestPopulation.fingerprint` records each leg's member methods plus method and case counts, and the governed nightly refuses every leg on drift. After any change that adds, removes, renames, or re-traits a UI test, build (`dotnet build src/ScratchPad.slnx`), regenerate with `tools/Update-TestFingerprint.ps1`, and review the diff; the regen refuses when `Bin/UI/Debug/UI.dll` is older than the newest `tests/UI` source. `tools/Test-TestPopulation.ps1` runs the nightly's own comparer against the built binaries and prints `population OK run-a=M/C run-b=M/C interactive=M/C` or the drift lines (exit 1; exit 2 when the build or the fingerprint cannot be read); the Windows CI job runs it after the build as the step `Check test population fingerprint`, so a stale fingerprint reds the push instead of the night. Discovery sets `SCRATCHPAD_INTERACTIVE_FORCE=1` for its listing (restoring the prior value), because outside the quiet window a fenced Theory lists as one skipped case instead of its rows: counts are the same at noon and at 02:30.
+
 ## Night debt
 
 - D00-T02-S8-N1 (D00 T02 §8): collected 27 passed, 0 failed, 1 skipped; log build/nightly/2026-09-20-023001/interactive.trx

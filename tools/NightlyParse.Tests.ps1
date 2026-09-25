@@ -403,6 +403,32 @@ Assert (($popFilter.Ok -eq $false) -and (($popFilter.Drifts -join '') -like "*ap
 $popBad = Compare-TestPopulation (Join-Path $dir 'pop-bad.fingerprint') $fakeNightly $fpDisc
 Assert (($popBad.Ok -eq $false) -and (($popBad.Drifts -join '') -like '*missing run-b-filter*')) 'fingerprint-malformed' ($popBad.Drifts -join '|')
 
+# Gate before the night (D00 T02 section 29): methods-only drift on the
+# run-b and interactive legs fails, the 2026-09-25 drift line
+# reproduces exactly, discovery forces the fence open so a daytime
+# listing expands fenced Theories, and a stale build refuses.
+$methOnly = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 2; RunBCases = 1; InteractiveMethods = 3; InteractiveCases = 1 }
+$popMeth = Compare-TestPopulation $fpFile $fakeNightly $methOnly
+Assert (($popMeth.Ok -eq $false) -and (($popMeth.Drifts -join '|') -like '*run-b-methods: fingerprinted 1 vs discovered 2*') -and (($popMeth.Drifts -join '|') -like '*interactive-methods: fingerprinted 1 vs discovered 3*')) 'fingerprint-methods-only-drift' ($popMeth.Drifts -join '|')
+$d37 = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 37 }
+$fp37 = Join-Path $dir 'pop37.fingerprint'
+Write-TestPopulationFile $fp37 'Category!=Interactive&Category!=Primary' 'Category=Primary' 'Category=Interactive' $d37
+$d42 = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.T2'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 42 }
+$pop42 = Compare-TestPopulation $fp37 $fakeNightly $d42
+Assert (($pop42.Ok -eq $false) -and (('population drift: ' + ($pop42.Drifts -join '; ')) -eq 'population drift: interactive-cases: fingerprinted 37 vs discovered 42')) 'fingerprint-reproduces-2026-09-25' ($pop42.Drifts -join '|')
+$stubEnv = Join-Path $dir 'stub-env.ps1'
+@('param([Parameter(ValueFromRemainingArguments = $true)]$rest)', "'    UI.Env.Force' + `$env:SCRATCHPAD_INTERACTIVE_FORCE") | Set-Content -Path $stubEnv -Encoding UTF8
+$priorForce = $env:SCRATCHPAD_INTERACTIVE_FORCE
+$env:SCRATCHPAD_INTERACTIVE_FORCE = 'operator-value'
+$envList = Get-ListTestsCases $stubEnv (Join-Path $dir 'UI.csproj') 'anything' 'stubenv'
+$afterForce = $env:SCRATCHPAD_INTERACTIVE_FORCE
+$env:SCRATCHPAD_INTERACTIVE_FORCE = $priorForce
+Assert ((@($envList.Methods) -contains 'UI.Env.Force1') -and ($afterForce -eq 'operator-value')) 'discovery-forces-the-fence-and-restores' ((@($envList.Methods) -join '|') + ' / ' + $afterForce)
+$t0 = [datetime]::new(2026, 9, 25, 10, 0, 0, [DateTimeKind]::Utc)
+$staleBuild = Test-UiBuildFresh $t0 $t0.AddMinutes(5) 'Bin\UI\Debug\UI.dll'
+$freshBuild = Test-UiBuildFresh $t0.AddMinutes(5) $t0 'Bin\UI\Debug\UI.dll'
+Assert (($staleBuild.Ok -eq $false) -and ($staleBuild.Error -like 'UI build is stale:*run: dotnet build src/ScratchPad.slnx*') -and ($freshBuild.Ok -eq $true)) 'fingerprint-stale-build-refuses' $staleBuild.Error
+
 # Filter partition: the fingerprinted Run A plus Run B filters select
 # the synthetic population soundly, and edits breaking the partition
 # surface as violations (D00-T02-S13-PR17).

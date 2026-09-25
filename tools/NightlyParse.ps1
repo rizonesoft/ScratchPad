@@ -821,7 +821,9 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
     foreach ($r in ($removed | Select-Object -First 5)) { $drifts += "$($leg[0]) removed: $r" }
     if ($removed.Count -gt 5) { $drifts += "$($leg[0]) removed: ... ($($removed.Count) total)" }
   }
-  $pairs = @( @('run-a-methods', $fp.RunAMethods, $Discovery.RunAMethods), @('run-a-cases', $fp.RunACases, $Discovery.RunACases), @('run-b-cases', $fp.RunBCases, $Discovery.RunBCases), @('interactive-cases', $fp.InteractiveCases, $Discovery.InteractiveCases) )
+  # Every count pair, methods and cases per leg (D00 T02 §29: run-b and
+  # interactive methods were unchecked, so a methods-only drift passed).
+  $pairs = @( @('run-a-methods', $fp.RunAMethods, $Discovery.RunAMethods), @('run-a-cases', $fp.RunACases, $Discovery.RunACases), @('run-b-methods', $fp.RunBMethods, $Discovery.RunBMethods), @('run-b-cases', $fp.RunBCases, $Discovery.RunBCases), @('interactive-methods', $fp.InteractiveMethods, $Discovery.InteractiveMethods), @('interactive-cases', $fp.InteractiveCases, $Discovery.InteractiveCases) )
   foreach ($p in $pairs) {
     if ($p[1] -ne $p[2]) { $drifts += "$($p[0]): fingerprinted $($p[1]) vs discovered $($p[2])" }
   }
@@ -870,7 +872,18 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
   # hang throws like a failure, so hung discovery cannot strand the run
   # past its deadline. Failure throws with $What naming the caller;
   # callers report on their red path.
-  $cap = Invoke-BoundedCapture $Dotnet @('test', $Csproj, '--no-build', '--nologo', '--filter', $Filter, '--list-tests') (Split-Path -Parent $Csproj) $TimeoutSeconds
+  # Time-independent discovery (D00 T02 §29): outside the quiet window a
+  # fenced Theory lists as one skipped case instead of its rows, so a
+  # daytime regen undercounted what the 02:30 night discovers. The force
+  # variable makes the fence attributes expand everywhere; the prior
+  # value is restored whatever happens.
+  $priorForce = $env:SCRATCHPAD_INTERACTIVE_FORCE
+  $env:SCRATCHPAD_INTERACTIVE_FORCE = '1'
+  try {
+    $cap = Invoke-BoundedCapture $Dotnet @('test', $Csproj, '--no-build', '--nologo', '--filter', $Filter, '--list-tests') (Split-Path -Parent $Csproj) $TimeoutSeconds
+  } finally {
+    $env:SCRATCHPAD_INTERACTIVE_FORCE = $priorForce
+  }
   if ($cap.Killed) { throw "discovery timed out for $What filter '$Filter' after ${TimeoutSeconds}s" }
   $text = $cap.Text
   if ($cap.Code -ne 0) { throw "discovery failed for $What filter '$Filter': $text" }
@@ -885,6 +898,25 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
   }
   $methods = @($methods | Sort-Object -Unique)
   return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases }
+}
+
+function Test-UiBuildFresh([datetime]$BinaryTimeUtc, [datetime]$NewestSourceTimeUtc, [string]$BinaryPath) {
+  # Stale-build refusal (D00 T02 §29): discovery reads the built UI
+  # binaries, so a test source newer than the binary means the counts
+  # would describe an older tree. Returns Ok plus the instruction.
+  if ($BinaryTimeUtc -lt $NewestSourceTimeUtc) {
+    return [pscustomobject]@{ Ok = $false; Error = "UI build is stale: $BinaryPath ($($BinaryTimeUtc.ToString('u'))) is older than the newest tests/UI source ($($NewestSourceTimeUtc.ToString('u'))); run: dotnet build src/ScratchPad.slnx, then retry" }
+  }
+  return [pscustomobject]@{ Ok = $true; Error = '' }
+}
+
+function Get-UiBuildFreshness([string]$Root) {
+  $dll = Join-Path $Root 'Bin\UI\Debug\UI.dll'
+  if (-not (Test-Path $dll)) { return [pscustomobject]@{ Ok = $false; Error = "UI build missing: $dll; run: dotnet build src/ScratchPad.slnx, then retry" } }
+  $newest = Get-ChildItem -Path (Join-Path $Root 'tests\UI') -Recurse -Include '*.cs', '*.csproj' -File |
+    Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' } | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+  if ($null -eq $newest) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+  return Test-UiBuildFresh (Get-Item $dll).LastWriteTimeUtc $newest.LastWriteTimeUtc $dll
 }
 
 function Get-UiTestDiscovery([string]$Dotnet, [string]$UiCsproj, [string]$RunAFilter, [string]$RunBFilter, [string]$InteractiveFilter) {
