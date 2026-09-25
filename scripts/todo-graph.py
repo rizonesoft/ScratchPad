@@ -4148,6 +4148,19 @@ def _add_days(d, n):
         return None
 
 
+def _strict_date(s):
+    """A canonical YYYY-MM-DD that is a real calendar day, as a date;
+    else None. Lifecycle dates compare as dates, never as strings, so a
+    permissive form such as 20260919 can never sort past a real one
+    (§27 R2-F1)."""
+    if not isinstance(s, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return None
+    try:
+        return datetime.fromisoformat(s).date()
+    except ValueError:
+        return None
+
+
 def _iso(s):
     try:
         return datetime.fromisoformat(s).date() if s else None
@@ -4300,7 +4313,17 @@ def night_debts(todos: list["Todo"], today_d):
             # window once; a second red escalates as red-repeat with a
             # follow-up deadline, so reruns that stay red cannot satisfy
             # the escalation forever.
-            rl = sorted(r["date"] for r in reds.get(did, []) if (base_d is None or r["date"] >= base_d.isoformat()))
+            rl = []
+            for r in reds.get(did, []):
+                rd = _strict_date(r["date"])
+                if rd is None or rd > today_d:
+                    # A red that is not a real past day changes nothing and
+                    # says so (§27 R2-F2).
+                    warnings.append(f"Night-red date '{r['date']}' is not a real day on or before today; ignored")
+                    continue
+                if base_d is None or rd >= base_d:
+                    rl.append(rd.isoformat())
+            rl.sort()
             # The escalation this debt is under starts on this day; an
             # acknowledgement only counts when dated on or after it, so an
             # old acknowledgement never covers a later red (§27 R1-F3).
@@ -4327,14 +4350,15 @@ def night_debts(todos: list["Todo"], today_d):
             # Risk acceptance (§27 item 2): reads accepted, never
             # collected; an expired acceptance re-escalates.
             acc = accepts.get(did)
+            acc_date = _strict_date(acc.get("date")) if acc else None
+            acc_exp = _strict_date(acc.get("expires")) if acc else None
             acc_ok = bool(
                 acc and acc.get("approver") and acc.get("owner") and acc.get("rationale")
-                and _iso(acc.get("date")) and _iso(acc.get("expires"))
-                and acc["date"] <= today_d.isoformat() and acc["date"] <= acc["expires"]
+                and acc_date and acc_exp and acc_date <= today_d and acc_date <= acc_exp
             )
             if acc_ok:
-                accepted_by, accepted_expires = acc["approver"], acc["expires"]
-                if today_d.isoformat() <= acc["expires"]:
+                accepted_by, accepted_expires = acc["approver"], acc_exp.isoformat()
+                if today_d <= acc_exp:
                     state = "accepted"
                     overdue = False
                     respond_by = None
@@ -4342,21 +4366,21 @@ def night_debts(todos: list["Todo"], today_d):
                 else:
                     state = "acceptance-expired"
                     overdue = True
-                    respond_by = acc["expires"]
-                    escalation_start = acc["expires"]
+                    respond_by = acc_exp.isoformat()
+                    escalation_start = acc_exp.isoformat()
                     action = "renew the risk acceptance or rerun the collection"
             elif acc:
                 # Every field of the findings-file grammar is required, and a
                 # future-dated record accepts nothing yet (§27 R1-F2).
-                warnings.append("Night-accepted line needs approver, owner, a real date on or before today, expires, and rationale; ignored")
+                warnings.append("Night-accepted line needs approver, owner, a canonical YYYY-MM-DD date on or before today, a canonical expires, and rationale; ignored")
             # Acknowledgement (§27 item 1): drops the escalation until the
             # response deadline; still open past it escalates again.
             ack = acks.get(did)
-            ack_date = ack.get("date") if ack else None
-            if ack and not (ack.get("owner") and ack.get("action") and _iso(ack_date) and ack_date <= today_d.isoformat()):
-                warnings.append("Night-ack line needs a real date on or before today, an owner, and an action; ignored")
+            ack_d = _strict_date(ack.get("date")) if ack else None
+            if ack and not (ack.get("owner") and ack.get("action") and ack_d and ack_d <= today_d):
+                warnings.append("Night-ack line needs a canonical YYYY-MM-DD date on or before today, an owner, and an action; ignored")
                 ack = None
-            if ack and escalation_start and ack_date < escalation_start:
+            if ack and escalation_start and ack_d < _strict_date(escalation_start):
                 # Dated before this escalation began: it answered an
                 # earlier one, so it cannot hold this one (§27 R1-F3).
                 ack = None
@@ -25614,7 +25638,13 @@ track: Z1
             "**Night-owed:** D90-T01-S1-N18 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10)\n"
             "**Night-ack:** D90-T01-S1-N18 (2026-09-15, owner operator, action rerun)\n"
             "**Night-red:** 2026-09-16 D90-T01-S1-N18 (0 passed, 1 failed, 0 skipped; log build/nightly/r4.trx)\n"
-            "**Night-red:** 2026-09-19 D90-T01-S1-N18 (0 passed, 1 failed, 0 skipped; log build/nightly/r5.trx)\n\n"
+            "**Night-red:** 2026-09-19 D90-T01-S1-N18 (0 passed, 1 failed, 0 skipped; log build/nightly/r5.trx)\n"
+            # §27 review round 2: non-canonical and future dates.
+            "**Night-owed:** D90-T01-S1-N19 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10)\n"
+            "**Night-accepted:** D90-T01-S1-N19 (approver operator, owner operator, date 2026-09-12, expires 20260919, rationale compact expiry)\n"
+            "**Night-owed:** D90-T01-S1-N20 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10)\n"
+            "**Night-red:** 2026-10-05 D90-T01-S1-N20 (0 passed, 1 failed, 0 skipped; log build/nightly/r6.trx)\n"
+            "**Night-red:** 2026-02-30 D90-T01-S1-N20 (0 passed, 1 failed, 0 skipped; log build/nightly/r7.trx)\n\n"
             "## 2. Collected work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
@@ -25753,7 +25783,19 @@ track: Z1
         )
         check(
             "a future-dated acknowledgement holds nothing and warns",
-            "state acknowledged" not in _ndl.get("D90-T01-S1-N17", "") and any("WARN D90-T01-S1-N17: Night-ack line needs a real date on or before today" in ln for ln in _ndlines),
+            "state acknowledged" not in _ndl.get("D90-T01-S1-N17", "") and any("WARN D90-T01-S1-N17: Night-ack line needs a canonical YYYY-MM-DD date on or before today" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "a non-canonical acceptance expiry accepts nothing and warns",
+            "state accepted" not in _ndl.get("D90-T01-S1-N19", "") and "OVERDUE" in _ndl.get("D90-T01-S1-N19", "")
+            and any("WARN D90-T01-S1-N19: Night-accepted line needs" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "future and impossible reds change nothing and warn",
+            "state open" in _ndl.get("D90-T01-S1-N20", "") and "due 2026-09-13" in _ndl.get("D90-T01-S1-N20", "")
+            and sum(1 for ln in _ndlines if "WARN D90-T01-S1-N20: Night-red date" in ln) == 2,
             True,
         )
         check(
