@@ -63,6 +63,19 @@ public static class TestMutation
         }
     }
 
+    // Observe mode's recorder in the app (§36 R2-F2): a lost line would read
+    // as a suppressed chord, so a failed write ends the test-only process at
+    // once; the routing test checks the app is alive after every press, so
+    // lost evidence fails the proof instead of passing a suppress row.
+    public static void RecordOrFail(string command, Func<string, string?> environment, Action<string>? fail = null)
+    {
+        string? error = Record(command, environment);
+        if (error is not null)
+        {
+            (fail ?? (msg => Environment.FailFast(msg)))(error);
+        }
+    }
+
     // The target naming a programmatic accelerator by its key and modifiers.
     public static string Key(int virtualKey, int modifiers) =>
         FormattableString.Invariant($"vk:{virtualKey}:{modifiers}");

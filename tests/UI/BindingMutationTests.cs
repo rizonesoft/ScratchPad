@@ -30,8 +30,9 @@ public sealed class BindingMutationTests
     public void CoveringTestFailsWithItsCommandSwapped(string chord, string command, string test)
     {
         var c = Assert.Single(LiveCases(), x => x.Chord == chord && x.Command == command && $"{x.TestClass}.{x.TestMethod}" == test);
+        var baseline = Baseline(c.TestClass, c.TestMethod, plant: false);
         var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{c.TestClass}.{c.TestMethod}", MutationEnv(c.Target, plant: false), TimeSpan.FromMinutes(4));
-        Assert.Null(BindingMutation.Problem(c, BindingMutation.ParseOutcome(output, c.TestClass, c.TestMethod)));
+        Assert.Null(BindingMutation.Problem(c, baseline, BindingMutation.ParseOutcome(output, c.TestClass, c.TestMethod)));
     }
 
     // The plant, executed: it passes with Ctrl+Shift+G's command swapped,
@@ -44,10 +45,11 @@ public sealed class BindingMutationTests
         Assert.True(BindingManifest.AssertsAfterPress(src, nameof(MutationPlantTests.PlantedConstantLocalAssertion), "Ctrl+Shift+G"), "the plant no longer satisfies the static rule, so it proves nothing");
         var c = new BindingMutation.Case("Ctrl+Shift+G", "MenuToolsStats", nameof(MutationPlantTests), nameof(MutationPlantTests.PlantedConstantLocalAssertion), "MenuToolsStats",
             BindingMutation.PressLine(src, nameof(MutationPlantTests.PlantedConstantLocalAssertion), "Ctrl+Shift+G"));
+        var baseline = Baseline(c.TestClass, c.TestMethod, plant: true);
         var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{c.TestClass}.{c.TestMethod}", MutationEnv(c.Target, plant: true), TimeSpan.FromMinutes(4));
         var outcome = BindingMutation.ParseOutcome(output, c.TestClass, c.TestMethod);
         Assert.True(outcome.Passed == 1, $"the plant did not run to a pass under mutation: {outcome.Tail}");
-        Assert.Contains("observes nothing that tells the command apart", BindingMutation.Problem(c, outcome), StringComparison.Ordinal);
+        Assert.Contains("observes nothing that tells the command apart", BindingMutation.Problem(c, baseline, outcome), StringComparison.Ordinal);
     }
 
     // The child-run plumbing, focus-free: a child run of a pure fact in
@@ -84,15 +86,44 @@ public sealed class BindingMutationTests
     public void VerdictsSeparateKilledSurvivedAndInconclusive()
     {
         var c = new BindingMutation.Case("Ctrl+N", "MenuFileNewTab", "MenuBarTests", "FileMenuLiveAcceleratorsWork", "MenuFileNewTab", 40);
+        var green = BindingMutation.ParseOutcome("Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1", "MenuBarTests", "FileMenuLiveAcceleratorsWork");
         const string Summary = "Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1";
         string Failure(string message, int line) => $"  Failed UI.MenuBarTests.FileMenuLiveAcceleratorsWork [9 s]\n  Error Message:\n   {message}\n  Stack Trace:\n     at UI.MenuBarTests.FileMenuLiveAcceleratorsWork() in R:\\x\\tests\\UI\\MenuBarTests.cs:line {line}\n{Summary}";
         BindingMutation.ChildOutcome Parse(string output) => BindingMutation.ParseOutcome(output, "MenuBarTests", "FileMenuLiveAcceleratorsWork");
-        Assert.Null(BindingMutation.Problem(c, Parse(Failure("Assert.Equal() Failure: Values differ", 44))));
-        Assert.Contains("not after the press", BindingMutation.Problem(c, Parse(Failure("Assert.NotNull() Failure: Value is null", 30))), StringComparison.Ordinal);
-        Assert.Contains("not on an assertion", BindingMutation.Problem(c, Parse(Failure("System.TimeoutException : UIA Timeout", 44))), StringComparison.Ordinal);
-        Assert.Contains("passed with its command swapped", BindingMutation.Problem(c, Parse("Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1")), StringComparison.Ordinal);
-        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, Parse("Passed!  - Failed:     0, Passed:     0, Skipped:     1, Total:     1")), StringComparison.Ordinal);
-        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, Parse("No test matches the given testcase filter")), StringComparison.Ordinal);
+        Assert.Null(BindingMutation.Problem(c, green, Parse(Failure("Assert.Equal() Failure: Values differ", 44))));
+        Assert.Contains("did not pass unmutated", BindingMutation.Problem(c, Parse(Failure("Assert.Equal() Failure: Values differ", 44)), Parse(Failure("Assert.Equal() Failure: Values differ", 44))), StringComparison.Ordinal);
+        Assert.Contains("not after the press", BindingMutation.Problem(c, green, Parse(Failure("Assert.NotNull() Failure: Value is null", 30))), StringComparison.Ordinal);
+        Assert.Contains("not on an assertion", BindingMutation.Problem(c, green, Parse(Failure("System.TimeoutException : UIA Timeout", 44))), StringComparison.Ordinal);
+        Assert.Contains("passed with its command swapped", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1")), StringComparison.Ordinal);
+        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, green, Parse("Passed!  - Failed:     0, Passed:     0, Skipped:     1, Total:     1")), StringComparison.Ordinal);
+        Assert.Contains("did not run under mutation", BindingMutation.Problem(c, green, Parse("No test matches the given testcase filter")), StringComparison.Ordinal);
+    }
+
+    // One unmutated child run per covering test, cached for the run (the
+    // theory's cases share covering tests), so every case knows the test
+    // passes without the swap (§36 R2-F1).
+    static readonly Dictionary<string, BindingMutation.ChildOutcome> Baselines = new(StringComparer.Ordinal);
+
+    static BindingMutation.ChildOutcome Baseline(string cls, string method, bool plant)
+    {
+        string key = $"{cls}.{method}";
+        lock (Baselines)
+        {
+            if (!Baselines.TryGetValue(key, out var outcome))
+            {
+                var env = new Dictionary<string, string>(StringComparer.Ordinal) { [TestMutation.Variable] = string.Empty };
+                if (plant)
+                {
+                    env[MutationPlantFactAttribute.Variable] = "1";
+                }
+
+                var (_, output) = UiLaunch.RunChildTest($"FullyQualifiedName=UI.{key}", env, TimeSpan.FromMinutes(4));
+                outcome = BindingMutation.ParseOutcome(output, cls, method);
+                Baselines[key] = outcome;
+            }
+
+            return outcome;
+        }
     }
 
     static Dictionary<string, string> MutationEnv(string target, bool plant)

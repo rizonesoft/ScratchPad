@@ -127,7 +127,7 @@ public sealed class ChordRoutingTests
                 {
                     box.Focus();
                     Thread.Sleep(150);
-                    Observe(log, oracle, chord, command, "editor", () => PressChord(box, chord), mismatches);
+                    Observe(app, log, oracle, chord, command, "editor", () => PressChord(box, chord), mismatches);
                 }
 
                 foreach (var (chord, command) in live)
@@ -135,7 +135,7 @@ public sealed class ChordRoutingTests
                     var tab = TabItems(window)[0];
                     tab.Focus();
                     Thread.Sleep(150);
-                    Observe(log, oracle, chord, command, "tab strip", () => PressChord(tab, chord), mismatches);
+                    Observe(app, log, oracle, chord, command, "tab strip", () => PressChord(tab, chord), mismatches);
                 }
 
                 foreach (var (chord, command) in live)
@@ -148,7 +148,7 @@ public sealed class ChordRoutingTests
                         Thread.Sleep(500);
                     }
 
-                    Observe(log, oracle, chord, command, "open menu", () => PressChord(window, chord), mismatches);
+                    Observe(app, log, oracle, chord, command, "open menu", () => PressChord(window, chord), mismatches);
                 }
 
                 var menu = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFile"));
@@ -182,7 +182,7 @@ public sealed class ChordRoutingTests
                 Assert.NotNull(modal);
                 foreach (var (chord, command) in live)
                 {
-                    Observe(log, oracle, chord, command, "modal", () => PressChord(modal, chord), mismatches);
+                    Observe(app, log, oracle, chord, command, "modal", () => PressChord(modal, chord), mismatches);
                 }
             }
             finally
@@ -197,11 +197,14 @@ public sealed class ChordRoutingTests
         Assert.Empty(mismatches);
     }
 
-    static void Observe(DispatchLogScope log, List<string[]> oracle, string chord, string command, string surface, Action press, List<string> mismatches)
+    static void Observe(FlaUI.Core.Application app, DispatchLogScope log, List<string[]> oracle, string chord, string command, string surface, Action press, List<string> mismatches)
     {
         _ = log.Next(TimeSpan.Zero);
         press();
         string[] fresh = log.Next(TimeSpan.FromMilliseconds(500));
+        // A failed dispatch-log write ends the app (§36 R2-F2): lost
+        // evidence fails here instead of reading as a suppressed chord.
+        Assert.False(app.HasExited, $"the app exited after {chord} on {surface}: a dispatch-log write failed, so the routing evidence is lost");
         bool reached = fresh.Contains(BindingMutation.Target(chord, command), StringComparer.Ordinal);
         string want = BindingManifest.RoutingExpectation(oracle, chord, command, surface);
         if (reached != (want == "execute"))

@@ -18,7 +18,10 @@ namespace UI;
 // tells the command apart, so it covers nothing. The kill is counted only
 // when the failure is an assertion raised in the covering method after
 // the chord's press (from the child's stack trace), so a launch or setup
-// failure before the press never certifies coverage.
+// failure before the press never certifies coverage, and only when the
+// same test passes unmutated (a baseline child run per covering test,
+// cached for the run), so a failure the swap did not cause never counts
+// (§36 R2-F1).
 internal static class BindingMutation
 {
     internal sealed record Case(string Chord, string Command, string TestClass, string TestMethod, string Target, int PressLine);
@@ -136,9 +139,14 @@ internal static class BindingMutation
     // failed after the press: null, good), survived (it passed with its
     // command swapped, so it covers nothing), or inconclusive (it did not
     // run, or it failed before the press or outside an assertion).
-    internal static string? Problem(Case c, ChildOutcome o)
+    internal static string? Problem(Case c, ChildOutcome baseline, ChildOutcome o)
     {
         string at = $"{c.Chord} -> {c.Command}: {c.TestClass}.{c.TestMethod}";
+        if (baseline.Passed < 1 || baseline.Failed > 0)
+        {
+            return $"{at} did not pass unmutated (passed {baseline.Passed}, failed {baseline.Failed}, skipped {baseline.Skipped}: {baseline.FailureMessage ?? baseline.Tail}), so a failure under mutation proves nothing about the command";
+        }
+
         if (o.Failed > 0)
         {
             if (o.FailureMessage is null || !o.FailureMessage.StartsWith("Assert.", StringComparison.Ordinal))

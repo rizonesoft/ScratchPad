@@ -167,8 +167,8 @@ internal sealed partial class AppMenuBar : MenuBar
     // the covering chord test must fail; in observe mode every bound
     // handler runs nothing and logs its dispatch for the routing oracle.
     // Every bound handler checks it first (the binding manifest refuses one
-    // that does not). A lost log line surfaces as a missing dispatch where
-    // the oracle expects one, so the record result is not re-reported here.
+    // that does not). A failed dispatch-log write ends the test-only process
+    // (TestMutation.RecordOrFail), which the routing test detects.
     bool Mutated(string id)
     {
         switch (TestMutation.For(id, Environment.GetEnvironmentVariable))
@@ -185,7 +185,7 @@ internal sealed partial class AppMenuBar : MenuBar
 
                 return true;
             case MutationEffect.Observe:
-                _ = TestMutation.Record(id, Environment.GetEnvironmentVariable);
+                TestMutation.RecordOrFail(id, Environment.GetEnvironmentVariable);
                 return true;
             default:
                 return false;

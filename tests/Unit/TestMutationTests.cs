@@ -45,4 +45,26 @@ public sealed class TestMutationTests
         Assert.Contains("dispatch log unset", TestMutation.Record("MenuFileOpen", Env("*", "1")), StringComparison.Ordinal);
         Assert.Contains("dispatch log failed", TestMutation.Record("MenuFileOpen", Env("*", "1", "d.log"), (_, _) => throw new IOException("disk")), StringComparison.Ordinal);
     }
+
+    // §36 R2-F2: a lost dispatch line never passes silently; the recorder
+    // fails the process (here, a captured fail action).
+    [Fact]
+    public void RecordOrFailFailsOnALostLine()
+    {
+        string? failed = null;
+        TestMutation.RecordOrFail("MenuFileOpen", Env("*", "1"), msg => failed = msg);
+        Assert.Contains("dispatch log unset", failed, StringComparison.Ordinal);
+        string path = Path.Combine(Path.GetTempPath(), $"dispatch-{Guid.NewGuid():N}.log");
+        try
+        {
+            failed = null;
+            TestMutation.RecordOrFail("MenuFileOpen", Env("*", "1", path), msg => failed = msg);
+            Assert.Null(failed);
+            Assert.Equal("MenuFileOpen\n", File.ReadAllText(path));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

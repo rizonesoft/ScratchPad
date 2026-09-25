@@ -612,7 +612,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
                 return true;
             case MutationEffect.Observe:
-                _ = TestMutation.Record(target, Environment.GetEnvironmentVariable);
+                TestMutation.RecordOrFail(target, Environment.GetEnvironmentVariable);
                 return true;
             default:
                 return false;
