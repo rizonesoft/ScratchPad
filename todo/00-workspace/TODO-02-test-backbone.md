@@ -85,7 +85,7 @@ track: W0
 |   42  |   §42   | Night-debt governance residuals | §35 |  [x]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [x]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [x]   |
-|   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
+|   45  |   §45   | Nightly evidence third residuals | §38 |  [x]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [ ]   |
@@ -93,6 +93,7 @@ track: W0
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
 |   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
+|   53  |   §53   | Nightly evidence fourth residuals | §45 |  [ ]   |
 
 ---
 
@@ -1445,9 +1446,10 @@ Why this section exists: the §37 plan review returned 11 findings; 8 file here,
 
 > **Started:** 2026-09-25T19:15:54Z
 
-Why this section exists: the §38 plan review returned 14 findings; 8 file here, 1 was a duplicate, and 6 are rejected with reasons in the §38 findings file. §38 made staging tamper-evident, gated binary captures, capped dumps at capture, recorded the ledger's start, made the rebuild lossless, defined alias cases, versioned the lifecycle contract, centralized triage policy, and made links idempotent; these carry that through sweep safety, capture-time authorization, retention priorities, crash interleavings, alias migration, recovery eligibility, the no-commit promise, and one operator summary. -> SOURCE: plan-review-D00-T02-s38-2026-09-25-s45 D00-T02-S38-PR3 D00-T02-S38-PR4 D00-T02-S38-PR7 D00-T02-S38-PR8 D00-T02-S38-PR9 D00-T02-S38-PR11 D00-T02-S38-PR14 D00-T02-S38-PR15 (sweep safety, capture authorization, retention priority, crash interleavings, alias migration, recovery eligibility, commit ownership, and the operator summary from the §38 plan review).
+Why this section exists: the §38 plan review returned 14 findings; 8 file here, 1 was a duplicate, and 6 are rejected with reasons in the §38 findings file. **Corrected 2026-09-25 (§45 plan review, D00-T02-S45-PR1):** the §38 ledger holds 15 rows because the review's first line repeated (recorded as PR2, the duplicate); the output check counted 14 distinct findings, so 8 filed, 1 duplicate, and 6 rejected account for all 15 rows. §38 made staging tamper-evident, gated binary captures, capped dumps at capture, recorded the ledger's start, made the rebuild lossless, defined alias cases, versioned the lifecycle contract, centralized triage policy, and made links idempotent; these carry that through sweep safety, capture-time authorization, retention priorities, crash interleavings, alias migration, recovery eligibility, the no-commit promise, and one operator summary. -> SOURCE: plan-review-D00-T02-s38-2026-09-25-s45 D00-T02-S38-PR3 D00-T02-S38-PR4 D00-T02-S38-PR7 D00-T02-S38-PR8 D00-T02-S38-PR9 D00-T02-S38-PR11 D00-T02-S38-PR14 D00-T02-S38-PR15 (sweep safety, capture authorization, retention priority, crash interleavings, alias migration, recovery eligibility, commit ownership, and the operator summary from the §38 plan review).
 
 - -> XREF: D00 T02 §38 -- filed from its plan review; carries the evidence mechanisms it hardened.
+- -> XREF: D00 T02 §53 -- its plan review's residuals.
 
 - [x] The staging sweep deletes only `.staging` directories inside validated stamp directories of runs that are not active (the run journal names the live run), and never follows a reparse point. Done when: a junction planted as `.staging` and the live run's staging both survive the sweep. (D00-T02-S38-PR3.)
 - [x] Binary captures are authorized at capture time, not only at retain: a policy switch decides whether screenshots and dumps are taken at all, their local copies expire with the run evidence, and a refused capture leaves no file. Done when: with captures disabled a failing leg records the refusal and writes no PNG or dump. (D00-T02-S38-PR4.) **Default 2026-09-25:** `binaryCaptures` absent reads true (today's behavior), and an invalid or unreadable policy takes no binary capture (fail closed); cost of changing: one line in `tools/incident-policy.json`.
@@ -1460,6 +1462,13 @@ Why this section exists: the §38 plan review returned 14 findings; 8 file here,
 - [x] Commit: `"workspace: settle the third nightly evidence residuals"`
 
 **Test checkpoint:** The sweep spares live runs and junctions, captures obey capture-time policy, retention names the snapshot, interrupted writes rebuild, aliases carry their state, recovery counts qualifying runs, the commit promise holds, and one summary names degraded evidence. Cheaper substitute that fails: longer report prose.
+
+> **Verified:** 2026-09-25 | §45 | the staging sweep looks only at `<stamp>\captures-*\.staging` under validated stamps, spares the live runs, and never follows a reparse point; `binaryCaptures` authorizes screenshots and dumps at capture time and fails closed; the protected lifecycle snapshot counts against the retain byte quota, is named on every refusal, and keeps its stamp through prune; the checkpoint lands before the ledger, the next run rolls forward to a newer checkpoint, a failed checkpoint leaves the ledger untouched, the rebuild restores a newer checkpoint, carries its latest applied stamp, and refuses naming a missing intermediate result; alias joins move link, owner, due date, occurrences, and streak (a streak only from the side whose own last failure is newer, with its population); non-qualifying runs hold every streak; the collector's writes are recorded with their start-pinned pre-write text, the tree check expects exactly them case-sensitively, and `tools/NightlyTriage.ps1 -Commit` commits every pending run's lines together, only inside a Claude Code session; one Evidence completeness block per report; NightlyParse, NightlyRetention, NightlyTriage, NightDebt, NightlyNotify, NightlyAck, and BuildInputsDigest suites green, every changed script parses
+> **Review:** round 4 (Full), candidates `e742a88` `eb42141` `b7298b5` `884203f` `7835f1a` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1..F3 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` approve · `integration` needs-attention · `record` needs-attention (gpt-6-astra); R3-F1..F3 fixed in 7835f1a and confirmed by the R4 depth round (`adversarial` approve · `consistency` approve · `record` approve); below-bar R4-F1 filed to D00 T02 §53. Raw findings: docs/reviews/00-workspace/D00-T02-s45.md
+> **Plan review:** GPT medium, filed D00 T02 §53 (run 20260925-D00-T02-S45-codex-c06751119-r4)
+> **CRUD:** not-applicable | nightly evidence tooling over ignored run scratch plus the collector's recorded TODO lines, which only the triage step commits; no user data
+> **Duration:** 2026-09-25T19:15:54Z to 2026-09-25T21:06:07Z
+> **Reviewed-tip:** 7835f1a
 
 ## 46. Acknowledgement Third Residuals
 
@@ -1604,6 +1613,29 @@ Why this section exists: the §44 plan review returned 12 findings; 11 file here
 - [ ] Commit: `"workspace: settle the population gate third residuals"`
 
 **Test checkpoint:** Proofs read stale on any binding change, provenance names what compiled, identity encodes by rule, exclusions carry owners, trx reconciliation refuses the foreign, closure keeps failures, capability debt escalates, debt migrates by identity, overrides never prove, schemas read across versions, and the handoff survives a crash. Cheaper substitute that fails: one more heuristic over display names.
+
+## 53. Nightly Evidence Fourth Residuals
+
+Why this section exists: the §45 plan review returned 15 findings; 13 file here, 1 was applied (§45's own finding count), 1 is rejected with its reason in the §45 findings file, and one filed item absorbs the §45 round-4 finding R4-F1. §45 bounded the sweep, authorized captures at capture time, protected the lifecycle snapshot, made recovery survive crash interleavings and gaps, migrated alias state, counted only qualifying runs, reconciled the no-commit promise with a triage step, and summarized degraded evidence; these carry that through escape-proof sweeps, run coordination, consent semantics, bounded binary lifetimes, snapshot space, replay invariants, alias collisions, per-incident qualification, write ordering, tree-state wording, the collection-to-triage chain, a structured completeness record, and a compound scenario. -> SOURCE: plan-review-D00-T02-s45-2026-09-25-s53 D00-T02-S45-PR2 D00-T02-S45-PR3 D00-T02-S45-PR4 D00-T02-S45-PR5 D00-T02-S45-PR6 D00-T02-S45-PR8 D00-T02-S45-PR9 D00-T02-S45-PR10 D00-T02-S45-PR11 D00-T02-S45-PR12 D00-T02-S45-PR13 D00-T02-S45-PR14 D00-T02-S45-PR15
+
+- -> XREF: D00 T02 §45 -- filed from its plan review; carries the evidence mechanisms it settled.
+
+- [ ] The sweep cannot escape the evidence root: every ancestor from the night directory down is checked for reparse points, and a path replaced during deletion is detected before any delete. Done when: a junction swapped in above a stale staging directory mid-sweep refuses by name. (D00-T02-S45-PR2.)
+- [ ] Sweeps and runs coordinate: run ownership, a stale-journal recovery rule, and an exclusive sweep lock keep overlapping invocations from deleting each other's evidence. Done when: two overlapping runs each keep their own staging. (D00-T02-S45-PR3.)
+- [ ] Capture consent distinguishes an absent policy from an explicit one: first-run and upgrade behavior are stated, and an absent `binaryCaptures` is reported rather than silently authorizing. Done when: an absent key reads as a named compatibility default in the report. (D00-T02-S45-PR4.)
+- [ ] Binary copies have a bounded lifetime everywhere: refused retention, interrupted captures, abandoned staging, and diagnostic temporaries are each assigned an expiry, and a failed cleanup is reported. Done when: each capture location's leftover is swept or reported by name. (D00-T02-S45-PR5.)
+- [ ] Snapshot replacement reserves space for both the old snapshot and its replacement, so a low-disk failure keeps the recoverable snapshot. Done when: a replacement that fails on a full disk leaves the old snapshot readable. (D00-T02-S45-PR6.)
+- [ ] Replay ordering has invariants for clock rollback, equal stamps, duplicate results, and conflicting snapshots. Done when: each case rebuilds deterministically or refuses by name. (D00-T02-S45-PR8.)
+- [ ] Alias collisions reconcile deterministically when both ids carry links, owners, due dates, occurrences, or streaks, and a specific owner adopted from the old id carries that id's due date (absorbs the §45 round-4 finding R4-F1). Done when: each collision fixture keeps ownership and its deadline. (D00-T02-S45-PR9.)
+- [ ] Qualification is decided per incident: a run that is not qualifying overall still resets the streak of an incident whose own failure is trustworthy evidence, so an unrelated leg defect never hides a regression. Done when: a killed soak does not hold the streak of a Run A regression. (D00-T02-S45-PR10.)
+- [ ] The collector's TODO writes and their manifest entries have a recoverable order, and triage refuses lines a user edited after the run. Done when: a crash between the TODO write and the manifest write is attributed or refused. (D00-T02-S45-PR11.)
+- [ ] The tree line distinguishes an actually clean tree from one holding expected pending collector writes, and §22's consumer documentation says which a run reports. Done when: the two states read differently in the report and the docs. (D00-T02-S45-PR12.)
+- [ ] The collection, post-run debt query, and triage commit contracts reference each other (§42, §45), with an end-to-end case covering collection, debt visibility, triage failure, retry, and commit. Done when: one scenario walks the chain and each XREF pair reads. (D00-T02-S45-PR13.)
+- [ ] Evidence completeness is one structured record (severity, exit semantics) with a concise rendered summary, so automation and operators agree. Done when: the result carries the record and the report renders it. (D00-T02-S45-PR14.)
+- [ ] One combined acceptance scenario covers capture refusal, quota pressure, interrupted publication, rebuild, and triage retry together. Done when: the compound scenario ends recoverable. (D00-T02-S45-PR15.)
+- [ ] Commit: `"workspace: settle the fourth nightly evidence residuals"`
+
+**Test checkpoint:** Sweeps stay inside the root and coordinate, consent is explicit, binary copies expire everywhere, snapshots survive low disk, replay has invariants, alias collisions reconcile, qualification is per incident, writes order recoverably, the tree line says what it holds, the chain is end-to-end, completeness is structured, and a compound failure recovers. Cheaper substitute that fails: another note in the morning report.
 
 ## Verification
 
