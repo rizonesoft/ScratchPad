@@ -265,11 +265,14 @@ public readonly record struct SiblingDecision(nint Handle, string Reason);
 public sealed class SiblingSnapshotSlot
 {
     SiblingSnapshot? pending;
+    long latestBegun;
     readonly Dictionary<nint, long> claims = [];
 
     public SiblingSnapshot Begin(SiblingSnapshot snapshot)
     {
+        ArgumentNullException.ThrowIfNull(snapshot);
         pending = snapshot;
+        latestBegun = Math.Max(latestBegun, snapshot.Generation);
         return snapshot;
     }
 
@@ -284,12 +287,13 @@ public sealed class SiblingSnapshotSlot
         return token;
     }
 
-    // True when a construction began after `token` did (the late pass
-    // must not attribute windows that could be the newer one's).
+    // True when a construction began after `token` did, whether or not it
+    // has swept since (R2-F1): the late pass must not attribute windows
+    // that could be the newer one's.
     public bool BegunSince(SiblingSnapshot token)
     {
         ArgumentNullException.ThrowIfNull(token);
-        return pending is not null && pending.Generation > token.Generation;
+        return latestBegun > token.Generation;
     }
 
     public IReadOnlyDictionary<nint, long> Claims => claims;

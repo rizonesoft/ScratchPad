@@ -174,6 +174,17 @@ public sealed class SiblingSelectionTests
         Assert.Equal((nint)0x600, late.Single().Handle);
         var overlap = SiblingSelection.DecideLate(now, snap, Main, decided, null, anotherConstructionBegan: true);
         Assert.Equal("late-skipped-overlap", overlap.Single().Reason);
+
+        // R2-F1: A sweeps, then B begins and completes its sweep before A's
+        // delayed pass; the pass still sees that B began.
+        var slot = new SiblingSnapshotSlot();
+        SiblingSnapshot a = slot.Begin(SiblingSelection.Begin([], UiThread));
+        Assert.Same(a, slot.Take(a));
+        Assert.False(slot.BegunSince(a));
+        SiblingSnapshot b = slot.Begin(SiblingSelection.Begin([], UiThread));
+        Assert.Same(b, slot.Take(b));
+        Assert.True(slot.BegunSince(a));
+        Assert.False(slot.BegunSince(b));
     }
 
     // §41 item 5: a handle re-owned, reused, or destroyed between the
