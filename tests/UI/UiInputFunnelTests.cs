@@ -240,8 +240,40 @@ public sealed class UiInputFunnelTests
         var typed = new List<char>();
         int probes = 0;
         WithShortWait(() => Assert.Throws<InvalidOperationException>(() =>
-            UiInput.TypeChecked(App, Target, "abc", () => (Target, App), () => new UiInput.FocusRead(++probes <= 2 ? App : Thief, true), typed.Add, () => true, () => true, () => { })));
+            UiInput.TypeChecked(App, Target, "abc", () => (Target, App), () => new UiInput.FocusRead(++probes <= 2 ? App : Thief, true), typed.Add, () => true, _ => true, _ => { })));
         Assert.Equal(['a'], typed);
+    }
+
+    // §28 R2-F2: typed text owns only the modifiers its character's
+    // injection uses (VkKeyScan's shift state), so an operator's Alt
+    // pressed while a plain letter is typed is never released.
+    [Fact]
+    public void TypedTextOwnsOnlyItsCharactersModifiers()
+    {
+        Assert.Empty(UiInput.TypedModifiers(0x0041, 'a'));
+        Assert.Equal([FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT], UiInput.TypedModifiers(0x0141, 'A'));
+        Assert.Equal([FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.ALT], UiInput.TypedModifiers(0x0651, '@'));
+        Assert.Empty(UiInput.TypedModifiers(-1, 'x'));
+        Assert.Empty(UiInput.TypedModifiers(0x0645, '\u20AC'));
+        bool operatorAlt = false;
+        int released = 0;
+        var typed = new List<char>();
+        UiInput.TypeChecked(
+            App,
+            Target,
+            "a",
+            () => (Target, App),
+            Focus(App),
+            ch =>
+            {
+                typed.Add(ch);
+                operatorAlt = true;
+            },
+            () => !operatorAlt,
+            _ => true,
+            _ => released++);
+        Assert.Equal(['a'], typed);
+        Assert.Equal(0, released);
     }
 
     // Raw FlaUI keyboard calls bypass the precondition, so only the

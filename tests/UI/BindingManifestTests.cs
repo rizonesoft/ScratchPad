@@ -155,7 +155,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
             int press = src.IndexOf("UiInput.Press(", a, StringComparison.Ordinal);
             int end = src.IndexOf(';', press) + 1;
             string after = src[end..b].Replace("Assert.", "Skip.", StringComparison.Ordinal);
-            return src[..end] + " Assert.True(true); Assert.Equal(1, 1);" + after + src[b..];
+            return src[..end] + " Assert.True(true, $\"pressed {chord}\"); Assert.NotNull(window); Assert.Equal(1, 1);" + after + src[b..];
         });
         Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("AcceleratorTests.ChordCtrlShiftGOpensStats presses Ctrl+Shift+G but asserts nothing after it", StringComparison.Ordinal));
     }

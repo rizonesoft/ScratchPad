@@ -226,6 +226,7 @@ run-a:
   UI.UiInputFunnelTests.StuckModifierIsReleasedAndFailsLoud
   UI.UiInputFunnelTests.TheAppsOtherWindowFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.ThrowingSenderStillSendsKeyUpReleasesModifiersAndKeepsItsFailure
+  UI.UiInputFunnelTests.TypedTextOwnsOnlyItsCharactersModifiers
   UI.UiLeakBundleTests.EventSlicesFillFromGateLog
   UI.UiLeakBundleTests.EventSlicesScrubTitles
   UI.UiLeakBundleTests.RetentionPrunesOldBundles
@@ -234,8 +235,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 228
-run-a-cases: 281
+run-a-methods: 229
+run-a-cases: 282
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

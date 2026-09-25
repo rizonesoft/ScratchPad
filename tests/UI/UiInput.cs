@@ -68,8 +68,42 @@ internal static class UiInput
             () => ReadFocus(target),
             ch => Keyboard.Type(ch.ToString()),
             () => ModifiersReleased(AllModifiers),
-            () => ModifiersReleased(AllModifiers),
-            () => ReleaseModifiers(AllModifiers));
+            ch => ModifiersReleased(TypedModifiers(ch)),
+            ch => ReleaseModifiers(TypedModifiers(ch)));
+    }
+
+    // The modifiers Keyboard.Type presses for one character: FlaUI maps a
+    // character through VkKeyScan and holds the shift state its high byte
+    // names (1 Shift, 2 Ctrl, 4 Alt); a character with no mapping goes
+    // out as Unicode with no modifier. Only these are the funnel's own
+    // for that character (§28 R2-F2).
+    internal static VirtualKeyShort[] TypedModifiers(char ch) => TypedModifiers(Native.VkKeyScanW(ch), ch);
+
+    internal static VirtualKeyShort[] TypedModifiers(short scan, char ch)
+    {
+        if (scan == -1 || ch > 0xFE)
+        {
+            return [];
+        }
+
+        int high = (scan >> 8) & 0xFF;
+        var mods = new List<VirtualKeyShort>();
+        if ((high & 1) != 0)
+        {
+            mods.Add(VirtualKeyShort.SHIFT);
+        }
+
+        if ((high & 2) != 0)
+        {
+            mods.Add(VirtualKeyShort.CONTROL);
+        }
+
+        if ((high & 4) != 0)
+        {
+            mods.Add(VirtualKeyShort.ALT);
+        }
+
+        return [.. mods];
     }
 
     internal static void TypeChecked(
@@ -80,16 +114,19 @@ internal static class UiInput
         Func<FocusRead> focus,
         Action<char> sendChar,
         Func<bool> noModifierHeld,
-        Func<bool> modifiersReleased,
-        Action releaseModifiers)
+        Func<char, bool> modifiersReleased,
+        Action<char> releaseModifiers)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(sendChar);
+        ArgumentNullException.ThrowIfNull(modifiersReleased);
+        ArgumentNullException.ThrowIfNull(releaseModifiers);
         foreach (char ch in text)
         {
             // Keyboard.Type sends a character's down and up together, so
-            // the key-up half is empty.
-            SendChecked(expectedPid, expectedRoot, foreground, focus, () => sendChar(ch), () => { }, noModifierHeld, modifiersReleased, releaseModifiers);
+            // the key-up half is empty; cleanup covers only the modifiers
+            // this character's injection uses.
+            SendChecked(expectedPid, expectedRoot, foreground, focus, () => sendChar(ch), () => { }, noModifierHeld, () => modifiersReleased(ch), () => releaseModifiers(ch));
         }
     }
 
@@ -388,6 +425,10 @@ internal static class UiInput
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern short VkKeyScanW(char ch);
     }
 
     // Appends text through ValuePattern: no focus, no keystrokes. For

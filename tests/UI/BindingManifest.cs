@@ -560,9 +560,13 @@ internal static class BindingManifest
     // D00 T02 §28 item 1: a covering test asserts an observable outcome
     // after it presses the chord. A press followed by no assertion (an
     // Assert call, directly or inside a lambda) proves the key went out,
-    // not that the command ran. An assertion over literals only
-    // (Assert.True(true), Assert.Equal(1, 1)) reads no app state and
-    // does not count (§28 R1-F1).
+    // not that the command ran. The assertion must read state after the
+    // press (§28 R1-F1, R2-F1): one of its subject arguments (the first
+    // for a unary assertion such as True or NotNull, the first two
+    // otherwise; never the message) calls something, reads a member, or
+    // names a local declared or assigned after the press. Literals
+    // (Assert.True(true, $"...")) and locals fixed before the press
+    // (Assert.NotNull(window)) observe nothing the command did.
     internal static bool AssertsAfterPress(string source, string method, string chord)
     {
         SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
@@ -576,9 +580,15 @@ internal static class BindingManifest
             }
 
             int after = presses.Max(c => c.SpanStart);
+            var fresh = m.DescendantNodes().Where(n => n.SpanStart > after).SelectMany(n => n switch
+            {
+                VariableDeclaratorSyntax v => [v.Identifier.Text],
+                AssignmentExpressionSyntax { Left: IdentifierNameSyntax id } => [id.Identifier.Text],
+                _ => Array.Empty<string>(),
+            }).ToHashSet(StringComparer.Ordinal);
             if (m.DescendantNodes().OfType<InvocationExpressionSyntax>()
                 .Any(c => c.SpanStart > after && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal)
-                    && c.ArgumentList.Arguments.Any(a => !IsConstant(a.Expression))))
+                    && SubjectArguments(c).Any(a => ReadsState(a, fresh))))
             {
                 return true;
             }
@@ -587,14 +597,25 @@ internal static class BindingManifest
         return false;
     }
 
-    static bool IsConstant(ExpressionSyntax e) => e switch
+    static readonly HashSet<string> UnaryAsserts = new(["True", "False", "Null", "NotNull", "Empty", "NotEmpty", "Single"], StringComparer.Ordinal);
+
+    static IEnumerable<ExpressionSyntax> SubjectArguments(InvocationExpressionSyntax call)
     {
-        LiteralExpressionSyntax => true,
-        ParenthesizedExpressionSyntax p => IsConstant(p.Expression),
-        PrefixUnaryExpressionSyntax u => IsConstant(u.Operand),
-        BinaryExpressionSyntax b => IsConstant(b.Left) && IsConstant(b.Right),
-        _ => false,
-    };
+        string name = call.Expression is MemberAccessExpressionSyntax ma ? ma.Name.Identifier.Text : string.Empty;
+        return call.ArgumentList.Arguments.Take(UnaryAsserts.Contains(name) ? 1 : 2).Select(a => a.Expression);
+    }
+
+    static bool ReadsState(ExpressionSyntax e, HashSet<string> fresh) =>
+        e.DescendantNodesAndSelf().Any(n => n is InvocationExpressionSyntax inv && inv.Expression.ToString() != "nameof"
+            || n is MemberAccessExpressionSyntax { Expression: not PredefinedTypeSyntax } ma2 && !IsTypeLike(ma2.Expression)
+            || n is ElementAccessExpressionSyntax
+            || n is IdentifierNameSyntax id && fresh.Contains(id.Identifier.Text));
+
+    // Enum and type prefixes (ToggleState.On, VirtualKeyShort.KEY_T) are
+    // constants, not state reads: PascalCase names that are not locals.
+    static bool IsTypeLike(ExpressionSyntax e) =>
+        e is IdentifierNameSyntax { Identifier.Text: var t } && t.Length > 0 && char.IsUpper(t[0])
+        || e is MemberAccessExpressionSyntax inner && IsTypeLike(inner.Expression) && inner.Name.Identifier.Text.Length > 0 && char.IsUpper(inner.Name.Identifier.Text[0]);
 
     // Host-member routing (§28 R1-F1): each bound menu item's handler must
     // call exactly the host member this table names, so a handler body
