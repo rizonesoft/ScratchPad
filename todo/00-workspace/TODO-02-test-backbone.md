@@ -75,13 +75,14 @@ track: W0
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [x]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
 |   34  |   §34   | Sibling sweep residuals | §26 |  [x]   |
-|   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
+|   35  |   §35   | Night-debt lifecycle residuals | §27 |  [x]   |
 |   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
 |   37  |   §37   | Population gate residuals | §29 |  [ ]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
+|   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
 
 ---
 
@@ -347,6 +348,7 @@ Why this section exists: sections stall waiting for the 02:00-06:50 quiet window
 - [x] `validate` treats open night debt as information, never FATAL: no gate vote, no row park, no stamp invalidation while debt sits uncollected. Done when: self-test pins a 5-night-old open debt validating clean. Done: no rule reads debt lines (parser is query-side only); self-test fixture (owed 2026-09-15, frozen today 2026-09-20) validates clean at 1184/1184.
 - [x] `tools/nightly.ps1` becomes the collector: inside 02:00-06:50 it resolves each open debt id to its trait filter, runs the fenced set visibly, and writes logs under `build/nightly/` with suite scope plus HEAD at the top. **Corrected 2026-09-20:** was "section range"; §9 FL5 corrected the header to suite scope. A `-CollectDebt <id>` switch limits the Interactive leg to one debt's filter, composing with `-CheckOnly` for the dry run. Done when: a dry run against one debt id quotes its log path plus counts. Done: `-CollectDebt D00-T02-S8-N1 -CheckOnly` quotes `filter Category=Interactive owed 28` plus `log build/nightly/2026-09-20-070637-full.log trx build/nightly/2026-09-20-070637/interactive.trx`, exit 0; unknown id exits 2.
 - [x] `tools/nightly.ps1` closes the loop: green collection appends `Night-collected:` (date, debt id, passed/failed/skipped, log path) to the owning section, red collection stages finding stubs (test, signature, owning-file hint) in the report Filings for the morning triage to file via `add-todo` and quarantine per the §5 procedure, and safety or data-integrity reds are marked for agent reopen through audit stance. **Corrected 2026-09-20:** was script-side filing plus quarantine plus reopen; scripts cannot run agent skills, so the §9 morning-triage procedure owns filing and the script owns staging. Done when: one green append plus one staged red are quoted (triage commits both; runs never commit). Done: scratch proof on a temp T02 copy quotes `appended: D00-T02-S8-N1` (readback exactly 1, line directly after the owed line), re-append skips as already-collected, unknown id skips as no-owed-line; staged stubs quote test-file hints (`tests/UI/PinnedTabsTests.cs`) plus `REOPEN-CANDIDATE` on the data-loss-shaped failure, `unknown` hint without crash. R1-F4/F5: superset-green stages for triage close with subset counts; census gate (totals equal owed) fails closed as collector bug. R2-F4: FQN-attributable subsets close with trx subset counts. Plan PR2 defended: N1 stays open (last collection red 24/2/2); closing now would fabricate evidence, and the close fires on the first green run with matching census. Plan `D00-T02-S10-PR4`: closure-safe skips are quarantine-declared only (proof transfers to the §35 window); capability or other skips hold the debt open; subsets close only fully executed.
+  > **Corrected 2026-09-25:** "the §35 window" above means D01 T01 §35, which owns the fix-or-remove windows for the night-triage quarantines; D00 T02 §35 is the night-debt lifecycle residuals (D00-T02-S35-PR9).
 - [x] The morning report gains per-debt entries: per-debt collected counts plus uncollected debt as information with its cause (box off or leg skipped, suite red, collector bug, filter not covered this run). **Corrected 2026-09-20:** was "the report lands at ..."; the path plus per-leg shape shipped with §9, so this item owns the debt entries only. **Corrected 2026-09-20 (§10 plan review `D00-T02-S10-PR3`):** was three causes; the collector also emits leg-skipped and narrowed-out. Done when: a worked example carries one collected plus one uncollected entry. Done: `## Night debt` section plus staged Filings in the report writer; testing.md collector paragraph plus worked example (one collected N1, one uncollected narrowed-out debt).
 - [x] `docs/testing.md` documents the ship-with-debt gate: daytime default plus Primary green plus the Interactive skip count with its debt id is a complete gate, and the collector closes the debt async. Done when: a second section can follow it without asking. Done: `## Ship-with-debt gate (D00 T02 §10)` with the concrete four-part gate plus the never-park rule.
 - [x] `AGENTS.md` gains completion-first under Working rules: runners do everything to 100% complete the section, tool, or feature in the shipping session, quiet time never parks work, and repeated manual workspace tweaks become owned automation. Done when: the rule reads as one paragraph under Working rules. Done: one completion-first paragraph under Working rules (ship plus debt plus flip, never-park, owned automation); `query night-debt` added to the Validation list.
@@ -1128,6 +1130,7 @@ Why this section exists: the §26 plan review returned 8 findings; 6 file here a
 Why this section exists: the §27 plan review returned 14 findings; 12 file here and 2 are rejected with reasons in the §27 findings file. §27 gave night debt owners, states, deadlines, acknowledgement, acceptance, and red tracking; these settle the contract questions it left as recorded defaults or single-attempt semantics. -> SOURCE: plan-review-D00-T02-s27-2026-09-25-s35 D00-T02-S27-PR1 D00-T02-S27-PR3 D00-T02-S27-PR4 D00-T02-S27-PR5 D00-T02-S27-PR6 D00-T02-S27-PR7 D00-T02-S27-PR8 D00-T02-S27-PR9 D00-T02-S27-PR10 D00-T02-S27-PR12 D00-T02-S27-PR13 D00-T02-S27-PR14 (owner source, repeat-red anchoring, attempt identity, transitions, acceptance eligibility, acceptance governance, window boundaries, override history, post-run status, remediation linkage, record diagnostics, and the §10 back-reference from the §27 plan review).
 
 - -> XREF: D00 T02 §27 -- filed from its plan review; settles the lifecycle contract it shipped.
+- -> XREF: D00 T02 §42 -- residual follow-ups filed from this section's plan review.
 
 - [x] The owner comes from a recorded owner field (TODO frontmatter or the owning section) with reassignment, replacing the `operator` default §27 recorded, so an escalation reaches the section's accountable owner. Done when: a fixture section with an owner field names that owner on its overdue debt. (D00-T02-S27-PR1.)
 - [x] The red-repeat deadline anchors on the first unresolved repeat and requires a tracked remediation action, so successive reds cannot postpone it. Done when: a third red leaves the deadline where the second set it. (D00-T02-S27-PR3.)
@@ -1144,6 +1147,13 @@ Why this section exists: the §27 plan review returned 14 findings; 12 file here
 - [x] Commit: `"workspace: settle the night-debt lifecycle residuals"`
 
 **Test checkpoint:** The owner field names the owner, repeats anchor, same-day reds count, transitions resolve, accepted debt collects, acceptance renews and revokes, boundaries pin, overrides keep history, post-run status reads, red-repeat links its finding, orphans and duplicates warn, and the XREF pair validates. Cheaper substitute that fails: more states with no transition rules.
+
+> **Verified:** 2026-09-25 | §35 | night debt resolves its owner (Night-owner reassignment, owed-line owner, section **Owner:**, frontmatter, default), anchors the red-repeat follow-up on the first repeat, keys red attempts by run identity in the query and the collector, resolves conflicts by one documented precedence (collected, accepted, acknowledged, red-repeat, red, open) with a fixture per pair, governs acceptance (approver allowlist, 30-day term, valid-only renewal, Night-revoked with every field), pins owed timestamps to the trigger on their own wall clock, keeps Night-extend history with each previous deadline, writes a post-run status block, links every red-repeat state to its finding, and warns on orphan and duplicate lifecycle lines; self-test 1650/0 and NightDebt.Tests green on aface96
+> **Review:** round 3 (Full), candidates `d2a5fb5` `98ea05b` `fd8f1ac` `aface96` -- GPT R1-R2 bulk needs-attention (R1-F1..F5, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F1 fixed in aface96 and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s35.md
+> **Plan review:** GPT medium, filed D00 T02 §42 (run 20260925-D00-T02-S35-codex-c06751119-r4)
+> **CRUD:** applicable | the collector appends Night-red lines with run identity through `Add-RedLine` (atomic temp-plus-move with readback, once per run); the query side is read-only
+> **Duration:** 2026-09-25T09:41:31Z to 2026-09-25T10:46:49Z
+> **Reviewed-tip:** aface96b08b6f5ccb8bb26869517795947ec4510
 
 ## 36. Binding Guard Residuals
 
@@ -1266,6 +1276,25 @@ Why this section exists: the §34 plan review returned 12 findings; 8 file here 
 - [ ] Commit: `"workspace: settle the second sibling sweep residuals"`
 
 **Test checkpoint:** Interleaving is proven exclusive, lifecycle edges hold, ambiguous helpers report, late helpers have an owner, moves revalidate, recorders drain to a barrier, §18 states its threat model, diagnostics quote the sweep, and the first birth is observed from outside. Cheaper substitute that fails: more assertions on the app's own log.
+
+## 42. Night-Debt Governance Residuals
+
+Why this section exists: the §35 plan review returned 12 findings; 9 file here, 1 was corrected in place (the §10 reference), and 2 are rejected with reasons in the §35 findings file. §35 gave the lifecycle one precedence order, run-keyed attempts, acceptance governance, and extension history; these carry it through replay order, the governance of the remaining overrides, and the evidence that closes a debt. -> SOURCE: plan-review-D00-T02-s35-2026-09-25-s42 D00-T02-S35-PR1 D00-T02-S35-PR3 D00-T02-S35-PR5 D00-T02-S35-PR6 D00-T02-S35-PR7 D00-T02-S35-PR8 D00-T02-S35-PR10 D00-T02-S35-PR11 D00-T02-S35-PR12 (replay order, reassignment transfer, acceptance versus remediation, schedule identity, extension governance, closure evidence, post-run failure, remediation completion, and contradictory duplicates from the §35 plan review).
+
+- -> XREF: D00 T02 §35 -- filed from its plan review; carries the lifecycle it settled.
+
+- [ ] Lifecycle records replay in a defined order (record date, then file order) with a multi-event fixture mixing renewal, revocation, reds, and a green, so the result never depends on line order. Done when: shuffling the fixture's lifecycle lines leaves every debt line unchanged. (D00-T02-S35-PR1.)
+- [ ] A Night-owner reassignment states what transfers: the open acknowledgement and its response deadline stay with the debt and name the new owner. Done when: a reassigned acknowledged debt keeps its deadline and names the new owner. (D00-T02-S35-PR3.)
+- [ ] Acceptance never erases a red-repeat remediation obligation: an accepted red-repeat still quotes its finding and next action. Done when: an accepted red-repeat debt reads accepted with its finding reference. (D00-T02-S35-PR5.)
+- [ ] The window rules name missed collector nights, a daylight-saving change, and the schedule identity the owed line recorded, aligned with §10. Done when: a missed night and a DST-boundary owed timestamp each read their documented due day. (D00-T02-S35-PR6.)
+- [ ] Night-extend is governed like acceptance: an approver allowlist, a maximum total extension, and the extension never moves a red-repeat or response deadline. Done when: an unauthorized extension and an over-limit extension each warn and change nothing. (D00-T02-S35-PR7.)
+- [ ] Closure binds to the owed test identities: the Night-collected line records the executed test names' digest, and the collector refuses to close on an equally sized but different set. Done when: a fixture with a swapped test at the same count keeps the debt open. (D00-T02-S35-PR8.)
+- [ ] A post-run block distinguishes a green collection whose Night-collected write or re-query failed, and the report says the closure is unrecorded. Done when: a failed write reads `collected-unrecorded` and the run reds. (D00-T02-S35-PR10.)
+- [ ] A remediation finding's completion never closes the debt: only a green collection closes it, and a closed finding on an open debt warns. Done when: a fixture with a closed finding and no green collection stays open with a WARN. (D00-T02-S35-PR11.)
+- [ ] Duplicate handling distinguishes identical replays (collapsed silently) from contradictory records (a prominent WARN in the query and the report). Done when: identical duplicate lines produce no WARN and contradictory ones each warn. (D00-T02-S35-PR12.)
+- [ ] Commit: `"workspace: govern the night-debt overrides and closure evidence"`
+
+**Test checkpoint:** Replay order is stable, reassignment transfers its deadline, acceptance keeps remediation visible, missed nights and DST pin, extensions are governed, closure binds to test identity, unrecorded closures red the run, finding completion never closes debt, and duplicates split replay from contradiction. Cheaper substitute that fails: more lifecycle lines with no ordering rule.
 
 ## Verification
 
