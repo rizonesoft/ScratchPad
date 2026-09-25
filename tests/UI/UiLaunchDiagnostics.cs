@@ -62,6 +62,24 @@ internal static class UiLaunchDiagnostics
             return;
         }
 
+        // Per-launch sweep logs a record kept (its delayed pass had not
+        // logged, §41 R3-F3) clear after a day.
+        string sweepDir = Path.Combine(diagnosticsRoot, "sweep");
+        if (Directory.Exists(sweepDir))
+        {
+            foreach (string stale in Directory.EnumerateFiles(sweepDir, "*.log").Where(f => (DateTime.UtcNow - File.GetLastWriteTimeUtc(f)).TotalDays > 1))
+            {
+                try
+                {
+                    File.Delete(stale);
+                }
+                catch (IOException)
+                {
+                    // Best effort.
+                }
+            }
+        }
+
         foreach (string file in Directory.EnumerateFiles(diagnosticsRoot, "launches-*.jsonl"))
         {
             string name = Path.GetFileNameWithoutExtension(file);
@@ -162,9 +180,13 @@ internal static class UiLaunchDiagnostics
             return [];
         }
 
+        // The birth's sweep line and its delayed pass (R3-F3): the record
+        // waits, bounded, for both; a missing delayed pass is named, and its
+        // log is kept (the pass may still append; the prune clears it).
         string prefix = $" main=0x{(long)main:X} ";
         string[] found = [];
-        var deadline = DateTime.UtcNow + HwndWait;
+        var deadline = DateTime.UtcNow + HwndWait + HwndWait;
+        bool late = false;
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -176,12 +198,18 @@ internal static class UiLaunchDiagnostics
                 found = [];
             }
 
-            if (found.Length > 0)
+            late = found.Any(l => l.StartsWith("sweep-late ", StringComparison.Ordinal));
+            if (late)
             {
                 break;
             }
 
             Thread.Sleep(100);
+        }
+
+        if (found.Length > 0 && !late)
+        {
+            return [.. found, $"sweep-late main=0x{(long)main:X} missing: the delayed pass had not logged within {(HwndWait + HwndWait).TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s of the launch"];
         }
 
         if (owns)

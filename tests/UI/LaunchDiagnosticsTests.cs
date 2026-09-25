@@ -65,6 +65,8 @@ public sealed class LaunchDiagnosticsTests
                 long main = window.Properties.NativeWindowHandle.Value.ToInt64();
                 var sweep = record.GetProperty("sweep").EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
                 Assert.Contains(sweep, l => l.StartsWith($"sweep main=0x{main:X} ", StringComparison.Ordinal) && l.Contains(" gen=", StringComparison.Ordinal) && l.Contains(" skipped=", StringComparison.Ordinal));
+                // R3-F3: the delayed pass is in the record, or named missing.
+                Assert.Contains(sweep, l => l.StartsWith($"sweep-late main=0x{main:X} ", StringComparison.Ordinal));
                 Assert.Equal("seeded-offscreen", record.GetProperty("move").GetString());
                 Assert.NotNull(record.GetProperty("hwnd").ValueKind == JsonValueKind.Number
                     ? record.GetProperty("hwnd")

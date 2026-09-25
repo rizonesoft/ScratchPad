@@ -363,7 +363,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // The last sweep, kept for its delayed pass (§41 item 4).
         // Keyed by main (§41 R1-F4), so a second construction never drops
         // the first one's pending delayed pass.
-        static readonly Dictionary<nint, (SiblingSnapshot Snapshot, HashSet<nint> Decided)> PendingLate = [];
+        static readonly Dictionary<nint, (SiblingSnapshot Snapshot, Dictionary<nint, SiblingTopLevel> Decided)> PendingLate = [];
 
         // The planted late helper (a test seam, §41 item 4 fixture).
         static nint plantedLateHelper;
@@ -452,7 +452,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 // This construction claims its main and every helper it
                 // pinned (§41 item 1).
                 ClaimAll(generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle).Append(main));
-                PendingLate[main] = (snapshot, final.Select(d => d.Handle).ToHashSet());
+                var seen = windows.ToDictionary(w => w.Handle);
+                PendingLate[main] = (snapshot, final.Where(d => seen.ContainsKey(d.Handle)).ToDictionary(d => d.Handle, d => seen[d.Handle]));
             }
 
             LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep", generation));

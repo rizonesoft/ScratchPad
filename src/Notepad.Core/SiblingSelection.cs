@@ -191,12 +191,15 @@ public static class SiblingSelection
     // sweep already decided are left alone. When another construction has
     // begun since this one's sweep, the pass does nothing (its windows
     // could be either construction's) and says so.
-    public static IReadOnlyList<SiblingDecision> DecideLate(IEnumerable<SiblingTopLevel> current, SiblingSnapshot snapshot, nint main, IReadOnlySet<nint> decided, IReadOnlyDictionary<nint, long>? claims, bool anotherConstructionBegan)
+    // `decided` carries the identity each handle had at the sweep (R3-F1): a
+    // handle whose window was destroyed and reused since (another thread or
+    // class) is a new window and is decided again, never silently skipped.
+    public static IReadOnlyList<SiblingDecision> DecideLate(IEnumerable<SiblingTopLevel> current, SiblingSnapshot snapshot, nint main, IReadOnlyDictionary<nint, SiblingTopLevel> decided, IReadOnlyDictionary<nint, long>? claims, bool anotherConstructionBegan)
     {
         ArgumentNullException.ThrowIfNull(current);
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(decided);
-        var late = current.Where(w => !decided.Contains(w.Handle)).ToList();
+        var late = current.Where(w => !(decided.TryGetValue(w.Handle, out SiblingTopLevel was) && was.ThreadId == w.ThreadId && string.Equals(was.ClassName, w.ClassName, StringComparison.Ordinal))).ToList();
         if (anotherConstructionBegan)
         {
             return [.. late.OrderBy(w => w.Handle).Select(w => new SiblingDecision(w.Handle, w.IsMain ? "main" : "late-skipped-overlap"))];

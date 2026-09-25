@@ -168,12 +168,19 @@ public sealed class SiblingSelectionTests
     {
         SiblingSnapshot snap = SiblingSelection.Begin([0x300], UiThread);
         SiblingTopLevel[] now = [new(0x300, 0x300, UiThread, false), new(0x500, 0x500, UiThread, false), new(0x600, 0x600, UiThread, false)];
-        HashSet<nint> decided = [0x300, 0x500];
+        var decided = new Dictionary<nint, SiblingTopLevel> { [0x300] = now[0], [0x500] = now[1] };
         var late = SiblingSelection.DecideLate(now, snap, Main, decided, null, anotherConstructionBegan: false);
         Assert.Equal(SiblingSelection.Pin, late.Single().Reason);
         Assert.Equal((nint)0x600, late.Single().Handle);
         var overlap = SiblingSelection.DecideLate(now, snap, Main, decided, null, anotherConstructionBegan: true);
         Assert.Equal("late-skipped-overlap", overlap.Single().Reason);
+
+        // R3-F1: a decided handle reused by a new window (another thread) is
+        // decided again, never silently skipped.
+        SiblingTopLevel[] reused = [new(0x300, 0x300, UiThread, false), new(0x500, 0x500, PrintThread + 1, false)];
+        var again = SiblingSelection.DecideLate(reused, snap, Main, decided, null, anotherConstructionBegan: false);
+        Assert.Equal(SiblingSelection.Pin, again.Single(d => d.Handle == 0x500).Reason);
+        Assert.DoesNotContain(again, d => d.Handle == 0x300);
 
         // R2-F1: A sweeps, then B begins and completes its sweep before A's
         // delayed pass; the pass still sees that B began.

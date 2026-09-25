@@ -258,8 +258,8 @@ run-a:
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-a-methods: 251
-run-a-cases: 313
-run-a-case-hash: ac8c1766eccc0b1f
+run-a-cases: 315
+run-a-case-hash: 86176dc2a0b57357
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

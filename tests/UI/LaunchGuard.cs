@@ -351,7 +351,9 @@ internal static class LaunchGuard
                     // qualified, or behind a using alias.
                     // C# resolves [X] as X or XAttribute (R1-F3), aliases
                     // included.
-                    string attributeName = attribute.Name.ToString();
+                    // A namespace-alias qualifier (I::DllImport, R3-F2)
+                    // reads like a dotted one.
+                    string attributeName = attribute.Name.ToString().Replace("::", ".", StringComparison.Ordinal);
                     if (namespaceAliases.TryGetValue(attributeName, out string? aliased)
                         || namespaceAliases.TryGetValue(attributeName + "Attribute", out aliased))
                     {
