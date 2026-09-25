@@ -726,6 +726,9 @@ $pngRefused = Test-RetainableCaptures $dumpSrc
 'approved' | Set-Content -Path (Join-Path $dumpCap $script:DumpDisclosureMarker) -Encoding UTF8
 $allGated = Test-RetainableCaptures $dumpSrc
 Assert (($fullRefused.Ok -eq $false) -and (($fullRefused.Reasons -join '') -like '*4242.dmp is a full-memory dump; retain needs CAPTURE-DISCLOSURE-APPROVED.txt*') -and ($fullGated.Ok -eq $true) -and ($minimalRefused.Ok -eq $false) -and (($pngRefused.Reasons -join '') -like '*interactive-failure-1.png is a screenshot; retain needs*') -and ($allGated.Ok -eq $true) -and ((Get-DumpMemoryKind (Join-Path $s38 'no.dmp')) -eq 'unreadable')) 's38-full-heap-dump-retains-only-behind-its-gate' ($fullRefused.Reasons -join '|')
+# R3-F1: a window that never renders is abandoned at the bound.
+$hungNote = @(Invoke-WindowRender ([pscustomobject]@{ ProcessId = 77; Handle = 0; Width = 10; Height = 10 }) (Join-Path $s38 'hung.png') 'interactive' 2 { param($h, $w, $hh, $o) Start-Sleep -Seconds 60; $true })
+Assert ((($hungNote -join '') -like '*screenshot of pid 77 abandoned (the window did not render within 2 s)*') -and (-not (Test-Path (Join-Path $s38 'hung.png')))) 's38-hung-window-render-is-bounded' ($hungNote -join '|')
 # Item 3: an oversized dump is refused at capture time and the marker
 # names it (the real JobControl, capped at 1 KB).
 $jc = Join-Path $PSScriptRoot '..\Bin\JobControl\Debug\JobControl.exe'
@@ -800,6 +803,10 @@ $polOk = Read-IncidentPolicy (Join-Path $PSScriptRoot 'incident-policy.json')
 '{ "triageOwner": "", "triageDays": 0 }' | Set-Content -Path (Join-Path $s38 'bad-policy.json') -Encoding UTF8
 $polBad = Read-IncidentPolicy (Join-Path $s38 'bad-policy.json')
 $overdue = @(Get-OverdueIncidentNotices $rtLedger ([datetime]'2026-10-02'))
+# R3-F2: an impossible due date is named alone; the batch goes on.
+$badDue = @{ 'INC-0000bad1' = [pscustomobject]@{ id = 'INC-0000bad1'; test = 'UI.B'; state = 'open'; owner = 'operator'; due = '2026-02-30' }; 'INC-0e0f0a0b' = $rtLedger['INC-0e0f0a0b'] }
+$badBatch = @(Get-OverdueIncidentNotices $badDue ([datetime]'2026-10-02'))
+Assert (($badBatch.Count -eq 2) -and (@($badBatch | Where-Object { $_.RunId -like 'incident-baddue-INC-0000bad1-*' }).Count -eq 1) -and (@($badBatch | Where-Object { $_.Id -eq 'INC-0e0f0a0b' }).Count -eq 1)) 's38-invalid-due-date-never-aborts-the-batch' (($badBatch | ForEach-Object { $_.RunId }) -join '|')
 Assert (($polOk.Ok -eq $true) -and ($polOk.Owner -eq $script:TriageOwner) -and ($polOk.Days -eq $script:TriageDays) -and ($polBad.Ok -eq $false) -and ($overdue.Count -eq 1) -and ($overdue[0].Id -eq 'INC-0e0f0a0b') -and ($overdue[0].Owner -eq 'operator') -and ($overdue[0].RunId -eq 'incident-overdue-INC-0e0f0a0b-2026-10-02')) 's38-policy-and-overdue-owner-notice' (($overdue | ForEach-Object { $_.Title }) -join '|')
 # Item 9: a failed filing stays unlinked and re-lists; the retry links
 # once; linking again records nothing; a conflicting link refuses.

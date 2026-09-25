@@ -477,17 +477,10 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
       $shot = Join-Path $CaptureDir "$Leg-failure-$n.png"
       # The window renders its own content (PrintWindow with
       # PW_RENDERFULLCONTENT, R1-F2), so a window covering it on screen
-      # contributes no pixels; screen pixels are never copied.
-      $bmp = New-Object System.Drawing.Bitmap $r.Width, $r.Height
-      try {
-        $g = [System.Drawing.Graphics]::FromImage($bmp)
-        $rendered = $false
-        try { $hdc = $g.GetHdc(); try { $rendered = [NightlyWin32Rect]::PrintWindow($r.Handle, $hdc, 2) } finally { $g.ReleaseHdc($hdc) } } finally { $g.Dispose() }
-        if ($rendered) {
-          $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
-          $notes += "- $Leg : screenshot $Leg-failure-$n.png (pid $($r.ProcessId) window content only)"
-        } else { $notes += "- $Leg : screenshot of pid $($r.ProcessId) failed (PrintWindow refused); none kept" }
-      } finally { $bmp.Dispose() }
+      # contributes no pixels; screen pixels are never copied. The render
+      # runs in a separate job process bounded by the render timeout
+      # (R3-F1): a hung window costs one note, never the report.
+      $notes += @(Invoke-WindowRender $r $shot $Leg $script:WindowRenderTimeoutSeconds)
     }
   } catch { $notes += "- $Leg : screenshot failed: $($_.Exception.Message)" }
   $wins = Join-Path $CaptureDir "$Leg-windows.txt"
@@ -560,6 +553,7 @@ $script:RunCaptureMaxBytes = 200MB
 # cap is refused at capture time (JobControl --dump-max), and a dump is
 # attempted only while the disk keeps the cap plus the markers free.
 $script:CaptureFileMaxBytes = 100MB
+$script:WindowRenderTimeoutSeconds = 15
 $script:CaptureRefusedMarker = 'CAPTURE-REFUSED.txt'
 $script:DumpDisclosureMarker = 'CAPTURE-DISCLOSURE-APPROVED.txt'
 # Ledger initialization record (section 38 item 4).
@@ -621,6 +615,39 @@ function Get-WindowRect([IntPtr]$Handle) {
   $r = New-Object NightlyWin32Rect+RECT
   if (-not [NightlyWin32Rect]::GetWindowRect($Handle, [ref]$r)) { return $null }
   return [pscustomobject]@{ X = $r.Left; Y = $r.Top; Width = ($r.Right - $r.Left); Height = ($r.Bottom - $r.Top) }
+}
+
+function Invoke-WindowRender($Rect, [string]$Path, [string]$Leg, [int]$TimeoutSeconds, [scriptblock]$Render = $null) {
+  # One window rendered to a PNG in a background job (its own process), so
+  # a window that never answers WM_PRINT is abandoned at the bound and the
+  # job is stopped. $Render replaces the job body in fixtures. Returns
+  # report notes.
+  $body = if ($null -ne $Render) { $Render } else {
+    {
+      param($handle, $w, $h, $out)
+      Add-Type -AssemblyName System.Drawing
+      Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class NightlyPrint { [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags); }'
+      $bmp = New-Object System.Drawing.Bitmap $w, $h
+      try {
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $ok = $false
+        try { $hdc = $g.GetHdc(); try { $ok = [NightlyPrint]::PrintWindow([IntPtr]$handle, $hdc, 2) } finally { $g.ReleaseHdc($hdc) } } finally { $g.Dispose() }
+        if ($ok) { $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png) }
+        $ok
+      } finally { $bmp.Dispose() }
+    }
+  }
+  $job = Start-Job -ScriptBlock $body -ArgumentList @([long]$Rect.Handle, $Rect.Width, $Rect.Height, $Path)
+  try {
+    if ($null -eq (Wait-Job -Job $job -Timeout $TimeoutSeconds)) {
+      Stop-Job -Job $job
+      if (Test-Path $Path) { Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue }
+      return @("- $Leg : screenshot of pid $($Rect.ProcessId) abandoned (the window did not render within $TimeoutSeconds s); none kept")
+    }
+    $ok = @(Receive-Job -Job $job -ErrorAction SilentlyContinue) | Select-Object -Last 1
+    if (($ok -eq $true) -and (Test-Path $Path)) { return @("- $Leg : screenshot $(Split-Path -Leaf $Path) (pid $($Rect.ProcessId) window content only)") }
+    return @("- $Leg : screenshot of pid $($Rect.ProcessId) failed (PrintWindow refused); none kept")
+  } finally { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
 }
 
 function Get-OwnedWindowRects($Windows, [hashtable]$OwnedPids) {
@@ -1752,8 +1779,14 @@ function Get-OverdueIncidentNotices([hashtable]$Incidents, [datetime]$Today) {
   $out = @()
   foreach ($k in ($Incidents.Keys | Sort-Object)) {
     $e = $Incidents[$k]
-    if (("$($e.state)" -ne 'open') -or ("$($e.due)" -notmatch '^\d{4}-\d{2}-\d{2}$')) { continue }
-    $due = [datetime]::ParseExact("$($e.due)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ("$($e.state)" -ne 'open') { continue }
+    # A due date that is not a real day is named, never fatal to the batch
+    # (R3-F2).
+    $due = [datetime]::MinValue
+    if (-not [datetime]::TryParseExact("$($e.due)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$due)) {
+      if ("$($e.due)" -ne '') { $out += [pscustomobject]@{ Id = "$($e.id)"; Owner = "$($e.owner)"; Due = "$($e.due)"; RunId = "incident-baddue-$($e.id)-$($Today.ToString('yyyy-MM-dd'))"; Title = "Incident $($e.id) has an invalid due date"; Line = "$($e.id) ``$($e.test)`` carries due date '$($e.due)', not a real day; triage corrects it in the ledger" } }
+      continue
+    }
     if ($due -ge $Today) { continue }
     $owner = if ("$($e.owner)" -eq '') { $script:TriageOwner } else { "$($e.owner)" }
     $out += [pscustomobject]@{ Id = "$($e.id)"; Owner = $owner; Due = "$($e.due)"; RunId = "incident-overdue-$($e.id)-$($Today.ToString('yyyy-MM-dd'))"; Title = "Incident $($e.id) overdue (owner $owner, due $($e.due))"; Line = "$($e.id) ``$($e.test)`` is open past its due date $($e.due); owner ${owner}: link its finding in docs/incident-links.md or close it" }
