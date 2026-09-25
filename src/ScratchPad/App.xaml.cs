@@ -40,6 +40,11 @@ public partial class App : Application
 
         mainInstance.Activated += OnAppRedirected;
 
+        // Test seam (D00 T02 §41 item 9): hold before the first window so
+        // the UI suite can observe the process's windows from outside
+        // before any construction snapshots them.
+        TestHold.WaitIfArmed(Environment.GetEnvironmentVariable);
+
         // D01 T01 §6: continue mode reopens the recorded window set; fresh
         // mode, an empty session, or a corrupt one opens one clean window.
         ShellSettings settings = SettingsStore.Shared.Current;

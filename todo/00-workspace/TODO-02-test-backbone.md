@@ -617,6 +617,7 @@ Why this section exists: §11 landed the central helper with off-screen birth, b
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §34 -- corrected this section's launch-guard alias boundary (cross-file global aliases now resolve).
+- -> XREF: D00 T02 §41 -- states this section's guard promise as the threat model the syntax-plus-alias guard enforces: launcher calls in any source shape, reflection through its member choke points, and P/Invoke declarations in every spelling (DllImport or LibraryImport, suffixed, qualified, aliased); runtime-resolved native exports, runtime-compiled code, and launches outside tests/UI are named outside it and pinned as unclaimed.
 - -> XREF: D00 T02 §13 -- items 2/9 attribution residual lands in item 7 (mechanism only); per-path token semantics narrow out per the §13 record.
 - -> XREF: D00 T02 §26 -- R3-F2 sibling-sweep narrowing filed forward (below-bar sign-off finding; latent, background-only).
 
@@ -1324,20 +1325,23 @@ Why this section exists: the §32 plan review returned 19 findings; 17 file here
 
 ## 41. Sibling Sweep Second Residuals
 
+> **Started:** 2026-09-25T15:33:14Z
+
 Why this section exists: the §34 plan review returned 12 findings; 8 file here with the §34 sign-off's R3-F1, 1 was applied (the §18 XREF pair), and 3 are rejected with reasons in the §34 findings file. §34 made the sweep's decision pure, token-scoped, logged, and worker-aware; these carry it through the cases a single-thread synchronous construction and an outside observer cannot yet prove. -> SOURCE: plan-review-D00-T02-s34-2026-09-25-s41 D00-T02-S34-PR1 D00-T02-S34-PR2 D00-T02-S34-PR3 D00-T02-S34-PR5 D00-T02-S34-PR6 D00-T02-S34-PR7 D00-T02-S34-PR9 D00-T02-S34-PR12 D00-T02-S34-R3-F1 (interleaving exclusivity, lifecycle fixtures, ambiguous provenance, late helpers, move revalidation, observation barriers, §18's threat model, launch diagnostics, and first-birth independence from the §34 plan review and sign-off).
 
 - -> XREF: D00 T02 §34 -- filed from its plan review and sign-off; carries the sweep it made explicit.
+- -> XREF: D00 T02 §18 -- its launch-guard promise is stated here as the guard's threat model (item 7).
 
-- [ ] Same-thread exclusivity is proven, not assumed: a fixture shows no other window's construction can run between a construction's snapshot and its sweep (or construction-specific provenance replaces the assumption). Done when: a planted same-thread interleaving reads as another construction's window. (D00-T02-S34-PR1.)
-- [ ] Snapshot lifecycle fixtures cover overlapping completion, cancellation, window destruction, and HWND reuse. Done when: a reused handle value never reads as preexisting for the new window. (D00-T02-S34-PR2.)
-- [ ] A helper of ambiguous provenance has a policy (skip and report, never pin blind). Done when: an ambiguous fixture window is skipped with its own reason and reported. (D00-T02-S34-PR3.)
-- [ ] Helpers created after the sweep have an owner: a delayed placement pass or a documented bound, with a fixture. Done when: a helper created after the sweep still lands off-screen or is reported. (D00-T02-S34-PR5.)
-- [ ] The sweep revalidates identity and ownership immediately before each move, so a destroyed or re-owned handle is never moved. Done when: a handle re-owned between selection and move is skipped. (D00-T02-S34-PR6.)
-- [ ] The dialog and flyout proofs define an observation barrier and an event-drain endpoint, so a transient move cannot slip between recorder events. Done when: the recorder reports its drained event count at the barrier. (D00-T02-S34-PR7.)
-- [ ] §18's promise against wrappers, reflection, and P/Invoke is stated as the threat model the syntax-plus-alias guard enforces, with negative fixtures for what lies outside it. Done when: §18's criterion and the guard's fixtures name the same boundary. (D00-T02-S34-PR9.)
-- [ ] The sweep log's construction identity, attribution, reasons, and move outcomes feed §18's launch diagnostics, so a placement failure explains itself. Done when: a launch diagnostic record quotes its sweep line. (D00-T02-S34-PR12.)
-- [ ] The first birth's helper coverage is verified independently of the app's own snapshot (a pre-construction observation the test controls, such as a launcher that holds the process before the first window). Done when: the first birth's preexisting set is checked against an outside observation. (D00-T02-S34-R3-F1.)
-- [ ] Commit: `"workspace: settle the second sibling sweep residuals"`
+- [x] Same-thread exclusivity is proven, not assumed: a fixture shows no other window's construction can run between a construction's snapshot and its sweep (or construction-specific provenance replaces the assumption). Done when: a planted same-thread interleaving reads as another construction's window. (D00-T02-S34-PR1.) Construction-specific provenance replaces the assumption (claims per generation); the §34 fail-safe (an overlapped construction's sweep gets no snapshot) is kept.
+- [x] Snapshot lifecycle fixtures cover overlapping completion, cancellation, window destruction, and HWND reuse. Done when: a reused handle value never reads as preexisting for the new window. (D00-T02-S34-PR2.)
+- [x] A helper of ambiguous provenance has a policy (skip and report, never pin blind). Done when: an ambiguous fixture window is skipped with its own reason and reported. (D00-T02-S34-PR3.)
+- [x] Helpers created after the sweep have an owner: a delayed placement pass or a documented bound, with a fixture. Done when: a helper created after the sweep still lands off-screen or is reported. (D00-T02-S34-PR5.)
+- [x] The sweep revalidates identity and ownership immediately before each move, so a destroyed or re-owned handle is never moved. Done when: a handle re-owned between selection and move is skipped. (D00-T02-S34-PR6.)
+- [x] The dialog and flyout proofs define an observation barrier and an event-drain endpoint, so a transient move cannot slip between recorder events. Done when: the recorder reports its drained event count at the barrier. (D00-T02-S34-PR7.)
+- [x] §18's promise against wrappers, reflection, and P/Invoke is stated as the threat model the syntax-plus-alias guard enforces, with negative fixtures for what lies outside it. Done when: §18's criterion and the guard's fixtures name the same boundary. (D00-T02-S34-PR9.)
+- [x] The sweep log's construction identity, attribution, reasons, and move outcomes feed §18's launch diagnostics, so a placement failure explains itself. Done when: a launch diagnostic record quotes its sweep line. (D00-T02-S34-PR12.)
+- [x] The first birth's helper coverage is verified independently of the app's own snapshot (a pre-construction observation the test controls, such as a launcher that holds the process before the first window). Done when: the first birth's preexisting set is checked against an outside observation. (D00-T02-S34-R3-F1.) The check found the gap it was filed for: with the snapshot in the constructor body a base-constructor helper read as preexisting; the snapshot moved to a field initializer, which runs before the base constructor.
+- [x] Commit: `"workspace: settle the second sibling sweep residuals"`
 
 **Test checkpoint:** Interleaving is proven exclusive, lifecycle edges hold, ambiguous helpers report, late helpers have an owner, moves revalidate, recorders drain to a barrier, §18 states its threat model, diagnostics quote the sweep, and the first birth is observed from outside. Cheaper substitute that fails: more assertions on the app's own log.
 

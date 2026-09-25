@@ -11,6 +11,7 @@ using Microsoft.Win32;
 using Notepad.Core;
 using Windows.UI.StartScreen;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace UI;
 
@@ -23,6 +24,10 @@ namespace UI;
 [Collection("UI tests")]
 public sealed class LaunchTests
 {
+    readonly ITestOutputHelper output;
+
+    public LaunchTests(ITestOutputHelper output) => this.output = output;
+
     [Fact]
     public void SingleFileLaunchOpensTab()
     {
@@ -1102,6 +1107,11 @@ public sealed class LaunchTests
                 Assert.Equal(2, windows.Count);
                 Thread.Sleep(800);
 
+                // The observation barrier (D00 T02 §41 item 6): both mains'
+                // UI threads have processed their queues, then every
+                // location event already queued to the recorder drains.
+                int drained = moves.DrainToBarrier(windows.Select(w => w.Properties.NativeWindowHandle.Value));
+                output.WriteLine($"recorder drained {drained} event(s) at the barrier");
                 var moved = moves.Stop();
                 Assert.True(moves.Hooked, "the location-change recorder never hooked; the proof would read vacuous");
                 Assert.True(moved.Count == 0, $"another window's birth moved this window's live helpers: {string.Join("; ", moved)}");
@@ -1158,6 +1168,103 @@ public sealed class LaunchTests
         }
     }
 
+    // D00 T02 §41 item 4: a helper born after the sweep still lands at the
+    // sweep target. The late-helper seam creates one hidden unowned popup
+    // on the UI thread right after the sweep, on-screen at (100,100); the
+    // delayed pass must pin it and log the readback.
+    [Fact]
+    public void HelperBornAfterTheSweepIsParkedByTheDelayedPass()
+    {
+        SeedFresh();
+        using var sweepLog = new SweepLogScope();
+        string? prior = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LATE_HELPER");
+        Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LATE_HELPER", "1");
+        try
+        {
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                nint main = window.Properties.NativeWindowHandle.Value;
+                nint planted = sweepLog.ReadPlanted(main);
+                Assert.True(planted != nint.Zero, $"the late-helper seam planted nothing for 0x{main:X}");
+                SweepLine birth = sweepLog.ReadBirth(main);
+                Assert.DoesNotContain(planted, birth.Pinned);
+                SweepLine late = sweepLog.ReadLate(main);
+                Assert.Equal(birth.Generation, late.Generation);
+                Assert.Contains(planted, late.Pinned);
+                Assert.True(late.PinnedAt.TryGetValue(planted, out var at) && at.X == late.TargetX && at.Y == late.TargetY, $"the late helper read back away from the target: {late.Raw}");
+            }
+            finally
+            {
+                CloseAll(app, automation);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LATE_HELPER", prior);
+        }
+    }
+
+    // D00 T02 §41 item 9: the first birth's preexisting set, checked against
+    // an outside observation. The hold seam stops the app just before its
+    // first window; the test reads every window of the process from
+    // outside, releases it, and requires the sweep's preexisting set to be
+    // exactly that observation: nothing the app saw before its construction
+    // escapes it, and nothing born during the construction hides in it.
+    [Fact]
+    public void FirstBirthPreexistingSetMatchesAnOutsideObservation()
+    {
+        SeedFresh();
+        using var sweepLog = new SweepLogScope();
+        string name = $"scratchpad-hold-{Guid.NewGuid():N}";
+        using var held = new EventWaitHandle(false, EventResetMode.ManualReset, name + "-held");
+        using var release = new EventWaitHandle(false, EventResetMode.ManualReset, name + "-release");
+        string? prior = Environment.GetEnvironmentVariable(TestHold.Variable);
+        Environment.SetEnvironmentVariable(TestHold.Variable, name);
+        try
+        {
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
+            Environment.SetEnvironmentVariable(TestHold.Variable, prior);
+            Assert.True(held.WaitOne(TimeSpan.FromSeconds(30)), "the app never reached the hold before its first window");
+            HashSet<nint> outside = ProcessWindows(app.ProcessId);
+            Assert.True(release.Set());
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                nint main = window.Properties.NativeWindowHandle.Value;
+                SweepLine birth = sweepLog.ReadBirth(main);
+                var preexisting = birth.Skipped.Where(kv => kv.Value == "preexisting").Select(kv => kv.Key).ToHashSet();
+                output.WriteLine($"outside {outside.Count} window(s), sweep preexisting {preexisting.Count}: {birth.Raw}");
+                foreach (nint hwnd in outside.Where(h => HelperNative.IsWindow(h)))
+                {
+                    Assert.True(preexisting.Contains(hwnd), $"0x{hwnd:X} existed before the first construction (outside observation) but the sweep read it as {(birth.Skipped.TryGetValue(hwnd, out var r) ? r : birth.Pinned.Contains(hwnd) ? "pinned" : "unseen")}: {birth.Raw}");
+                }
+
+                foreach (nint hwnd in preexisting)
+                {
+                    Assert.True(outside.Contains(hwnd), $"the sweep read 0x{hwnd:X} as preexisting, but the outside observation before the construction never saw it: {birth.Raw}");
+                }
+            }
+            finally
+            {
+                CloseAll(app, automation);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(TestHold.Variable, prior);
+        }
+    }
+
     // D00 T02 §34 item 2: a live owned dialog (the File > Open picker, a
     // real owned HWND unlike an in-window ContentDialog) keeps its rect
     // while another window is born. Fenced: the picker takes the
@@ -1197,6 +1304,8 @@ public sealed class LaunchTests
                 using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Thread.Sleep(1500);
+                int drained = moves.DrainToBarrier(first.GetAllTopLevelWindows(automation).Select(w => w.Properties.NativeWindowHandle.Value));
+                output.WriteLine($"recorder drained {drained} event(s) at the barrier");
                 var moved = moves.Stop();
                 Assert.True(moves.Hooked, "the location-change recorder never hooked; the proof would read vacuous");
                 Assert.True(moved.Count == 0, $"another window's birth moved the owned dialog: {string.Join("; ", moved)}");
@@ -1251,7 +1360,14 @@ public sealed class LaunchTests
 
     // One parsed sweep-log line (D00 T02 §34): the birth's main, target,
     // the handles it pinned, and every skip with its reason.
-    internal sealed record SweepLine(nint Main, int TargetX, int TargetY, List<nint> Pinned, Dictionary<nint, (int X, int Y)> PinnedAt, Dictionary<nint, string> Skipped, string Raw);
+    internal sealed record SweepLine(nint Main, int TargetX, int TargetY, List<nint> Pinned, Dictionary<nint, (int X, int Y)> PinnedAt, Dictionary<nint, string> Skipped, string Raw)
+    {
+        // The phase (`sweep`, or `sweep-late` for the delayed pass) and the
+        // construction generation (D00 T02 §41).
+        internal string Phase { get; init; } = "sweep";
+
+        internal long Generation { get; init; }
+    }
 
     // Arms the app's test-only sweep log (the run marker plus the log path,
     // both inherited by the launched app) and restores both on dispose.
@@ -1269,9 +1385,34 @@ public sealed class LaunchTests
 
         internal string Path { get; }
 
-        internal SweepLine ReadBirth(nint main) => Read(line => line.Main == main, $"no sweep line for the birth of 0x{main:X}");
+        internal SweepLine ReadBirth(nint main) => Read(line => line.Phase == "sweep" && line.Main == main, $"no sweep line for the birth of 0x{main:X}");
 
-        internal SweepLine ReadBirthOtherThan(nint main) => Read(line => line.Main != main, $"no sweep line for a birth other than 0x{main:X}");
+        internal SweepLine ReadBirthOtherThan(nint main) => Read(line => line.Phase == "sweep" && line.Main != main, $"no sweep line for a birth other than 0x{main:X}");
+
+        // The delayed pass's line for a birth (D00 T02 §41 item 4).
+        internal SweepLine ReadLate(nint main) => Read(line => line.Phase == "sweep-late" && line.Main == main, $"no delayed-pass line for the birth of 0x{main:X}");
+
+        // The handle the late-helper seam planted for a birth, or zero.
+        internal nint ReadPlanted(nint main)
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            string want = $"planted late-helper main=0x{(long)main:X} handle=0x";
+            while (DateTime.UtcNow < deadline)
+            {
+                if (File.Exists(Path))
+                {
+                    string? line = File.ReadAllLines(Path).FirstOrDefault(l => l.StartsWith(want, StringComparison.Ordinal));
+                    if (line is not null)
+                    {
+                        return (nint)long.Parse(line[want.Length..], System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture);
+                    }
+                }
+
+                Thread.Sleep(200);
+            }
+
+            return nint.Zero;
+        }
 
         SweepLine Read(Func<SweepLine, bool> wanted, string missing)
         {
@@ -1299,7 +1440,7 @@ public sealed class LaunchTests
 
         static SweepLine? Parse(string line)
         {
-            var m = System.Text.RegularExpressions.Regex.Match(line, @"^sweep main=0x([0-9A-F]+) target=(-?\d+),(-?\d+) pinned=([^ ]*) skipped=(.*)$");
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"^(sweep|sweep-late) main=0x([0-9A-F]+) target=(-?\d+),(-?\d+) gen=(\d+) pinned=([^ ]*) skipped=(.*)$");
             if (!m.Success)
             {
                 return null;
@@ -1310,7 +1451,7 @@ public sealed class LaunchTests
             // read back right after the pin).
             var pinned = new List<nint>();
             var pinnedAt = new Dictionary<nint, (int X, int Y)>();
-            foreach (System.Text.RegularExpressions.Match pm in System.Text.RegularExpressions.Regex.Matches(m.Groups[4].Value, @"0x([0-9A-F]+)(?:@(-?\d+),(-?\d+))?"))
+            foreach (System.Text.RegularExpressions.Match pm in System.Text.RegularExpressions.Regex.Matches(m.Groups[6].Value, @"0x([0-9A-F]+)(?:@(-?\d+),(-?\d+))?"))
             {
                 nint h = Hex(pm.Groups[1].Value);
                 pinned.Add(h);
@@ -1320,12 +1461,16 @@ public sealed class LaunchTests
                 }
             }
             var skipped = new Dictionary<nint, string>();
-            foreach (System.Text.RegularExpressions.Match sm in System.Text.RegularExpressions.Regex.Matches(m.Groups[5].Value, @"0x([0-9A-F]+)\(([a-z-]+)\)"))
+            foreach (System.Text.RegularExpressions.Match sm in System.Text.RegularExpressions.Regex.Matches(m.Groups[7].Value, @"0x([0-9A-F]+)\(([a-z-]+)\)"))
             {
                 skipped[Hex(sm.Groups[1].Value)] = sm.Groups[2].Value;
             }
 
-            return new SweepLine(Hex(m.Groups[1].Value), int.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture), pinned, pinnedAt, skipped, line);
+            return new SweepLine(Hex(m.Groups[2].Value), int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture), int.Parse(m.Groups[4].Value, System.Globalization.CultureInfo.InvariantCulture), pinned, pinnedAt, skipped, line)
+            {
+                Phase = m.Groups[1].Value,
+                Generation = long.Parse(m.Groups[5].Value, System.Globalization.CultureInfo.InvariantCulture),
+            };
         }
 
         public void Dispose()
@@ -1381,6 +1526,9 @@ public sealed class LaunchTests
         const uint WineventOutOfContext = 0x0000;
         const int ObjIdWindow = 0;
         const uint WmQuit = 0x0012;
+        const uint WmBarrier = 0x8000 + 41;
+        readonly ManualResetEventSlim barrier = new(false);
+        int drainedAtBarrier = -1;
         readonly HashSet<nint> watch;
         readonly uint pid;
         readonly List<string> moves = [];
@@ -1421,6 +1569,17 @@ public sealed class LaunchTests
             ready.Set();
             while (HelperNative.GetMessage(out HelperMsg msg, nint.Zero, 0, 0) > 0)
             {
+                if (msg.Message == WmBarrier)
+                {
+                    lock (moves)
+                    {
+                        drainedAtBarrier = moves.Count;
+                    }
+
+                    barrier.Set();
+                    continue;
+                }
+
                 _ = HelperNative.TranslateMessage(ref msg);
                 _ = HelperNative.DispatchMessage(ref msg);
             }
@@ -1429,6 +1588,26 @@ public sealed class LaunchTests
             {
                 _ = HelperNative.UnhookWinEvent(hook);
             }
+        }
+
+        // The observation barrier (D00 T02 §41 item 6): a synchronous
+        // WM_NULL to each app window returns only after that window's UI
+        // thread has handled everything queued before it (so every move it
+        // made has raised its event), then a barrier message queued behind
+        // the recorder's pending events marks the drain. Returns the event
+        // count the recorder holds at the barrier; fails when a window or
+        // the recorder does not answer within its bound.
+        internal int DrainToBarrier(IEnumerable<nint> appWindows)
+        {
+            foreach (nint hwnd in appWindows)
+            {
+                Assert.True(HelperNative.SendMessageTimeout(hwnd, 0, nint.Zero, nint.Zero, 0x0002, 5000, out _) != nint.Zero, $"app window 0x{hwnd:X} did not answer the barrier within 5 s");
+            }
+
+            barrier.Reset();
+            Assert.True(HelperNative.PostThreadMessage(threadId, WmBarrier, nint.Zero, nint.Zero), "the barrier could not reach the recorder thread");
+            Assert.True(barrier.Wait(TimeSpan.FromSeconds(5)), "the recorder never reached the barrier");
+            return drainedAtBarrier;
         }
 
         internal List<string> Stop()
@@ -1450,6 +1629,7 @@ public sealed class LaunchTests
         {
             _ = Stop();
             ready.Dispose();
+            barrier.Dispose();
         }
     }
 
@@ -1503,6 +1683,10 @@ public sealed class LaunchTests
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern bool PostThreadMessage(uint thread, uint msg, nint wParam, nint lParam);
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint SendMessageTimeout(nint hwnd, uint msg, nint wParam, nint lParam, uint flags, uint timeout, out nint result);
 
         [DllImport("kernel32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

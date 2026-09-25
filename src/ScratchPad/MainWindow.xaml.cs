@@ -42,8 +42,11 @@ public sealed partial class MainWindow : Window, IDisposable
     private MiddleClickHook? middleClick;
 
     // This construction's sibling-sweep snapshot (D00 T02 §34): only this
-    // window's sweep may consume it.
-    private readonly SiblingSnapshot? siblingSnapshot;
+    // window's sweep may consume it. A field initializer runs before the
+    // base Window constructor (§41 item 9), so helpers the framework
+    // creates while constructing the base are this birth's, never
+    // preexisting.
+    private readonly SiblingSnapshot? siblingSnapshot = SiblingPin.NoteTarget();
 
     private bool closed;
 
@@ -144,6 +147,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // constructor) never surface on their own: sweep once here, where
         // the main pin just landed.
         SiblingPin.Sweep(hwnd, siblingSnapshot);
+        SiblingPin.PlantLateHelperForTest(hwnd);
         return true;
     }
 
@@ -176,6 +180,12 @@ public sealed partial class MainWindow : Window, IDisposable
         (int x, int y) = BirthOrigin(live, width, height);
         const uint noZOrderNoActivate = 0x0004 | 0x0010;
         _ = NativeMethods.SetWindowPos(hwnd, nint.Zero, x, y, width, height, noZOrderNoActivate);
+
+        // The delayed placement pass (D00 T02 §41 item 4): helpers born
+        // after the sweep (during the show) are decided once more when the
+        // UI thread next idles. Helpers born after that pass are runtime
+        // popups, owned separately (the documented bound).
+        _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => SiblingPin.Late(hwnd));
     }
 
     static class NativeMethods
@@ -230,6 +240,29 @@ public sealed partial class MainWindow : Window, IDisposable
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern nint GetAncestor(nint hWnd, uint flags);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SetPropW", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetProp(nint hWnd, string name, nint data);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetPropW")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint GetProp(nint hWnd, string name);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool IsWindow(nint hWnd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "CreateWindowExW", SetLastError = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height, nint parent, nint menu, nint instance, nint param);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DestroyWindow(nint hWnd);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -319,6 +352,16 @@ public sealed partial class MainWindow : Window, IDisposable
         static int targetX;
         static int targetY;
 
+        // The ownership mark (§41 item 2): a window property carrying the
+        // generation of the snapshot that saw the window.
+        const string MarkProperty = "ScratchPad.SiblingMark";
+
+        // The last sweep, kept for its delayed pass (§41 item 4).
+        static (nint Main, SiblingSnapshot Snapshot, HashSet<nint> Decided)? lastSweep;
+
+        // The planted late helper (a test seam, §41 item 4 fixture).
+        static nint plantedLateHelper;
+
         // The construction in flight (D00 T02 §26, §34 item 4): taken when
         // the constructor begins and consumed once by its sweep, so a failed
         // or overlapping construction never lends its snapshot to the next
@@ -327,7 +370,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
         internal static SiblingSnapshot NoteTarget()
         {
-            SiblingSnapshot token = Pending.Begin(SiblingSelection.Begin(ProcessTopLevels().Select(w => w.Handle), NativeMethods.GetCurrentThreadId()));
+            // Every window seen now is marked with this snapshot's
+            // generation (§41 item 2), so a handle reused by a new window
+            // later reads unmarked; a window that refused the mark reads
+            // ambiguous at the sweep.
+            List<nint> seen = [.. ProcessTopLevels().Select(w => w.Handle)];
+            SiblingSnapshot token = Pending.Begin(SiblingSelection.Begin(seen, NativeMethods.GetCurrentThreadId(), gen => seen.Where(h => NativeMethods.SetProp(h, MarkProperty, (nint)gen)).ToList()));
             ShellSettings live = SettingsStore.Shared.Current;
             int width = Math.Max(100, live.Width);
             int height = Math.Max(100, live.Height);
@@ -351,12 +399,31 @@ public sealed partial class MainWindow : Window, IDisposable
                 uint thread = NativeMethods.GetWindowThreadProcessId(hwnd, out uint windowPid);
                 if (windowPid == pid)
                 {
-                    found.Add(new SiblingTopLevel(hwnd, NativeMethods.GetAncestor(hwnd, 3), thread, NativeMethods.ClassName(hwnd) == MainClass));
+                    found.Add(Read(hwnd, thread));
                 }
 
                 return true;
             }, nint.Zero);
             return found;
+        }
+
+        // One window read fresh: its root owner, thread, class, and mark;
+        // unreadable when the owner query fails (destroyed mid-read).
+        static SiblingTopLevel Read(nint hwnd, uint thread)
+        {
+            nint rootOwner = NativeMethods.GetAncestor(hwnd, 3);
+            return new SiblingTopLevel(hwnd, rootOwner, thread, NativeMethods.ClassName(hwnd) == MainClass, (long)NativeMethods.GetProp(hwnd, MarkProperty), thread != 0 && rootOwner != 0);
+        }
+
+        static SiblingTopLevel? ReadNow(nint hwnd)
+        {
+            if (!NativeMethods.IsWindow(hwnd))
+            {
+                return null;
+            }
+
+            uint thread = NativeMethods.GetWindowThreadProcessId(hwnd, out uint windowPid);
+            return windowPid == (uint)Environment.ProcessId ? Read(hwnd, thread) : null;
         }
 
         // Pins only the constructor-born helpers of the window being born
@@ -368,24 +435,95 @@ public sealed partial class MainWindow : Window, IDisposable
         internal static void Sweep(nint main, SiblingSnapshot? token)
         {
             SiblingSnapshot? snapshot = Pending.Take(token);
-            IReadOnlyList<SiblingDecision> decisions = SiblingSelection.Decide(ProcessTopLevels(), snapshot, main);
+            Pending.Release(NativeMethods.IsWindow);
+            List<SiblingTopLevel> windows = ProcessTopLevels();
+            IReadOnlyList<SiblingDecision> decisions = SiblingSelection.Decide(windows, snapshot, main, Pending.Claims);
+            var (final, pinnedAt) = PinDecided(main, windows, decisions);
+            long generation = snapshot?.Generation ?? 0;
+            if (snapshot is not null)
+            {
+                // This construction claims its main and every helper it
+                // pinned (§41 item 1).
+                Pending.Claim(generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle).Append(main));
+                lastSweep = (main, snapshot, final.Select(d => d.Handle).ToHashSet());
+            }
+
+            LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep", generation));
+        }
+
+        // Pins each selected window after revalidating it (§41 item 5): a
+        // handle destroyed, reused, or re-owned between the selection and
+        // its move is skipped with the revalidation's reason.
+        static (List<SiblingDecision> Final, Dictionary<nint, (int X, int Y)> PinnedAt) PinDecided(nint main, List<SiblingTopLevel> windows, IReadOnlyList<SiblingDecision> decisions)
+        {
+            var byHandle = windows.ToDictionary(w => w.Handle);
+            var final = new List<SiblingDecision>();
             var pinnedAt = new Dictionary<nint, (int X, int Y)>();
             foreach (SiblingDecision d in decisions)
             {
-                if (d.Reason == SiblingSelection.Pin)
+                if (d.Reason != SiblingSelection.Pin)
                 {
-                    PinSibling(d.Handle);
-                    if (NativeMethods.GetWindowRect(d.Handle, out NativeMethods.Rect at))
-                    {
-                        pinnedAt[d.Handle] = (at.Left, at.Top);
-                    }
+                    final.Add(d);
+                    continue;
                 }
+
+                string check = SiblingSelection.Revalidate(byHandle[d.Handle], ReadNow(d.Handle), main);
+                if (check != SiblingSelection.Pin)
+                {
+                    final.Add(d with { Reason = check });
+                    continue;
+                }
+
+                PinSibling(d.Handle);
+                if (NativeMethods.GetWindowRect(d.Handle, out NativeMethods.Rect at))
+                {
+                    pinnedAt[d.Handle] = (at.Left, at.Top);
+                }
+
+                final.Add(d);
             }
 
-            LogSweep(main, decisions, pinnedAt);
+            return (final, pinnedAt);
         }
 
-        static void LogSweep(nint main, IReadOnlyList<SiblingDecision> decisions, Dictionary<nint, (int X, int Y)> pinnedAt)
+        // The delayed pass (§41 item 4): windows born after the sweep, read
+        // once more on the first UI-thread idle after the show.
+        internal static void Late(nint main)
+        {
+            if (lastSweep is not { } last || last.Main != main)
+            {
+                return;
+            }
+
+            lastSweep = null;
+            List<SiblingTopLevel> windows = ProcessTopLevels();
+            IReadOnlyList<SiblingDecision> decisions = SiblingSelection.DecideLate(windows, last.Snapshot, main, last.Decided, Pending.Claims, Pending.BegunSince(last.Snapshot));
+            var (final, pinnedAt) = PinDecided(main, windows, decisions);
+            Pending.Claim(last.Snapshot.Generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle));
+            LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep-late", last.Snapshot.Generation));
+        }
+
+        // Test seam (§41 item 4): under the run marker plus
+        // SCRATCHPAD_TEST_LATE_HELPER=1, one hidden unowned popup is created
+        // on the UI thread right after the sweep, at an on-screen spot, so
+        // the UI suite can prove the delayed pass parks it. Its handle is
+        // logged; it is destroyed with the process.
+        internal static void PlantLateHelperForTest(nint main)
+        {
+            if (plantedLateHelper != nint.Zero
+                || Environment.GetEnvironmentVariable(LaunchCapture.RunMarkerVariable) != "1"
+                || Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LATE_HELPER") != "1")
+            {
+                return;
+            }
+
+            const uint popup = 0x80000000;
+            plantedLateHelper = NativeMethods.CreateWindowEx(0, "STATIC", "late helper", popup, 100, 100, 50, 50, nint.Zero, nint.Zero, nint.Zero, nint.Zero);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            LogSweep($"planted late-helper main=0x{((long)main).ToString("X", inv)} handle=0x{((long)plantedLateHelper).ToString("X", inv)}");
+        }
+
+        static void LogSweep(string line)
         {
             string? log = Environment.GetEnvironmentVariable("SCRATCHPAD_SWEEP_LOG");
             if (string.IsNullOrWhiteSpace(log) || Environment.GetEnvironmentVariable(LaunchCapture.RunMarkerVariable) != "1")
@@ -395,7 +533,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
             try
             {
-                File.AppendAllText(log, SiblingSelection.Describe(main, targetX, targetY, decisions, pinnedAt) + "\n");
+                File.AppendAllText(log, line + "\n");
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -425,7 +563,6 @@ public sealed partial class MainWindow : Window, IDisposable
     public MainWindow(bool firstWindow, SessionWindow? restore = null)
     {
         this.firstWindow = firstWindow;
-        siblingSnapshot = SiblingPin.NoteTarget();
         InitializeComponent();
         Title = WindowTitle.Format("Untitled", false, AppName);
         ExtendsContentIntoTitleBar = true;

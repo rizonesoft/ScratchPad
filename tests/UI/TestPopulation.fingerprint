@@ -93,10 +93,13 @@ run-a:
   UI.LaunchGuardTests.LegitimateShapesPassTheGuard
   UI.LaunchGuardTests.LiveTreeScansClean
   UI.LaunchGuardTests.PlantedBypassFailsTheGuard
+  UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed
   UI.LaunchTests.AssociationVerbsCycleCleanly
   UI.LaunchTests.BareSecondLaunchOpensNewWindow
   UI.LaunchTests.DoubleClickCommandOpensTab
+  UI.LaunchTests.FirstBirthPreexistingSetMatchesAnOutsideObservation
   UI.LaunchTests.FreshLaunchHoldsFilesInOneWindowInNewWindowMode
+  UI.LaunchTests.HelperBornAfterTheSweepIsParkedByTheDelayedPass
   UI.LaunchTests.JumpListCommitsRecentsAndPinsFromStore
   UI.LaunchTests.LargeFileOpensResponsively
   UI.LaunchTests.LockedFileReportsLocked
@@ -254,9 +257,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 248
-run-a-cases: 303
-run-a-case-hash: 1d469a657fa42fee
+run-a-methods: 251
+run-a-cases: 312
+run-a-case-hash: 73931b3c7b91cd0d
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

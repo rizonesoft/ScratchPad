@@ -63,10 +63,35 @@ internal static class UiLaunch
     {
         (string move, int x, int y) = TakeSeed();
         string testId = TestId(member, file);
+        // Every app launch arms the app's sweep log (D00 T02 §41 item 8), so
+        // the launch record quotes the birth's sweep line: a scope's log when
+        // one is armed, else a per-launch file the record consumes.
+        string? scoped = Environment.GetEnvironmentVariable(UiLaunchDiagnostics.SweepLogVariable);
+        string? priorMarker = Environment.GetEnvironmentVariable(LaunchCapture.RunMarkerVariable);
+        string sweepLog = scoped ?? UiLaunchDiagnostics.NewSweepLogPath();
         try
         {
-            Application app = launch();
-            UiLaunchDiagnostics.Record(testId, args, app.ProcessId, null, move, x, y);
+            Application app;
+            try
+            {
+                if (scoped is null)
+                {
+                    Environment.SetEnvironmentVariable(UiLaunchDiagnostics.SweepLogVariable, sweepLog);
+                    Environment.SetEnvironmentVariable(LaunchCapture.RunMarkerVariable, "1");
+                }
+
+                app = launch();
+            }
+            finally
+            {
+                if (scoped is null)
+                {
+                    Environment.SetEnvironmentVariable(UiLaunchDiagnostics.SweepLogVariable, null);
+                    Environment.SetEnvironmentVariable(LaunchCapture.RunMarkerVariable, priorMarker);
+                }
+            }
+
+            UiLaunchDiagnostics.Record(testId, args, app.ProcessId, null, move, x, y, sweepLog: sweepLog, ownsSweepLog: scoped is null);
             return app;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

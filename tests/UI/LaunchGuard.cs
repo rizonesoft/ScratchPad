@@ -21,6 +21,20 @@ namespace UI;
 // Invoke to run. Read-only enumeration (GetTypes, GetMethods,
 // attribute reads) stays allowed: the nightly-partition and
 // quiet-hours meta-tests pin suite shape that way.
+//
+// Threat model (D00 T02 §41 item 7, the boundary §18 promises): the
+// guard is a syntax-plus-alias scan of tests/UI source. It enforces, for
+// launches written in that source: direct, aliased, wrapped, renamed,
+// instance, inline-new, per-file-helper, and static-using launcher
+// calls; reflection through its member choke points and the dynamic
+// keyword; and P/Invoke declarations of process-creating entries in any
+// spelling (DllImport or LibraryImport, suffixed, qualified, or
+// aliased). It does not see, and states that it does not (the negative
+// fixtures in LaunchGuardTests pin each): native exports resolved at
+// run time by name (NativeLibrary.GetExport into a function pointer or
+// Marshal.GetDelegateForFunctionPointer), code compiled or loaded at run
+// time (scripting, emitted IL), and launches outside tests/UI (other
+// test projects, tools, and scripts). Those stay review-owned.
 internal static class LaunchGuard
 {
     static readonly StringComparer Ordinal = StringComparer.Ordinal;
@@ -331,8 +345,23 @@ internal static class LaunchGuard
             {
                 foreach (AttributeSyntax attribute in attributes.Attributes)
                 {
+                    // Every spelling of a P/Invoke declaration (D00 T02 §41
+                    // item 7): DllImport or the source-generated
+                    // LibraryImport, with or without the Attribute suffix,
+                    // qualified, or behind a using alias.
                     string attributeName = attribute.Name.ToString();
-                    if (attributeName is not "DllImport" && !attributeName.EndsWith(".DllImport", StringComparison.Ordinal))
+                    if (namespaceAliases.TryGetValue(attributeName, out string? aliased))
+                    {
+                        attributeName = aliased;
+                    }
+
+                    string last = attributeName[(attributeName.LastIndexOf('.') + 1)..];
+                    if (last.EndsWith("Attribute", StringComparison.Ordinal))
+                    {
+                        last = last[..^"Attribute".Length];
+                    }
+
+                    if (last is not ("DllImport" or "LibraryImport"))
                     {
                         continue;
                     }

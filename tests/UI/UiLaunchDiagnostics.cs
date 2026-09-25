@@ -4,7 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace UI;
 
-// Launch diagnostics, schema launch-diagnostics/1 (D00 T02 §18 item
+// Launch diagnostics, schema launch-diagnostics/2 (D00 T02 §18 item
 // 7): one JSON record per UI launch attempt, appended to a daily
 // JSONL file under the test output directory. Fields: schema (this
 // constant), ts (UTC ISO-8601), test (calling file:member), args
@@ -21,10 +21,23 @@ namespace UI;
 // after each launch); every UI test seeds before it launches, so
 // the pairing is exact in-suite. Nulls are valid data (a forced
 // failure quotes all seven fields with nulls plus the error), never
-// missing fields: every record carries every key.
+// missing fields: every record carries every key. Schema 2 (D00 T02
+// §41 item 8) adds sweep: the app's sweep-log lines for the recorded
+// window's birth (the sweep and any delayed pass: construction
+// generation, attribution, reasons, and move readbacks), [] when the
+// launch had no background birth or no window.
 internal static class UiLaunchDiagnostics
 {
-    internal const string Schema = "launch-diagnostics/1";
+    internal const string Schema = "launch-diagnostics/2";
+
+    internal const string SweepLogVariable = "SCRATCHPAD_SWEEP_LOG";
+
+    internal static string NewSweepLogPath()
+    {
+        string dir = Path.Combine(Path.GetDirectoryName(LogPath())!, "sweep");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, $"{Guid.NewGuid():N}.log");
+    }
 
     static readonly TimeSpan HwndWait = TimeSpan.FromSeconds(2);
 
@@ -82,7 +95,9 @@ internal static class UiLaunchDiagnostics
         string move,
         int seedX,
         int seedY,
-        bool expectWindow = true)
+        bool expectWindow = true,
+        string? sweepLog = null,
+        bool ownsSweepLog = false)
     {
         PruneOldLaunches(Path.GetDirectoryName(LogPath())!);
         nint hwnd = nint.Zero;
@@ -115,10 +130,73 @@ internal static class UiLaunchDiagnostics
             ["move"] = move,
             ["seedX"] = seedX,
             ["seedY"] = seedY,
+            ["sweep"] = SweepLines(sweepLog, hwnd, ownsSweepLog),
         };
         string path = LogPath();
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.AppendAllText(path, JsonSerializer.Serialize(record) + Environment.NewLine);
+    }
+
+    // The sweep lines for one birth (§41 item 8): waits up to the window
+    // bound for the birth's sweep line, then returns every line naming
+    // that main. A per-launch log is deleted once read.
+    static string[] SweepLines(string? path, nint main, bool owns)
+    {
+        // Only background births sweep, so a foreground launch waits for
+        // nothing.
+        bool background = Environment.GetEnvironmentVariable(UiLaunch.BackgroundVariable) == "1";
+        if (path is null || main == nint.Zero || !background)
+        {
+            if (owns && path is not null)
+            {
+                try
+                {
+                    File.Delete(path);
+                }
+                catch (IOException)
+                {
+                    // Best effort.
+                }
+            }
+
+            return [];
+        }
+
+        string prefix = $" main=0x{(long)main:X} ";
+        string[] found = [];
+        var deadline = DateTime.UtcNow + HwndWait;
+        while (DateTime.UtcNow < deadline)
+        {
+            try
+            {
+                found = File.Exists(path) ? [.. File.ReadAllLines(path).Where(l => l.StartsWith("sweep", StringComparison.Ordinal) && l.Contains(prefix, StringComparison.Ordinal))] : [];
+            }
+            catch (IOException)
+            {
+                found = [];
+            }
+
+            if (found.Length > 0)
+            {
+                break;
+            }
+
+            Thread.Sleep(100);
+        }
+
+        if (owns)
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+                // Best effort: a later sweep-late line may still be writing.
+            }
+        }
+
+        return found;
     }
 
     internal static bool IsVisible(nint hwnd) => Native.IsWindowVisible(hwnd);

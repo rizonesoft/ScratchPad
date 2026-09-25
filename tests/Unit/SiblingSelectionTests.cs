@@ -86,6 +86,108 @@ public sealed class SiblingSelectionTests
     {
         SiblingSnapshot snap = SiblingSelection.Begin([0x300], UiThread);
         var d = SiblingSelection.Decide([new(0x500, 0x500, UiThread, false), new(0x300, 0x300, UiThread, false)], snap, Main);
-        Assert.Equal("sweep main=0x100 target=-32000,-32000 pinned=0x500 skipped=0x300(preexisting)", SiblingSelection.Describe(Main, -32000, -32000, d));
+        Assert.Equal("sweep main=0x100 target=-32000,-32000 gen=0 pinned=0x500 skipped=0x300(preexisting)", SiblingSelection.Describe(Main, -32000, -32000, d));
+        Assert.Equal("sweep-late main=0x100 target=1,2 gen=7 pinned=0x500 skipped=0x300(preexisting)", SiblingSelection.Describe(Main, 1, 2, d, null, "sweep-late", 7));
+    }
+
+    // §41 item 1: a planted same-thread interleaving. A begins, B begins and
+    // its sweep claims its helper; the helper then reads as B's to any other
+    // construction, whatever order the sweeps run in, and even when this
+    // construction has no snapshot at all.
+    [Fact]
+    public void InterleavedConstructionsWindowReadsAsTheOtherConstructions()
+    {
+        var slot = new SiblingSnapshotSlot();
+        SiblingSnapshot a = slot.Begin(SiblingSelection.Begin([0x1], UiThread));
+        SiblingSnapshot b = slot.Begin(SiblingSelection.Begin([0x1], UiThread));
+        const nint bHelper = 0x900;
+        SiblingTopLevel helper = new(bHelper, bHelper, UiThread, IsMain: false);
+        var bSweep = SiblingSelection.Decide([helper], slot.Take(b), OtherMain, slot.Claims);
+        Assert.Equal(SiblingSelection.Pin, bSweep.Single().Reason);
+        slot.Claim(b.Generation, [bHelper, OtherMain]);
+        var aLate = SiblingSelection.Decide([helper], a, Main, slot.Claims);
+        Assert.Equal("other-construction", aLate.Single().Reason);
+        var aNoSnapshot = SiblingSelection.Decide([helper], slot.Take(a), Main, slot.Claims);
+        Assert.Equal("other-construction", aNoSnapshot.Single().Reason);
+        Assert.True(b.Generation > a.Generation);
+    }
+
+    // §41 item 2: lifecycle edges. A reused handle value (the snapshot saw
+    // and marked the handle, the new window carries no mark) is new, never
+    // preexisting; a still-marked window stays preexisting; a destroyed
+    // window's claim is released so its reused value starts clean; a
+    // cancelled construction leaves no claims.
+    [Fact]
+    public void ReusedHandleNeverReadsPreexistingAndClaimsReleaseWithTheWindow()
+    {
+        SiblingSnapshot snap = SiblingSelection.Begin([0x300, 0x301], UiThread, gen => [0x300, 0x301]);
+        var d = SiblingSelection.Decide(
+            [new(0x300, 0x300, UiThread, IsMain: false, Mark: snap.Generation), new(0x301, 0x301, UiThread, IsMain: false, Mark: 0)],
+            snap,
+            Main).ToDictionary(x => x.Handle, x => x.Reason);
+        Assert.Equal("preexisting", d[0x300]);
+        Assert.Equal(SiblingSelection.Pin, d[0x301]);
+
+        var slot = new SiblingSnapshotSlot();
+        slot.Claim(5, [0x301]);
+        slot.Release(h => h != 0x301);
+        Assert.False(slot.Claims.ContainsKey(0x301));
+
+        SiblingSnapshot cancelled = slot.Begin(SiblingSelection.Begin([], UiThread));
+        SiblingSnapshot next = slot.Begin(SiblingSelection.Begin([], UiThread));
+        Assert.Null(slot.Take(cancelled));
+        Assert.Empty(slot.Claims);
+        Assert.Same(next, slot.Take(next));
+    }
+
+    // §41 item 3: a window the snapshot could not mark, or whose provenance
+    // cannot be read, is skipped as ambiguous and reported.
+    [Fact]
+    public void AmbiguousProvenanceIsSkippedAndReported()
+    {
+        SiblingSnapshot snap = SiblingSelection.Begin([0x300, 0x301], UiThread, gen => [0x301]);
+        var d = SiblingSelection.Decide(
+            [new(0x300, 0x300, UiThread, IsMain: false), new(0x302, 0x302, UiThread, IsMain: false, Readable: false)],
+            snap,
+            Main);
+        Assert.All(d, x => Assert.Equal("ambiguous", x.Reason));
+        Assert.Contains("0x300(ambiguous)", SiblingSelection.Describe(Main, 0, 0, d), StringComparison.Ordinal);
+    }
+
+    // §41 item 4: the delayed pass decides only windows born after the
+    // sweep, and does nothing when another construction began since.
+    [Fact]
+    public void DelayedPassPinsLateHelpersOnlyWithoutAnOverlap()
+    {
+        SiblingSnapshot snap = SiblingSelection.Begin([0x300], UiThread);
+        SiblingTopLevel[] now = [new(0x300, 0x300, UiThread, false), new(0x500, 0x500, UiThread, false), new(0x600, 0x600, UiThread, false)];
+        HashSet<nint> decided = [0x300, 0x500];
+        var late = SiblingSelection.DecideLate(now, snap, Main, decided, null, anotherConstructionBegan: false);
+        Assert.Equal(SiblingSelection.Pin, late.Single().Reason);
+        Assert.Equal((nint)0x600, late.Single().Handle);
+        var overlap = SiblingSelection.DecideLate(now, snap, Main, decided, null, anotherConstructionBegan: true);
+        Assert.Equal("late-skipped-overlap", overlap.Single().Reason);
+    }
+
+    // §41 item 5: a handle re-owned, reused, or destroyed between the
+    // selection and its move is skipped.
+    [Fact]
+    public void RevalidationSkipsReownedReusedAndGoneHandles()
+    {
+        SiblingTopLevel selected = new(0x500, 0x500, UiThread, IsMain: false);
+        Assert.Equal(SiblingSelection.Pin, SiblingSelection.Revalidate(selected, selected, Main));
+        Assert.Equal("reowned-before-move", SiblingSelection.Revalidate(selected, selected with { RootOwner = OtherMain }, Main));
+        Assert.Equal(SiblingSelection.Pin, SiblingSelection.Revalidate(selected, selected with { RootOwner = Main }, Main));
+        Assert.Equal("reused-before-move", SiblingSelection.Revalidate(selected, selected with { ThreadId = PrintThread }, Main));
+        Assert.Equal("gone-before-move", SiblingSelection.Revalidate(selected, null, Main));
+    }
+
+    // §41 item 9: the hold seam arms only under the run marker.
+    [Fact]
+    public void TestHoldArmsOnlyUnderTheRunMarker()
+    {
+        Assert.Null(TestHold.Armed(k => k == TestHold.Variable ? "h" : null));
+        Assert.Equal("h", TestHold.Armed(k => k == TestHold.Variable ? "h" : k == LaunchCapture.RunMarkerVariable ? "1" : null));
+        Assert.False(TestHold.WaitIfArmed(k => null));
     }
 }

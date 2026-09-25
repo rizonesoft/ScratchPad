@@ -5,8 +5,10 @@ namespace UI;
 // D00 T02 §18 item 6: the launch guard fails planted bypasses and
 // passes the migrated tree. Each bypass shape the item names
 // (direct, alias, wrapper, renamed, instance, inline-new,
-// per-file, static-using, reflection, P/Invoke) trips at least one
-// violation; the sanctioned helper path stays exempt.
+// per-file, static-using, reflection, P/Invoke in every spelling) trips
+// at least one violation; the sanctioned helper path stays exempt; and
+// the shapes the threat model places outside the boundary (§41 item 7)
+// are pinned as unclaimed.
 // The live tests/UI tree scans clean.
 public sealed class LaunchGuardTests
 {
@@ -31,6 +33,11 @@ public sealed class LaunchGuardTests
     [InlineData("class Q { void M() { dynamic p = null; p.Start(); } }")]
     [InlineData("using System.Runtime.InteropServices; class Q { [DllImport(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
     [InlineData("using System.Runtime.InteropServices; class Q { [DllImport(\"shell32.dll\", EntryPoint = \"ShellExecuteW\")] static extern int OpenIt(); }")]
+    // §41 item 7: every P/Invoke spelling inside the boundary.
+    [InlineData("using System.Runtime.InteropServices; class Q { [DllImportAttribute(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
+    [InlineData("class Q { [System.Runtime.InteropServices.DllImportAttribute(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
+    [InlineData("using System.Runtime.InteropServices; partial class Q { [LibraryImport(\"kernel32.dll\", EntryPoint = \"CreateProcessW\")] static partial bool Spawn(); }")]
+    [InlineData("using DI = System.Runtime.InteropServices.DllImportAttribute; class Q { [DI(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
     public void PlantedBypassFailsTheGuard(string snippet)
     {
         Assert.NotEmpty(LaunchGuard.FindViolations(snippet, "plant.cs"));
@@ -46,6 +53,19 @@ public sealed class LaunchGuardTests
     public void LegitimateShapesPassTheGuard(string snippet)
     {
         Assert.Empty(LaunchGuard.FindViolations(snippet, "clean.cs"));
+    }
+
+    // §41 item 7: the stated boundary. Each shape below launches (or could
+    // launch) a process by a route the syntax-plus-alias scan cannot see,
+    // and the guard's threat model names it as outside; these pin that
+    // the guard makes no claim here, so §18's promise and the guard agree.
+    [Theory]
+    [InlineData("using System.Runtime.InteropServices; unsafe class Q { void M() { var f = (delegate* unmanaged<int>)NativeLibrary.GetExport(NativeLibrary.Load(\"kernel32.dll\"), \"Create\" + \"ProcessW\"); } }")]
+    [InlineData("using System.Runtime.InteropServices; class Q { delegate int D(); void M(nint p) { var d = Marshal.GetDelegateForFunctionPointer<D>(p); d(); } }")]
+    [InlineData("class Q { void M() { var t = Microsoft.CodeAnalysis.CSharp.Scripting.CSharpScript.EvaluateAsync(\"1\"); } }")]
+    public void ShapesOutsideTheStatedBoundaryAreNotClaimed(string snippet)
+    {
+        Assert.Empty(LaunchGuard.FindViolations(snippet, "outside.cs"));
     }
 
     [Theory]

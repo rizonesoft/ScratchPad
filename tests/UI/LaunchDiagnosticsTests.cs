@@ -32,7 +32,8 @@ public sealed class LaunchDiagnosticsTests
         var thrown = Assert.ThrowsAny<Exception>(() => UiLaunch.LaunchAppWithExe(missing, string.Empty));
         Assert.NotNull(thrown);
         JsonElement record = TailRecord(nameof(ForcedFailureQuotesAllSeven));
-        Assert.Equal("launch-diagnostics/1", record.GetProperty("schema").GetString());
+        Assert.Equal("launch-diagnostics/2", record.GetProperty("schema").GetString());
+        Assert.Empty(record.GetProperty("sweep").EnumerateArray());
         Assert.Equal(JsonValueKind.Null, record.GetProperty("pid").ValueKind);
         Assert.Contains("Exception", record.GetProperty("error").GetString(), StringComparison.Ordinal);
         Assert.Equal(JsonValueKind.Null, record.GetProperty("hwnd").ValueKind);
@@ -57,8 +58,13 @@ public sealed class LaunchDiagnosticsTests
             try
             {
                 JsonElement record = TailRecord(nameof(SuccessRecordQuotesFields));
-                Assert.Equal("launch-diagnostics/1", record.GetProperty("schema").GetString());
+                Assert.Equal("launch-diagnostics/2", record.GetProperty("schema").GetString());
                 Assert.Equal(app.ProcessId, record.GetProperty("pid").GetInt32());
+                // D00 T02 §41 item 8: the record quotes its birth's sweep line
+                // (generation, attribution, reasons, and move readbacks).
+                long main = window.Properties.NativeWindowHandle.Value.ToInt64();
+                var sweep = record.GetProperty("sweep").EnumerateArray().Select(e => e.GetString() ?? string.Empty).ToList();
+                Assert.Contains(sweep, l => l.StartsWith($"sweep main=0x{main:X} ", StringComparison.Ordinal) && l.Contains(" gen=", StringComparison.Ordinal) && l.Contains(" skipped=", StringComparison.Ordinal));
                 Assert.Equal("seeded-offscreen", record.GetProperty("move").GetString());
                 Assert.NotNull(record.GetProperty("hwnd").ValueKind == JsonValueKind.Number
                     ? record.GetProperty("hwnd")
