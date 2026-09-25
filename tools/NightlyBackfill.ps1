@@ -254,6 +254,9 @@ $result = [pscustomobject]@{
   version = 1; stamp = $stamp; day = $day; identity = $identity
   verdict = $verdict; exit = if ($verdict -eq 'red') { 1 } else { 0 }
   simulated = $false; trigger = $trigger; launch = $launch; commit = $commit
+  # Proof provenance (D00 T02 section 39 item 10): a backfill reconstructs
+  # a past night, so it queues as test activity and says who set that.
+  backfill = $true; proofSource = 'backfill'
   buildError = ''
   legs = [pscustomobject]@{ 'run-a' = $legA; 'run-b' = $legB; interactive = $legI }
   soak = [pscustomobject]@{ ran = $soakRan; verdict = $soakVerdict; failed = @($soakFailed); killed = @(); cut = @(); failures = @($soakFailures) }

@@ -1379,7 +1379,7 @@ $null = New-Item -ItemType Directory -Force -Path $ackDir
 & git -C $repo config commit.gpgsign false
 & git -C $repo config core.autocrlf false
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'todo\00-workspace')
-@('# fixture', '', '## 9. Nine', '', '## 29. Twenty-nine') | Set-Content -Path (Join-Path $repo 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
+@('# fixture', '', '## 9. Nine', '', 'Tracks INC-aaaa1111 (UI.A) and INC-bbbb2222 (UI.B).', '', '## 29. Twenty-nine', '', 'Tracks INC-aaaa1111 (UI.A) and INC-bbbb2222 (UI.B).') | Set-Content -Path (Join-Path $repo 'todo\00-workspace\TODO-02-fixture.md') -Encoding UTF8
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-a.md'), $ackOne)
 $g0 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ((@($g0.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: uncommitted*' }).Count -eq 1) -and ($g0.Unacked -contains $runA1)) 'ack-uncommitted-ignored' ($g0.Lines -join ' | ')
@@ -1415,6 +1415,11 @@ Assert (@((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Lin
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = 'INC-aaaa1111'; incidents = 'none'; evidence = "D00 T02 $([char]0xA7)9" }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b known incident' 2>$null
 Assert ((Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')).Unacked -notcontains $runA2) 'ack-known-incident-passes'
+# Section 39 item 7: a `fixed` commit must touch code; the fixture's
+# fix commit touches the failing test's file.
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $repo 'tests\UI')
+'class A {}' | Set-Content -Path (Join-Path $repo 'tests\UI\A.cs') -Encoding UTF8
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'fix UI.A' 2>$null
 $realSha = ((& git -C $repo rev-parse HEAD) | Out-String).Trim()
 [System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-b.md'), (New-Ack @("$runA2 sha256:$shaA2") @{ finding = $realSha.Substring(0, 12); incidents = 'none'; disposition = 'fixed' }))
 & git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack b real commit' 2>$null

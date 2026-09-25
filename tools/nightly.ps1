@@ -1452,7 +1452,7 @@ $odNames = @()
 try { $odNames = @($quar.Overdue | ForEach-Object { $_.Test }) } catch { }
 $schedVoted = ((@($schedFaults).Count -gt 0) -and $schedulerParented)
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; population = "$populationCohort"; populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError
@@ -1481,6 +1481,11 @@ $result = [pscustomobject]@{
 }
 $resultPath = Join-Path $nightDir "morning-$stamp.result.json"
 Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
+# The queue this result is published into (D00 T02 section 39 item 10):
+# recorded once, so a later relabel to proof cannot move a RED out of the
+# operational queue.
+$classErr = Add-ResultClassification $nightDir $result (Get-FileSha256 $resultPath)
+if ($classErr -ne '') { $failed = $true; $report += "- RED: $classErr" }
 $selfCheck = Test-ResultFile $resultPath -RequireLifecycle
 $failClosedNote = ''
 if (-not $selfCheck.Ok) {
@@ -1516,7 +1521,7 @@ $exitCode = if ($failed) { 1 } else { 0 }
 # only. Past-due demands escalate and stage a finding stub.
 $ackResultFiles = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $ackResultFiles += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$ackDemands = Get-AckDemands $ackResultFiles
+$ackDemands = Get-AckDemands $ackResultFiles (Read-ResultClassifications $nightDir)
 # Section 31 item 8: §24's severity SLA (the strictest of the run's
 # outcome labels) shortens the day-plus-three default where it is shorter.
 $ackSla = { param($r) Get-AckSlaHours $r }
@@ -1527,6 +1532,8 @@ if (@($ackCheck.CorrectiveOverdue).Count -gt 0) { $report += "- Corrective actio
 $ackSection = @('', '## Acknowledgements', '')
 if (@($ackCheck.Lines).Count -eq 0) { $ackSection += '(no RED runs and no ack files)' } else { $ackSection += $ackCheck.Lines }
 if (@($ackCheck.Staged).Count -gt 0) { $ackSection += @('', 'Staged filings (ack overdue):') + $ackCheck.Staged }
+# Unreadable results keep their record through repair (section 39 item 6).
+$ackSection += @(Update-CorruptionRecord (Join-Path $nightDir 'ack-corruption.json') $ackDemands $day)
 $report += "- Result: morning-$stamp.result.json (v1 machine-readable)"
 $report += "- Exit: $exitCode"
 $report += $ackSection

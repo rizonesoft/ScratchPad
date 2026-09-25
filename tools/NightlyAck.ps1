@@ -17,11 +17,22 @@
   the run is acknowledged). With -Commit it commits that file; a failed
   commit writes build/nightly/ack-filing-retry.json and exits 1, and
   the next -FileOverdue retries the commit first.
+
+  Section 39: -Commit runs only in the Claude writer session (AGENTS.md:
+  Claude Code is the only writer; CLAUDECODE=1) and commits the overdue
+  table alone, refusing when anything else is staged. A filing holds
+  build/nightly/ack-filing.lock for its whole run, so a concurrent filing
+  refuses, and a table written but never committed (a crash between the
+  write and the commit) is committed by the next -FileOverdue -Commit.
+  -Draft reports the draft pending until committed, and -Status -Run
+  <id> reads whether a run is acknowledged now (effective), drafted but
+  uncommitted (pending), or unacknowledged.
 #>
 param(
   [switch]$Draft,
   [switch]$FileOverdue,
   [switch]$Commit,
+  [switch]$Status,
   [string]$Run = '',
   [string]$Disposition = '',
   [string]$Finding = '',
@@ -47,7 +58,7 @@ $ackDir = Join-Path $Root 'docs\nightly-acks'
 $now = if ($Today -ne '') { [datetime]::ParseExact($Today, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture) } else { Get-Date }
 $files = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $files += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$demands = Get-AckDemands $files
+$demands = Get-AckDemands $files (Read-ResultClassifications $nightDir)
 
 if ($Draft) {
   if (($Run -eq '') -or ($Disposition -eq '') -or ($Owner -eq '')) { Write-Output 'ack: -Draft needs -Run, -Disposition, and -Owner'; exit 2 }
@@ -82,18 +93,45 @@ if ($Draft) {
   if (Test-Path $Out) { Write-Output "ack: $Out exists; choose another -Out"; exit 1 }
   $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Out)
   Write-AtomicReport @($text.TrimEnd("`n") -split "`n") $Out
-  Write-Output "ack: drafted $Out (valid against the current result); commit it to count"
+  # Pending versus effective (section 39 item 12): recheck the checksum
+  # against the result as it is now, and say what the gate will read
+  # once the file is committed.
+  $fresh = Get-AckDemands $files (Read-ResultClassifications $nightDir)
+  if ($fresh[$Run].Current -ne $d.Current) { Write-Output "ack: drafted $Out, but $Run's result changed while drafting (now $($fresh[$Run].Current.Substring(0, 12))); redraft before committing"; exit 1 }
+  Write-Output "ack: drafted $Out; PENDING: the gate acknowledges $Run once this file is committed (checksum $($d.Current.Substring(0, 12)) still current)"
   exit 0
+}
+
+if ($Status) {
+  if ($Run -eq '') { Write-Output 'ack: -Status needs -Run'; exit 2 }
+  if (-not $demands.ContainsKey($Run)) { Write-Output "ack: $Run is not a demanded RED"; exit 1 }
+  $gate = Test-Acknowledgements $Root $ackDir $demands $now $ackSla
+  if ((@($gate.Unacked) -notcontains $Run) -and (@($gate.ProofUnacked) -notcontains $Run)) { Write-Output "ack: $Run EFFECTIVE (acknowledged now)"; exit 0 }
+  $pending = @($gate.Lines | Where-Object { ($_ -like '*: uncommitted*') -or ($_ -like '*edited since its last commit*') } | Where-Object { $ln = $_; $f = [regex]::Match($ln, '^- (\S+?):').Groups[1].Value; ($f -ne '') -and (Test-Path (Join-Path $ackDir $f)) -and ((Get-Content (Join-Path $ackDir $f) -Raw) -match [regex]::Escape("run: $Run ")) })
+  if ($pending.Count -gt 0) { Write-Output "ack: $Run PENDING (a draft names it but is not committed: $($pending -join '; '))"; exit 1 }
+  Write-Output "ack: $Run UNACKNOWLEDGED"
+  exit 1
 }
 
 if ($FileOverdue) {
   $tablePath = Join-Path $ackDir 'overdue-findings.md'
   $retryPath = Join-Path $nightDir 'ack-filing-retry.json'
+  $lockPath = Join-Path $nightDir 'ack-filing.lock'
+  # Authority (section 39 item 9): only the Claude writer commits.
+  if ($Commit -and ($env:CLAUDECODE -ne '1')) { Write-Output 'ack: -Commit runs only in the Claude writer session (AGENTS.md: Claude Code is the only writer); file without -Commit or run it from Claude Code'; exit 1 }
+  # One filing at a time (section 39 item 8): the lock is held for the
+  # whole filing and released at exit.
+  $null = New-Item -ItemType Directory -Force -Path $nightDir
+  $lock = $null
+  try { $lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') } catch { Write-Output "ack: another filing holds $lockPath; retry when it finishes"; exit 1 }
+  $rel = $tablePath.Substring($Root.Length).TrimStart('\', '/') -replace '\\', '/'
   $commitIt = {
     $eap = $ErrorActionPreference
     try {
       $ErrorActionPreference = 'Continue'
-      $rel = $tablePath.Substring($Root.Length).TrimStart('\', '/') -replace '\\', '/'
+      # Scope (section 39 item 9): nothing but the table may be staged.
+      $others = @(git -C $Root diff --cached --name-only 2>$null | Where-Object { ("$_" -ne '') -and ("$_" -ne $rel) })
+      if ($others.Count -gt 0) { return "refused: other files are staged ($($others -join ', ')); the filing commits $rel alone" }
       $null = git -C $Root add -- $rel 2>&1
       if ($LASTEXITCODE -ne 0) { return "git add failed" }
       $null = git -C $Root diff --cached --quiet -- $rel 2>&1
@@ -105,16 +143,28 @@ if ($FileOverdue) {
   }
   if ($Commit -and (Test-Path $retryPath)) {
     $err = & $commitIt
-    if ($err -ne '') { Write-Output "ack: retry of the pending filing commit failed again ($err); $retryPath kept"; exit 1 }
+    if ($err -ne '') { Write-Output "ack: retry of the pending filing commit failed again ($err); $retryPath kept"; $lock.Dispose(); exit 1 }
     Remove-Item $retryPath -Force
     Write-Output 'ack: pending filing commit retried and landed'
+  }
+  # A table written but never committed (section 39 item 8: a crash
+  # between the write and the commit) is committed now.
+  if ($Commit -and (Test-Path $tablePath)) {
+    $eap = $ErrorActionPreference
+    $dirty = @()
+    try { $ErrorActionPreference = 'Continue'; $dirty = @(git -C $Root status --porcelain -- $rel 2>$null) } finally { $ErrorActionPreference = $eap }
+    if ($dirty.Count -gt 0) {
+      $err = & $commitIt
+      if ($err -ne '') { Write-Output "ack: an uncommitted filing is pending and its commit failed ($err)"; $lock.Dispose(); exit 1 }
+      Write-Output 'ack: an uncommitted filing from an interrupted run was committed'
+    }
   }
   $gate = Test-Acknowledgements $Root $ackDir $demands $now $ackSla
   $over = @($gate.Overdue | ForEach-Object { $d = $demands[$_]; [pscustomobject]@{ Id = $_; What = $(if ($d.Unreadable) { 'unreadable result' } else { "RED $($d.Day)" }); Incidents = $(if (@($d.Incidents).Count -gt 0) { @($d.Incidents) -join ' ' } else { 'none' }) } })
   $existing = if (Test-Path $tablePath) { @(Get-Content $tablePath -Encoding UTF8) } else { @() }
   $ackedIds = @($demands.Keys | Where-Object { (@($gate.Unacked) -notcontains $_) -and (@($gate.ProofUnacked) -notcontains $_) })
   $upd = Update-OverdueFindings $existing $over $now.ToString('yyyy-MM-dd') 'operator' $ackedIds @($gate.Unacked)
-  if (-not $upd.Changed) { Write-Output "ack: overdue findings unchanged ($(@($over).Count) overdue)"; exit 0 }
+  if (-not $upd.Changed) { Write-Output "ack: overdue findings unchanged ($(@($over).Count) overdue)"; $lock.Dispose(); exit 0 }
   $null = New-Item -ItemType Directory -Force -Path $ackDir
   Write-AtomicReport $upd.Lines $tablePath
   Write-Output "ack: overdue findings updated ($(@($over).Count) overdue) in $tablePath"
@@ -123,12 +173,14 @@ if ($FileOverdue) {
     if ($err -ne '') {
       [pscustomobject]@{ table = $tablePath; failed = $now.ToString('o'); error = $err } | ConvertTo-Json | Set-Content -Path $retryPath -Encoding UTF8
       Write-Output "ack: filing commit failed ($err); retry recorded in $retryPath"
+      $lock.Dispose()
       exit 1
     }
     Write-Output 'ack: filing committed'
   }
+  $lock.Dispose()
   exit 0
 }
 
-Write-Output 'usage: NightlyAck.ps1 -Draft -Run <identity> -Disposition <d> -Owner <o> [-Finding <f>] [-Evidence <e>] [-Cover "INC-<id> <disposition> <finding>; ..."] [-CoversAll] [-CorrectiveOwner <c>] [-Due YYYY-MM-DD] [-Out <path>] | -FileOverdue [-Commit] [-Today YYYY-MM-DD] [-WorkspaceRoot <dir>]'
+Write-Output 'usage: NightlyAck.ps1 -Status -Run <identity> | -Draft -Run <identity> -Disposition <d> -Owner <o> [-Finding <f>] [-Evidence <e>] [-Cover "INC-<id> <disposition> <finding>; ..."] [-CoversAll] [-CorrectiveOwner <c>] [-Due YYYY-MM-DD] [-Out <path>] | -FileOverdue [-Commit] [-Today YYYY-MM-DD] [-WorkspaceRoot <dir>]'
 exit 2
