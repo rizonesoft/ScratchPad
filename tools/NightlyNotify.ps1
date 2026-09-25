@@ -443,7 +443,8 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   try { $rk = @($Result.soak.killed | Where-Object { $_ -is [string] }) } catch { }
   try { $rc = @($Result.soak.cut | Where-Object { $_ -is [string] }) } catch { }
   foreach ($row in $soakRows) {
-    if (($row.Text -like '*(FAILED)*') -and ($rf -notcontains $row.Name)) { $breaks += "soak $($row.Name): report FAILED, result failed list lacks it" }
+    # Every failure form the ledger prints, not only FAILED (R4-F1).
+    if (($row.Text -match '\(FAILED\)|nonzero exit|failed without trx') -and ($rf -notcontains $row.Name)) { $breaks += "soak $($row.Name): report failed ('$($row.Text)'), result failed list lacks it" }
     if (($row.Text -like '*killed at cap*') -and ($rk -notcontains $row.Name)) { $breaks += "soak $($row.Name): report killed, result killed list lacks it" }
     if (($row.Text -like 'budget-cut*') -and ($rc -notcontains $row.Name)) { $breaks += "soak $($row.Name): report budget-cut, result cut list lacks it" }
   }
