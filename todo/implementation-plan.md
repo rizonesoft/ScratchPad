@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **122 of 311 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **123 of 312 sections complete (39%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -156,14 +156,15 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §28` | Binding guard and funnel hardening                        |  11   |
 | [x] | `D00 T02 §29` | Population fingerprint gate before the night              |   7   |
 | [x] | `D00 T02 §30` | Nightly evidence residuals                                |  11   |
-| [ ] | `D00 T02 §31` | Acknowledgement residuals                                 |  15   |
+| [x] | `D00 T02 §31` | Acknowledgement residuals                                 |  15   |
 | [ ] | `D00 T02 §32` | Trend and telemetry residuals                             |  16   |
-| [ ] | `D00 T02 §33` | Notification residuals                                    |   5   |
+| [ ] | `D00 T02 §33` | Notification residuals                                    |   8   |
 | [ ] | `D00 T02 §34` | Sibling sweep residuals                                   |   7   |
 | [ ] | `D00 T02 §35` | Night-debt lifecycle residuals                            |  13   |
 | [ ] | `D00 T02 §36` | Binding guard residuals                                   |   9   |
 | [ ] | `D00 T02 §37` | Population gate residuals                                 |   7   |
 | [ ] | `D00 T02 §38` | Nightly evidence second residuals                         |  10   |
+| [ ] | `D00 T02 §39` | Acknowledgement second residuals                          |  14   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |

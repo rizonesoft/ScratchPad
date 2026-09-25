@@ -71,7 +71,7 @@ track: W0
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [x]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [x]   |
 |   30  |   §30   | Nightly evidence residuals | §22 |  [x]   |
-|   31  |   §31   | Acknowledgement residuals | §23 |  [ ]   |
+|   31  |   §31   | Acknowledgement residuals | §23 |  [x]   |
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
 |   34  |   §34   | Sibling sweep residuals | §26 |  [ ]   |
@@ -79,6 +79,7 @@ track: W0
 |   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
 |   37  |   §37   | Population gate residuals | §29 |  [ ]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
+|   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
 
 ---
 
@@ -998,6 +999,7 @@ Why this section exists: the §23 plan review returned 17 findings; 14 file here
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §39 -- residual follow-ups filed from this section's plan review and sign-off.
 - -> XREF: D00 T02 §23 -- filed from its plan review; carries the acknowledgement contract past signing.
 - -> XREF: D00 T02 §24 -- the notification half of the shared idempotency and recovery contract.
 
@@ -1018,6 +1020,13 @@ Why this section exists: the §23 plan review returned 17 findings; 14 file here
 - [x] Commit: `"workspace: close the acknowledgement residuals"`
 
 **Test checkpoint:** Overdue stubs file once and update, corrective actions escalate and close on evidence, dispositions demand their evidence, notification bumps leave acks valid, conflicting copies conflict, retries keep their demands, proof runs queue apart, SLAs precede the default, batch coverage is per incident, withdrawals re-demand, unreadable results demand, recovery leaves investigations open, the XREFs validate, and the helper drafts a valid ack. Cheaper substitute that fails: more fields in the frontmatter with no lifecycle behind them.
+
+> **Verified:** 2026-09-25 | §31 | overdue acks file into one tracked row per run through `tools/NightlyAck.ps1 -FileOverdue -Commit` with a commit retry; governing acks open corrective actions per finding that close only on evidence (never on an incident's recovery); each disposition carries its evidence; acks bind to the result checksum only; revisions order copies and equal revisions conflict; green retries keep the RED's demand; proof runs queue apart and never escalate; deadlines are timestamps §24's strictest SLA shortens; batches cover each incident; the newest commit in the graph governs and `withdrawn` releases; invalid results demand; §23 and §24 pair; the helper drafts valid acks or refuses; six nightly suites green; proof run 2026-09-25-093729-pid5880 shows 17 operational REDs, 5 proof-queue runs, and closed corrective actions
+> **Review:** round 3 (Full), candidates `26739ae` `de179cb` `cb53b5f` `6d2270b` -- GPT R1-R2 bulk needs-attention (R1-F1..F6, R2-F1..F5 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R3-F1..F3 fixed in `6d2270b` and re-gated at the stamp, R3-F4 filed D00 T02 §39. Raw findings: docs/reviews/00-workspace/D00-T02-s31.md
+> **Plan review:** GPT medium, filed D00 T02 §39, D00 T02 §33 (run 20260925-D00-T02-S31-codex-c06751119-r4)
+> **CRUD:** applicable | the helper writes the draft ack and the overdue table atomically, refuses to overwrite an existing ack, commits only the table, and keeps a retry record when the commit fails; the gate reads only
+> **Duration:** 2026-09-25T07:24:17Z to 2026-09-25T07:56:47Z
+> **Reviewed-tip:** 6d2270b19a64b5a788244c5d1e252cf8d5dccce3
 
 ## 32. Trend and Telemetry Residuals
 
@@ -1058,6 +1067,9 @@ Why this section exists: the §25 plan review read §24's notification surface a
 - [ ] Trend alerts carry identity and a lifecycle (new, worsening, unchanged, recovered), so the once-per-day dedupe neither hides a new or worse alert nor repeats unresolved noise. Done when: a worsening alert re-notifies and an unchanged one does not. (D00-T02-S25-PR9.)
 - [ ] The report/result agreement enumerates its complete field coverage in `docs/testing.md` and its fixtures cover each field. Done when: the enumeration reads and every listed field has a contradiction fixture. (D00-T02-S25-PR19.)
 - [ ] The fallback is named as deferred delivery, and an independent escalation channel (one that does not depend on the toast API) fires when toasts fail on consecutive nights. Done when: two failed nights escalate through the second channel. (D00-T02-S25-PR20.)
+- [ ] The send-versus-record crash window is defined: a toast sent but not recorded retries as a possible duplicate marked as such, and one recorded but not sent is re-sent, so recovery neither loses alerts nor claims exactly-once. Done when: both crash-window fixtures read as defined. (D00-T02-S31-PR12, from the D00 T02 §31 plan review.)
+- [ ] The undelivered channel is independently observable (a tracked or morning-report line the operator reads without toasts), or the limitation is recorded as an accepted risk with its owner. Done when: a persistently failing toast still surfaces in the morning report. (D00-T02-S31-PR13.)
+- [ ] Recovery notices state service recovery, pending acknowledgements, and open corrective actions separately, so a GREEN never implies completed triage. Done when: a recovery toast after an unacked RED names the pending ack. (D00-T02-S31-PR14.)
 - [ ] Commit: `"workspace: close the notification residuals"`
 
 **Test checkpoint:** The trend and notifications pick one run, alerts renotify only on change, agreement coverage is enumerated and pinned, and persistent toast failure escalates elsewhere. Cheaper substitute that fails: a longer toast.
@@ -1154,6 +1166,29 @@ Why this section exists: the §30 plan review returned 18 findings; 9 file here,
 - [ ] Commit: `"workspace: settle the second nightly evidence residuals"`
 
 **Test checkpoint:** A tampered stage refuses, binary captures minimize and gate, oversized dumps refuse at capture, a full wipe reds on the initialization record, the round trip is lossless, split and merge aliases read as defined, the consumer contract holds, overdue incidents notify, and filings retry once. Cheaper substitute that fails: more prose in the capture policy.
+
+## 39. Acknowledgement Second Residuals
+
+Why this section exists: the §31 plan review returned 17 findings; 12 file here with the §31 sign-off's R3-F4, 3 on D00 T02 §33, and 2 are rejected with reasons in the §31 findings file. §31 carried acknowledgements past the signature (revisions, proof queue, SLA deadlines, disposition evidence, per-incident coverage, commit-graph governance, corrective actions, the helper); these settle the contracts it left implicit. -> SOURCE: plan-review-D00-T02-s31-2026-09-25-s39 D00-T02-S31-PR1 D00-T02-S31-PR2 D00-T02-S31-PR3 D00-T02-S31-PR5 D00-T02-S31-PR6 D00-T02-S31-PR7 D00-T02-S31-PR8 D00-T02-S31-PR9 D00-T02-S31-PR10 D00-T02-S31-PR11 D00-T02-S31-PR15 D00-T02-S31-PR17 D00-T02-S31-R3-F4 (key prose, disposition transitions, separate clocks, governance ties, revision monotonicity, repair lifecycle, evidence relevance, filing concurrency, helper authority, proof provenance, reciprocal links, effective receipts, and per-incident evidence from the §31 plan review and sign-off).
+
+- -> XREF: D00 T02 §31 -- filed from its plan review and sign-off; settles the residuals of the acknowledgement lifecycle it shipped.
+
+- [ ] §23's and §24's prose names one governing key contract (run identity plus the result checksum, never the notification version), each marked `**Corrected YYYY-MM-DD:**` pointing at §31. Done when: neither section's text names the notification version as part of the ack key. (D00-T02-S31-PR1.)
+- [ ] Corrective actions have disposition-specific transitions: `fixed` with its commit, `expected` with its stamped proof, and `duplicate` of an acknowledged run open closed; only remediation still owed opens. Done when: a `duplicate` ack of an acknowledged run reads closed at signing. (D00-T02-S31-PR2.)
+- [ ] The acknowledgement deadline and the corrective-action due date are separate clocks with their own starting events, and replacing an ack never moves the original response deadline. Done when: a replacement ack signed after the response deadline still reads the response as late. (D00-T02-S31-PR3.)
+- [ ] Governance is defined for competing files in one commit, merges, and ties: a replaced ack names what it replaces (`replaces: <file>`), ancestry decides, and an undecidable tie fails closed. Done when: two acks for one run added in one commit read as a tie that demands resolution. (D00-T02-S31-PR5.)
+- [ ] Revisions are monotonic and authoritative: a lower revision written later is flagged, and a correction that drops an incident keeps its open corrective action until closed. Done when: a revision that drops an incident with an open corrective action keeps the action open. (D00-T02-S31-PR6.)
+- [ ] An `unreadable:<file>` demand has a repair lifecycle: repairing the file maps the demand onto the restored run identity and keeps the corruption on record. Done when: a repaired result's demand moves to its identity and the corruption line stays in the history. (D00-T02-S31-PR7.)
+- [ ] Evidence must address the acknowledged incidents: a `fixed` commit touches a file related to the failing test, a `filed` section names the incident or test, and duplicate references cannot cycle. Done when: an unrelated commit and a duplicate cycle each fail. (D00-T02-S31-PR8.)
+- [ ] Overdue filing survives interruption and overlap: a crash between the table write and the commit, and two concurrent filings, still end with one row and one commit per change. Done when: an interrupted-then-retried and a concurrent fixture each end consistent. (D00-T02-S31-PR9.)
+- [ ] The helper's execution authority and commit scope are assigned: only the Claude writer runs `-Commit`, and the commit touches `docs/nightly-acks/overdue-findings.md` alone (refusing when anything else is staged). Done when: a staged unrelated file makes `-Commit` refuse. (D00-T02-S31-PR10.)
+- [ ] Proof classification has provenance: the `proof` flag records who set it (the switches, the backfill tool, the simulator), and relabeling an operational RED as proof after the fact is refused. Done when: a result edited to proof after publication stays operational. (D00-T02-S31-PR11.)
+- [ ] §31 carries reciprocal XREFs to §17's fail-closed result handling and §22's recovery contract it consumes. Done when: `validate` reads both pairs. (D00-T02-S31-PR15.)
+- [ ] The helper reports pending versus effective: after `-Draft` it rechecks the checksum and prints what the gate will say once committed, and a `-Status -Run <id>` shows whether the run is acknowledged now. Done when: a drafted-but-uncommitted ack reads pending and a committed one reads effective. (D00-T02-S31-PR17.)
+- [ ] Per-incident evidence covers every disposition: a cover line can carry its own `evidence <e>` so `quarantined`, `environment`, and `duplicate` covers validate in mixed batches. Done when: a mixed batch with a quarantined and a duplicate cover validates. (D00-T02-S31-R3-F4.)
+- [ ] Commit: `"workspace: settle the second acknowledgement residuals"`
+
+**Test checkpoint:** The key prose agrees, dispositions transition as defined, the two clocks stay apart, ties fail closed, revisions keep open actions, repairs map, evidence addresses its incidents, filing survives interruption, the helper's commits stay scoped, proof relabeling is refused, the XREFs validate, the helper reports effectiveness, and mixed covers validate. Cheaper substitute that fails: more frontmatter fields with no transitions behind them.
 
 ## Verification
 
