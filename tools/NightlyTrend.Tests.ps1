@@ -188,6 +188,17 @@ $cur = @(Sync-MetricsStore $rv @($withProv))
 $null = Sync-MetricsStore $rv @($withProv)
 Assert (($cur.Count -eq 1) -and ($null -ne $cur[0].provenance) -and (@(Get-Content $rv | Where-Object { $_.Trim() -ne '' }).Count -eq 2)) 'metrics-row-revises-last-wins' "rows=$($cur.Count) lines=$(@(Get-Content $rv | Where-Object { $_.Trim() -ne '' }).Count)"
 
+# R3-F1: a zero baseline alerts without dividing.
+$zero = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 0 }) + @(New-Night '2026-09-27' '2026-09-27-023000' 90)
+$za = @(Get-TrendAlerts $zero)
+Assert (@($za | Where-Object { $_ -eq '- ALERT runa-duration: 90s on 2026-09-27 vs baseline 0s (+90s over a zero baseline, median of 7 night(s))' }).Count -eq 1) 'alert-zero-baseline-no-divide' ($za -join ' | ')
+# R3-F2: nights without a measurement still occupy the window.
+$win16 = @(1..16 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) (500 + $_) })
+$win16[14].legs.'run-a'.testSeconds = $null
+$win16[15].legs.'run-a'.testSeconds = $null
+$tw = @(Format-TrendTable $win16 $Q $today)
+Assert (@($tw | Where-Object { $_ -like '- RunA test-seconds (canonical native nights, last 14): n=12,*max 514' }).Count -eq 1) 'percentile-window-counts-unmeasured-nights' (($tw | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyTrend.Tests: all green'

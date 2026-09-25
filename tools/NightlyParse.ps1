@@ -1963,7 +1963,11 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   $pa = @($prev | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
   if (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50
-    if (($la -gt 1.25 * $med) -and (($la - $med) -ge 60)) { $alerts += "- ALERT runa-duration: $([int]$la)s on $(Get-ResultNight $latest) vs baseline $([int]$med)s (+$([int][math]::Round(100 * ($la - $med) / $med))%, median of $($pa.Count) night(s))" }
+    if (($la -gt 1.25 * $med) -and (($la - $med) -ge 60)) {
+      # A zero baseline has no percentage (R3-F1): the delta rides alone.
+      $pct = if ($med -gt 0) { "+$([int][math]::Round(100 * ($la - $med) / $med))%" } else { "+$([int]($la - $med))s over a zero baseline" }
+      $alerts += "- ALERT runa-duration: $([int]$la)s on $(Get-ResultNight $latest) vs baseline $([int]$med)s ($pct, median of $($pa.Count) night(s))"
+    }
   }
   # An unproven night (a killed or budget-cut leg) contributes no rate,
   # matching the table's denominator rule (R1-F3).
@@ -2044,6 +2048,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # derivations and say so).
   $isNative = { param($r) (& $isCanon $r) -and (-not (Test-IsBackfill $r)) -and (-not [bool]$(try { $r.metricsBackfill } catch { $false })) }
   $rowEntries = @()
+  $nativeNights = @()
   $lines = @('# Nightly trend', '', '- Pass rate: passed / (passed + failed) over executed tests; skips (quarantine, capability, fenced) are counted apart and never in the denominator; a night with a killed or budget-cut leg reads unproven; stand-downs and cancellations are marks.', '- Series: durations, percentiles, and alerts read canonical native nights (no simulation, stand-down, cancellation, retry, or backfill); pass rate and recurrence read canonical nights with backfills marked; every row renders, retries and extras marked.', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | SoakFail | Env |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   $allA = @()
   $incNights = @{}
@@ -2073,7 +2078,11 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     elseif ($anyRan) { $pass = 'unproven' }
     else { $pass = 'no legs ran' }
     $ra = '-'
-    try { if ($null -ne $r.legs.'run-a'.testSeconds) { $ra = "$($r.legs.'run-a'.testSeconds)"; if (& $isNative $r) { $allA += [int]$r.legs.'run-a'.testSeconds } } } catch { }
+    $raVal = $null
+    try { if ($null -ne $r.legs.'run-a'.testSeconds) { $ra = "$($r.legs.'run-a'.testSeconds)"; $raVal = [int]$r.legs.'run-a'.testSeconds; if (& $isNative $r) { $allA += $raVal } } } catch { }
+    # Every native night joins the window, measured or not (R3-F2), so
+    # the last 14 nights are chosen before their measurements filter.
+    if (& $isNative $r) { $nativeNights += [pscustomobject]@{ Night = $day; Stamp = "$($r.stamp)"; Seconds = $raVal } }
     $rb = '-'
     try { if ($null -ne $r.legs.'run-b'.testSeconds) { $rb = "$($r.legs.'run-b'.testSeconds)" } } catch { }
     $soak = '-'
@@ -2167,7 +2176,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # Tail percentiles over the last 14 canonical native nights (D00 T02
   # §25 item 5): the sample count plus p50, p90, and p95, so a tail
   # regression and its confidence read at a glance.
-  $win = @($allA | Select-Object -Last 14)
+  $win = @($nativeNights | Sort-Object Night, Stamp | Select-Object -Last 14 | Where-Object { $null -ne $_.Seconds } | ForEach-Object { $_.Seconds })
   if ($win.Count -gt 0) {
     $lines += "- RunA test-seconds (canonical native nights, last 14): n=$($win.Count), p50 $(Get-Percentile $win 50), p90 $(Get-Percentile $win 90), p95 $(Get-Percentile $win 95), max $(($win | Measure-Object -Maximum).Maximum)"
   }
