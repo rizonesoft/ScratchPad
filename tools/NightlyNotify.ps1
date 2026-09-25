@@ -98,11 +98,41 @@ function New-ToastItem([int]$Priority, [string]$Text, [int]$Order = 0) {
   return [pscustomobject]@{ Priority = $Priority; Text = $Text; Order = $Order }
 }
 
+function Invoke-WithNotifyLock([scriptblock]$Body, [int]$TimeoutSeconds = 60) {
+  # Serializes notify-state read-modify-write (D00 T02 §24 R1-F2): the
+  # ledger, the digest queue, and the undelivered set are shared by the
+  # nightly, the supervisor, and the morning reconciler, and an atomic
+  # file replace alone cannot stop two writers losing each other's
+  # entries or both sending one key. A lock that cannot be taken inside
+  # the timeout throws, so the caller fails loud instead of racing.
+  $m = New-Object System.Threading.Mutex($false, 'Local\ScratchPad.NightlyNotifyState')
+  $held = $false
+  try {
+    try { $held = $m.WaitOne([TimeSpan]::FromSeconds($TimeoutSeconds)) } catch [System.Threading.AbandonedMutexException] { $held = $true }
+    if (-not $held) { throw "notify state lock not acquired within ${TimeoutSeconds}s" }
+    return (& $Body)
+  } finally {
+    if ($held) { $m.ReleaseMutex() }
+    $m.Dispose()
+  }
+}
+
 function Read-JsonState([string]$Path, $Default) {
   # Small ignored-scratch state files (ledger, digest queue): missing
   # reads as the default, corrupt throws so the caller reports it.
   if (-not (Test-Path $Path)) { return $Default }
-  return (Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json)
+  $v = Get-Content $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+  # Windows PowerShell hands back an empty JSON array as one empty
+  # array object, so a flushed queue would read as one phantom entry;
+  # the elements are flattened here, and nulls drop.
+  $items = @()
+  foreach ($x in @($v)) {
+    if ($x -is [array]) { foreach ($y in $x) { if ($null -ne $y) { $items += $y } } }
+    elseif ($null -ne $x) { $items += $x }
+  }
+  # Unrolled on purpose: every caller collects with @(), which rebuilds
+  # the array (a comma-wrapped return would nest it as one element).
+  return $items
 }
 
 function Invoke-NightlyNotify {
@@ -120,8 +150,12 @@ function Invoke-NightlyNotify {
   param(
     [string]$Phase, [string]$RunId, [string]$ResultPath, [string]$Class,
     [string]$Title, [string[]]$Lines, [string]$StateDir,
-    [scriptblock]$Sender, [int]$Retries = 2, [datetime]$Now = (Get-Date)
+    [scriptblock]$Sender, [int]$Retries = 2, [datetime]$Now = (Get-Date),
+    [switch]$NoPersist, [int]$LockTimeoutSeconds = 60
   )
+  # -NoPersist (dry runs, R1-F1) decides and reports but writes no
+  # ledger, queue, or undelivered state, so a rehearsal can never
+  # suppress the real notification as a duplicate.
   $out = [pscustomobject]@{ Status = ''; Attempts = 0; Notes = @(); Key = '' }
   if ($Phase -ne 'final') { $out.Status = 'skipped'; $out.Notes += "not a final publication ($Phase)"; return $out }
   $sha = 'noresult'
@@ -129,6 +163,7 @@ function Invoke-NightlyNotify {
   $key = "$RunId|$sha|v$($script:NotifyVersion)"
   $out.Key = $key
   $null = New-Item -ItemType Directory -Force -Path $StateDir
+  return (Invoke-WithNotifyLock -TimeoutSeconds $LockTimeoutSeconds -Body {
   $ledgerPath = Join-Path $StateDir 'notify-ledger.json'
   $ledger = @(Read-JsonState $ledgerPath @())
   if (@($ledger | Where-Object { "$($_.key)" -eq $key }).Count -gt 0) { $out.Status = 'duplicate'; $out.Notes += "already notified for $key"; return $out }
@@ -140,7 +175,7 @@ function Invoke-NightlyNotify {
     $qPath = Join-Path $StateDir 'digest-queue.json'
     $q = @(Read-JsonState $qPath @())
     $q += [pscustomobject]@{ key = $key; run = $RunId; class = $Class; title = $Title; lines = @($Lines); at = $Now.ToString('o') }
-    Write-AtomicReport @(ConvertTo-Json @($q) -Depth 6) $qPath
+    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @($q) -Depth 6) $qPath }
     $out.Status = 'queued'; $out.Notes += "queued for the morning digest ($Class, SLA $($route.SlaHours)h, owner $($route.Owner))"
   } else {
     $ok = $false
@@ -154,26 +189,40 @@ function Invoke-NightlyNotify {
       $null = New-Item -ItemType Directory -Force -Path $uDir
       $safe = ($RunId -replace '[^A-Za-z0-9-]', '-')
       $payload = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; title = $Title; lines = @($Lines); failedAt = $Now.ToString('o'); attempts = $out.Attempts }
-      Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "$safe.json")
+      if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "$safe.json") }
       $out.Status = 'fallback'; $out.Notes += "delivery failed after $($out.Attempts) attempt(s); fallback undelivered/$safe.json, re-sent by the morning reconciler and escalated in every report until delivered"
     }
   }
   $entry.status = $out.Status
-  if (@('sent', 'queued', 'fallback') -contains $out.Status) {
+  if ((@('sent', 'queued', 'fallback') -contains $out.Status) -and (-not $NoPersist)) {
     $ledger += $entry
     Write-AtomicReport @(ConvertTo-Json @($ledger) -Depth 6) $ledgerPath
   }
+  if ($NoPersist) { $out.Notes += 'dry run: no state written' }
   return $out
+  })
 }
 
-function Get-DeliveryHealth([string]$StateDir, [datetime]$Now = (Get-Date)) {
+function Get-DeliveryHealth([string]$StateDir, [datetime]$Now = (Get-Date), [int]$StaleQueueHours = 26) {
   # Delivery-health escalation (item 3): every undelivered notification
-  # is named in every report until the reconciler delivers it. Returns
-  # Ok, Count, and Lines.
+  # is named in every report until the reconciler delivers it, and a
+  # digest queue older than a day means the reconciler is not flushing
+  # (R1-F6). Returns Ok, Count, and Lines.
   $uDir = Join-Path $StateDir 'undelivered'
   $files = @(Get-ChildItem $uDir -Filter '*.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)
-  if ($files.Count -eq 0) { return [pscustomobject]@{ Ok = $true; Count = 0; Lines = @('- Delivery: healthy (no undelivered notifications)') } }
-  $lines = @("- Delivery RED: $($files.Count) undelivered notification(s); escalate operator (toast channel failing)")
+  $stale = @()
+  try {
+    foreach ($e in @(Read-JsonState (Join-Path $StateDir 'digest-queue.json') @())) {
+      if ($null -eq $e) { continue }
+      $at = [datetime]::MinValue
+      if ([datetime]::TryParse("$($e.at)", [ref]$at) -and (($Now - $at).TotalHours -gt $StaleQueueHours)) { $stale += "$($e.run)" }
+    }
+  } catch { $stale += 'digest queue unreadable' }
+  if (($files.Count -eq 0) -and ($stale.Count -eq 0)) { return [pscustomobject]@{ Ok = $true; Count = 0; Lines = @('- Delivery: healthy (no undelivered notifications)') } }
+  $lines = @()
+  if ($stale.Count -gt 0) { $lines += "- Delivery RED: digest queue stale past ${StaleQueueHours}h ($($stale -join ', ')); escalate operator (the morning reconciler is not flushing)" }
+  if ($files.Count -eq 0) { return [pscustomobject]@{ Ok = $false; Count = $stale.Count; Lines = $lines } }
+  $lines += "- Delivery RED: $($files.Count) undelivered notification(s); escalate operator (toast channel failing)"
   foreach ($f in $files) {
     $age = ''
     try { $p = Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json; $age = " (failed $($p.failedAt), $($p.attempts) attempt(s), class $($p.class))" } catch { $age = ' (unreadable payload)' }
@@ -194,6 +243,47 @@ function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50
   $tomb = @(@($Results) | Where-Object { ($null -ne $_) -and ("$($_.day)" -eq $today) -and ("$($_.trigger)" -like 'supervisor tombstone*') })
   if (($started.Count -gt 0) -or ($tomb.Count -gt 0)) { return [pscustomobject]@{ NoStart = $false; Line = "night $today started ($($started.Count + $tomb.Count) scheduled result(s))" } }
   return [pscustomobject]@{ NoStart = $true; Line = "NO START: no scheduled nightly result for $today by $ExpectBy (check the task is enabled and fires; run the manual backup)" }
+}
+
+function Invoke-DigestFlush {
+  # The morning digest flush (D00 T02 §24 items 3 and 8, R1-F5, R1-F6).
+  # Under the notify lock it claims the whole queue, writes every
+  # queued payload whole (title plus every line, each with its own
+  # report link) to build/nightly/digest-<day>.md so nothing is lost to
+  # the toast cap, and sends one summary toast naming that file. The
+  # send retries; when every attempt fails the summary joins the
+  # undelivered set (re-sent by the next reconcile and escalated by
+  # Get-DeliveryHealth), so a failing digest channel is never silent.
+  param([string]$StateDir, [string]$Day, [scriptblock]$Sender, [int]$Retries = 2, [switch]$NoPersist, [datetime]$Now = (Get-Date))
+  return (Invoke-WithNotifyLock -Body {
+    $out = [pscustomobject]@{ Status = 'empty'; Count = 0; Attempts = 0; Notes = @(); DigestPath = '' }
+    $qPath = Join-Path $StateDir 'digest-queue.json'
+    $queue = @(@(Read-JsonState $qPath @()) | Where-Object { $null -ne $_ })
+    if ($queue.Count -eq 0) { $out.Notes += 'nothing queued'; return $out }
+    $out.Count = $queue.Count
+    $dPath = Join-Path $StateDir "digest-$Day.md"
+    $out.DigestPath = $dPath
+    $md = @("# Nightly digest: $Day", '', "$($queue.Count) routine notification(s), queued by the nightly for the morning digest (D00 T02 s24).", '')
+    foreach ($e in $queue) { $md += "## $($e.title)"; $md += ''; $md += "- Run: $($e.run) (class $($e.class), queued $($e.at))"; foreach ($l in @($e.lines)) { $md += "- $l" }; $md += '' }
+    $dg = Format-Digest $queue $Day
+    $lines = @($dg.Lines) + @("Digest: build/nightly/digest-$Day.md")
+    if (-not $NoPersist) { Write-AtomicReport $md $dPath }
+    $ok = $false
+    for ($i = 0; ($i -le $Retries) -and (-not $ok); $i++) {
+      $out.Attempts++
+      try { $ok = [bool](& $Sender $dg.Title $lines) } catch { $ok = $false; $out.Notes += "attempt $($out.Attempts) threw: $($_.Exception.Message)" }
+    }
+    if ($ok) { $out.Status = 'sent'; $out.Notes += "sent $($queue.Count) queued notification(s) after $($out.Attempts) attempt(s)" }
+    else {
+      $out.Status = 'fallback'
+      $uDir = Join-Path $StateDir 'undelivered'
+      $payload = [pscustomobject]@{ key = "digest-$Day"; run = "digest-$Day"; class = 'digest'; title = $dg.Title; lines = $lines; failedAt = $Now.ToString('o'); attempts = $out.Attempts }
+      if (-not $NoPersist) { $null = New-Item -ItemType Directory -Force -Path $uDir; Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "digest-$Day.json") }
+      $out.Notes += "digest delivery failed after $($out.Attempts) attempt(s); fallback undelivered/digest-$Day.json, the full digest stays in digest-$Day.md"
+    }
+    if (-not $NoPersist) { Write-AtomicReport @('[]') $qPath } else { $out.Notes += 'dry run: no state written' }
+    return $out
+  })
 }
 
 function Format-Digest($Queue, [string]$Day) {
@@ -217,10 +307,12 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   # silently. Returns Ok plus Breaks.
   $breaks = @()
   $legMap = @{ 'Run A (default)' = 'run-a'; 'Run B (primary)' = 'run-b'; 'Interactive (collection)' = 'interactive' }
+  $seenLegs = @()
   foreach ($ln in $ReportLines) {
     $m = [regex]::Match("$ln", '^\| (Run A \(default\)|Run B \(primary\)|Interactive \(collection\)) \| (\d+) passed, (\d+) failed, (\d+) skipped[^|]*\| ([^|]*)\|')
     if (-not $m.Success) { continue }
     $key = $legMap[$m.Groups[1].Value]
+    $seenLegs += $key
     $leg = $null
     try { $leg = $Result.legs.$key } catch { }
     if ($null -eq $leg) { $breaks += "${key}: report has counts, result has no leg"; continue }
@@ -236,6 +328,15 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
       if (($null -eq $rg) -or ([int]$rg -ne [int]$gm.Groups[1].Value)) { $breaks += "$key gate: report exit $($gm.Groups[1].Value) vs result $rg" }
     }
   }
+  # A leg the result says ran must have its counts row (R1-F3).
+  foreach ($key in @('run-a', 'run-b', 'interactive')) {
+    $leg = $null
+    try { $leg = $Result.legs.$key } catch { }
+    if ($null -eq $leg) { continue }
+    $ran = $true
+    try { if ($null -ne $leg.ran) { $ran = [bool]$leg.ran } } catch { }
+    if ($ran -and ($seenLegs -notcontains $key)) { $breaks += "${key}: result ran the leg, report has no counts row" }
+  }
   $inSec = $false
   $repInc = @()
   foreach ($ln in $ReportLines) {
@@ -246,20 +347,51 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   $resInc = @()
   foreach ($ln in @($Result.incidents)) { $im = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) '); if ($im.Success) { $resInc += $im.Groups[1].Value } }
   if ((@($repInc | Sort-Object) -join ',') -ne (@($resInc | Sort-Object) -join ',')) { $breaks += "incidents: report [$(@($repInc | Sort-Object) -join ',')] vs result [$(@($resInc | Sort-Object) -join ',')]" }
-  $tm = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Timings: .*reserve=(-?\d+)s') } | Where-Object { $_.Success }) | Select-Object -First 1
-  if ($null -ne $tm) {
-    $rr = $null
+  # Budget (R1-F3): the report's Budget line must exist and carry both
+  # fields the result carries.
+  $bm = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Budget: consumed=(-?\d+)s reserve=(-?\d+)s$') } | Where-Object { $_.Success }) | Select-Object -First 1
+  if ($null -eq $bm) { $breaks += 'budget: report carries no Budget line' }
+  else {
+    $rc = $null; $rr = $null
+    try { $rc = [int]$Result.consumed } catch { }
     try { $rr = [int]$Result.reserve } catch { }
-    if ($rr -ne [int]$tm.Groups[1].Value) { $breaks += "reserve: report $($tm.Groups[1].Value)s vs result $rr" }
+    if ($rc -ne [int]$bm.Groups[1].Value) { $breaks += "budget consumed: report $($bm.Groups[1].Value)s vs result $rc" }
+    if ($rr -ne [int]$bm.Groups[2].Value) { $breaks += "budget reserve: report $($bm.Groups[2].Value)s vs result $rr" }
   }
-  $em = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Environment: os (\S+); dpi (.+)$') } | Where-Object { $_.Success }) | Select-Object -First 1
-  if ($null -ne $em) {
-    $eo = ''; $ed = ''
-    try { $eo = "$($Result.env.os)"; $ed = "$($Result.env.dpi)" } catch { }
-    if (($eo -ne $em.Groups[1].Value) -or ($ed -ne $em.Groups[2].Value)) { $breaks += "environment: report os $($em.Groups[1].Value) dpi $($em.Groups[2].Value) vs result os $eo dpi $ed" }
-  } else { $breaks += 'environment: report carries no Environment line' }
+  # Soak (R1-F3): the report's soak verdict line matches the result's.
+  $soakSec = $false
+  $repSoak = ''
+  foreach ($ln in $ReportLines) {
+    if ("$ln" -eq '## Soak') { $soakSec = $true; continue }
+    if ($soakSec -and ("$ln" -like '## *')) { break }
+    if (-not $soakSec) { continue }
+    if ("$ln" -like '- Verdict: GREEN*') { $repSoak = 'green'; break }
+    if ("$ln" -like '- Verdict: RED*') { $repSoak = 'red'; break }
+    if ("$ln" -like '(no soak iterations ran*') { $repSoak = 'skipped'; break }
+  }
+  $resSoak = ''
+  try { $resSoak = "$($Result.soak.verdict)" } catch { }
+  if (($repSoak -ne '') -or ($resSoak -ne '')) {
+    if ($repSoak -ne $resSoak) { $breaks += "soak: report $(if ($repSoak -eq '') { 'no verdict' } else { $repSoak }) vs result $resSoak" }
+  }
+  # Environment (R1-F3): every field, from one line the run prints off
+  # the same object it writes to the JSON.
+  $envKeys = @('os', 'powershell', 'dotnet', 'session', 'topology', 'dpi', 'adapters', 'settings')
+  $envLine = @($ReportLines | Where-Object { "$_" -like '- Environment: *' }) | Select-Object -First 1
+  if ($null -eq $envLine) { $breaks += 'environment: report carries no Environment line' }
+  else {
+    foreach ($k in $envKeys) {
+      $want = ''
+      try { $want = "$($Result.env.$k)" } catch { }
+      $got = $null
+      foreach ($part in ("$envLine".Substring(15) -split '; ')) { if ($part.StartsWith("$k ")) { $got = $part.Substring($k.Length + 1) } elseif ($part -eq $k) { $got = '' } }
+      if ($null -eq $got) { $breaks += "environment ${k}: report omits it" }
+      elseif ($got -ne $want) { $breaks += "environment ${k}: report '$got' vs result '$want'" }
+    }
+  }
   $xm = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Exit: (\d+)$') } | Where-Object { $_.Success }) | Select-Object -First 1
-  if ($null -ne $xm) {
+  if ($null -eq $xm) { $breaks += 'exit: report carries no Exit line' }
+  else {
     $rx = $null
     try { $rx = [int]$Result.exit } catch { }
     if ($rx -ne [int]$xm.Groups[1].Value) { $breaks += "exit: report $($xm.Groups[1].Value) vs result $rx" }
@@ -273,8 +405,13 @@ function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLi
   # closed on verified recovery rides the notification by id.
   $notices = @()
   $day = "$($Current.day)"
+  $curId = "$($Current.identity)"
+  if ($curId -eq '') { $curId = "$($Current.stamp)" }
+  # Only the night's canonical run speaks for the night (R1-F4): a GREEN
+  # manual retry after a RED timer run is not a recovered night.
+  $isCanonicalNow = $Canonical.ContainsKey($day) -and ($Canonical[$day].Canonical -eq $curId)
   $prev = @($Canonical.Keys | Where-Object { [string]::CompareOrdinal($_, $day) -lt 0 } | Sort-Object -Descending) | Select-Object -First 1
-  if (($null -ne $prev) -and ("$($Current.verdict)" -eq 'green')) {
+  if ($isCanonicalNow -and ($null -ne $prev) -and ("$($Current.verdict)" -eq 'green')) {
     $pid0 = $Canonical[$prev].Canonical
     $pr = @(@($Results) | Where-Object { ("$($_.identity)" -eq $pid0) -or ("$($_.stamp)" -eq $pid0) }) | Select-Object -First 1
     if (($null -ne $pr) -and (@('red', 'cancelled') -contains "$($pr.verdict)")) { $notices += "Recovered: night $prev was $($pr.verdict.ToString().ToUpper()), $day is GREEN" }

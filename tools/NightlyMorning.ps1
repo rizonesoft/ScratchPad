@@ -41,30 +41,24 @@ foreach ($f in @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -File -
 $ns = Get-NoStartVerdict $results $now $ExpectBy
 $log += "no-start: $($ns.Line)"
 if ($ns.NoStart) {
-  $r = Invoke-NightlyNotify -Phase 'final' -RunId "no-start-$day" -ResultPath '' -Class 'scheduler-no-start' -Title "Nightly $day : NO START (scheduler-no-start)" -Lines @($ns.Line, "Report: build/nightly/morning-reconcile.log") -StateDir $NightDir -Sender $sender -Now $now
+  $r = Invoke-NightlyNotify -Phase 'final' -RunId "no-start-$day" -ResultPath '' -Class 'scheduler-no-start' -Title "Nightly $day : NO START (scheduler-no-start)" -Lines @($ns.Line, "Report: build/nightly/morning-reconcile.log") -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
   $log += "no-start notify: $($r.Status) ($($r.Notes -join '; '))"
 }
 
-# (2) Digest: every queued routine notification in one toast.
-$qPath = Join-Path $NightDir 'digest-queue.json'
-$queue = @()
-try { $queue = @(Read-JsonState $qPath @()) } catch { $log += "digest queue unreadable: $($_.Exception.Message)" }
-$dg = Format-Digest $queue $day
-if ($null -ne $dg) {
-  $sent = $false
-  try { $sent = [bool](& $sender $dg.Title @($dg.Lines + @('Report: build/nightly/morning-' + $day + '.md'))) } catch { $sent = $false }
-  if ($sent) {
-    if (-not $DryRun) { Write-AtomicReport @('[]') $qPath }
-    $log += "digest: sent $(@($queue).Count) queued notification(s)"
-  } else { $log += "digest: delivery failed, $(@($queue).Count) stay queued for the next reconcile (reports escalate via the queue age)" }
-} else { $log += 'digest: nothing queued' }
+# (2) Digest: every queued routine notification, whole, in
+# build/nightly/digest-<day>.md plus one summary toast; a failed send
+# falls back to the undelivered set.
+try {
+  $df = Invoke-DigestFlush -StateDir $NightDir -Day $day -Sender $sender -NoPersist:$DryRun -Now $now
+  $log += "digest: $($df.Status) ($($df.Notes -join '; '))"
+} catch { $log += "digest: failed: $($_.Exception.Message)" }
 
 # (3) Undelivered: re-send, remove on success.
 foreach ($u in @(Get-ChildItem (Join-Path $NightDir 'undelivered') -Filter '*.json' -File -ErrorAction SilentlyContinue)) {
   try {
     $p = Get-Content $u.FullName -Raw -Encoding UTF8 | ConvertFrom-Json
     $ok = [bool](& $sender "$($p.title) (re-sent)" @($p.lines))
-    if ($ok) { if (-not $DryRun) { Remove-Item $u.FullName -Force }; $log += "undelivered $($u.Name): re-sent" }
+    if ($ok) { if (-not $DryRun) { Invoke-WithNotifyLock -Body { Remove-Item $u.FullName -Force } }; $log += "undelivered $($u.Name): re-sent" }
     else { $log += "undelivered $($u.Name): still failing" }
   } catch { $log += "undelivered $($u.Name): unreadable or failed: $($_.Exception.Message)" }
 }
