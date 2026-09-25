@@ -15,7 +15,11 @@
   manifest and KEEP-marks the source; the copy refuses when free space
   falls below twice the source size (or -RequireFreeBytes), and any
   copy, hash, or write failure removes the partial target so no half
-  retain ever stands. Exactly one verb per invocation. Exit 0 clean,
+  retain ever stands. -Retain also refuses loud when the KEEP-exempt
+  set would pass its quota (-MaxRetained runs, default 20, and
+  -MaxRetainedBytes, default 2 GB, counting retained copies plus
+  KEEP-marked stamp dirs; D00 T02 §22 item 2), so exempt evidence
+  cannot grow into the low-disk refusal. Exactly one verb per invocation. Exit 0 clean,
   1 faults, 2 usage. The scheduled shape is a weekly -Verify plus a
   weekly -Prune -Execute from the operator's maintenance window.
 #>
@@ -29,7 +33,10 @@ param(
   [string]$Name = '',
   [string]$Provenance = '',
   [int]$OlderThanDays = 30,
-  [long]$RequireFreeBytes = 0
+  [long]$RequireFreeBytes = 0,
+  [int]$MaxRetained = 20,
+  [long]$MaxRetainedBytes = 2GB,
+  [string]$WorkspaceRoot = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -37,6 +44,10 @@ $verbs = @($Verify, $Prune, $Retain | Where-Object { $_ }).Count
 if ($verbs -ne 1) { Write-Output 'usage: exactly one of -Verify, -Prune, -Retain'; exit 2 }
 if ($Execute -and (-not $Prune)) { Write-Output 'usage: -Execute needs -Prune'; exit 2 }
 $Root = Split-Path -Parent $PSScriptRoot
+# Fixture override (tools/NightlyRetention.Tests.ps1): the same verbs run
+# against a temp workspace so quota and verify proofs never touch the
+# real evidence.
+if ($WorkspaceRoot -ne '') { $Root = (Resolve-Path $WorkspaceRoot).Path }
 $NightDir = Join-Path $Root 'build\nightly'
 $RetDir = Join-Path $NightDir 'retained'
 $EvDir = Join-Path $Root 'docs\nightly-evidence'
@@ -185,6 +196,34 @@ $target = Join-Path $RetDir $Name
 $manifest = Join-Path $EvDir ($Name + '.md')
 if ((Test-Path $target) -or (Test-Path $manifest)) { Write-Output "retain: target exists (no overwrite): $Name"; exit 1 }
 $srcBytes = (Get-ChildItem -Path $srcFull -Recurse -File | Measure-Object Length -Sum).Sum
+# Quota over the KEEP exemptions (D00 T02 §22 item 2, D00-T02-S15-PR22):
+# retained copies plus KEEP-marked stamp dirs never age out, so their
+# count and bytes are capped, or stamped evidence would grow into the
+# low-disk refusal it guards against. Over quota refuses loud before
+# any byte moves; the operator releases a citation (or raises the cap
+# on the command line, recorded with the retain) and re-runs.
+$exempt = @{}
+$exemptBytes = [long]0
+foreach ($d in @(Get-ChildItem -Path $RetDir -Directory -ErrorAction SilentlyContinue)) {
+  $exempt["retained/$($d.Name)"] = $true
+  $exemptBytes += [long]((Get-ChildItem -Path $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum)
+}
+foreach ($d in @(Get-ChildItem -Path $NightDir -Directory -ErrorAction SilentlyContinue)) {
+  if (($d.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (Test-Path (Join-Path $d.FullName 'KEEP.txt'))) {
+    $exempt["kept/$($d.Name)"] = $true
+    $exemptBytes += [long]((Get-ChildItem -Path $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum)
+  }
+}
+$afterCount = @($exempt.Keys | Where-Object { $_ -like 'retained/*' }).Count + 1
+$keptCount = @($exempt.Keys | Where-Object { $_ -like 'kept/*' }).Count
+if (($afterCount -gt $MaxRetained) -or ($keptCount -ge $MaxRetained)) {
+  Write-Output "retain: QUOTA REFUSED: $afterCount retained runs after this retain, $keptCount KEEP-marked stamp dirs (cap $MaxRetained each); release a stamp citation or pass -MaxRetained with the reason recorded; nothing copied"
+  exit 1
+}
+if (($exemptBytes + [long]$srcBytes * 2) -gt $MaxRetainedBytes) {
+  Write-Output "retain: QUOTA REFUSED: exempt evidence $([int]($exemptBytes / 1MB)) MB plus this retain $([int]($srcBytes * 2 / 1MB)) MB (copy plus KEEP-marked source) exceeds $([int]($MaxRetainedBytes / 1MB)) MB; release a stamp citation or pass -MaxRetainedBytes with the reason recorded; nothing copied"
+  exit 1
+}
 $drive = (Get-Item $NightDir).PSDrive.Name
 $free = (Get-PSDrive -Name $drive).Free
 $need = if ($RequireFreeBytes -gt 0) { [long]$RequireFreeBytes } else { [long]($srcBytes * 2) }

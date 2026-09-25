@@ -182,18 +182,18 @@ if ($soakRan) { $soakVerdict = if ($soakFailed.Count -gt 0) { 'red' } else { 'gr
 
 # Incidents: verbatim INC lines when the report carries them (machine
 # ids, none pre-§15); else derived from trx failures through the same
-# formatter the live path uses, so recurrence sees the old reds. The
-# parse mirrors Format-SoakLedger (first message line, 160ch).
+# formatter the live path uses, so recurrence sees the old reds. Soak
+# iterations pass their trx basename (ui-soak-N), which the identity
+# contract folds into its suite phase exactly as the live ledger does.
 function Get-TrxIncidentInputs($trxPath, $where) {
   $out = @()
   if (-not (Test-Path $trxPath)) { return $out }
   $sum = $null
   try { $sum = Get-TrxSummary $trxPath } catch { return $out }
   if ($null -eq $sum) { return $out }
-  foreach ($fl in @($sum.Failed)) {
-    $m = [regex]::Match($fl, '^\s*-\s*([^:]+):\s*(.*)$')
-    if ($m.Success) { $out += [pscustomobject]@{ Test = $m.Groups[1].Value.Trim(); Message = $m.Groups[2].Value.Trim(); Where = $where } }
-  }
+  # Structured failures (D00 T02 §22 item 3): message plus stack feed
+  # the same incident identity contract the live path uses.
+  foreach ($fd in @($sum.FailedDetail)) { $out += [pscustomobject]@{ Test = $fd.Test; Message = $fd.Message; Where = $where; Stack = $fd.Stack } }
   return $out
 }
 $incidents = @($rep | Where-Object { $_ -match '^- INC-[0-9a-f]{8} `' })
@@ -203,7 +203,7 @@ if ($incidents.Count -eq 0) {
   foreach ($t in @(Get-ChildItem $RunDir -Filter 'run-a*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Run A' }
   foreach ($t in @(Get-ChildItem $RunDir -Filter 'run-b*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Run B' }
   foreach ($t in @(Get-ChildItem $RunDir -Filter 'interactive.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Interactive' }
-  foreach ($t in @(Get-ChildItem $RunDir -Filter '*-soak-*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName 'Soak' }
+  foreach ($t in @(Get-ChildItem $RunDir -Filter '*-soak-*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName $t.BaseName }
   if ($inputs.Count -gt 0) { $incidents = @(Format-Incidents $inputs); $incidentsDerived = $true }
 }
 $soakFailures = @($inputs | Where-Object { $_.Where -eq 'Soak' })

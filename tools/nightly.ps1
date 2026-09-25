@@ -1098,19 +1098,44 @@ $report += ''
 $report += '## Incidents'
 $report += ''
 $incidentInputs = @()
-foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sumI) )) {
-  if (($null -ne $pair[1]) -and ($pair[1].FailedCount -gt 0)) {
-    foreach ($fl in $pair[1].Failed) {
-      $fm = [regex]::Match($fl, '^\s*-\s*([^:]+):\s*(.*)$')
-      if ($fm.Success) { $incidentInputs += [pscustomobject]@{ Test = $fm.Groups[1].Value.Trim(); Message = $fm.Groups[2].Value.Trim(); Where = $pair[0] } }
-    }
+# Structured failures (D00 T02 §22 item 3): whole message plus stack
+# feed the incident identity contract; passed names per phase feed the
+# lifecycle's verified-recovery close (item 6).
+$passedByPhase = @{ 'ui-soak' = @($soakLedger.PassedByFamily['ui-soak']); 'protocol-soak' = @($soakLedger.PassedByFamily['protocol-soak']) }
+foreach ($pair in @( @('Run A', $sumA, 'run-a'), @('Run B', $sumB, 'run-b'), @('Interactive', $sumI, 'interactive') )) {
+  if ($null -eq $pair[1]) { continue }
+  $passedByPhase[$pair[2]] = @($pair[1].PassedNames)
+  if ($pair[1].FailedCount -gt 0) {
+    foreach ($fd in @($pair[1].FailedDetail)) { $incidentInputs += [pscustomobject]@{ Test = $fd.Test; Message = $fd.Message; Where = $pair[0]; Stack = $fd.Stack } }
   }
 }
 $incidentInputs += @($soakLedger.Failures)
+$incidentGroups = @(Get-IncidentGroups $incidentInputs)
 $incidentLines = @(Format-Incidents $incidentInputs)
 $idc = Test-RunIdConsistency $nightDir $stamp $PID $incidentLines $priorPointer
 if (-not $idc.Ok) { $failed = $true }
 if ($incidentLines.Count -eq 0) { $report += '(none)' } else { $report += $incidentLines }
+$report += ''
+# Incident lifecycle (D00 T02 §22 item 6): the cross-night ledger in
+# ignored scratch creates each incident once, appends recurrences,
+# names the quarantine owner, and closes on verified recovery. A
+# ledger that cannot be read or written reds the run: without it every
+# failure would re-file as new.
+$report += '## Incident ledger'
+$report += ''
+$ledgerPath = Join-Path $nightDir 'incidents.json'
+$ledgerRead = Read-IncidentLedger $ledgerPath
+if (-not $ledgerRead.Ok) {
+  $failed = $true
+  $report += "- RED: $($ledgerRead.Error) (ledger left untouched; repair or move it aside, then re-run)"
+} else {
+  $ledgerUpd = Update-IncidentLedger $ledgerRead.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md'))
+  $ledgerErr = ''
+  try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
+  if ($ledgerErr -ne '') { $failed = $true; $report += "- RED: $ledgerErr" }
+  $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
+  if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }
+}
 $report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
 # Interactive collection per open debt, append Night-collected on
@@ -1234,6 +1259,24 @@ $report += "- Launch: $($launch.Line)"
 $report += "- Action: task [$taskActionLive] invoked [$invokedWith]"
 $report += "- Scheduler: $($schedLines -join '; ')"
 $report += "- Tree: $treeLine"
+# Retained catalog (D00 T02 §22 item 7, D00-T02-S17-PR30): unattended
+# runs never retain or write a tracked manifest (retain is attended;
+# its docs/nightly-evidence manifest commits with the citing section),
+# so a night needs no commit. The run re-verifies the catalog read-only
+# and a fault reds it: loss of retained evidence is an incident.
+$catalogLine = 'unknown'
+try {
+  $catOut = @(& (Join-Path $PSScriptRoot 'NightlyRetention.ps1') -Verify 2>&1 | ForEach-Object { "$_" })
+  $catCode = $LASTEXITCODE
+  $catLast = if ($catOut.Count -gt 0) { $catOut[-1] } else { '(no output)' }
+  if ($catCode -eq 0) { $catalogLine = "current ($catLast)" }
+  else {
+    $failed = $true
+    $catFaults = @($catOut | Where-Object { $_ -like '*FAULT*' } | Select-Object -First 3)
+    $catalogLine = "RED exit $catCode ($(($catFaults + @($catLast) | Select-Object -Unique) -join '; '))"
+  }
+} catch { $failed = $true; $catalogLine = "RED verify threw: $($_.Exception.Message)" }
+$report += "- Catalog: $catalogLine"
 if ($idc.Ok) { $report += '- Identity: consistent (directories, archives, loser reports, incidents, pointers)' } else { foreach ($b in $idc.Breaks) { $report += "- Identity RED: $b" } }
 $report += "- Timings: $timLine"
 $report += $dur.Lines

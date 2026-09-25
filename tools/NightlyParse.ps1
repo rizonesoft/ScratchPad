@@ -27,7 +27,20 @@ function Get-TrxSummary([string]$TrxPath) {
     if ($_.Output -and $_.Output.ErrorInfo -and $_.Output.ErrorInfo.Message) { $reason = (($_.Output.ErrorInfo.Message -split "`r?`n")[0]) }
     '  - ' + $_.testName + ': ' + $reason
   })
-  return [pscustomobject]@{ Passed = $passed; FailedCount = $failed.Count; Failed = $failLines; Skipped = $skipLines; SkippedCount = $skipped.Count }
+  # Structured failures for the incident identity contract (D00 T02
+  # §22 item 3): the whole message plus the stack feed the failure
+  # class, HRESULT, and stack-signature parts of the key.
+  $failDetail = @($failed | ForEach-Object {
+    $msg = ''
+    $stack = ''
+    if ($_.Output -and $_.Output.ErrorInfo) {
+      if ($_.Output.ErrorInfo.Message) { $msg = "$($_.Output.ErrorInfo.Message)" }
+      if ($_.Output.ErrorInfo.StackTrace) { $stack = "$($_.Output.ErrorInfo.StackTrace)" }
+    }
+    [pscustomobject]@{ Test = "$($_.testName)"; Message = $msg; Stack = $stack }
+  })
+  $passedNames = @($results | Where-Object { $_.outcome -eq 'Passed' } | ForEach-Object { "$($_.testName)" })
+  return [pscustomobject]@{ Passed = $passed; FailedCount = $failed.Count; Failed = $failLines; Skipped = $skipLines; SkippedCount = $skipped.Count; FailedDetail = $failDetail; PassedNames = $passedNames }
 }
 
 function Get-TranscriptRows([string]$LogPath) {
@@ -38,7 +51,11 @@ function Get-TranscriptRows([string]$LogPath) {
   $rows = @()
   if (-not (Test-Path $LogPath)) { return $rows }
   foreach ($ln in (Get-Content $LogPath)) {
-    $m = [regex]::Match($ln, '(Passed!|Failed!)\s+-\s+Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+),.*-\s*(\S+)\s*\(net')
+    # All three VSTest banners: an entirely skipped assembly prints
+    # `Skipped! - Failed: 0, Passed: 0, Skipped: N` (D00 T02 §22 item 4,
+    # observed on SDK 10.0.400), and dropping it would vanish the
+    # assembly from conservation and the leg cell.
+    $m = [regex]::Match($ln, '(Passed!|Failed!|Skipped!)\s+-\s+Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+),.*-\s*(\S+)\s*\(net')
     if ($m.Success) {
       $rows += [pscustomobject]@{ Assembly = $m.Groups[6].Value; Passed = [int]$m.Groups[3].Value; Failed = [int]$m.Groups[2].Value; Skipped = [int]$m.Groups[4].Value; Total = [int]$m.Groups[5].Value }
     }
@@ -145,20 +162,29 @@ function Get-LegSummary([string[]]$TrxPaths, [string[]]$LogPaths) {
     $ms = ($trxs | Measure-Object SkippedCount -Sum).Sum
     $mfail = @()
     $mskip = @()
-    foreach ($t in $trxs) { $mfail += $t.Failed; $mskip += $t.Skipped }
-    return [pscustomobject]@{ Passed = $mp; FailedCount = $mf; Failed = $mfail; Skipped = $mskip; SkippedCount = $ms }
+    $mdetail = @()
+    $mpassed = @()
+    foreach ($t in $trxs) { $mfail += $t.Failed; $mskip += $t.Skipped; $mdetail += @($t.FailedDetail); $mpassed += @($t.PassedNames) }
+    return [pscustomobject]@{ Passed = $mp; FailedCount = $mf; Failed = $mfail; Skipped = $mskip; SkippedCount = $ms; FailedDetail = $mdetail; PassedNames = $mpassed }
   }
   $p = ($rows | Measure-Object Passed -Sum).Sum
   $f = ($rows | Measure-Object Failed -Sum).Sum
   $s = ($rows | Measure-Object Skipped -Sum).Sum
   $failLines = @()
   $trxNames = @()
+  $failDetail = @()
+  $passedNames = @()
   foreach ($t in $trxs) {
     $failLines += $t.Failed
     $trxNames += @($t.Failed | ForEach-Object { ($_ -replace '^  - ([^:]+):.*$', '$1') })
+    $failDetail += @($t.FailedDetail)
+    $passedNames += @($t.PassedNames)
   }
   foreach ($n in $failNames) {
-    if ($trxNames -notcontains $n) { $failLines += "  - $n : see transcript" }
+    if ($trxNames -notcontains $n) {
+      $failLines += "  - $n : see transcript"
+      $failDetail += [pscustomobject]@{ Test = $n; Message = 'see transcript'; Stack = '' }
+    }
   }
   $skipLines = @()
   foreach ($t in $trxs) { $skipLines += $t.Skipped }
@@ -167,7 +193,7 @@ function Get-LegSummary([string[]]$TrxPaths, [string[]]$LogPaths) {
     if ($trxSkipNames -notcontains $n) { $skipLines += "  - $n : see transcript" }
   }
   $asm = ($rows | ForEach-Object { "$($_.Assembly) $($_.Passed)/$($_.Failed)/$($_.Skipped)" }) -join ', '
-  return [pscustomobject]@{ Passed = $p; FailedCount = $f; Failed = $failLines; Skipped = $skipLines; SkippedCount = $s; Assemblies = $asm }
+  return [pscustomobject]@{ Passed = $p; FailedCount = $f; Failed = $failLines; Skipped = $skipLines; SkippedCount = $s; Assemblies = $asm; FailedDetail = $failDetail; PassedNames = $passedNames }
 }
 
 function Test-CountConservation([string]$Leg, [string[]]$TrxPaths, [string[]]$LogPaths, [bool]$EnforceExpected, [string[]]$RunAAssemblies) {
@@ -289,12 +315,16 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [
   $failedNames = @()
   $unproven = @()
   $failures = @()
+  # Passed test names per suite family feed incident recovery (D00 T02
+  # §22 item 6): only proved or FAILED iterations count, never killed
+  # or cut ones, whose trx proves nothing.
+  $passedByFamily = @{ 'ui-soak' = @(); 'protocol-soak' = @() }
   # -SkipSoak never executes an iteration: the empty shape prints only
   # here, never from an all-failed ledger (D00 T02 §15 R2-F6). Forced
   # skips name their reason instead of the flag (D00 T02 §15 R4-F6).
   if (-not $Ran) {
-    if ($SkipReason -ne '') { return [pscustomobject]@{ Rows = @("(no soak iterations ran: $SkipReason)"); Failed = $false; Failures = @() } }
-    return [pscustomobject]@{ Rows = @('(no soak iterations ran: -SkipSoak)'); Failed = $false; Failures = @() } }
+    if ($SkipReason -ne '') { return [pscustomobject]@{ Rows = @("(no soak iterations ran: $SkipReason)"); Failed = $false; Failures = @(); PassedByFamily = $passedByFamily } }
+    return [pscustomobject]@{ Rows = @('(no soak iterations ran: -SkipSoak)'); Failed = $false; Failures = @(); PassedByFamily = $passedByFamily } }
   foreach ($n in $names) {
     $st = Get-TrxSummary (Join-Path $TrxDir "$n.trx")
     if ($null -eq $st) {
@@ -315,13 +345,14 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [
     elseif (($Failed -contains $n) -and ($st.FailedCount -eq 0)) { $unproven += $n; $rows += "- $n : nonzero exit, trx carries no Failed outcomes (aborted host suspected: unproven; owes triage: re-drive or carry)" }
     elseif ($st.FailedCount -gt 0) {
       $failedNames += $n; $rows += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped (FAILED)"; $rows += $st.Failed
-      foreach ($fl in $st.Failed) {
-        $fm = [regex]::Match($fl, '^\s*-\s*([^:]+):\s*(.*)$')
-        if ($fm.Success) { $failures += [pscustomobject]@{ Test = $fm.Groups[1].Value.Trim(); Message = $fm.Groups[2].Value.Trim(); Where = $n } }
-      }
+      foreach ($fd in @($st.FailedDetail)) { $failures += [pscustomobject]@{ Test = $fd.Test; Message = $fd.Message; Where = $n; Stack = $fd.Stack } }
+      $family = $n -replace '-\d+$', ''
+      $passedByFamily[$family] = @($passedByFamily[$family]) + @($st.PassedNames)
     }
     else {
       $proved++
+      $family = $n -replace '-\d+$', ''
+      $passedByFamily[$family] = @($passedByFamily[$family]) + @($st.PassedNames)
       if ($n -like 'ui-soak-*') { $uiProved++ } else { $protocolProved++ }
       $rows += "- $n : $($st.Passed) passed, $($st.FailedCount) failed, $($st.Skipped.Count) skipped (proved)"
     }
@@ -339,7 +370,7 @@ function Format-SoakLedger([string]$TrxDir, [string[]]$Killed, [string[]]$Cut, [
     $grade = if ($minMet) { "degraded (minimum 3+3 met: ui=$uiProved protocol=$protocolProved)" } else { "minimum MISSED (ui=$uiProved/3 protocol=$protocolProved/3; hunt void, full re-drive owed)" }
     $verdict = "- Verdict: RED ($($bits -join '; '); $grade; fails the run like a leg)"
   }
-  return [pscustomobject]@{ Rows = (@($verdict) + $rows); Failed = ($bits.Count -gt 0); Failures = $failures }
+  return [pscustomobject]@{ Rows = (@($verdict) + $rows); Failed = ($bits.Count -gt 0); Failures = $failures; PassedByFamily = $passedByFamily }
 }
 
 function Format-LegRow([string]$Leg, $Sum, $Gate, [string]$LogName, [string]$Note = '') {
@@ -444,7 +475,7 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
   } catch { $notes += "- $Leg : screenshot failed: $($_.Exception.Message)" }
   $wins = Join-Path $CaptureDir "$Leg-windows.txt"
   try {
-    Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowTitle -ne '' } | ForEach-Object { "pid=$($_.Id) $($_.ProcessName): $($_.MainWindowTitle)" } | Set-Content -Path $wins -Encoding UTF8
+    Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowTitle -ne '' } | ForEach-Object { Format-WindowRow $_.Id $_.ProcessName $_.MainWindowTitle } | Set-Content -Path $wins -Encoding UTF8
     $notes += "- $Leg : window metadata $Leg-windows.txt"
   } catch { $notes += "- $Leg : window list failed: $($_.Exception.Message)" }
   $evts = Join-Path $CaptureDir "$Leg-events.txt"
@@ -469,6 +500,74 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
     }
   }
   if (-not $Killed) { $notes += "- $Leg : no dump (process exited before capture)" }
+  $notes += @(Protect-CaptureDir $CaptureDir $Leg)
+  return $notes
+}
+
+# Failure-capture policy (D00 T02 §22 item 1, D00-T02-S15-PR21;
+# docs/testing.md "Failure-capture policy"): captures never leave the
+# machine, window titles of processes the run does not own are
+# redacted at write, every text capture is secret-scanned and redacted
+# on a hit, and a capture directory over its size cap drops its
+# screenshots. Retention follows the run evidence (30 days, prune).
+$script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'dotnet', 'ForegroundLog', 'JobControl', 'powershell', 'pwsh')
+$script:CaptureMaxBytes = 25MB
+$script:SecretPatterns = @(
+  @('github-token', 'gh[pousr]_[A-Za-z0-9]{36,}'),
+  @('github-pat', 'github_pat_[A-Za-z0-9_]{22,}'),
+  @('anthropic-key', 'sk-ant-[A-Za-z0-9_-]{20,}'),
+  @('openai-key', 'sk-(?:proj-)?[A-Za-z0-9_-]{32,}'),
+  @('aws-access-key', 'AKIA[0-9A-Z]{16}'),
+  @('slack-token', 'xox[baprs]-[A-Za-z0-9-]{10,}'),
+  @('private-key', '-----BEGIN [A-Z ]*PRIVATE KEY-----'),
+  @('bearer-token', '(?i)\bbearer\s+[A-Za-z0-9._~+/-]{20,}'),
+  @('assigned-secret', '(?i)\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*[^\s''"]{6,}')
+)
+
+function Format-WindowRow([int]$ProcId, [string]$Name, [string]$Title) {
+  # Titles name open documents and pages, so only processes the run
+  # owns keep theirs; every other title is redacted at write.
+  if ($script:CaptureOwnedProcesses -contains $Name) { return "pid=$ProcId ${Name}: $Title" }
+  return "pid=$ProcId ${Name}: [title redacted]"
+}
+
+function Test-CaptureSecrets([string]$Text) {
+  # Secret scan over one text capture: returns the pattern names that
+  # hit (empty when clean). Names only, never the matched value.
+  $hits = @()
+  foreach ($p in $script:SecretPatterns) {
+    if ([regex]::IsMatch("$Text", $p[1])) { $hits += $p[0] }
+  }
+  return $hits
+}
+
+function Protect-CaptureDir([string]$CaptureDir, [string]$Leg) {
+  # Enforces the capture policy on a written capture directory: every
+  # .txt/.log/.json capture is secret-scanned and, on a hit, replaced
+  # whole by a redaction note naming the patterns (the scan fails that
+  # capture rather than trusting a partial mask); then, when the
+  # directory exceeds the size cap, screenshots drop first. Never
+  # throws; returns report notes.
+  $notes = @()
+  if (-not (Test-Path $CaptureDir)) { return $notes }
+  foreach ($f in @(Get-ChildItem -Path $CaptureDir -File -ErrorAction SilentlyContinue | Where-Object { @('.txt', '.log', '.json') -contains $_.Extension.ToLower() })) {
+    try {
+      $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($f.FullName)))
+      if ($hits.Count -gt 0) {
+        "[capture redacted by the secret scan: $($hits -join ', '); see docs/testing.md Failure-capture policy]" | Set-Content -Path $f.FullName -Encoding UTF8
+        $notes += "- $Leg : SECRET-SCAN redacted $($f.Name) ($($hits -join ', '))"
+      }
+    } catch { $notes += "- $Leg : SECRET-SCAN could not read $($f.Name): $($_.Exception.Message)" }
+  }
+  try {
+    $total = (@(Get-ChildItem -Path $CaptureDir -File -Recurse -ErrorAction SilentlyContinue) | Measure-Object Length -Sum).Sum
+    if ($total -gt $script:CaptureMaxBytes) {
+      foreach ($png in @(Get-ChildItem -Path $CaptureDir -Filter '*.png' -File -ErrorAction SilentlyContinue)) {
+        Remove-Item $png.FullName -Force
+        $notes += "- $Leg : size cap dropped $($png.Name) (capture dir $([int]($total / 1MB)) MB over $([int]($script:CaptureMaxBytes / 1MB)) MB)"
+      }
+    }
+  } catch { $notes += "- $Leg : size cap check failed: $($_.Exception.Message)" }
   return $notes
 }
 
@@ -791,34 +890,224 @@ function Get-StringHash([string]$Text) {
   } finally { $sha.Dispose() }
 }
 
-function Format-Incidents($Failures) {
-  # Stable incident IDs (D00 T02 §15 PR31): repeated failures dedupe
-  # by test plus normalized message shape (digit runs collapse, so
-  # "expected 2" and "expected 3" share the incident), keeping every
-  # occurrence. IDs derive from content, so the same failure keeps its
-  # ID across nights for recurrence tracking. $Failures entries carry
-  # Test, Message, Where. Returns report lines, busiest first.
+function Get-IncidentPhase([string]$Where) {
+  # Phase part of the incident identity (D00 T02 §22 item 3): the leg
+  # family, so soak iterations of one suite merge while the same test
+  # failing in a different leg stays its own incident.
+  $w = "$Where".Trim()
+  if ($w -match '^Run A') { return 'run-a' }
+  if ($w -match '^Run B') { return 'run-b' }
+  if ($w -match '^Interactive') { return 'interactive' }
+  if ($w -match '^(ui-soak|protocol-soak)-\d+$') { return ($w -replace '-\d+$', '') }
+  return ($w.ToLower() -replace '\s+', '-')
+}
+
+function Get-FailureClass([string]$Message) {
+  # Failure-class part of the identity: the exception type or the xUnit
+  # assertion that failed, never the values it printed. Unknown shapes
+  # fall back to the first message line with decimal runs collapsed and
+  # HRESULT-shaped hex kept verbatim.
+  $first = ("$Message" -split "`r?`n")[0].Trim()
+  $m = [regex]::Match($first, '^((?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*Exception)\b')
+  if ($m.Success) { return $m.Groups[1].Value }
+  $m = [regex]::Match($first, '^(Assert\.\w+\(\)) Failure')
+  if ($m.Success) { return "$($m.Groups[1].Value) Failure" }
+  $parts = [regex]::Split($first, '(0x[0-9A-Fa-f]{8})')
+  $shape = ''
+  foreach ($p in $parts) {
+    if ($p -match '^0x[0-9A-Fa-f]{8}$') { $shape += '0x' + $p.Substring(2).ToUpper() }
+    else { $shape += ($p -replace '\d+', '#') }
+  }
+  $shape = ($shape -replace '\s+', ' ').Trim()
+  if ($shape.Length -gt 120) { $shape = $shape.Substring(0, 120) }
+  return "msg:$shape"
+}
+
+function Get-HResults([string]$Text) {
+  # HRESULT part of the identity: every 0x-prefixed 8-hex code in the
+  # message plus stack, uppercased, unique, in first-seen order. Digit
+  # collapse never touches these, so 0x80131505 and 0x80004005 split.
+  $out = @()
+  foreach ($m in [regex]::Matches("$Text", '0x[0-9A-Fa-f]{8}\b')) {
+    $v = '0x' + $m.Value.Substring(2).ToUpper()
+    if ($out -notcontains $v) { $out += $v }
+  }
+  return $out
+}
+
+function Get-StackSignature([string]$Stack) {
+  # Normalized stack signature: the top three frames outside the
+  # runtime and test framework (System., Microsoft., Xunit.), method
+  # names only. Line numbers, file paths, and argument lists drop, and
+  # compiler-generated ordinals (DisplayClass12_0, b__3_1, d__5, `1)
+  # collapse, so a rebuild cannot split one failure in two.
+  $frames = @()
+  foreach ($ln in ("$Stack" -split "`r?`n")) {
+    $m = [regex]::Match($ln, '^\s*at\s+([^\(\s]+)')
+    if (-not $m.Success) { continue }
+    $f = $m.Groups[1].Value
+    if ($f -match '^(System|Microsoft|Xunit)\.') { continue }
+    $f = $f -replace 'DisplayClass\d+_\d+', 'DisplayClass#' -replace 'b__\d+_\d+', 'b__#' -replace 'b__\d+', 'b__#' -replace 'd__\d+', 'd__#' -replace '`\d+', '`#'
+    $frames += $f
+    if ($frames.Count -ge 3) { break }
+  }
+  if ($frames.Count -eq 0) { return 'nostack' }
+  return ($frames -join ' < ')
+}
+
+function Get-IncidentKey($Failure) {
+  # The incident identity contract (D00 T02 §22 item 3, shared with the
+  # §17 recurrence report through the INC ids it hashes into): test
+  # identity, phase, failure class, HRESULTs, and stack signature, in
+  # that order, pipe-joined. docs/testing.md "Incident identity"
+  # carries the contract; the fixture suite pins golden ids, so any
+  # normalization change that would split or merge history fails there
+  # first. Contract version 2 (2026-09-25); version 1 keyed on test
+  # plus a digit-collapsed message and its ids do not carry over.
+  $stack = ''
+  if ($Failure.PSObject.Properties.Name -contains 'Stack') { $stack = "$($Failure.Stack)" }
+  $hr = @(Get-HResults ("$($Failure.Message)`n$stack")) -join ','
+  if ($hr -eq '') { $hr = 'nohr' }
+  return "v2|$("$($Failure.Test)".Trim())|$(Get-IncidentPhase $Failure.Where)|$(Get-FailureClass $Failure.Message)|$hr|$(Get-StackSignature $stack)"
+}
+
+function Get-IncidentGroups($Failures) {
+  # Groups failures into incidents under the identity contract, keeping
+  # every occurrence, busiest first (first-seen order breaks ties).
+  # $Failures entries carry Test, Message, Where, and optionally Stack.
   $groups = @{}
   $order = @()
-  foreach ($f in $Failures) {
-    $shape = ("$($f.Message)" -replace '\d+', '#')
-    $shape = ($shape -replace '\s+', ' ').Trim()
-    if ($shape.Length -gt 120) { $shape = $shape.Substring(0, 120) }
-    $key = "$($f.Test)::$shape"
+  foreach ($f in @($Failures)) {
+    if ($null -eq $f) { continue }
+    $key = Get-IncidentKey $f
     if (-not $groups.ContainsKey($key)) {
-      $groups[$key] = [pscustomobject]@{ Id = "INC-$(Get-StringHash $key)"; Test = $f.Test; Message = $f.Message; Wheres = @() }
+      $first = ("$($f.Message)" -split "`r?`n")[0]
+      $groups[$key] = [pscustomobject]@{ Id = "INC-$(Get-StringHash $key)"; Key = $key; Test = "$($f.Test)".Trim(); Phase = (Get-IncidentPhase $f.Where); Message = $first; Wheres = @() }
       $order += $key
     }
     $groups[$key].Wheres += $f.Where
   }
+  $ranked = @()
+  $i = 0
+  foreach ($k in $order) { $ranked += [pscustomobject]@{ Key = $k; N = $groups[$k].Wheres.Count; R = $i }; $i++ }
+  $sorted = @()
+  foreach ($r in ($ranked | Sort-Object @{ Expression = 'N'; Descending = $true }, @{ Expression = 'R'; Descending = $false })) { $sorted += $groups[$r.Key] }
+  return $sorted
+}
+
+function Format-Incidents($Failures) {
+  # Report lines for the Incidents section: one per incident under the
+  # identity contract (Get-IncidentKey), with every occurrence named.
+  # IDs derive from content, so the same failure keeps its ID across
+  # nights for recurrence tracking.
   $lines = @()
-  foreach ($key in ($order | Sort-Object { -$groups[$_].Wheres.Count })) {
-    $g = $groups[$key]
+  foreach ($g in @(Get-IncidentGroups $Failures)) {
     $msg = $g.Message
     if ($msg.Length -gt 120) { $msg = $msg.Substring(0, 120) }
     $lines += "- $($g.Id) ``$($g.Test)`` x$($g.Wheres.Count) ($($g.Wheres -join ', ')): $msg"
   }
   return $lines
+}
+
+function Read-IncidentLedger([string]$Path) {
+  # Cross-night incident ledger (D00 T02 §22 item 6): ignored scratch
+  # beside the runs (build/nightly/incidents.json), never a tracked
+  # file. Missing reads as an empty ledger; a corrupt file reads as an
+  # error, so the caller reds instead of minting every incident anew.
+  $empty = [pscustomobject]@{ Ok = $true; Error = ''; Incidents = @{} }
+  if (-not (Test-Path $Path)) { return $empty }
+  try {
+    $j = Get-Content $Path -Raw | ConvertFrom-Json
+    if ($j.version -ne 1) { return [pscustomobject]@{ Ok = $false; Error = "incident ledger version $($j.version) unsupported"; Incidents = @{} } }
+    $map = @{}
+    foreach ($e in @($j.incidents)) {
+      if ($null -eq $e) { continue }
+      $occ = @()
+      foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
+      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ }
+    }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Incidents = $map }
+  } catch { return [pscustomobject]@{ Ok = $false; Error = "incident ledger unreadable: $($_.Exception.Message)"; Incidents = @{} } }
+}
+
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners) {
+  # Incident lifecycle (D00 T02 §22 item 6, D00-T02-S17-PR27): an
+  # incident is created once; later sightings append an occurrence to
+  # it (never a second incident, so §9's file-every-failure rule files
+  # each incident once). Ownership comes from the quarantine list when
+  # the test sits there, else stays as recorded, else unassigned. An
+  # open incident closes only on verified recovery: this run executed
+  # its test in the same phase and it passed. A closed incident seen
+  # again reopens with its history. Idempotent per stamp: re-running a
+  # stamp appends nothing twice. Returns the updated map plus lines.
+  $map = @{}
+  foreach ($k in $Ledger.Keys) { $map[$k] = $Ledger[$k] }
+  $lines = @()
+  $seen = @{}
+  foreach ($g in @($Groups)) {
+    if ($null -eq $g) { continue }
+    $seen[$g.Id] = $true
+    $owner = 'unassigned'
+    if ($Owners -and $Owners.ContainsKey($g.Test)) { $owner = $Owners[$g.Test] }
+    if (-not $map.ContainsKey($g.Id)) {
+      $map[$g.Id] = [pscustomobject]@{ id = $g.Id; test = $g.Test; phase = $g.Phase; key = $g.Key; owner = $owner; state = 'open'; firstSeen = $Stamp; lastSeen = $Stamp; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
+      $lines += "- $($g.Id) ``$($g.Test)``: new (owner $owner)"
+      continue
+    }
+    $e = $map[$g.Id]
+    if ($owner -ne 'unassigned') { $e.owner = $owner }
+    $already = @($e.occurrences | Where-Object { "$($_.stamp)" -eq $Stamp }).Count -gt 0
+    if (-not $already) { $e.occurrences = @($e.occurrences) + @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
+    $e.lastSeen = $Stamp
+    $n = @($e.occurrences).Count
+    if ($e.state -eq 'closed') {
+      $e.state = 'open'; $e.closedAt = ''; $e.closedBy = ''
+      $lines += "- $($g.Id) ``$($g.Test)``: REOPENED (first seen $($e.firstSeen), $n occurrences, owner $($e.owner))"
+    } else {
+      $lines += "- $($g.Id) ``$($g.Test)``: recurring (first seen $($e.firstSeen), $n occurrences, owner $($e.owner))"
+    }
+  }
+  foreach ($id in @($map.Keys | Sort-Object)) {
+    $e = $map[$id]
+    if (($e.state -ne 'open') -or $seen.ContainsKey($id)) { continue }
+    $passed = @()
+    if ($PassedByPhase -and $PassedByPhase.ContainsKey($e.phase)) { $passed = @($PassedByPhase[$e.phase]) }
+    if ($passed -contains $e.test) {
+      $e.state = 'closed'; $e.closedAt = $Stamp; $e.closedBy = "passed in $($e.phase)"
+      $lines += "- $id ``$($e.test)``: CLOSED (verified recovery: passed in $($e.phase) at $Stamp; $(@($e.occurrences).Count) occurrences since $($e.firstSeen))"
+    }
+  }
+  return [pscustomobject]@{ Incidents = $map; Lines = $lines }
+}
+
+function Write-IncidentLedger([hashtable]$Incidents, [string]$Path) {
+  # Atomic write plus read-back: a ledger that cannot be read back is a
+  # failed write the caller reports, never a silent loss. Returns '' on
+  # success, else the error.
+  $list = @($Incidents.Keys | Sort-Object | ForEach-Object { $Incidents[$_] })
+  $json = ConvertTo-Json ([pscustomobject]@{ version = 1; incidents = $list }) -Depth 8
+  Write-AtomicReport @($json) $Path
+  $back = Read-IncidentLedger $Path
+  if (-not $back.Ok) { return $back.Error }
+  if ($back.Incidents.Count -ne $Incidents.Count) { return "incident ledger read-back count $($back.Incidents.Count) != $($Incidents.Count)" }
+  return ''
+}
+
+function Get-QuarantineOwners([string]$LedgerPath) {
+  # Test -> owner from the quarantine list rows in
+  # docs/soak-and-quarantine.md, so a quarantined flake's incident names
+  # the section that owes its fix-or-remove decision.
+  $owners = @{}
+  if (-not (Test-Path $LedgerPath)) { return $owners }
+  $inList = $false
+  foreach ($ln in (Get-Content $LedgerPath -Encoding UTF8)) {
+    if ($ln -match '^## Quarantine list') { $inList = $true; continue }
+    if ($inList -and ($ln -match '^## ')) { break }
+    if (-not $inList) { continue }
+    $m = [regex]::Match($ln, '^\|\s*`([^`]+)`[^|]*\|[^|]*\|[^|]*\|\s*([^|]+?)\s*\|')
+    if ($m.Success) { $owners[$m.Groups[1].Value] = $m.Groups[2].Value }
+  }
+  return $owners
 }
 
 function Write-AtomicReport([string[]]$Lines, [string]$Path) {

@@ -272,16 +272,17 @@ foreach ($n in @('ui-soak-1', 'protocol-soak-1', 'protocol-soak-2')) {
 $voided = Format-SoakLedger $voidDir @() @('ui-soak-2..5', 'protocol-soak-3..5') @() $true
 Assert (($voided.Failed -eq $true) -and ($voided.Rows[0] -like '*minimum MISSED (ui=1/3 protocol=2/3; hunt void, full re-drive owed)*')) 'soak-void' $voided.Rows[0]
 
-# Incidents: digit-shape dedupe keeps every occurrence under a stable ID.
+# Incidents: soak iterations of one suite merge under a stable ID (the
+# D00 T02 §22 contract; the unknown-shape fallback collapses decimals).
 $incIn = @(
   [pscustomobject]@{ Test = 'UI.Flaky'; Message = 'flake attempt 3 of 10'; Where = 'ui-soak-3' },
-  [pscustomobject]@{ Test = 'UI.Flaky'; Message = 'flake attempt 5 of 10'; Where = 'protocol-soak-1' },
+  [pscustomobject]@{ Test = 'UI.Flaky'; Message = 'flake attempt 5 of 10'; Where = 'ui-soak-5' },
   [pscustomobject]@{ Test = 'UI.Other'; Message = 'boom'; Where = 'Run A' }
 )
 $inc = @(Format-Incidents $incIn)
 Assert ($inc.Count -eq 2) 'incident-group-count' ($inc -join '|')
-Assert ($inc[0] -eq '- INC-02f59b86 `UI.Flaky` x2 (ui-soak-3, protocol-soak-1): flake attempt 3 of 10') 'incident-dedupe-line' $inc[0]
-Assert ($inc[1] -eq '- INC-493b0a11 `UI.Other` x1 (Run A): boom') 'incident-single-line' $inc[1]
+Assert ($inc[0] -eq '- INC-7ecec91d `UI.Flaky` x2 (ui-soak-3, ui-soak-5): flake attempt 3 of 10') 'incident-dedupe-line' $inc[0]
+Assert ($inc[1] -eq '- INC-5fe0f954 `UI.Other` x1 (Run A): boom') 'incident-single-line' $inc[1]
 $incAgain = @(Format-Incidents $incIn)
 Assert (($incAgain -join "`n") -eq ($inc -join "`n")) 'incident-stable-id' ($incAgain -join '|')
 Assert (@(Format-Incidents @()).Count -eq 0) 'incident-empty'
@@ -734,6 +735,112 @@ if ((@($rawGot[0].PSObject.Properties.Name) -join ',') -eq 'Length') {
   Assert (($rawJson -notlike '*ReadCount*') -and ($rawJson -notlike '*PSProvider*') -and ($rawJson.Length -lt 500)) 'rawline-json-small' ("len $($rawJson.Length)")
 } else { Assert $false 'rawline-json-small' 'skipped: strip regressed (serializing would hang, not fail)' }
 Assert ((@(Read-RawLines (Join-Path $dir 'missing.txt')).Count -eq 0)) 'rawline-missing-empty'
+
+# D00 T02 §22 item 4: the all-skipped VSTest banner keeps its row, and
+# an all-skipped assembly conserves green (observed on SDK 10.0.400).
+$s22 = Join-Path $dir 's22'
+$null = New-Item -ItemType Directory -Force -Path $s22
+$skipLog = Join-Path $s22 'allskip.log'
+@('Skipped! - Failed:     0, Passed:     0, Skipped:     2, Total:     2, Duration: 1 ms - UI.dll (net10.0)') | Set-Content -Path $skipLog -Encoding UTF8
+$skipRows = @(Get-TranscriptRows $skipLog)
+Assert (($skipRows.Count -eq 1) -and ($skipRows[0].Assembly -eq 'UI.dll') -and ($skipRows[0].Skipped -eq 2) -and ($skipRows[0].Total -eq 2)) 'allskip-banner-row' ($skipRows | Out-String)
+$skipTrx = Join-Path $s22 'allskip.trx'
+'<TestRun><Results><UnitTestResult testName="UI.Q1" outcome="NotExecuted"><Output><ErrorInfo><Message>QUARANTINED 2026-09-25 D01-T01-S8 fx</Message></ErrorInfo></Output></UnitTestResult><UnitTestResult testName="UI.Q2" outcome="NotExecuted"><Output><ErrorInfo><Message>QUARANTINED 2026-09-25 D01-T01-S8 fx</Message></ErrorInfo></Output></UnitTestResult></Results></TestRun>' | Set-Content -Path $skipTrx -Encoding UTF8
+$skipCons = Test-CountConservation 'Run B' @($skipTrx) @($skipLog) $true @()
+Assert ($skipCons.Ok) 'allskip-conserves-green' ($skipCons.Breaks -join '; ')
+$skipLeg = Get-LegSummary @($skipTrx) @($skipLog)
+Assert (($null -ne $skipLeg) -and ($skipLeg.SkippedCount -eq 2) -and ($skipLeg.Assemblies -eq 'UI.dll 0/0/2')) 'allskip-leg-cell' ($skipLeg | Out-String)
+$oldLog = Join-Path $s22 'oldbanner.log'
+@('Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 8 ms - Smoke.dll (net10.0)') | Set-Content -Path $oldLog -Encoding UTF8
+Assert (@(Get-TranscriptRows $oldLog).Count -eq 1) 'allskip-passed-banner-still-parses'
+
+# D00 T02 §22 item 3: the incident identity contract.
+$stackA = "   at FlaUI.Core.Tools.Com.Call[T](Func``1 nativeAction)`n   at FlaUI.UIA3.UIA3Automation.FromHandle(IntPtr hwnd)`n   at UI.UiApp.Attach(Application app) in R:\x\tests\UI\UiApp.cs:line 22`n   at UI.LaunchTests.LargeFileOpensResponsively() in R:\x\tests\UI\LaunchTests.cs:line 422`n   at System.RuntimeMethodHandle.InvokeMethod(ObjectHandleOnStack target)"
+$stackMoved = $stackA.Replace('line 22', 'line 31').Replace('line 422', 'line 450')
+$hrA = [pscustomobject]@{ Test = 'UI.LaunchTests.LargeFileOpensResponsively'; Message = "System.TimeoutException : UIA Timeout`n---- System.Runtime.InteropServices.COMException : Operation timed out. (0x80131505)"; Where = 'Run A'; Stack = $stackA }
+$hrB = [pscustomobject]@{ Test = 'UI.LaunchTests.LargeFileOpensResponsively'; Message = "System.TimeoutException : UIA Timeout`n---- System.Runtime.InteropServices.COMException : Unspecified error (0x80004005)"; Where = 'Run A'; Stack = $stackA }
+$hrRepeat = [pscustomobject]@{ Test = 'UI.LaunchTests.LargeFileOpensResponsively'; Message = "System.TimeoutException : UIA Timeout`n---- System.Runtime.InteropServices.COMException : Operation timed out. (0x80131505)"; Where = 'Run A'; Stack = $stackMoved }
+$hrGroups = @(Get-IncidentGroups @($hrA, $hrB, $hrRepeat))
+Assert ($hrGroups.Count -eq 2) 'incident-hresult-splits' (($hrGroups | ForEach-Object { $_.Key }) -join ' || ')
+Assert ((@($hrGroups | Where-Object { $_.Wheres.Count -eq 2 }).Count -eq 1)) 'incident-true-repeat-merges' (($hrGroups | ForEach-Object { "$($_.Id) x$($_.Wheres.Count)" }) -join ', ')
+Assert ((Get-StackSignature $stackA) -eq 'FlaUI.Core.Tools.Com.Call[T] < FlaUI.UIA3.UIA3Automation.FromHandle < UI.UiApp.Attach') 'incident-stack-signature' (Get-StackSignature $stackA)
+Assert ((Get-StackSignature "   at UI.T.<>c__DisplayClass12_0.<Run>b__3_1() in a.cs:line 9`n   at UI.T.<Go>d__5.MoveNext()") -eq (Get-StackSignature "   at UI.T.<>c__DisplayClass7_2.<Run>b__1_0() in a.cs:line 40`n   at UI.T.<Go>d__9.MoveNext()")) 'incident-stack-ordinals-collapse'
+Assert ((Get-StackSignature '') -eq 'nostack') 'incident-stack-empty'
+Assert ((Get-FailureClass "Assert.Equal() Failure: Values differ`nExpected: 2`nActual:   3") -eq 'Assert.Equal() Failure') 'incident-class-assert'
+Assert ((Get-FailureClass 'System.TimeoutException : UIA Timeout') -eq 'System.TimeoutException') 'incident-class-exception'
+Assert ((Get-FailureClass 'code 0x80131505 after 12 tries') -eq 'msg:code 0x80131505 after # tries') 'incident-class-fallback-keeps-hresult'
+$eqA = [pscustomobject]@{ Test = 'UI.T.Counts'; Message = "Assert.Equal() Failure: Values differ`nExpected: 2`nActual:   3"; Where = 'ui-soak-1'; Stack = '   at UI.T.Counts() in T.cs:line 10' }
+$eqB = [pscustomobject]@{ Test = 'UI.T.Counts'; Message = "Assert.Equal() Failure: Values differ`nExpected: 4`nActual:   7"; Where = 'ui-soak-4'; Stack = '   at UI.T.Counts() in T.cs:line 12' }
+$nn = [pscustomobject]@{ Test = 'UI.T.Counts'; Message = 'Assert.NotNull() Failure: Value is null'; Where = 'ui-soak-2'; Stack = '   at UI.T.Counts() in T.cs:line 10' }
+$other = [pscustomobject]@{ Test = 'UI.T.Counts'; Message = "Assert.Equal() Failure: Values differ`nExpected: 2`nActual:   3"; Where = 'Run A'; Stack = '   at UI.T.Counts() in T.cs:line 10' }
+$cg = @(Get-IncidentGroups @($eqA, $eqB, $nn, $other))
+Assert ($cg.Count -eq 3) 'incident-class-and-phase-split' (($cg | ForEach-Object { $_.Key }) -join ' || ')
+Assert (($cg[0].Wheres -join ',') -eq 'ui-soak-1,ui-soak-4') 'incident-soak-iterations-merge' ($cg[0].Wheres -join ',')
+# Golden ids pin the contract: a normalization change that would split
+# or merge history fails here before it reaches a night.
+Assert ((Get-IncidentKey $hrA) -eq 'v2|UI.LaunchTests.LargeFileOpensResponsively|run-a|System.TimeoutException|0x80131505|FlaUI.Core.Tools.Com.Call[T] < FlaUI.UIA3.UIA3Automation.FromHandle < UI.UiApp.Attach') 'incident-golden-key' (Get-IncidentKey $hrA)
+Assert ($hrGroups[0].Id -eq 'INC-9990c490') 'incident-golden-id-hresult' $hrGroups[0].Id
+Assert ($cg[0].Id -eq 'INC-b7ad6ae4') 'incident-golden-id-assert' $cg[0].Id
+
+# Structured trx failures: message plus stack plus passed names.
+$stTrx = Join-Path $s22 'stack.trx'
+'<TestRun><Results><UnitTestResult testName="UI.Ok" outcome="Passed" /><UnitTestResult testName="UI.Bad" outcome="Failed"><Output><ErrorInfo><Message>System.TimeoutException : UIA Timeout</Message><StackTrace>   at UI.UiApp.Attach() in UiApp.cs:line 22</StackTrace></ErrorInfo></Output></UnitTestResult></Results></TestRun>' | Set-Content -Path $stTrx -Encoding UTF8
+$stSum = Get-TrxSummary $stTrx
+Assert ((@($stSum.FailedDetail).Count -eq 1) -and ($stSum.FailedDetail[0].Stack -like '*UiApp.Attach*') -and ($stSum.FailedDetail[0].Message -like 'System.TimeoutException*')) 'trx-failed-detail' ($stSum.FailedDetail | Out-String)
+Assert ((@($stSum.PassedNames) -join ',') -eq 'UI.Ok') 'trx-passed-names' (@($stSum.PassedNames) -join ',')
+
+# D00 T02 §22 item 6: the incident lifecycle.
+$qDoc = Join-Path $s22 'quarantine.md'
+@('# Soak', '', '## Quarantine list', '', '| Test | Failure signature | First seen | Owner | Quarantined | Due |', '| ---- | ----------------- | ---------- | ----- | ----------- | --- |', '| `UI.T.Counts` (`counts-race`) | sig | 2026-09-20 | D01 T01 §3 | 2026-09-20 | 2026-09-27 |', '', '## Removal decisions') | Set-Content -Path $qDoc -Encoding UTF8
+$owners = Get-QuarantineOwners $qDoc
+Assert (($owners.Count -eq 1) -and ($owners['UI.T.Counts'] -eq 'D01 T01 §3')) 'lifecycle-owner-from-quarantine' ($owners | Out-String)
+$ledgerFx = Join-Path $s22 'incidents.json'
+$l0 = Read-IncidentLedger $ledgerFx
+Assert ($l0.Ok -and ($l0.Incidents.Count -eq 0)) 'lifecycle-missing-reads-empty'
+$u1 = Update-IncidentLedger $l0.Incidents @(Get-IncidentGroups @($eqA, $hrA)) '2026-09-25-023005' @{ 'run-a' = @('UI.Ok') } $owners
+Assert ((@($u1.Lines | Where-Object { $_ -like '*: new (owner*' }).Count -eq 2) -and ($u1.Incidents.Count -eq 2)) 'lifecycle-creates-once' ($u1.Lines -join ' | ')
+Assert (@($u1.Lines | Where-Object { $_ -like '*UI.T.Counts*new (owner D01 T01 §3)*' }).Count -eq 1) 'lifecycle-assigns-owner' ($u1.Lines -join ' | ')
+Assert ((Write-IncidentLedger $u1.Incidents $ledgerFx) -eq '') 'lifecycle-write-readback'
+$l1 = Read-IncidentLedger $ledgerFx
+$u2 = Update-IncidentLedger $l1.Incidents @(Get-IncidentGroups @($eqB)) '2026-09-26-023005' @{ 'run-a' = @('UI.LaunchTests.LargeFileOpensResponsively'); 'ui-soak' = @() } $owners
+$eqId = (@(Get-IncidentGroups @($eqA)))[0].Id
+$hrId = (@(Get-IncidentGroups @($hrA)))[0].Id
+Assert (($u2.Incidents.Count -eq 2) -and (@($u2.Incidents[$eqId].occurrences).Count -eq 2) -and ($u2.Incidents[$eqId].state -eq 'open')) 'lifecycle-repeat-appends' ($u2.Lines -join ' | ')
+Assert (($u2.Incidents[$hrId].state -eq 'closed') -and (@($u2.Lines | Where-Object { $_ -like "*$hrId*CLOSED (verified recovery: passed in run-a*" }).Count -eq 1)) 'lifecycle-recovery-closes' ($u2.Lines -join ' | ')
+$null = Write-IncidentLedger $u2.Incidents $ledgerFx
+$l2 = Read-IncidentLedger $ledgerFx
+$u2b = Update-IncidentLedger $l2.Incidents @(Get-IncidentGroups @($eqB)) '2026-09-26-023005' @{} $owners
+Assert (@($u2b.Incidents[$eqId].occurrences).Count -eq 2) 'lifecycle-idempotent-per-stamp' "$(@($u2b.Incidents[$eqId].occurrences).Count)"
+$u3 = Update-IncidentLedger $l2.Incidents @() '2026-09-27-023005' @{ 'run-a' = @('UI.T.Counts') } $owners
+Assert ($u3.Incidents[$eqId].state -eq 'open') 'lifecycle-other-phase-pass-keeps-open' $u3.Incidents[$eqId].state
+$u4 = Update-IncidentLedger $l2.Incidents @(Get-IncidentGroups @($hrRepeat)) '2026-09-28-023005' @{} $owners
+Assert (($u4.Incidents[$hrId].state -eq 'open') -and (@($u4.Lines | Where-Object { $_ -like "*$hrId*REOPENED*" }).Count -eq 1) -and (@($u4.Incidents[$hrId].occurrences).Count -eq 2)) 'lifecycle-reopens-with-history' ($u4.Lines -join ' | ')
+'{ not json' | Set-Content -Path (Join-Path $s22 'bad.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'bad.json')).Ok -eq $false) 'lifecycle-corrupt-fails-closed'
+
+# D00 T02 §22 item 1: the failure-capture policy.
+$planted = 'pid=1 chrome: token ' + 'ghp_' + ('A1b2C3d4E5' * 4)
+Assert ((@(Test-CaptureSecrets $planted) -join ',') -eq 'github-token') 'capture-planted-secret-fails-scan' (@(Test-CaptureSecrets $planted) -join ',')
+Assert (@(Test-CaptureSecrets 'pid=4 ScratchPad: Untitled - ScratchPad').Count -eq 0) 'capture-clean-text-passes'
+Assert (@(Test-CaptureSecrets ('password = ' + 'hunter2hunter2')).Count -eq 1) 'capture-assigned-secret'
+Assert ((Format-WindowRow 7 'chrome' 'Bank statement - Chrome') -eq 'pid=7 chrome: [title redacted]') 'capture-foreign-title-redacted'
+Assert ((Format-WindowRow 9 'ScratchPad' 'big8.txt - ScratchPad') -eq 'pid=9 ScratchPad: big8.txt - ScratchPad') 'capture-owned-title-kept'
+$capFx = Join-Path $s22 'captures-run-a'
+$null = New-Item -ItemType Directory -Force -Path $capFx
+$planted | Set-Content -Path (Join-Path $capFx 'run-a-windows.txt') -Encoding UTF8
+'12:00:01 id=1000 Error App: crashed' | Set-Content -Path (Join-Path $capFx 'run-a-events.txt') -Encoding UTF8
+[System.IO.File]::WriteAllBytes((Join-Path $capFx 'run-a-failure.png'), (New-Object byte[] 4096))
+$capNotes = @(Protect-CaptureDir $capFx 'run-a')
+$winAfter = Get-Content (Join-Path $capFx 'run-a-windows.txt') -Raw
+Assert (($winAfter -notlike '*ghp_*') -and ($winAfter -like '*redacted by the secret scan: github-token*')) 'capture-secret-redacted-whole' $winAfter
+Assert (@($capNotes | Where-Object { $_ -like '*SECRET-SCAN redacted run-a-windows.txt (github-token)*' }).Count -eq 1) 'capture-secret-noted' ($capNotes -join ' | ')
+Assert ((Get-Content (Join-Path $capFx 'run-a-events.txt') -Raw) -like '*crashed*') 'capture-clean-file-untouched'
+Assert (Test-Path (Join-Path $capFx 'run-a-failure.png')) 'capture-under-cap-keeps-screenshot'
+$capWas = $script:CaptureMaxBytes
+$script:CaptureMaxBytes = 1024
+$capNotes2 = @(Protect-CaptureDir $capFx 'run-a')
+$script:CaptureMaxBytes = $capWas
+Assert ((-not (Test-Path (Join-Path $capFx 'run-a-failure.png'))) -and (@($capNotes2 | Where-Object { $_ -like '*size cap dropped run-a-failure.png*' }).Count -eq 1)) 'capture-over-cap-drops-screenshot' ($capNotes2 -join ' | ')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }
