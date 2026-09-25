@@ -87,6 +87,7 @@ track: W0
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
+|   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
 
 ---
@@ -617,6 +618,7 @@ Why this section exists: §11 landed the central helper with off-screen birth, b
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §34 -- corrected this section's launch-guard alias boundary (cross-file global aliases now resolve).
+- -> XREF: D00 T02 §49 -- its gate attributes events by process identity, not a reused pid.
 - -> XREF: D00 T02 §41 -- states this section's guard promise as the threat model the syntax-plus-alias guard enforces: launcher calls in any source shape, reflection through its member choke points, and P/Invoke declarations in every spelling (DllImport or LibraryImport, suffixed, qualified, aliased); runtime-resolved native exports, runtime-compiled code, and launches outside tests/UI are named outside it and pinned as unclaimed.
 - -> XREF: D00 T02 §13 -- items 2/9 attribution residual lands in item 7 (mechanism only); per-path token semantics narrow out per the §13 record.
 - -> XREF: D00 T02 §26 -- R3-F2 sibling-sweep narrowing filed forward (below-bar sign-off finding; latent, background-only).
@@ -1462,6 +1464,18 @@ Why this section exists: the §40 plan review returned 16 findings; 14 file here
 
 **Test checkpoint:** Schedules conflict by name, legacy ambiguity reads unresolved, host aliases hold, green-run alerts acknowledge, cohorts reuse and expire, merges stay whole, all-excluded runs never read healthy, partial discovery reads partial, the calendar names overruns, restores report loss, backups sanitize, capacity warns without blocking pruning, derivations read their version, and alerts explain themselves. Cheaper substitute that fails: more ledger fields with no fixtures behind them.
 
+
+## 49. Gate Process Attribution Under PID Reuse
+
+Why this section exists: the §41 Run A rerun of 2026-09-25 went red on `event-primary=1` for a `#32770` window titled "Granola Setup" at 1542,752 on the primary, attributed to ScratchPad pid 47576 (gate log gate41b.log, event 398184). `tools/ForegroundLog/Program.cs` caches pid-to-process-name lookups for the whole run and never invalidates them, so a pid a ScratchPad test process held earlier and a foreign installer reused later reads as ScratchPad; the suite itself was green (UI 295/16/0). A gate that reds on foreign windows trains everyone to rerun instead of reading it. -> SOURCE: live-gate-2026-09-25-gate41b-pid47576
+
+- -> XREF: D00 T02 §18 -- the foreground and placement gate it hardens.
+
+- [ ] Process identity is resolved per event as (pid, process start time), never from a run-long pid cache, so a pid reused by another process is attributed to that process. Done when: a fixture that reuses a cached pid for a foreign window is not counted against ScratchPad.
+- [ ] Every EVENT and census line names the process's executable path and start time, so a foreign window reads as foreign in the log. Done when: the log line for a planted foreign window names its executable.
+- [ ] Commit: `"workspace: attribute gate events by process identity, not a reused pid"`
+
+**Test checkpoint:** A reused pid never attributes a foreign window to ScratchPad, and every gate line names the process it counted. Cheaper substitute that fails: a longer allowlist of foreign window titles.
 
 ## Verification
 

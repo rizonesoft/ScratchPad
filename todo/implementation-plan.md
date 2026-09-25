@@ -172,6 +172,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §44` | Population gate second residuals                          |   9   |
 | [ ] | `D00 T02 §45` | Nightly evidence third residuals                          |   9   |
 | [ ] | `D00 T02 §46` | Acknowledgement third residuals                           |  14   |
+| [ ] | `D00 T02 §49` | Gate process attribution under pid reuse                  |   3   |
 | [ ] | `D00 T02 §47` | Trend and telemetry third residuals                       |  15   |
 | [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
