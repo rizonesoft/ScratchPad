@@ -112,7 +112,8 @@ if ($FileOverdue) {
   $gate = Test-Acknowledgements $Root $ackDir $demands $now $ackSla
   $over = @($gate.Overdue | ForEach-Object { $d = $demands[$_]; [pscustomobject]@{ Id = $_; What = $(if ($d.Unreadable) { 'unreadable result' } else { "RED $($d.Day)" }); Incidents = $(if (@($d.Incidents).Count -gt 0) { @($d.Incidents) -join ' ' } else { 'none' }) } })
   $existing = if (Test-Path $tablePath) { @(Get-Content $tablePath -Encoding UTF8) } else { @() }
-  $upd = Update-OverdueFindings $existing $over $now.ToString('yyyy-MM-dd')
+  $ackedIds = @($demands.Keys | Where-Object { (@($gate.Unacked) -notcontains $_) -and (@($gate.ProofUnacked) -notcontains $_) })
+  $upd = Update-OverdueFindings $existing $over $now.ToString('yyyy-MM-dd') 'operator' $ackedIds @($gate.Unacked)
   if (-not $upd.Changed) { Write-Output "ack: overdue findings unchanged ($(@($over).Count) overdue)"; exit 0 }
   $null = New-Item -ItemType Directory -Force -Path $ackDir
   Write-AtomicReport $upd.Lines $tablePath

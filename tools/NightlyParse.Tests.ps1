@@ -1285,6 +1285,13 @@ $gI = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ((@($gI.Corrective | Where-Object { $_ -like '*ack-2026-09-22-i.md (INC-aaaa1111): open, due 2026-09-30*' }).Count -eq 1)) 'ack-recovered-incident-keeps-investigation-open' ($gI.Corrective -join ' | ')
 & git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-i.md') 2>$null; & git -C $repo commit -q -m 'drop i' 2>$null
 Remove-Item (Join-Path $repo 'build') -Recurse -Force
+# R3-F2: a cover's own remediation stays visible when the top-level
+# finding is stamped.
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-k.md'), (New-Ack @("$runA1 sha256:$shaA1", "$runA2 sha256:$shaA2") @{ incidents = 'INC-aaaa1111'; finding = "D00 T02 ${S}29" }).Replace("`n---`n", "`ncover: INC-aaaa1111 filed D00 T02 ${S}9`n---`n"))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack k' 2>$null
+$gK = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert ((@($gK.Corrective | Where-Object { $_ -like '*ack-2026-09-22-k.md (D00 T02*29): closed*' }).Count -eq 1) -and (@($gK.Corrective | Where-Object { $_ -like '*ack-2026-09-22-k.md (INC-aaaa1111 D00 T02*9): open*' }).Count -eq 1)) 'ack-cover-remediation-stays-visible' ($gK.Corrective -join ' | ')
+& git -C $repo rm -q (Join-Path $ackDir 'ack-2026-09-22-k.md') 2>$null; & git -C $repo commit -q -m 'drop k' 2>$null
 # R1-F1, R1-F2: invalid results demand; an explicit proof: false stays
 # operational even with no legs run.
 $rInv = New-Res31 'morning-2026-09-26-130000.result.json' @{ identity = '2026-09-26-130000-pid5'; verdict = 'exploded' }
@@ -1331,6 +1338,13 @@ $ofSame = Update-OverdueFindings $of3.Lines @([pscustomobject]@{ Id = 'run-x'; W
 $ofAck = Update-OverdueFindings $of3.Lines @() '2026-09-27'
 $rowX = @($of3.Lines | Where-Object { $_ -like '| run-x |*' })
 Assert (($rowX.Count -eq 1) -and ($rowX[0] -eq '| run-x | RED 2026-09-20 | none | 2026-09-24 | 2026-09-26 | 3 | operator | open |') -and $of2.Changed -and (-not $ofSame.Changed) -and (@($ofAck.Lines | Where-Object { $_ -like '| run-x |*| acked |' }).Count -eq 1)) 'ack-overdue-files-once-and-updates' ($of3.Lines -join ' / ')
+# R3-F1: filed evidence must exist; R3-C1: only an acknowledged run
+# reads acked, a still-demanded one stays open, a vanished one clears.
+Assert ((@(Test-DispositionEvidence @{ disposition = 'filed'; finding = 'INC-aaaa1111'; evidence = "D99 T99 ${S}999" } @('r1') $evDem $repo)[0]) -like 'filed needs a section ref that exists*') 'ack-filed-evidence-section-must-exist'
+$ofGone = Update-OverdueFindings $of3.Lines @() '2026-09-27' 'operator' @() @()
+$ofPend = Update-OverdueFindings $of3.Lines @() '2026-09-27' 'operator' @() @('run-x')
+$ofYes = Update-OverdueFindings $of3.Lines @() '2026-09-27' 'operator' @('run-x') @()
+Assert ((@($ofGone.Lines | Where-Object { $_ -like '| run-x |*| cleared |' }).Count -eq 1) -and (@($ofPend.Lines | Where-Object { $_ -like '| run-x |*| open |' }).Count -eq 1) -and (@($ofYes.Lines | Where-Object { $_ -like '| run-x |*| acked |' }).Count -eq 1)) 'ack-overdue-row-acked-only-when-acknowledged' (($ofGone.Lines + $ofPend.Lines) -join ' / ')
 # R1-F4: a history git cannot verify never counts.
 [System.IO.File]::WriteAllText((Join-Path $repo '.git\index'), 'not an index')
 $g6 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')

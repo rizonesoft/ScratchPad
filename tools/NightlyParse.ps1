@@ -2994,8 +2994,8 @@ function Test-DispositionEvidence($Fields, [string[]]$Runs, [hashtable]$Demands,
   $isSection = { param($x) $x -match '^D\d{2} T\d{2} \u00A7\d+$' }
   switch ($disp) {
     'fixed' { if (@($both | Where-Object { & $isCommit $_ }).Count -eq 0) { return @('fixed needs a commit that exists (finding or evidence)') } }
-    'filed' { if (@($both | Where-Object { & $isSection $_ }).Count -eq 0) { return @('filed needs a section ref (finding or evidence)') } }
-    'expected' { if (@($both | Where-Object { & $isSection $_ }).Count -eq 0) { return @('expected needs the proof section it served (finding or evidence)') } }
+    'filed' { if (@($both | Where-Object { (& $isSection $_) -and (Test-FindingExists $Root $_ @()) }).Count -eq 0) { return @('filed needs a section ref that exists (finding or evidence)') } }
+    'expected' { if (@($both | Where-Object { (& $isSection $_) -and (Test-FindingExists $Root $_ @()) }).Count -eq 0) { return @('expected needs the proof section it served, existing (finding or evidence)') } }
     'quarantined' {
       $qPath = Join-Path $Root 'docs/soak-and-quarantine.md'
       $listed = $false
@@ -3110,7 +3110,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     $commit = if ($hist.Entries.Count -gt 0) { "$($hist.Entries[0].Commit)" } else { '' }
     foreach ($id in $v.Acked) {
       if (-not $claims.ContainsKey($id)) { $claims[$id] = @() }
-      $claims[$id] += [pscustomobject]@{ File = $file.Name; When = $when; Commit = $commit; Disposition = $v.Disposition; Fields = $fm.Fields }
+      $claims[$id] += [pscustomobject]@{ File = $file.Name; When = $when; Commit = $commit; Disposition = $v.Disposition; Fields = $fm.Fields; Covers = @($fm.Covers) }
     }
     $staleNote = if ($v.Stale.Count -gt 0) { "; STALE for $($v.Stale -join ', ') (result changed after the ack: re-ack with the new checksum)" } else { '' }
     $ackedText = if (@($v.Acked).Count -gt 0) { $v.Acked -join ', ' } else { 'nothing current' }
@@ -3143,20 +3143,31 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
   $corrOverdue = @()
   foreach ($file in @($governing.Keys | Sort-Object)) {
     $f = $governing[$file].Fields
-    $fnd = "$($f['finding'])"
-    $closedBy = ''
     $closedField = "$($f['closed'])"
-    if (($closedField -ne '') -and ($closedField -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $closedField)) { $closedBy = "closed: $closedField" }
-    elseif (($fnd -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $fnd)) { $closedBy = "commit $fnd" }
-    elseif (($fnd -match '^D\d{2} T\d{2} \u00A7\d+$') -and (Test-SectionStamped $Root $fnd)) { $closedBy = "$fnd stamped" }
-    if ($closedBy -ne '') { $corrective += "- CORRECTIVE $file ($fnd): closed ($closedBy)"; continue }
+    $allClosed = ($closedField -ne '') -and ($closedField -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $closedField)
+    # The top-level finding plus each cover line's finding is its own
+    # remediation (section 31 R3-F2): a stamped top-level finding never
+    # hides an unfinished per-incident one.
+    $targets = @([pscustomobject]@{ Label = "$($f['finding'])"; Finding = "$($f['finding'])" })
+    foreach ($c in @($governing[$file].Covers)) {
+      $cm = [regex]::Match("$c", '^(INC-[0-9a-f]{8})\s+\S+\s+(.+?)\s*$')
+      if ($cm.Success) { $targets += [pscustomobject]@{ Label = "$($cm.Groups[1].Value) $($cm.Groups[2].Value)"; Finding = $cm.Groups[2].Value } }
+    }
     $dueDate = [datetime]::MinValue
     $hasDue = [datetime]::TryParseExact("$($f['due'])", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$dueDate)
-    if ($hasDue -and ($Today.Date -gt $dueDate.Date)) {
-      $corrOverdue += $file
-      $corrective += "- CORRECTIVE $file ($fnd): OVERDUE since $($f['due']): escalate $($f['corrective-owner'])$(if ($fnd -match '^INC-') { ' (an incident closes its investigation only on a closed: commit, never on recovery)' })"
-    } else {
-      $corrective += "- CORRECTIVE $file ($fnd): open, due $($f['due']) (owner $($f['corrective-owner']))"
+    foreach ($tg in $targets) {
+      $fnd = $tg.Finding
+      $closedBy = ''
+      if ($allClosed) { $closedBy = "closed: $closedField" }
+      elseif (($fnd -match '^[0-9a-f]{7,40}$') -and (Test-CommitExists $Root $fnd)) { $closedBy = "commit $fnd" }
+      elseif (($fnd -match '^D\d{2} T\d{2} \u00A7\d+$') -and (Test-SectionStamped $Root $fnd)) { $closedBy = "$fnd stamped" }
+      if ($closedBy -ne '') { $corrective += "- CORRECTIVE $file ($($tg.Label)): closed ($closedBy)"; continue }
+      if ($hasDue -and ($Today.Date -gt $dueDate.Date)) {
+        if ($corrOverdue -notcontains $file) { $corrOverdue += $file }
+        $corrective += "- CORRECTIVE $file ($($tg.Label)): OVERDUE since $($f['due']): escalate $($f['corrective-owner'])$(if ($fnd -match '^INC-') { ' (an incident closes its investigation only on a closed: commit, never on recovery)' })"
+      } else {
+        $corrective += "- CORRECTIVE $file ($($tg.Label)): open, due $($f['due']) (owner $($f['corrective-owner']))"
+      }
     }
   }
   $lines += $corrective
@@ -3188,7 +3199,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
   return [pscustomobject]@{ Ok = ($unacked.Count -eq 0); Unacked = $unacked; ProofUnacked = $proofUnacked; Lines = $lines; Staged = $staged; Overdue = $overdue; Corrective = $corrective; CorrectiveOverdue = $corrOverdue }
 }
 
-function Update-OverdueFindings([string[]]$Lines, $Overdue, [string]$Today, [string]$Owner = 'operator') {
+function Update-OverdueFindings([string[]]$Lines, $Overdue, [string]$Today, [string]$Owner = 'operator', [string[]]$Acked = $null, [string[]]$Pending = @()) {
   # The tracked home for overdue acknowledgements (section 31 item 1):
   # one table row per run in docs/nightly-acks/overdue-findings.md,
   # created once and updated (last overdue day, night count) on later
@@ -3210,7 +3221,15 @@ function Update-OverdueFindings([string[]]$Lines, $Overdue, [string]$Today, [str
     elseif ($rows[$id].Last -ne $Today) { $rows[$id].Last = $Today; $rows[$id].Nights += 1; $rows[$id].State = 'open'; $changed = $true }
   }
   foreach ($id in @($rows.Keys)) {
-    if ((-not $over.ContainsKey($id)) -and ($rows[$id].State -eq 'open')) { $rows[$id].State = 'acked'; $changed = $true }
+    if ((-not $over.ContainsKey($id)) -and ($rows[$id].State -eq 'open')) {
+      # Section 31 R3-C1: `acked` only for a run the gate acknowledged; a
+      # run still demanded but not overdue stays open, and one no longer
+      # demanded at all (its result gone, or moved to the proof queue)
+      # reads `cleared`, never acknowledged.
+      if ((@($Pending) -contains $id)) { continue }
+      $rows[$id].State = if (($null -eq $Acked) -or (@($Acked) -contains $id)) { 'acked' } else { 'cleared' }
+      $changed = $true
+    }
   }
   $out = $header + @($rows.Values | ForEach-Object { "| $($_.Id) | $($_.What) | $($_.Incidents) | $($_.First) | $($_.Last) | $($_.Nights) | $($_.Owner) | $($_.State) |" })
   return [pscustomobject]@{ Lines = $out; Changed = $changed }
