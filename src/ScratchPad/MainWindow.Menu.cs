@@ -311,27 +311,39 @@ sealed partial class MainWindow : IMenuHost
 
     void IMenuHost.DefineBing() => LaunchBing(BingSearch.DefineUrl(ActiveSelection()));
 
-    // Test seam (D00 T02 §21 item 4): with SCRATCHPAD_TEST_LAUNCH_CAPTURE
-    // naming a file, the URI is appended there and no browser opens, so
-    // the UI suite pins both Bing commands end to end without escaping
-    // the app. Unset (every real launch), the launcher runs as before.
-    static void LaunchBing(Uri url)
+    // Test seam (D00 T02 §21 item 4; test-only by construction since
+    // D00 T02 §28 item 7): with SCRATCHPAD_TEST_LAUNCH_CAPTURE naming a
+    // file AND SCRATCHPAD_TEST_RUN=1, the URI is appended there and no
+    // browser opens. Either unset (every real launch), the launcher runs
+    // as before. A capture write that fails says so in a dialog instead
+    // of vanishing, so a test never reads a seam failure as "no launch".
+    void LaunchBing(Uri url)
     {
-        string? capture = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE");
-        if (!string.IsNullOrEmpty(capture))
+        string? capture = LaunchCapture.ActivePath(Environment.GetEnvironmentVariable);
+        if (capture is not null)
         {
-            try
+            if (LaunchCapture.Record(capture, url) is string failure)
             {
-                File.AppendAllText(capture, url.AbsoluteUri + "\n");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
+                _ = ShowLaunchCaptureFailureAsync(failure);
             }
 
             return;
         }
 
         _ = Launcher.LaunchUriAsync(url);
+    }
+
+    async Task ShowLaunchCaptureFailureAsync(string failure)
+    {
+        XamlRoot? root = await WaitForXamlRootAsync().ConfigureAwait(true);
+        if (root is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog { Title = "Launch capture failed", Content = failure, CloseButtonText = "OK", XamlRoot = root };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(dialog, "LaunchCaptureFailedDialog");
+        await dialog.ShowAsync();
     }
 
     string? ActiveSelection()

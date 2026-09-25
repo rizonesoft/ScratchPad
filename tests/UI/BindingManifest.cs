@@ -50,7 +50,19 @@ internal static class BindingManifest
 
     internal sealed record Declaration(string Chord, string Command, string Source, bool XamlEnabled, string? AccessKey);
 
-    internal sealed record AuditRow(string Chord, string Command, string Class, string Detail, string Approver, string Owner, int Line);
+    internal sealed record AuditRow(string Chord, string Command, string Class, string Detail, string Approver, string Owner, int Line, string Label = "");
+
+    // The accessible text XAML declares for a bound item (D00 T02 §28
+    // item 8): UIA Name is AutomationProperties.Name when set, else the
+    // item's Text; HelpText is AutomationProperties.HelpText or empty.
+    internal sealed record ItemText(string Name, string HelpText);
+
+    // One live read of a bound item's enablement in a named app state
+    // (D00 T02 §28 item 9).
+    internal sealed record StateObservation(string State, string Command, bool Enabled);
+
+    // The representative states every disabled exemption is read in.
+    internal static readonly string[] EnablementStates = ["fresh window", "file open", "selection present"];
 
     internal sealed record MenuAccessKey(string Menu, string Key);
 
@@ -140,6 +152,16 @@ internal static class BindingManifest
                 bool enabled = !string.Equals(owner!.Attribute("IsEnabled")?.Value, "False", StringComparison.Ordinal);
                 decls.Add(new Declaration(
                     Chord(mods.Split(',', StringSplitOptions.RemoveEmptyEntries), key), id, MenuXamlPath, enabled, null));
+                // D00 T02 §28 item 1: a bound item's Click handler is the
+                // one its id names (MenuFileNewTab -> OnFileNewTab), so a
+                // chord re-wired to another command's handler fails here
+                // before any covering test runs.
+                if (owner.Attribute("Click")?.Value is string handler && id.StartsWith("Menu", StringComparison.Ordinal)
+                    && !string.Equals(handler, "On" + id["Menu".Length..], StringComparison.Ordinal))
+                {
+                    problems.Add($"{MenuXamlPath}: {id} is wired to handler {handler}, not On{id["Menu".Length..]}; a chord must run the command it is declared on");
+                }
+
                 if (owner.Attribute("KeyboardAcceleratorTextOverride") is not null)
                 {
                     problems.Add($"{MenuXamlPath}: {id} overrides its accelerator text; the label check cannot derive it");
@@ -148,6 +170,81 @@ internal static class BindingManifest
         }
 
         return decls;
+    }
+
+    // Accessible text for every menu element carrying an AutomationId.
+    internal static Dictionary<string, ItemText> ParseMenuItemText(string xaml)
+    {
+        var map = new Dictionary<string, ItemText>(StringComparer.Ordinal);
+        foreach (XElement el in XDocument.Parse(xaml).Descendants())
+        {
+            if (AutomationId(el) is string id && el.Attribute("Text") is XAttribute text)
+            {
+                string? name = el.Attributes().FirstOrDefault(a => a.Name.LocalName == "AutomationProperties.Name")?.Value;
+                string help = el.Attributes().FirstOrDefault(a => a.Name.LocalName == "AutomationProperties.HelpText")?.Value ?? string.Empty;
+                map[id] = new ItemText(name ?? text.Value, help);
+            }
+        }
+
+        return map;
+    }
+
+    // Assistive-technology text versus the declaration: a bound item
+    // never read, or read with another name or description, is a problem.
+    internal static List<string> AccessibleTextMismatches(IEnumerable<string> boundIds, Dictionary<string, ItemText> declared, Dictionary<string, ItemText> seen)
+    {
+        var problems = new List<string>();
+        foreach (string id in boundIds.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+        {
+            if (!declared.TryGetValue(id, out ItemText? want))
+            {
+                problems.Add($"{id}: bound but declares no Text, so it has no accessible name");
+            }
+            else if (!seen.TryGetValue(id, out ItemText? got))
+            {
+                problems.Add($"{id}: bound but never read on the rendered menu");
+            }
+            else
+            {
+                if (!string.Equals(got.Name, want.Name, StringComparison.Ordinal))
+                {
+                    problems.Add($"{id}: accessible name '{got.Name}', declared '{want.Name}'");
+                }
+
+                if (!string.Equals(got.HelpText, want.HelpText, StringComparison.Ordinal))
+                {
+                    problems.Add($"{id}: accessible description '{got.HelpText}', declared '{want.HelpText}'");
+                }
+            }
+        }
+
+        return problems;
+    }
+
+    // D00 T02 §28 item 9: a disabled exemption holds only while its
+    // command is unusable in every representative state. Enabled in any
+    // state, or never read in one, fails before the owner closes.
+    internal static List<string> EnablementProblems(IEnumerable<AuditRow> rows, IEnumerable<StateObservation> observations)
+    {
+        var problems = new List<string>();
+        var seen = observations.ToList();
+        foreach (AuditRow row in rows.Where(r => r.Class == "disabled"))
+        {
+            foreach (string state in EnablementStates)
+            {
+                var reads = seen.Where(o => o.Command == row.Command && o.State == state).ToList();
+                if (reads.Count == 0)
+                {
+                    problems.Add($"{row.Chord} -> {row.Command}: disabled exemption never read in state '{state}'");
+                }
+                else if (reads.Any(o => o.Enabled))
+                {
+                    problems.Add($"{row.Chord} -> {row.Command}: exempt as disabled but enabled in state '{state}'; cover the chord or move the row to owner-owed");
+                }
+            }
+        }
+
+        return problems;
     }
 
     static string? AutomationId(XElement el) =>
@@ -377,7 +474,8 @@ internal static class BindingManifest
                 continue;
             }
 
-            rows.Add(new AuditRow(cells[0], id.Groups[1].Value, cells[2], cells[3], cells[4], cells[5], i + 1));
+            string label = Regex.Replace(cells[1], "\\s*\\(`[^`]+`\\)\\s*$", string.Empty).Replace(": ", " > ", StringComparison.Ordinal);
+            rows.Add(new AuditRow(cells[0], id.Groups[1].Value, cells[2], cells[3], cells[4], cells[5], i + 1, label));
         }
 
         return rows;
@@ -456,6 +554,66 @@ internal static class BindingManifest
         }
 
         return chords;
+    }
+
+    // D00 T02 §28 item 1: a covering test asserts an observable outcome
+    // after it presses the chord. A press followed by no assertion (an
+    // Assert call, directly or inside a lambda) proves the key went out,
+    // not that the command ran.
+    internal static bool AssertsAfterPress(string source, string method, string chord)
+    {
+        SyntaxNode root = CSharpSyntaxTree.ParseText(source).GetRoot();
+        foreach (MethodDeclarationSyntax m in root.DescendantNodes().OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == method))
+        {
+            var presses = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(c => c.Expression.ToString() == "UiInput.Press" && PressedChords(PressOnly(m, c), method).Contains(chord)).ToList();
+            if (presses.Count == 0)
+            {
+                continue;
+            }
+
+            int after = presses.Max(c => c.SpanStart);
+            if (m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Any(c => c.SpanStart > after && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The method with only one press kept, so PressedChords reads the
+    // chord of that single call (Theory rows included).
+    static string PressOnly(MethodDeclarationSyntax m, InvocationExpressionSyntax keep)
+    {
+        var others = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+            .Where(c => c.Expression.ToString() == "UiInput.Press" && c != keep)
+            .Select(c => c.Parent).OfType<ExpressionStatementSyntax>().ToList();
+        MethodDeclarationSyntax pruned = m.RemoveNodes(others, SyntaxRemoveOptions.KeepNoTrivia) ?? m;
+        return "class P { " + pruned.ToFullString() + " }";
+    }
+
+    // D00 T02 §28 item 10: an owner that owes a live command's chord test
+    // must not still claim the command ships disabled. A claim line is
+    // one naming the menu label beside "disabled"; it is tolerated only
+    // while the owner carries an open checklist item owing the
+    // reconciliation (naming "ships disabled"). Backticked spans quote
+    // the note rather than claim it.
+    internal static List<string> StaleDisabledClaims(string sectionBody, string label)
+    {
+        var lines = sectionBody.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        bool reconciliationOwed = lines.Any(l => l.StartsWith("- [ ] ", StringComparison.Ordinal) && l.Contains("ships disabled", StringComparison.Ordinal));
+        if (reconciliationOwed || label.Length == 0)
+        {
+            return [];
+        }
+
+        return lines.Where(l => l.Contains(label, StringComparison.Ordinal)
+                && Regex.IsMatch(Regex.Replace(l, "`[^`]*`", string.Empty), "\\bdisabled\\b")
+                && !l.Contains("enabled at runtime", StringComparison.Ordinal))
+            .Select(l => l.Length > 120 ? l[..120] + "..." : l)
+            .ToList();
     }
 
     // ---- owners ----------------------------------------------------
@@ -571,6 +729,10 @@ internal static class BindingManifest
                     {
                         problems.Add($"{at}: {cls}.{method} does not press {row.Chord} (presses {(pressed.Count == 0 ? "nothing" : string.Join(", ", pressed.OrderBy(p => p, StringComparer.Ordinal)))})");
                     }
+                    else if (!AssertsAfterPress(src, method, row.Chord))
+                    {
+                        problems.Add($"{at}: {cls}.{method} presses {row.Chord} but asserts nothing after it, so a wrong handler would pass");
+                    }
                 }
 
                 continue;
@@ -620,6 +782,14 @@ internal static class BindingManifest
             else if (!OwesChordTest(body, row.Chord))
             {
                 problems.Add($"{at}: owner {row.Owner}'s checklist does not owe the {row.Chord} chord test (it must name the chord and D00 T02 §21)");
+            }
+
+            if (found && row.Class == "owner-owed" && live)
+            {
+                foreach (string claim in StaleDisabledClaims(body, row.Label))
+                {
+                    problems.Add($"{at}: live, but owner {row.Owner} still claims {row.Label} ships disabled with no open reconciliation item: {claim}");
+                }
             }
         }
 

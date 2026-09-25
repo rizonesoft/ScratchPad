@@ -1,3 +1,4 @@
+using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Tools;
 using FlaUI.UIA3;
@@ -12,6 +13,10 @@ namespace UI;
 // rendered menu of a background window: menus open through Invoke and
 // ExpandCollapse, never focus. Stock-text parity (Del vs Delete,
 // Ctrl+Plus vs Ctrl++) is D01 T02 §6's audit, not this check.
+// D00 T02 §28 items 8 and 9: the same read checks each bound item's
+// accessible name and description against the XAML, and reads every
+// disabled exemption in three representative states (fresh window,
+// file open, selection present), failing as soon as one is usable.
 [Collection("UI tests")]
 public sealed class MenuLabelTests
 {
@@ -23,48 +28,85 @@ public sealed class MenuLabelTests
         ("MenuTools", null),
     ];
 
+    sealed record Read(string Accelerator, BindingManifest.ItemText Text, bool Enabled);
+
     [Fact]
     public void DisplayedShortcutTextMatchesTheManifest()
     {
         string root = BindingManifestTests.RepoRoot();
-        var decls = BindingManifest.ParseMenuXaml(File.ReadAllText(Path.Combine(root, BindingManifest.MenuXamlPath)), out _, out var parse);
+        string xaml = File.ReadAllText(Path.Combine(root, BindingManifest.MenuXamlPath));
+        var decls = BindingManifest.ParseMenuXaml(xaml, out _, out var parse);
         Assert.Empty(parse);
         var expected = decls.GroupBy(d => d.Command).ToDictionary(g => g.Key, g => BindingManifest.ExpectedLabel(g.First().Chord), StringComparer.Ordinal);
-        var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        var reads = WithApp(null, window => ReadBound(window, expected.Keys));
+        var seen = reads.ToDictionary(r => r.Key, r => r.Value.Accelerator, StringComparer.Ordinal);
+        Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), seen.Keys.Order(StringComparer.Ordinal));
+        Assert.Empty(BindingManifestTests.LabelMismatches(expected, seen));
+        Assert.Empty(BindingManifest.AccessibleTextMismatches(
+            expected.Keys,
+            BindingManifest.ParseMenuItemText(xaml),
+            reads.ToDictionary(r => r.Key, r => r.Value.Text, StringComparer.Ordinal)));
+    }
+
+    [Fact]
+    public void DisabledExemptionsHoldAcrossEnablementStates()
+    {
+        string root = BindingManifestTests.RepoRoot();
+        var rows = BindingManifest.ParseAudit(File.ReadAllText(Path.Combine(root, "docs", "ui-input-audit.md")), out var parse);
+        Assert.Empty(parse);
+        var ids = rows.Where(r => r.Class == "disabled").Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
+        Assert.NotEmpty(ids);
+        var observations = new List<BindingManifest.StateObservation>();
+
+        WithApp(null, window =>
+        {
+            Observe(observations, "fresh window", ReadBound(window, ids));
+            var box = ContentBox(window);
+            UiInput.AppendText(box, "selected text");
+            UiInput.SelectAllText(box);
+            Assert.False(string.IsNullOrEmpty(box.Patterns.Text.Pattern.GetSelection().FirstOrDefault()?.GetText(-1)), "the selection state has no selection");
+            Observe(observations, "selection present", ReadBound(window, ids));
+            return 0;
+        });
+
+        string file = Path.Combine(Path.GetTempPath(), $"scratchpad-enablement-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(file, "file open state\n");
+        try
+        {
+            WithApp($"\"{file}\"", window =>
+            {
+                Observe(observations, "file open", ReadBound(window, ids));
+                return 0;
+            });
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+
+        Assert.Empty(BindingManifest.EnablementProblems(rows, observations));
+    }
+
+    static void Observe(List<BindingManifest.StateObservation> into, string state, Dictionary<string, Read> reads)
+    {
+        foreach (var (id, read) in reads)
+        {
+            into.Add(new BindingManifest.StateObservation(state, id, read.Enabled));
+        }
+    }
+
+    static T WithApp<T>(string? args, Func<Window, T> body)
+    {
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
         nint fgBefore = UiForeground.Capture();
-        using var app = UiLaunch.LaunchApp();
+        using Application app = args is null ? UiLaunch.LaunchApp() : UiLaunch.LaunchAppWithArgs(args);
         using var automation = new UIA3Automation();
         var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
         UiForeground.Background(window, fgBefore);
         Assert.NotNull(window);
         try
         {
-            foreach (var (top, sub) in Menus)
-            {
-                OpenMenu(window, top);
-                if (sub is not null)
-                {
-                    var subItem = Retry.WhileNull(
-                        () => window.FindFirstDescendant(cf => cf.ByAutomationId(sub)),
-                        TimeSpan.FromSeconds(5),
-                        TimeSpan.FromMilliseconds(250)).Result;
-                    Assert.NotNull(subItem);
-                    subItem.Patterns.ExpandCollapse.Pattern.Expand();
-                    Thread.Sleep(600);
-                }
-
-                foreach (string id in expected.Keys)
-                {
-                    var item = window.FindFirstDescendant(cf => cf.ByAutomationId(id));
-                    if (item is not null)
-                    {
-                        seen[id] = item.Properties.AcceleratorKey.ValueOrDefault ?? string.Empty;
-                    }
-                }
-
-                CloseMenu(window, top);
-            }
+            return body(window);
         }
         finally
         {
@@ -82,9 +124,55 @@ public sealed class MenuLabelTests
                 app.Kill();
             }
         }
+    }
 
-        Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), seen.Keys.Order(StringComparer.Ordinal));
-        Assert.Empty(BindingManifestTests.LabelMismatches(expected, seen));
+    // Opens each menu (and the Zoom submenu) and reads every wanted id
+    // it renders: accelerator text, accessible name and description,
+    // and enablement.
+    static Dictionary<string, Read> ReadBound(Window window, IEnumerable<string> wanted)
+    {
+        var ids = wanted.ToList();
+        var seen = new Dictionary<string, Read>(StringComparer.Ordinal);
+        foreach (var (top, sub) in Menus)
+        {
+            OpenMenu(window, top);
+            if (sub is not null)
+            {
+                var subItem = Retry.WhileNull(
+                    () => window.FindFirstDescendant(cf => cf.ByAutomationId(sub)),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromMilliseconds(250)).Result;
+                Assert.NotNull(subItem);
+                subItem.Patterns.ExpandCollapse.Pattern.Expand();
+                Thread.Sleep(600);
+            }
+
+            foreach (string id in ids)
+            {
+                var item = window.FindFirstDescendant(cf => cf.ByAutomationId(id));
+                if (item is not null)
+                {
+                    seen[id] = new Read(
+                        item.Properties.AcceleratorKey.ValueOrDefault ?? string.Empty,
+                        new BindingManifest.ItemText(item.Properties.Name.ValueOrDefault ?? string.Empty, item.Properties.HelpText.ValueOrDefault ?? string.Empty),
+                        item.IsEnabled);
+                }
+            }
+
+            CloseMenu(window, top);
+        }
+
+        return seen;
+    }
+
+    static TextBox ContentBox(Window window)
+    {
+        var box = Retry.WhileNull(
+            () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
+            TimeSpan.FromSeconds(10),
+            TimeSpan.FromMilliseconds(250)).Result;
+        Assert.NotNull(box);
+        return box;
     }
 
     static void OpenMenu(Window window, string topId)

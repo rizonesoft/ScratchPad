@@ -209,55 +209,33 @@ public sealed class AcceleratorTests
         // stock parity); the chord must reach Search. The launcher seam
         // captures the URI, so no browser opens. Foreground confirmation
         // Night-owed D00-T02-S21-N1.
-        string capture = Path.Combine(Path.GetTempPath(), $"scratchpad-chord-e-{Guid.NewGuid():N}.txt");
-        string? prior = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE");
-        Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE", capture);
+        // D00 T02 §28 item 3: the winner is Search with Bing (the first
+        // declaration; Define with Bing is the audited duplicate), and one
+        // press yields exactly one captured URI, read after a settle window
+        // so a second dispatch would show as a second line.
+        using var seam = new LaunchCaptureScope();
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        using var app = UiLaunch.LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        Assert.NotNull(window);
         try
         {
-            using var app = UiLaunch.LaunchApp();
-            using var automation = new UIA3Automation();
-            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
-            Assert.NotNull(window);
-            try
-            {
-                var box = Retry.WhileNull(
-                    () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
-                    TimeSpan.FromSeconds(10),
-                    TimeSpan.FromMilliseconds(250)).Result;
-                Assert.NotNull(box);
-                UiInput.AppendText(box, "ctrl e");
-                UiInput.SelectAllText(box);
-                UiInput.Press(window, VirtualKeyShort.KEY_E, withControl: true);
-                string want = BingSearch.SearchUrl("ctrl e").AbsoluteUri;
-                var deadline = DateTime.UtcNow.AddSeconds(10);
-                string[] got = [];
-                while (DateTime.UtcNow < deadline && got.Length == 0)
-                {
-                    got = File.Exists(capture) ? File.ReadAllLines(capture).Where(l => l.Length > 0).ToArray() : [];
-                    Thread.Sleep(200);
-                }
-
-                Assert.Equal([want], got);
-            }
-            finally
-            {
-                if (!app.HasExited)
-                {
-                    app.Kill();
-                }
-            }
+            var box = Retry.WhileNull(
+                () => window.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox(),
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromMilliseconds(250)).Result;
+            Assert.NotNull(box);
+            UiInput.AppendText(box, "ctrl e");
+            UiInput.SelectAllText(box);
+            UiInput.Press(window, VirtualKeyShort.KEY_E, withControl: true);
+            Assert.Equal([BingSearch.SearchUrl("ctrl e").AbsoluteUri], seam.WaitForCapture(TimeSpan.FromSeconds(1.5)));
         }
         finally
         {
-            Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE", prior);
-            try
+            if (!app.HasExited)
             {
-                File.Delete(capture);
-            }
-            catch (IOException)
-            {
-                // Best-effort cleanup; the assertion already ran.
+                app.Kill();
             }
         }
     }

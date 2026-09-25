@@ -106,6 +106,102 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.Contains(BindingManifest.Check(alt), p => p.StartsWith("conflict: Alt+V (MenuToolsLock) collides with the MenuView access key", StringComparison.Ordinal));
     }
 
+    // D00 T02 §28 item 1: a chord re-wired to another command's handler
+    // fails the manifest before any test runs.
+    [Fact]
+    public void PlantedHandlerSwapFails()
+    {
+        var (_, parse) = LiveInputs(xaml: x => x.Replace("Click=\"OnFileNewTab\"", "Click=\"OnFileOpen\"", StringComparison.Ordinal));
+        Assert.Contains(parse, p => p.Contains("MenuFileNewTab is wired to handler OnFileOpen, not OnFileNewTab", StringComparison.Ordinal));
+    }
+
+    // D00 T02 §28 item 1: a covering test that presses the chord but
+    // asserts nothing after it cannot tell the right command from a
+    // wrong one, so it covers nothing.
+    [Fact]
+    public void CoveringTestWithoutAnOutcomeAssertionFails()
+    {
+        var (inputs, _) = LiveInputs(testSource: (cls, src) =>
+        {
+            if (cls != "AcceleratorTests")
+            {
+                return src;
+            }
+
+            int a = src.IndexOf("public void ChordCtrlShiftGOpensStats()", StringComparison.Ordinal);
+            int b = src.IndexOf("[InteractiveFact]", a, StringComparison.Ordinal);
+            return src[..a] + src[a..b].Replace("Assert.", "Skip.", StringComparison.Ordinal) + src[b..];
+        });
+        Assert.Contains(BindingManifest.Check(inputs), p => p.Contains("AcceleratorTests.ChordCtrlShiftGOpensStats presses Ctrl+Shift+G but asserts nothing after it", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LiveCoveringTestsAssertAfterTheirPress()
+    {
+        var (inputs, _) = LiveInputs();
+        Assert.DoesNotContain(BindingManifest.Check(inputs), p => p.Contains("asserts nothing after it", StringComparison.Ordinal));
+    }
+
+    // D00 T02 §28 item 8: assistive-technology text is checked against
+    // the declaration for every bound item.
+    [Fact]
+    public void AccessibleTextMismatchFails()
+    {
+        string xaml = File.ReadAllText(Path.Combine(RepoRoot(), BindingManifest.MenuXamlPath));
+        var declared = BindingManifest.ParseMenuItemText(xaml);
+        Assert.Equal(new BindingManifest.ItemText("New tab", string.Empty), declared["MenuFileNewTab"]);
+        var seen = new Dictionary<string, BindingManifest.ItemText>(StringComparer.Ordinal)
+        {
+            ["MenuFileNewTab"] = new("New tab", string.Empty),
+            ["MenuFileOpen"] = new("Open file", string.Empty),
+            ["MenuFileSave"] = new("Save", "Saves"),
+        };
+        Assert.Equal(
+            [
+                "MenuFileOpen: accessible name 'Open file', declared 'Open'",
+                "MenuFileSave: accessible description 'Saves', declared ''",
+                "MenuFileSaveAs: bound but never read on the rendered menu",
+            ],
+            BindingManifest.AccessibleTextMismatches(["MenuFileNewTab", "MenuFileOpen", "MenuFileSave", "MenuFileSaveAs"], declared, seen));
+    }
+
+    // D00 T02 §28 item 9: a disabled exemption enabled in one state (a
+    // selection present) fails, and a state never read fails too.
+    [Fact]
+    public void StateConditionalEnablementPlantFails()
+    {
+        var (inputs, _) = LiveInputs();
+        var disabled = inputs.Rows.Where(r => r.Class == "disabled").ToList();
+        Assert.NotEmpty(disabled);
+        var all = disabled.SelectMany(r => BindingManifest.EnablementStates.Select(st => new BindingManifest.StateObservation(st, r.Command, false))).ToList();
+        Assert.Empty(BindingManifest.EnablementProblems(inputs.Rows, all));
+        var planted = all.Select(o => o.Command == "MenuEditCopy" && o.State == "selection present" ? o with { Enabled = true } : o).ToList();
+        Assert.Contains(BindingManifest.EnablementProblems(inputs.Rows, planted), p => p.Contains("MenuEditCopy: exempt as disabled but enabled in state 'selection present'", StringComparison.Ordinal));
+        var unread = all.Where(o => !(o.Command == "MenuEditCopy" && o.State == "file open")).ToList();
+        Assert.Contains(BindingManifest.EnablementProblems(inputs.Rows, unread), p => p.Contains("MenuEditCopy: disabled exemption never read in state 'file open'", StringComparison.Ordinal));
+    }
+
+    // D00 T02 §28 item 10: the Ctrl+P owner-owed row and D01 T02 §5
+    // agree. While §5 owes its enablement reconciliation the historical
+    // "ships disabled" note stands; once that item closes (or is
+    // dropped) with the note uncorrected, the guard fails.
+    [Fact]
+    public void OwnerStillClaimingTheLiveCommandShipsDisabledFails()
+    {
+        var (live, _) = LiveInputs();
+        Assert.Contains(live.Rows, r => r.Command == "MenuFilePrint" && r.Class == "owner-owed" && r.Label == "File > Print");
+        Assert.DoesNotContain(BindingManifest.Check(live), p => p.Contains("still claims", StringComparison.Ordinal));
+        var (closed, _) = LiveInputs(section: (reference, s) => reference == "D01 T02 §5"
+            ? (s.Found, s.Open, s.Body.Replace("- [ ] The section text reconciles with the tree", "- [x] The section text reconciles with the tree", StringComparison.Ordinal))
+            : s);
+        Assert.Contains(BindingManifest.Check(closed), p => p.Contains("MenuFilePrint: live, but owner D01 T02 §5 still claims File > Print ships disabled", StringComparison.Ordinal));
+        var (corrected, _) = LiveInputs(section: (reference, s) => reference == "D01 T02 §5"
+            ? (s.Found, s.Open, s.Body.Replace("- [ ] The section text reconciles with the tree", "- [x] The section text reconciles with the tree", StringComparison.Ordinal)
+                .Replace("ships File > Print and File > Page setup disabled", "ships File > Print and File > Page setup enabled at runtime", StringComparison.Ordinal))
+            : s);
+        Assert.DoesNotContain(BindingManifest.Check(corrected), p => p.Contains("still claims", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void PlantedEnabledButExemptCommandFails()
     {

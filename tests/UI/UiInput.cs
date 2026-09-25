@@ -16,7 +16,12 @@ namespace UI;
 // fails loud naming the thief; after it (even when the send throws), no
 // modifier may stay down. A keystroke that would land in another app
 // (a global hotkey owner, a stolen foreground) or in the app's other
-// window never escapes.
+// window never escapes. Since D00 T02 §28 the precondition also binds
+// the press to its focus target (the element itself or, for a window
+// target, anything inside that window), refuses to press while the
+// operator holds a modifier (the funnel never releases a key it did not
+// press), and splits every press into key-down and key-up: focus lost
+// between them still sends the key-up, then aborts loud.
 internal static class UiInput
 {
     // Foreground probe: (root-owner HWND, owning pid). The root owner
@@ -60,7 +65,7 @@ internal static class UiInput
             ExpectedRoot(target),
             text,
             ForegroundProbe,
-            () => FocusedPid(target),
+            () => ReadFocus(target),
             ch => Keyboard.Type(ch.ToString()),
             ModifiersReleased,
             ReleaseModifiers);
@@ -71,7 +76,7 @@ internal static class UiInput
         nint expectedRoot,
         string text,
         Func<(nint Root, int Pid)> foreground,
-        Func<int?> focusedPid,
+        Func<FocusRead> focus,
         Action<char> sendChar,
         Func<bool> modifiersReleased,
         Action releaseModifiers)
@@ -80,7 +85,9 @@ internal static class UiInput
         ArgumentNullException.ThrowIfNull(sendChar);
         foreach (char ch in text)
         {
-            SendChecked(expectedPid, expectedRoot, foreground, focusedPid, () => sendChar(ch), modifiersReleased, releaseModifiers);
+            // Keyboard.Type sends a character's down and up together, so
+            // the key-up half is empty.
+            SendChecked(expectedPid, expectedRoot, foreground, focus, () => sendChar(ch), () => { }, modifiersReleased, releaseModifiers);
         }
     }
 
@@ -102,44 +109,59 @@ internal static class UiInput
             mods.Add(VirtualKeyShort.ALT);
         }
 
+        // Keyboard.Press is key-down only and Keyboard.Release key-up
+        // only, so the chord is down (modifiers, then the key) and up
+        // (the key, then the modifiers in reverse).
         SendChecked(
             target.Properties.ProcessId.Value,
             ExpectedRoot(target),
             ForegroundProbe,
-            () => FocusedPid(target),
+            () => ReadFocus(target),
             () =>
             {
-                if (mods.Count > 0)
+                foreach (var mod in mods)
                 {
-                    using (Keyboard.Pressing(mods.ToArray()))
-                    {
-                        Keyboard.Press(key);
-                    }
+                    Keyboard.Press(mod);
                 }
-                else
+
+                Keyboard.Press(key);
+            },
+            () =>
+            {
+                Keyboard.Release(key);
+                for (int i = mods.Count - 1; i >= 0; i--)
                 {
-                    Keyboard.Press(key);
+                    Keyboard.Release(mods[i]);
                 }
             },
             ModifiersReleased,
             ReleaseModifiers);
     }
 
+    // What the UIA focus probe read: the focused element's pid (null when
+    // nothing resolved) and whether it is the press's focus target.
+    internal readonly record struct FocusRead(int? Pid, bool OnTarget);
+
     // The checked core. Pure over its probes so tests can plant a focus
-    // loss, a same-process wrong window, a throwing sender, or a stuck
-    // modifier and prove no key escapes and no modifier outlives the call.
+    // loss, a same-process wrong window, a wrong focused control, an
+    // operator-held modifier, a focus change between key-down and
+    // key-up, a throwing sender, or a stuck modifier, and prove no key
+    // escapes, no key stays down, and no modifier the operator holds is
+    // released.
     internal static void SendChecked(
         int expectedPid,
         nint expectedRoot,
         Func<(nint Root, int Pid)> foreground,
-        Func<int?> focusedPid,
-        Action send,
+        Func<FocusRead> focus,
+        Action keyDown,
+        Action keyUp,
         Func<bool> modifiersReleased,
         Action releaseModifiers)
     {
         ArgumentNullException.ThrowIfNull(foreground);
-        ArgumentNullException.ThrowIfNull(focusedPid);
-        ArgumentNullException.ThrowIfNull(send);
+        ArgumentNullException.ThrowIfNull(focus);
+        ArgumentNullException.ThrowIfNull(keyDown);
+        ArgumentNullException.ThrowIfNull(keyUp);
         ArgumentNullException.ThrowIfNull(modifiersReleased);
         ArgumentNullException.ThrowIfNull(releaseModifiers);
         if (expectedRoot == 0)
@@ -148,31 +170,50 @@ internal static class UiInput
         }
 
         var deadline = DateTime.UtcNow + PreconditionWait;
-        (nint Root, int Pid) fg;
-        int? focus;
         while (true)
         {
-            fg = foreground();
-            focus = focusedPid();
-            if (fg.Root == expectedRoot && fg.Pid == expectedPid && focus == expectedPid)
+            var fg = foreground();
+            var f = focus();
+            bool held = !modifiersReleased();
+            if (Bound(fg, f, expectedPid, expectedRoot) && !held)
             {
                 break;
             }
 
             if (DateTime.UtcNow >= deadline)
             {
+                // A modifier down before the press is the operator's (or
+                // another tool's): the funnel reports it and never
+                // releases it.
                 throw new InvalidOperationException(
-                    $"input precondition failed, key not sent: foreground root 0x{fg.Root:X} belongs to pid {fg.Pid} "
-                    + $"({ProcessName(fg.Pid)}), focused element pid {focus?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}, "
-                    + $"target window 0x{expectedRoot:X} in app pid {expectedPid}");
+                    "input precondition failed, key not sent: " + (Bound(fg, f, expectedPid, expectedRoot)
+                        ? "a modifier is already held (not the funnel's; left as it is)"
+                        : Describe(fg, f, expectedPid, expectedRoot)));
             }
 
             Thread.Sleep(50);
         }
 
+        // Past the precondition no modifier was down, so any modifier
+        // down after the press is the funnel's own and is released.
+        string? interrupted = null;
         try
         {
-            send();
+            try
+            {
+                keyDown();
+                var fg = foreground();
+                var f = focus();
+                if (!Bound(fg, f, expectedPid, expectedRoot))
+                {
+                    interrupted = Describe(fg, f, expectedPid, expectedRoot);
+                }
+            }
+            finally
+            {
+                // Always: a key left down outlives the test.
+                keyUp();
+            }
         }
         catch
         {
@@ -192,7 +233,21 @@ internal static class UiInput
             releaseModifiers();
             throw new InvalidOperationException("input cleanup failed: a modifier stayed down after the press (released now)");
         }
+
+        if (interrupted is not null)
+        {
+            throw new InvalidOperationException($"chord interrupted between key-down and key-up, aborted after the key-up: {interrupted}");
+        }
     }
+
+    static bool Bound((nint Root, int Pid) fg, FocusRead f, int expectedPid, nint expectedRoot) =>
+        fg.Root == expectedRoot && fg.Pid == expectedPid && f.Pid == expectedPid && f.OnTarget;
+
+    static string Describe((nint Root, int Pid) fg, FocusRead f, int expectedPid, nint expectedRoot) =>
+        $"foreground root 0x{fg.Root:X} belongs to pid {fg.Pid} ({ProcessName(fg.Pid)}), "
+        + $"focused element pid {f.Pid?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none"}"
+        + (f.Pid == expectedPid && !f.OnTarget ? " (not the focus target)" : string.Empty)
+        + $", target window 0x{expectedRoot:X} in app pid {expectedPid}";
 
     // The target's window identity: the nearest element with a native
     // window, folded to its root owner the same way the foreground is.
@@ -223,15 +278,43 @@ internal static class UiInput
 
     const uint GaRootOwner = 3;
 
-    static int? FocusedPid(AutomationElement target)
+    // The focus target: a window target accepts any focused element (the
+    // foreground root check already binds the press to that window); an
+    // element target (the editor, a named field, a modal) requires the
+    // focused element to be the target or inside it.
+    static FocusRead ReadFocus(AutomationElement target)
     {
         try
         {
-            return target.Automation.FocusedElement()?.Properties.ProcessId.ValueOrDefault;
+            var focused = target.Automation.FocusedElement();
+            if (focused is null)
+            {
+                return new FocusRead(null, false);
+            }
+
+            int pid = focused.Properties.ProcessId.ValueOrDefault;
+            if (target is Window || target.ControlType == FlaUI.Core.Definitions.ControlType.Window)
+            {
+                return new FocusRead(pid, true);
+            }
+
+            var walker = target.Automation.TreeWalkerFactory.GetRawViewWalker();
+            AutomationElement? el = focused;
+            for (int depth = 0; el is not null && depth < 64; depth++)
+            {
+                if (el.Equals(target))
+                {
+                    return new FocusRead(pid, true);
+                }
+
+                el = walker.GetParent(el);
+            }
+
+            return new FocusRead(pid, false);
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
         {
-            return null;
+            return new FocusRead(null, false);
         }
     }
 

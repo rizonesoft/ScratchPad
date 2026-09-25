@@ -23,65 +23,61 @@ public sealed class BingLaunchTests
     [InlineData("MenuEditDefineBing", true)]
     public void BingCommandLaunchesItsEscapedUriWithoutABrowser(string itemId, bool define)
     {
-        string capture = Path.Combine(Path.GetTempPath(), $"scratchpad-bing-{Guid.NewGuid():N}.txt");
-        string? prior = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE");
-        Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE", capture);
+        using var seam = new LaunchCaptureScope();
         UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
+        using var app = UiLaunch.LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
+        Assert.NotNull(window);
         try
         {
-            nint fgBefore = UiForeground.Capture();
-            using var app = UiLaunch.LaunchApp();
-            using var automation = new UIA3Automation();
-            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
-            UiForeground.Background(window, fgBefore);
-            Assert.NotNull(window);
-            try
-            {
-                var box = ContentBox(window);
-                UiInput.AppendText(box, Selection);
-                UiInput.SelectAllText(box);
-                UiInput.InvokeMenuItem(window, "MenuEdit", itemId);
-                string want = (define ? BingSearch.DefineUrl(Selection) : BingSearch.SearchUrl(Selection)).AbsoluteUri;
-                Assert.Equal([want], WaitForCapture(capture));
-                Assert.Contains("%26c%3Dd%20%23%C3%A9", want, StringComparison.Ordinal);
-            }
-            finally
-            {
-                KillApp(app);
-            }
+            var box = ContentBox(window);
+            UiInput.AppendText(box, Selection);
+            UiInput.SelectAllText(box);
+            UiInput.InvokeMenuItem(window, "MenuEdit", itemId);
+            string want = (define ? BingSearch.DefineUrl(Selection) : BingSearch.SearchUrl(Selection)).AbsoluteUri;
+            Assert.Equal([want], seam.WaitForCapture(TimeSpan.FromSeconds(1)));
+            Assert.Contains("%26c%3Dd%20%23%C3%A9", want, StringComparison.Ordinal);
         }
         finally
         {
-            Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_LAUNCH_CAPTURE", prior);
-            try
-            {
-                File.Delete(capture);
-            }
-            catch (IOException)
-            {
-                // Best-effort cleanup; the assertion already ran.
-            }
+            KillApp(app);
         }
     }
 
-    static string[] WaitForCapture(string path)
+    // D00 T02 §28 item 7: a capture the app cannot write surfaces as the
+    // LaunchCaptureFailedDialog naming the path, never a silent no-op.
+    [Fact]
+    public void FailingCaptureWriteReportsInTheWindow()
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (DateTime.UtcNow < deadline)
+        string unwritable = Path.Combine(Path.GetTempPath(), $"scratchpad-no-dir-{Guid.NewGuid():N}", "capture.txt");
+        using var seam = new LaunchCaptureScope(unwritable);
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        nint fgBefore = UiForeground.Capture();
+        using var app = UiLaunch.LaunchApp();
+        using var automation = new UIA3Automation();
+        var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(window, fgBefore);
+        Assert.NotNull(window);
+        try
         {
-            if (File.Exists(path))
-            {
-                string[] lines = File.ReadAllLines(path).Where(l => l.Length > 0).ToArray();
-                if (lines.Length > 0)
-                {
-                    return lines;
-                }
-            }
-
-            Thread.Sleep(200);
+            UiInput.InvokeMenuItem(window, "MenuEdit", "MenuEditSearchBing");
+            var dialog = Retry.WhileNull(
+                () => window.FindFirstDescendant(cf => cf.ByAutomationId("LaunchCaptureFailedDialog")),
+                TimeSpan.FromSeconds(10),
+                TimeSpan.FromMilliseconds(250)).Result;
+            Assert.NotNull(dialog);
+            string text = string.Join(" ", dialog.FindAllDescendants().Select(e => e.Properties.Name.ValueOrDefault ?? string.Empty));
+            Assert.Contains("launch capture failed", text, StringComparison.Ordinal);
+            Assert.Contains("capture.txt", text, StringComparison.Ordinal);
+            Assert.Empty(seam.Lines());
         }
-
-        return [];
+        finally
+        {
+            KillApp(app);
+        }
     }
 
     static TextBox ContentBox(Window window)

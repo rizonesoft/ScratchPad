@@ -154,7 +154,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §26` | Sibling sweep narrowing                                   |   3   |
 | [x] | `D00 T02 §27` | Night-debt escalation lifecycle                           |   8   |
 | [ ] | `D00 T02 §28` | Binding guard and funnel hardening                        |  11   |
-| [ ] | `D00 T02 §29` | Population fingerprint gate before the night              |   6   |
+| [ ] | `D00 T02 §29` | Population fingerprint gate before the night              |   7   |
 | [ ] | `D00 T02 §30` | Nightly evidence residuals                                |  11   |
 | [ ] | `D00 T02 §31` | Acknowledgement residuals                                 |  15   |
 | [ ] | `D00 T02 §32` | Trend and telemetry residuals                             |  16   |

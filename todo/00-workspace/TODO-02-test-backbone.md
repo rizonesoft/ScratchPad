@@ -886,23 +886,28 @@ Why this section exists: §19 gave every open night debt a due date and an OVERD
 
 ## 28. Binding Guard and Funnel Hardening
 
+> **Started:** 2026-09-25T05:29:00Z
+
 Why this section exists: the §21 plan review returned 25 findings against the binding manifest guard, the checked input funnel, and their neighbors; 10 file here, 5 on D00 T09 §1, 8 on the owner sections, and 2 are rejected with reasons in the §21 findings file. The guard proves every declared chord has a pressing test; it does not yet prove the right command ran, that routing holds per surface, or that the funnel's focus target is the intended control. -> SOURCE: plan-review-D00-T02-s21-2026-09-24-s28 D00-T02-S21-PR2 D00-T02-S21-PR3 D00-T02-S21-PR4 D00-T02-S21-PR6 D00-T02-S21-PR7 D00-T02-S21-PR8 D00-T02-S21-PR14 D00-T02-S21-PR15 D00-T02-S21-PR16 D00-T02-S21-PR17 (command outcome, routing, duplicate dispatch, layout, focus target, chord interruption, seam isolation, accessible text, enablement states, and print reconciliation from the §21 plan review).
 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §21 -- filed from its plan review; hardens the guard and funnel it shipped.
 
-- [ ] Each covering test asserts an observable command outcome, and a wrong-handler mutation (the chord routed to a different command) fails coverage. Done when: a planted handler swap fails the guard or the covering test. (D00-T02-S21-PR2.)
-- [ ] Context routing is exercised, not only recorded: window-global chords are pressed from the editor, the tab strip, an open menu, and a modal dialog, and each lands on (or is suppressed by) the surface the matrix names. Done when: a routing test per surface passes. (D00-T02-S21-PR3.)
-- [ ] The Ctrl+E duplicate names its winner (Search with Bing) and proves exactly-once dispatch: one press yields exactly one captured URI. Done when: the chord test asserts a single capture line. (D00-T02-S21-PR4.)
-- [ ] Keyboard layout, AltGr, and main-row versus numpad identity get representative cases (a non-US layout, AltGr chords, NumPad digits and plus/minus), so labels and physical input agree beyond US English. Done when: the layout cases read with their expected dispatch. (D00-T02-S21-PR6.)
-- [ ] Each press binds to its expected focus target (the editor, a named field), not only to an app-owned element, so a test cannot pass typing into the wrong control. Done when: a planted focus on the wrong control fails the precondition. (D00-T02-S21-PR7.)
-- [ ] Focus change during a multi-key chord is defined: modifier ownership (the funnel never releases a modifier the operator holds) and interruption between key-down and key-up abort cleanly. Done when: fixtures pin both. (D00-T02-S21-PR8.)
-- [ ] The launch capture seam is test-only by construction (activated only with the test-run marker as well as the variable), cleans up after itself, and a write failure fails loud instead of silently suppressing the launch. Done when: an unset marker launches normally and a failing write reports. (D00-T02-S21-PR14.)
-- [ ] Accessible names and descriptions are asserted beside `AcceleratorKey`, so assistive-technology output matches the manifest. Done when: the label test checks name plus accelerator on every bound item. (D00-T02-S21-PR15.)
-- [ ] Disabled exemptions are checked across representative enablement states (fresh window, file open, selection present), and fail as soon as a command is usable in any of them, before its owner closes. Done when: a state-conditional enablement plant fails. (D00-T02-S21-PR16.)
-- [ ] The Ctrl+P owner-owed row stays consistent with D01 T02 §5 once that section reconciles its enablement text, and the guard checks the owner's text does not still claim the command ships disabled. Done when: the row and the owner agree. (D00-T02-S21-PR17.)
-- [ ] Commit: `"workspace: harden the binding guard and input funnel"`
+- [x] Each covering test asserts an observable command outcome, and a wrong-handler mutation (the chord routed to a different command) fails coverage. Done when: a planted handler swap fails the guard or the covering test. (D00-T02-S21-PR2.)
+- [x] Context routing is exercised, not only recorded: window-global chords are pressed from the editor, the tab strip, an open menu, and a modal dialog, and each lands on (or is suppressed by) the surface the matrix names. Done when: a routing test per surface passes. (D00-T02-S21-PR3.)
+- [x] The Ctrl+E duplicate names its winner (Search with Bing) and proves exactly-once dispatch: one press yields exactly one captured URI. Done when: the chord test asserts a single capture line. (D00-T02-S21-PR4.)
+- [x] Keyboard layout, AltGr, and main-row versus numpad identity get representative cases (a non-US layout, AltGr chords, NumPad digits and plus/minus), so labels and physical input agree beyond US English. Done when: the layout cases read with their expected dispatch. (D00-T02-S21-PR6.)
+- [x] Each press binds to its expected focus target (the editor, a named field), not only to an app-owned element, so a test cannot pass typing into the wrong control. Done when: a planted focus on the wrong control fails the precondition. (D00-T02-S21-PR7.)
+- [x] Focus change during a multi-key chord is defined: modifier ownership (the funnel never releases a modifier the operator holds) and interruption between key-down and key-up abort cleanly. Done when: fixtures pin both. (D00-T02-S21-PR8.)
+- [x] The launch capture seam is test-only by construction (activated only with the test-run marker as well as the variable), cleans up after itself, and a write failure fails loud instead of silently suppressing the launch. Done when: an unset marker launches normally and a failing write reports. (D00-T02-S21-PR14.)
+- [x] Accessible names and descriptions are asserted beside `AcceleratorKey`, so assistive-technology output matches the manifest. Done when: the label test checks name plus accelerator on every bound item. (D00-T02-S21-PR15.)
+- [x] Disabled exemptions are checked across representative enablement states (fresh window, file open, selection present), and fail as soon as a command is usable in any of them, before its owner closes. Done when: a state-conditional enablement plant fails. (D00-T02-S21-PR16.)
+- [x] The Ctrl+P owner-owed row stays consistent with D01 T02 §5 once that section reconciles its enablement text, and the guard checks the owner's text does not still claim the command ships disabled. Done when: the row and the owner agree. (D00-T02-S21-PR17.)
+- [x] Commit: `"workspace: harden the binding guard and input funnel"`
+
+
+**Night-owed:** D00-T02-S28-N1 (44 Interactive, collector Nightly UI 02:30, owed 2026-09-25). `ChordRoutingTests.WindowGlobalChordRoutesPerSurface` (item 2) and `ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity` (item 4) take the foreground, and every Interactive test now runs on the funnel reworked by items 5 and 6 (key-down/key-up split, focus target, operator-held modifier), so the whole fenced population collects in the next quiet window; the focus-free proofs are green and the stamp does not wait.
 
 **Test checkpoint:** Wrong-handler plant fails, routing per surface passes, Ctrl+E dispatches once, layout cases read, wrong-control focus fails, chord interruption aborts cleanly, seam is test-only, accessible text checked, state-conditional enablement fails the exemption. Cheaper substitute that fails: more rows in the audit table with no behavior proven.
 
@@ -922,6 +927,7 @@ Why this section exists: the population fingerprint (`tests/UI/TestPopulation.fi
 - [ ] The Windows job in `.github/workflows/build.yml` runs the script after the UI build, so a push with a stale fingerprint goes red with the drift named. Done when: a CI run shows the step green on HEAD, and a planted stale count reds the step locally with the same script.
 - [ ] The comparer also checks `interactive-methods` and `run-b-methods` against discovery (today `Compare-TestPopulation` checks only `run-a-methods` plus the three case counts), so a methods-only drift cannot pass. Done when: a planted methods-count mismatch fails the parser fixture suite (`tools/NightlyParse.Tests.ps1`).
 - [ ] `tools/Update-TestFingerprint.ps1` refuses to write when the UI binaries are older than the newest `tests/UI/*.cs`, so a regen against a stale build cannot record the wrong counts again. Done when: touching a test file without rebuilding makes the regen refuse with the build instruction.
+- [ ] Discovery is time-independent: `Get-UiTestDiscovery` sets `SCRATCHPAD_INTERACTIVE_FORCE=1` for its `--list-tests` runs (restoring the prior value), because a fenced Theory outside the quiet window lists as one skipped case instead of its rows, so a daytime regen wrote `interactive=39/39` where the 02:30 night discovers 39/44 (found 2026-09-25 by the D00 T02 §28 regen; that commit's fingerprint was written with the variable set). Done when: the same build regenerates identical counts at noon and inside the window, and a parser fixture pins the variable on the discovery call.
 - [ ] `docs/testing.md` names the check beside the regen procedure. Done when: the paragraph names the script and the CI step.
 - [ ] Commit: `"workspace: gate the population fingerprint before the night"`
 
