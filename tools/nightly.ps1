@@ -189,10 +189,10 @@ function Invoke-ContainedSuite([string]$Name, [int]$CapSeconds, [string]$Exe, [s
   }
   if (Test-Path $OutLog) { Remove-Item $OutLog -Force }
   $sup = Start-Job -ScriptBlock {
-    param($jc, $job, $out, $cap, $dump, $exe, $argList, $dir, $dumpMax)
+    param($jc, $job, $out, $cap, $dumpArgs, $exe, $argList, $dir)
     Set-Location $dir
-    & $jc 'run' '--job' $job '--out' $out '--timeout' "$cap" '--dump' $dump '--dump-max' "$dumpMax" '--' $exe @argList 2>&1
-  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, $DumpDir, $runExe, $runArgs, $Root, $script:CaptureFileMaxBytes)
+    & $jc 'run' '--job' $job '--out' $out '--timeout' "$cap" @dumpArgs '--' $exe @argList 2>&1
+  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, @(Get-DumpArgs $DumpDir $script:CaptureFileMaxBytes), $runExe, $runArgs, $Root)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $doneSignal = Wait-Job -Job $sup -Timeout ($CapSeconds + $script:killSlack)
   $expired = ($null -eq $doneSignal)
@@ -524,7 +524,7 @@ $trxDir = Join-Path $nightDir $stamp
 New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
 # Crash-left capture staging is swept before this run captures anything
 # (D00 T02 section 38 item 1); the notes join the report's captures.
-$script:stagingSweepNotes = @(Clear-StaleCaptureStaging $nightDir)
+$script:stagingSweepNotes = @(Clear-StaleCaptureStaging $nightDir $stamp)
 # Next-start recovery (D00 T02 §16 items 4, 12): probe BEFORE writing
 # this run's journal, so a dead previous run lands its RED record
 # exactly once (the probe reads the old journal; the write below
@@ -1204,9 +1204,28 @@ if (-not $ledgerRead.Ok) {
 } else {
   # Recovery streaks stand on tonight's test population (D00 T02 section
   # 44 item 6): a streak built under another population resets.
-  $ledgerUpd = Update-IncidentLedger $ledgerRead.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md')) (Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'))
+  # Alias joins move incident state onto the v2 id first (D00 T02
+  # section 45 item 5), so the update below sees one entry per failure.
+  $aliasRows = @(foreach ($f in $ledgerResults) { try { Get-Content -LiteralPath $f -Raw | ConvertFrom-Json } catch { } })
+  $moved = Move-AliasedIncidents $ledgerRead.Incidents (Get-IncidentAliases $aliasRows) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
+  # Only qualifying runs move a recovery streak (section 45 item 6).
+  $notQual = @()
+  if ($simMode) { $notQual += 'simulation or stubbed legs' }
+  if (@($budgetCut).Count -gt 0) { $notQual += "budget-cut ($(@($budgetCut) -join ', '))" }
+  if ($interactiveKilled) { $notQual += 'interactive leg killed' }
+  if ("$buildError" -ne '') { $notQual += 'build failed' }
+  if ("$placementError" -ne '') { $notQual += 'Primary placement invalid' }
+  $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint')) ($notQual -join '; ')
+  if (@($moved.Lines).Count -gt 0) { $ledgerUpd.Lines = @($moved.Lines) + @($ledgerUpd.Lines) }
   $ledgerErr = ''
-  try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
+  try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath $stamp } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
+  # The run's checkpoint (D00 T02 section 45 item 4): the same state in
+  # this run's stamp directory, so a crash before the result lands still
+  # rebuilds to it.
+  if ($ledgerErr -eq '') {
+    try { $cpErr = Write-IncidentLedger $ledgerUpd.Incidents (Join-Path $trxDir $script:LedgerCheckpointName) $stamp } catch { $cpErr = "$($_.Exception.Message)" }
+    if ($cpErr -ne '') { $report += "- ledger checkpoint write failed: $cpErr (a rebuild falls back to the results)" }
+  }
   if ($ledgerErr -ne '') { $failed = $true; $report += "- RED: $ledgerErr" }
   $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
   if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }
@@ -1225,6 +1244,10 @@ $report += ''
 # (vacuous proof); it reds as a collector bug.
 $debtEntries = @()
 $stagedStubs = @()
+# The collector's tracked writes (D00 T02 section 45 item 7): recorded
+# per file with its pre-write text, so the tree check expects exactly
+# these lines and tools/NightlyTriage.ps1 commits them.
+$trackedWrites = @{}
 # Debts collected green tonight (D00 T02 §42 item 7): the post-run block
 # checks each against the re-run query.
 $greenIds = @()
@@ -1258,7 +1281,11 @@ if ($debtQueryError -ne '') {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); $stageNote; debt stays open; $(Format-RedTriageNote $debt.Owner $day)"
       # The red is recorded (D00 T02 §27 item 3): the first resets the
       # due window once, a second escalates as red-repeat.
-      $redNote = Add-RedLine (Join-Path $Root $debt.File) $debt.Id $day (Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp)
+      $redPath = Join-Path $Root $debt.File
+      $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
+      $redLine = Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp
+      $redNote = Add-RedLine $redPath $debt.Id $day $redLine
+      Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
       Write-Output "nightly: night-debt $($debt.Id): $redNote"
       continue
     }
@@ -1273,14 +1300,21 @@ if ($debtQueryError -ne '') {
       } elseif ($decision -eq 'close') {
         $greenIds += $debt.Id
         $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest
-        $note = Invoke-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
+        $colPath = Join-Path $Root $debt.File
+        $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
+        $note = Invoke-CollectedLine $colPath $debt.Id $line
+        Register-TrackedWrite $trackedWrites $Root $colPath $line $note $colBefore
         Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
         $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sub.Passed $sub.Failed $sub.Skipped $logRel $note
         $debtEntries += $pair[0]
         if ($pair[1]) { $failed = $true }
       } elseif ($decision -eq 'red') {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open; $(Format-RedTriageNote $debt.Owner $day)"
-        $redNote = Add-RedLine (Join-Path $Root $debt.File) $debt.Id $day (Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp)
+        $redPath = Join-Path $Root $debt.File
+        $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
+        $redLine = Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp
+        $redNote = Add-RedLine $redPath $debt.Id $day $redLine
+        Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
         Write-Output "nightly: night-debt $($debt.Id): $redNote"
       } elseif ($decision -eq 'skipped-stage') {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): subset has $($sub.Skipped) skips without reasons; triage closes with attribution; log $logRel"
@@ -1313,7 +1347,10 @@ if ($debtQueryError -ne '') {
     }
     $greenIds += $debt.Id
     $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest
-    $note = Invoke-CollectedLine (Join-Path $Root $debt.File) $debt.Id $line
+    $colPath = Join-Path $Root $debt.File
+    $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
+    $note = Invoke-CollectedLine $colPath $debt.Id $line
+    Register-TrackedWrite $trackedWrites $Root $colPath $line $note $colBefore
     Write-Output "nightly: night-debt $($debt.Id): $note"
     $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $note
     $debtEntries += $pair[0]
@@ -1376,10 +1413,12 @@ if ($nightOwedRows.Count -gt 0) {
 # final. Timer proofs quote this section.
 $launch = Test-TimerLaunch $trigParent $trigGrandparent $runStart $triggerTODs $taskLastRun
 $treeEnd = Get-TreeFingerprint $Root
-$treeLine = 'clean at start and end'
-if (($treeStart.State -eq 'clean') -and ($treeEnd.State -eq 'clean')) { $treeLine = 'clean at start and end' }
-elseif (($treeStart.State -eq $treeEnd.State) -and ($treeStart.Fingerprint -eq $treeEnd.Fingerprint) -and ($treeStart.Count -eq $treeEnd.Count)) { $treeLine = "stable ($($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint))" }
-else { $treeLine = "MUTATED (start $($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint), end $($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint))" }
+# The run never commits (D00 T02 section 22 item 5): its only tracked
+# writes are the collector's recorded lines, which the tree check
+# expects and the triage step commits (section 45 item 7).
+try { Write-TrackedWriteManifest $trackedWrites (Join-Path $trxDir 'tracked-writes.json') } catch { $failed = $true; $report += "- RED: tracked-write manifest failed: $($_.Exception.Message)" }
+$treeCmp = Compare-TreeWithTrackedWrites $Root $treeStart $treeEnd $trackedWrites
+$treeLine = $treeCmp.Line
 $reserveLeft = [int](($deadline - (Get-Date)).TotalSeconds)
 $consumedSecs = [int]((Get-Date) - $runStart).TotalSeconds
 $timLine = ((@($phaseTimes.Keys | Sort-Object | ForEach-Object { "$_=$($phaseTimes[$_])s" }) -join ' ') + " reserve=${reserveLeft}s")
@@ -1395,7 +1434,9 @@ $report += "- Tree: $treeLine"
 # Retained catalog (D00 T02 §22 item 7, D00-T02-S17-PR30): unattended
 # runs never retain or write a tracked manifest (retain is attended;
 # its docs/nightly-evidence manifest commits with the citing section),
-# so a night needs no commit. The run re-verifies the catalog read-only
+# so a night needs no commit: its only tracked writes are the collector's
+# recorded lines, which tools/NightlyTriage.ps1 commits (section 45
+# item 7). The run re-verifies the catalog read-only
 # and a fault reds it: loss of retained evidence is an incident.
 $catalogLine = 'unknown'
 try {
@@ -1495,8 +1536,14 @@ try {
   $trxAll = @(Get-ChildItem -Path $trxDir -Filter '*.trx' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne 'smoke.trx' })
   if ($trxAll.Count -gt 0) { $executedUnique = @($trxAll | ForEach-Object { Get-TrxExecutedNames $_.FullName } | Sort-Object -Unique).Count }
 } catch { $executedUnique = $null }
+# The result names its predecessor (D00 T02 section 45 item 4): the
+# newest result on disk before this one, so a rebuild detects a missing
+# intermediate result.
+$previousStamp = ''
+$prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $stamp) } | Sort-Object Name | Select-Object -Last 1)
+if ($prevRes.Count -gt 0) { $previousStamp = ($prevRes[0].Name -replace '^morning-', '' -replace '\.result\.json$', '') }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); owedCases = @($owedCasesTonight); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError
@@ -1583,6 +1630,12 @@ $report += "- Result: morning-$stamp.result.json (v1 machine-readable)"
 $report += "- Exit: $exitCode"
 $report += $ackSection
 $reportPath = Join-Path $nightDir "morning-$day.md"
+# One operator summary per run (D00 T02 section 45 item 8): degraded
+# evidence, each class with its next action, in one block.
+$report += ''
+$report += '## Evidence completeness'
+$report += ''
+$report += @(Format-EvidenceSummary $report $stamp)
 Publish-NightlyReport $report ''
 # Set the moment the final record lands (D00 T02 §24 R5-F1): anything
 # that throws after this line, the journal update included, leaves the

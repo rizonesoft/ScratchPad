@@ -143,6 +143,9 @@ if ($Prune) {
   $today = (Get-Date).Date
   . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
   $metricsStore = Read-MetricsStore (Join-Path $NightDir 'metrics.jsonl')
+  # The protected lifecycle snapshot (D00 T02 section 45 item 3) never
+  # prunes: its stamp directory is kept like a KEEP exemption.
+  $protSnap = Get-ProtectedSnapshot $NightDir
   $refused = 0
   $kept = @{}
   foreach ($d in @(Get-ChildItem -Path $NightDir -Directory -ErrorAction SilentlyContinue)) {
@@ -158,6 +161,7 @@ if ($Prune) {
     if (-not [datetime]::TryParseExact($m.Groups[1].Value, 'yyyy-MM-dd', $null, 'None', [ref]$stampDate)) { $skipped++; continue }
     $age = ($today - $stampDate.Date).Days
     if ($kept.ContainsKey($d.Name)) { Write-Output "prune: keep $($d.Name)/ (KEEP: stamp-cited)"; continue }
+    if (($null -ne $protSnap.Stamp) -and ($d.Name -eq $protSnap.Stamp)) { Write-Output "prune: keep $($d.Name)/ (protected lifecycle snapshot)"; continue }
     if ($age -le $OlderThanDays) { continue }
     # Archival before prune (D00 T02 section 32 item 9): a stamp whose
     # result has no metrics row keeps its directory until the trend has
@@ -241,6 +245,16 @@ foreach ($d in @(Get-ChildItem -Path $NightDir -Directory -ErrorAction SilentlyC
     $exemptBytes += [long]((Get-ChildItem -Path $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum)
   }
 }
+# The protected lifecycle snapshot counts against the byte quota (D00 T02
+# section 45 item 3) unless a retained copy already counted it; it is
+# never a release candidate, so a refusal names it apart.
+$protSnap = Get-ProtectedSnapshot $NightDir
+$protLine = 'retain: protected (counted, never released): no lifecycle snapshot on record'
+if ($null -ne $protSnap.File) {
+  $inRetained = $protSnap.File.StartsWith($RetDir + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+  if (-not $inRetained) { $exemptBytes += $protSnap.Bytes }
+  $protLine = "retain: protected (counted, never released): lifecycle snapshot $($protSnap.Stamp) ($(Split-Path -Leaf $protSnap.File), $([int]($protSnap.Bytes / 1KB)) KB$(if ($inRetained) { ', inside a retained copy' }))"
+}
 $afterCount = @($exempt.Keys | Where-Object { $_ -like 'retained/*' }).Count + 1
 $keptCount = @($exempt.Keys | Where-Object { $_ -like 'kept/*' }).Count
 # Quota recovery (D00 T02 section 30 item 3): every refusal names the
@@ -248,11 +262,13 @@ $keptCount = @($exempt.Keys | Where-Object { $_ -like 'kept/*' }).Count
 # knows what to release (docs/testing.md "Retention quota").
 $releaseLine = "retain: release candidates (oldest first): $((@(Get-KeepReleaseCandidates $RetDir $NightDir $Root 3)) -join '; ')"
 if (($afterCount -gt $MaxRetained) -or ($keptCount -ge $MaxRetained)) {
+  Write-Output $protLine
   Write-Output $releaseLine
   Write-Output "retain: QUOTA REFUSED: $afterCount retained runs after this retain, $keptCount KEEP-marked stamp dirs (cap $MaxRetained each); release a stamp citation or pass -MaxRetained with the reason recorded; nothing copied"
   exit 1
 }
 if (($exemptBytes + [long]$srcBytes * 2) -gt $MaxRetainedBytes) {
+  Write-Output $protLine
   Write-Output $releaseLine
   Write-Output "retain: QUOTA REFUSED: exempt evidence $([int]($exemptBytes / 1MB)) MB plus this retain $([int]($srcBytes * 2 / 1MB)) MB (copy plus KEEP-marked source) exceeds $([int]($MaxRetainedBytes / 1MB)) MB; release a stamp citation or pass -MaxRetainedBytes with the reason recorded; nothing copied"
   exit 1

@@ -463,6 +463,12 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
   # capture is independent and failures record as notes. Returns notes.
   $notes = @()
   try { $null = New-Item -ItemType Directory -Force -Path $CaptureDir } catch { return @("- $Leg : capture dir failed: $($_.Exception.Message)") }
+  # Capture-time authorization (section 45 item 2): with binary captures
+  # refused by policy no screenshot is rendered at all and the refusal is
+  # the note (the dump was never requested: Get-DumpArgs).
+  if (-not $script:BinaryCapturesAllowed) {
+    $notes += "- $Leg : CAPTURE-REFUSED screenshot and dump (binaryCaptures is off in tools/incident-policy.json, or the policy is unreadable); no binary capture taken"
+  } else {
   # Screenshots cover app-owned windows only (section 38 item 2): each
   # window of a ScratchPad process the run launched, clipped to its own
   # bounds; the rest of the desktop (the operator's windows) is never
@@ -486,6 +492,7 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
       $notes += @(Invoke-WindowRender $r $shot $Leg $script:WindowRenderTimeoutSeconds)
     }
   } catch { $notes += "- $Leg : screenshot failed: $($_.Exception.Message)" }
+  }
   $wins = Join-Path $CaptureDir "$Leg-windows.txt"
   try {
     $owned = @{}
@@ -515,7 +522,7 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
       $notes += "- $Leg : event slice failed: $($_.Exception.Message)"
     }
   }
-  if (-not $Killed) { $notes += "- $Leg : no dump (process exited before capture)" }
+  if ((-not $Killed) -and $script:BinaryCapturesAllowed) { $notes += "- $Leg : no dump (process exited before capture)" }
   $notes += @(Protect-CaptureDir $CaptureDir $Leg)
   return $notes
 }
@@ -540,16 +547,32 @@ function Read-IncidentPolicy([string]$Path) {
   try {
     $j = Get-Content $Path -Raw | ConvertFrom-Json
     if (("$($j.triageOwner)" -eq '') -or ("$($j.triageDays)" -notmatch '^[1-9]\d*$')) { return [pscustomobject]@{ Ok = $false; Error = "incident policy invalid: triageOwner must be named and triageDays a positive whole number ($Path)"; Owner = ''; Days = 0 } }
-    return [pscustomobject]@{ Ok = $true; Error = ''; Owner = "$($j.triageOwner)"; Days = [int]$j.triageDays }
+    # Capture-time authorization (D00 T02 section 45 item 2): binaryCaptures
+    # decides whether screenshots and dumps are taken at all. Absent reads
+    # true (the recorded default); anything but a JSON boolean is invalid.
+    $bin = $true
+    if ($null -ne $j.PSObject.Properties['binaryCaptures']) {
+      if ($j.binaryCaptures -isnot [bool]) { return [pscustomobject]@{ Ok = $false; Error = "incident policy invalid: binaryCaptures must be true or false ($Path)"; Owner = ''; Days = 0; BinaryCaptures = $false } }
+      $bin = [bool]$j.binaryCaptures
+    }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Owner = "$($j.triageOwner)"; Days = [int]$j.triageDays; BinaryCaptures = $bin }
   } catch { return [pscustomobject]@{ Ok = $false; Error = "incident policy unreadable: $($_.Exception.Message)"; Owner = ''; Days = 0 } }
 }
 $policy = Read-IncidentPolicy (Join-Path $PSScriptRoot 'incident-policy.json')
-if ($policy.Ok) { $script:TriageOwner = $policy.Owner; $script:TriageDays = $policy.Days } else { $script:IncidentPolicyError = $policy.Error }
+# Binary captures fail closed: an unreadable or invalid policy takes no
+# screenshot and no dump (section 45 item 2).
+$script:BinaryCapturesAllowed = $false
+if ($policy.Ok) { $script:TriageOwner = $policy.Owner; $script:TriageDays = $policy.Days; $script:BinaryCapturesAllowed = $policy.BinaryCaptures } else { $script:IncidentPolicyError = $policy.Error }
 $script:IncidentContractV2Since = '2026-09-25-000000'
 $script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'ForegroundLog', 'JobControl')
 $script:CaptureMaxBytes = 25MB
 $script:CaptureFailMarker = 'SECRET-SCAN-FAILED.txt'
 $script:CaptureStagingDir = '.staging'
+# Per-run ledger checkpoint (D00 T02 section 45 item 4) and the last
+# rebuild's gaps and base, for the rebuild command's report.
+$script:LedgerCheckpointName = 'incidents.checkpoint.json'
+$script:LedgerRebuildGaps = @()
+$script:LedgerRebuildBase = ''
 $script:CaptureBudgetMarker = 'CAPTURE-BUDGET-TRUNCATED.txt'
 $script:RunCaptureMaxBytes = 200MB
 # Per-capture cap and reservation (section 38 item 3): a dump over the
@@ -737,14 +760,66 @@ function New-StagingDirectory([string]$Path) {
   [System.IO.Directory]::SetAccessControl($Path, $acl)
 }
 
-function Clear-StaleCaptureStaging([string]$NightDir) {
+function Get-DumpArgs([string]$DumpDir, [long]$DumpMax) {
+  # JobControl dump flags (section 45 item 2): with binary captures
+  # refused by policy the supervisor is never asked for a dump, so none
+  # is written; otherwise the per-capture cap binds as before.
+  if (-not $script:BinaryCapturesAllowed) { return @() }
+  return @('--dump', $DumpDir, '--dump-max', "$DumpMax")
+}
+
+function Test-ReparsePoint([System.IO.FileSystemInfo]$Item) {
+  return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
+}
+
+function Remove-TreeNoFollow([string]$Path) {
+  # Deletes a directory tree without ever entering a reparse point (D00
+  # T02 section 45 item 1): a junction or symlink inside is removed as a
+  # link, so its target's content survives.
+  foreach ($c in @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)) {
+    if (Test-ReparsePoint $c) {
+      if ($c.PSIsContainer) { [System.IO.Directory]::Delete($c.FullName, $false) } else { [System.IO.File]::Delete($c.FullName) }
+    } elseif ($c.PSIsContainer) { Remove-TreeNoFollow $c.FullName }
+    else { $c.Attributes = 'Normal'; [System.IO.File]::Delete($c.FullName) }
+  }
+  [System.IO.Directory]::Delete($Path, $false)
+}
+
+function Get-LiveRunStamps([string]$NightDir, [string]$CurrentStamp) {
+  # The stamps whose staging a sweep must spare (section 45 item 1): this
+  # run's own, plus the journaled run while its process is alive and it
+  # has not reached final. A journal that cannot be read spares nothing
+  # extra but is reported by the dead-run probe.
+  $live = @()
+  if ("$CurrentStamp" -ne '') { $live += $CurrentStamp }
+  $j = Read-RunJournal $NightDir
+  if ($j.Exists -and $j.Ok -and ($j.Phase -ne 'final') -and (Test-JournalProcessAlive $j.Pid $j.Started)) { $live += $j.Stamp }
+  return @($live | Sort-Object -Unique)
+}
+
+function Clear-StaleCaptureStaging([string]$NightDir, [string]$CurrentStamp = '', [string[]]$LiveStamps = $null) {
   # A run that crashed mid-capture leaves .staging directories whose
-  # bytes were never scanned; the next run sweeps every one at its start
-  # (section 38 item 1). Returns report notes.
+  # bytes were never scanned; the next run sweeps them at its start
+  # (section 38 item 1). The sweep is bounded (section 45 item 1): it
+  # looks only at <NightDir>\<stamp>\captures-*\.staging where <stamp>
+  # is a validated run-stamp name, skips the live runs (this one, and
+  # the journaled run while its process lives), never enters or deletes
+  # through a reparse point at any level, and deletes a tree without
+  # following links inside it. Returns report notes.
   $notes = @()
-  foreach ($d in @(Get-ChildItem -LiteralPath $NightDir -Directory -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $script:CaptureStagingDir })) {
-    try { Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction Stop; $notes += "- capture staging: swept crash-left $($d.FullName.Substring($NightDir.Length).TrimStart('\'))" }
-    catch { $notes += "- capture staging: could not sweep $($d.FullName) ($($_.Exception.Message)); do not retain that run" }
+  $live = if ($null -ne $LiveStamps) { @($LiveStamps) } else { @(Get-LiveRunStamps $NightDir $CurrentStamp) }
+  foreach ($s in @(Get-ChildItem -LiteralPath $NightDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$' })) {
+    if (Test-ReparsePoint $s) { $notes += "- capture staging: skipped stamp $($s.Name) (a reparse point; never followed)"; continue }
+    if ($live -contains $s.Name) { continue }
+    foreach ($c in @(Get-ChildItem -LiteralPath $s.FullName -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
+      if (Test-ReparsePoint $c) { $notes += "- capture staging: skipped $($s.Name)\$($c.Name) (a reparse point; never followed)"; continue }
+      $st = Get-Item -LiteralPath (Join-Path $c.FullName $script:CaptureStagingDir) -Force -ErrorAction SilentlyContinue
+      if ($null -eq $st) { continue }
+      $rel = "$($s.Name)\$($c.Name)\$($script:CaptureStagingDir)"
+      if (Test-ReparsePoint $st) { $notes += "- capture staging: left $rel (a reparse point, not a staging directory; do not retain that run)"; continue }
+      try { Remove-TreeNoFollow $st.FullName; $notes += "- capture staging: swept crash-left $rel" }
+      catch { $notes += "- capture staging: could not sweep $rel ($($_.Exception.Message)); do not retain that run" }
+    }
   }
   return $notes
 }
@@ -2086,7 +2161,7 @@ function Read-IncidentLedger([string]$Path) {
       foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
       $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)"; due = "$($e.due)"; finding = "$($e.finding)"; streakPopulation = "$(if ($null -ne $e.PSObject.Properties['streakPopulation']) { $e.streakPopulation })" }
     }
-    return [pscustomobject]@{ Ok = $true; Error = ''; Incidents = $map }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Incidents = $map; Stamp = "$(if ($null -ne $j.PSObject.Properties['stamp']) { $j.stamp })" }
   } catch { return [pscustomobject]@{ Ok = $false; Error = "incident ledger unreadable: $($_.Exception.Message)"; Incidents = @{} } }
 }
 
@@ -2186,7 +2261,13 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
   })
 }
 
-function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '') {
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '', [string]$NotQualifying = '') {
+  # Verified recovery counts only qualifying runs (D00 T02 section 45
+  # item 6): a run named not qualifying ($NotQualifying: aborted, killed
+  # or budget-cut, a stub or simulation, or evidence that failed its own
+  # checks) records its failures as occurrences but neither advances
+  # nor resets any streak. Per test, a run that skipped or quarantined
+  # the test never executed it, which already neither counts nor resets.
   # Incident lifecycle (D00 T02 §22 item 6, D00-T02-S17-PR27): an
   # incident is created once; later sightings append an occurrence to
   # it (never a second incident, so §9's file-every-failure rule files
@@ -2235,7 +2316,7 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     $already = @($e.occurrences | Where-Object { "$($_.stamp)" -eq $Stamp }).Count -gt 0
     if (-not $already) { $e.occurrences = @($e.occurrences) + @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
     $e.lastSeen = $Stamp
-    $e.passStreak = 0
+    if ($NotQualifying -eq '') { $e.passStreak = 0 }
     $n = @($e.occurrences).Count
     if ($e.state -eq 'closed') {
       $e.state = 'open'; $e.closedAt = ''; $e.closedBy = ''
@@ -2247,6 +2328,10 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   foreach ($id in @($map.Keys | Sort-Object)) {
     $e = $map[$id]
     if (($e.state -ne 'open') -or $seen.ContainsKey($id)) { continue }
+    if ($NotQualifying -ne '') {
+      if ([int]$e.passStreak -gt 0) { $lines += "- $id ``$($e.test)``: streak held at $($e.passStreak) of $RecoveryRuns (run not qualifying: $NotQualifying)" }
+      continue
+    }
     if ($failedHere.ContainsKey("$($e.test)|$($e.phase)")) {
       # A different failure of the same test in the same phase is no
       # recovery: the streak breaks even though this id did not recur.
@@ -2381,7 +2466,22 @@ function Get-LatestLifecycleSnapshot([string[]]$ResultFiles, [string]$Since) {
     $v = Test-ResultFile $snapFile
     if (-not $v.Ok) { $err = "lifecycle snapshot $snapStamp ($snapFile) is invalid: $($v.Error)" }
   }
-  return [pscustomobject]@{ Stamp = $snapStamp; Rows = $snap; Error = $err }
+  return [pscustomobject]@{ Stamp = $snapStamp; Rows = $snap; Error = $err; File = $snapFile }
+}
+
+function Get-ProtectedSnapshot([string]$NightDir) {
+  # The protected lifecycle snapshot (D00 T02 section 45 item 3): the
+  # newest ledger-sourced result a rebuild restores from. Each run writes
+  # its result through Write-AtomicReport, so the newest snapshot is
+  # replaced whole, never in place. Retention counts its bytes against
+  # the exempt quota, prune keeps its stamp directory, and a quota
+  # refusal names it; it is never offered for release. Returns File,
+  # Stamp, and Bytes ($null File when no snapshot exists).
+  $files = @(Get-ChildItem -LiteralPath $NightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  $files += @(Get-ChildItem -LiteralPath (Join-Path $NightDir 'retained') -Filter 'result.json' -File -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  $s = Get-LatestLifecycleSnapshot $files ''
+  if (("$($s.File)" -eq '') -or (-not (Test-Path -LiteralPath $s.File))) { return [pscustomobject]@{ File = $null; Stamp = $null; Bytes = [long]0 } }
+  return [pscustomobject]@{ File = $s.File; Stamp = $s.Stamp; Bytes = [long](Get-Item -LiteralPath $s.File).Length }
 }
 
 function Read-LedgerRecord([string]$Path) {
@@ -2431,7 +2531,33 @@ function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles
   return [pscustomobject]@{ Ok = $false; Error = "incident ledger missing while $($what -join ' and '); rebuild: powershell -NoProfile -ExecutionPolicy Bypass -File tools/NightlyLedger.ps1 -Rebuild" }
 }
 
-function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [hashtable]$Owners, [hashtable]$Links = @{}) {
+function Get-LedgerCheckpoints([string]$NightDir) {
+  # The per-run ledger checkpoints (D00 T02 section 45 item 4): each run
+  # writes its ledger state into its own stamp directory right after the
+  # ledger itself, so a crash between the ledger write and the result
+  # write still leaves that run's state on disk. Returns the checkpoint
+  # paths.
+  return @(Get-ChildItem -LiteralPath $NightDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$' } | ForEach-Object { Join-Path $_.FullName $script:LedgerCheckpointName } | Where-Object { Test-Path -LiteralPath $_ })
+}
+
+function Get-ResultChainGaps([string[]]$ResultFiles, [string[]]$KnownStamps, [string]$After) {
+  # Missing intermediate results (section 45 item 4): each result names
+  # the result before it (previousStamp); a named predecessor after the
+  # restore point that no result or checkpoint carries is a gap the
+  # rebuild cannot replay. Returns one line per gap, oldest first.
+  $known = @{}
+  foreach ($s in @($KnownStamps)) { if ("$s" -ne '') { $known["$s"] = $true } }
+  $gaps = @()
+  foreach ($f in @($ResultFiles)) {
+    try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    $prev = "$(if ($null -ne $o.PSObject.Properties['previousStamp']) { $o.previousStamp })"
+    if (($prev -eq '') -or ($prev -le $After) -or $known.ContainsKey($prev)) { continue }
+    $gaps += [pscustomobject]@{ Stamp = $prev; Line = "result $prev is missing (run $($o.stamp) names it as its predecessor)" }
+  }
+  return @($gaps | Sort-Object Stamp -Unique | ForEach-Object { $_.Line })
+}
+
+function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [hashtable]$Owners, [hashtable]$Links = @{}, [string[]]$CheckpointFiles = @(), [switch]$AcceptGaps) {
   # Rebuild (section 30 item 4, R3-F2): the newest ledger-sourced
   # incidentLifecycle snapshot is the last published state, so it is
   # restored first (identity, state, owner, occurrence stamps, pass
@@ -2446,6 +2572,33 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   # it, or skipping to an older one, would persist a ledger missing
   # history the operator can still recover by repairing the result.
   if ($snap.Error -ne '') { throw "rebuild refused: $($snap.Error); repair or move that result aside, then re-run" }
+  # A checkpoint newer than the snapshot is the later state (section 45
+  # item 4): a crash between the ledger write and the result write left
+  # it without its result, so it is restored instead and only results
+  # after it replay.
+  $base = $snap.Stamp
+  $cp = $null
+  $cpStamps = @()
+  foreach ($c in @($CheckpointFiles)) {
+    $r = Read-IncidentLedger $c
+    if ((-not $r.Ok) -or ("$($r.Stamp)" -eq '')) { continue }
+    $cpStamps += $r.Stamp
+    if (("$($r.Stamp)" -ge $Since) -and ((($null -eq $base) -or ($r.Stamp -gt $base)) -and (($null -eq $cp) -or ($r.Stamp -gt $cp.Stamp)))) { $cp = $r }
+  }
+  $resultStamps = @(foreach ($f in @($ResultFiles)) { try { "$((Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop).stamp)" } catch { } })
+  $after = if ($null -ne $cp) { $cp.Stamp } elseif ($null -ne $base) { $base } else { '' }
+  $script:LedgerRebuildGaps = @(Get-ResultChainGaps $ResultFiles (@($resultStamps) + @($cpStamps)) $after)
+  if (($script:LedgerRebuildGaps.Count -gt 0) -and (-not $AcceptGaps)) { throw "rebuild refused: $($script:LedgerRebuildGaps -join '; '); restore the missing result(s), or pass -AcceptGaps to rebuild without them (their occurrences are lost)" }
+  if ($null -ne $cp) {
+    foreach ($k in @($cp.Incidents.Keys)) { $map[$k] = $cp.Incidents[$k] }
+    foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
+      if ($r.Stamp -le $cp.Stamp) { continue }
+      $map = (Update-IncidentLedger $map $r.Groups $r.Stamp @{} $Owners 3 $Links).Incidents
+    }
+    $script:LedgerRebuildBase = "checkpoint $($cp.Stamp)"
+    return $map
+  }
+  $script:LedgerRebuildBase = $(if ($null -ne $base) { "snapshot $base" } else { 'no snapshot (full replay)' })
   foreach ($row in @($snap.Rows)) {
     $stamps = @(@($row.occurrenceStamps) | ForEach-Object { "$_" })
     $closed = ("$($row.state)" -eq 'closed')
@@ -2471,12 +2624,17 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   return $map
 }
 
-function Write-IncidentLedger([hashtable]$Incidents, [string]$Path) {
+function Write-IncidentLedger([hashtable]$Incidents, [string]$Path, [string]$Stamp = '') {
   # Atomic write plus read-back: a ledger that cannot be read back is a
-  # failed write the caller reports, never a silent loss. Returns '' on
-  # success, else the error.
+  # failed write the caller reports, never a silent loss. The optional
+  # stamp names the run whose state this is (D00 T02 section 45 item 4),
+  # so a checkpoint orders against the results. Returns '' on success,
+  # else the error.
   $list = @($Incidents.Keys | Sort-Object | ForEach-Object { $Incidents[$_] })
-  $json = ConvertTo-Json ([pscustomobject]@{ version = 1; incidents = $list }) -Depth 8
+  $doc = [ordered]@{ version = 1 }
+  if ($Stamp -ne '') { $doc['stamp'] = $Stamp }
+  $doc['incidents'] = $list
+  $json = ConvertTo-Json ([pscustomobject]$doc) -Depth 8
   Write-AtomicReport @($json) $Path
   $back = Read-IncidentLedger $Path
   if (-not $back.Ok) { return $back.Error }
@@ -2598,7 +2756,87 @@ function Get-TreeFingerprint([string]$Root) {
     $rows += "$xy|$path|$h"
   }
   $fp = Get-StringHash (($rows | Sort-Object) -join "`n")
-  return [pscustomobject]@{ State = 'dirty'; Fingerprint = $fp; Count = $porc.Count }
+  return [pscustomobject]@{ State = 'dirty'; Fingerprint = $fp; Count = $porc.Count; Rows = @($rows) }
+}
+
+function Register-TrackedWrite([hashtable]$Writes, [string]$Root, [string]$Path, [string]$Line, [string]$Note, [string]$BeforeText) {
+  # The collector's tracked writes (D00 T02 section 45 item 7): the run
+  # never commits; each Night-collected or Night-red line it writes into
+  # a TODO file is recorded with that file's text before the run's
+  # first write, so the tree check can expect exactly those lines and
+  # the triage step (tools/NightlyTriage.ps1) commits them. Only a write
+  # whose note says it appended registers a line.
+  $rel = ($Path.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
+  if (-not $Writes.ContainsKey($rel)) { $Writes[$rel] = [pscustomobject]@{ File = $rel; Before = $BeforeText; Lines = @() } }
+  if ("$Note" -like 'appended*') { $Writes[$rel].Lines = @($Writes[$rel].Lines) + @($Line) }
+}
+
+function Test-TrackedWriteOnly([string]$Before, [string]$After, [string[]]$Lines) {
+  # True when $After is $Before plus exactly $Lines inserted (each once),
+  # line endings aside: removing each recorded line once from $After
+  # must give back $Before.
+  $a = New-Object System.Collections.Generic.List[string]
+  foreach ($l in @("$After" -split "`r?`n")) { $a.Add($l) }
+  foreach ($l in @($Lines)) { $i = $a.IndexOf("$l"); if ($i -lt 0) { return $false }; $a.RemoveAt($i) }
+  return ((@($a) -join "`n") -eq (@("$Before" -split "`r?`n") -join "`n"))
+}
+
+function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$Writes) {
+  # The tree check expects the collector's writes (section 45 item 7):
+  # a file the run wrote counts as expected when its text is its
+  # pre-write text plus exactly the registered lines; the start and end
+  # fingerprints then compare without those files. Anything else that
+  # changed still reads MUTATED. Returns Line, Ok, Expected (files).
+  $expected = @()
+  $bad = @()
+  foreach ($k in @($Writes.Keys | Sort-Object)) {
+    $w = $Writes[$k]
+    if (@($w.Lines).Count -eq 0) { continue }
+    $full = Join-Path $Root $w.File
+    $now = if (Test-Path -LiteralPath $full) { [System.IO.File]::ReadAllText($full) } else { '' }
+    if (Test-TrackedWriteOnly $w.Before $now @($w.Lines)) { $expected += $w.File } else { $bad += $w.File }
+  }
+  $drop = { param($rows) @(@($rows) | Where-Object { $p = ("$_" -split '\|')[1]; $expected -notcontains ($p -replace '\\', '/') }) }
+  $sRows = & $drop $Start.Rows
+  $eRows = & $drop $End.Rows
+  $unknown = ($Start.State -eq 'unknown') -or ($End.State -eq 'unknown')
+  $same = (-not $unknown) -and ((@($sRows | Sort-Object) -join "`n") -eq (@($eRows | Sort-Object) -join "`n"))
+  $nLines = 0
+  foreach ($k in $expected) { $nLines += @($Writes[$k].Lines).Count }
+  $exp = if ($expected.Count -gt 0) { "; collector wrote $nLines line(s) to $($expected -join ', '), verified; triage commits them: tools/NightlyTriage.ps1 -Commit" } else { '' }
+  if ($bad.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Expected = $expected; Line = "MUTATED ($($bad -join ', ') changed beyond the collector's recorded lines$exp)" } }
+  if (-not $same) { return [pscustomobject]@{ Ok = $false; Expected = $expected; Line = "MUTATED (start $($Start.State):$($Start.Count):$($Start.Fingerprint), end $($End.State):$($End.Count):$($End.Fingerprint)$exp)" } }
+  $base = if ($sRows.Count -eq 0) { 'clean at start and end' } else { "stable ($($Start.State):$($sRows.Count) path(s) outside the collector's writes)" }
+  return [pscustomobject]@{ Ok = $true; Expected = $expected; Line = "$base$exp" }
+}
+
+function Write-TrackedWriteManifest([hashtable]$Writes, [string]$Path) {
+  # The triage step's input (section 45 item 7): one entry per file with
+  # its registered lines, written atomically beside the run.
+  $list = @($Writes.Keys | Sort-Object | ForEach-Object { $w = $Writes[$_]; if (@($w.Lines).Count -gt 0) { [pscustomobject]@{ file = $w.File; lines = @($w.Lines) } } })
+  Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ version = 1; writes = @($list) }) -Depth 5)) $Path
+}
+
+function Format-EvidenceSummary([string[]]$Lines, [string]$Stamp = '') {
+  # One summary block per run (D00 T02 section 45 item 8): the degraded
+  # evidence of the run, each class with its count and next action,
+  # scanned from the report lines the run already wrote. Classes:
+  # capture refusals, truncation, privacy gates, ledger faults, overdue
+  # incidents. A run with none reads one complete line.
+  $classes = @(
+    @('capture refusals', '(CAPTURE-REFUSED|capture refused|dump refused|\.dmp (not written|refused))', 'review tools/incident-policy.json binaryCaptures and the refusal marker; rerun the leg to capture'),
+    @('truncation', '(TRUNCATED|truncated)', 'read the capture budget marker; raise the cap or narrow the leg'),
+    @('privacy gates', '(SECRET-SCAN|redacted|PROTECTION REFUSED)', 'inspect the redacted capture; never retain it unredacted'),
+    @('ledger faults', '(RED: incident ledger|incident ledger (write|read-back|missing|invalid|unreadable)|ledger checkpoint write failed)', 'repair or rebuild the ledger: tools/NightlyLedger.ps1 -Rebuild'),
+    @('overdue incidents', '^- OVERDUE: ', 'triage each overdue incident and link its finding: tools/NightlyLedger.ps1 -Link')
+  )
+  $out = @()
+  foreach ($c in $classes) {
+    $hits = @(@($Lines) | Where-Object { "$_" -match $c[1] })
+    if ($hits.Count -gt 0) { $out += "- $($c[0]): $($hits.Count) (next: $($c[2]))" }
+  }
+  if ($out.Count -eq 0) { return @('- Evidence complete: no capture refusals, truncation, privacy gates, ledger faults, or overdue incidents') }
+  return @("- Evidence DEGRADED$(if ($Stamp -ne '') { " for $Stamp" }): $($out.Count) class(es)") + $out
 }
 
 function Test-ProjectCoverage([string]$TestsRoot, [string[]]$Executed) {
@@ -4111,6 +4349,59 @@ function Get-IncidentAliases($Rows, [string]$V2Since = $script:IncidentContractV
   foreach ($old in $aliases.Keys) { $n = $aliases[$old]; if (-not $targets.ContainsKey($n)) { $targets[$n] = 0 }; $targets[$n]++ }
   foreach ($old in @($aliases.Keys)) { if ($targets[$aliases[$old]] -gt 1) { $aliases.Remove($old) } }
   return $aliases
+}
+
+function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtable]$Links = @{}) {
+  # Alias migration moves incident state (D00 T02 section 45 item 5):
+  # when a v1 id joins its v2 id (Get-IncidentAliases), the v1 entry's
+  # finding link, owner, due date, occurrences, and recovery streak move
+  # onto the v2 id, and the v1 entry leaves the ledger, so the join never
+  # duplicates or closes work. With both ids present: occurrences union
+  # by stamp, first and last seen widen, an open side keeps the result
+  # open, a specific owner beats the triage default, the earlier due
+  # date and the existing link win, and the streak is the stronger of
+  # the two only when both sides are open (a failure on either reset
+  # it already). The link map gains the v2 id for a moved link. Returns
+  # Incidents, Links, and Lines.
+  $map = @{}
+  foreach ($k in $Ledger.Keys) { $map[$k] = $Ledger[$k] }
+  $lk = @{}
+  foreach ($k in $Links.Keys) { $lk[$k] = $Links[$k] }
+  $lines = @()
+  foreach ($old in @($Aliases.Keys | Sort-Object)) {
+    $new = $Aliases[$old]
+    if (-not $map.ContainsKey($old)) { continue }
+    $o = $map[$old]
+    foreach ($field in @('due', 'finding', 'passStreak', 'lastPassStamp', 'closedAt', 'closedBy')) { if (@($o.PSObject.Properties.Name) -notcontains $field) { $o | Add-Member -NotePropertyName $field -NotePropertyValue $(if ($field -eq 'passStreak') { 0 } else { '' }) } }
+    if ($lk.ContainsKey($old) -and (-not $lk.ContainsKey($new))) { $lk[$new] = $lk[$old] }
+    if (-not $map.ContainsKey($new)) {
+      $o.id = $new
+      if (("$($o.finding)" -eq '') -and $lk.ContainsKey($new)) { $o.finding = $lk[$new] }
+      $map[$new] = $o
+      $map.Remove($old)
+      $lines += "- $old -> ${new}: alias joined; state moved (state $($o.state), owner $($o.owner), $(@($o.occurrences).Count) occurrences, streak $($o.passStreak)$(if ("$($o.finding)" -ne '') { ", link $($o.finding)" }))"
+      continue
+    }
+    $n = $map[$new]
+    foreach ($field in @('due', 'finding', 'passStreak', 'lastPassStamp', 'closedAt', 'closedBy')) { if (@($n.PSObject.Properties.Name) -notcontains $field) { $n | Add-Member -NotePropertyName $field -NotePropertyValue $(if ($field -eq 'passStreak') { 0 } else { '' }) } }
+    $byStamp = @{}
+    foreach ($x in @($n.occurrences) + @($o.occurrences)) { if (($null -ne $x) -and (-not $byStamp.ContainsKey("$($x.stamp)"))) { $byStamp["$($x.stamp)"] = $x } }
+    $n.occurrences = @($byStamp.Keys | Sort-Object | ForEach-Object { $byStamp[$_] })
+    if ("$($o.firstSeen)" -lt "$($n.firstSeen)") { $n.firstSeen = $o.firstSeen }
+    if ("$($o.lastSeen)" -gt "$($n.lastSeen)") { $n.lastSeen = $o.lastSeen }
+    if ((("$($n.owner)" -eq '') -or ($n.owner -eq $script:TriageOwner)) -and ("$($o.owner)" -ne '') -and ($o.owner -ne $script:TriageOwner)) { $n.owner = $o.owner; $n.due = '' }
+    elseif (("$($o.due)" -ne '') -and (("$($n.due)" -eq '') -or ("$($o.due)" -lt "$($n.due)")) -and ($n.owner -eq $script:TriageOwner)) { $n.due = $o.due }
+    if ("$($n.finding)" -eq '') { $n.finding = $(if ("$($o.finding)" -ne '') { $o.finding } elseif ($lk.ContainsKey($new)) { $lk[$new] } else { '' }) }
+    if (($o.state -eq 'open') -or ($n.state -eq 'open')) {
+      if (($o.state -eq 'open') -and ($n.state -eq 'open')) {
+        if ([int]$o.passStreak -gt [int]$n.passStreak) { $n.passStreak = [int]$o.passStreak; $n.lastPassStamp = $o.lastPassStamp }
+      } elseif ($n.state -ne 'open') { $n.passStreak = [int]$o.passStreak; $n.lastPassStamp = $o.lastPassStamp }
+      $n.state = 'open'; $n.closedAt = ''; $n.closedBy = ''
+    }
+    $map.Remove($old)
+    $lines += "- $old -> ${new}: alias joined; state merged (state $($n.state), owner $($n.owner), $(@($n.occurrences).Count) occurrences, streak $($n.passStreak)$(if ("$($n.finding)" -ne '') { ", link $($n.finding)" }))"
+  }
+  return [pscustomobject]@{ Incidents = $map; Links = $lk; Lines = $lines }
 }
 
 function Get-IncidentAliasReport($Rows, [string]$V2Since = $script:IncidentContractV2Since) {

@@ -16,6 +16,7 @@ param(
   [string]$Link = '',
   [string]$Finding = '',
   [switch]$Force,
+  [switch]$AcceptGaps,
   [string]$WorkspaceRoot = ''
 )
 $ErrorActionPreference = 'Stop'
@@ -35,12 +36,13 @@ if ((Test-Path $ledgerPath) -and (-not $Force)) { Write-Output "ledger: $ledgerP
 $files = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $files += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 try {
-  $map = New-IncidentLedgerFromResults $files $script:IncidentContractV2Since (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
+  $map = New-IncidentLedgerFromResults $files $script:IncidentContractV2Since (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md')) (Get-LedgerCheckpoints $nightDir) -AcceptGaps:$AcceptGaps
 } catch {
   Write-Output "ledger: $($_.Exception.Message)"
   exit 1
 }
 $err = Write-IncidentLedger $map $ledgerPath
 if ($err -ne '') { Write-Output "ledger: rebuild FAILED: $err"; exit 1 }
-Write-Output "ledger: rebuilt $($map.Count) incident(s) from $($files.Count) result file(s) into $ledgerPath"
+foreach ($g in @($script:LedgerRebuildGaps)) { Write-Output "ledger: GAP accepted: $g" }
+Write-Output "ledger: rebuilt $($map.Count) incident(s) from $($files.Count) result file(s) on $($script:LedgerRebuildBase) into $ledgerPath"
 exit 0

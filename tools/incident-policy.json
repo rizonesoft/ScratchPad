@@ -1,4 +1,5 @@
 {
   "triageOwner": "operator",
-  "triageDays": 2
+  "triageDays": 2,
+  "binaryCaptures": true
 }

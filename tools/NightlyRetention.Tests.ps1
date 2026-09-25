@@ -86,6 +86,27 @@ $null = Sync-MetricsStore (Join-Path $night 'metrics.jsonl') @((Get-Content (Joi
 $pr2 = Invoke-Retention @('-Prune', '-Execute', '-WorkspaceRoot', $ws)
 Assert ((-not (Test-Path $old)) -and ($pr2.Text -like '*prune: deleted 2026-07-01-023001/*')) 'prune-proceeds-once-archived' $pr2.Text
 
+# D00 T02 §45 item 3: the protected lifecycle snapshot counts against the
+# byte quota, is named on every quota refusal apart from the release
+# candidates, and keeps its stamp directory through prune.
+$ws3 = Join-Path ([System.IO.Path]::GetTempPath()) 'nightly-retention-snapshot'
+if (Test-Path $ws3) { Remove-Item $ws3 -Recurse -Force }
+$night3 = Join-Path $ws3 'build\nightly'
+$snapStamp = '2026-09-18-023001'
+foreach ($st in @($snapStamp, '2026-09-19-023001')) {
+  $d3 = Join-Path $night3 $st
+  $null = New-Item -ItemType Directory -Force -Path $d3
+  [System.IO.File]::WriteAllBytes((Join-Path $d3 'blob.bin'), (New-Object byte[] 65536))
+}
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $ws3 'docs\nightly-evidence')
+$pad = 'x' * 200000
+$snapRow = [pscustomobject]@{ id = 'INC-0000aaaa'; test = 'UI.S.T'; phase = 'run-a'; key = 'k'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @($snapStamp); occurrenceWheres = @('run-a'); firstSeen = $snapStamp; lastSeen = $snapStamp; passStreak = 0; lastPassStamp = ''; closedAt = ''; closedBy = ''; contract = 'v2'; due = ''; finding = '' }
+[pscustomobject]@{ version = 1; stamp = $snapStamp; day = '2026-09-18'; identity = "$snapStamp-pid1"; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycle = @($snapRow); pad = $pad } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $night3 "morning-$snapStamp.result.json") -Encoding UTF8
+$q = Invoke-Retention @('-Retain', '-Source', '2026-09-19-023001', '-Name', 'fx-snap', '-Provenance', 'fixture', '-MaxRetained', '20', '-MaxRetainedBytes', '250000', '-WorkspaceRoot', $ws3)
+Assert (($q.Code -eq 1) -and ($q.Text -like "*retain: protected (counted, never released): lifecycle snapshot $snapStamp (morning-$snapStamp.result.json,*") -and ($q.Text -like '*QUOTA REFUSED: exempt evidence*') -and (-not (Test-Path (Join-Path $night3 'retained\fx-snap')))) 's45-quota-names-and-counts-the-snapshot' $q.Text
+$pr = Invoke-Retention @('-Prune', '-OlderThanDays', '0', '-WorkspaceRoot', $ws3)
+Assert ($pr.Text -like "*prune: keep $snapStamp/ (protected lifecycle snapshot)*") 's45-prune-keeps-the-snapshot-stamp' $pr.Text
+Remove-Item $ws3 -Recurse -Force
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyRetention.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyRetention.Tests: all green'

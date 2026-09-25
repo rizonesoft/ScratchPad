@@ -1761,6 +1761,113 @@ Assert ((@($ofGone.Lines | Where-Object { $_ -like '| run-x |*| cleared |' }).Co
 [System.IO.File]::WriteAllText((Join-Path $repo '.git\index'), 'not an index')
 $g6 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
 Assert ((@($g6.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: history unverifiable (git status failed); ignored*' }).Count -eq 1) -and ($g6.Unacked -contains $runA1)) 'ack-unverifiable-history-ignored' ($g6.Lines -join ' | ')
+# D00 T02 §45 item 1: the sweep spares the live run's staging and never
+# follows a junction, at the staging level or inside a swept tree.
+$sw = Join-Path $dir 's45-sweep'
+$swTarget = Join-Path $dir 's45-sweep-target'
+$null = New-Item -ItemType Directory -Force -Path $swTarget
+'precious' | Set-Content -Path (Join-Path $swTarget 'keep.txt') -Encoding UTF8
+foreach ($st in @('2026-09-20-023001', '2026-09-21-023001', '2026-09-22-023001')) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $sw "$st\captures-run-a") }
+$deadStage = Join-Path $sw '2026-09-20-023001\captures-run-a\.staging'
+$null = New-Item -ItemType Directory -Force -Path $deadStage
+'unscanned' | Set-Content -Path (Join-Path $deadStage 'left.txt') -Encoding UTF8
+$null = New-Item -ItemType Junction -Path (Join-Path $deadStage 'link') -Target $swTarget
+$liveStage = Join-Path $sw '2026-09-21-023001\captures-run-a\.staging'
+$null = New-Item -ItemType Directory -Force -Path $liveStage
+'in flight' | Set-Content -Path (Join-Path $liveStage 'now.txt') -Encoding UTF8
+$planted = Join-Path $sw '2026-09-22-023001\captures-run-a\.staging'
+$null = New-Item -ItemType Junction -Path $planted -Target $swTarget
+$swNotes = @(Clear-StaleCaptureStaging $sw '' @('2026-09-21-023001'))
+Assert ((-not (Test-Path $deadStage)) -and (Test-Path (Join-Path $liveStage 'now.txt')) -and (Test-Path $planted) -and (Test-Path (Join-Path $swTarget 'keep.txt')) -and (($swNotes -join '|') -like '*swept crash-left 2026-09-20-023001\captures-run-a\.staging*') -and (($swNotes -join '|') -like '*left 2026-09-22-023001\captures-run-a\.staging (a reparse point*')) 's45-sweep-spares-live-and-junctions' ($swNotes -join ' | ')
+[System.IO.Directory]::Delete($planted, $false)
+# D00 T02 §45 item 2: with binary captures off, a failing leg records the
+# refusal and writes no PNG or dump; the policy switch parses strictly.
+$polDir = Join-Path $dir 's45-policy'
+$null = New-Item -ItemType Directory -Force -Path $polDir
+'{ "triageOwner": "operator", "triageDays": 2, "binaryCaptures": false }' | Set-Content -Path (Join-Path $polDir 'off.json') -Encoding UTF8
+'{ "triageOwner": "operator", "triageDays": 2, "binaryCaptures": "no" }' | Set-Content -Path (Join-Path $polDir 'bad.json') -Encoding UTF8
+'{ "triageOwner": "operator", "triageDays": 2 }' | Set-Content -Path (Join-Path $polDir 'absent.json') -Encoding UTF8
+$pOff = Read-IncidentPolicy (Join-Path $polDir 'off.json')
+$pBad = Read-IncidentPolicy (Join-Path $polDir 'bad.json')
+$pAbs = Read-IncidentPolicy (Join-Path $polDir 'absent.json')
+$wasBin = $script:BinaryCapturesAllowed
+$script:BinaryCapturesAllowed = $false
+$capOff = Join-Path $dir 's45-captures-off'
+$offNotes = @(Invoke-FailureCapture 'run-a' $capOff $true)
+$offArgs = @(Get-DumpArgs $capOff 1000)
+$script:BinaryCapturesAllowed = $true
+$onArgs = @(Get-DumpArgs $capOff 1000)
+$script:BinaryCapturesAllowed = $wasBin
+$binFiles = @(Get-ChildItem -LiteralPath $capOff -Recurse -File -ErrorAction SilentlyContinue | Where-Object { @('.png', '.dmp') -contains $_.Extension })
+Assert (($pOff.Ok -and ($pOff.BinaryCaptures -eq $false)) -and (-not $pBad.Ok) -and ($pBad.Error -like '*binaryCaptures must be true or false*') -and ($pAbs.Ok -and $pAbs.BinaryCaptures) -and ($binFiles.Count -eq 0) -and (($offNotes -join '|') -like '*run-a : CAPTURE-REFUSED screenshot and dump*') -and ($offArgs.Count -eq 0) -and (($onArgs -join ' ') -eq "--dump $capOff --dump-max 1000")) 's45-captures-off-writes-no-binary' (($offNotes -join ' | ') + " args=$($offArgs.Count)")
+# D00 T02 §45 item 4: a crash between the ledger write and the result
+# write rebuilds to the checkpoint's later state; a missing intermediate
+# result is named and refuses unless accepted.
+$rcDir = Join-Path $dir 's45-recovery'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $rcDir '2026-10-02-023001')
+$rcRow = [pscustomobject]@{ id = 'INC-0000c001'; test = 'UI.R.One'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-10-01-023001'; lastSeen = '2026-10-01-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-10-01-023001'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = '2026-10-03'; finding = '' }
+$rcLife = @(ConvertTo-IncidentLifecycle @{ 'INC-0000c001' = $rcRow })
+[pscustomobject]@{ version = 1; stamp = '2026-10-01-023001'; day = '2026-10-01'; identity = '2026-10-01-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @('- INC-0000c001 `UI.R.One` x1 (run-a): boom'); incidentLifecycleSource = 'ledger'; incidentLifecycle = $rcLife } | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $rcDir 'morning-2026-10-01-023001.result.json') -Encoding UTF8
+$rcNew = [pscustomobject]@{ id = 'INC-0000c002'; test = 'UI.R.Two'; phase = 'run-a'; key = 'k2'; owner = 'operator'; state = 'open'; firstSeen = '2026-10-02-023001'; lastSeen = '2026-10-02-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-10-02-023001'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = '2026-10-04'; finding = '' }
+$null = Write-IncidentLedger @{ 'INC-0000c001' = $rcRow; 'INC-0000c002' = $rcNew } (Join-Path $rcDir "2026-10-02-023001\$($script:LedgerCheckpointName)") '2026-10-02-023001'
+$rcFiles = @(Get-ChildItem $rcDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
+$rcMap = New-IncidentLedgerFromResults $rcFiles '2026-09-25-000000' @{} @{} (Get-LedgerCheckpoints $rcDir)
+$rcBase = $script:LedgerRebuildBase
+Assert (($rcMap.Count -eq 2) -and $rcMap.ContainsKey('INC-0000c002') -and ($rcBase -eq 'checkpoint 2026-10-02-023001')) 's45-interrupted-write-rebuilds-to-checkpoint' "$($rcMap.Count) $rcBase"
+[pscustomobject]@{ version = 1; stamp = '2026-10-04-023001'; previousStamp = '2026-10-03-023001'; incidents = @(); incidentLifecycleSource = 'unavailable'; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $rcDir 'morning-2026-10-04-023001.result.json') -Encoding UTF8
+$rcFiles = @(Get-ChildItem $rcDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
+$gapThrow = ''
+try { $null = New-IncidentLedgerFromResults $rcFiles '2026-09-25-000000' @{} @{} (Get-LedgerCheckpoints $rcDir) } catch { $gapThrow = $_.Exception.Message }
+$gapMap = New-IncidentLedgerFromResults $rcFiles '2026-09-25-000000' @{} @{} (Get-LedgerCheckpoints $rcDir) -AcceptGaps
+Assert (($gapThrow -like '*rebuild refused: result 2026-10-03-023001 is missing (run 2026-10-04-023001 names it as its predecessor)*-AcceptGaps*') -and ($gapMap.Count -eq 2) -and (@($script:LedgerRebuildGaps).Count -eq 1)) 's45-gap-is-named-and-refuses' $gapThrow
+# D00 T02 §45 item 5: a joined alias carries its link, owner, due date,
+# occurrences, and streak onto the v2 id without duplicating or closing.
+$alOld = [pscustomobject]@{ id = 'INC-0000a111'; test = 'UI.Al.T'; phase = 'run-a'; key = ''; owner = 'D01 T01 §9'; state = 'open'; firstSeen = '2026-09-20-023001'; lastSeen = '2026-09-22-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-20-023001'; wheres = @('run-a') }, [pscustomobject]@{ stamp = '2026-09-22-023001'; wheres = @('run-a') }); passStreak = 2; lastPassStamp = '2026-09-24-023001'; due = ''; finding = '' }
+$alMoved = Move-AliasedIncidents @{ 'INC-0000a111' = $alOld } @{ 'INC-0000a111' = 'INC-0000b222' } @{ 'INC-0000a111' = 'abc1234' }
+$mv = $alMoved.Incidents['INC-0000b222']
+$alOld2 = [pscustomobject]@{ id = 'INC-0000a111'; test = 'UI.Al.T'; phase = 'run-a'; key = ''; owner = 'D01 T01 §9'; state = 'open'; firstSeen = '2026-09-20-023001'; lastSeen = '2026-09-22-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-20-023001'; wheres = @('run-a') }, [pscustomobject]@{ stamp = '2026-09-22-023001'; wheres = @('run-a') }); passStreak = 2; lastPassStamp = '2026-09-24-023001'; due = ''; finding = 'abc1234' }
+$alNew = [pscustomobject]@{ id = 'INC-0000b222'; test = 'UI.Al.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-25-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-25-023001'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = '2026-09-27'; finding = '' }
+$alMerged = Move-AliasedIncidents @{ 'INC-0000a111' = $alOld2; 'INC-0000b222' = $alNew } @{ 'INC-0000a111' = 'INC-0000b222' } @{}
+$mg = $alMerged.Incidents['INC-0000b222']
+Assert (($alMoved.Incidents.Count -eq 1) -and ($mv.finding -eq 'abc1234') -and ([int]$mv.passStreak -eq 2) -and ($mv.state -eq 'open') -and ($alMoved.Links['INC-0000b222'] -eq 'abc1234') -and ($alMerged.Incidents.Count -eq 1) -and ([int]$mg.passStreak -eq 2) -and ($mg.finding -eq 'abc1234') -and ($mg.owner -eq 'D01 T01 §9') -and (@($mg.occurrences).Count -eq 3) -and ($mg.firstSeen -eq '2026-09-20-023001') -and ($mg.state -eq 'open')) 's45-joined-alias-carries-link-and-streak' (($alMoved.Lines + $alMerged.Lines) -join ' | ')
+# D00 T02 §45 item 6: a run that does not qualify neither advances nor
+# resets a streak, so a skipped middle run needs a third qualifying pass.
+$qLed = @{ 'INC-0000d001' = [pscustomobject]@{ id = 'INC-0000d001'; test = 'UI.Q.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = ''; due = ''; finding = '' } }
+$qPass = @{ 'run-a' = @('UI.Q.T') }
+$q1 = Update-IncidentLedger $qLed @() 's1' $qPass @{} 3
+$q2 = Update-IncidentLedger $q1.Incidents @() 's2' $qPass @{} 3 @{} '' 'leg killed at its cap'
+$q2s = [int]$q2.Incidents['INC-0000d001'].passStreak
+$q2f = Update-IncidentLedger $q2.Incidents @([pscustomobject]@{ Id = 'INC-0000d001'; Test = 'UI.Q.T'; Phase = 'run-a'; Key = 'k'; Wheres = @('run-a') }) 's2b' @{} @{} 3 @{} '' 'evidence invalid'
+$q2fs = [int]$q2f.Incidents['INC-0000d001'].passStreak
+$q3 = Update-IncidentLedger $q2f.Incidents @() 's3' $qPass @{} 3
+$q3s = [int]$q3.Incidents['INC-0000d001'].passStreak
+$q3state = $q3.Incidents['INC-0000d001'].state
+$q4 = Update-IncidentLedger $q3.Incidents @() 's4' $qPass @{} 3
+Assert (($q2s -eq 1) -and ((@($q2.Lines) -join '') -like '*streak held at 1 of 3 (run not qualifying: leg killed at its cap)*') -and ($q2fs -eq 1) -and ($q3s -eq 2) -and ($q3state -eq 'open') -and ($q4.Incidents['INC-0000d001'].state -eq 'closed')) 's45-non-qualifying-run-holds-the-streak' ((@($q2.Lines) + @($q4.Lines)) -join ' | ')
+# D00 T02 §45 item 7: the tree check expects exactly the collector's
+# recorded lines, and anything beyond them still reads MUTATED.
+$twRoot = Join-Path $dir 's45-tree'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $twRoot 'todo')
+$twFile = Join-Path $twRoot 'todo\x.md'
+$twBefore = "# x`n- Night-owed: a`nend`n"
+[System.IO.File]::WriteAllText($twFile, $twBefore)
+$twLine = '**Night-collected:** 2026-09-25 a (1 passed, 0 failed, 0 skipped; log l)'
+[System.IO.File]::WriteAllText($twFile, "# x`n- Night-owed: a`n$twLine`nend`n")
+$tw = @{}
+Register-TrackedWrite $tw $twRoot $twFile $twLine 'appended collected line' $twBefore
+$twStart = [pscustomobject]@{ State = 'clean'; Fingerprint = ''; Count = 0 }
+$twEnd = [pscustomobject]@{ State = 'dirty'; Fingerprint = 'f'; Count = 1; Rows = @(' M|todo/x.md|h1') }
+$twOk = Compare-TreeWithTrackedWrites $twRoot $twStart $twEnd $tw
+[System.IO.File]::WriteAllText($twFile, "# x changed`n- Night-owed: a`n$twLine`nend`n")
+$twBad = Compare-TreeWithTrackedWrites $twRoot $twStart $twEnd $tw
+$twOther = Compare-TreeWithTrackedWrites $twRoot $twStart ([pscustomobject]@{ State = 'dirty'; Fingerprint = 'g'; Count = 1; Rows = @(' M|src/y.cs|h2') }) @{}
+Assert ($twOk.Ok -and ($twOk.Line -like 'clean at start and end; collector wrote 1 line(s) to todo/x.md, verified; triage commits them: tools/NightlyTriage.ps1 -Commit') -and (-not $twBad.Ok) -and ($twBad.Line -like 'MUTATED (todo/x.md changed beyond*') -and (-not $twOther.Ok)) 's45-tree-check-expects-collector-lines' "$($twOk.Line) || $($twBad.Line)"
+# D00 T02 §45 item 8: one summary block names a refused dump and an
+# overdue incident together; a clean run reads complete.
+$sumLines = @('- run-a : CAPTURE-REFUSED screenshot and dump (binaryCaptures is off)', '- OVERDUE: INC-0000e001 `UI.S.T` triage due 2026-09-20 (owner operator)', '- run-a : window metadata run-a-windows.txt')
+$sumBlock = @(Format-EvidenceSummary $sumLines '2026-09-25-023001')
+$sumClean = @(Format-EvidenceSummary @('- run-a : window metadata run-a-windows.txt'))
+Assert (($sumBlock[0] -eq '- Evidence DEGRADED for 2026-09-25-023001: 2 class(es)') -and ((@($sumBlock | Where-Object { $_ -like '- capture refusals: 1 (next: *' })).Count -eq 1) -and ((@($sumBlock | Where-Object { $_ -like '- overdue incidents: 1 (next: *' })).Count -eq 1) -and ($sumClean.Count -eq 1) -and ($sumClean[0] -like '- Evidence complete:*')) 's45-one-summary-names-degraded-evidence' ($sumBlock -join ' | ')
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyParse.Tests: all green'
