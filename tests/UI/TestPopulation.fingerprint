@@ -138,7 +138,7 @@ run-a:
   UI.MenuBarTests.ToolsMenuInvokesTemplates
   UI.MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates
   UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
-  UI.MenuLabelTests.LeavingAReadOnlyDocumentRestoresTheWritableEnablement
+  UI.MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement
   UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI.MultiWindowTests.WindowsKeepIndependentTabs
   UI.MutationPlantTests.PlantedConstantLocalAssertion
@@ -231,6 +231,7 @@ run-a:
   UI.UiForegroundTests.LargestSecondaryWins
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI.UiInputFunnelTests.CancelledReleaseAndTheBoundReportEveryStuckKey
   UI.UiInputFunnelTests.ClosingTheTargetWindowIsNotAnInterruption
   UI.UiInputFunnelTests.CommandMovingFocusInsideTheAppIsNotAnInterruption
   UI.UiInputFunnelTests.FocusChangeBetweenKeyDownAndKeyUpAbortsCleanly
@@ -252,6 +253,7 @@ run-a:
   UI.UiInputFunnelTests.TypedTextOwnsOnlyItsCharactersModifiers
   UI.UiInputFunnelTests.WheelOnTargetScrollsOnceBetweenCtrlDownAndUp
   UI.UiInputFunnelTests.WheelWithFocusLostScrollsNothing
+  UI.UiInputFunnelTests.WindowClosingDuringRecoveryStillReleases
   UI.UiLeakBundleTests.EventSlicesFillFromGateLog
   UI.UiLeakBundleTests.EventSlicesScrubTitles
   UI.UiLeakBundleTests.RetentionPrunesOldBundles
@@ -260,9 +262,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 254
-run-a-cases: 318
-run-a-case-hash: a896ef4a2819ccb9
+run-a-methods: 256
+run-a-cases: 320
+run-a-case-hash: e2b47c4a4c5c846f
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

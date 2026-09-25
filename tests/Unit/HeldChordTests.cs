@@ -24,10 +24,18 @@ public sealed class HeldChordTests
     [Fact]
     public void ReleaseEndsTheHoldAndMouseInvocationAlwaysRuns()
     {
-        HeldChord.NotePress(true);
+        HeldChord.NotePress(true, _ => { });
         Assert.True(HeldChord.Suppress("MenuFileNewTab"));
         HeldChord.NoteRelease();
         Assert.False(HeldChord.Suppress("MenuFileNewTab"));
+        // R1-F1: the repeat flag lives for one input message; its deferred
+        // reset runs before any later mouse click or focus change.
+        Action? reset = null;
+        HeldChord.NotePress(true, a => reset = a);
+        Assert.True(HeldChord.Suppress("MenuFileSave"));
+        Assert.NotNull(reset);
+        reset();
+        Assert.False(HeldChord.Suppress("MenuFileSave"));
         Assert.Equal("vk:9:1", TestMutation.Key(0x09, 1));
     }
 }

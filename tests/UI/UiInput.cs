@@ -249,13 +249,26 @@ internal static class UiInput
     // release are named in the failure, so a stuck key is reported, never
     // silent. The pass needs no window, so a target closing during
     // recovery changes nothing.
-    internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release)
+    internal static readonly TimeSpan ReleaseBound = TimeSpan.FromSeconds(2);
+
+    internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release, TimeSpan? bound = null, Func<TimeSpan>? elapsed = null)
     {
         ArgumentNullException.ThrowIfNull(injected);
         ArgumentNullException.ThrowIfNull(release);
+        // The pass is bounded (R1-F3): once the bound has passed, the keys
+        // not yet attempted are reported, never waited on.
+        TimeSpan limit = bound ?? ReleaseBound;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        Func<TimeSpan> now = elapsed ?? (() => clock.Elapsed);
         var stuck = new List<string>();
         for (int i = injected.Count - 1; i >= 0; i--)
         {
+            if (now() > limit)
+            {
+                stuck.Add($"{injected[i]} (not attempted: the release pass passed its {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound)");
+                continue;
+            }
+
             try
             {
                 release(injected[i]);
@@ -572,6 +585,20 @@ internal static class UiInput
         Xunit.Assert.NotNull(text);
         text.DocumentRange.Select();
         Thread.Sleep(200);
+    }
+
+    // Clears the selection through TextPattern by selecting an empty range
+    // at the start: the focus-free click that deselects (D00 T02 §43).
+    internal static void ClearSelection(TextBox box)
+    {
+        ArgumentNullException.ThrowIfNull(box);
+        var text = box.Patterns.Text.PatternOrDefault;
+        Xunit.Assert.NotNull(text);
+        var range = text.DocumentRange.Clone();
+        range.MoveEndpointByRange(FlaUI.Core.Definitions.TextPatternRangeEndpoint.End, range, FlaUI.Core.Definitions.TextPatternRangeEndpoint.Start);
+        range.Select();
+        Thread.Sleep(200);
+        Xunit.Assert.True(string.IsNullOrEmpty(text.GetSelection().FirstOrDefault()?.GetText(-1)), "the selection did not clear");
     }
 
     // Collapses an expanded menu or combo: the focus-free Escape.

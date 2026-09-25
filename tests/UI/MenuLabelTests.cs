@@ -72,18 +72,22 @@ public sealed class MenuLabelTests
         Assert.Empty(BindingManifest.EnablementProblems(rows, observations, states.Select(s => s[0])));
     }
 
-    // D00 T02 §43 item 5: enablement is read across a transition, not only
-    // in a state. A writable document and a read-only one open as two
-    // tabs; the read-only tab is read, then closed back to the writable
-    // one, whose enablement must equal the writable baseline read in its
-    // own fresh window.
+    // D00 T02 §43 item 5 (R1-F2): enablement is read across a transition,
+    // over every bound menu item, not only the always-disabled rows. The
+    // read-only document is entered (its documented enablement: every
+    // `disabled` row reads disabled) and left by closing it back to the
+    // writable tab, which must read every item exactly as the writable
+    // baseline in its own fresh window does; a selection is entered and
+    // left in one window, which must read as it did before.
     [Fact]
-    public void LeavingAReadOnlyDocumentRestoresTheWritableEnablement()
+    public void LeavingAStateRestoresEveryItemsEnablement()
     {
         string root = BindingManifestTests.RepoRoot();
         var rows = BindingManifest.ParseAudit(File.ReadAllText(Path.Combine(root, "docs", "ui-input-audit.md")), out var parse);
         Assert.Empty(parse);
-        var ids = rows.Where(r => r.Class == "disabled").Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
+        var disabled = rows.Where(r => r.Class == "disabled").Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
+        var all = rows.Where(r => r.Command.StartsWith("Menu", StringComparison.Ordinal)).Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
+        Assert.True(all.Count > disabled.Count, "the audit names no enabled menu command, so a transition read proves nothing");
         string writable = Path.Combine(Path.GetTempPath(), $"scratchpad-transition-w-{Guid.NewGuid():N}.txt");
         string readOnly = Path.Combine(Path.GetTempPath(), $"scratchpad-transition-r-{Guid.NewGuid():N}.txt");
         File.WriteAllText(writable, "writable" + Environment.NewLine);
@@ -91,20 +95,41 @@ public sealed class MenuLabelTests
         File.SetAttributes(readOnly, FileAttributes.ReadOnly);
         try
         {
-            var baseline = WithApp($"\"{writable}\"", window => ReadBound(window, ids));
+            var baseline = WithApp($"\"{writable}\"", window => ReadBound(window, all));
             var (inReadOnly, afterLeaving) = WithApp($"\"{writable}\" \"{readOnly}\"", window =>
             {
                 Assert.Contains("scratchpad-transition-r-", window.Title, StringComparison.Ordinal);
-                var ro = ReadBound(window, ids);
+                var ro = ReadBound(window, all);
                 UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileCloseTab");
                 Assert.True(Retry.WhileFalse(() => window.Title.Contains("scratchpad-transition-w-", StringComparison.Ordinal), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200)).Result, $"closing the read-only tab did not return to the writable one: {window.Title}");
-                return (ro, ReadBound(window, ids));
+                return (ro, ReadBound(window, all));
             });
-            Assert.NotEmpty(inReadOnly);
+            foreach (string id in disabled)
+            {
+                Assert.True(inReadOnly.TryGetValue(id, out Read? r) && !r.Enabled, $"{id} is documented disabled but reads {(r?.Enabled == true ? "enabled" : "unread")} in the read-only document");
+            }
+
+            Assert.True(baseline.Count >= all.Count - disabled.Count, $"the writable baseline read only {baseline.Count} of {all.Count} items");
             foreach (var (id, read) in baseline)
             {
                 Assert.True(afterLeaving.TryGetValue(id, out Read? back), $"{id} was not read after leaving the read-only document");
                 Assert.True(back.Enabled == read.Enabled, $"{id} reads {(back.Enabled ? "enabled" : "disabled")} after leaving the read-only document, but {(read.Enabled ? "enabled" : "disabled")} in the writable baseline");
+            }
+
+            var (before, selected, cleared) = WithApp(null, window =>
+            {
+                var box = ContentBox(window);
+                UiInput.AppendText(box, "transition text");
+                var pre = ReadBound(window, all);
+                UiInput.SelectAllText(box);
+                var sel = ReadBound(window, all);
+                UiInput.ClearSelection(box);
+                return (pre, sel, ReadBound(window, all));
+            });
+            Assert.NotEmpty(selected);
+            foreach (var (id, read) in before)
+            {
+                Assert.True(cleared.TryGetValue(id, out Read? back) && back.Enabled == read.Enabled, $"{id} reads {(cleared.TryGetValue(id, out Read? c) && c.Enabled ? "enabled" : "disabled")} after the selection was cleared, but {(read.Enabled ? "enabled" : "disabled")} before it was made");
             }
         }
         finally

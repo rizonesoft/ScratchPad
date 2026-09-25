@@ -738,7 +738,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // Held keys (D00 T02 §43 item 4): the root notes each key-down's
         // repeat flag before any accelerator runs, so one-shot commands
         // dispatch once per physical press and repeatable ones repeat.
-        scope.PreviewKeyDown += (_, e) => HeldChord.NotePress(e.KeyStatus.WasKeyDown);
+        scope.PreviewKeyDown += (_, e) => HeldChord.NotePress(e.KeyStatus.WasKeyDown, a => scope.DispatcherQueue.TryEnqueue(() => a()));
         scope.PreviewKeyUp += (_, _) => HeldChord.NoteRelease();
         AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, bar.NewTab);
         // D01 T02 §1: Ctrl+W belongs to File > Close tab now.

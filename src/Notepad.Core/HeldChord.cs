@@ -30,7 +30,18 @@ public static class HeldChord
     [ThreadStatic]
     static bool repeating;
 
-    public static void NotePress(bool isRepeat) => repeating = isRepeat;
+    // The flag lives for one input message (R1-F1): `defer` queues its
+    // reset behind the key event, so the accelerators that run for this
+    // press read it and a later mouse click or a focus change never does.
+    public static void NotePress(bool isRepeat, Action<Action> defer)
+    {
+        ArgumentNullException.ThrowIfNull(defer);
+        repeating = isRepeat;
+        if (isRepeat)
+        {
+            defer(NoteRelease);
+        }
+    }
 
     public static void NoteRelease() => repeating = false;
 
@@ -46,7 +57,7 @@ public static class HeldChord
         int count = 0;
         for (int i = 0; i < keyDowns; i++)
         {
-            NotePress(i > 0);
+            NotePress(i > 0, _ => { });
             if (!Suppress(command))
             {
                 count++;

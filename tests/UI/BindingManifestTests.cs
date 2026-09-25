@@ -316,7 +316,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D { void M() { box.KeyDown += OnKey; } }"));
         // D00 T02 §43 item 4: only the exact held-key observer shape is
         // sanctioned; a PreviewKeyDown hook that runs anything else reads.
-        Assert.Empty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D {\n        scope.PreviewKeyDown += (_, e) => HeldChord.NotePress(e.KeyStatus.WasKeyDown);\n        scope.PreviewKeyUp += (_, _) => HeldChord.NoteRelease();\n}"));
+        Assert.Empty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D {\n        scope.PreviewKeyDown += (_, e) => HeldChord.NotePress(e.KeyStatus.WasKeyDown, a => scope.DispatcherQueue.TryEnqueue(() => a()));\n        scope.PreviewKeyUp += (_, _) => HeldChord.NoteRelease();\n}"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D {\n        scope.PreviewKeyDown += (_, e) => Save();\n}"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs", "class W { void Other() { root.KeyboardAccelerators.Add(a); } }"));
         const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { if (!HeldChord.Suppress(TestMutation.Key((int)key, (int)modifiers)) && !MutationHandled(key, modifiers)) { action(); } args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";

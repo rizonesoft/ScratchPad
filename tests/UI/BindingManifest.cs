@@ -357,7 +357,7 @@ internal static class BindingManifest
 
     // Key handling outside the two declared homes is an undeclared
     // binding surface (context routing the matrix cannot see).
-    static readonly Regex HeldChordObserver = new(@"^\s*scope\.PreviewKey(Down|Up) \+= \((_|e), (_|e)\) => HeldChord\.(NotePress\(e\.KeyStatus\.WasKeyDown\)|NoteRelease\(\));\s*$", RegexOptions.Compiled);
+    static readonly Regex HeldChordObserver = new(@"^\s*scope\.PreviewKey(Down|Up) \+= \((_|e), (_|e)\) => HeldChord\.(NotePress\(e\.KeyStatus\.WasKeyDown, a => scope\.DispatcherQueue\.TryEnqueue\(\(\) => a\(\)\)\)|NoteRelease\(\));\s*$", RegexOptions.Compiled);
 
     internal static List<string> UndeclaredKeyHandling(string relPath, string text)
     {

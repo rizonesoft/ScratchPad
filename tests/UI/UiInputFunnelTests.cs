@@ -378,6 +378,68 @@ public sealed class UiInputFunnelTests
         Assert.Empty(injected);
     }
 
+    // D00 T02 §43 R1-F3: a cancelled release (the test's cancellation
+    // reaching the sender) is owned like any other failure, and a pass past
+    // its bound reports the keys it never attempted.
+    [Fact]
+    public void CancelledReleaseAndTheBoundReportEveryStuckKey()
+    {
+        var keys = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT };
+        var released = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort>();
+        var cancelled = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(keys, k =>
+        {
+            if (k == FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT)
+            {
+                throw new OperationCanceledException("test cancelled");
+            }
+
+            released.Add(k);
+        }));
+        Assert.Contains("SHIFT (OperationCanceledException: test cancelled)", cancelled.Message, StringComparison.Ordinal);
+        Assert.Equal([FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL], released);
+
+        var slow = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL, FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT };
+        int calls = 0;
+        var ticks = new Queue<TimeSpan>([TimeSpan.Zero, TimeSpan.FromSeconds(3)]);
+        var bounded = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(slow, _ => calls++, TimeSpan.FromSeconds(2), () => ticks.Dequeue()));
+        Assert.Equal(1, calls);
+        Assert.Contains("CONTROL (not attempted: the release pass passed its 2 s bound)", bounded.Message, StringComparison.Ordinal);
+    }
+
+    // D00 T02 §43 R1-F3: the target window closing while the press
+    // recovers from a failure still releases the keys and the modifiers.
+    [Fact]
+    public void WindowClosingDuringRecoveryStillReleases()
+    {
+        var mods = new Mods();
+        int up = 0;
+        bool alive = true;
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            UiInput.SendChecked(
+                App,
+                Target,
+                () => (Target, App),
+                Focus(App),
+                () =>
+                {
+                    mods.Down = true;
+                    alive = false;
+                    throw new InvalidOperationException("window closed mid-press");
+                },
+                () =>
+                {
+                    up++;
+                    mods.Down = false;
+                },
+                () => true,
+                mods.AllUp,
+                mods.Release,
+                () => alive));
+        Assert.Equal("window closed mid-press", ex.Message);
+        Assert.Equal(1, up);
+        Assert.False(mods.Down);
+    }
+
     // D00 T02 §43 item 2: focus moving to another control inside the app
     // between Ctrl-down and the wheel is not an interruption; the wheel
     // still scrolls once (the cursor sits on the original target) between
