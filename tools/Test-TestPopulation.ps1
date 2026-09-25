@@ -14,10 +14,17 @@ $Dotnet = Join-Path $Root '.tools\dotnet-win-x64\dotnet.exe'
 if ($Fingerprint -eq '') { $Fingerprint = Join-Path $Root 'tests\UI\TestPopulation.fingerprint' }
 $fresh = Get-UiBuildFreshness $Root
 if (-not $fresh.Ok) { Write-Output "population UNCHECKED: $($fresh.Error)"; exit 2 }
-$fp = Read-TestPopulationFile $Fingerprint
-if (-not $fp.Ok) { Write-Output "population UNREADABLE: $($fp.Error)"; exit 2 }
-$disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fp.RunAFilter $fp.RunBFilter $fp.InteractiveFilter
-$pop = Compare-TestPopulation $Fingerprint (Join-Path $PSScriptRoot 'nightly.ps1') $disc
+# An unreadable fingerprint or a discovery that cannot run is exit 2
+# (infrastructure), never exit 1 (drift), so CI names the right fault.
+try {
+  $fp = Read-TestPopulationFile $Fingerprint
+  if (-not $fp.Ok) { Write-Output "population UNREADABLE: $($fp.Error)"; exit 2 }
+  $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fp.RunAFilter $fp.RunBFilter $fp.InteractiveFilter
+  $pop = Compare-TestPopulation $Fingerprint (Join-Path $PSScriptRoot 'nightly.ps1') $disc
+} catch {
+  Write-Output "population UNCHECKED: $($_.Exception.Message)"
+  exit 2
+}
 if ($pop.Ok) {
   Write-Output "population OK run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)"
   exit 0
