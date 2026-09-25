@@ -4536,7 +4536,15 @@ def night_debts(todos: list["Todo"], today_d):
             # the escalation forever.
             rl = []
             _seen_attempts = set()
-            for r in sorted(reds.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+            # One record per attempt, the latest by record text (R2-F1):
+            # of contradictory reds for one run, the one that reads is the
+            # one the contradiction warning names, finding included.
+            _attempt: dict = {}
+            for r in reds.get(did, []):
+                _k = (r.get("date") or "", r.get("run") or r.get("log") or "")
+                if _k not in _attempt or r.get("_raw", "") > _attempt[_k].get("_raw", ""):
+                    _attempt[_k] = r
+            for r in sorted(_attempt.values(), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
                 rd = _strict_date(r["date"])
                 if rd is None or rd > today_d:
                     # A red that is not a real past day changes nothing and
@@ -26481,6 +26489,8 @@ track: Z1
             f"**Night-owed:** D90-T01-S1-N17 ({_o42}2026-09-12)",
             "**Night-red:** 2026-09-14 D90-T01-S1-N17 (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run q1)",
             "**Night-red:** 2026-09-14 D90-T01-S1-N17 (0 passed, 2 failed, 0 skipped; log build/nightly/r.trx; run q1)",
+            "**Night-red:** 2026-09-16 D90-T01-S1-N17 (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run q2)",
+            "**Night-red:** 2026-09-16 D90-T01-S1-N17 (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run q2; finding D00-T02-S42-F7)",
             f"**Night-owed:** D90-T01-S1-N18 ({_o42}2026-09-10)",
             "**Night-extend:** D90-T01-S1-N18 (2026-09-12, by operator, due 2026-09-25, reason host rebuilt)",
             "**Night-extend:** D90-T01-S1-N18 (2026-09-12, by operator, due 2026-09-25, reason host rebuilt)",
@@ -26600,7 +26610,8 @@ track: Z1
         )
         check(
             "§42 R1-F2: contradictory reds for one run warn; identical extends record one extension",
-            (_n42w("D90-T01-S1-N17", "CONTRADICTORY Night-red lines dated 2026-09-14 for run q1"),
+            (_n42w("D90-T01-S1-N17", "CONTRADICTORY Night-red lines dated 2026-09-14 for run q1")
+             and "finding D00-T02-S42-F7" in _n42.get("D90-T01-S1-N17", ""),
              _n42.get("D90-T01-S1-N18", "").count("by operator from"), _n42w("D90-T01-S1-N18", "CONTRADICTORY")),
             (True, 1, False),
         )
