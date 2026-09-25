@@ -30,6 +30,7 @@ $ErrorActionPreference = 'Stop'
 
 $Root = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+. (Join-Path $PSScriptRoot 'NightlyNotify.ps1')
 if ($NightlyPath -eq '') { $NightlyPath = Join-Path $PSScriptRoot 'nightly.ps1' }
 if ($NightlyArgs -match '(^|\s)-(Smoke|CheckOnly)\b') { throw 'supervisor refuses diagnostic flags (they publish no report; run nightly.ps1 directly)' }
 if ($TimeoutSeconds -le 0) { throw 'supervisor needs a positive -TimeoutSeconds' }
@@ -100,7 +101,7 @@ try {
   Write-AtomicReport @((ConvertTo-Json $tombResult -Depth 8)) (Join-Path $nightDir "morning-$tombStamp.result.json")
   $tombClass = 'infrastructure'
   try { $tombClass = (Classify-NightlyOutcome $tombResult).Class } catch { }
-  try { Send-NightlyToast "Nightly $day : RED ($tombClass)" @("Supervised run produced no report: $cause", "Report: build/nightly/morning-$day.md") | Out-Null } catch { }
+  try { $null = Invoke-NightlyNotify -Phase 'final' -RunId $tombId -ResultPath (Join-Path $nightDir "morning-$tombStamp.result.json") -Class $tombClass -Title "Nightly $day : RED ($tombClass)" -Lines @("Supervised run produced no report: $cause", "Report: build/nightly/morning-$day.md") -StateDir $nightDir -Sender { param($tt, $ll) Send-NightlyToast $tt $ll } } catch { }
   try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
   Write-Output "supervisor: tombstone landed ($cause)"
   exit 1

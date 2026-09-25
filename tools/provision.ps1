@@ -33,7 +33,9 @@ $Tasks = @(
   @{ Name = 'Nightly UI'; Path = '\ScratchPad\'; Time = '02:30'; ArgMatch = 'NightlySupervisor.ps1'; Supervisor = 'tools/NightlySupervisor.ps1'; Xml = 'tools/tasks/nightly-ui.xml';
      Extra = @{ MultipleInstances = 'IgnoreNew'; ExecutionTimeLimit = 'PT4H'; WakeToRun = 'True' } },
   @{ Name = 'Nightly Foreground Single'; Path = '\ScratchPad\'; Time = '02:05'; ArgMatch = 'OpenInNewWindowModeOpensSecondWindow'; Xml = 'tools/tasks/nightly-foreground-single.xml';
-     Extra = @{} }
+     Extra = @{} },
+  @{ Name = 'Nightly Morning'; Path = '\ScratchPad\'; Time = '07:05'; ArgMatch = 'NightlyMorning.ps1'; Xml = 'tools/tasks/nightly-morning.xml';
+     Extra = @{ MultipleInstances = 'IgnoreNew'; ExecutionTimeLimit = 'PT15M' } }
 )
 
 function Test-OneTask($Spec) {

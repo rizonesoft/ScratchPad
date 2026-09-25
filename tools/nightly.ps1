@@ -47,6 +47,7 @@ $GateExe = Join-Path $Root 'Bin\ForegroundLog\Debug\ForegroundLog.exe'
 $JobCtl = Join-Path $Root 'Bin\JobControl\Debug\JobControl.exe'
 . (Join-Path $PSScriptRoot 'NightDebt.ps1')
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+. (Join-Path $PSScriptRoot 'NightlyNotify.ps1')
 # Run A test projects (D00 T02 §15, D00-T02-S13-R2-F2): the leg runs one
 # contained step per project (each keeps its own trx), and the summary
 # plus conservation merge the same set. One list feeds both, so the
@@ -407,7 +408,7 @@ trap {
     Write-AtomicReport @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)') (Join-Path $nightDir "morning-$day.md")
     if (-not [string]::IsNullOrWhiteSpace($stamp)) { Write-RunJournal $nightDir $stamp $PID $runStart 'cancelled' }
     if ((-not [string]::IsNullOrWhiteSpace($stamp)) -and (-not [string]::IsNullOrWhiteSpace($day))) { $trapResult = [pscustomobject]@{ version = 1; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"; verdict = 'cancelled'; exit = 1; reason = "$($_.Exception.Message)" }; Write-AtomicReport @((ConvertTo-Json $trapResult -Depth 4)) (Join-Path $nightDir "morning-$stamp.result.json") }
-    try { Send-NightlyToast "Nightly $day : CANCELLED" @("Run interrupted: $($_.Exception.Message)", "Result: build/nightly/morning-$stamp.result.json") | Out-Null } catch { }
+    try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath (Join-Path $nightDir "morning-$stamp.result.json") -Class 'cancelled' -Title "Nightly $day : CANCELLED" -Lines @("Run interrupted: $($_.Exception.Message)", "Report: build/nightly/morning-$day.md") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { }
     try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
     Write-Output 'nightly: RED (cancelled; record landed)'
   }
@@ -1121,8 +1122,20 @@ $report += ''
 # names the quarantine owner, and closes on verified recovery. A
 # ledger that cannot be read or written reds the run: without it every
 # failure would re-file as new.
+# Launch evidence (D00 T02 §24 item 14): an incident whose test owns a
+# §18 leak bundle or a failed launch record today links them here, in
+# the result JSON, the toast, and the trend.
+$incidentEvidence = [ordered]@{}
+$diagRoot = Join-Path $Root 'Bin\UI\Debug\launch-diagnostics'
+$evDays = @((Get-Date).ToUniversalTime().ToString('yyyyMMdd'), $runStart.ToUniversalTime().ToString('yyyyMMdd')) | Select-Object -Unique
+foreach ($g in $incidentGroups) {
+  $links = @()
+  try { $links = @(Find-IncidentEvidence $diagRoot $g.Test $evDays) } catch { }
+  if ($links.Count -gt 0) { $incidentEvidence[$g.Id] = $links }
+}
 $report += '## Incident ledger'
 $report += ''
+foreach ($k in @($incidentEvidence.Keys)) { $report += "- $k evidence: $(@($incidentEvidence[$k]) -join '; ')" }
 $ledgerPath = Join-Path $nightDir 'incidents.json'
 $ledgerRead = Read-IncidentLedger $ledgerPath
 if (-not $ledgerRead.Ok) {
@@ -1277,6 +1290,13 @@ try {
   }
 } catch { $failed = $true; $catalogLine = "RED verify threw: $($_.Exception.Message)" }
 $report += "- Catalog: $catalogLine"
+# One environment object feeds both surfaces (D00 T02 §24 item 12).
+$envBlock = Get-EnvironmentBlock "$env:SCRATCHPAD_INTERACTIVE_WINDOW"
+$report += "- Environment: os $($envBlock.os); dpi $($envBlock.dpi)"
+# Delivery health (D00 T02 §24 item 3): undelivered notifications
+# escalate in every report until the morning reconciler delivers them.
+$delivery = Get-DeliveryHealth $nightDir
+$report += $delivery.Lines
 if ($idc.Ok) { $report += '- Identity: consistent (directories, archives, loser reports, incidents, pointers)' } else { foreach ($b in $idc.Breaks) { $report += "- Identity RED: $b" } }
 $report += "- Timings: $timLine"
 $report += $dur.Lines
@@ -1354,7 +1374,8 @@ $result = [pscustomobject]@{
   tree = [pscustomobject]@{ start = "$($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint)"; end = "$($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint)"; stable = ($treeLine -notlike 'MUTATED*') }
   recovered = $recoveredLine; omissionOk = ($omissionError -eq '')
   timings = $phaseTimes; reserve = $reserveLeft; consumed = $consumedSecs
-  env = Get-EnvironmentBlock "$env:SCRATCHPAD_INTERACTIVE_WINDOW"
+  env = $envBlock
+  incidentEvidence = [pscustomobject]$incidentEvidence
   report = "build/nightly/morning-$stamp.md"
   note = ''
 }
@@ -1371,6 +1392,18 @@ if (-not $selfCheck.Ok) {
   $selfCheck = Test-ResultFile $resultPath
   Write-Output "nightly: own result file invalid, failing closed ($($selfCheck.Error))"
   $report += "- Result invalid: $($selfCheck.Error) (failing closed)"
+}
+# Report/result agreement (D00 T02 §24 item 12): every count, gate,
+# incident, the reserve, the environment, and the exit read the same in
+# the Markdown and the JSON, or the run reds and says which field.
+$agree = Test-ReportResultAgreement (@($report) + @("- Exit: $(if ($failed) { 1 } else { 0 })")) $result
+if ($agree.Ok) { $report += '- Agreement: report and result agree (counts, gates, incidents, reserve, environment, exit)' }
+else {
+  $failed = $true
+  $result.verdict = 'red'; $result.exit = 1
+  $result.note += "; report/result disagree: $($agree.Breaks -join '; ')"
+  Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
+  foreach ($b in $agree.Breaks) { $report += "- Agreement RED: $b" }
 }
 $exitCode = if ($failed) { 1 } else { 0 }
 # Acknowledgements (D00 T02 §23): one demand per RED run identity
@@ -1394,22 +1427,54 @@ Publish-NightlyReport $report ''
 if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
 Write-Output "nightly: report at $reportPath"
 if ((-not $Smoke) -and (-not $simMode)) {
+  # Morning notification (D00 T02 §24): final-only and idempotent per
+  # run, result checksum, and notification version; routed by class
+  # (immediate or morning digest); the body keeps its most urgent lines
+  # under the cap with the report link last; every outcome label,
+  # recovery notice, and launch-evidence link rides it.
   $tp = $legA.passed + $legB.passed + $legI.passed
   $tf = $legA.failed + $legB.failed + $legI.failed
   $ts = $legA.skipped + $legB.skipped + $legI.skipped
-  $tLines = @("$tp passed, $tf failed, $ts skipped (legs Run A/B/Interactive)", "Trigger: $trigger")
-  if (@($incidentLines).Count -gt 0) { $tLines += @($incidentLines | Select-Object -First 1) } else { $tLines += 'No failures' }
+  $clsOut = 'green'
+  try { $clsOut = (Classify-NightlyOutcome $result).Class } catch { }
+  $labels = @()
+  try { $labels = @(Get-OutcomeLabels $result | Where-Object { $_ -ne $clsOut }) } catch { }
+  $items = @()
+  if ($failClosedNote -ne '') { $items += New-ToastItem 0 "Result invalid: $failClosedNote" }
+  if (-not $agree.Ok) { $items += New-ToastItem 0 "Report/result disagree: $($agree.Breaks[0])" }
+  if (-not $delivery.Ok) { $items += New-ToastItem 1 "Delivery RED: $($delivery.Count) undelivered notification(s)" }
+  if (-not $ackCheck.Ok) { $items += New-ToastItem 1 "Unacked REDs: $($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue (see Acknowledgements)" }
+  if (@($incidentGroups).Count -gt 0) {
+    $top = $incidentGroups[0]
+    $ev = if ($incidentEvidence.Contains($top.Id)) { " [evidence: $(@($incidentEvidence[$top.Id])[0])]" } else { '' }
+    $items += New-ToastItem 2 "$(@($incidentLines)[0])$ev"
+  } else { $items += New-ToastItem 5 'No failures' 1 }
+  $recNotices = @()
+  try {
+    $allResults = @()
+    foreach ($rp in $ackResultFiles) { try { $allResults += (Get-Content $rp -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { } }
+    $recNotices = @(Get-RecoveryNotices (Select-CanonicalRuns $allResults) $allResults $result @($ledgerUpd.Lines))
+  } catch { }
+  $ord = 0
+  foreach ($rn in $recNotices) { $items += New-ToastItem 3 $rn $ord; $ord++ }
   $odLines = @()
   try { $odLines = @($quar.Overdue | ForEach-Object { "$($_.Test) (due $($_.Due), $($_.Owner))" }) } catch { }
   if ($odLines.Count -eq 0) { try { $odLines = @($odNames) } catch { } }
-  if (@($odLines).Count -gt 0) { $tLines += ("Overdue quarantine: " + ($odLines -join '; ')) }
-  if (-not $ackCheck.Ok) { $tLines += ("Unacked REDs: $($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue (see Acknowledgements)") }
-  $tLines += "Report: build/nightly/morning-$day.md"
-  if ($failClosedNote -ne '') { $tLines += "Result invalid: $failClosedNote" }
+  if (@($odLines).Count -gt 0) { $items += New-ToastItem 4 ("Overdue quarantine: " + ($odLines -join '; ')) }
+  $items += New-ToastItem 5 "$tp passed, $tf failed, $ts skipped (legs Run A/B/Interactive)"
+  if ($labels.Count -gt 0) { $items += New-ToastItem 6 ("Also: " + ($labels -join ', ')) }
+  $items += New-ToastItem 7 "Trigger: $trigger"
+  $tLines = @(Format-ToastLines $items "build/nightly/morning-$day.md")
   $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }
-  $clsOut = 'green'
-  try { $clsOut = (Classify-NightlyOutcome $result).Class } catch { }
-  if (Send-NightlyToast "Nightly $day : $ww ($clsOut)" $tLines) { Write-Output 'nightly: morning toast sent' } else { Write-Output 'nightly: morning toast failed (best-effort; report stands)' }
+  $route = Get-AlertRoute $clsOut
+  $nt = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $resultPath -Class $clsOut -Title "Nightly $day : $ww ($clsOut)" -Lines $tLines -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l }
+  Write-Output "nightly: notification $($nt.Status) ($clsOut via $($route.Channel), owner $($route.Owner), SLA $($route.SlaHours)h): $($nt.Notes -join '; ')"
+  # The delivery outcome is only known after the final publication, so
+  # the report republishes atomically (fixed path plus stamp archive)
+  # with its Notification section; latest.txt already names this stamp.
+  $report += @('', '## Notification', '', "- Class: $clsOut (owner $($route.Owner), channel $($route.Channel), severity $($route.Severity), SLA $($route.SlaHours)h)", "- Labels: $(if ($labels.Count -gt 0) { $labels -join ', ' } else { 'none beyond the class' })", "- Recovery: $(if ($recNotices.Count -gt 0) { $recNotices -join '; ' } else { 'none' })", "- Delivery: $($nt.Status) ($($nt.Notes -join '; '))", "- Key: $($nt.Key)")
+  Write-AtomicReport $report $reportPath
+  Write-AtomicReport $report (Join-Path $nightDir "morning-$stamp.md")
 }
 try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null; Write-Output 'nightly: trend rendered' } catch { Write-Output "nightly: trend render failed (best-effort): $_" }
 if ($exitCode -ne 0) { Write-Output 'nightly: RED (see above)'; exit 1 }

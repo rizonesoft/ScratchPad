@@ -1768,6 +1768,43 @@ function Classify-NightlyOutcome($Result) {
   return [pscustomobject]@{ Class = 'infrastructure'; Route = 'red without a classified cause: route to a human' }
 }
 
+function Select-CanonicalRuns($Results) {
+  # One canonical run per night (item 2): simulations, stood-down
+  # losers, and results without a day never count; among the rest the
+  # scheduler-launched run wins (latest stamp), then an on-demand task
+  # run, then the latest manual run. Every other result of the day is
+  # a retry, listed with its reason, so trends count nights, not
+  # attempts. Returns a hashtable day -> Canonical (identity) plus
+  # Others (identity -> reason).
+  $byDay = @{}
+  foreach ($r in @($Results)) {
+    if ($null -eq $r) { continue }
+    $day = "$($r.day)"
+    if ($day -eq '') { continue }
+    $id = "$($r.identity)"
+    if ($id -eq '') { $id = "$($r.stamp)" }
+    if (-not $byDay.ContainsKey($day)) { $byDay[$day] = [pscustomobject]@{ Canonical = ''; Others = [ordered]@{}; Pool = @() } }
+    $slot = $byDay[$day]
+    $sim = $false
+    try { $sim = [bool]$r.simulated } catch { }
+    if ($sim) { $slot.Others[$id] = 'simulation'; continue }
+    if ("$($r.verdict)" -eq 'stood-down') { $slot.Others[$id] = 'stood-down loser'; continue }
+    $rank = 1
+    $launch = "$($r.launch)"
+    if ($launch -eq 'timer') { $rank = 3 } elseif ($launch -eq 'demand') { $rank = 2 }
+    $slot.Pool += [pscustomobject]@{ Id = $id; Rank = $rank; Stamp = "$($r.stamp)"; Launch = $launch }
+  }
+  foreach ($day in @($byDay.Keys)) {
+    $slot = $byDay[$day]
+    $pick = @($slot.Pool | Sort-Object @{ Expression = 'Rank'; Descending = $true }, @{ Expression = 'Stamp'; Descending = $true }) | Select-Object -First 1
+    if ($null -ne $pick) {
+      $slot.Canonical = $pick.Id
+      foreach ($p in $slot.Pool) { if ($p.Id -ne $pick.Id) { $slot.Others[$p.Id] = "retry ($(if ($p.Launch -eq '') { 'unknown' } else { $p.Launch }) launch; canonical $($pick.Id))" } }
+    }
+  }
+  return $byDay
+}
+
 function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = (Get-Date)) {
   # Renders nights as a Markdown trend (D00 T02 §17 items 2, 4, 9):
   # one row per run plus pass-rate, duration, quarantine-age, flake,
@@ -1778,6 +1815,12 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # as marks, never numbers. Percentiles are median/max (tiny-n
   # honest). $Today anchors the oldest-overdue age; fixtures pin it.
   $rows = @($Results | Sort-Object { "$($_.day)-$($_.stamp)" })
+  # Canonical runs (D00 T02 §24 item 2): every result keeps its row, but
+  # retries, simulations, and stood-down losers are marked and stay out
+  # of the p50, the budget ranks, and flake recurrence, so a retry
+  # burst cannot count as extra nights or bias the series.
+  $canon = Select-CanonicalRuns $rows
+  $isCanon = { param($r) $cid = "$($r.identity)"; if ($cid -eq '') { $cid = "$($r.stamp)" }; ($canon.ContainsKey("$($r.day)")) -and ($canon["$($r.day)"].Canonical -eq $cid) }
   $lines = @('# Nightly trend', '', '| Night | Verdict | Class | Pass | RunA s | RunB s | Soak | Gates | Reserve | Quar | SoakFail | Env |', '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
   $allA = @()
   $incNights = @{}
@@ -1804,7 +1847,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     elseif ($anyRan) { $pass = 'unproven' }
     else { $pass = 'no legs ran' }
     $ra = '-'
-    try { if ($null -ne $r.legs.'run-a'.testSeconds) { $ra = "$($r.legs.'run-a'.testSeconds)"; $allA += [int]$r.legs.'run-a'.testSeconds } } catch { }
+    try { if ($null -ne $r.legs.'run-a'.testSeconds) { $ra = "$($r.legs.'run-a'.testSeconds)"; if (& $isCanon $r) { $allA += [int]$r.legs.'run-a'.testSeconds } } } catch { }
     $rb = '-'
     try { if ($null -ne $r.legs.'run-b'.testSeconds) { $rb = "$($r.legs.'run-b'.testSeconds)" } } catch { }
     $soak = '-'
@@ -1848,9 +1891,11 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     try { $fv = $r.soak.failed; if ($fv -is [array]) { $sf = @($fv).Count } else { $sf = [int]$fv } } catch { }
     $envShort = 'unknown'
     try { $envShort = "$($r.env.dpi) $($r.env.os)" } catch { }
-    $lines += "| $day | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds$qage | $sf | $envShort |"
+    $nightCell = if (& $isCanon $r) { $day } else { "$day (retry)" }
+    $lines += "| $nightCell | $v | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds$qage | $sf | $envShort |"
   }
   foreach ($r in $rows) {
+    if (-not (& $isCanon $r)) { continue }
     $incs = @()
     try { $incs = @($r.incidents) } catch { }
     foreach ($ln in $incs) {
@@ -1866,6 +1911,18 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   $lines += ''
   if ($rec.Count -gt 0) { $lines += ("- Flake recurrence: " + (($rec | ForEach-Object { "$_ ($($incNights[$_] -join ', '))" }) -join '; ')) }
   else { $lines += '- Flake recurrence: none across rendered nights' }
+  $canonCount = @($canon.Keys | Where-Object { $canon[$_].Canonical -ne '' }).Count
+  $lines += "- Canonical nights: $canonCount of $($rows.Count) results (retries, simulations, and stood-down losers stay out of the p50, the budget ranks, and recurrence)"
+  # Launch evidence behind the latest canonical night's incidents
+  # (D00 T02 §24 item 14), one click from the trend.
+  $latest = @($rows | Where-Object { & $isCanon $_ }) | Select-Object -Last 1
+  if ($null -ne $latest) {
+    $ev = $null
+    try { $ev = $latest.incidentEvidence } catch { }
+    if ($null -ne $ev) {
+      foreach ($prop in @($ev.PSObject.Properties)) { $lines += "- Incident evidence ($($latest.day)): $($prop.Name) $(@($prop.Value) -join '; ')" }
+    }
+  }
   if ($allA.Count -gt 0) {
     $sorted = @($allA | Sort-Object)
     $p50 = $sorted[[math]::Floor($sorted.Count / 2)]
