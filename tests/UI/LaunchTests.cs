@@ -1110,6 +1110,14 @@ public sealed class LaunchTests
                 // The observation barrier (D00 T02 §41 item 6): both mains'
                 // UI threads have processed their queues, then every
                 // location event already queued to the recorder drains.
+                // Posted placement work ends with the delayed pass (R1-F5):
+                // each born main's sweep-late line is the app's own record
+                // that its last queued placement ran, before the barrier.
+                foreach (Window w in windows.Where(w => w.Properties.NativeWindowHandle.Value != firstMain))
+                {
+                    _ = sweepLog.ReadLate(w.Properties.NativeWindowHandle.Value);
+                }
+
                 int drained = moves.DrainToBarrier(windows.Select(w => w.Properties.NativeWindowHandle.Value));
                 output.WriteLine($"recorder drained {drained} event(s) at the barrier");
                 var moved = moves.Stop();
@@ -1304,6 +1312,7 @@ public sealed class LaunchTests
                 using var second = UiLaunch.LaunchAppWithArgs($"\"{file}\"", drainLaunchDrops: true);
                 Assert.True(WaitForExit(second, TimeSpan.FromSeconds(10)), "redirected launch did not exit");
                 Thread.Sleep(1500);
+                _ = sweepLog.ReadLate(sweepLog.ReadBirthOtherThan(firstMain).Main);
                 int drained = moves.DrainToBarrier(first.GetAllTopLevelWindows(automation).Select(w => w.Properties.NativeWindowHandle.Value));
                 output.WriteLine($"recorder drained {drained} event(s) at the barrier");
                 var moved = moves.Stop();
@@ -1590,11 +1599,12 @@ public sealed class LaunchTests
             }
         }
 
-        // The observation barrier (D00 T02 §41 item 6): a synchronous
-        // WM_NULL to each app window returns only after that window's UI
-        // thread has handled everything queued before it (so every move it
-        // made has raised its event), then a barrier message queued behind
-        // the recorder's pending events marks the drain. Returns the event
+        // The observation barrier (D00 T02 §41 item 6): callers first wait
+        // for the app's own record that its last queued placement ran (the
+        // delayed pass's sweep-late line, R1-F5), then a synchronous WM_NULL
+        // to each app window proves its UI thread is answering, and a
+        // barrier message queued behind the recorder's pending events marks
+        // the drain. Returns the event
         // count the recorder holds at the barrier; fails when a window or
         // the recorder does not answer within its bound.
         internal int DrainToBarrier(IEnumerable<nint> appWindows)

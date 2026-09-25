@@ -107,7 +107,10 @@ public static class SiblingSelection
             return "main";
         }
 
-        if (claims is not null && claims.TryGetValue(w.Handle, out long owner) && owner != (snapshot?.Generation ?? 0))
+        // A claim counts only while the window still carries that claim's
+        // mark (R1-F2): a claimed handle destroyed and reused by a new
+        // window has lost the mark, so the stale claim is ignored.
+        if (claims is not null && claims.TryGetValue(w.Handle, out long owner) && owner != (snapshot?.Generation ?? 0) && w.ClaimMark == owner)
         {
             return "other-construction";
         }
@@ -169,7 +172,13 @@ public static class SiblingSelection
             return "main";
         }
 
-        if (!w.Readable || w.ThreadId != selected.ThreadId)
+        // Identity is thread, class, and both marks (R1-F1): a handle value
+        // destroyed and reused between the read and the move differs in at
+        // least one unless the reuse lands on the same thread with the same
+        // class and no marks, and Win32 exposes nothing further; HWND
+        // values carry a reuse counter in their high word, so an exact
+        // value comes back only after that counter wraps.
+        if (!w.Readable || w.ThreadId != selected.ThreadId || !string.Equals(w.ClassName, selected.ClassName, StringComparison.Ordinal) || w.Mark != selected.Mark || w.ClaimMark != selected.ClaimMark)
         {
             return "reused-before-move";
         }
@@ -237,9 +246,11 @@ public sealed class SiblingSnapshot
 }
 
 // Mark is the snapshot generation the window's mark property carries (0
-// when it has none); Readable is false when the window's thread or owner
-// could not be read (it was being destroyed mid-enumeration).
-public readonly record struct SiblingTopLevel(nint Handle, nint RootOwner, uint ThreadId, bool IsMain, long Mark = 0, bool Readable = true);
+// when it has none); ClaimMark is the generation of the construction whose
+// claim the window carries (0 when none); Readable is false when the
+// window's thread or owner could not be read (it was being destroyed
+// mid-enumeration); ClassName is the window class, part of its identity.
+public readonly record struct SiblingTopLevel(nint Handle, nint RootOwner, uint ThreadId, bool IsMain, long Mark = 0, bool Readable = true, string ClassName = "", long ClaimMark = 0);
 
 public readonly record struct SiblingDecision(nint Handle, string Reason);
 
@@ -293,11 +304,12 @@ public sealed class SiblingSnapshotSlot
     }
 
     // A destroyed window's claim is released so its reused handle value
-    // starts clean.
-    public void Release(Func<nint, bool> alive)
+    // starts clean; `alive` answers whether the handle is still the window
+    // the claim was made on (alive and carrying the claim's mark).
+    public void Release(Func<nint, long, bool> alive)
     {
         ArgumentNullException.ThrowIfNull(alive);
-        foreach (nint h in claims.Keys.Where(h => !alive(h)).ToList())
+        foreach (var (h, gen) in claims.Where(kv => !alive(kv.Key, kv.Value)).ToList())
         {
             _ = claims.Remove(h);
         }

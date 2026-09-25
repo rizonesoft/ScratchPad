@@ -105,10 +105,16 @@ public sealed class SiblingSelectionTests
         var bSweep = SiblingSelection.Decide([helper], slot.Take(b), OtherMain, slot.Claims);
         Assert.Equal(SiblingSelection.Pin, bSweep.Single().Reason);
         slot.Claim(b.Generation, [bHelper, OtherMain]);
-        var aLate = SiblingSelection.Decide([helper], a, Main, slot.Claims);
+        SiblingTopLevel claimed = helper with { ClaimMark = b.Generation };
+        var aLate = SiblingSelection.Decide([claimed], a, Main, slot.Claims);
         Assert.Equal("other-construction", aLate.Single().Reason);
-        var aNoSnapshot = SiblingSelection.Decide([helper], slot.Take(a), Main, slot.Claims);
+        var aNoSnapshot = SiblingSelection.Decide([claimed], slot.Take(a), Main, slot.Claims);
         Assert.Equal("other-construction", aNoSnapshot.Single().Reason);
+
+        // R1-F2: a claimed handle reused by a new window (the claim mark is
+        // gone) is no longer the other construction's.
+        SiblingSnapshot c = SiblingSelection.Begin([], UiThread);
+        Assert.Equal(SiblingSelection.Pin, SiblingSelection.Decide([helper], c, Main, slot.Claims).Single().Reason);
         Assert.True(b.Generation > a.Generation);
     }
 
@@ -129,14 +135,15 @@ public sealed class SiblingSelectionTests
         Assert.Equal(SiblingSelection.Pin, d[0x301]);
 
         var slot = new SiblingSnapshotSlot();
-        slot.Claim(5, [0x301]);
-        slot.Release(h => h != 0x301);
+        slot.Claim(5, [0x301, 0x302]);
+        slot.Release((h, gen) => h != 0x301 && gen == 5);
         Assert.False(slot.Claims.ContainsKey(0x301));
+        Assert.True(slot.Claims.ContainsKey(0x302));
 
         SiblingSnapshot cancelled = slot.Begin(SiblingSelection.Begin([], UiThread));
         SiblingSnapshot next = slot.Begin(SiblingSelection.Begin([], UiThread));
         Assert.Null(slot.Take(cancelled));
-        Assert.Empty(slot.Claims);
+        Assert.Equal([(nint)0x302], slot.Claims.Keys);
         Assert.Same(next, slot.Take(next));
     }
 
@@ -179,6 +186,9 @@ public sealed class SiblingSelectionTests
         Assert.Equal("reowned-before-move", SiblingSelection.Revalidate(selected, selected with { RootOwner = OtherMain }, Main));
         Assert.Equal(SiblingSelection.Pin, SiblingSelection.Revalidate(selected, selected with { RootOwner = Main }, Main));
         Assert.Equal("reused-before-move", SiblingSelection.Revalidate(selected, selected with { ThreadId = PrintThread }, Main));
+        // R1-F1: a same-thread reuse with another class or another mark.
+        Assert.Equal("reused-before-move", SiblingSelection.Revalidate(selected with { ClassName = "A" }, selected with { ClassName = "B" }, Main));
+        Assert.Equal("reused-before-move", SiblingSelection.Revalidate(selected with { Mark = 3 }, selected with { Mark = 0 }, Main));
         Assert.Equal("gone-before-move", SiblingSelection.Revalidate(selected, null, Main));
     }
 

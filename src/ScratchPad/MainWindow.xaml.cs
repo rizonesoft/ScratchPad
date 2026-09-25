@@ -356,8 +356,14 @@ public sealed partial class MainWindow : Window, IDisposable
         // generation of the snapshot that saw the window.
         const string MarkProperty = "ScratchPad.SiblingMark";
 
+        // The claim mark (§41 R1-F2): the generation of the construction
+        // that claimed the window, so a claim survives only on its window.
+        const string ClaimProperty = "ScratchPad.SiblingClaim";
+
         // The last sweep, kept for its delayed pass (§41 item 4).
-        static (nint Main, SiblingSnapshot Snapshot, HashSet<nint> Decided)? lastSweep;
+        // Keyed by main (§41 R1-F4), so a second construction never drops
+        // the first one's pending delayed pass.
+        static readonly Dictionary<nint, (SiblingSnapshot Snapshot, HashSet<nint> Decided)> PendingLate = [];
 
         // The planted late helper (a test seam, §41 item 4 fixture).
         static nint plantedLateHelper;
@@ -412,7 +418,8 @@ public sealed partial class MainWindow : Window, IDisposable
         static SiblingTopLevel Read(nint hwnd, uint thread)
         {
             nint rootOwner = NativeMethods.GetAncestor(hwnd, 3);
-            return new SiblingTopLevel(hwnd, rootOwner, thread, NativeMethods.ClassName(hwnd) == MainClass, (long)NativeMethods.GetProp(hwnd, MarkProperty), thread != 0 && rootOwner != 0);
+            string cls = NativeMethods.ClassName(hwnd);
+            return new SiblingTopLevel(hwnd, rootOwner, thread, cls == MainClass, (long)NativeMethods.GetProp(hwnd, MarkProperty), thread != 0 && rootOwner != 0, cls, (long)NativeMethods.GetProp(hwnd, ClaimProperty));
         }
 
         static SiblingTopLevel? ReadNow(nint hwnd)
@@ -435,7 +442,7 @@ public sealed partial class MainWindow : Window, IDisposable
         internal static void Sweep(nint main, SiblingSnapshot? token)
         {
             SiblingSnapshot? snapshot = Pending.Take(token);
-            Pending.Release(NativeMethods.IsWindow);
+            Pending.Release((h, gen) => NativeMethods.IsWindow(h) && (long)NativeMethods.GetProp(h, ClaimProperty) == gen);
             List<SiblingTopLevel> windows = ProcessTopLevels();
             IReadOnlyList<SiblingDecision> decisions = SiblingSelection.Decide(windows, snapshot, main, Pending.Claims);
             var (final, pinnedAt) = PinDecided(main, windows, decisions);
@@ -444,8 +451,8 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 // This construction claims its main and every helper it
                 // pinned (§41 item 1).
-                Pending.Claim(generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle).Append(main));
-                lastSweep = (main, snapshot, final.Select(d => d.Handle).ToHashSet());
+                ClaimAll(generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle).Append(main));
+                PendingLate[main] = (snapshot, final.Select(d => d.Handle).ToHashSet());
             }
 
             LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep", generation));
@@ -490,17 +497,28 @@ public sealed partial class MainWindow : Window, IDisposable
         // once more on the first UI-thread idle after the show.
         internal static void Late(nint main)
         {
-            if (lastSweep is not { } last || last.Main != main)
+            if (!PendingLate.Remove(main, out var last))
             {
                 return;
             }
 
-            lastSweep = null;
             List<SiblingTopLevel> windows = ProcessTopLevels();
             IReadOnlyList<SiblingDecision> decisions = SiblingSelection.DecideLate(windows, last.Snapshot, main, last.Decided, Pending.Claims, Pending.BegunSince(last.Snapshot));
             var (final, pinnedAt) = PinDecided(main, windows, decisions);
-            Pending.Claim(last.Snapshot.Generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle));
+            ClaimAll(last.Snapshot.Generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle));
             LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep-late", last.Snapshot.Generation));
+        }
+
+        // Records the claims and stamps each window with its claim mark.
+        static void ClaimAll(long generation, IEnumerable<nint> handles)
+        {
+            var list = handles.ToList();
+            foreach (nint h in list)
+            {
+                _ = NativeMethods.SetProp(h, ClaimProperty, (nint)generation);
+            }
+
+            Pending.Claim(generation, list);
         }
 
         // Test seam (§41 item 4): under the run marker plus

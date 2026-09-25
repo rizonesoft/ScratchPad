@@ -38,6 +38,7 @@ public sealed class LaunchGuardTests
     [InlineData("class Q { [System.Runtime.InteropServices.DllImportAttribute(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
     [InlineData("using System.Runtime.InteropServices; partial class Q { [LibraryImport(\"kernel32.dll\", EntryPoint = \"CreateProcessW\")] static partial bool Spawn(); }")]
     [InlineData("using DI = System.Runtime.InteropServices.DllImportAttribute; class Q { [DI(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
+    [InlineData("using DIAttribute = System.Runtime.InteropServices.DllImportAttribute; class Q { [DI(\"kernel32.dll\")] static extern bool CreateProcessW(); }")]
     public void PlantedBypassFailsTheGuard(string snippet)
     {
         Assert.NotEmpty(LaunchGuard.FindViolations(snippet, "plant.cs"));

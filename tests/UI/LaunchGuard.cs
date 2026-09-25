@@ -349,8 +349,11 @@ internal static class LaunchGuard
                     // item 7): DllImport or the source-generated
                     // LibraryImport, with or without the Attribute suffix,
                     // qualified, or behind a using alias.
+                    // C# resolves [X] as X or XAttribute (R1-F3), aliases
+                    // included.
                     string attributeName = attribute.Name.ToString();
-                    if (namespaceAliases.TryGetValue(attributeName, out string? aliased))
+                    if (namespaceAliases.TryGetValue(attributeName, out string? aliased)
+                        || namespaceAliases.TryGetValue(attributeName + "Attribute", out aliased))
                     {
                         attributeName = aliased;
                     }
