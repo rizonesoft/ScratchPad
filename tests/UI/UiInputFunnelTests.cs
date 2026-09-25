@@ -432,7 +432,35 @@ public sealed class UiInputFunnelTests
         never.Set();
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"the pass took {clock.Elapsed}");
         Assert.Contains("SHIFT (release did not return within the 0.3 s bound)", ex.Message, StringComparison.Ordinal);
-        Assert.Contains("CONTROL (not attempted", ex.Message, StringComparison.Ordinal);
+        // A timed wait may return a hair before the bound, so CONTROL is
+        // either reported as not attempted or given the sliver left and
+        // released; it is never silently dropped.
+        bool controlReleased;
+        lock (released)
+        {
+            controlReleased = released.Contains(FlaUI.Core.WindowsAPI.VirtualKeyShort.CONTROL);
+        }
+
+        Assert.True(controlReleased || ex.Message.Contains("CONTROL (", StringComparison.Ordinal), ex.Message);
+    }
+
+    // D00 T02 §43 R3-F1: an attempt still queued when the pass gives up
+    // never injects its key-up later.
+    [Fact]
+    public void AbandonedQueuedReleaseNeverInjectsLater()
+    {
+        var keys = new List<FlaUI.Core.WindowsAPI.VirtualKeyShort> { FlaUI.Core.WindowsAPI.VirtualKeyShort.SHIFT };
+        int calls = 0;
+        Task? held = null;
+        var ex = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(keys, _ => calls++, TimeSpan.FromMilliseconds(50), null, action =>
+        {
+            held = new Task(action);
+            return held;
+        }));
+        Assert.Contains("SHIFT (release did not return within", ex.Message, StringComparison.Ordinal);
+        Assert.NotNull(held);
+        held.RunSynchronously();
+        Assert.Equal(0, calls);
     }
 
     // D00 T02 §43 R1-F3: the target window closing while the press

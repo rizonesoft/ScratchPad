@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
@@ -251,7 +252,7 @@ internal static class UiInput
     // recovery changes nothing.
     internal static readonly TimeSpan ReleaseBound = TimeSpan.FromSeconds(2);
 
-    internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release, TimeSpan? bound = null, Func<TimeSpan>? elapsed = null)
+    internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release, TimeSpan? bound = null, Func<TimeSpan>? elapsed = null, Func<Action, Task>? start = null)
     {
         ArgumentNullException.ThrowIfNull(injected);
         ArgumentNullException.ThrowIfNull(release);
@@ -272,9 +273,22 @@ internal static class UiInput
             // A release that blocks never holds the pass (R2-F1): it runs
             // with the time left, and one that has not returned by then is
             // reported and left behind.
+            // A release abandoned at the bound never injects later (R3-F1):
+            // the attempt checks the abandon flag first, so a queued one
+            // that has not started is skipped. One already inside the
+            // sender cannot be aborted; its key-up is for the key the funnel
+            // itself pressed (the documented residual).
             VirtualKeyShort key = injected[i];
             TimeSpan left = limit - now();
-            var attempt = Task.Run(() => release(key));
+            var abandoned = new StrongBox<bool>(false);
+            Action run = () =>
+            {
+                if (!Volatile.Read(ref abandoned.Value))
+                {
+                    release(key);
+                }
+            };
+            var attempt = (start ?? Task.Run)(run);
             bool returned;
             try
             {
@@ -288,6 +302,7 @@ internal static class UiInput
 
             if (!returned)
             {
+                Volatile.Write(ref abandoned.Value, true);
                 stuck.Add($"{key} (release did not return within the {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound)");
             }
         }
