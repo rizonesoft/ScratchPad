@@ -77,13 +77,14 @@ track: W0
 |   34  |   §34   | Sibling sweep residuals | §26 |  [x]   |
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [x]   |
 |   36  |   §36   | Binding guard residuals | §28 |  [x]   |
-|   37  |   §37   | Population gate residuals | §29 |  [ ]   |
+|   37  |   §37   | Population gate residuals | §29 |  [x]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
 |   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
+|   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 
 ---
 
@@ -494,6 +495,7 @@ Why this section exists: the D00 T02 §9 R5 review left two advisories on the ne
 - -> XREF: D00 T02 §29 -- the population fingerprint this section ships is checked before the night, not only by it.
 - -> XREF: D00 T02 §16 -- supervisor tombstone deduped with next-start recovery (item 12).
 - -> XREF: D00 T02 §17 -- its result schema and trend consume this section's per-leg evidence, retention, and incident ids.
+- -> XREF: D00 T02 §37 -- turned this section's per-method cut-work debt into per-case debt and added case identity to the fingerprint.
 
 - [x] Capability skips are allowlisted in `Get-NonQuarantineSkips` (HookFact message plus any enumerated capability skips), preferring structured skip classifications or stable reason codes over free-text matching (PR21; free text only as fallback), and the Interactive bar in `docs/testing.md` names the allowlist. Done when: the allowlist plus a scratch proof (capability skip passes, bare skip still flags) is quoted. Done: `CAPABILITY:` reason code on HookFact plus PrinterFact skips (the enumerated capability set; placement plus quiet-hours skips stay flagging), matched first with legacy free-text fallback in `Get-NonQuarantineSkips` (`tools/NightlyParse.ps1`); fixture `skip-classes` green (coded, legacy, quarantine pass; bare plus quiet-hours flag); forced printer run renders the code in trx; Interactive bar in `docs/testing.md` names the allowlist. (FL2 R2-F1/F2 fix: missing/malformed trx returns unproven and reds the run; `QUARANTINED` requires stamp shape (date plus id), matching is case-sensitive, legacy anchored to message prefix). (FL4 R4-F2 fix: enforcement outcome drives Interactive capture via trigger matrix; enforcement-only reds capture).
 - [x] The reported skip count is unified with the assembly sums (`$s` threaded through `Get-LegSummary`). Done when: the cell equals its breakdown on the archived task report. Done: `SkippedCount` threaded through `Get-TrxSummary`/`Get-LegSummary`/`Format-LegRow` (`tools/NightlyParse.ps1`); taskrun Run A cell reads `540 passed, 0 failed, 9 skipped` against the matching per-assembly breakdown.
@@ -1194,6 +1196,8 @@ Why this section exists: the §28 plan review returned 14 findings; 8 file here,
 Why this section exists: the §29 plan review returned 10 findings; 6 file here and 4 are rejected with reasons in the §29 findings file. §29 runs the population check in CI and locally, makes discovery time-independent, and refuses stale-build regens; these settle enforcement, input identity, and population identity past aggregate counts. -> SOURCE: plan-review-D00-T02-s29-2026-09-25-s37 D00-T02-S29-PR1 D00-T02-S29-PR2 D00-T02-S29-PR4 D00-T02-S29-PR5 D00-T02-S29-PR7 D00-T02-S29-PR9 (merge enforcement, build-input identity, dynamic Theory rows, restoration fixtures, case identity, and per-case debt from the §29 plan review).
 
 - -> XREF: D00 T02 §29 -- filed from its plan review; settles the residuals of the gate it shipped.
+- -> XREF: D00 T02 §15 -- the fingerprint and cut-work debt contract this section extends to case rows.
+- -> XREF: D00 T02 §44 -- residual follow-ups filed from this section's plan review.
 
 - [x] The population check gates what reaches the night: the nightly's candidate selection (or a branch rule on `main`) requires the CI step green for the commit it runs, so a red check cannot be bypassed by pushing on. Done when: a planted red check on a candidate makes the nightly name it and refuse the population. (D00-T02-S29-PR1.)
 - [x] Freshness covers every build input and configuration identity (shared props, `Directory.Build.*`, project references, the build configuration), not only `tests/UI` sources and project files. Done when: touching a shared build input without rebuilding makes the regen refuse. (D00-T02-S29-PR2.)
@@ -1204,6 +1208,13 @@ Why this section exists: the §29 plan review returned 10 findings; 6 file here 
 - [x] Commit: `"workspace: settle the population gate residuals"`
 
 **Test checkpoint:** A red check stops the night's population, a shared-input touch refuses the regen, capability rows list identically, restoration holds on failure, a row swap drifts, and a partial Theory keeps its owed cases. Cheaper substitute that fails: a doc note asking authors to wait for CI.
+
+> **Verified:** 2026-09-25 | §37 | only a green CI population step on the exact commit admits the night's population (red, pending, unverifiable, or a dirty tree refuses, `-AllowUnverifiedCi` the quoted override for non-red states; a proof run refused a pending check live); freshness walks every build input (referenced projects, ancestor Directory.Build files, imports, linked and wildcard items, property paths per definition) and refuses what it cannot locate; gated Theories list every row while discovery lists, proved by a child listing with a capability present and absent; forced discovery restores on every path; the fingerprint carries an ordinal case-row hash per leg; budget-cut and killed Interactive legs owe unexecuted cases per method; NightlyParse.Tests all green and population OK on 69d9a74
+> **Review:** round 3 (Full), candidates `84aa9d5` `c514664` `9b6b0e4` `69d9a74` -- GPT R1-R2 bulk needs-attention (R1-F1..F2, R2-F1..F2 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` approve · `record` approve (gpt-6-astra); below-bar R3-F1..F3 fixed in 69d9a74 and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s37.md
+> **Plan review:** GPT medium, filed D00 T02 §44 (run 20260925-D00-T02-S37-codex-c06751119-r4)
+> **CRUD:** applicable | the fingerprint regen writes through a same-volume temp rename and every gate re-reads it; the nightly stages owed rows as report text for triage
+> **Duration:** 2026-09-25T12:12:38Z to 2026-09-25T13:01:12Z
+> **Reviewed-tip:** 69d9a74faf65ffd4181d83bc12c25aa9cf5ce97c
 
 ## 38. Nightly Evidence Second Residuals
 
@@ -1326,6 +1337,24 @@ Why this section exists: the §36 plan review returned 14 findings; 5 file here,
 - [ ] Commit: `"workspace: settle the binding guard second residuals"`
 
 **Test checkpoint:** Mutations prove activation, in-app focus moves have an outcome, cleanup failures report their stuck keys, held keys repeat by class, and enablement survives transitions. Cheaper substitute that fails: more static rules over test source.
+
+## 44. Population Gate Second Residuals
+
+Why this section exists: the §37 plan review returned 11 findings; 8 file here, 1 was applied (the §15 XREF pair), and 2 are rejected with reasons in the §37 findings file. §37 gated the night on green CI, widened freshness to every build input, made gated Theories list identically, and gave the population case identity and per-case debt; these carry that through content provenance, identity encoding, exclusion accountability, trx reconciliation, debt closure, proof validity, format migration, and diagnostics. -> SOURCE: plan-review-D00-T02-s37-2026-09-25-s44 D00-T02-S37-PR3 D00-T02-S37-PR4 D00-T02-S37-PR5 D00-T02-S37-PR6 D00-T02-S37-PR7 D00-T02-S37-PR8 D00-T02-S37-PR9 D00-T02-S37-PR10 (content provenance, identity encoding, exclusion accountability, trx reconciliation, debt closure, proof validity, format migration, and drift diagnostics from the §37 plan review).
+
+- -> XREF: D00 T02 §37 -- filed from its plan review; carries the gate it widened.
+
+- [ ] Freshness is content-based where timestamps lie: the regen records a digest over the build inputs (plus restore inputs and SDK identity) beside the binary, so preserved timestamps, deletions, and property changes are caught. Done when: a fixture editing an input with its timestamp restored refuses. (D00-T02-S37-PR3.)
+- [ ] Case-row identity has a defined representation: assembly-qualified names, a deterministic argument encoding, and duplicate display names counted, independent of discovery order. Done when: two rows with one display name hash apart and a reordered listing hashes the same. (D00-T02-S37-PR4.)
+- [ ] Capability-gated rows that never run are accounted for: each CAPABILITY skip names its owner and the host that owes the run, so an identical listing never hides a dropped test. Done when: a capability skip without an owner reds the leg summary. (D00-T02-S37-PR5.)
+- [ ] Per-case debt reconciles listed identities with trx outcomes across retries, duplicate names, skips, and aborted runs. Done when: a retried row and a duplicate-named row each keep the right owed count. (D00-T02-S37-PR6.)
+- [ ] Per-case debt closes under the collector's method filter by case: the collection reruns the method and each owed row closes only when its own case executes green. Done when: a collection green on two of three rows keeps one owed. (D00-T02-S37-PR7.)
+- [ ] Proof validity binds to the population identity: a proof recorded against one case hash reads stale after a regen with another, so updating the fingerprint cannot revive old evidence. Done when: a fixture proof reads stale after a row-swap regen. (D00-T02-S37-PR8.)
+- [ ] The fingerprint carries a schema version, and readers refuse an older or unknown version with the regen command. Done when: a count-only fingerprint refuses naming its version and the command. (D00-T02-S37-PR9.)
+- [ ] Case drift names the added, removed, and changed cases per leg with the recovery command, not only the two hashes. Done when: a row swap prints the removed and the added row. (D00-T02-S37-PR10.)
+- [ ] Commit: `"workspace: settle the population gate second residuals"`
+
+**Test checkpoint:** Content provenance catches restored timestamps, identity survives reordering and splits duplicates, capability skips carry owners, debt reconciles retries and closes per case, proofs stale with the population, old formats refuse with the command, and drift names cases. Cheaper substitute that fails: a longer hash.
 
 ## Verification
 
