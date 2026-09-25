@@ -832,6 +832,12 @@ Assert ((Read-IncidentLedger (Join-Path $s22 'dup.json')).Error -like '*duplicat
 Assert ((Read-IncidentLedger (Join-Path $s22 'thin.json')).Error -like '*lacks phase*') 'lifecycle-missing-field-fails-closed' (Read-IncidentLedger (Join-Path $s22 'thin.json')).Error
 ('{"version":1,"incidents":[' + $goodEntry + ']}') | Set-Content -Path (Join-Path $s22 'one.json') -Encoding UTF8
 Assert ((Read-IncidentLedger (Join-Path $s22 'one.json')).Ok) 'lifecycle-valid-entry-reads'
+('{"version":1,"incidents":[' + $goodEntry.Replace('[{"stamp":"s","wheres":["Run A"]}]', '[null]') + ']}') | Set-Content -Path (Join-Path $s22 'nullocc.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'nullocc.json')).Error -like '*null occurrence*') 'lifecycle-null-occurrence-fails-closed' (Read-IncidentLedger (Join-Path $s22 'nullocc.json')).Error
+('{"version":1,"incidents":[' + $goodEntry.Replace('{"stamp":"s","wheres":["Run A"]}', '{"wheres":["Run A"]}') + ']}') | Set-Content -Path (Join-Path $s22 'nostamp.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'nostamp.json')).Error -like '*occurrence without a stamp*') 'lifecycle-stampless-occurrence-fails-closed' (Read-IncidentLedger (Join-Path $s22 'nostamp.json')).Error
+('{"version":1,"incidents":[' + $goodEntry.Replace('{"stamp":"s","wheres":["Run A"]}', '{"stamp":"s"}') + ']}') | Set-Content -Path (Join-Path $s22 'nowheres.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'nowheres.json')).Error -like '*lacks wheres*') 'lifecycle-whereless-occurrence-fails-closed' (Read-IncidentLedger (Join-Path $s22 'nowheres.json')).Error
 $lX = Read-IncidentLedger $ledgerFx
 $xId = (@(Get-IncidentGroups @($hrA)))[0].Id
 $lX.Incidents[$xId].state = 'open'; $lX.Incidents[$xId].passStreak = 2; $lX.Incidents[$xId].lastPassStamp = '2026-09-27-023005'
@@ -872,6 +878,16 @@ Assert (($winAfter -notlike '*ghp_*') -and ($winAfter -like '*redacted by the se
 Assert (@($capNotes | Where-Object { $_ -like '*SECRET-SCAN redacted run-a-windows.txt (github-token)*' }).Count -eq 1) 'capture-secret-noted' ($capNotes -join ' | ')
 Assert ((Get-Content (Join-Path $capFx 'run-a-events.txt') -Raw) -like '*crashed*') 'capture-clean-file-untouched'
 Assert (Test-Path (Join-Path $capFx 'run-a-failure.png')) 'capture-under-cap-keeps-screenshot'
+# A capture the scan cannot read is never kept unscanned: while another
+# handle holds it exclusively, neither read nor delete can succeed, and
+# the note says so loudly.
+$lockedCap = Join-Path $capFx 'run-a-locked.txt'
+$planted | Set-Content -Path $lockedCap -Encoding UTF8
+$lockHandle = [System.IO.File]::Open($lockedCap, 'Open', 'ReadWrite', 'None')
+try { $lockNotes = @(Protect-CaptureDir $capFx 'run-a') } finally { $lockHandle.Dispose() }
+Assert (@($lockNotes | Where-Object { $_ -like '*SECRET-SCAN FAILED: run-a-locked.txt could not be scanned*do not retain this run*' }).Count -eq 1) 'capture-unscannable-undeletable-fails-loud' ($lockNotes -join ' | ')
+$lockNotes2 = @(Protect-CaptureDir $capFx 'run-a')
+Assert ((@($lockNotes2 | Where-Object { $_ -like '*SECRET-SCAN redacted run-a-locked.txt*' }).Count -eq 1)) 'capture-rescan-after-unlock-redacts' ($lockNotes2 -join ' | ')
 $capWas = $script:CaptureMaxBytes
 $script:CaptureMaxBytes = 1024
 $capNotes2 = @(Protect-CaptureDir $capFx 'run-a')

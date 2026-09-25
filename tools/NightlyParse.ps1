@@ -597,7 +597,18 @@ function Protect-CaptureDir([string]$CaptureDir, [string]$Leg) {
         "[capture redacted by the secret scan: $($hits -join ', '); see docs/testing.md Failure-capture policy]" | Set-Content -Path $f.FullName -Encoding UTF8
         $notes += "- $Leg : SECRET-SCAN redacted $($f.Name) ($($hits -join ', '))"
       }
-    } catch { $notes += "- $Leg : SECRET-SCAN could not read $($f.Name): $($_.Exception.Message)" }
+    } catch {
+      # Fail closed: a capture the scan could not read or redact is
+      # deleted, never kept unscanned; if even the delete fails, the
+      # note says so loudly and the run must not be retained.
+      $why = $_.Exception.Message
+      try {
+        Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
+        $notes += "- $Leg : SECRET-SCAN could not scan $($f.Name) ($why); capture deleted (fail closed)"
+      } catch {
+        $notes += "- $Leg : SECRET-SCAN FAILED: $($f.Name) could not be scanned ($why) or deleted ($($_.Exception.Message)); do not retain this run"
+      }
+    }
   }
   try {
     $total = (@(Get-ChildItem -Path $CaptureDir -File -Recurse -ErrorAction SilentlyContinue) | Measure-Object Length -Sum).Sum
@@ -1073,6 +1084,12 @@ function Read-IncidentLedger([string]$Path) {
       if (@('open', 'closed') -notcontains "$($e.state)") { return (& $bad "entry $($e.id) state $($e.state)") }
       if (("$($e.test)" -eq '') -or ("$($e.phase)" -eq '')) { return (& $bad "entry $($e.id) has an empty test or phase") }
       if (@($e.occurrences).Count -eq 0) { return (& $bad "entry $($e.id) has no occurrences") }
+      foreach ($o in @($e.occurrences)) {
+        if ($null -eq $o) { return (& $bad "entry $($e.id) has a null occurrence") }
+        $on = @($o.PSObject.Properties.Name)
+        if (($on -notcontains 'stamp') -or ("$($o.stamp)" -eq '')) { return (& $bad "entry $($e.id) has an occurrence without a stamp") }
+        if ($on -notcontains 'wheres') { return (& $bad "entry $($e.id) occurrence $($o.stamp) lacks wheres") }
+      }
       if ($map.ContainsKey("$($e.id)")) { return (& $bad "duplicate id $($e.id)") }
       $occ = @()
       foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
