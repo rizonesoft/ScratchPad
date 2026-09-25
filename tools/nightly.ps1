@@ -405,10 +405,13 @@ trap {
   # only fires once the evidence dir exists; helper functions are
   # defined by then (they live above the leg block).
   if ((-not [string]::IsNullOrWhiteSpace($nightDir)) -and (-not [string]::IsNullOrWhiteSpace($day)) -and (Test-Path $nightDir)) {
-    Write-AtomicReport @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)') (Join-Path $nightDir "morning-$day.md")
+    $cancelLines = @("# Morning report: $day", 'Status: cancelled', '', "- Cancelled: $($_.Exception.Message)", "- At: $((Get-Date).ToString('yyyy-MM-dd HH:mm:ss'))", '- Verdict: RED (cancelled; partial evidence in the stamp dir, if any)')
+    Write-AtomicReport $cancelLines (Join-Path $nightDir "morning-$day.md")
+    # A stamp-scoped archive the notification links (D00 T02 §24 R3-F3).
+    if (-not [string]::IsNullOrWhiteSpace($stamp)) { Write-AtomicReport $cancelLines (Join-Path $nightDir "morning-$stamp-cancelled.md") }
     if (-not [string]::IsNullOrWhiteSpace($stamp)) { Write-RunJournal $nightDir $stamp $PID $runStart 'cancelled' }
     if ((-not [string]::IsNullOrWhiteSpace($stamp)) -and (-not [string]::IsNullOrWhiteSpace($day))) { $trapResult = [pscustomobject]@{ version = 1; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"; verdict = 'cancelled'; exit = 1; reason = "$($_.Exception.Message)" }; Write-AtomicReport @((ConvertTo-Json $trapResult -Depth 4)) (Join-Path $nightDir "morning-$stamp.result.json") }
-    try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath (Join-Path $nightDir "morning-$stamp.result.json") -Class 'cancelled' -Title "Nightly $day : CANCELLED" -Lines @("Run interrupted: $($_.Exception.Message)", "Report: build/nightly/morning-$day.md") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { }
+    try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath (Join-Path $nightDir "morning-$stamp.result.json") -Class 'cancelled' -Title "Nightly $day : CANCELLED" -Lines @("Run interrupted: $($_.Exception.Message)", "Report: build/nightly/morning-$stamp-cancelled.md") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { }
     try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
     Write-Output 'nightly: RED (cancelled; record landed)'
   }
@@ -1465,7 +1468,9 @@ if ((-not $Smoke) -and (-not $simMode)) {
   $items += New-ToastItem 5 "$tp passed, $tf failed, $ts skipped (legs Run A/B/Interactive)"
   if ($labels.Count -gt 0) { $items += New-ToastItem 6 ("Also: " + ($labels -join ', ')) }
   $items += New-ToastItem 7 "Trigger: $trigger"
-  $tLines = @(Format-ToastLines $items "build/nightly/morning-$day.md")
+  # The stamp-scoped archive, not morning-<day>.md: a later same-day run
+  # replaces the day file before a digest or fallback is delivered.
+  $tLines = @(Format-ToastLines $items "build/nightly/morning-$stamp.md")
   $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }
   $route = Get-AlertRoute $clsOut
   $nt = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $resultPath -Class $clsOut -Title "Nightly $day : $ww ($clsOut)" -Lines $tLines -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l }

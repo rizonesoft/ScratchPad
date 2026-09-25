@@ -187,7 +187,9 @@ function Invoke-NightlyNotify {
     else {
       $uDir = Join-Path $StateDir 'undelivered'
       $null = New-Item -ItemType Directory -Force -Path $uDir
-      $safe = ($RunId -replace '[^A-Za-z0-9-]', '-')
+      # Named by run plus a hash of the whole key (R3-F1): two failed
+      # notifications for different results of one run keep two files.
+      $safe = ($RunId -replace '[^A-Za-z0-9-]', '-') + '-' + (Get-StringHash $key)
       $payload = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; title = $Title; lines = @($Lines); failedAt = $Now.ToString('o'); attempts = $out.Attempts }
       if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "$safe.json") }
       $out.Status = 'fallback'; $out.Notes += "delivery failed after $($out.Attempts) attempt(s); fallback undelivered/$safe.json, re-sent by the morning reconciler and escalated in every report until delivered"
@@ -447,6 +449,14 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   }
   $rowNames = @($soakRows | ForEach-Object { $_.Name })
   foreach ($nm in @($rf + $rk + $rc)) { if ($rowNames -notcontains $nm) { $breaks += "soak ${nm}: result lists it, report soak rows omit it" } }
+  # The row must say what the result says (R3-F2): a failed iteration
+  # reads FAILED, nonzero exit, or failed without trx; a killed one
+  # reads killed at cap; a cut one reads budget-cut.
+  foreach ($row in $soakRows) {
+    if (($rf -contains $row.Name) -and ($row.Text -notmatch '\(FAILED\)|nonzero exit|failed without trx')) { $breaks += "soak $($row.Name): result failed, report row reads '$($row.Text)'" }
+    if (($rk -contains $row.Name) -and ($row.Text -notlike '*killed at cap*')) { $breaks += "soak $($row.Name): result killed, report row reads '$($row.Text)'" }
+    if (($rc -contains $row.Name) -and ($row.Text -notlike 'budget-cut*')) { $breaks += "soak $($row.Name): result cut, report row reads '$($row.Text)'" }
+  }
   $tm = @($ReportLines | ForEach-Object { [regex]::Match("$_", '^- Timings: .*reserve=(-?\d+)s') } | Where-Object { $_.Success }) | Select-Object -First 1
   if ($null -ne $tm) {
     $tr = $null

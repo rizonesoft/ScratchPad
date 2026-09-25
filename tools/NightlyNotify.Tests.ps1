@@ -57,9 +57,15 @@ Assert (($n2.Status -eq 'duplicate') -and ($script:sent -eq 1)) 'notify-retried-
 Assert ($n1.Key -like "r1|*|v$($script:NotifyVersion)") 'notify-key-has-run-checksum-version' $n1.Key
 $script:sent = 0
 $n3 = Invoke-NightlyNotify -Phase 'final' -RunId 'r2' -ResultPath $resPath -Class 'infrastructure' -Title 'urgent' -Lines @('a') -StateDir $state -Sender $badSender -Retries 2
-Assert (($n3.Status -eq 'fallback') -and ($n3.Attempts -eq 3) -and ($script:sent -eq 3) -and (Test-Path (Join-Path $state 'undelivered\r2.json'))) 'notify-failure-retries-then-falls-back' "$($n3.Status) attempts=$($n3.Attempts) $($n3.Notes -join '; ')"
+Assert (($n3.Status -eq 'fallback') -and ($n3.Attempts -eq 3) -and ($script:sent -eq 3) -and (@(Get-ChildItem (Join-Path $state 'undelivered') -Filter 'r2-*.json').Count -eq 1)) 'notify-failure-retries-then-falls-back' "$($n3.Status) attempts=$($n3.Attempts) $($n3.Notes -join '; ')"
+# R3-F1: a second failed notification for another result of the same run
+# keeps its own fallback file.
+$res2 = Join-Path $dir 'r2b.result.json'
+(ConvertTo-Json (New-Result '2026-09-25' '2026-09-25-023006' 'red' 'timer') -Depth 6) | Set-Content -Path $res2 -Encoding UTF8
+$null = Invoke-NightlyNotify -Phase 'final' -RunId 'r2' -ResultPath $res2 -Class 'infrastructure' -Title 'urgent2' -Lines @('b') -StateDir $state -Sender $badSender -Retries 0
+Assert (@(Get-ChildItem (Join-Path $state 'undelivered') -Filter 'r2-*.json').Count -eq 2) 'notify-fallbacks-never-overwrite' "$(@(Get-ChildItem (Join-Path $state 'undelivered') -Filter 'r2-*.json').Count)"
 $dh = Get-DeliveryHealth $state
-Assert ((-not $dh.Ok) -and ($dh.Count -eq 1) -and ($dh.Lines[0] -like '- Delivery RED: 1 undelivered notification(s); escalate operator*')) 'notify-delivery-health-escalates' ($dh.Lines -join ' | ')
+Assert ((-not $dh.Ok) -and ($dh.Count -eq 2) -and ($dh.Lines[0] -like '- Delivery RED: 2 undelivered notification(s); escalate operator*')) 'notify-delivery-health-escalates' ($dh.Lines -join ' | ')
 $script:sent = 0
 $n4 = Invoke-NightlyNotify -Phase 'final' -RunId 'r3' -ResultPath $resPath -Class 'test' -Title 'routine' -Lines @('a') -StateDir $state -Sender $okSender
 $q = @(Get-Content (Join-Path $state 'digest-queue.json') -Raw | ConvertFrom-Json)
@@ -199,6 +205,14 @@ $b11 = @((Test-ReportResultAgreement $repFail $agreeRes).Breaks)
 Assert (@($b11 | Where-Object { $_ -eq 'soak ui-soak-3: report FAILED, result failed list lacks it' }).Count -eq 1) 'agree-soak-report-claim-must-be-backed' ($b11 -join '; ')
 $b12 = @((Test-ReportResultAgreement @($rep | ForEach-Object { $_ -replace 'build=1s reserve=900s', 'build=1s reserve=5s' }) $agreeRes).Breaks)
 Assert (@($b12 | Where-Object { $_ -eq 'timings reserve: report 5s vs result 900' }).Count -eq 1) 'agree-timings-reserve-still-checked' ($b12 -join '; ')
+
+# R3-F2: a result-failed iteration whose row reads passed breaks.
+$soakRes2 = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
+$soakRes2.incidents = @('- INC-aaaa1111 `UI.A` x1 (Run A): boom')
+$soakRes2.soak = [pscustomobject]@{ verdict = 'green'; failed = @('ui-soak-4'); killed = @(); cut = @() }
+$repPassed = @($rep | ForEach-Object { if ($_ -like '- Verdict: GREEN*') { $_; '- ui-soak-4 : 10 passed, 0 failed, 0 skipped (proved)' } else { $_ } })
+$b13 = @((Test-ReportResultAgreement $repPassed $soakRes2).Breaks)
+Assert (@($b13 | Where-Object { $_ -like "soak ui-soak-4: result failed, report row reads '10 passed*" }).Count -eq 1) 'agree-soak-row-status-must-match' ($b13 -join '; ')
 
 # Item 13: recovery notices, night-level and incident-level.
 $hist = @((New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'))

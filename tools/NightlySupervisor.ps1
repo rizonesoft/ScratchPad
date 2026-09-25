@@ -101,7 +101,7 @@ try {
   Write-AtomicReport @((ConvertTo-Json $tombResult -Depth 8)) (Join-Path $nightDir "morning-$tombStamp.result.json")
   $tombClass = 'infrastructure'
   try { $tombClass = (Classify-NightlyOutcome $tombResult).Class } catch { }
-  try { $null = Invoke-NightlyNotify -Phase 'final' -RunId $tombId -ResultPath (Join-Path $nightDir "morning-$tombStamp.result.json") -Class $tombClass -Title "Nightly $day : RED ($tombClass)" -Lines @("Supervised run produced no report: $cause", "Report: build/nightly/morning-$day.md") -StateDir $nightDir -Sender { param($tt, $ll) Send-NightlyToast $tt $ll } } catch { }
+  try { $null = Invoke-NightlyNotify -Phase 'final' -RunId $tombId -ResultPath (Join-Path $nightDir "morning-$tombStamp.result.json") -Class $tombClass -Title "Nightly $day : RED ($tombClass)" -Lines @("Supervised run produced no report: $cause", "Result: build/nightly/morning-$tombStamp.result.json") -StateDir $nightDir -Sender { param($tt, $ll) Send-NightlyToast $tt $ll } } catch { }
   try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null } catch { }
   Write-Output "supervisor: tombstone landed ($cause)"
   exit 1
