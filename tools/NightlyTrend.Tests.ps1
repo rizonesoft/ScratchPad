@@ -23,6 +23,18 @@ function New-Night([string]$Night, [string]$Stamp, [int]$RunA = 600, [string]$La
 $Q = @{ Overdue = @(); DueSoon = @() }
 $today = Get-Date '2026-09-30'
 
+
+# D00 T02 section 30 item 5: identity aliases join a contract v1
+# sighting (before 2026-09-25) and a v2 sighting of one failure.
+$v1Night = New-Night '2026-09-22' '2026-09-22-023006' 600 'timer' 99 1 5 @('- INC-cd55f7ca `UI.MainWindowTests.FirstRunShowsWhatsNew` x1 (ui-soak-1): Assert.NotNull() Failure: Value is null')
+$v2Night = New-Night '2026-09-26' '2026-09-26-023006' 600 'timer' 99 1 5 @('- INC-1a2b3c4d `UI.MainWindowTests.FirstRunShowsWhatsNew` x1 (ui-soak-2): Assert.NotNull() Failure: Value is null')
+$aliasMap = Get-IncidentAliases @($v1Night, $v2Night)
+Assert (($aliasMap.Count -eq 1) -and ($aliasMap['INC-cd55f7ca'] -eq 'INC-1a2b3c4d')) 'alias-maps-v1-to-v2' (($aliasMap.Keys | ForEach-Object { "$_=$($aliasMap[$_])" }) -join ',')
+$tAlias = @(Format-TrendTable @($v1Night, $v2Night) $Q $today)
+Assert ((@($tAlias | Where-Object { $_ -like '- Flake recurrence: INC-1a2b3c4d (2026-09-22, 2026-09-26)*' }).Count -eq 1) -and (@($tAlias | Where-Object { $_ -eq '- Identity aliases (contract v1 to v2): INC-cd55f7ca -> INC-1a2b3c4d' }).Count -eq 1)) 'alias-joins-recurrence' (($tAlias | Where-Object { $_ -like '- Flake*' -or $_ -like '- Identity*' }) -join ' | ')
+$v2Other = New-Night '2026-09-27' '2026-09-27-023006' 600 'timer' 99 1 5 @('- INC-99999999 `UI.MainWindowTests.FirstRunShowsWhatsNew` x1 (ui-soak-3): Assert.NotNull() Failure: Value is null')
+Assert ((Get-IncidentAliases @($v1Night, $v2Night, $v2Other)).Count -eq 0) 'alias-ambiguity-keeps-old-id'
+
 # Item 1: the denominator rule.
 $mixed = New-Night '2026-09-20' '2026-09-20-023000' 600 'timer' 90 10 50
 $t1 = @(Format-TrendTable @($mixed) $Q $today)

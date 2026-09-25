@@ -226,11 +226,17 @@ foreach ($d in @(Get-ChildItem -Path $NightDir -Directory -ErrorAction SilentlyC
 }
 $afterCount = @($exempt.Keys | Where-Object { $_ -like 'retained/*' }).Count + 1
 $keptCount = @($exempt.Keys | Where-Object { $_ -like 'kept/*' }).Count
+# Quota recovery (D00 T02 section 30 item 3): every refusal names the
+# oldest exemptions and the tracked files citing them, so the operator
+# knows what to release (docs/testing.md "Retention quota").
+$releaseLine = "retain: release candidates (oldest first): $((@(Get-KeepReleaseCandidates $RetDir $NightDir $Root 3)) -join '; ')"
 if (($afterCount -gt $MaxRetained) -or ($keptCount -ge $MaxRetained)) {
+  Write-Output $releaseLine
   Write-Output "retain: QUOTA REFUSED: $afterCount retained runs after this retain, $keptCount KEEP-marked stamp dirs (cap $MaxRetained each); release a stamp citation or pass -MaxRetained with the reason recorded; nothing copied"
   exit 1
 }
 if (($exemptBytes + [long]$srcBytes * 2) -gt $MaxRetainedBytes) {
+  Write-Output $releaseLine
   Write-Output "retain: QUOTA REFUSED: exempt evidence $([int]($exemptBytes / 1MB)) MB plus this retain $([int]($srcBytes * 2 / 1MB)) MB (copy plus KEEP-marked source) exceeds $([int]($MaxRetainedBytes / 1MB)) MB; release a stamp citation or pass -MaxRetainedBytes with the reason recorded; nothing copied"
   exit 1
 }

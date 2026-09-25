@@ -477,7 +477,8 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
   try {
     $owned = @{}
     try { $owned = Get-DescendantPids @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; ParentProcessId = [int]$_.ParentProcessId; Created = $_.CreationDate } }) $PID } catch { $owned = @{} }
-    Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowTitle -ne '' } | ForEach-Object { Format-WindowRow $_.Id $_.ProcessName $_.MainWindowTitle ($owned.ContainsKey([int]$_.Id)) } | Set-Content -Path $wins -Encoding UTF8
+    $winRows = @(Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowTitle -ne '' } | ForEach-Object { Format-WindowRow $_.Id $_.ProcessName $_.MainWindowTitle ($owned.ContainsKey([int]$_.Id)) })
+    $notes += @(Publish-TextCapture $CaptureDir (Split-Path -Leaf $wins) $winRows $Leg)
     $notes += "- $Leg : window metadata $Leg-windows.txt"
   } catch { $notes += "- $Leg : window list failed: $($_.Exception.Message)" }
   $evts = Join-Path $CaptureDir "$Leg-events.txt"
@@ -491,11 +492,11 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
       "$($_.TimeCreated.ToString('HH:mm:ss')) id=$($_.Id) $($_.LevelDisplayName) $($_.ProviderName): $head"
     })
     if ($rows.Count -eq 0) { $rows = @('(no Application errors/warnings in the last 10 minutes)') }
-    $rows | Set-Content -Path $evts -Encoding UTF8
+    $notes += @(Publish-TextCapture $CaptureDir (Split-Path -Leaf $evts) $rows $Leg)
     $notes += "- $Leg : event slice $Leg-events.txt ($($rows.Count) rows)"
   } catch {
     if ($_.Exception.Message -like '*No events were found*') {
-      @('(no Application errors/warnings in the last 10 minutes)') | Set-Content -Path $evts -Encoding UTF8
+      $notes += @(Publish-TextCapture $CaptureDir (Split-Path -Leaf $evts) @('(no Application errors/warnings in the last 10 minutes)') $Leg)
       $notes += "- $Leg : event slice $Leg-events.txt (0 rows)"
     } else {
       $notes += "- $Leg : event slice failed: $($_.Exception.Message)"
@@ -512,9 +513,18 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
 # redacted at write, every text capture is secret-scanned and redacted
 # on a hit, and a capture directory over its size cap drops its
 # screenshots. Retention follows the run evidence (30 days, prune).
+# Incident lifecycle defaults (D00 T02 section 30 items 5, 6): the
+# triage owner and escalation window for incidents no quarantine row
+# owns, and the stamp where incident identity contract v2 began.
+$script:TriageOwner = 'operator'
+$script:TriageDays = 2
+$script:IncidentContractV2Since = '2026-09-25-000000'
 $script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'ForegroundLog', 'JobControl')
 $script:CaptureMaxBytes = 25MB
 $script:CaptureFailMarker = 'SECRET-SCAN-FAILED.txt'
+$script:CaptureStagingDir = '.staging'
+$script:CaptureBudgetMarker = 'CAPTURE-BUDGET-TRUNCATED.txt'
+$script:RunCaptureMaxBytes = 200MB
 $script:SecretPatterns = @(
   @('github-token', 'gh[pousr]_[A-Za-z0-9]{36,}'),
   @('github-pat', 'github_pat_[A-Za-z0-9_]{22,}'),
@@ -581,6 +591,8 @@ function Test-RetainableCaptures([string]$SourceDir) {
   $reasons = @()
   foreach ($d in @(Get-ChildItem -Path $SourceDir -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
     if (Test-Path (Join-Path $d.FullName $script:CaptureFailMarker)) { $reasons += "$($d.Name)/$($script:CaptureFailMarker) present (an unscanned capture was kept)" }
+    $stage = Join-Path $d.FullName $script:CaptureStagingDir
+    if ((Test-Path $stage) -and (@(Get-ChildItem -LiteralPath $stage -Recurse -File -Force -ErrorAction SilentlyContinue).Count -gt 0)) { $reasons += "$($d.Name)/$($script:CaptureStagingDir) holds unscanned staged captures" }
     foreach ($f in @(Get-ChildItem -Path $d.FullName -File -ErrorAction SilentlyContinue | Where-Object { (@('.txt', '.log', '.json') -contains $_.Extension.ToLower()) -and ($_.Name -ne $script:CaptureFailMarker) })) {
       try {
         $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($f.FullName)))
@@ -589,6 +601,106 @@ function Test-RetainableCaptures([string]$SourceDir) {
     }
   }
   return [pscustomobject]@{ Ok = ($reasons.Count -eq 0); Reasons = $reasons }
+}
+
+function Publish-TextCapture([string]$CaptureDir, [string]$Name, [string[]]$Lines, [string]$Leg) {
+  # Staged text capture (D00 T02 section 30 item 1): the lines land in
+  # <CaptureDir>\.staging first and reach the capture directory only
+  # after the secret scan passes, so no reader of the directory ever
+  # sees unscanned text. A hit publishes the redaction note under the
+  # capture's name instead (the staged bytes are deleted, never
+  # renamed); an unreadable or undeletable staging file fails closed
+  # with the scan-failure marker. Returns report notes.
+  $notes = @()
+  $stageDir = Join-Path $CaptureDir $script:CaptureStagingDir
+  $staged = Join-Path $stageDir $Name
+  $final = Join-Path $CaptureDir $Name
+  try {
+    $null = New-Item -ItemType Directory -Force -Path $stageDir
+    @($Lines) | Set-Content -Path $staged -Encoding UTF8
+    $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($staged)))
+    if ($hits.Count -gt 0) {
+      Remove-Item -LiteralPath $staged -Force -ErrorAction Stop
+      "[capture redacted by the secret scan: $($hits -join ', '); see docs/testing.md Failure-capture policy]" | Set-Content -Path $final -Encoding UTF8
+      $notes += "- $Leg : SECRET-SCAN redacted $Name ($($hits -join ', '))"
+    } else {
+      Move-Item -LiteralPath $staged -Destination $final -Force -ErrorAction Stop
+    }
+  } catch {
+    $why = $_.Exception.Message
+    try {
+      if (Test-Path -LiteralPath $staged) { Remove-Item -LiteralPath $staged -Force -ErrorAction Stop }
+      $notes += "- $Leg : SECRET-SCAN could not stage $Name ($why); capture dropped (fail closed)"
+    } catch {
+      $notes += "- $Leg : SECRET-SCAN FAILED: staged $Name could not be scanned ($why) or deleted ($($_.Exception.Message)); do not retain this run"
+      try { Add-Content -LiteralPath (Join-Path $CaptureDir $script:CaptureFailMarker) -Value "$($script:CaptureStagingDir)/$Name" -Encoding UTF8 } catch { $notes += "- $Leg : SECRET-SCAN marker write failed: $($_.Exception.Message)" }
+    }
+  }
+  try {
+    if ((Test-Path $stageDir) -and (@(Get-ChildItem -LiteralPath $stageDir -Force -ErrorAction SilentlyContinue).Count -eq 0)) { Remove-Item -LiteralPath $stageDir -Force }
+  } catch { }
+  return $notes
+}
+
+function Limit-RunCaptureBudget([string]$RunDir, [long]$MaxBytes) {
+  # Aggregate capture budget per run (D00 T02 section 30 item 2): all
+  # captures-* directories together (screenshots, window lists, event
+  # slices, dumps) stay under $MaxBytes. Over budget, files drop in a
+  # stated order (screenshots, then dumps, then text captures, largest
+  # first within each class) until the total fits, and a marker at the
+  # run root names every dropped file with its bytes. Returns notes.
+  $notes = @()
+  $files = @()
+  foreach ($d in @(Get-ChildItem -LiteralPath $RunDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
+    $files += @(Get-ChildItem -LiteralPath $d.FullName -File -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne $script:CaptureFailMarker })
+  }
+  $total = [long](($files | Measure-Object Length -Sum).Sum)
+  if ($total -le $MaxBytes) { return $notes }
+  $rank = { param($f) switch ($f.Extension.ToLower()) { '.png' { 0 } '.dmp' { 1 } default { 2 } } }
+  $ordered = @($files | Sort-Object @{ Expression = { & $rank $_ } }, @{ Expression = 'Length'; Descending = $true })
+  $dropped = @()
+  foreach ($f in $ordered) {
+    if ($total -le $MaxBytes) { break }
+    try {
+      Remove-Item -LiteralPath $f.FullName -Force -ErrorAction Stop
+      $total -= $f.Length
+      $dropped += "$($f.FullName.Substring($RunDir.Length).TrimStart('\', '/')) ($($f.Length) bytes)"
+    } catch { $notes += "- capture budget: could not drop $($f.Name): $($_.Exception.Message)" }
+  }
+  $marker = Join-Path $RunDir $script:CaptureBudgetMarker
+  $body = @("Capture budget truncated: the run's captures exceeded $MaxBytes bytes; dropped in order (screenshots, then dumps, then text captures, largest first):") + $dropped
+  try { $body | Set-Content -Path $marker -Encoding UTF8 } catch { $notes += "- capture budget: marker write failed: $($_.Exception.Message)" }
+  $notes += "- capture budget: TRUNCATED to $total of $MaxBytes bytes; dropped $($dropped.Count) file(s), listed in $($script:CaptureBudgetMarker)"
+  return $notes
+}
+
+function Get-KeepReleaseCandidates([string]$RetDir, [string]$NightDir, [string]$Root, [int]$Count = 3) {
+  # Quota recovery (D00 T02 section 30 item 3): the oldest KEEP
+  # exemptions (retained copies and KEEP-marked stamp dirs), each with
+  # the tracked files that cite it, so a quota refusal names what to
+  # release and where the citation lives. Oldest first by write time.
+  $cands = @()
+  foreach ($d in @(Get-ChildItem -LiteralPath $RetDir -Directory -ErrorAction SilentlyContinue)) { $cands += [pscustomobject]@{ Label = "retained/$($d.Name)"; Name = $d.Name; Time = $d.LastWriteTimeUtc; Path = $d.FullName } }
+  foreach ($d in @(Get-ChildItem -LiteralPath $NightDir -Directory -ErrorAction SilentlyContinue)) {
+    if (($d.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (Test-Path (Join-Path $d.FullName 'KEEP.txt'))) { $cands += [pscustomobject]@{ Label = "kept/$($d.Name)"; Name = $d.Name; Time = (Get-Item (Join-Path $d.FullName 'KEEP.txt')).LastWriteTimeUtc; Path = $d.FullName } }
+  }
+  $docs = @()
+  foreach ($sub in @('todo', 'docs')) {
+    $dir = Join-Path $Root $sub
+    if (Test-Path $dir) { $docs += @(Get-ChildItem -LiteralPath $dir -Recurse -File -Filter '*.md' -ErrorAction SilentlyContinue) }
+  }
+  $lines = @()
+  foreach ($c in @($cands | Sort-Object Time | Select-Object -First $Count)) {
+    $cites = @()
+    foreach ($f in $docs) {
+      $hit = Select-String -LiteralPath $f.FullName -SimpleMatch $c.Name -ErrorAction SilentlyContinue | Select-Object -First 1
+      if ($null -ne $hit) { $cites += "$($f.FullName.Substring($Root.Length).TrimStart('\', '/') -replace '\\', '/'):$($hit.LineNumber)" }
+      if ($cites.Count -ge 2) { break }
+    }
+    $mb = [int](([long]((Get-ChildItem -LiteralPath $c.Path -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum)) / 1MB)
+    $lines += "$($c.Label) ($($c.Time.ToString('yyyy-MM-dd')), $mb MB; cited by $(if ($cites.Count -eq 0) { 'nothing tracked' } else { $cites -join ', ' }))"
+  }
+  return $lines
 }
 
 function Test-CaptureSecrets([string]$Text) {
@@ -610,6 +722,16 @@ function Protect-CaptureDir([string]$CaptureDir, [string]$Leg) {
   # throws; returns report notes.
   $notes = @()
   if (-not (Test-Path $CaptureDir)) { return $notes }
+  # Staged captures left by an interrupted write were never scanned:
+  # delete them (section 30 item 1), or mark the directory unretainable.
+  $stageDir = Join-Path $CaptureDir $script:CaptureStagingDir
+  if (Test-Path $stageDir) {
+    try { Remove-Item -LiteralPath $stageDir -Recurse -Force -ErrorAction Stop; $notes += "- $Leg : leftover staged captures deleted unscanned (fail closed)" }
+    catch {
+      $notes += "- $Leg : SECRET-SCAN FAILED: leftover staged captures could not be deleted ($($_.Exception.Message)); do not retain this run"
+      try { Add-Content -LiteralPath (Join-Path $CaptureDir $script:CaptureFailMarker) -Value $script:CaptureStagingDir -Encoding UTF8 } catch { }
+    }
+  }
   foreach ($f in @(Get-ChildItem -Path $CaptureDir -File -ErrorAction SilentlyContinue | Where-Object { (@('.txt', '.log', '.json') -contains $_.Extension.ToLower()) -and ($_.Name -ne $script:CaptureFailMarker) })) {
     try {
       $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($f.FullName)))
@@ -1149,13 +1271,51 @@ function Read-IncidentLedger([string]$Path) {
       if ($map.ContainsKey("$($e.id)")) { return (& $bad "duplicate id $($e.id)") }
       $occ = @()
       foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
-      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)" }
+      $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)"; due = "$($e.due)"; finding = "$($e.finding)" }
     }
     return [pscustomobject]@{ Ok = $true; Error = ''; Incidents = $map }
   } catch { return [pscustomobject]@{ Ok = $false; Error = "incident ledger unreadable: $($_.Exception.Message)"; Incidents = @{} } }
 }
 
-function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3) {
+function Get-TriageDue([string]$Stamp) {
+  # Escalation date for an incident routed to the triage owner: the
+  # stamp's day plus $script:TriageDays (section 30 item 6).
+  $m = [regex]::Match("$Stamp", '^(\d{4}-\d{2}-\d{2})')
+  if (-not $m.Success) { return '' }
+  return ([datetime]::ParseExact($m.Groups[1].Value, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)).AddDays($script:TriageDays).ToString('yyyy-MM-dd')
+}
+
+function Read-IncidentLinks([string]$Path) {
+  # Incident -> finding links triage records (section 30 item 7):
+  # rows `| INC-xxxxxxxx | <finding> |` in docs/incident-links.md, where
+  # the finding is a TODO ref (DNN TNN section-sign N) or a commit.
+  $links = @{}
+  if (-not (Test-Path $Path)) { return $links }
+  foreach ($ln in (Get-Content $Path -Encoding UTF8)) {
+    $m = [regex]::Match($ln, '^\|\s*(INC-[0-9a-f]{8})\s*\|\s*(D\d{2} T\d{2} \u00A7\d+|[0-9a-f]{7,40})\s*\|')
+    if ($m.Success) { $links[$m.Groups[1].Value] = $m.Groups[2].Value }
+  }
+  return $links
+}
+
+function Format-UnlinkedIncidents([hashtable]$Incidents) {
+  # Open incidents with no recorded finding re-list on every run until
+  # triage links one (section 30 item 7).
+  $open = @($Incidents.Keys | Sort-Object | ForEach-Object { $Incidents[$_] } | Where-Object { ($_.state -eq 'open') -and ("$($_.finding)" -eq '') })
+  if ($open.Count -eq 0) { return @() }
+  return @("- Unlinked open incidents (record the finding in docs/incident-links.md): " + (($open | ForEach-Object { "$($_.id) ``$($_.test)`` (owner $($_.owner), due $($_.due))" }) -join '; '))
+}
+
+function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
+  # The machine contract for the lifecycle (section 30 item 10): one
+  # row per ledger incident, read by notify, trend, and triage.
+  return @($Incidents.Keys | Sort-Object | ForEach-Object {
+    $e = $Incidents[$_]
+    [pscustomobject]@{ id = "$($e.id)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; passStreak = [int]$e.passStreak; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
+  })
+}
+
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}) {
   # Incident lifecycle (D00 T02 §22 item 6, D00-T02-S17-PR27): an
   # incident is created once; later sightings append an occurrence to
   # it (never a second incident, so §9's file-every-failure rule files
@@ -1170,8 +1330,18 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   # incident seen again reopens with its history. Idempotent per
   # stamp: re-running a stamp appends or counts nothing twice.
   # Returns the updated map plus lines.
+  # Section 30 items 6 and 7: an incident no quarantine row owns routes
+  # to the triage owner with an escalation date (never `unassigned`),
+  # and a finding link triage recorded is copied onto its incident.
   $map = @{}
-  foreach ($k in $Ledger.Keys) { $map[$k] = $Ledger[$k] }
+  foreach ($k in $Ledger.Keys) {
+    $e = $Ledger[$k]
+    foreach ($field in @('due', 'finding')) { if (@($e.PSObject.Properties.Name) -notcontains $field) { $e | Add-Member -NotePropertyName $field -NotePropertyValue '' } }
+    if (("$($e.owner)" -eq '') -or ("$($e.owner)" -eq 'unassigned')) { $e.owner = $script:TriageOwner }
+    if (("$($e.due)" -eq '') -and ($e.owner -eq $script:TriageOwner)) { $e.due = Get-TriageDue $e.firstSeen }
+    if ($Links.ContainsKey($k)) { $e.finding = $Links[$k] }
+    $map[$k] = $e
+  }
   $lines = @()
   $seen = @{}
   $failedHere = @{}
@@ -1179,15 +1349,18 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   foreach ($g in @($Groups)) {
     if ($null -eq $g) { continue }
     $seen[$g.Id] = $true
-    $owner = 'unassigned'
+    $owner = ''
     if ($Owners -and $Owners.ContainsKey($g.Test)) { $owner = $Owners[$g.Test] }
     if (-not $map.ContainsKey($g.Id)) {
-      $map[$g.Id] = [pscustomobject]@{ id = $g.Id; test = $g.Test; phase = $g.Phase; key = $g.Key; owner = $owner; state = 'open'; firstSeen = $Stamp; lastSeen = $Stamp; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }); passStreak = 0; lastPassStamp = '' }
-      $lines += "- $($g.Id) ``$($g.Test)``: new (owner $owner)"
+      $due = ''
+      if ($owner -eq '') { $owner = $script:TriageOwner; $due = Get-TriageDue $Stamp }
+      $finding = if ($Links.ContainsKey($g.Id)) { $Links[$g.Id] } else { '' }
+      $map[$g.Id] = [pscustomobject]@{ id = $g.Id; test = $g.Test; phase = $g.Phase; key = $g.Key; owner = $owner; state = 'open'; firstSeen = $Stamp; lastSeen = $Stamp; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }); passStreak = 0; lastPassStamp = ''; due = $due; finding = $finding }
+      $lines += "- $($g.Id) ``$($g.Test)``: new (owner $owner$(if ($due -ne '') { ", triage due $due" }))"
       continue
     }
     $e = $map[$g.Id]
-    if ($owner -ne 'unassigned') { $e.owner = $owner }
+    if ($owner -ne '') { $e.owner = $owner; $e.due = '' }
     $already = @($e.occurrences | Where-Object { "$($_.stamp)" -eq $Stamp }).Count -gt 0
     if (-not $already) { $e.occurrences = @($e.occurrences) + @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
     $e.lastSeen = $Stamp
@@ -1222,6 +1395,49 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     }
   }
   return [pscustomobject]@{ Incidents = $map; Lines = $lines }
+}
+
+function Get-IncidentResultRows([string[]]$ResultFiles, [string]$Since) {
+  # Result files at or after $Since (a stamp) that carry incident
+  # lines, oldest first, each as Stamp plus parsed groups (Id, Test,
+  # Phase, Key, Wheres) ready for Update-IncidentLedger.
+  $rows = @()
+  foreach ($f in @($ResultFiles)) {
+    $o = $null
+    try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    if (("$($o.stamp)" -eq '') -or ("$($o.stamp)" -lt $Since)) { continue }
+    $groups = @()
+    foreach ($ln in @($o.incidents)) {
+      $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)` x\d+ \(([^)]*)\)')
+      if (-not $m.Success) { continue }
+      $wheres = @($m.Groups[3].Value -split ',\s*' | Where-Object { $_ -ne '' })
+      $groups += [pscustomobject]@{ Id = $m.Groups[1].Value; Test = $m.Groups[2].Value; Phase = (Get-IncidentPhase ($wheres | Select-Object -First 1)); Key = ''; Wheres = $wheres }
+    }
+    if ($groups.Count -gt 0) { $rows += [pscustomobject]@{ Stamp = "$($o.stamp)"; Groups = $groups } }
+  }
+  return @($rows | Sort-Object Stamp)
+}
+
+function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles, [string]$Since) {
+  # A missing ledger reads as empty only when no earlier result carries
+  # incidents (section 30 item 4); otherwise every failure would re-file
+  # as new, so the run reds with the rebuild instruction.
+  if (Test-Path -LiteralPath $LedgerPath) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+  $rows = @(Get-IncidentResultRows $ResultFiles $Since)
+  if ($rows.Count -eq 0) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+  return [pscustomobject]@{ Ok = $false; Error = "incident ledger missing while $($rows.Count) earlier result(s) carry incidents (latest $($rows[-1].Stamp)); rebuild: powershell -NoProfile -ExecutionPolicy Bypass -File tools/NightlyLedger.ps1 -Rebuild" }
+}
+
+function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [hashtable]$Owners, [hashtable]$Links = @{}) {
+  # Rebuild (section 30 item 4): replays every retained result's
+  # incidents through Update-IncidentLedger in stamp order, restoring
+  # each incident with its occurrences and owner. Pass streaks are not
+  # in the results, so recovery restarts from zero (documented).
+  $map = @{}
+  foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
+    $map = (Update-IncidentLedger $map $r.Groups $r.Stamp @{} $Owners 3 $Links).Incidents
+  }
+  return $map
 }
 
 function Write-IncidentLedger([hashtable]$Incidents, [string]$Path) {
@@ -1666,7 +1882,7 @@ public static class DpiProbe {
   return (Protect-EnvironmentBlock ([pscustomobject]@{ os = $os; powershell = $ps; dotnet = $dn; session = $who; topology = $topo; dpi = $dpi; adapters = $adapters; settings = $settings }))
 }
 
-function Test-ResultFile([string]$Path) {
+function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
   # Validates a versioned machine-readable result (D00 T02 §17 item
   # 6): JSON parses, version is 1, identity fields read, verdict is
   # known, and green/red verdicts carry shaped legs plus soak plus
@@ -1705,6 +1921,21 @@ function Test-ResultFile([string]$Path) {
     # Every consumed env field, with unknown-state semantics (D00 T02 §25 item 8).
     $ef = Test-EnvironmentFields $o.env
     if (-not $ef.Ok) { return [pscustomobject]@{ Ok = $false; Error = "result $($ef.Error)" } }
+  }
+  # Incident lifecycle block (D00 T02 section 30 item 10): required on
+  # the nightly's own green/red results, validated wherever present.
+  $hasLife = @($o.PSObject.Properties.Name) -contains 'incidentLifecycle'
+  if ($RequireLifecycle -and (@('green', 'red') -contains "$($o.verdict)") -and (-not $hasLife)) { return [pscustomobject]@{ Ok = $false; Error = 'result missing incidentLifecycle' } }
+  if ($hasLife) {
+    foreach ($row in @($o.incidentLifecycle)) {
+      if ($null -eq $row) { return [pscustomobject]@{ Ok = $false; Error = 'result incidentLifecycle has a null row' } }
+      $names = @($row.PSObject.Properties.Name)
+      foreach ($f in @('id', 'state', 'owner', 'occurrences', 'passStreak', 'contract')) {
+        if (($names -notcontains $f) -or ("$($row.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle row $($row.id) missing $f" } }
+      }
+      if ("$($row.id)" -notmatch '^INC-[0-9a-f]{8}$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle id malformed: $($row.id)" } }
+      if (@('open', 'closed') -notcontains "$($row.state)") { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) state $($row.state)" } }
+    }
   }
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }
@@ -2023,7 +2254,8 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
     $med = Get-Percentile $pr 50
     if ($lr -lt ($med - 2)) { $alerts += "- ALERT pass-rate: $([math]::Round($lr, 1))% on $(Get-ResultNight $latest) vs baseline $([math]::Round($med, 1))% ($([math]::Round($lr - $med, 1)) points, median of $($pr.Count) night(s))" }
   }
-  $ids = { param($x) @(@($x.incidents) | ForEach-Object { $m = [regex]::Match("$_", '(INC-[0-9a-f]{8})'); if ($m.Success) { $m.Groups[1].Value } }) }
+  $aliasMap = Get-IncidentAliases $Rows
+  $ids = { param($x) @(@($x.incidents) | ForEach-Object { $m = [regex]::Match("$_", '(INC-[0-9a-f]{8})'); if ($m.Success) { if ($aliasMap.ContainsKey($m.Groups[1].Value)) { $aliasMap[$m.Groups[1].Value] } else { $m.Groups[1].Value } } }) }
   $li = @(& $ids $latest)
   $recent = @($r[0..($r.Count - 2)] | Select-Object -Last 2)
   foreach ($id in ($li | Sort-Object -Unique)) {
@@ -2070,6 +2302,36 @@ function Select-CanonicalRuns($Results) {
   return $byDay
 }
 
+function Get-IncidentAliases($Rows, [string]$V2Since = $script:IncidentContractV2Since) {
+  # Identity alias map (D00 T02 section 30 item 5): incident ids minted
+  # under contract v1 (results stamped before $V2Since) map to the v2 id
+  # of the same failure, matched on test, phase, and failure class, so
+  # the recurrence report joins across the contract bump. A v1 id maps
+  # only when exactly one v2 id shares its triple (ambiguity keeps the
+  # old id rather than guessing). Returns old id -> new id.
+  $parse = { param($ln) $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)` x\d+ \(([^)]*)\): ?(.*)$'); if (-not $m.Success) { return $null }; $where = @($m.Groups[3].Value -split ',\s*')[0]; [pscustomobject]@{ Id = $m.Groups[1].Value; Triple = "$($m.Groups[2].Value)|$(Get-IncidentPhase $where)|$(Get-FailureClass $m.Groups[4].Value)" } }
+  $v1 = @{}
+  $v2 = @{}
+  foreach ($r in @($Rows)) {
+    $stamp = "$($r.stamp)"
+    foreach ($ln in @($r.incidents)) {
+      $p = & $parse $ln
+      if ($null -eq $p) { continue }
+      if ($stamp -lt $V2Since) { $v1[$p.Id] = $p.Triple }
+      else {
+        if (-not $v2.ContainsKey($p.Triple)) { $v2[$p.Triple] = @() }
+        if ($v2[$p.Triple] -notcontains $p.Id) { $v2[$p.Triple] += $p.Id }
+      }
+    }
+  }
+  $aliases = @{}
+  foreach ($old in $v1.Keys) {
+    $t = $v1[$old]
+    if ($v2.ContainsKey($t) -and (@($v2[$t]).Count -eq 1) -and ($v2[$t][0] -ne $old)) { $aliases[$old] = $v2[$t][0] }
+  }
+  return $aliases
+}
+
 function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = (Get-Date)) {
   # Renders nights as a Markdown trend (D00 T02 §17 items 2, 4, 9):
   # one row per run plus pass-rate, duration, quarantine-age, flake,
@@ -2080,6 +2342,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # as marks, never numbers. Percentiles are median/max (tiny-n
   # honest). $Today anchors the oldest-overdue age; fixtures pin it.
   $rows = @($Results | Sort-Object { "$(Get-ResultNight $_)-$($_.stamp)" })
+  $aliasMap = Get-IncidentAliases $rows
   # Canonical runs (D00 T02 §24 item 2): every result keeps its row, but
   # retries, simulations, and stood-down losers are marked and stay out
   # of the p50, the budget ranks, and flake recurrence, so a retry
@@ -2197,6 +2460,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
       $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8}) `([^`]+)`')
       if ($m.Success) {
         $id = $m.Groups[1].Value
+        if ($aliasMap.ContainsKey($id)) { $id = $aliasMap[$id] }
         if (-not $incNights.ContainsKey($id)) { $incNights[$id] = @() }
         $incNights[$id] += (Get-ResultNight $r)
       }
@@ -2204,6 +2468,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   }
   $rec = @($incNights.Keys | Where-Object { (@($incNights[$_] | Sort-Object -Unique).Count) -gt 1 } | Sort-Object)
   $lines += ''
+  if ($aliasMap.Count -gt 0) { $lines += ("- Identity aliases (contract v1 to v2): " + ((@($aliasMap.Keys | Sort-Object) | ForEach-Object { "$_ -> $($aliasMap[$_])" }) -join '; ')) }
   if ($rec.Count -gt 0) { $lines += ("- Flake recurrence: " + (($rec | ForEach-Object { "$_ ($($incNights[$_] -join ', '))" }) -join '; ')) }
   else { $lines += '- Flake recurrence: none across rendered nights' }
   $canonCount = @($canon.Keys | Where-Object { $canon[$_].Canonical -ne '' }).Count

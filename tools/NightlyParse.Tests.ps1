@@ -403,6 +403,79 @@ Assert (($popFilter.Ok -eq $false) -and (($popFilter.Drifts -join '') -like "*ap
 $popBad = Compare-TestPopulation (Join-Path $dir 'pop-bad.fingerprint') $fakeNightly $fpDisc
 Assert (($popBad.Ok -eq $false) -and (($popBad.Drifts -join '') -like '*missing run-b-filter*')) 'fingerprint-malformed' ($popBad.Drifts -join '|')
 
+
+# Nightly evidence residuals (D00 T02 section 30).
+# Item 1: staged captures publish only after the scan.
+$capDir = Join-Path $dir 'captures-stage'
+$null = New-Item -ItemType Directory -Force -Path $capDir
+$cleanNotes = @(Publish-TextCapture $capDir 'x-windows.txt' @('pid=1 app: [title redacted]') 'x')
+Assert ((Test-Path (Join-Path $capDir 'x-windows.txt')) -and (-not (Test-Path (Join-Path $capDir '.staging'))) -and ($cleanNotes.Count -eq 0)) 'staging-clean-publishes-and-leaves-no-stage' ($cleanNotes -join '|')
+$hitNotes = @(Publish-TextCapture $capDir 'x-events.txt' @('token = ' + 'ghp_' + ('A1b2C3d4E5' * 4)) 'x')
+$hitText = Get-Content (Join-Path $capDir 'x-events.txt') -Raw
+Assert (($hitText -like '*capture redacted by the secret scan: github-token*') -and ($hitText -notlike '*ghp_*') -and (-not (Test-Path (Join-Path $capDir '.staging'))) -and (($hitNotes -join '') -like '*SECRET-SCAN redacted x-events.txt*')) 'staging-hit-never-renamed' $hitText
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $capDir '.staging')
+'unscanned' | Set-Content -Path (Join-Path $capDir '.staging\left.txt') -Encoding UTF8
+$retain = Test-RetainableCaptures $dir
+Assert (($retain.Ok -eq $false) -and (($retain.Reasons -join '') -like '*captures-stage/.staging holds unscanned staged captures*')) 'staging-leftover-refuses-retain' ($retain.Reasons -join '|')
+$protNotes = @(Protect-CaptureDir $capDir 'x')
+Assert ((-not (Test-Path (Join-Path $capDir '.staging'))) -and (($protNotes -join '') -like '*leftover staged captures deleted unscanned*')) 'staging-leftover-deleted-by-protect' ($protNotes -join '|')
+Remove-Item $capDir -Recurse -Force
+# Item 2: the aggregate budget drops screenshots, then dumps, then text.
+$runDir = Join-Path $dir 'budget-run'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $runDir 'captures-run-a'), (Join-Path $runDir 'captures-soak-ui-1')
+[System.IO.File]::WriteAllBytes((Join-Path $runDir 'captures-run-a\run-a-failure.png'), (New-Object byte[] 4000))
+[System.IO.File]::WriteAllBytes((Join-Path $runDir 'captures-soak-ui-1\testhost.dmp'), (New-Object byte[] 3000))
+[System.IO.File]::WriteAllBytes((Join-Path $runDir 'captures-run-a\run-a-events.txt'), (New-Object byte[] 1000))
+$budgetNotes = @(Limit-RunCaptureBudget $runDir 2500)
+$markerText = Get-Content (Join-Path $runDir 'CAPTURE-BUDGET-TRUNCATED.txt') -Raw
+Assert ((-not (Test-Path (Join-Path $runDir 'captures-run-a\run-a-failure.png'))) -and (-not (Test-Path (Join-Path $runDir 'captures-soak-ui-1\testhost.dmp'))) -and (Test-Path (Join-Path $runDir 'captures-run-a\run-a-events.txt')) -and ($markerText -like '*screenshots, then dumps, then text*run-a-failure.png (4000 bytes)*testhost.dmp (3000 bytes)*') -and (($budgetNotes -join '') -like '*TRUNCATED to 1000 of 2500 bytes; dropped 2 file(s)*')) 'budget-drops-in-stated-order-with-marker' (($budgetNotes -join '|') + ' / ' + $markerText)
+Assert (@(Limit-RunCaptureBudget $runDir 2500).Count -eq 0) 'budget-under-cap-is-silent'
+# Item 4: a missing ledger reds when earlier results carry incidents,
+# and the rebuild restores them from the results.
+$ledDir = Join-Path $dir 'ledger-fx'
+$null = New-Item -ItemType Directory -Force -Path $ledDir
+[pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidents = @('- INC-1a2b3c4d `UI.X.Y` x2 (ui-soak-1, ui-soak-3): Assert.NotNull() Failure') } | ConvertTo-Json | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-26-023001.result.json') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-09-27-023001'; incidents = @('- INC-1a2b3c4d `UI.X.Y` x1 (ui-soak-2): Assert.NotNull() Failure') } | ConvertTo-Json | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-27-023001.result.json') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-09-22-023001'; incidents = @('- INC-cd55f7ca `UI.Old.T` x1 (ui-soak-1): old') } | ConvertTo-Json | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-22-023001.result.json') -Encoding UTF8
+$resFiles = @(Get-ChildItem $ledDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName })
+$pres = Test-IncidentLedgerPresence (Join-Path $ledDir 'incidents.json') $resFiles '2026-09-25-000000'
+Assert (($pres.Ok -eq $false) -and ($pres.Error -like 'incident ledger missing while 2 earlier result(s) carry incidents (latest 2026-09-27-023001); rebuild: *tools/NightlyLedger.ps1 -Rebuild')) 'ledger-missing-reds-with-rebuild' $pres.Error
+Assert ((Test-IncidentLedgerPresence (Join-Path $ledDir 'incidents.json') @($resFiles | Where-Object { $_ -like '*09-22*' }) '2026-09-25-000000').Ok -eq $true) 'ledger-missing-before-v2-reads-empty'
+$rebuilt = New-IncidentLedgerFromResults $resFiles '2026-09-25-000000' @{} @{}
+Assert (($rebuilt.Count -eq 1) -and (@($rebuilt['INC-1a2b3c4d'].occurrences).Count -eq 2) -and ($rebuilt['INC-1a2b3c4d'].firstSeen -eq '2026-09-26-023001') -and ($rebuilt['INC-1a2b3c4d'].owner -eq 'operator')) 'ledger-rebuild-restores-occurrences' (($rebuilt.Keys) -join ',')
+$errW = Write-IncidentLedger $rebuilt (Join-Path $ledDir 'incidents.json')
+Assert (($errW -eq '') -and ((Test-IncidentLedgerPresence (Join-Path $ledDir 'incidents.json') $resFiles '2026-09-25-000000').Ok)) 'ledger-rebuilt-reads-present' $errW
+# Items 6, 7, 10: default owner with a due date, finding links, the
+# unlinked re-list, and the lifecycle block.
+$g1 = [pscustomobject]@{ Id = 'INC-0000000a'; Test = 'UI.A.Owned'; Phase = 'run-a'; Key = 'k1'; Wheres = @('Run A') }
+$g2 = [pscustomobject]@{ Id = 'INC-0000000b'; Test = 'UI.A.Stray'; Phase = 'run-a'; Key = 'k2'; Wheres = @('Run A') }
+$upd = Update-IncidentLedger @{} @($g1, $g2) '2026-09-26-023001' @{} @{ 'UI.A.Owned' = 'D02 T01 §5' } 3 @{ 'INC-0000000a' = 'D02 T01 §5' }
+Assert (($upd.Incidents['INC-0000000b'].owner -eq 'operator') -and ($upd.Incidents['INC-0000000b'].due -eq '2026-09-28') -and (($upd.Lines -join '') -like '*INC-0000000b ``UI.A.Stray``: new (owner operator, triage due 2026-09-28)*')) 'unowned-incident-routes-to-triage-owner' ($upd.Lines -join '|')
+$unl = @(Format-UnlinkedIncidents $upd.Incidents)
+Assert (($unl.Count -eq 1) -and ($unl[0] -like '*INC-0000000b*') -and ($unl[0] -notlike '*INC-0000000a*')) 'unlinked-open-incident-relists' ($unl -join '|')
+$upd2 = Update-IncidentLedger $upd.Incidents @() '2026-09-27-023001' @{} @{} 3 @{ 'INC-0000000a' = 'D02 T01 §5'; 'INC-0000000b' = 'abc1234' }
+Assert (@(Format-UnlinkedIncidents $upd2.Incidents).Count -eq 0) 'linked-incident-stops-relisting'
+$legacy = @{ 'INC-0000000c' = [pscustomobject]@{ id = 'INC-0000000c'; test = 'UI.L'; phase = 'run-a'; key = ''; owner = 'unassigned'; state = 'open'; firstSeen = '2026-09-26-023001'; lastSeen = '2026-09-26-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-26-023001'; wheres = @('Run A') }); passStreak = 0; lastPassStamp = '' } }
+$upd3 = Update-IncidentLedger $legacy @() '2026-09-27-023001' @{} @{} 3 @{}
+Assert (($upd3.Incidents['INC-0000000c'].owner -eq 'operator') -and ($upd3.Incidents['INC-0000000c'].due -eq '2026-09-28')) 'legacy-unassigned-upgrades-to-triage-owner'
+$life = @(ConvertTo-IncidentLifecycle $upd2.Incidents)
+$lifeRes = Join-Path $dir 'life.result.json'
+$lifeObj = [pscustomobject]@{ version = 1; stamp = 's'; day = 'd'; identity = 'i'; verdict = 'stood-down'; exit = 0; incidentLifecycle = $life }
+$lifeObj | ConvertTo-Json -Depth 6 | Set-Content -Path $lifeRes -Encoding UTF8
+Assert (((Test-ResultFile $lifeRes).Ok -eq $true) -and ($life.Count -eq 2) -and ($life[0].contract -eq 'v2') -and ($life[0].finding -eq 'D02 T01 §5')) 'lifecycle-block-validates' (Test-ResultFile $lifeRes).Error
+$lifeObj.incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a'; state = 'open'; owner = 'operator'; occurrences = 1; contract = 'v2' })
+$lifeObj | ConvertTo-Json -Depth 6 | Set-Content -Path $lifeRes -Encoding UTF8
+Assert (((Test-ResultFile $lifeRes).Ok -eq $false) -and ((Test-ResultFile $lifeRes).Error -like '*incidentLifecycle row INC-0000000a missing passStreak*')) 'lifecycle-missing-field-fails' (Test-ResultFile $lifeRes).Error
+# Item 3: release candidates name the oldest exemptions and citations.
+$wsR = Join-Path $dir 'ws-release'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $wsR 'build\nightly\retained\fx-old'), (Join-Path $wsR 'build\nightly\2026-09-21-023001'), (Join-Path $wsR 'docs'), (Join-Path $wsR 'todo')
+'x' | Set-Content -Path (Join-Path $wsR 'build\nightly\retained\fx-old\a.txt')
+(Get-Item (Join-Path $wsR 'build\nightly\retained\fx-old')).LastWriteTimeUtc = [datetime]::new(2026, 9, 20, 0, 0, 0, [DateTimeKind]::Utc)
+'kept' | Set-Content -Path (Join-Path $wsR 'build\nightly\2026-09-21-023001\KEEP.txt')
+@('# Review', 'Live proof cites retained run fx-old here.') | Set-Content -Path (Join-Path $wsR 'docs\review.md') -Encoding UTF8
+$cands = @(Get-KeepReleaseCandidates (Join-Path $wsR 'build\nightly\retained') (Join-Path $wsR 'build\nightly') $wsR 3)
+Assert (($cands.Count -eq 2) -and ($cands[0] -like 'retained/fx-old (2026-09-20, * MB; cited by docs/review.md:2)') -and ($cands[1] -like 'kept/2026-09-21-023001 (*; cited by nothing tracked)')) 'quota-release-candidates-name-citations' ($cands -join ' | ')
+
 # Gate before the night (D00 T02 section 29): methods-only drift on the
 # run-b and interactive legs fails, the 2026-09-25 drift line
 # reproduces exactly, discovery forces the fence open so a daytime

@@ -1093,6 +1093,10 @@ foreach ($pair in @( @('Run A', $sumA), @('Run B', $sumB), @('Interactive', $sum
   }
 }
 if (-not $anySkip) { $report += '(none)' ; $report += '' }
+# Aggregate capture budget (D00 T02 section 30 item 2): all of the
+# run's captures together stay under the run cap, dropping screenshots,
+# then dumps, then text, with a marker naming what went.
+if ($captureNotes.Count -gt 0) { $captureNotes += @(Limit-RunCaptureBudget $trxDir $script:RunCaptureMaxBytes) }
 $report += '## Captures'
 $report += ''
 if ($captureNotes.Count -eq 0) { $report += '(none: green night)' } else { $report += $captureNotes }
@@ -1149,17 +1153,25 @@ $report += '## Incident ledger'
 $report += ''
 foreach ($k in @($incidentEvidence.Keys)) { $report += "- $k evidence: $(@($incidentEvidence[$k]) -join '; ')" }
 $ledgerPath = Join-Path $nightDir 'incidents.json'
-$ledgerRead = Read-IncidentLedger $ledgerPath
+# A missing ledger with incident-bearing results before it is loss, not
+# a fresh start (D00 T02 section 30 item 4): red with the rebuild line.
+$ledgerResults = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$ledgerResults += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$ledgerPresence = Test-IncidentLedgerPresence $ledgerPath $ledgerResults $script:IncidentContractV2Since
+$ledgerRead = if ($ledgerPresence.Ok) { Read-IncidentLedger $ledgerPath } else { [pscustomobject]@{ Ok = $false; Error = $ledgerPresence.Error; Incidents = @{} } }
+$incidentLifecycle = @()
 if (-not $ledgerRead.Ok) {
   $failed = $true
   $report += "- RED: $($ledgerRead.Error) (ledger left untouched; repair or move it aside, then re-run)"
 } else {
-  $ledgerUpd = Update-IncidentLedger $ledgerRead.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md'))
+  $ledgerUpd = Update-IncidentLedger $ledgerRead.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 (Read-IncidentLinks (Join-Path $Root 'docs/incident-links.md'))
   $ledgerErr = ''
   try { $ledgerErr = Write-IncidentLedger $ledgerUpd.Incidents $ledgerPath } catch { $ledgerErr = "incident ledger write failed: $($_.Exception.Message)" }
   if ($ledgerErr -ne '') { $failed = $true; $report += "- RED: $ledgerErr" }
   $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
   if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }
+  $report += @(Format-UnlinkedIncidents $ledgerUpd.Incidents)
+  $incidentLifecycle = @(ConvertTo-IncidentLifecycle $ledgerUpd.Incidents)
 }
 $report += ''
 # Night-debt close-loop (D00 T02 §10 items 5-6): attribute the
@@ -1305,7 +1317,12 @@ try {
   $catOut = @(& (Join-Path $PSScriptRoot 'NightlyRetention.ps1') -Verify 2>&1 | ForEach-Object { "$_" })
   $catCode = $LASTEXITCODE
   $catLast = if ($catOut.Count -gt 0) { $catOut[-1] } else { '(no output)' }
-  if ($catCode -eq 0) { $catalogLine = "current ($catLast)" }
+  # What the line proves (section 30 item 8): every retained run and
+  # manifest verified, not whether this run's own evidence is retained.
+  if ($catCode -eq 0) {
+    $catN = [regex]::Match("$catLast", '\((\d+) runs\)')
+    $catalogLine = "retained runs verified ($(if ($catN.Success) { $catN.Groups[1].Value } else { 0 }))"
+  }
   else {
     $failed = $true
     $catFaults = @($catOut | Where-Object { $_ -like '*FAULT*' } | Select-Object -First 3)
@@ -1400,6 +1417,8 @@ $result = [pscustomobject]@{
   timings = $phaseTimes; reserve = $reserveLeft; consumed = $consumedSecs
   env = $envBlock
   incidentEvidence = [pscustomobject]$incidentEvidence
+  # The incident lifecycle machine contract (D00 T02 section 30 item 10).
+  incidentLifecycle = @($incidentLifecycle)
   # Night grouping by run identity plus timezone (D00 T02 §25 item 3).
   startUtc = $runStart.ToUniversalTime().ToString('o')
   tz = $(($runStart - $runStart.ToUniversalTime()).ToString('hh\:mm').Insert(0, $(if (($runStart - $runStart.ToUniversalTime()).Ticks -lt 0) { '-' } else { '+' })))
@@ -1409,7 +1428,7 @@ $result = [pscustomobject]@{
 }
 $resultPath = Join-Path $nightDir "morning-$stamp.result.json"
 Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
-$selfCheck = Test-ResultFile $resultPath
+$selfCheck = Test-ResultFile $resultPath -RequireLifecycle
 $failClosedNote = ''
 if (-not $selfCheck.Ok) {
   $failed = $true
@@ -1417,7 +1436,7 @@ if (-not $selfCheck.Ok) {
   $failClosedNote = "own result invalid, failing closed ($($selfCheck.Error))"
   $result.note += "; $failClosedNote"
   Write-AtomicReport @((ConvertTo-Json $result -Depth 8)) $resultPath
-  $selfCheck = Test-ResultFile $resultPath
+  $selfCheck = Test-ResultFile $resultPath -RequireLifecycle
   Write-Output "nightly: own result file invalid, failing closed ($($selfCheck.Error))"
   $report += "- Result invalid: $($selfCheck.Error) (failing closed)"
 }

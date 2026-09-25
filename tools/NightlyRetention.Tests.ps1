@@ -37,6 +37,8 @@ Assert ((Test-Path (Join-Path $ws 'docs\nightly-evidence\fx-two.md')) -and (Test
 # Count quota: a third retain refuses loud and copies nothing.
 $r3 = Invoke-Retention @('-Retain', '-Source', '2026-09-22-023001', '-Name', 'fx-three', '-Provenance', 'fixture', '-MaxRetained', '2', '-WorkspaceRoot', $ws)
 Assert (($r3.Code -eq 1) -and ($r3.Text -like '*QUOTA REFUSED: 3 retained runs after this retain*nothing copied*')) 'retain-over-count-refuses-loud' $r3.Text
+# D00 T02 section 30 item 3: the refusal names release candidates, oldest first.
+Assert ($r3.Text -like '*retain: release candidates (oldest first): retained/fx-one (*; cited by *') 'retain-refusal-names-release-candidates' $r3.Text
 Assert ((-not (Test-Path (Join-Path $night 'retained\fx-three'))) -and (-not (Test-Path (Join-Path $ws 'docs\nightly-evidence\fx-three.md'))) -and (-not (Test-Path (Join-Path $night '2026-09-22-023001\KEEP.txt')))) 'retain-refusal-copies-nothing'
 
 # Byte quota: the same retain under a tight byte cap refuses too.

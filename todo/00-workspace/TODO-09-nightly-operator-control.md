@@ -59,6 +59,8 @@ Why this section exists: Windows delivers a globally registered hotkey to its re
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §22 -- the preflight's holder list names foreground windows, so it consumes §22's failure-capture policy (title redaction for windows the run does not own, secret scan) rather than its own.
+
 - [ ] A `UiHotkeyProbe` helper in `tests/UI/` tries `RegisterHotKey` for a (modifiers, key) pair on a private message-only window and unregisters immediately, returning free, held (1409), or unknown (any other error). Done when: a unit fixture registers a chord itself, the probe reports held, and after release reports free. Cheaper substitute: a hardcoded list of known apps.
 - [ ] The holder is named best-effort: the probe records the foreground-capable top-level windows listed at probe time (process name plus title) beside the verdict, labeled "suspected holders", since Windows does not expose the registrant. Done when: a held verdict quotes the window list.
 - [ ] Every chord test that presses a modifier chord declares it once (attribute or a `UiInput.PressChecked` wrapper), and a held chord turns the test into `Skip` with reason `chord Ctrl+Shift+E held globally by another app (suspected: TickTick); not pressed`, before any key goes out. Done when: with Ctrl+Shift+E held by a fixture, `ChordCtrlShiftEOpensTemplates` reports skipped with that reason and zero keystrokes are sent (event log shows no press).
@@ -173,6 +175,8 @@ Why this section exists: the morning report lists counts and staged stubs, and t
 
 **Needs:** Windows host (build/test)
 **Requires:** operator -- a signed-in Claude Code CLI on the nightly box for headless `claude -p`; credentials stay in the platform store and never enter the run's logs or report.
+
+- -> XREF: D00 T02 §22 -- triage prompts are built from failure captures and the incident ledger, so they consume §22's capture policy and incident identity contract.
 
 - [ ] A triage step runs `claude -p` with a bounded prompt built from `morning-<stamp>.result.json`, `plan.json`, `preflight.json`, failing test messages, and the last 7 nights' result JSON, under a hard timeout and a read-only tool allowlist. Done when: a fixture night produces a triage block and the step's wall clock stays inside its cap.
 - [ ] The triage output is structured (JSON per failure: test, class, evidence, diagnosis, next action, confidence) and validated before it is rendered into the report; invalid output falls back to deterministic triage with a note. Done when: fixtures pin a valid render and an invalid-output fallback.
