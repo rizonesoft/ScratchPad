@@ -55,9 +55,9 @@ $bf = New-Night '2026-09-24' '2026-09-24-023000' 5000
 $bf | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'leg transcripts'; confidence = 'derived' }; 'env' = [pscustomobject]@{ source = 'none'; confidence = 'unknown' } })
 $corpus += $bf
 $tc = @(Format-TrendTable $corpus $Q $today)
-Assert (@($tc | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=4, p50 610, p90 620, p95 620, max 620' }).Count -eq 1) 'series-native-canonical-only' (($tc | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
+Assert (@($tc | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=4, p50 610, p90 620, p95 620 (= max: n=4 < 20), max 620 [native]' }).Count -eq 1) 'series-native-canonical-only' (($tc | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
 $ai = [array]::IndexOf($tc, '## Alerts')
-Assert ($tc[$ai + 2] -eq '(none)') 'series-mixed-corpus-no-false-slope' ($tc[$ai + 2])
+Assert (($tc[$ai + 2] -like '- Insufficient data: (3 measured baseline night(s) of 5 needed*') -and (@($tc | Where-Object { $_ -like '- ALERT *' }).Count -eq 0)) 'series-mixed-corpus-no-false-slope' ($tc[$ai + 2])
 Assert (@($tc | Where-Object { $_ -like '| 2026-09-24 (backfill) |*' }).Count -eq 1) 'series-backfill-marked'
 Assert (@($tc | Where-Object { $_ -like '- Series: durations, percentiles, and alerts read canonical native nights*' }).Count -eq 1) 'series-rule-reads'
 
@@ -115,7 +115,7 @@ Assert ((@(Get-Content (Join-Path $nd 'metrics.jsonl') | Where-Object { $_.Trim(
 # Item 5: count plus tail percentiles.
 $tail = @(10..24 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) (500 + 10 * ($_ - 10)) })
 $tt = @(Format-TrendTable $tail $Q $today)
-Assert (@($tt | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=14, p50 570, p90 630, p95 640, max 640' }).Count -eq 1) 'percentiles-count-and-tails' (($tt | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
+Assert (@($tt | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=14, p50 570, p90 630, p95 640 (= max: n=14 < 20), max 640 [native]' }).Count -eq 1) 'percentiles-count-and-tails' (($tt | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
 
 # Item 6: planted regressions alert with their baseline delta.
 $base = @(20..26 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 'timer' 100 0 5 @() })
@@ -209,7 +209,7 @@ $win16 = @(1..16 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09
 $win16[14].legs.'run-a'.testSeconds = $null
 $win16[15].legs.'run-a'.testSeconds = $null
 $tw = @(Format-TrendTable $win16 $Q $today)
-Assert (@($tw | Where-Object { $_ -like '- RunA test-seconds (canonical native nights, last 14): n=12,*max 514' }).Count -eq 1) 'percentile-window-counts-unmeasured-nights' (($tw | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
+Assert (@($tw | Where-Object { $_ -like '- RunA test-seconds (canonical native nights, last 14): n=12,*max 514 `[native`]' }).Count -eq 1) 'percentile-window-counts-unmeasured-nights' (($tw | Where-Object { $_ -like '*RunA test-seconds*' }) -join '')
 
 # Change-point: a sustained step (three nights at 800 after seven at 600)
 # alerts as a shift even when the latest night alone stays under the
@@ -218,6 +218,111 @@ $stepNights = @(11..17 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2
 $sa = @(Get-TrendAlerts $stepNights)
 Assert ((@($sa | Where-Object { $_ -eq '- ALERT runa-shift: last 3 nights median 740s vs the prior 7 nights median 600s (+23%, sustained)' }).Count -eq 1) -and (@($sa | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0)) 'alert-change-point-sustained-shift' ($sa -join ' | ')
 Assert (@(Get-TrendAlerts @(11..22 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 }) | Where-Object { $_ -like '*runa-shift*' }).Count -eq 0) 'alert-change-point-quiet-when-steady'
+
+# ---- D00 T02 section 32 ----
+# Item 1: the scheduled night survives DST and a timezone move, and the
+# ack gate keys the same night.
+$dst1 = [pscustomobject]@{ startUtc = '2026-10-24T00:30:00.0000000Z'; tz = '+02:00'; day = '2026-10-24' }
+$dst2 = [pscustomobject]@{ startUtc = '2026-10-25T01:30:00.0000000Z'; tz = '+01:00'; day = '2026-10-25' }
+$move = [pscustomobject]@{ startUtc = '2026-09-30T07:30:00.0000000Z'; tz = '-05:00'; day = '2026-09-30' }
+Assert (((Get-ResultNight $dst1) -eq '2026-10-24') -and ((Get-ResultNight $dst2) -eq '2026-10-25') -and ((Get-ResultNight $move) -eq '2026-09-30')) 'night-survives-dst-and-timezone-move' "$(Get-ResultNight $dst1) $(Get-ResultNight $dst2) $(Get-ResultNight $move)"
+$lateRun = Join-Path $dir 'late.result.json'
+[pscustomobject]@{ version = 1; stamp = '2026-09-29-235000'; day = '2026-09-29'; night = '2026-09-30'; identity = '2026-09-29-235000-pid1'; verdict = 'red'; exit = 1; incidents = @() } | ConvertTo-Json | Set-Content -Path $lateRun -Encoding UTF8
+Assert ((Get-AckDemands @($lateRun))['2026-09-29-235000-pid1'].Day -eq '2026-09-30') 'ack-gate-keys-the-same-night'
+# Item 2: coverage beside the rate.
+$halfQ = New-Night '2026-09-28' '2026-09-28-023000' 600 'timer' 50 0 50
+$tq = @(Format-TrendTable @($halfQ) $Q $today)
+Assert (@($tq | Where-Object { $_ -like '| 2026-09-28 |*| 54/0/50 (100% of 54 executed) |*| 54/104 (51.9%) |' }).Count -eq 1) 'coverage-reads-beside-the-rate' (($tq | Where-Object { $_ -like '| 2026-09-28*' }) -join '')
+# Item 3: the matrix reads and each series cites its row.
+Assert ((@($tq | Where-Object { $_ -like '- Series matrix (D00 T02 section 32): `[rate`]*`[native`]*`[recurrence`]*`[quarantine`]*' }).Count -eq 1) -and (@($tq | Where-Object { $_ -like '- Flake recurrence:*`[recurrence`]' }).Count -eq 1) -and (@($tq | Where-Object { $_ -like '- RunA test-seconds*`[native`]' }).Count -eq 1) -and (@($tq | Where-Object { $_ -like '- Quarantine now:*`[quarantine`]' }).Count -eq 1)) 'series-matrix-reads-and-series-cite-it'
+# Items 4 and 15: a regression across an environment change reads
+# cross-cohort, and the alert carries its runs and commit range.
+$cb = @(20..26 | ForEach-Object { $n = New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600; $n | Add-Member -NotePropertyName commit -NotePropertyValue ('aaaaaaa{0:d2}' -f $_) -Force; $n })
+$cl = New-Night '2026-09-27' '2026-09-27-023000' 900
+$cl | Add-Member -NotePropertyName commit -NotePropertyValue 'bbbbbbb27' -Force
+$cl.env = [pscustomobject]@{ os = '10.0.27000.0'; dpi = 'primary 96x96' }
+$ca = @(Get-TrendAlerts (@($cb) + @($cl)))
+$ctx = @($ca | Where-Object { $_ -like '  - runa-duration context:*' })
+Assert (($ctx.Count -eq 1) -and ($ctx[0] -like '*runs 2026-09-20-023000-pid1,*2026-09-27-023000-pid1;*commits aaaaaaa..bbbbbbb;*CROSS-COHORT (os 10.0.26200.0 -> 10.0.27000.0)*evidence raw results for every run')) 'alert-attribution-and-cross-cohort' ($ca -join ' | ')
+# Item 5: a short history reads insufficient data instead of alerting.
+$three = @(20..22 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) 600 })
+$three += New-Night '2026-09-23' '2026-09-23-023000' 5000
+$ia = @(Get-TrendAlerts $three)
+Assert (($ia.Count -eq 1) -and ($ia[0] -like '- Insufficient data: (3 measured baseline night(s) of 5 needed; evaluated night 2026-09-23 excluded from its own baseline)*')) 'window-insufficient-data' ($ia -join ' | ')
+# Items 7 and 8: a recorded pause reads paused; a degraded night marks.
+$gapA = New-Night '2026-09-20' '2026-09-20-023000'
+$gapB = New-Night '2026-09-24' '2026-09-24-023000'
+$tp = @(Format-TrendTable @($gapA, $gapB) $Q $today @{ '2026-09-21' = 'operator travel' } @([pscustomobject]@{ Night = '2026-09-22'; Reason = 'morning-2026-09-22.result.json: result unreadable' }, [pscustomobject]@{ Night = '2026-09-24'; Reason = 'retained copy invalid' }))
+Assert ((@($tp | Where-Object { $_ -like '| 2026-09-21 | paused | - | operator travel |*' }).Count -eq 1) -and (@($tp | Where-Object { $_ -like '| 2026-09-22 | degraded |*' }).Count -eq 1) -and (@($tp | Where-Object { $_ -like '| 2026-09-23 | missing |*' }).Count -eq 1) -and (@($tp | Where-Object { $_ -like '| 2026-09-24 (degraded) |*' }).Count -eq 1) -and (@($tp | Where-Object { $_ -like '- Degraded data: night 2026-09-22 (*' }).Count -eq 1)) 'pause-and-degraded-read-honestly' (($tp | Where-Object { $_ -like '| 2026-09-2*' }) -join ' / ')
+# Item 10: a truncated last line and a concurrent writer both recover.
+$st = Join-Path $dir 'durable.jsonl'
+$null = Sync-MetricsStore $st @(New-Night '2026-09-20' '2026-09-20-023000')
+[System.IO.File]::AppendAllText($st, '{"schema":"metrics/1","identity":"2026-09-21-0230', (New-Object System.Text.UTF8Encoding($false)))
+$afterTrunc = @(Sync-MetricsStore $st @(New-Night '2026-09-22' '2026-09-22-023000'))
+$readBack = Read-MetricsStore $st
+Assert (($afterTrunc.Count -eq 2) -and (@($script:MetricsLastMalformed).Count -eq 1) -and ($readBack.Rows.Count -eq 2) -and (@($readBack.Malformed).Count -eq 1)) 'store-truncated-line-recovers' "rows $($readBack.Rows.Count) malformed $(@($readBack.Malformed) -join ',')"
+$cmp = Compress-MetricsStore $st
+$readCmp = Read-MetricsStore $st
+Assert (($readCmp.Rows.Count -eq 2) -and (@($readCmp.Malformed).Count -eq 0) -and (Test-Path "$st.bak") -and ($cmp -like 'metrics: compacted 3 line(s) to 2*1 malformed dropped*')) 'store-compaction-drops-malformed-with-backup' $cmp
+$cc = Join-Path $dir 'concurrent.jsonl'
+$writer = {
+  param($parse, $path, $prefix)
+  . $parse
+  foreach ($k in 1..15) { $null = Sync-MetricsStore $path @([pscustomobject]@{ version = 1; identity = "$prefix-$k"; stamp = "2026-09-20-0230$('{0:d2}' -f $k)"; day = '2026-09-20'; verdict = 'green'; legs = [pscustomobject]@{}; soak = [pscustomobject]@{ verdict = 'green' }; incidents = @(); env = [pscustomobject]@{ os = 'x'; dpi = 'y' } }) }
+}
+$j1 = Start-Job -ScriptBlock $writer -ArgumentList (Join-Path $PSScriptRoot 'NightlyParse.ps1'), $cc, 'a'
+$j2 = Start-Job -ScriptBlock $writer -ArgumentList (Join-Path $PSScriptRoot 'NightlyParse.ps1'), $cc, 'b'
+$null = Wait-Job $j1, $j2 -Timeout 300
+Receive-Job $j1, $j2 -ErrorAction SilentlyContinue | Out-Null
+Remove-Job $j1, $j2 -Force
+$readCc = Read-MetricsStore $cc
+Assert (($readCc.Rows.Count -eq 30) -and (@($readCc.Malformed).Count -eq 0)) 'store-concurrent-writers-interleave-cleanly' "rows $($readCc.Rows.Count) malformed $(@($readCc.Malformed).Count)"
+# Item 11: a native row supersedes the backfill for its night, once.
+$ss = Join-Path $dir 'supersede.jsonl'
+$bfN = New-Night '2026-09-24' '2026-09-24-023000'
+$bfN.identity = 'backfill-2026-09-24'
+$bfN | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'rows'; confidence = 'derived' } }) -Force
+$null = Sync-MetricsStore $ss @($bfN)
+$nat = New-Night '2026-09-24' '2026-09-24-023500'
+$cur = @(Sync-MetricsStore $ss @($nat))
+$null = Sync-MetricsStore $ss @($nat)
+$supLines = @([System.IO.File]::ReadAllLines($ss) | Where-Object { $_ -like '*supersession/1*' })
+Assert (($cur.Count -eq 1) -and ("$($cur[0].identity)" -eq '2026-09-24-023500-pid1') -and ($supLines.Count -eq 1) -and ($supLines[0] -like '*"native":"2026-09-24-023500-pid1","backfill":"backfill-2026-09-24"*')) 'native-supersedes-backfill-once' (($cur | ForEach-Object { $_.identity }) -join ',')
+# A manual retry later that night never supersedes the timer backfill.
+$ss2 = Join-Path $dir 'supersede-manual.jsonl'
+$bf2 = New-Night '2026-09-21' '2026-09-21-023003'
+$bf2.identity = 'backfill-2026-09-21'
+$bf2 | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'rows'; confidence = 'derived' } }) -Force
+$null = Sync-MetricsStore $ss2 @($bf2)
+$man = New-Night '2026-09-21' '2026-09-21-120835' 600 'manual'
+$cur2 = @(Sync-MetricsStore $ss2 @($man))
+Assert (($cur2.Count -eq 2) -and (@([System.IO.File]::ReadAllLines($ss2) | Where-Object { $_ -like '*supersession/1*' }).Count -eq 0)) 'manual-retry-never-supersedes-backfill' (($cur2 | ForEach-Object { $_.identity }) -join ',')
+# A lifecycle block without its source (pre-section-30 R2) reads, but the
+# nightly's own self-check refuses it.
+$noSrc = Join-Path $dir 'nosrc.result.json'
+[pscustomobject]@{ version = 1; stamp = 's'; day = 'd'; identity = 'i'; verdict = 'stood-down'; exit = 0; incidentLifecycle = @() } | ConvertTo-Json | Set-Content -Path $noSrc -Encoding UTF8
+Assert (((Test-ResultFile $noSrc).Ok -eq $true) -and ((Test-ResultFile $noSrc -RequireLifecycle).Error -eq 'result incidentLifecycleSource missing')) 'lifecycle-without-source-reads-but-self-check-refuses'
+# Item 12: every series and alert renders the same from metrics alone.
+$eq = @(20..27 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f $_) ('2026-09-{0:d2}-023000' -f $_) (580 + $_) })
+$eqStore = Join-Path $dir 'equiv.jsonl'
+$rowsEq = @(Sync-MetricsStore $eqStore $eq)
+$rawRender = @(Format-TrendTable $eq $Q $today)
+$metRender = @(Format-TrendTable @($rowsEq | ForEach-Object { ConvertFrom-MetricsRow $_ }) $Q $today | ForEach-Object { $_.Replace(' (metrics)', '') })
+$diff = @(Compare-Object $rawRender $metRender | ForEach-Object { "$($_.SideIndicator) $($_.InputObject)" })
+Assert ($diff.Count -eq 0) 'metrics-only-render-matches-raw' ($diff -join ' || ')
+# Item 14: the disclosure contract on the trend and metrics channels.
+$leak = New-Night '2026-09-25' '2026-09-25-023000'
+$leak | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ 'legs.counts' = [pscustomobject]@{ source = 'C:\Users\someone\secret\run.log'; method = 'transcript-parse'; locator = ('token=' + 'ghp_' + ('A1b2C3d4E5' * 4)); confidence = 'derived' } }) -Force
+$tl = @(Format-TrendTable @($leak) $Q $today)
+$provLine = @($tl | Where-Object { $_ -like '- Backfill provenance*' })
+$mrow = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $leak)) -Depth 6 -Compress
+Assert (($provLine.Count -eq 1) -and ($provLine[0] -notlike '*Users\someone*') -and ($provLine[0] -notlike '*ghp_*') -and ($provLine[0] -like '*`[path`]*') -and ($mrow -notlike '*ghp_*') -and ($mrow -notlike '*Users\\someone*')) 'disclosure-trend-and-metrics-channels' ("$($provLine[0]) || $mrow")
+Assert (((Protect-DisclosedText 'evidence \\host\share\user\dump.dmp; next') -eq 'evidence [path]; next') -and ((Protect-DisclosedText 'keep build/nightly/x.log') -eq 'keep build/nightly/x.log')) 'disclosure-unc-and-repo-paths'
+# Item 13: a backfilled count quotes its locator and method.
+if (Test-Path $bfOut) {
+  $bfj2 = Get-Content $bfOut -Raw | ConvertFrom-Json
+  Assert (("$($bfj2.provenance.'legs.counts'.method)" -eq 'report-row') -and ("$($bfj2.provenance.'legs.counts'.locator)" -like 'morning-2026-09-20-023000.md:*') -and ("$($bfj2.report)" -eq 'morning-2026-09-20-023000.md')) 'backfill-count-quotes-locator-and-method' "$($bfj2.provenance.'legs.counts'.method) $($bfj2.provenance.'legs.counts'.locator)"
+} else { Assert $false 'backfill-count-quotes-locator-and-method' 'no backfill output' }
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }

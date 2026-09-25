@@ -72,6 +72,18 @@ Remove-Item (Join-Path $night 'retained\fx-two') -Recurse -Force
 $v2 = Invoke-Retention @('-Verify', '-WorkspaceRoot', $ws)
 Assert (($v2.Code -eq 1) -and ($v2.Text -like '*fx-two FAULT: manifest without bytes*')) 'verify-catalog-loss-faults' $v2.Text
 
+# D00 T02 section 32 item 9: a stamp dir whose result has no metrics row
+# refuses to prune; once the trend archives it, the prune proceeds.
+$old = Join-Path $night '2026-07-01-023001'
+$null = New-Item -ItemType Directory -Force -Path $old
+'trx' | Set-Content -Path (Join-Path $old 'run-a-UI.trx') -Encoding UTF8
+[pscustomobject]@{ version = 1; stamp = '2026-07-01-023001'; day = '2026-07-01'; identity = '2026-07-01-023001-pid5'; verdict = 'green'; exit = 0 } | ConvertTo-Json | Set-Content -Path (Join-Path $night 'morning-2026-07-01-023001.result.json') -Encoding UTF8
+$pr1 = Invoke-Retention @('-Prune', '-Execute', '-WorkspaceRoot', $ws)
+Assert (($pr1.Code -eq 1) -and ($pr1.Text -like '*prune: REFUSED 2026-07-01-023001/ (result 2026-07-01-023001-pid5 has no metrics row; run tools/NightlyTrend.ps1 to archive it first)*') -and (Test-Path $old)) 'prune-refuses-unarchived-stamp' $pr1.Text
+'{"schema":"metrics/1","identity":"2026-07-01-023001-pid5","stamp":"2026-07-01-023001","night":"2026-07-01"}' | Set-Content -Path (Join-Path $night 'metrics.jsonl') -Encoding UTF8
+$pr2 = Invoke-Retention @('-Prune', '-Execute', '-WorkspaceRoot', $ws)
+Assert ((-not (Test-Path $old)) -and ($pr2.Text -like '*prune: deleted 2026-07-01-023001/*')) 'prune-proceeds-once-archived' $pr2.Text
+
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyRetention.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyRetention.Tests: all green'

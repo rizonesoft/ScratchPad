@@ -38,7 +38,7 @@ Assert ($canon['2026-09-24'].Canonical -eq '2026-09-24-121212-pid1') 'canonical-
 Assert (($canon['2026-09-23'].Others['2026-09-23-050000-pid1'] -eq 'simulation') -and ($canon['2026-09-23'].Others['2026-09-23-060000-pid1'] -eq 'stood-down loser') -and ($canon['2026-09-23'].Others['2026-09-23-040435-pid1'] -like 'retry (manual launch*')) 'canonical-others-carry-reasons' (($canon['2026-09-23'].Others.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join '; ')
 $trend = @(Format-TrendTable $heavy @{ Overdue = @(); DueSoon = @() } (Get-Date '2026-09-25'))
 Assert (@($trend | Where-Object { $_ -like '| 2026-09-23 (retry) |*' }).Count -eq 3) 'canonical-trend-marks-retries' (($trend | Where-Object { $_ -like '| 2026-09-23*' }) -join ' || ')
-Assert (@($trend | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=2, p50 600, p90 800, p95 800, max 800' }).Count -eq 1) 'canonical-p50-counts-nights-not-attempts' (($trend | Where-Object { $_ -like '*p50*' }) -join '')
+Assert (@($trend | Where-Object { $_ -eq '- RunA test-seconds (canonical native nights, last 14): n=2, p50 600, p90 800, p95 800 (= max: n=2 < 20), max 800 [native]' }).Count -eq 1) 'canonical-p50-counts-nights-not-attempts' (($trend | Where-Object { $_ -like '*p50*' }) -join '')
 Assert (@($trend | Where-Object { $_ -like '- Canonical nights: 2 of 7 results*' }).Count -eq 1) 'canonical-count-line' (($trend | Where-Object { $_ -like '*Canonical*' }) -join '')
 
 # Items 3, 5, 6, 8: final-only, idempotent, routed, retried, fallback.
@@ -260,6 +260,13 @@ $evRes = New-Result '2026-09-25' '2026-09-25-023005' 'red' 'timer'
 $evRes | Add-Member -NotePropertyName incidentEvidence -NotePropertyValue ([pscustomobject]@{ 'INC-aaaa1111' = $links })
 $evTrend = @(Format-TrendTable @($evRes) @{ Overdue = @(); DueSoon = @() } (Get-Date '2026-09-25'))
 Assert (@($evTrend | Where-Object { $_ -like '- Incident evidence (2026-09-25): INC-aaaa1111 bundle *bundle.json; screenshot *leak.png; launch-record *' }).Count -eq 1) 'evidence-rides-the-trend' (($evTrend | Where-Object { $_ -like '*evidence*' }) -join '')
+
+# D00 T02 section 32 item 14: toasts and digests pass the disclosure
+# contract (a planted token and a user-profile path never render).
+$tok = 'ghp_' + ('A1b2C3d4E5' * 4)
+$dToast = @(Format-ToastLines @((New-ToastItem 1 "leak $tok at C:\Users\someone\AppData\x.log")) 'build/nightly/morning-x.md')
+$dDig = Format-Digest @([pscustomobject]@{ run = "C:\Users\someone\run $tok"; class = 'test' }) '2026-09-25'
+Assert ((($dToast -join ' ') -notlike '*ghp_*') -and (($dToast -join ' ') -notlike '*Users\someone*') -and (($dToast -join ' ') -like '*`[redacted: github-token`]*') -and ((@($dDig.Lines) -join ' ') -notlike '*ghp_*') -and ((@($dDig.Lines) -join ' ') -notlike '*Users\someone*')) 'notify-channels-disclose-nothing' (($dToast -join ' | ') + ' || ' + (@($dDig.Lines) -join ' | '))
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }

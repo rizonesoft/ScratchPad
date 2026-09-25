@@ -141,6 +141,9 @@ if ($Verify) {
 
 if ($Prune) {
   $today = (Get-Date).Date
+  . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+  $metricsStore = Read-MetricsStore (Join-Path $NightDir 'metrics.jsonl')
+  $refused = 0
   $kept = @{}
   foreach ($d in @(Get-ChildItem -Path $NightDir -Directory -ErrorAction SilentlyContinue)) {
     if (($d.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (Test-Path (Join-Path $d.FullName 'KEEP.txt'))) { $kept[$d.Name] = $true }
@@ -156,6 +159,11 @@ if ($Prune) {
     $age = ($today - $stampDate.Date).Days
     if ($kept.ContainsKey($d.Name)) { Write-Output "prune: keep $($d.Name)/ (KEEP: stamp-cited)"; continue }
     if ($age -le $OlderThanDays) { continue }
+    # Archival before prune (D00 T02 section 32 item 9): a stamp whose
+    # result has no metrics row keeps its directory until the trend has
+    # archived it, and the prune says so loud.
+    $arch = Test-StampArchived $NightDir $d.Name $metricsStore
+    if (-not $arch.Ok) { Write-Output "prune: REFUSED $($d.Name)/ ($($arch.Reason); run tools/NightlyTrend.ps1 to archive it first)"; $refused++; continue }
     $bytes = (Get-ChildItem -Path $d.FullName -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
     $plan += [pscustomobject]@{ Kind = 'dir'; Path = $d.FullName; Display = "$($d.Name)/ (${age}d, $([int]($bytes / 1KB)) KB)" }
   }
@@ -169,9 +177,9 @@ if ($Prune) {
     if ($age -le $OlderThanDays) { continue }
     $plan += [pscustomobject]@{ Kind = 'file'; Path = $f.FullName; Display = "$($f.Name) (${age}d, $([int]($f.Length / 1KB)) KB)" }
   }
-  if ($plan.Count -eq 0) { Write-Output "prune: nothing older than $OlderThanDays days ($skipped unknown shapes skipped)"; exit 0 }
+  if ($plan.Count -eq 0) { Write-Output "prune: nothing older than $OlderThanDays days ($skipped unknown shapes skipped)$(if ($refused -gt 0) { "; $refused refused (unarchived)" })"; if ($refused -gt 0) { exit 1 }; exit 0 }
   foreach ($p in $plan) { Write-Output "prune: candidate $($p.Display)" }
-  if (-not $Execute) { Write-Output "prune: plan only ($($plan.Count) candidates); re-run with -Execute to delete"; exit 0 }
+  if (-not $Execute) { Write-Output "prune: plan only ($($plan.Count) candidates); re-run with -Execute to delete"; if ($refused -gt 0) { exit 1 }; exit 0 }
   foreach ($p in $plan) {
     try {
       if ($p.Kind -eq 'dir') { Remove-Item -Path $p.Path -Recurse -Force } else { Remove-Item -Path $p.Path -Force }
@@ -180,6 +188,7 @@ if ($Prune) {
   }
   if ($faults -gt 0) { Write-Output "prune: $faults FAULT(S)"; exit 1 }
   Write-Output "prune: deleted $($plan.Count) paths"
+  if ($refused -gt 0) { Write-Output "prune: $refused stamp dir(s) REFUSED (unarchived)"; exit 1 }
   exit 0
 }
 

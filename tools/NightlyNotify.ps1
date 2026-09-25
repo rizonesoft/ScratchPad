@@ -102,7 +102,8 @@ function Format-ToastLines($Items, [string]$ReportPath, [int]$Cap = 7) {
     $body += "+$($sorted.Count - ($room - 1)) more in the report"
   }
   $body += "Report: $ReportPath"
-  return $body
+  # One disclosure contract on every channel (D00 T02 section 32 item 14).
+  return @($body | ForEach-Object { Protect-DisclosedText $_ })
 }
 
 function New-ToastItem([int]$Priority, [string]$Text, [int]$Order = 0) {
@@ -261,7 +262,7 @@ function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50
     $sim0 = $false
     try { $sim0 = [bool]$r.simulated } catch { }
     if ((@('timer', 'demand') -contains "$($r.launch)") -and (-not $sim0)) {
-      $d0 = "$($r.day)"
+      $d0 = Get-ResultNight $r
       if (($d0 -match '^\d{4}-\d{2}-\d{2}$') -and (($null -eq $enrolled) -or ([string]::CompareOrdinal($d0, $enrolled) -lt 0))) { $enrolled = $d0 }
     }
   }
@@ -272,7 +273,7 @@ function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50
     try { $sim = [bool]$r.simulated } catch { }
     $gov = (@('timer', 'demand') -contains "$($r.launch)") -and (-not $sim) -and ("$($r.verdict)" -ne 'stood-down')
     $tomb = ("$($r.trigger)" -like 'supervisor tombstone*')
-    if ($gov -or $tomb) { $started["$($r.day)"] = $true }
+    if ($gov -or $tomb) { $started[(Get-ResultNight $r)] = $true }
   }
   $missed = @()
   for ($i = $LookbackDays; $i -ge 0; $i--) {
@@ -372,7 +373,7 @@ function Format-Digest($Queue, [string]$Day) {
   $title = "Nightly digest $Day : $($q.Count) run(s)"
   $lines = @()
   foreach ($g in $byClass) { $lines += "$($g.Count) x $($g.Name): $((@($g.Group | ForEach-Object { $_.run }) | Select-Object -First 3) -join ', ')" }
-  return [pscustomobject]@{ Title = $title; Lines = $lines }
+  return [pscustomobject]@{ Title = $title; Lines = @($lines | ForEach-Object { Protect-DisclosedText $_ }) }
 }
 
 function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
@@ -527,7 +528,9 @@ function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLi
   # a RED canonical night says so, and every incident the §22 ledger
   # closed on verified recovery rides the notification by id.
   $notices = @()
-  $day = "$($Current.day)"
+  # The shared night key (D00 T02 section 32 item 1): the canonical map
+  # is keyed by Get-ResultNight, so the lookup is too.
+  $day = Get-ResultNight $Current
   $curId = "$($Current.identity)"
   if ($curId -eq '') { $curId = "$($Current.stamp)" }
   # Only the night's canonical run speaks for the night (R1-F4): a GREEN

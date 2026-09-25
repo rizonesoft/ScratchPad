@@ -845,7 +845,7 @@ $tj = $trend -join "`n"
 Assert (($tj -like '*| 2026-09-20 | green | green |*') -and ($tj -like '*| 2026-09-21 | red | test |*')) 'trend-rows'
 Assert ($tj -like '*stood-down (mark)*') 'trend-mark'
 Assert ($tj -like '*Flake recurrence: INC-aaaabbbb*') 'trend-recurrence'
-Assert ($tj -like '*RunA test-seconds (canonical native nights, last 14): n=2, p50 600, p90 700, p95 700, max 700*') 'trend-percentile'
+Assert ($tj -like '*RunA test-seconds (canonical native nights, last 14): n=2, p50 600, p90 700, p95 700 (= max: n=2 < 20), max 700*') 'trend-percentile'
 Assert ($tj -like '*## Environments*2026-09-20 2026-09-20-041343*') 'trend-env'
 Assert ($tj -like '*Quarantine now: 1 overdue*') 'trend-quar'
 Assert ($tj -like '*| 1/0 (oldest 2d) |*') 'trend-qage'

@@ -622,6 +622,7 @@ if ($Smoke) { $invokedBits += '-Smoke' }
 if ($CollectDebt -ne '') { $invokedBits += "-CollectDebt $CollectDebt" }
 $invokedWith = if ($invokedBits.Count -eq 0) { '(full shape, no switches)' } else { ($invokedBits -join ' ') }
 $populationLine = 'not verified (check skipped)'
+$populationCohort = ''
 $buildError = ''
 $gateA = $null
 $gateB = $null
@@ -753,6 +754,8 @@ try {
       $pop = Compare-TestPopulation $fpPath (Join-Path $PSScriptRoot 'nightly.ps1') $disc
       if (-not $pop.Ok) { throw ("population drift: " + ($pop.Drifts -join '; ')) }
       $populationLine = "OK (run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases))"
+      # The population as a cohort dimension (D00 T02 section 32 item 4).
+      $populationCohort = "run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)"
       Write-Output "nightly: population fingerprint matches ($populationLine)"
     } catch {
       $populationLine = "DRIFT: $_"
@@ -1154,7 +1157,7 @@ foreach ($g in $incidentGroups) {
 }
 $report += '## Incident ledger'
 $report += ''
-foreach ($k in @($incidentEvidence.Keys)) { $report += "- $k evidence: $(@($incidentEvidence[$k]) -join '; ')" }
+foreach ($k in @($incidentEvidence.Keys)) { $report += (Protect-DisclosedText "- $k evidence: $(@($incidentEvidence[$k]) -join '; ')") }
 $ledgerPath = Join-Path $nightDir 'incidents.json'
 # A missing ledger with incident-bearing results before it is loss, not
 # a fresh start (D00 T02 section 30 item 4): red with the rebuild line.
@@ -1407,7 +1410,7 @@ $odNames = @()
 try { $odNames = @($quar.Overdue | ForEach-Object { $_.Test }) } catch { }
 $schedVoted = ((@($schedFaults).Count -gt 0) -and $schedulerParented)
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; population = "$populationCohort"; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError
