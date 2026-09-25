@@ -1039,6 +1039,14 @@ $curA1 = $demDrop[$runA1].Current
 Assert (((@($demDrop[$runA1].Incidents) -join ',') -eq 'INC-bbbb2222') -and ((@($demDrop[$runA1].AllIncidents) | Sort-Object) -join ',') -eq 'INC-aaaa1111,INC-bbbb2222') 'ack-incidents-follow-current-copy' ("cur $(@($demDrop[$runA1].Incidents) -join ',') all $(@($demDrop[$runA1].AllIncidents) -join ',')")
 $cur = Test-AckV2 (New-Ack @("$runA1 sha256:$curA1") @{ incidents = 'INC-bbbb2222' }) $demDrop
 Assert ($cur.Ok -and ((@($cur.Acked) -join ',') -eq $runA1)) 'ack-current-incidents-pass' ($cur.Errors -join '; ')
+# R3-F1: an in-place rewrite with no older copy left still leaves the
+# batch acknowledging its unchanged run.
+$onlyPrimary = @($resFiles | Where-Object { $_ -notlike '*retained*' })
+$demInPlace = Get-AckDemands $onlyPrimary
+Assert ((@($demInPlace[$runA1].AllIncidents) -join ',') -eq 'INC-bbbb2222') 'ack-inplace-rewrite-has-no-old-copy' (@($demInPlace[$runA1].AllIncidents) -join ',')
+$inPlace = Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1", "$runA2 sha256:$shaA2") @{ incidents = 'INC-aaaa1111' }) $demInPlace
+Assert ($inPlace.Ok -and ((@($inPlace.Acked) -join ',') -eq $runA2) -and ((@($inPlace.Stale) -join ',') -eq $runA1)) 'ack-batch-survives-inplace-rewrite' ("ok $($inPlace.Ok) errs $($inPlace.Errors -join '; ')")
+Assert (-not (Test-AckV2 (New-Ack @("$runA2 sha256:$shaA2") @{ incidents = 'INC-aaaa1111' }) $demInPlace).Ok) 'ack-extra-incident-still-fails-without-stale'
 # R1-F4: a history git cannot verify never counts.
 [System.IO.File]::WriteAllText((Join-Path $repo '.git\index'), 'not an index')
 $g6 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')

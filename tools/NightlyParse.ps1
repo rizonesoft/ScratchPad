@@ -2092,12 +2092,13 @@ function Test-AckV2([string]$Text, [hashtable]$Demands) {
     $want = @()
     foreach ($id in $acked) { foreach ($i in @($Demands[$id].Incidents)) { if ($want -notcontains $i) { $want += $i } } }
     # A stale run is judged by its STALE line, never by its incidents:
-    # anything it ever carried may stay listed without voiding the runs
-    # the file still acknowledges.
-    $staleInc = @()
-    foreach ($id in $stale) { $staleInc += @($Demands[$id].AllIncidents) }
+    # what it carried when signed may be gone from every surviving copy
+    # (an in-place rewrite), so while any named run is stale, extra
+    # listed incidents are tolerated (an extra id suppresses nothing).
+    # Every acknowledged run's current incidents must still be listed.
     $missing = @($want | Where-Object { $listed -notcontains $_ })
-    $extra = @($listed | Where-Object { ($want -notcontains $_) -and ($staleInc -notcontains $_) })
+    $extra = @()
+    if ($stale.Count -eq 0) { $extra = @($listed | Where-Object { $want -notcontains $_ }) }
     if ($missing.Count -gt 0) { $errs += "incidents missing: $($missing -join ', ')" }
     if ($extra.Count -gt 0) { $errs += "incidents not in the acked runs: $($extra -join ', ')" }
   }
