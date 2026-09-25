@@ -161,6 +161,18 @@ function Invoke-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line)
   catch { return "write failed: $($_.Exception.Message)" }
 }
 
+function Get-TrxCensusNames([string]$TrxPath) {
+  # Every test row the collection's census counts (D00 T02 §42 R3-F1):
+  # passed, failed, and skipped. At the identity check the census has
+  # already refused capability and other skips, so the skips left are
+  # quarantine-declared and belong to the owed set, as they do in the
+  # digest Get-DebtDigest.ps1 prints. Missing or unreadable trx reads
+  # as none.
+  if (-not (Test-Path $TrxPath)) { return @() }
+  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return @() }
+  return @(@($t.TestRun.Results.UnitTestResult) | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.testName)" })
+}
+
 function Get-ListedTestNames([string[]]$Output) {
   # Test names from `dotnet test --list-tests` output: the indented lines
   # after "The following Tests are available:".

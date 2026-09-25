@@ -1303,7 +1303,7 @@ if ($debtQueryError -ne '') {
       continue
     }
     # Closure binds to the owed test identities (§42 item 6).
-    $fullId = Test-DebtIdentity $debt.Digest @(Get-TrxExecutedNames (Join-Path $trxDir 'interactive.trx'))
+    $fullId = Test-DebtIdentity $debt.Digest @(Get-TrxCensusNames (Join-Path $trxDir 'interactive.trx'))
     if (-not $fullId.Ok) {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: identity mismatch (owed digest $($debt.Digest), executed $($fullId.Digest)): debt stays open"
       $failed = $true

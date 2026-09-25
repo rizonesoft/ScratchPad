@@ -96,6 +96,13 @@ $c1 = Invoke-CollectedLine $ctodo 'D90-T01-S1-N1' '**Night-collected:** 2026-09-
 $c2 = Invoke-CollectedLine $ctodo 'D90-T01-S1-N1' '**Night-collected:** 2026-09-21 D90-T01-S1-N1 (1 passed, 0 failed, 0 skipped; log c.trx; digest aaaa1111bbbb2222)'
 Remove-Item $cdir -Recurse -Force
 Assert (($c1 -eq 'appended: D90-T01-S1-N1') -and ($c2 -like 'skip:*already carries*')) 's42-new-digest-appends-past-a-stale-record' "$c1 / $c2"
+# D00 T02 §42 R3-F1: a quarantine-skipped owed test counts in the
+# collector's identity, so the digest matches Get-DebtDigest's.
+$tq = Join-Path $env:TEMP "s42-census-$([guid]::NewGuid().ToString('N')).trx"
+'<TestRun><Results><UnitTestResult testName="UI.A.One" outcome="Passed" /><UnitTestResult testName="UI.A.Two" outcome="NotExecuted" /></Results></TestRun>' | Set-Content -Path $tq -Encoding UTF8
+$cn = @(Get-TrxCensusNames $tq)
+Remove-Item $tq
+Assert (($cn.Count -eq 2) -and ((Get-TestNamesDigest $cn) -eq (Get-TestNamesDigest @('UI.A.One', 'UI.A.Two'))) -and (Test-DebtIdentity (Get-TestNamesDigest @('UI.A.One', 'UI.A.Two')) $cn).Ok) 's42-quarantine-skip-keeps-the-identity' ($cn -join ';')
 # D00 T02 §42 R1-F1: the listing parser reads the available tests.
 $ln = Get-ListedTestNames @('Test run for x.dll', 'The following Tests are available:', '    UI.A.One', '    UI.A.Two(x: 1)')
 Assert (($ln.Count -eq 2) -and ($ln[1] -eq 'UI.A.Two(x: 1)')) 's42-listing-parser-reads-names' ($ln -join ';')
