@@ -476,6 +476,11 @@ foreach ($bad in @(@{ occurrences = -1 }, @{ passStreak = 'x' }, @{ contract = '
   $bk = @($bad.Keys)[0]
   Assert (((Test-ResultFile $lifeRes).Ok -eq $false) -and ((Test-ResultFile $lifeRes).Error -like "*$bk*")) "lifecycle-bad-$bk-fails" (Test-ResultFile $lifeRes).Error
 }
+# R5-F1: a duplicate incident id fails the lifecycle block.
+$dupRow = [pscustomobject]@{ id = 'INC-0000000a'; test = 'UI.A.Owned'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('s1'); firstSeen = 's1'; passStreak = 0; contract = 'v2'; due = ''; finding = '' }
+$lifeObj.incidentLifecycle = @($dupRow, $dupRow)
+$lifeObj | ConvertTo-Json -Depth 6 | Set-Content -Path $lifeRes -Encoding UTF8
+Assert (((Test-ResultFile $lifeRes).Ok -eq $false) -and ((Test-ResultFile $lifeRes).Error -eq 'result incidentLifecycle duplicate id INC-0000000a')) 'lifecycle-duplicate-id-fails' (Test-ResultFile $lifeRes).Error
 # R1-I1: the rebuild restores the latest lifecycle snapshot.
 [pscustomobject]@{ version = 1; stamp = '2026-09-28-023001'; day = '2026-09-28'; identity = '2026-09-28-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-1a2b3c4d'; test = 'UI.X.Y'; phase = 'soak'; state = 'closed'; owner = $sec5; occurrences = 3; occurrenceStamps = @('2026-09-25-023001', '2026-09-26-023001', '2026-09-27-023001'); firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-27-023001'; passStreak = 3; contract = 'v2'; due = ''; finding = 'abc1234' }, [pscustomobject]@{ id = 'INC-0000aced'; test = 'UI.Aged.T'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('2026-09-25-120000'); firstSeen = '2026-09-25-120000'; lastSeen = '2026-09-25-120000'; passStreak = 1; contract = 'v2'; due = '2026-09-27'; finding = '' }) } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-28-023001.result.json') -Encoding UTF8
 [pscustomobject]@{ version = 1; stamp = '2026-09-29-023001'; incidents = @(); incidentLifecycleSource = 'unavailable'; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $ledDir 'morning-2026-09-29-023001.result.json') -Encoding UTF8

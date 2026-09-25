@@ -1979,8 +1979,13 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
   # so a rebuild never mistakes a failed run's empty block for state.
   if ($hasLife -and (@('ledger', 'unavailable') -notcontains "$($o.incidentLifecycleSource)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycleSource '$($o.incidentLifecycleSource)' unknown (want ledger or unavailable)" } }
   if ($hasLife) {
+    $lifeIds = @{}
     foreach ($row in @($o.incidentLifecycle)) {
       if ($null -eq $row) { return [pscustomobject]@{ Ok = $false; Error = 'result incidentLifecycle has a null row' } }
+      # One row per incident (section 30 R5-F1): a duplicate id would let
+      # a rebuild keep one row's history and silently drop the other's.
+      if ($lifeIds.ContainsKey("$($row.id)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle duplicate id $($row.id)" } }
+      $lifeIds["$($row.id)"] = $true
       $names = @($row.PSObject.Properties.Name)
       foreach ($f in @('id', 'test', 'phase', 'state', 'owner', 'occurrences', 'firstSeen', 'passStreak', 'contract')) {
         if (($names -notcontains $f) -or ("$($row.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle row $($row.id) missing $f" } }
