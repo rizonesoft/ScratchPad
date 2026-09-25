@@ -634,7 +634,8 @@ $nightOwedRows = @()
 # but the report still lands (report-always outranks attribution).
 $debtSnapshot = @()
 $debtQueryError = ''
-try { $debtSnapshot = @(Get-OpenNightDebts $Root) } catch { $debtQueryError = "$_"; $failed = $true }
+$debtDoc = $null
+try { $debtDoc = Get-NightDebtDocument $Root; $debtSnapshot = @(Get-OpenNightDebts $Root 'py' $debtDoc) } catch { $debtQueryError = "$_"; $failed = $true }
 $collectFilter = 'Category=Interactive'
 $collectId = ''
 if ($CollectDebt -ne '') {
@@ -1258,12 +1259,7 @@ else { $report += $debtEntries; $report += '' }
 # §27 items 6 and 7): each open debt's `query night-debt` line,
 # verbatim (due, age, owner, state, and the escalation with its
 # response deadline), so the report and the queries never disagree.
-if (@($debtSnapshot).Count -gt 0) {
-  $report += 'Debt status at run start (`query night-debt`, verbatim):'
-  $report += ''
-  foreach ($debt in $debtSnapshot) { $report += "    $($debt.Line)" }
-  $report += ''
-}
+if ($null -ne $debtDoc) { $report += @(Format-NightDebtStatus $debtDoc) }
 $report += '## Filings'
 $report += ''
 $report += '(triage appends one line per failure: test name, finding ref or quarantine row)'

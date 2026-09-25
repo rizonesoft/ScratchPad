@@ -35,6 +35,15 @@ $debts = @(Get-OpenNightDebts $Root $py)
 $text = @(& $py (Join-Path $Root 'scripts/todo-graph.py') query night-debt 2>&1 | Where-Object { ("$_" -match '^\s{4}\S') -and ("$_" -notmatch '^\s+WARN ') } | ForEach-Object { "$_".Trim() })
 Assert (($debts.Count -eq $text.Count) -and ((@($debts | ForEach-Object { $_.Line }) -join "`n") -eq ($text -join "`n"))) 'json-lines-match-query-text' "json $($debts.Count) text $($text.Count)"
 Assert (@($debts | Where-Object { ($_.Owner -eq '') -or ($_.State -eq '') }).Count -eq 0) 'json-carries-owner-and-state'
+# The report writes the document's report_block verbatim, warnings
+# included, under its heading (D00 T02 §27 R1-F5, R1-F6).
+$synthetic = [pscustomobject]@{ schema = 'night-debt/1'; report_block = @('    todo/x.md D90-T01-S1-N1 D90 T01 s1 count 1 filter Interactive age 5n due 2026-09-18 owner operator state open last-log none OVERDUE escalate operator by 2026-09-20: rerun', '    WARN D90-T01-S1-N1: due token ''x'' malformed; fallback 2026-09-18') }
+$blockOut = @(Format-NightDebtStatus $synthetic)
+Assert (($blockOut.Count -eq 5) -and ($blockOut[0] -eq 'Debt status at run start (`query night-debt`, verbatim):') -and ($blockOut[2] -eq $synthetic.report_block[0]) -and ($blockOut[3] -eq $synthetic.report_block[1])) 'report-block-verbatim-with-warnings' ($blockOut -join ' | ')
+Assert (@(Format-NightDebtStatus ([pscustomobject]@{ schema = 'night-debt/1'; report_block = @() })).Count -eq 0) 'report-block-empty-when-no-debt'
+$liveDoc = Get-NightDebtDocument $Root $py
+$liveText = @(& $py (Join-Path $Root 'scripts/todo-graph.py') query night-debt 2>&1 | Where-Object { "$_" -match '^\s{4}\S' } | ForEach-Object { "$_" })
+Assert ((@($liveDoc.report_block) -join "`n") -eq ($liveText -join "`n")) 'live-report-block-equals-query-text' "block $(@($liveDoc.report_block).Count) text $($liveText.Count)"
 $fake = Join-Path $dir 'fakepy.cmd'
 '@echo not json' | Set-Content -Path $fake -Encoding ASCII
 $threw = ''

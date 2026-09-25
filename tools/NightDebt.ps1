@@ -7,8 +7,30 @@
 # misparse; real filters are Category values or operator expressions, never
 # that shape, so the constraint is documented, not fenced.
 
-function Get-OpenNightDebts {
+function Get-NightDebtDocument {
   param([string]$Root, [string]$Python = 'py')
+  # The whole `query night-debt --json` document (schema night-debt/1):
+  # debts plus report_block, the exact block the queries print. Fails
+  # LOUD on a failed query, non-JSON, or another schema.
+  $raw = & $Python (Join-Path $Root 'scripts/todo-graph.py') query night-debt --json 2>&1
+  if ($LASTEXITCODE -ne 0) { throw "night-debt: query failed: $raw" }
+  $doc = $null
+  try { $doc = (@($raw) -join "`n") | ConvertFrom-Json } catch { throw "night-debt: query output is not JSON: $raw" }
+  if ("$($doc.schema)" -ne 'night-debt/1') { throw "night-debt: unexpected schema '$($doc.schema)'" }
+  return $doc
+}
+
+function Format-NightDebtStatus($Doc) {
+  # The morning report's debt status block (D00 T02 §27 items 6 and 7):
+  # the document's report_block verbatim, warnings included, under its
+  # heading, so the report and the queries never disagree.
+  $block = @($Doc.report_block | Where-Object { $null -ne $_ })
+  if ($block.Count -eq 0) { return @() }
+  return @('Debt status at run start (`query night-debt`, verbatim):', '') + $block + @('')
+}
+
+function Get-OpenNightDebts {
+  param([string]$Root, [string]$Python = 'py', $Doc = $null)
   # One object per open debt from `query night-debt --json` (schema
   # night-debt/1, D00 T02 §27): File, Id, Section, Count, Filter, Age,
   # Due, Owner, State, Overdue, LastLog, plus Line, the exact text the
@@ -16,11 +38,7 @@ function Get-OpenNightDebts {
   # replaced the text scrape after §19's due field broke it (the scrape
   # matched no line and the collector ran blind). A failed query or an
   # unexpected schema fails LOUD: the collector never runs blind.
-  $raw = & $Python (Join-Path $Root 'scripts/todo-graph.py') query night-debt --json 2>&1
-  if ($LASTEXITCODE -ne 0) { throw "night-debt: query failed: $raw" }
-  $doc = $null
-  try { $doc = (@($raw) -join "`n") | ConvertFrom-Json } catch { throw "night-debt: query output is not JSON: $raw" }
-  if ("$($doc.schema)" -ne 'night-debt/1') { throw "night-debt: unexpected schema '$($doc.schema)'" }
+  $doc = if ($null -ne $Doc) { $Doc } else { Get-NightDebtDocument $Root $Python }
   $debts = @()
   foreach ($d in @($doc.debts)) {
     if ($null -eq $d) { continue }

@@ -4139,6 +4139,15 @@ def _kv_paren(paren: str, keys: tuple) -> dict:
     return out
 
 
+def _add_days(d, n):
+    """d plus n days, or None when the calendar overflows (9999-12-31):
+    night debt stays information and never crashes a query (§27 R1-F1)."""
+    try:
+        return (d + timedelta(days=n)).isoformat() if d else None
+    except OverflowError:
+        return None
+
+
 def _iso(s):
     try:
         return datetime.fromisoformat(s).date() if s else None
@@ -4156,6 +4165,8 @@ def night_debt_line(d: dict) -> str:
         f" filter {d['filter']} age {age} due {d['due'] or '?'}"
         f" owner {d['owner']} state {d['state']} last-log {d['last_log'] or 'none'}"
     )
+    if d.get("state") == "accepted":
+        line += f" accepted-by {d['accepted_by']} expires {d['accepted_expires']}"
     if d["overdue"]:
         line += f" OVERDUE escalate {d['owner']} by {d['respond_by'] or '?'}: {d['action']}"
     return line
@@ -4279,6 +4290,7 @@ def night_debts(todos: list["Todo"], today_d):
             else:
                 due = od.isoformat()
         owner = o["owner"] or NIGHT_DEBT_DEFAULT_OWNER
+        accepted_by, accepted_expires = None, None
         state = "collected" if c is not None else "open"
         action = NIGHT_DEBT_ESCALATION
         respond_by = None
@@ -4289,43 +4301,65 @@ def night_debts(todos: list["Todo"], today_d):
             # follow-up deadline, so reruns that stay red cannot satisfy
             # the escalation forever.
             rl = sorted(r["date"] for r in reds.get(did, []) if (base_d is None or r["date"] >= base_d.isoformat()))
+            # The escalation this debt is under starts on this day; an
+            # acknowledgement only counts when dated on or after it, so an
+            # old acknowledgement never covers a later red (§27 R1-F3).
+            escalation_start = None
             if rl:
                 first_red = _iso(rl[0])
                 if first_red:
-                    due = (first_red + timedelta(days=NIGHT_DEBT_DUE_NIGHTS)).isoformat()
+                    due = _add_days(first_red, NIGHT_DEBT_DUE_NIGHTS)
                 state = "red"
             if len(rl) >= 2:
                 last_red = _iso(rl[-1])
                 state = "red-repeat"
                 action = NIGHT_DEBT_RED_ESCALATION
-                respond_by = (last_red + timedelta(days=NIGHT_DEBT_FOLLOWUP_DAYS)).isoformat() if last_red else None
+                respond_by = _add_days(last_red, NIGHT_DEBT_FOLLOWUP_DAYS)
+                escalation_start = rl[-1]
                 overdue = True
             else:
                 # An open debt nothing can date fails closed: it
                 # escalates as overdue so it cannot sit unowed forever.
                 overdue = due is None or today_d.isoformat() > due
                 if overdue and due:
-                    respond_by = (_iso(due) + timedelta(days=NIGHT_DEBT_RESPONSE_DAYS)).isoformat()
+                    respond_by = _add_days(_iso(due), NIGHT_DEBT_RESPONSE_DAYS)
+                    escalation_start = due
             # Risk acceptance (§27 item 2): reads accepted, never
             # collected; an expired acceptance re-escalates.
             acc = accepts.get(did)
-            if acc and acc.get("approver") and acc.get("rationale") and _iso(acc.get("expires")):
+            acc_ok = bool(
+                acc and acc.get("approver") and acc.get("owner") and acc.get("rationale")
+                and _iso(acc.get("date")) and _iso(acc.get("expires"))
+                and acc["date"] <= today_d.isoformat() and acc["date"] <= acc["expires"]
+            )
+            if acc_ok:
+                accepted_by, accepted_expires = acc["approver"], acc["expires"]
                 if today_d.isoformat() <= acc["expires"]:
                     state = "accepted"
                     overdue = False
                     respond_by = None
-                    if acc.get("owner"):
-                        owner = acc["owner"]
+                    owner = acc["owner"]
                 else:
                     state = "acceptance-expired"
                     overdue = True
                     respond_by = acc["expires"]
+                    escalation_start = acc["expires"]
                     action = "renew the risk acceptance or rerun the collection"
             elif acc:
-                warnings.append("Night-accepted line lacks approver, rationale, or a real expires date; ignored")
+                # Every field of the findings-file grammar is required, and a
+                # future-dated record accepts nothing yet (§27 R1-F2).
+                warnings.append("Night-accepted line needs approver, owner, a real date on or before today, expires, and rationale; ignored")
             # Acknowledgement (§27 item 1): drops the escalation until the
             # response deadline; still open past it escalates again.
             ack = acks.get(did)
+            ack_date = ack.get("date") if ack else None
+            if ack and not (ack.get("owner") and ack.get("action") and _iso(ack_date) and ack_date <= today_d.isoformat()):
+                warnings.append("Night-ack line needs a real date on or before today, an owner, and an action; ignored")
+                ack = None
+            if ack and escalation_start and ack_date < escalation_start:
+                # Dated before this escalation began: it answered an
+                # earlier one, so it cannot hold this one (§27 R1-F3).
+                ack = None
             if ack and state not in ("accepted",) and overdue:
                 rb = respond_by
                 if rb and today_d.isoformat() <= rb:
@@ -4352,11 +4386,25 @@ def night_debts(todos: list["Todo"], today_d):
                 "state": state,
                 "respond_by": respond_by,
                 "action": action,
+                "accepted_by": accepted_by,
+                "accepted_expires": accepted_expires,
                 "warnings": warnings,
                 "last_log": c["log"] if c else None,
                 "open": c is None,
             }
         )
+    return out
+
+
+def night_debt_block(debts: list) -> list:
+    """The debt block, identical in `query night-debt`, `query summary`,
+    and the morning report (which writes the JSON `report_block`
+    verbatim): each debt's line, then its WARN lines (§27 R1-F5)."""
+    out = []
+    for d in debts:
+        out.append("    " + night_debt_line(d))
+        for w in d["warnings"]:
+            out.append(f"    WARN {d['id']}: {w}")
     return out
 
 
@@ -4457,13 +4505,12 @@ def cmd_query(args) -> int:
                 "schema": "night-debt/1",
                 "today": _today_s,
                 "debts": [dict(d, line=night_debt_line(d)) for d in _debts],
+                "report_block": night_debt_block(_debts),
             }, ensure_ascii=False, sort_keys=True))
             return 0
         print(f"night debt: {len(_debts)} open (today {_today_s})")
-        for d in _debts:
-            print("    " + night_debt_line(d))
-            for w in d["warnings"]:
-                print(f"    WARN {d['id']}: {w}")
+        for ln in night_debt_block(_debts):
+            print(ln)
         return 0
 
     if what == "findings":
@@ -6856,10 +6903,8 @@ def cmd_query(args) -> int:
             _nd_today = _today_d if getattr(args, "today", None) else datetime.now().date()
             _debts = [d for d in night_debts(todos, _nd_today) if d["open"]]
             print(f"night debt          {len(_debts)} open")
-            for d in _debts:
-                print("    " + night_debt_line(d))
-                for w in d["warnings"]:
-                    print(f"    WARN {d['id']}: {w}")
+            for ln in night_debt_block(_debts):
+                print(ln)
             _od_owners = sorted(set(od_by_owner) | set(_rv_by_owner))
             print(f"overdue owners      {len(_od_owners)}")
             for own in _od_owners:
@@ -25557,7 +25602,19 @@ track: Z1
             "**Night-red:** 2026-09-18 D90-T01-S1-N13 (0 passed, 1 failed, 0 skipped; log build/nightly/r1.trx)\n"
             "**Night-owed:** D90-T01-S1-N14 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-14)\n"
             "**Night-red:** 2026-09-16 D90-T01-S1-N14 (0 passed, 1 failed, 0 skipped; log build/nightly/r1.trx)\n"
-            "**Night-red:** 2026-09-19 D90-T01-S1-N14 (0 passed, 1 failed, 0 skipped; log build/nightly/r2.trx)\n\n"
+            "**Night-red:** 2026-09-19 D90-T01-S1-N14 (0 passed, 1 failed, 0 skipped; log build/nightly/r2.trx)\n"
+            # §27 review round 1: overflow, incomplete and future records,
+            # and an old acknowledgement against a later red.
+            "**Night-owed:** D90-T01-S1-N15 (1 Interactive, collector Nightly UI 02:30, owed 9999-12-29)\n"
+            "**Night-red:** 9999-12-30 D90-T01-S1-N15 (0 passed, 1 failed, 0 skipped; log build/nightly/r3.trx)\n"
+            "**Night-owed:** D90-T01-S1-N16 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-12)\n"
+            "**Night-accepted:** D90-T01-S1-N16 (approver operator, date 2026-09-16, expires 2026-10-01, rationale no owner named)\n"
+            "**Night-owed:** D90-T01-S1-N17 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-12)\n"
+            "**Night-ack:** D90-T01-S1-N17 (2026-09-25, owner operator, action future-dated)\n"
+            "**Night-owed:** D90-T01-S1-N18 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10)\n"
+            "**Night-ack:** D90-T01-S1-N18 (2026-09-15, owner operator, action rerun)\n"
+            "**Night-red:** 2026-09-16 D90-T01-S1-N18 (0 passed, 1 failed, 0 skipped; log build/nightly/r4.trx)\n"
+            "**Night-red:** 2026-09-19 D90-T01-S1-N18 (0 passed, 1 failed, 0 skipped; log build/nightly/r5.trx)\n\n"
             "## 2. Collected work\n\n"
             "- [ ] Did the thing\n- [ ] Commit: `\"selftest: night\"`\n\n"
             "**Test checkpoint:** `true`\n\n"
@@ -25679,8 +25736,29 @@ track: Z1
             True,
         )
         check(
-            "an accepted debt reads accepted, never collected, with no escalation",
-            "state accepted" in _ndl.get("D90-T01-S1-N11", "") and "OVERDUE" not in _ndl.get("D90-T01-S1-N11", "") and "last-log none" in _ndl.get("D90-T01-S1-N11", ""),
+            "an accepted debt reads accepted with its approver and expiry, never collected, with no escalation",
+            "state accepted" in _ndl.get("D90-T01-S1-N11", "") and "accepted-by operator expires 2026-10-01" in _ndl.get("D90-T01-S1-N11", "")
+            and "OVERDUE" not in _ndl.get("D90-T01-S1-N11", "") and "last-log none" in _ndl.get("D90-T01-S1-N11", ""),
+            True,
+        )
+        check(
+            "dates at the calendar's end stay informational instead of crashing",
+            "D90-T01-S1-N15" in _ndl,
+            True,
+        )
+        check(
+            "an acceptance without an owner accepts nothing and warns",
+            "state accepted" not in _ndl.get("D90-T01-S1-N16", "") and any("WARN D90-T01-S1-N16: Night-accepted line needs approver, owner" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "a future-dated acknowledgement holds nothing and warns",
+            "state acknowledged" not in _ndl.get("D90-T01-S1-N17", "") and any("WARN D90-T01-S1-N17: Night-ack line needs a real date on or before today" in ln for ln in _ndlines),
+            True,
+        )
+        check(
+            "an acknowledgement older than the latest red cannot hold the red-repeat escalation",
+            "state red-repeat" in _ndl.get("D90-T01-S1-N18", "") and "OVERDUE" in _ndl.get("D90-T01-S1-N18", ""),
             True,
         )
         check(
@@ -25719,11 +25797,20 @@ track: Z1
             "due 2026-09-22" in _ndl.get("D90-T01-S1-N2", "") and "due 2026-09-20" in _ndl.get("D90-T01-S1-N4", "") and "OVERDUE" not in _ndl.get("D90-T01-S1-N4", ""),
             True,
         )
-        _sum_debt = [ln for ln in _ndsumlines if re.search(r" D90-T01-S\d+-N\d+ ", ln) and not ln.lstrip().startswith("WARN")]
-        _json_lines = ["    " + d["line"] for d in _ndjson["debts"]]
+        # The three surfaces, warnings included: the text query's block,
+        # the summary's block, and the JSON report_block the morning report
+        # writes verbatim (tools/NightDebt.ps1 Format-NightDebtStatus).
+        _q_block = [ln for ln in _ndlines if ln.startswith("    ")]
+        _sum_start = next(i for i, ln in enumerate(_ndsumlines) if ln.startswith("night debt "))
+        _sum_block = []
+        for ln in _ndsumlines[_sum_start + 1:]:
+            if not ln.startswith("    "):
+                break
+            _sum_block.append(ln)
         check(
-            "the mixed-debt fixture reads identically across query night-debt, query summary, and the JSON the morning report quotes",
-            (_ndjcode == 0) and (_ndjson["schema"] == "night-debt/1") and (_nd_debt_lines == _sum_debt == _json_lines) and len(_sum_debt) >= 13,
+            "the mixed-debt fixture reads identically across query night-debt, query summary, and the report block the morning report writes",
+            (_ndjcode == 0) and (_ndjson["schema"] == "night-debt/1") and (_q_block == _sum_block == _ndjson["report_block"])
+            and len(_q_block) >= 17 and any(ln.lstrip().startswith("WARN") for ln in _ndjson["report_block"]),
             True,
         )
         check("a 5-night-old open debt validates clean", _vdcode, 0)
