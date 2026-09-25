@@ -79,13 +79,14 @@ track: W0
 |   36  |   §36   | Binding guard residuals | §28 |  [x]   |
 |   37  |   §37   | Population gate residuals | §29 |  [x]   |
 |   38  |   §38   | Nightly evidence second residuals | §30 |  [x]   |
-|   39  |   §39   | Acknowledgement second residuals | §31 |  [ ]   |
+|   39  |   §39   | Acknowledgement second residuals | §31 |  [x]   |
 |   40  |   §40   | Trend and telemetry second residuals | §32 |  [ ]   |
 |   41  |   §41   | Sibling sweep second residuals | §34 |  [ ]   |
 |   42  |   §42   | Night-debt governance residuals | §35 |  [ ]   |
 |   43  |   §43   | Binding guard second residuals | §36 |  [ ]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [ ]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [ ]   |
+|   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
 
 ---
 
@@ -1257,6 +1258,7 @@ Why this section exists: the §30 plan review returned 18 findings; 9 file here,
 Why this section exists: the §31 plan review returned 17 findings; 12 file here with the §31 sign-off's R3-F4, 3 on D00 T02 §33, and 2 are rejected with reasons in the §31 findings file. §31 carried acknowledgements past the signature (revisions, proof queue, SLA deadlines, disposition evidence, per-incident coverage, commit-graph governance, corrective actions, the helper); these settle the contracts it left implicit. -> SOURCE: plan-review-D00-T02-s31-2026-09-25-s39 D00-T02-S31-PR1 D00-T02-S31-PR2 D00-T02-S31-PR3 D00-T02-S31-PR5 D00-T02-S31-PR6 D00-T02-S31-PR7 D00-T02-S31-PR8 D00-T02-S31-PR9 D00-T02-S31-PR10 D00-T02-S31-PR11 D00-T02-S31-PR15 D00-T02-S31-PR17 D00-T02-S31-R3-F4 (key prose, disposition transitions, separate clocks, governance ties, revision monotonicity, repair lifecycle, evidence relevance, filing concurrency, helper authority, proof provenance, reciprocal links, effective receipts, and per-incident evidence from the §31 plan review and sign-off).
 
 - -> XREF: D00 T02 §31 -- filed from its plan review and sign-off; settles the residuals of the acknowledgement lifecycle it shipped.
+- -> XREF: D00 T02 §46 -- residual follow-ups filed from this section's plan review.
 
 - [x] §23's and §24's prose names one governing key contract (run identity plus the result checksum, never the notification version), each marked `**Corrected YYYY-MM-DD:**` pointing at §31. Done when: neither section's text names the notification version as part of the ack key. (D00-T02-S31-PR1.)
 - [x] Corrective actions have disposition-specific transitions: `fixed` with its commit, `expected` with its stamped proof, and `duplicate` of an acknowledged run open closed; only remediation still owed opens. Done when: a `duplicate` ack of an acknowledged run reads closed at signing. (D00-T02-S31-PR2.)
@@ -1274,6 +1276,13 @@ Why this section exists: the §31 plan review returned 17 findings; 12 file here
 - [x] Commit: `"workspace: settle the second acknowledgement residuals"`
 
 **Test checkpoint:** The key prose agrees, dispositions transition as defined, the two clocks stay apart, ties fail closed, revisions keep open actions, repairs map, evidence addresses its incidents, filing survives interruption, the helper's commits stay scoped, proof relabeling is refused, the XREFs validate, the helper reports effectiveness, and mixed covers validate. Cheaper substitute that fails: more frontmatter fields with no transitions behind them.
+
+> **Verified:** 2026-09-25 | §39 | the acknowledgement key names run identity and result checksum only (§23 and §24 corrected in place); corrective actions transition by disposition and keep every target any committed version named, with its own due, until evidence closes it; the response clock reads when each run was first named and prints LATE; same-commit and incomparable-branch acks tie unless one replaces the other; lower revisions written later are flagged; unreadable results keep a corruption record through repair; fixed commits must touch the failing test's file under tests/ or name it, filed sections must name the incident or test, and duplicate chains through covers cannot cycle; filings lock, commit interrupted work, and commit only from the Claude writer and alone; results record their queue at publication or first sight so a relabel stays operational; -Draft predicts the whole gate with every uncommitted ack and -Status reads effectiveness; cover lines carry their own evidence; every PowerShell suite green on 19e4693
+> **Review:** round 3 (Full), candidates `25b0b39` `0e53d74` `b5cb7de` `19e4693` -- GPT R1-R2 bulk needs-attention (R1-F1..F6, R2-F1..F4 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` needs-attention · `record` needs-attention (gpt-6-astra); below-bar R3-F1..F5 fixed in 19e4693 and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s39.md
+> **Plan review:** GPT medium, filed D00 T02 §46 (run 20260925-D00-T02-S39-codex-c06751119-r4)
+> **CRUD:** applicable | the classification ledger and the corruption record append or write atomically under ignored build/nightly; the overdue table commits alone under a filing lock; acks remain operator-committed files
+> **Duration:** 2026-09-25T13:36:52Z to 2026-09-25T14:19:03Z
+> **Reviewed-tip:** 19e469366fb2477b53ac182bfce72c8f2a91b8f4
 
 ## 40. Trend and Telemetry Second Residuals
 
@@ -1390,6 +1399,29 @@ Why this section exists: the §38 plan review returned 14 findings; 8 file here,
 - [ ] Commit: `"workspace: settle the third nightly evidence residuals"`
 
 **Test checkpoint:** The sweep spares live runs and junctions, captures obey capture-time policy, retention names the snapshot, interrupted writes rebuild, aliases carry their state, recovery counts qualifying runs, the commit promise holds, and one summary names degraded evidence. Cheaper substitute that fails: longer report prose.
+
+## 46. Acknowledgement Third Residuals
+
+Why this section exists: the §39 plan review returned 14 findings; 13 file here and 1 is rejected with its reason in the §39 findings file. §39 gave corrective actions disposition transitions and history, split the clocks, made ties fail closed, recorded corruption and classification, required evidence to address incidents, and made the helper predict the gate; these carry that through duplicate linkage, withdrawal, deadline inheritance, receipt time, revision validity, corruption collisions, verification evidence, provenance integrity, coverage overlap, filing crash points, and a status view. -> SOURCE: plan-review-D00-T02-s39-2026-09-25-s46 D00-T02-S39-PR1 D00-T02-S39-PR2 D00-T02-S39-PR3 D00-T02-S39-PR4 D00-T02-S39-PR5 D00-T02-S39-PR6 D00-T02-S39-PR7 D00-T02-S39-PR8 D00-T02-S39-PR9 D00-T02-S39-PR10 D00-T02-S39-PR11 D00-T02-S39-PR12 D00-T02-S39-PR14 (the acknowledgement third residuals from the §39 plan review).
+
+- -> XREF: D00 T02 §39 -- filed from its plan review; carries the acknowledgement lifecycle it hardened.
+
+- [ ] A `duplicate` closes only when the repeated run's own corrective actions for the matching incidents are closed, and the duplicate links to that surviving action. Done when: a duplicate of an acknowledged run whose action is open reads open, naming that action. (D00-T02-S39-PR1.)
+- [ ] A withdrawal, a disposition change, or a finding reassignment keeps outstanding remediation open until validated closure. Done when: a withdrawn ack's open action still reads open. (D00-T02-S39-PR2.)
+- [ ] Response deadlines inherit across result revisions, corruption repair, and severity changes, so an existing demand never receives a fresh window. Done when: a revised result keeps its original due. (D00-T02-S39-PR3.)
+- [ ] Lateness reads an authoritative receipt time (the committer date or the push time), never the declared `signed` or a rewritten author date. Done when: a backdated author date on a late commit still reads late. (D00-T02-S39-PR4.)
+- [ ] §31's newest-commit rule carries a Corrected note naming §39's ancestry, `replaces:`, and tie rules, and a resolution acknowledges every competing head. Done when: the note reads and a merge resolution fixture decides deterministically. (D00-T02-S39-PR5.)
+- [ ] An invalid higher revision never supersedes a valid lower one; the conflict surfaces while existing demands and actions stay. Done when: an invalid revision 2 keeps revision 1 current and flags the conflict. (D00-T02-S39-PR6.)
+- [ ] Corruption repair that collides with an existing run demand merges deadlines, acks, and actions without losing either history. Done when: a repaired file whose identity already has a demand keeps both histories. (D00-T02-S39-PR7.)
+- [ ] Unresolved corruption demands persist when the damaged file is deleted or renamed. Done when: deleting a damaged result keeps its demand until an ack names it. (D00-T02-S39-PR8.)
+- [ ] `fixed` requires verification evidence (a passing run of the failing test after the commit), and `filed` requires a section with an executable remediation item naming the incident. Done when: a fix without a later passing run of the test fails. (D00-T02-S39-PR9.)
+- [ ] Classification binds to durable publication evidence (the classification ledger's own checksum chain or a committed publication record), so editing the ledger is detected. Done when: an edited classification line reads tampered. (D00-T02-S39-PR10.)
+- [ ] Each incident has exactly one effective disposition; overlapping covers are refused, and invalid coverage rejects only the affected runs. Done when: two covers for one incident refuse. (D00-T02-S39-PR11.)
+- [ ] Filing recovery distinguishes an interrupted write from a lost commit receipt, and concurrent filings for different runs both land. Done when: a lost-receipt fixture commits once and two different-run filings both record. (D00-T02-S39-PR12.)
+- [ ] `-Status` prints the governing ack, pending incidents, owners, deadlines, and blocking evidence for a run. Done when: the status view names each for a partially acked run. (D00-T02-S39-PR14.)
+- [ ] Commit: `"workspace: settle the third acknowledgement residuals"`
+
+**Test checkpoint:** Duplicates link surviving actions, withdrawals keep remediation, deadlines inherit, receipt time governs lateness, §31's rule reads superseded, invalid revisions never win, corruption collisions merge, deleted damage stays demanded, fixes carry verification, provenance edits are detected, coverage overlaps refuse, filing crash points stay consistent, and status explains a run. Cheaper substitute that fails: more lines in the ack report.
 
 ## Verification
 
