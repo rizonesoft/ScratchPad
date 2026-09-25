@@ -1220,7 +1220,7 @@ if ($debtQueryError -ne '') {
     }
     if (($sumI.FailedCount -gt 0) -or ($interactiveLeaked.Count -gt 0)) {
       $stageNote = if ($sumI.FailedCount -gt 0) { 'findings staged below' } else { 'non-quarantine skips, no failures' }
-      $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); $stageNote; debt stays open"
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): collection red ($($sumI.Passed)/$($sumI.FailedCount)/$($sumI.Skipped.Count)); $stageNote; debt stays open; $(Format-RedTriageNote $debt.Owner $day)"
       # The red is recorded (D00 T02 §27 item 3): the first resets the
       # due window once, a second escalates as red-repeat.
       $redNote = Add-RedLine (Join-Path $Root $debt.File) $debt.Id $day (Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp)
@@ -1239,7 +1239,7 @@ if ($debtQueryError -ne '') {
         $debtEntries += $pair[0]
         if ($pair[1]) { $failed = $true }
       } elseif ($decision -eq 'red') {
-        $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open"
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open; $(Format-RedTriageNote $debt.Owner $day)"
         $redNote = Add-RedLine (Join-Path $Root $debt.File) $debt.Id $day (Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp)
         Write-Output "nightly: night-debt $($debt.Id): $redNote"
       } elseif ($decision -eq 'skipped-stage') {

@@ -35,6 +35,10 @@ Assert ($ra -eq '**Night-red:** 2026-09-18 D90-T01-S1-N2 (0 passed, 1 failed, 0 
 Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $ra) -eq 'appended red line') 'red-line-first-run-appends'
 Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $rb) -eq 'appended red line') 'red-line-second-run-same-day-appends'
 Assert ((Add-RedLine $todo 'D90-T01-S1-N2' '2026-09-18' $ra) -like 'skip: D90-T01-S1-N2 already carries a red line for 2026-09-18 run run-c') 'red-line-once-per-run'
+# The red entry names owner and next action (D00 T02 §35 R1-F4).
+$tn = Format-RedTriageNote 'alice' '2026-09-18'
+Assert ($tn -eq 'owner alice; next: file the staged finding, then append `; finding <ref>` to the 2026-09-18 Night-red line') 'red-entry-links-remediation' $tn
+Assert ((Format-RedTriageNote '' '2026-09-18') -like 'owner operator;*') 'red-entry-defaults-owner'
 
 # Parity with the live queries: every debt's JSON line equals the text
 # line `query night-debt` prints, and the reader fails loud on non-JSON.

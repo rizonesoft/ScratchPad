@@ -89,6 +89,14 @@ function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, 
   return "**Night-red:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log$runPart)"
 }
 
+function Format-RedTriageNote([string]$Owner, [string]$Day) {
+  # The red entry's remediation linkage (D00 T02 §35 R1-F4): who owns the
+  # repair and the next action, which ends with the finding reference
+  # recorded on tonight's Night-red line, so the red-repeat line quotes it.
+  $who = if ([string]::IsNullOrWhiteSpace($Owner)) { 'operator' } else { $Owner }
+  return "owner $who; next: file the staged finding, then append ``; finding <ref>`` to the $Day Night-red line"
+}
+
 function Add-RedLine([string]$TodoPath, [string]$DebtId, [string]$Date, [string]$Line) {
   # Appends a Night-red line after the id's owed line (and any lines
   # already following it for the id), once per id and run identity (once
