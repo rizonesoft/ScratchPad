@@ -1946,16 +1946,6 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   return $lines
 }
 
-function Test-RedAcknowledged([string[]]$RedDays, [string[]]$AckDays) {
-  # Unacked-RED check (D00 T02 §17 item 3): every RED day needs its
-  # ack file (docs/nightly-acks/ack-YYYY-MM-DD.md, beside the evidence
-  # dir so retention verify never reads sign-offs as manifests). Pure
-  # set difference; the run collects RED days from result files.
-  $un = @($RedDays | Where-Object { $AckDays -notcontains $_ } | Sort-Object -Unique)
-  if ($un.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Unacked = $un } }
-  return [pscustomobject]@{ Ok = $true; Unacked = @() }
-}
-
 function Test-AckFile([string]$Path, [string]$Day) {
   # Ack validity (D00 T02 §17 item 3): a sign-off names its owner plus
   # its day and carries substance (failures plus cause cannot fit in
@@ -1969,4 +1959,207 @@ function Test-AckFile([string]$Path, [string]$Day) {
   if ($text -notmatch [regex]::Escape($Day)) { return [pscustomobject]@{ Ok = $false; Error = 'ack names no day' } }
   if ($text.Length -lt 200) { return [pscustomobject]@{ Ok = $false; Error = 'ack too short to carry cause' } }
   return [pscustomobject]@{ Ok = $true; Error = '' }
+}
+
+# Acknowledgement v2 (D00 T02 §23): an ack binds to immutable run
+# identities plus their result checksums and incident ids, carries a
+# structured disposition, and counts only once committed, so git
+# history is its append-only integrity record. v1 day-keyed files
+# (Test-AckFile) stay valid only for runs on or before the cutover day.
+$script:AckV1Cutover = '2026-09-21'
+$script:AckDueDays = 3
+$script:AckDispositions = @('fixed', 'filed', 'quarantined', 'environment', 'expected', 'duplicate')
+
+function Get-FileSha256([string]$Path) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    return ([System.BitConverter]::ToString($sha.ComputeHash([System.IO.File]::ReadAllBytes($Path)))).Replace('-', '').ToLower()
+  } finally { $sha.Dispose() }
+}
+
+function Get-AckDemands($ResultFiles) {
+  # One demand per RED or cancelled run identity (D00 T02 §23 items 1
+  # and 4): retained copies, reruns, and re-emitted results of one run
+  # dedupe onto its identity, carrying every checksum seen for it (the
+  # checksum covers the schema version field, so the key is run,
+  # checksum, and version). $ResultFiles are paths; unreadable files
+  # are skipped (the result gate reds them elsewhere). Returns a
+  # hashtable identity -> Day, Shas, Incidents, Paths.
+  $demands = @{}
+  foreach ($p in @($ResultFiles)) {
+    if (-not (Test-Path $p -PathType Leaf)) { continue }
+    $r = $null
+    try { $r = Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json } catch { continue }
+    if ($null -eq $r) { continue }
+    if (@('red', 'cancelled') -notcontains "$($r.verdict)") { continue }
+    $id = "$($r.identity)"
+    if ($id -eq '') { $id = "$($r.stamp)" }
+    if ($id -eq '') { continue }
+    if (-not $demands.ContainsKey($id)) { $demands[$id] = [pscustomobject]@{ Id = $id; Day = "$($r.day)"; Shas = @(); Incidents = @(); Paths = @() } }
+    $d = $demands[$id]
+    $sha = Get-FileSha256 $p
+    if ($d.Shas -notcontains $sha) { $d.Shas += $sha }
+    $d.Paths += $p
+    foreach ($ln in @($r.incidents)) {
+      $m = [regex]::Match("$ln", '(INC-[0-9a-f]{8})')
+      if ($m.Success -and ($d.Incidents -notcontains $m.Groups[1].Value)) { $d.Incidents += $m.Groups[1].Value }
+    }
+  }
+  return $demands
+}
+
+function Read-AckFrontmatter([string]$Text) {
+  # The leading `---` block of an ack file: `key: value` lines, with
+  # `run:` repeatable. Returns Ok, Fields (last value per key), Runs
+  # (each `run:` value), and Error.
+  $lines = @("$Text" -split "`r?`n")
+  if (($lines.Count -lt 3) -or ($lines[0].Trim() -ne '---')) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Error = 'no frontmatter' } }
+  $fields = @{}
+  $runs = @()
+  $closed = $false
+  for ($i = 1; $i -lt $lines.Count; $i++) {
+    $ln = $lines[$i]
+    if ($ln.Trim() -eq '---') { $closed = $true; break }
+    if ($ln.Trim() -eq '') { continue }
+    $m = [regex]::Match($ln, '^([a-z][a-z0-9-]*):\s*(.*?)\s*$')
+    if (-not $m.Success) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Error = "frontmatter line malformed: $ln" } }
+    if ($m.Groups[1].Value -eq 'run') { $runs += $m.Groups[2].Value } else { $fields[$m.Groups[1].Value] = $m.Groups[2].Value }
+  }
+  if (-not $closed) { return [pscustomobject]@{ Ok = $false; Fields = @{}; Runs = @(); Error = 'frontmatter not closed' } }
+  return [pscustomobject]@{ Ok = $true; Fields = $fields; Runs = $runs; Error = '' }
+}
+
+function Test-AckV2([string]$Text, [hashtable]$Demands) {
+  # Validates one v2 ack against the live demands (D00 T02 §23 items 1
+  # and 2): every named run is a known RED identity whose recorded
+  # checksum matches a copy of its result, the incident list equals the
+  # run's incident ids, and the disposition is structured (enum,
+  # corrective owner, due date on or after signing, linked finding).
+  # Prose length proves nothing, so it is never checked. Returns Ok,
+  # Acked (run ids), Stale (runs whose result changed after the ack),
+  # and Errors.
+  $fm = Read-AckFrontmatter $Text
+  if (-not $fm.Ok) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = @(); Errors = @($fm.Error) } }
+  $f = $fm.Fields
+  $errs = @()
+  if ("$($f['ack-version'])" -ne '2') { $errs += "ack-version must be 2 (got '$($f['ack-version'])')" }
+  foreach ($req in @('owner', 'disposition', 'corrective-owner', 'due', 'finding', 'signed', 'incidents')) {
+    if (-not $f.ContainsKey($req) -or ("$($f[$req])" -eq '')) { $errs += "missing $req" }
+  }
+  $placeholder = '^(TBD|TODO|TBS|XXX|none|n/a|unknown|\?)$'
+  foreach ($who in @('owner', 'corrective-owner')) {
+    if ($f.ContainsKey($who) -and ("$($f[$who])" -match $placeholder)) { $errs += "$who is a placeholder" }
+  }
+  if ($f.ContainsKey('disposition') -and ($script:AckDispositions -notcontains "$($f['disposition'])")) { $errs += "disposition '$($f['disposition'])' not one of $($script:AckDispositions -join ', ')" }
+  $signed = [datetime]::MinValue
+  $due = [datetime]::MinValue
+  $signedOk = $f.ContainsKey('signed') -and [datetime]::TryParseExact("$($f['signed'])", 'yyyy-MM-dd', $null, 'None', [ref]$signed)
+  $dueOk = $f.ContainsKey('due') -and [datetime]::TryParseExact("$($f['due'])", 'yyyy-MM-dd', $null, 'None', [ref]$due)
+  if ($f.ContainsKey('signed') -and -not $signedOk) { $errs += "signed is not a YYYY-MM-DD date" }
+  if ($f.ContainsKey('due') -and -not $dueOk) { $errs += "due is not a YYYY-MM-DD date" }
+  if ($signedOk -and $dueOk -and ($due -lt $signed)) { $errs += 'due precedes signed' }
+  if ($f.ContainsKey('finding') -and ("$($f['finding'])" -notmatch '^(D\d{2} T\d{2} \u00A7\d+|INC-[0-9a-f]{8}|[0-9a-f]{7,40})$')) { $errs += "finding '$($f['finding'])' is not a section ref, incident id, or commit" }
+  if ($fm.Runs.Count -eq 0) { $errs += 'names no run' }
+  $acked = @()
+  $stale = @()
+  $named = @()
+  foreach ($rv in $fm.Runs) {
+    $m = [regex]::Match($rv, '^(\S+)\s+sha256:([0-9a-f]{64})$')
+    if (-not $m.Success) { $errs += "run line malformed: $rv"; continue }
+    $id = $m.Groups[1].Value
+    $sha = $m.Groups[2].Value
+    if ($named -contains $id) { $errs += "run named twice: $id"; continue }
+    $named += $id
+    if (-not $Demands.ContainsKey($id)) { $errs += "run $id is not a known RED"; continue }
+    $d = $Demands[$id]
+    if ($d.Shas -notcontains $sha) { $stale += $id; continue }
+    $acked += $id
+  }
+  if ($f.ContainsKey('incidents') -and ($errs.Count -eq 0)) {
+    $listed = @()
+    if ("$($f['incidents'])" -ne 'none') { $listed = @("$($f['incidents'])" -split '[,\s]+' | Where-Object { $_ -ne '' }) }
+    $want = @()
+    foreach ($id in $acked) { foreach ($i in @($Demands[$id].Incidents)) { if ($want -notcontains $i) { $want += $i } } }
+    $missing = @($want | Where-Object { $listed -notcontains $_ })
+    $extra = @($listed | Where-Object { $want -notcontains $_ })
+    if ($missing.Count -gt 0) { $errs += "incidents missing: $($missing -join ', ')" }
+    if ($extra.Count -gt 0) { $errs += "incidents not in the acked runs: $($extra -join ', ')" }
+  }
+  if ($errs.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $stale; Errors = $errs } }
+  return [pscustomobject]@{ Ok = $true; Acked = $acked; Stale = $stale; Errors = @() }
+}
+
+function Get-AckHistory([string]$Root, [string]$RelPath) {
+  # The append-only integrity record (D00 T02 §23 item 5): an ack
+  # counts only once committed with the working copy equal to HEAD, and
+  # its history is the git log of the file (trunk never amends or
+  # force-pushes, so the log only grows). Returns Committed, Dirty,
+  # Entries (commit, author, date), and Error.
+  $out = [pscustomobject]@{ Committed = $false; Dirty = $false; Entries = @(); Error = '' }
+  try {
+    $log = @(git -C $Root log --format='%H|%an|%aI' -- $RelPath 2>$null)
+    if ($LASTEXITCODE -ne 0) { $out.Error = 'git log failed'; return $out }
+    foreach ($l in $log) {
+      $p = "$l" -split '\|', 3
+      if ($p.Count -eq 3) { $out.Entries += [pscustomobject]@{ Commit = $p[0]; Author = $p[1]; Date = $p[2] } }
+    }
+    $out.Committed = ($out.Entries.Count -gt 0)
+    $st = @(git -C $Root status --porcelain -- $RelPath 2>$null)
+    $out.Dirty = ($st.Count -gt 0)
+  } catch { $out.Error = "git unavailable: $($_.Exception.Message)" }
+  return $out
+}
+
+function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Demands, [datetime]$Today) {
+  # The whole gate (D00 T02 §23): v2 acks (committed, clean, valid)
+  # plus v1 day files for runs on or before the cutover acknowledge
+  # demands; everything else stays unacked with its due date, and a
+  # past-due demand escalates and stages a finding stub. Returns Ok,
+  # Unacked (ids), Lines (report section), Staged (Filings stubs),
+  # Overdue (ids).
+  $acked = @{}
+  $lines = @()
+  $staged = @()
+  foreach ($file in @(Get-ChildItem $AckDir -Filter 'ack-*.md' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
+    $rel = ($file.FullName.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
+    $text = ''
+    try { $text = [System.IO.File]::ReadAllText($file.FullName) } catch { $lines += "- $($file.Name): unreadable (ignored)"; continue }
+    if ($file.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') {
+      $day = $Matches[1]
+      if ([string]::CompareOrdinal($day, $script:AckV1Cutover) -gt 0) { $lines += "- $($file.Name): v1 day file after the $($script:AckV1Cutover) cutover (ignored; write a v2 ack naming each run)"; continue }
+      if (-not (Test-AckFile $file.FullName $day).Ok) { $lines += "- $($file.Name): v1 ack invalid (ignored)"; continue }
+      $n = 0
+      foreach ($id in @($Demands.Keys)) { if ($Demands[$id].Day -eq $day) { $acked[$id] = "v1 $($file.Name)"; $n++ } }
+      $lines += "- $($file.Name): v1 legacy, acknowledges $n run(s) of $day"
+      continue
+    }
+    $hist = Get-AckHistory $Root $rel
+    if (-not $hist.Committed) { $lines += "- $($file.Name): uncommitted (ignored until committed: git history is the integrity record)"; continue }
+    if ($hist.Dirty) { $lines += "- $($file.Name): edited since its last commit (ignored until committed)"; continue }
+    $v = Test-AckV2 $text $Demands
+    $histText = (@($hist.Entries | ForEach-Object { "$($_.Commit.Substring(0, 7)) $($_.Author) $($_.Date)" }) -join '; ')
+    if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
+    foreach ($id in $v.Acked) { $acked[$id] = $file.Name }
+    $staleNote = if ($v.Stale.Count -gt 0) { "; STALE for $($v.Stale -join ', ') (result changed after the ack: re-ack with the new checksum)" } else { '' }
+    $lines += "- $($file.Name): acknowledges $($v.Acked -join ', ')$staleNote; history $histText"
+  }
+  $unacked = @()
+  $overdue = @()
+  foreach ($id in @($Demands.Keys | Sort-Object)) {
+    if ($acked.ContainsKey($id)) { continue }
+    $unacked += $id
+    $d = $Demands[$id]
+    $dayDate = [datetime]::MinValue
+    if (-not [datetime]::TryParseExact("$($d.Day)", 'yyyy-MM-dd', $null, 'None', [ref]$dayDate)) { $lines += "- UNACKED $id (day unreadable: escalate operator)"; $overdue += $id; continue }
+    $dueDate = $dayDate.AddDays($script:AckDueDays)
+    $late = ($Today.Date - $dueDate.Date).Days
+    if ($late -gt 0) {
+      $overdue += $id
+      $lines += "- OVERDUE ack: $id (RED $($d.Day), due $($dueDate.ToString('yyyy-MM-dd')), $late day(s) overdue): escalate operator"
+      $staged += "- STAGED ack-overdue $id : RED $($d.Day) unacknowledged $late day(s) past due; file under D00 T02 $([char]0xA7)9 triage or write docs/nightly-acks/ack-<name>.md naming it (incidents: $(if ($d.Incidents.Count -gt 0) { $d.Incidents -join ', ' } else { 'none' }))"
+    } else {
+      $lines += "- UNACKED $id (RED $($d.Day), due $($dueDate.ToString('yyyy-MM-dd')))"
+    }
+  }
+  return [pscustomobject]@{ Ok = ($unacked.Count -eq 0); Unacked = $unacked; Lines = $lines; Staged = $staged; Overdue = $overdue }
 }

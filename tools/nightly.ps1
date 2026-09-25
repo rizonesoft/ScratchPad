@@ -1373,14 +1373,22 @@ if (-not $selfCheck.Ok) {
   $report += "- Result invalid: $($selfCheck.Error) (failing closed)"
 }
 $exitCode = if ($failed) { 1 } else { 0 }
-$redDays = @()
-foreach ($rf in @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue)) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and (@('red', 'cancelled') -contains "$($ro.verdict)")) { $redDays += "$($ro.day)" } }
-foreach ($rf in @((Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue))) { $ro = Read-ResultFile $rf.FullName; if (($null -ne $ro) -and (@('red', 'cancelled') -contains "$($ro.verdict)")) { $redDays += "$($ro.day)" } }
-$ackDays = @(Get-ChildItem (Join-Path $Root 'docs/nightly-acks') -Filter 'ack-*.md' -ErrorAction SilentlyContinue | ForEach-Object { if (($_.BaseName -match '^ack-(\d{4}-\d{2}-\d{2})$') -and (Test-AckFile $_.FullName $Matches[1]).Ok) { $Matches[1] } })
-$ackCheck = Test-RedAcknowledged $redDays $ackDays
-$report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { ($ackCheck.Unacked -join ', ') })"
+# Acknowledgements (D00 T02 §23): one demand per RED run identity
+# (retained copies and reruns dedupe), acked by committed v2 files that
+# name the run plus its result checksum, its incident ids, and a
+# structured disposition; v1 day files cover runs through the cutover
+# only. Past-due demands escalate and stage a finding stub.
+$ackResultFiles = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$ackResultFiles += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+$ackDemands = Get-AckDemands $ackResultFiles
+$ackCheck = Test-Acknowledgements $Root (Join-Path $Root 'docs/nightly-acks') $ackDemands (Get-Date)
+$report += "- Unacked REDs: $(if ($ackCheck.Ok) { 'none' } else { "$($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue: $($ackCheck.Unacked -join ', ')" })"
+$ackSection = @('', '## Acknowledgements', '')
+if (@($ackCheck.Lines).Count -eq 0) { $ackSection += '(no RED runs and no ack files)' } else { $ackSection += $ackCheck.Lines }
+if (@($ackCheck.Staged).Count -gt 0) { $ackSection += @('', 'Staged filings (ack overdue):') + $ackCheck.Staged }
 $report += "- Result: morning-$stamp.result.json (v1 machine-readable)"
 $report += "- Exit: $exitCode"
+$report += $ackSection
 $reportPath = Join-Path $nightDir "morning-$day.md"
 Publish-NightlyReport $report ''
 if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
@@ -1395,7 +1403,7 @@ if ((-not $Smoke) -and (-not $simMode)) {
   try { $odLines = @($quar.Overdue | ForEach-Object { "$($_.Test) (due $($_.Due), $($_.Owner))" }) } catch { }
   if ($odLines.Count -eq 0) { try { $odLines = @($odNames) } catch { } }
   if (@($odLines).Count -gt 0) { $tLines += ("Overdue quarantine: " + ($odLines -join '; ')) }
-  if (-not $ackCheck.Ok) { $tLines += ("Unacked REDs: " + ($ackCheck.Unacked -join ', ')) }
+  if (-not $ackCheck.Ok) { $tLines += ("Unacked REDs: $($ackCheck.Unacked.Count) run(s), $($ackCheck.Overdue.Count) overdue (see Acknowledgements)") }
   $tLines += "Report: build/nightly/morning-$day.md"
   if ($failClosedNote -ne '') { $tLines += "Result invalid: $failClosedNote" }
   $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }

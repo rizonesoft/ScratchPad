@@ -704,9 +704,6 @@ Assert ($tj -like '*2026-09-21-023001: phases no timings; used unknown / left 12
 $taTrend = Format-TrendTable @($t1) @{ Overdue = @([pscustomobject]@{ Test = 'UI.Old'; Due = '2026-09-17' }); DueSoon = @() } ([datetime]'2026-09-21')
 Assert ((($taTrend -join "`n") -like '*Quarantine now: 1 overdue, oldest 4d: UI.Old, 0 due within 3 days*')) 'trend-oldest'
 
-# Test-RedAcknowledged: set difference.
-Assert ((Test-RedAcknowledged @('2026-09-20', '2026-09-21') @('2026-09-20', '2026-09-21')).Ok) 'ack-covered'
-Assert (@((Test-RedAcknowledged @('2026-09-20', '2026-09-21') @('2026-09-20')).Unacked) -join ',' -eq '2026-09-21') 'ack-uncovered'
 
 # Test-AckFile: owner plus day plus substance, never presence alone.
 $ackGood = '# RED acknowledgement: 2026-09-20' + "`n`n" + 'Owner: operator. Signed: 2026-09-21. Run A 545/1/3 with UI.DirtyPromptTests failing on a COM timeout; Interactive 24/3/1 with two PinnedTabs NotNull failures plus one SessionRestore diff. Class infrastructure on legacy gate prose. Follow-up: quarantine on recurrence.'
@@ -897,6 +894,96 @@ $capNotes2 = @(Protect-CaptureDir $capFx 'run-a')
 $script:CaptureMaxBytes = $capWas
 Assert ((-not (Test-Path (Join-Path $capFx 'run-a-failure.png'))) -and (@($capNotes2 | Where-Object { $_ -like '*size cap dropped run-a-failure.png*' }).Count -eq 1)) 'capture-over-cap-drops-screenshot' ($capNotes2 -join ' | ')
 
+
+# D00 T02 §23: acknowledgements bind to runs, dispositions structure,
+# deadlines escalate, demands dedupe, and git history is the record.
+$s23 = Join-Path $dir 's23'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $s23 'build\nightly\retained\copy')
+function New-RedResult([string]$Path, [string]$Identity, [string]$Day, [string[]]$Incidents, [string]$Verdict = 'red') {
+  $o = [pscustomobject]@{ version = 1; stamp = $Identity.Substring(0, 17); day = $Day; identity = $Identity; verdict = $Verdict; exit = 1; incidents = @($Incidents) }
+  (ConvertTo-Json $o -Depth 5) | Set-Content -Path $Path -Encoding UTF8
+}
+$runA1 = '2026-09-22-023001-pid100'
+$runA2 = '2026-09-22-120501-pid200'
+$runOld = '2026-09-20-023001-pid300'
+$nd = Join-Path $s23 'build\nightly'
+New-RedResult (Join-Path $nd "morning-$($runA1.Substring(0, 17)).result.json") $runA1 '2026-09-22' @('- INC-aaaa1111 `UI.A` x1 (Run A): boom')
+Copy-Item (Join-Path $nd "morning-$($runA1.Substring(0, 17)).result.json") (Join-Path $nd 'retained\copy\result.json')
+New-RedResult (Join-Path $nd "morning-$($runA2.Substring(0, 17)).result.json") $runA2 '2026-09-22' @()
+New-RedResult (Join-Path $nd "morning-$($runOld.Substring(0, 17)).result.json") $runOld '2026-09-20' @()
+New-RedResult (Join-Path $nd 'morning-2026-09-22-130000.result.json') '2026-09-22-130000-pid400' '2026-09-22' @() 'green'
+$resFiles = @(Get-ChildItem $nd -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName }) + @((Join-Path $nd 'retained\copy\result.json'))
+$dem = Get-AckDemands $resFiles
+Assert (($dem.Count -eq 3) -and ($dem.ContainsKey($runA1)) -and ($dem.ContainsKey($runA2)) -and (-not $dem.ContainsKey('2026-09-22-130000-pid400'))) 'ack-demand-per-red-run' ((@($dem.Keys) | Sort-Object) -join ',')
+Assert ((@($dem[$runA1].Shas).Count -eq 1) -and (@($dem[$runA1].Paths).Count -eq 2)) 'ack-rerun-copies-demand-once' "shas $(@($dem[$runA1].Shas).Count) paths $(@($dem[$runA1].Paths).Count)"
+Assert ((@($dem[$runA1].Incidents) -join ',') -eq 'INC-aaaa1111') 'ack-demand-carries-incidents'
+$shaA1 = $dem[$runA1].Shas[0]
+$shaA2 = $dem[$runA2].Shas[0]
+function New-Ack([string[]]$Runs, [hashtable]$Over = @{}) {
+  $sect = [string][char]0xA7
+  $f = [ordered]@{ 'ack-version' = '2'; owner = 'operator'; disposition = 'filed'; 'corrective-owner' = "D00 T02 ${sect}9"; due = '2026-09-30'; finding = "D00 T02 ${sect}29"; signed = '2026-09-25'; incidents = 'INC-aaaa1111' }
+  foreach ($k in $Over.Keys) { $f[$k] = $Over[$k] }
+  $lines = @('---')
+  foreach ($r in $Runs) { $lines += "run: $r" }
+  foreach ($k in $f.Keys) { if ($null -ne $f[$k]) { $lines += "${k}: $($f[$k])" } }
+  $lines += @('---', '', 'Why: the failing run was triaged and filed.')
+  return ($lines -join "`n")
+}
+$ackOne = New-Ack @("$runA1 sha256:$shaA1")
+$v1 = Test-AckV2 $ackOne $dem
+Assert ($v1.Ok -and ((@($v1.Acked) -join ',') -eq $runA1)) 'ack-v2-valid' ($v1.Errors -join '; ')
+$gate0 = @($dem.Keys | Where-Object { @($v1.Acked) -notcontains $_ })
+Assert ($gate0 -contains $runA2) 'ack-same-day-second-red-stays-unacked' ($gate0 -join ',')
+$prose = "Owner: operator. 2026-09-22 acknowledged. " + ('This run failed and the cause is known and understood by the operator. ' * 5)
+Assert ((Test-AckV2 $prose $dem).Errors -contains 'no frontmatter') 'ack-prose-without-disposition-fails'
+Assert (@((Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1") @{ disposition = $null }) $dem).Errors | Where-Object { $_ -eq 'missing disposition' }).Count -eq 1) 'ack-missing-disposition-fails'
+Assert (@((Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1") @{ disposition = 'looked-at-it' }) $dem).Errors | Where-Object { $_ -like "disposition 'looked-at-it' not one of*" }).Count -eq 1) 'ack-unknown-disposition-fails'
+Assert (@((Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1") @{ 'corrective-owner' = 'TBD' }) $dem).Errors | Where-Object { $_ -eq 'corrective-owner is a placeholder' }).Count -eq 1) 'ack-placeholder-owner-fails'
+Assert (@((Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1") @{ due = '2026-09-20' }) $dem).Errors | Where-Object { $_ -eq 'due precedes signed' }).Count -eq 1) 'ack-due-before-signed-fails'
+Assert (@((Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1") @{ finding = 'see chat' }) $dem).Errors | Where-Object { $_ -like "finding 'see chat'*" }).Count -eq 1) 'ack-unlinked-finding-fails'
+Assert (@((Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1") @{ incidents = 'none' }) $dem).Errors | Where-Object { $_ -eq 'incidents missing: INC-aaaa1111' }).Count -eq 1) 'ack-must-name-run-incidents'
+Assert (@((Test-AckV2 (New-Ack @("2026-09-22-999999-pid9 sha256:$shaA1")) $dem).Errors | Where-Object { $_ -like 'run * is not a known RED' }).Count -eq 1) 'ack-unknown-run-fails'
+$both = Test-AckV2 (New-Ack @("$runA1 sha256:$shaA1", "$runA2 sha256:$shaA2")) $dem
+Assert ($both.Ok -and (@($both.Acked).Count -eq 2)) 'ack-batch-names-each-run' ($both.Errors -join '; ')
+$stale = Test-AckV2 (New-Ack @("$runA1 sha256:$('0' * 64)")) $dem
+Assert ((@($stale.Stale) -join ',') -eq $runA1) 'ack-changed-result-reads-stale' ("stale $(@($stale.Stale) -join ',') errs $($stale.Errors -join '; ')")
+
+# The gate over a real git repo: committed acks count, uncommitted and
+# dirty ones do not, history quotes every edit, v1 day files stop at
+# the cutover, and past-due demands escalate with a staged filing.
+$repo = Join-Path $s23 'repo'
+$ackDir = Join-Path $repo 'docs\nightly-acks'
+$null = New-Item -ItemType Directory -Force -Path $ackDir
+& git -C $repo init -q 2>$null
+& git -C $repo config user.name 'Fixture Operator'
+& git -C $repo config user.email 'fixture@example.invalid'
+& git -C $repo config commit.gpgsign false
+& git -C $repo config core.autocrlf false
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-a.md'), $ackOne)
+$g0 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert ((@($g0.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: uncommitted*' }).Count -eq 1) -and ($g0.Unacked -contains $runA1)) 'ack-uncommitted-ignored' ($g0.Lines -join ' | ')
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'ack a' 2>$null
+$g1 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (($g1.Unacked -notcontains $runA1) -and ($g1.Unacked -contains $runA2) -and ($g1.Unacked -contains $runOld)) 'ack-committed-counts' (($g1.Unacked -join ',') + ' || ' + ($g1.Lines -join ' | '))
+$edited = $ackOne.Replace('Why: the failing run was triaged and filed.', 'Why: triaged, filed, and the fix is queued.')
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22-a.md'), $edited)
+$g2 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert ((@($g2.Lines | Where-Object { $_ -like '*edited since its last commit*' }).Count -eq 1) -and ($g2.Unacked -contains $runA1)) 'ack-dirty-edit-ignored' ($g2.Lines -join ' | ')
+& git -C $repo commit -q -am 'ack a edited' 2>$null
+$g3 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+$hl = @($g3.Lines | Where-Object { $_ -like '*ack-2026-09-22-a.md: acknowledges*' })
+Assert (($hl.Count -eq 1) -and (([regex]::Matches($hl[0], 'Fixture Operator')).Count -eq 2)) 'ack-edit-history-quoted' ($g3.Lines -join ' | ')
+$v1Text = 'Owner: operator. Signed: 2026-09-20. ' + ('The 2026-09-20 run failed on an infrastructure fault that was diagnosed and fixed. ' * 3)
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-20.md'), $v1Text)
+[System.IO.File]::WriteAllText((Join-Path $ackDir 'ack-2026-09-22.md'), $v1Text.Replace('2026-09-20', '2026-09-22'))
+& git -C $repo add -A 2>$null; & git -C $repo commit -q -m 'v1 files' 2>$null
+$g4 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-24')
+Assert (($g4.Unacked -notcontains $runOld) -and (@($g4.Lines | Where-Object { $_ -like '*ack-2026-09-20.md: v1 legacy, acknowledges 1 run(s)*' }).Count -eq 1)) 'ack-v1-before-cutover-counts' ($g4.Lines -join ' | ')
+Assert (($g4.Unacked -contains $runA2) -and (@($g4.Lines | Where-Object { $_ -like '*ack-2026-09-22.md: v1 day file after the 2026-09-21 cutover*' }).Count -eq 1)) 'ack-v1-after-cutover-ignored' ($g4.Lines -join ' | ')
+Assert ((@($g4.Overdue).Count -eq 0) -and (@($g4.Lines | Where-Object { $_ -like "*UNACKED $runA2 (RED 2026-09-22, due 2026-09-25)*" }).Count -eq 1)) 'ack-due-date-shown' ($g4.Lines -join ' | ')
+$g5 = Test-Acknowledgements $repo $ackDir $dem (Get-Date '2026-09-28')
+Assert ((($g5.Overdue) -contains $runA2) -and (@($g5.Lines | Where-Object { $_ -like "*OVERDUE ack: $runA2 (RED 2026-09-22, due 2026-09-25, 3 day(s) overdue): escalate operator*" }).Count -eq 1)) 'ack-past-deadline-escalates' ($g5.Lines -join ' | ')
+Assert (@($g5.Staged | Where-Object { $_ -like "*STAGED ack-overdue $runA2 *" }).Count -eq 1) 'ack-past-deadline-stages-finding' ($g5.Staged -join ' | ')
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyParse.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyParse.Tests: all green'
