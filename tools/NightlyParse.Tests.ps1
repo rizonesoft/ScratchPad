@@ -720,8 +720,12 @@ $fullGated = Test-RetainableCaptures $dumpSrc
 Remove-Item (Join-Path $dumpCap $script:DumpDisclosureMarker)
 [System.BitConverter]::GetBytes([UInt64]0).CopyTo($hdr, 24)
 [System.IO.File]::WriteAllBytes((Join-Path $dumpCap '4242.dmp'), $hdr)
-$minimalOk = Test-RetainableCaptures $dumpSrc
-Assert (($fullRefused.Ok -eq $false) -and (($fullRefused.Reasons -join '') -like '*4242.dmp is a full-memory dump; retain needs DUMP-DISCLOSURE-APPROVED.txt*') -and ($fullGated.Ok -eq $true) -and ($minimalOk.Ok -eq $true) -and ((Get-DumpMemoryKind (Join-Path $s38 'no.dmp')) -eq 'unreadable')) 's38-full-heap-dump-retains-only-behind-its-gate' ($fullRefused.Reasons -join '|')
+$minimalRefused = Test-RetainableCaptures $dumpSrc
+[System.IO.File]::WriteAllBytes((Join-Path $dumpCap 'interactive-failure-1.png'), [byte[]](137, 80, 78, 71))
+$pngRefused = Test-RetainableCaptures $dumpSrc
+'approved' | Set-Content -Path (Join-Path $dumpCap $script:DumpDisclosureMarker) -Encoding UTF8
+$allGated = Test-RetainableCaptures $dumpSrc
+Assert (($fullRefused.Ok -eq $false) -and (($fullRefused.Reasons -join '') -like '*4242.dmp is a full-memory dump; retain needs CAPTURE-DISCLOSURE-APPROVED.txt*') -and ($fullGated.Ok -eq $true) -and ($minimalRefused.Ok -eq $false) -and (($pngRefused.Reasons -join '') -like '*interactive-failure-1.png is a screenshot; retain needs*') -and ($allGated.Ok -eq $true) -and ((Get-DumpMemoryKind (Join-Path $s38 'no.dmp')) -eq 'unreadable')) 's38-full-heap-dump-retains-only-behind-its-gate' ($fullRefused.Reasons -join '|')
 # Item 3: an oversized dump is refused at capture time and the marker
 # names it (the real JobControl, capped at 1 KB).
 $jc = Join-Path $PSScriptRoot '..\Bin\JobControl\Debug\JobControl.exe'
@@ -729,7 +733,12 @@ if (Test-Path $jc) {
   $jDump = Join-Path $s38 'dumps'
   $jOut = & $jc 'run' '--job' "Global\s38-fixture-$PID" '--out' (Join-Path $s38 'jc.log') '--timeout' '2' '--dump' $jDump '--dump-max' '1024' '--' (Join-Path $PSHOME 'powershell.exe') '-NoProfile' '-Command' 'Start-Sleep -Seconds 30' 2>&1
   $refusedText = if (Test-Path (Join-Path $jDump 'CAPTURE-REFUSED.txt')) { Get-Content (Join-Path $jDump 'CAPTURE-REFUSED.txt') -Raw } else { '' }
-  Assert (($refusedText -match '\d+\.dmp refused: \d+ bytes over the 1024-byte cap') -and (@(Get-ChildItem $jDump -Filter '*.dmp' -ErrorAction SilentlyContinue).Count -eq 0) -and ("$jOut" -match 'dumped=0')) 's38-oversized-dump-refused-at-capture' ("$refusedText | $jOut")
+  Assert (($refusedText -match '\d+\.dmp refused: stopped at the 1024-byte cap during capture') -and (@(Get-ChildItem $jDump -Filter '*.dmp' -ErrorAction SilentlyContinue).Count -eq 0) -and ("$jOut" -match 'dumped=0')) 's38-oversized-dump-refused-at-capture' ("$refusedText | $jOut")
+  # R1-F1: under a cap it fits, the streamed dump is a valid minidump.
+  $jDump2 = Join-Path $s38 'dumps-ok'
+  $null = & $jc 'run' '--job' "Global\s38-fixture2-$PID" '--out' (Join-Path $s38 'jc2.log') '--timeout' '2' '--dump' $jDump2 '--dump-max' '104857600' '--' (Join-Path $PSHOME 'powershell.exe') '-NoProfile' '-Command' 'Start-Sleep -Seconds 30' 2>&1
+  $okDumps = @(Get-ChildItem $jDump2 -Filter '*.dmp' -ErrorAction SilentlyContinue)
+  Assert (($okDumps.Count -ge 1) -and ((Get-DumpMemoryKind $okDumps[0].FullName) -eq 'minimal') -and (-not (Test-Path (Join-Path $jDump2 'CAPTURE-REFUSED.txt')))) 's38-streamed-dump-under-cap-is-valid' "$($okDumps.Count) $(if ($okDumps.Count) { Get-DumpMemoryKind $okDumps[0].FullName })"
 } else { Assert $false 's38-oversized-dump-refused-at-capture' "JobControl missing at $jc (build tools/JobControl first)" }
 # Item 4: with the ledger and every result gone, the initialization
 # record reds; a fresh reset lets a new ledger start.
@@ -766,11 +775,13 @@ $alRows = @(
   [pscustomobject]@{ stamp = '2026-09-27-023001'; incidents = @('- INC-0000000c `UI.S.Split` x1 (interactive): Assert.True() Failure') }
 )
 $alRep = Get-IncidentAliasReport $alRows
-Assert (($alRep.Aliases['INC-00000005'] -eq 'INC-0000000e') -and (-not $alRep.Aliases.ContainsKey('INC-00000001')) -and (($alRep.Split['INC-00000001'] -join ',') -eq 'INC-0000000a,INC-0000000c') -and (($alRep.Merged['INC-0000000b'] -join ',') -eq 'INC-00000002,INC-00000003') -and (($alRep.Unmapped -join ',') -eq 'INC-00000004')) 's38-alias-split-merge-unmapped-defined' ("split=$($alRep.Split.Keys -join ',') merged=$($alRep.Merged.Keys -join ',') unmapped=$($alRep.Unmapped -join ',')")
+Assert (($alRep.Aliases['INC-00000005'] -eq 'INC-0000000e') -and (-not $alRep.Aliases.ContainsKey('INC-00000001')) -and (-not $alRep.Aliases.ContainsKey('INC-00000002')) -and (-not $alRep.Aliases.ContainsKey('INC-00000003')) -and (($alRep.Split['INC-00000001'] -join ',') -eq 'INC-0000000a,INC-0000000c') -and (($alRep.Merged['INC-0000000b'] -join ',') -eq 'INC-00000002,INC-00000003') -and (($alRep.Unmapped -join ',') -eq 'INC-00000004')) 's38-alias-split-merge-unmapped-defined' ("split=$($alRep.Split.Keys -join ',') merged=$($alRep.Merged.Keys -join ',') unmapped=$($alRep.Unmapped -join ',')")
 # Item 7: the lifecycle block's consumer contract.
 $lbAbsent = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-20-023001' })
-$lbLegacy = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a' }) })
+$lbLegacy = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a'; test = 'UI.T'; phase = 'run-a'; state = 'open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('s'); firstSeen = 's'; passStreak = 0; contract = 'v2' }) })
 $lbFuture = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidentLifecycleVersion = 2; incidentLifecycle = @() })
+$lbInvalid = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidentLifecycleVersion = 1; incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a'; test = 'UI.T'; phase = 'run-a'; state = 'half-open'; owner = 'operator'; occurrences = 1; occurrenceStamps = @('s'); firstSeen = 's'; passStreak = 0; contract = 'v2' }) })
+Assert (($lbInvalid.State -eq 'invalid') -and ($lbInvalid.Error -like '*state half-open*')) 's38-lifecycle-rows-validate-on-read' $lbInvalid.Error
 Assert (($lbAbsent.State -eq 'absent') -and ($lbLegacy.State -eq 'ok') -and ($lbLegacy.Version -eq 1) -and (@($lbLegacy.Rows).Count -eq 1) -and ($lbFuture.State -eq 'unsupported') -and ($lbFuture.Error -like '*version 2 is newer than this reader (1)*')) 's38-lifecycle-consumer-contract' "$($lbAbsent.State) $($lbLegacy.State) $($lbFuture.State)"
 [pscustomobject]@{ version = 1; stamp = '2026-09-30-023001'; day = '2026-09-30'; identity = '2026-09-30-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycleVersion = 2; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $rtDir 'morning-2026-09-30-023001.result.json') -Encoding UTF8
 $futSnap = Get-LatestLifecycleSnapshot @(Get-ChildItem $rtDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName }) '2026-09-25-000000'

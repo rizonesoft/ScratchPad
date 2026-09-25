@@ -183,17 +183,26 @@ static int Run(string[] rest)
                                 continue;
                             }
 
-                            if (DumpPid((int)frozen, file))
+                            // The cap binds during the write (R1-F1): the dump
+                            // streams through the IO callback, which aborts the
+                            // moment the next block would pass the cap, so the
+                            // disk never holds more than the cap.
+                            switch (DumpPidCapped((int)frozen, file, dumpMax))
                             {
-                                long written = new FileInfo(file).Length;
-                                if (written > dumpMax)
-                                {
+                                case DumpOutcome.Written:
+                                    dumped++;
+                                    break;
+                                case DumpOutcome.OverCap:
                                     File.Delete(file);
-                                    RefuseDump(dumpDir, $"{frozen}.dmp refused: {written} bytes over the {dumpMax}-byte cap");
-                                    continue;
-                                }
+                                    RefuseDump(dumpDir, $"{frozen}.dmp refused: stopped at the {dumpMax}-byte cap during capture");
+                                    break;
+                                default:
+                                    if (File.Exists(file))
+                                    {
+                                        File.Delete(file);
+                                    }
 
-                                dumped++;
+                                    break;
                             }
                         }
                     }
@@ -319,42 +328,89 @@ static string? DumpReservation(string dumpDir, long dumpMax)
 static void RefuseDump(string dumpDir, string line) =>
     File.AppendAllText(Path.Combine(dumpDir, "CAPTURE-REFUSED.txt"), line + Environment.NewLine);
 
-static bool DumpPid(int pid, string log)
+static bool DumpPid(int pid, string log) => DumpPidCapped(pid, log, long.MaxValue) == DumpOutcome.Written;
+
+// Writes a MiniDumpNormal of pid to log, never more than maxBytes on
+// disk: with a finite cap the dump streams through the IO callback
+// (IoStartCallback answers S_FALSE, so dbghelp hands every block to
+// IoWriteAllCallback), which writes each block itself and fails the
+// write, aborting the dump, when a block would end past the cap.
+static DumpOutcome DumpPidCapped(int pid, string log, long maxBytes)
 {
     nint hProcess = Native.OpenProcess(Native.PROCESS_QUERY_INFORMATION | Native.PROCESS_VM_READ, false, (uint)pid);
     if (hProcess == nint.Zero)
     {
-        return false;
+        return DumpOutcome.Failed;
     }
 
     try
     {
-        var noInherit = new Native.SECURITY_ATTRIBUTES
+        using var fs = new FileStream(log, FileMode.Create, FileAccess.Write, FileShare.None);
+        nint hFile = fs.SafeFileHandle.DangerousGetHandle();
+        if (maxBytes == long.MaxValue)
         {
-            nLength = Marshal.SizeOf<Native.SECURITY_ATTRIBUTES>(),
-            lpSecurityDescriptor = nint.Zero,
-            bInheritHandle = false,
-        };
-        nint hFile = Native.CreateFile(log, Native.GENERIC_WRITE, 0, ref noInherit, Native.CREATE_ALWAYS, 0, nint.Zero);
-        if (hFile == Native.INVALID_HANDLE_VALUE)
-        {
-            return false;
+            return Native.MiniDumpWriteDump(hProcess, (uint)pid, hFile, 0, nint.Zero, nint.Zero, nint.Zero) ? DumpOutcome.Written : DumpOutcome.Failed;
         }
 
-        try
+        bool overCap = false;
+        // dbghelp's callback structures are 4-byte packed (pshpack4):
+        // ProcessId at 0, ProcessHandle at 4, CallbackType after the
+        // handle, the union right after it; inside MINIDUMP_IO_CALLBACK the
+        // handle, the ULONG64 offset, the buffer, then the byte count.
+        int typeOffset = 4 + nint.Size;
+        int unionOffset = typeOffset + 4;
+        Native.MiniDumpCallback callback = (_, input, output) =>
         {
-            return Native.MiniDumpWriteDump(hProcess, (uint)pid, hFile, 0, nint.Zero, nint.Zero, nint.Zero);
-        }
-        finally
-        {
-            _ = Native.CloseHandle(hFile);
-        }
+            int type = Marshal.ReadInt32(input, typeOffset);
+            switch (type)
+            {
+                case Native.IoStartCallback:
+                    Marshal.WriteInt32(output, 0, Native.S_FALSE);
+                    return true;
+                case Native.IoWriteAllCallback:
+                    long offset = Marshal.ReadInt64(input, unionOffset + nint.Size);
+                    nint buffer = Marshal.ReadIntPtr(input, unionOffset + nint.Size + 8);
+                    int bytes = Marshal.ReadInt32(input, unionOffset + nint.Size + 8 + nint.Size);
+                    if (offset + bytes > maxBytes)
+                    {
+                        overCap = true;
+                        Marshal.WriteInt32(output, 0, Native.E_DISK_FULL);
+                        return true;
+                    }
+
+                    var block = new byte[bytes];
+                    Marshal.Copy(buffer, block, 0, bytes);
+                    fs.Position = offset;
+                    fs.Write(block, 0, bytes);
+                    Marshal.WriteInt32(output, 0, 0);
+                    return true;
+                case Native.IoFinishCallback:
+                    fs.Flush();
+                    Marshal.WriteInt32(output, 0, 0);
+                    return true;
+                default:
+                    return true;
+            }
+        };
+        var info = new Native.MINIDUMP_CALLBACK_INFORMATION { CallbackRoutine = Marshal.GetFunctionPointerForDelegate(callback), CallbackParam = nint.Zero };
+        bool ok = Native.MiniDumpWriteDump(hProcess, (uint)pid, hFile, 0, nint.Zero, nint.Zero, ref info);
+        GC.KeepAlive(callback);
+        return overCap ? DumpOutcome.OverCap : ok ? DumpOutcome.Written : DumpOutcome.Failed;
+    }
+    catch (IOException)
+    {
+        return DumpOutcome.Failed;
+    }
+    catch (UnauthorizedAccessException)
+    {
+        return DumpOutcome.Failed;
     }
     finally
     {
         _ = Native.CloseHandle(hProcess);
     }
 }
+
 
 static long[] JobPids(nint hJob)
 {
@@ -555,4 +611,35 @@ internal static class Native
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool MiniDumpWriteDump(nint hProcess, uint pid, nint hFile, uint dumpType, nint expParam, nint userStream, nint callback);
+
+    [DllImport("dbghelp.dll", SetLastError = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool MiniDumpWriteDump(nint hProcess, uint pid, nint hFile, uint dumpType, nint expParam, nint userStream, ref MINIDUMP_CALLBACK_INFORMATION callback);
+
+    // MINIDUMP_CALLBACK_TYPE values for the IO callbacks and their statuses.
+    internal const int IoStartCallback = 11;
+    internal const int IoWriteAllCallback = 12;
+    internal const int IoFinishCallback = 13;
+    internal const int S_FALSE = 1;
+    internal const int E_DISK_FULL = unchecked((int)0x80070070);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal delegate bool MiniDumpCallback(nint param, nint input, nint output);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MINIDUMP_CALLBACK_INFORMATION
+    {
+        public nint CallbackRoutine;
+        public nint CallbackParam;
+    }
+}
+
+// DumpPid's result (D00 T02 section 38 R1-F1).
+internal enum DumpOutcome
+{
+    Written,
+    OverCap,
+    Failed,
 }

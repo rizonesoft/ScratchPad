@@ -468,19 +468,25 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
     Add-Type -AssemblyName System.Drawing
     $ownedPids = @{}
     try { $ownedPids = Get-DescendantPids @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; ParentProcessId = [int]$_.ParentProcessId; Created = $_.CreationDate } }) $PID } catch { $ownedPids = @{} }
-    $wins = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.Id; Name = $_.ProcessName; Rect = (Get-WindowRect $_.MainWindowHandle) } })
+    $wins = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.Id; Name = $_.ProcessName; Handle = $_.MainWindowHandle; Rect = (Get-WindowRect $_.MainWindowHandle) } })
     $rects = @(Get-OwnedWindowRects $wins $ownedPids)
     if ($rects.Count -eq 0) { $notes += "- $Leg : no screenshot (no app-owned window was open)" }
     $n = 0
     foreach ($r in $rects) {
       $n++
       $shot = Join-Path $CaptureDir "$Leg-failure-$n.png"
+      # The window renders its own content (PrintWindow with
+      # PW_RENDERFULLCONTENT, R1-F2), so a window covering it on screen
+      # contributes no pixels; screen pixels are never copied.
       $bmp = New-Object System.Drawing.Bitmap $r.Width, $r.Height
       try {
         $g = [System.Drawing.Graphics]::FromImage($bmp)
-        try { $g.CopyFromScreen($r.X, $r.Y, 0, 0, (New-Object System.Drawing.Size $r.Width, $r.Height)) } finally { $g.Dispose() }
-        $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
-        $notes += "- $Leg : screenshot $Leg-failure-$n.png (pid $($r.ProcessId) window only)"
+        $rendered = $false
+        try { $hdc = $g.GetHdc(); try { $rendered = [NightlyWin32Rect]::PrintWindow($r.Handle, $hdc, 2) } finally { $g.ReleaseHdc($hdc) } } finally { $g.Dispose() }
+        if ($rendered) {
+          $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
+          $notes += "- $Leg : screenshot $Leg-failure-$n.png (pid $($r.ProcessId) window content only)"
+        } else { $notes += "- $Leg : screenshot of pid $($r.ProcessId) failed (PrintWindow refused); none kept" }
       } finally { $bmp.Dispose() }
     }
   } catch { $notes += "- $Leg : screenshot failed: $($_.Exception.Message)" }
@@ -555,7 +561,7 @@ $script:RunCaptureMaxBytes = 200MB
 # attempted only while the disk keeps the cap plus the markers free.
 $script:CaptureFileMaxBytes = 100MB
 $script:CaptureRefusedMarker = 'CAPTURE-REFUSED.txt'
-$script:DumpDisclosureMarker = 'DUMP-DISCLOSURE-APPROVED.txt'
+$script:DumpDisclosureMarker = 'CAPTURE-DISCLOSURE-APPROVED.txt'
 # Ledger initialization record (section 38 item 4).
 $script:LedgerRecordPath = 'docs/incident-ledger.md'
 # The lifecycle block's consumer contract version (section 38 item 7).
@@ -610,7 +616,7 @@ function Get-DescendantPids($Processes, [int]$RootPid) {
 
 function Get-WindowRect([IntPtr]$Handle) {
   if (-not ('NightlyWin32Rect' -as [type])) {
-    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class NightlyWin32Rect { [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }'
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class NightlyWin32Rect { [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr h, IntPtr hdc, uint flags); }'
   }
   $r = New-Object NightlyWin32Rect+RECT
   if (-not [NightlyWin32Rect]::GetWindowRect($Handle, [ref]$r)) { return $null }
@@ -623,7 +629,7 @@ function Get-OwnedWindowRects($Windows, [hashtable]$OwnedPids) {
   # with a real area. $Windows entries carry ProcessId, Name, Rect.
   return @(@($Windows) | Where-Object {
     ($null -ne $_) -and ($null -ne $_.Rect) -and $OwnedPids.ContainsKey([int]$_.ProcessId) -and ($_.Name -eq 'ScratchPad') -and ($_.Rect.Width -gt 0) -and ($_.Rect.Height -gt 0)
-  } | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; X = $_.Rect.X; Y = $_.Rect.Y; Width = $_.Rect.Width; Height = $_.Rect.Height } })
+  } | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; Handle = $_.Handle; X = $_.Rect.X; Y = $_.Rect.Y; Width = $_.Rect.Width; Height = $_.Rect.Height } })
 }
 
 function Get-DumpMemoryKind([string]$Path) {
@@ -661,13 +667,19 @@ function Test-RetainableCaptures([string]$SourceDir) {
   $reasons = @()
   foreach ($d in @(Get-ChildItem -Path $SourceDir -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
     if (Test-Path (Join-Path $d.FullName $script:CaptureFailMarker)) { $reasons += "$($d.Name)/$($script:CaptureFailMarker) present (an unscanned capture was kept)" }
-    # Dumps (section 38 item 2): a full-memory dump holds the whole heap
-    # (document text, tokens), so it retains only behind an explicit
-    # disclosure marker; an unreadable dump header refuses too.
-    foreach ($dmp in @(Get-ChildItem -Path $d.FullName -File -Recurse -Filter '*.dmp' -ErrorAction SilentlyContinue)) {
-      $kind = Get-DumpMemoryKind $dmp.FullName
-      if (($kind -eq 'full') -and (-not (Test-Path (Join-Path $d.FullName $script:DumpDisclosureMarker)))) { $reasons += "$($d.Name)/$($dmp.Name) is a full-memory dump; retain needs $($script:DumpDisclosureMarker) beside it" }
-      elseif ($kind -eq 'unreadable') { $reasons += "$($d.Name)/$($dmp.Name) has an unreadable dump header" }
+    # Binary captures (section 38 item 2, R1-F2): screenshots and dumps
+    # cannot be secret-scanned, so every one retains only behind the
+    # explicit disclosure marker in its capture directory; a full-memory
+    # dump or an unreadable dump header is named as such.
+    $gated = Test-Path (Join-Path $d.FullName $script:DumpDisclosureMarker)
+    foreach ($bin in @(Get-ChildItem -Path $d.FullName -File -Recurse -ErrorAction SilentlyContinue | Where-Object { @('.png', '.dmp') -contains $_.Extension.ToLower() })) {
+      $what = 'a screenshot'
+      if ($bin.Extension -ieq '.dmp') {
+        $kind = Get-DumpMemoryKind $bin.FullName
+        if ($kind -eq 'unreadable') { $reasons += "$($d.Name)/$($bin.Name) has an unreadable dump header"; continue }
+        $what = $(if ($kind -eq 'full') { 'a full-memory dump' } else { 'a minidump' })
+      }
+      if (-not $gated) { $reasons += "$($d.Name)/$($bin.Name) is $what; retain needs $($script:DumpDisclosureMarker) beside it" }
     }
     $stage = Join-Path $d.FullName $script:CaptureStagingDir
     if ((Test-Path $stage) -and (@(Get-ChildItem -LiteralPath $stage -Recurse -File -Force -ErrorAction SilentlyContinue).Count -gt 0)) { $reasons += "$($d.Name)/$($script:CaptureStagingDir) holds unscanned staged captures" }
@@ -1891,7 +1903,38 @@ function Read-LifecycleBlock($Result) {
     $v = [int]$Result.incidentLifecycleVersion
   }
   if ($v -gt $script:LifecycleContractVersion) { return [pscustomobject]@{ State = 'unsupported'; Version = $v; Rows = @(); Error = "incidentLifecycleVersion $v is newer than this reader ($($script:LifecycleContractVersion))" } }
+  # Rows validate against the contract's types, enums, and invariants
+  # (R1-F4): the same checks the result validator runs.
+  $rowErr = Test-LifecycleRows @($Result.incidentLifecycle)
+  if ($rowErr -ne '') { return [pscustomobject]@{ State = 'invalid'; Version = $v; Rows = @(); Error = $rowErr } }
   return [pscustomobject]@{ State = 'ok'; Version = $v; Rows = @($Result.incidentLifecycle | Where-Object { $null -ne $_ }); Error = '' }
+}
+
+function Test-LifecycleRows($Rows) {
+  # The lifecycle row contract (section 38 item 7): returns '' when every
+  # row holds, else the first violation. Shared by Read-LifecycleBlock and
+  # Test-ResultFile, so a consumer and the validator never disagree.
+  $lifeIds = @{}
+  foreach ($row in @($Rows)) {
+    if ($null -eq $row) { return 'result incidentLifecycle has a null row' }
+    if ($lifeIds.ContainsKey("$($row.id)")) { return "result incidentLifecycle duplicate id $($row.id)" }
+    $lifeIds["$($row.id)"] = $true
+    $names = @($row.PSObject.Properties.Name)
+    foreach ($f in @('id', 'test', 'phase', 'state', 'owner', 'occurrences', 'firstSeen', 'passStreak', 'contract')) {
+      if (($names -notcontains $f) -or ("$($row.$f)" -eq '')) { return "result incidentLifecycle row $($row.id) missing $f" }
+    }
+    if ("$($row.id)" -notmatch '^INC-[0-9a-f]{8}$') { return "result incidentLifecycle id malformed: $($row.id)" }
+    if (@('open', 'closed') -notcontains "$($row.state)") { return "result incidentLifecycle $($row.id) state $($row.state)" }
+    if ("$($row.occurrences)" -notmatch '^[1-9]\d*$') { return "result incidentLifecycle $($row.id) occurrences '$($row.occurrences)' is not a positive whole number" }
+    if (($names -notcontains 'occurrenceStamps') -or (@($row.occurrenceStamps).Count -ne [int]"$($row.occurrences)")) { return "result incidentLifecycle $($row.id) occurrenceStamps disagree with occurrences ($($row.occurrences))" }
+    if (($names -contains 'occurrenceWheres') -and (@($row.occurrenceWheres).Count -ne [int]"$($row.occurrences)")) { return "result incidentLifecycle $($row.id) occurrenceWheres disagree with occurrences ($($row.occurrences))" }
+    if ("$($row.passStreak)" -notmatch '^\d+$') { return "result incidentLifecycle $($row.id) passStreak '$($row.passStreak)' is not a whole number" }
+    if ("$($row.contract)" -ne 'v2') { return "result incidentLifecycle $($row.id) contract '$($row.contract)' unsupported (want v2)" }
+    if (("$($row.due)" -ne '') -and ("$($row.due)" -notmatch '^\d{4}-\d{2}-\d{2}$')) { return "result incidentLifecycle $($row.id) due '$($row.due)' is not YYYY-MM-DD" }
+    if (("$($row.finding)" -ne '') -and ("$($row.finding)" -notmatch '^(D\d{2} T\d{2} \u00A7\d+|[0-9a-f]{7,40})$')) { return "result incidentLifecycle $($row.id) finding '$($row.finding)' is not a section ref or commit" }
+    if (("$($row.state)" -eq 'closed') -and ($names -contains 'closedAt') -and ("$($row.closedAt)" -eq '')) { return "result incidentLifecycle $($row.id) is closed with no closedAt" }
+  }
+  return ''
 }
 
 function Get-LatestLifecycleSnapshot([string[]]$ResultFiles, [string]$Since) {
@@ -2505,29 +2548,10 @@ function Test-ResultFile([string]$Path, [switch]$RequireLifecycle) {
   if ($hasLife -and $RequireLifecycle -and (-not $hasSource)) { return [pscustomobject]@{ Ok = $false; Error = 'result incidentLifecycleSource missing' } }
   if ($hasLife -and $hasSource -and (@('ledger', 'unavailable') -notcontains "$($o.incidentLifecycleSource)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycleSource '$($o.incidentLifecycleSource)' unknown (want ledger or unavailable)" } }
   if ($hasLife) {
-    $lifeIds = @{}
-    foreach ($row in @($o.incidentLifecycle)) {
-      if ($null -eq $row) { return [pscustomobject]@{ Ok = $false; Error = 'result incidentLifecycle has a null row' } }
-      # One row per incident (section 30 R5-F1): a duplicate id would let
-      # a rebuild keep one row's history and silently drop the other's.
-      if ($lifeIds.ContainsKey("$($row.id)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle duplicate id $($row.id)" } }
-      $lifeIds["$($row.id)"] = $true
-      $names = @($row.PSObject.Properties.Name)
-      foreach ($f in @('id', 'test', 'phase', 'state', 'owner', 'occurrences', 'firstSeen', 'passStreak', 'contract')) {
-        if (($names -notcontains $f) -or ("$($row.$f)" -eq '')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle row $($row.id) missing $f" } }
-      }
-      if ("$($row.id)" -notmatch '^INC-[0-9a-f]{8}$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle id malformed: $($row.id)" } }
-      if (@('open', 'closed') -notcontains "$($row.state)") { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) state $($row.state)" } }
-      # Values, not only presence (section 30 R1-F2): counts are whole
-      # numbers (occurrences at least 1), the contract is the one this
-      # code mints, and optional dates and findings keep their shapes.
-      if ("$($row.occurrences)" -notmatch '^[1-9]\d*$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) occurrences '$($row.occurrences)' is not a positive whole number" } }
-      if ((@($row.PSObject.Properties.Name) -notcontains 'occurrenceStamps') -or (@($row.occurrenceStamps).Count -ne [int]"$($row.occurrences)")) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) occurrenceStamps disagree with occurrences" } }
-      if ("$($row.passStreak)" -notmatch '^\d+$') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) passStreak '$($row.passStreak)' is not a whole number" } }
-      if ("$($row.contract)" -ne 'v2') { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) contract '$($row.contract)' unsupported (want v2)" } }
-      if (("$($row.due)" -ne '') -and ("$($row.due)" -notmatch '^\d{4}-\d{2}-\d{2}$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) due '$($row.due)' is not YYYY-MM-DD" } }
-      if (("$($row.finding)" -ne '') -and ("$($row.finding)" -notmatch '^(D\d{2} T\d{2} \u00A7\d+|[0-9a-f]{7,40})$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycle $($row.id) finding '$($row.finding)' is not a section ref or commit" } }
-    }
+    # The shared lifecycle row contract (section 38 item 7).
+    $rowErr = Test-LifecycleRows @($o.incidentLifecycle)
+    if ($rowErr -ne '') { return [pscustomobject]@{ Ok = $false; Error = $rowErr } }
+    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycleVersion') -and ("$($o.incidentLifecycleVersion)" -notmatch '^[1-9]\d*$')) { return [pscustomobject]@{ Ok = $false; Error = "result incidentLifecycleVersion '$($o.incidentLifecycleVersion)' is not a positive whole number" } }
   }
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }
@@ -3215,7 +3239,9 @@ function Get-IncidentAliases($Rows, [string]$V2Since = $script:IncidentContractV
   # of the same failure, matched on test, phase, and failure class, so
   # the recurrence report joins across the contract bump. A v1 id maps
   # only when exactly one v2 id shares its triple (ambiguity keeps the
-  # old id rather than guessing). Returns old id -> new id.
+  # old id rather than guessing), and only when no other v1 id maps
+  # to that v2 id (a merge is named, never joined: section 38 R1-F3).
+  # Returns old id -> new id.
   $parse = { param($ln) $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)` x\d+ \(([^)]*)\): ?(.*)$'); if (-not $m.Success) { return $null }; $where = @($m.Groups[3].Value -split ',\s*')[0]; [pscustomobject]@{ Id = $m.Groups[1].Value; Triple = "$($m.Groups[2].Value)|$(Get-IncidentPhase $where)|$(Get-FailureClass $m.Groups[4].Value)" } }
   $v1 = @{}
   $v2 = @{}
@@ -3236,14 +3262,17 @@ function Get-IncidentAliases($Rows, [string]$V2Since = $script:IncidentContractV
     $t = $v1[$old]
     if ($v2.ContainsKey($t) -and (@($v2[$t]).Count -eq 1) -and ($v2[$t][0] -ne $old)) { $aliases[$old] = $v2[$t][0] }
   }
+  $targets = @{}
+  foreach ($old in $aliases.Keys) { $n = $aliases[$old]; if (-not $targets.ContainsKey($n)) { $targets[$n] = 0 }; $targets[$n]++ }
+  foreach ($old in @($aliases.Keys)) { if ($targets[$aliases[$old]] -gt 1) { $aliases.Remove($old) } }
   return $aliases
 }
 
 function Get-IncidentAliasReport($Rows, [string]$V2Since = $script:IncidentContractV2Since) {
   # The alias migration cases (section 38 item 6), over the same triple
   # match as Get-IncidentAliases: mapped (one v1 id, one v2 id, joined);
-  # merged (several v1 ids share one v2 id: each joins it, and the report
-  # names the merge); split (one v1 id matches several v2 ids: not
+  # merged (several v1 ids share one v2 id: not joined, R1-F3, named with
+  # its v1 ids so triage can decide); split (one v1 id matches several v2 ids: not
   # joined, ambiguity keeps the old id); unmapped (no v2 id shares the
   # triple: not joined, the old id stays on its own). Returns Aliases
   # (what the trend joins) plus Merged, Split, and Unmapped for the
@@ -3268,12 +3297,15 @@ function Get-IncidentAliasReport($Rows, [string]$V2Since = $script:IncidentContr
     elseif (@($v2[$t]).Count -gt 1) { $split[$old] = @($v2[$t] | Sort-Object) }
   }
   $merged = @{}
-  foreach ($old in $aliases.Keys) {
-    $new = $aliases[$old]
-    if (-not $merged.ContainsKey($new)) { $merged[$new] = @() }
-    $merged[$new] += $old
+  foreach ($old in ($v1.Keys | Sort-Object)) {
+    $t = $v1[$old]
+    if ($v2.ContainsKey($t) -and (@($v2[$t]).Count -eq 1)) {
+      $new = $v2[$t][0]
+      if (-not $merged.ContainsKey($new)) { $merged[$new] = @() }
+      $merged[$new] += $old
+    }
   }
-  foreach ($k in @($merged.Keys)) { if (@($merged[$k]).Count -lt 2) { $merged.Remove($k) } else { $merged[$k] = @($merged[$k] | Sort-Object) } }
+  foreach ($k in @($merged.Keys)) { if (@($merged[$k]).Count -lt 2) { $merged.Remove($k) } }
   return [pscustomobject]@{ Aliases = $aliases; Merged = $merged; Split = $split; Unmapped = $unmapped }
 }
 
@@ -3503,9 +3535,18 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   if ($aliasMap.Count -gt 0) { $lines += ("- Identity aliases (contract v1 to v2): " + ((@($aliasMap.Keys | Sort-Object) | ForEach-Object { "$_ -> $($aliasMap[$_])" }) -join '; ')) }
   # The migration cases the join leaves out, named (section 38 item 6).
   if ($null -ne $aliasReport) {
-    if ($aliasReport.Merged.Count -gt 0) { $lines += ("- Identity merges (several v1 ids joined into one v2 id): " + ((@($aliasReport.Merged.Keys | Sort-Object) | ForEach-Object { "$($aliasReport.Merged[$_] -join ', ') -> $_" }) -join '; ')) }
+    if ($aliasReport.Merged.Count -gt 0) { $lines += ("- Identity merges (not joined; several v1 ids match one v2 id): " + ((@($aliasReport.Merged.Keys | Sort-Object) | ForEach-Object { "$($aliasReport.Merged[$_] -join ', ') -> $_" }) -join '; ')) }
     if ($aliasReport.Split.Count -gt 0) { $lines += ("- Identity splits (not joined; one v1 id matches several v2 ids): " + ((@($aliasReport.Split.Keys | Sort-Object) | ForEach-Object { "$_ -> $($aliasReport.Split[$_] -join ' | ')" }) -join '; ')) }
     if (@($aliasReport.Unmapped).Count -gt 0) { $lines += ("- Identity unmapped (not joined; no v2 id shares the failure): " + ($aliasReport.Unmapped -join ', ')) }
+  }
+  # The trend reads the lifecycle through its consumer contract (section
+  # 38 item 7, R1-F4): the newest result carrying the block, by contract
+  # version, or the reason it cannot be read.
+  $lastLife = @($rows | Where-Object { @($_.PSObject.Properties.Name) -contains 'incidentLifecycle' }) | Select-Object -Last 1
+  if ($null -ne $lastLife) {
+    $blk = Read-LifecycleBlock $lastLife
+    if ($blk.State -eq 'ok') { $lines += "- Incident lifecycle ($(Get-ResultNight $lastLife), contract v$($blk.Version)): $(@($blk.Rows | Where-Object { $_.state -eq 'open' }).Count) open, $(@($blk.Rows | Where-Object { $_.state -eq 'closed' }).Count) closed" }
+    else { $lines += "- Incident lifecycle ($(Get-ResultNight $lastLife)): unreadable ($($blk.Error))" }
   }
   if ($rec.Count -gt 0) { $lines += ("- Flake recurrence: " + (($rec | ForEach-Object { "$_ ($($incNights[$_] -join ', '))" }) -join '; ') + ' [recurrence]') }
   else { $lines += '- Flake recurrence: none across rendered nights [recurrence]' }
