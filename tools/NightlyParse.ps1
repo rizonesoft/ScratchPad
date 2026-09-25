@@ -2934,7 +2934,7 @@ function Read-MetricsStore([string]$Path) {
   # including a truncated last line, is reported by line number and
   # never read as data. Returns Rows (last per identity), Raw (identity
   # -> line), Supersessions, Malformed (line numbers), EndsClean.
-  $out = [pscustomobject]@{ Rows = [ordered]@{}; Raw = @{}; Supersessions = @(); Malformed = @(); EndsClean = $true }
+  $out = [pscustomobject]@{ Rows = [ordered]@{}; Raw = @{}; Supersessions = @(); Malformed = @(); Rejected = 0; EndsClean = $true }
   if (-not (Test-Path $Path)) { return $out }
   $bytes = [System.IO.File]::ReadAllBytes($Path)
   if (($bytes.Length -gt 0) -and ($bytes[-1] -ne 10)) { $out.EndsClean = $false }
@@ -2945,6 +2945,9 @@ function Read-MetricsStore([string]$Path) {
     $r = $null
     try { $r = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $out.Malformed += $i; continue }
     if ("$($r.schema)" -eq 'supersession/1') { $out.Supersessions += $r; continue }
+    # A compaction backup's marker for a line it could not parse (R4-F1)
+    # is a known record, counted, never data and never malformed.
+    if ("$($r.schema)" -eq 'rejected/1') { $out.Rejected++; continue }
     # A row is data only with the fields the trend and the archival gate
     # consume (section 32 R1-A2): identity, stamp, night, verdict, legs.
     if (-not (Test-MetricsRowShape $r)) { $out.Malformed += $i; continue }
@@ -2979,6 +2982,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
   return (Invoke-WithMetricsLock {
     $store = Read-MetricsStore $Path
     $script:MetricsLastMalformed = @($store.Malformed)
+    $script:MetricsStaleSkipped = @()
     $add = @()
     foreach ($res in @($Results)) {
       if ($null -eq $res) { continue }
@@ -2986,6 +2990,14 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
       $json = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $res)) -Depth 6 -Compress
       $id = Get-MetricsKey ($json | ConvertFrom-Json)
       if ($store.Raw.Contains($id) -and ($store.Raw[$id] -eq $json)) { continue }
+      # Revision authority (R4-F2): a result older than the stored row
+      # (a lower revision) never replaces it.
+      if ($store.Rows.Contains($id)) {
+        $oldRev = 0; $newRev = 0
+        try { $oldRev = [int]$store.Rows[$id].revision } catch { }
+        try { $newRev = [int]$res.revision } catch { }
+        if ($newRev -lt $oldRev) { $script:MetricsStaleSkipped += @($id); continue }
+      }
       $store.Raw[$id] = $json
       $store.Rows[$id] = ($json | ConvertFrom-Json)
       $add += $json
@@ -3066,7 +3078,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           $filled = @()
           foreach ($k in @('reserve', 'consumed', 'population', 'populationHash', 'commit', 'harness')) { if ((("$($merged.$k)" -eq '') -or ("$($merged.$k)" -like 'unknown*')) -and ("$($bf.$k)" -ne '') -and ("$($bf.$k)" -notlike 'unknown*')) { $merged | Add-Member -NotePropertyName $k -NotePropertyValue $bf.$k -Force; $filled += $k } }
           foreach ($ek in @($script:EnvFields)) { $nv = "$(try { $merged.env.$ek } catch { '' })"; $bv = "$(try { $bf.env.$ek } catch { '' })"; if ((($nv -eq '') -or ($nv -like 'unknown*')) -and ($bv -ne '') -and ($bv -notlike 'unknown*') -and ($null -ne $merged.env)) { $merged.env | Add-Member -NotePropertyName $ek -NotePropertyValue $bv -Force; $filled += "env.$ek" } }
-          if ($filled.Count -gt 0) { $merged | Add-Member -NotePropertyName 'mergedFrom' -NotePropertyValue "$($bf.identity) ($($filled -join ', '))" -Force; $out += $merged; continue }
+          if ($filled.Count -gt 0) { $merged | Add-Member -NotePropertyName 'mergedFrom' -NotePropertyValue "$($bf.identity) ($($filled -join ', '))" -Force; $merged | Add-Member -NotePropertyName 'mergedFields' -NotePropertyValue @($filled) -Force; $out += $merged; continue }
         }
       }
       $out += $row
@@ -3254,6 +3266,27 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
   }
 }
 
+function Add-MergedEvidence($Results, $Rows) {
+  # The live render sees the merge too (R4-F3): each current metrics row
+  # that took fields from a superseded backfill copies them onto its live
+  # result, so the raw and metrics renders agree before and after the
+  # native result is pruned. Returns how many results took fields.
+  $n = 0
+  $byKey = @{}
+  foreach ($r in @($Results)) { $byKey[(Get-MetricsKey ([pscustomobject]@{ identity = "$($r.identity)"; hostKey = (Get-ResultHostKey $r) }))] = $r }
+  foreach ($m in @($Rows | Where-Object { ($null -ne $_) -and ($null -ne $(try { $_.mergedFields } catch { $null })) -and (@($_.mergedFields | Where-Object { "$_" -ne '' }).Count -gt 0) })) {
+    $r = $byKey[(Get-MetricsKey $m)]
+    if ($null -eq $r) { continue }
+    foreach ($f in @($m.mergedFields | Where-Object { "$_" -ne '' })) {
+      if ($f -like 'env.*') { $ek = $f.Substring(4); if ($null -eq $r.env) { $r | Add-Member -NotePropertyName env -NotePropertyValue ([pscustomobject]@{}) -Force }; $r.env | Add-Member -NotePropertyName $ek -NotePropertyValue $m.env.$ek -Force }
+      else { $r | Add-Member -NotePropertyName $f -NotePropertyValue $m.$f -Force }
+    }
+    $r | Add-Member -NotePropertyName mergedFrom -NotePropertyValue "$($m.mergedFrom)" -Force
+    $n++
+  }
+  return $n
+}
+
 function Remove-ArchivedStamp([string]$NightDir, [string]$Stamp, [string]$StorePath, [scriptblock]$BeforeDelete = $null) {
   # Archival check and deletion under one lock (section 40 item 9): the
   # store is re-read and the stamp re-verified inside the metrics lock
@@ -3281,7 +3314,7 @@ function Restore-MetricsStore([string]$Path) {
     if ($b.Malformed.Count -gt 0) { return "metrics: backup has $($b.Malformed.Count) malformed line(s); not restored" }
     $lines = @($b.Rows.Keys | ForEach-Object { $b.Raw[$_] }) + @($b.Supersessions | ForEach-Object { ConvertTo-Json $_ -Compress })
     Write-AtomicReport $lines $Path
-    return "metrics: restored $($b.Rows.Count) row(s) from $bak"
+    return "metrics: restored $($b.Rows.Count) row(s) from $bak$(if ($b.Rejected -gt 0) { "; $($b.Rejected) line(s) the compaction had already rejected stay dropped" })"
   })
 }
 

@@ -643,6 +643,22 @@ Assert ($faultOk -and ($fsResume -like 'metrics: compacted*') -and (-not (Test-P
 $fsTorn = Read-MetricsStore $fs
 $fsRestore = Restore-MetricsStore $fs
 $fsFixed = Read-MetricsStore $fs
+# R4-F1: a backup carrying a rejected-line marker still restores.
+$rjStore = Join-Path $fsDir 'rejected.jsonl'
+Copy-Item $fs $rjStore -Force
+[System.IO.File]::AppendAllText($rjStore, "{broken`n")
+$null = Compress-MetricsStore $rjStore
+[System.IO.File]::AppendAllText($rjStore, '{"schema":"metrics/1","identity":"torn')
+$rjOut = Restore-MetricsStore $rjStore
+$rjBack = Read-MetricsStore $rjStore
+Assert (($rjOut -like 'metrics: restored *row(s)*1 line(s) the compaction had already rejected stay dropped') -and ($rjBack.Malformed.Count -eq 0) -and ($rjBack.Rows.Count -ge 1)) 's40-backup-with-rejected-marker-restores' $rjOut
+# R4-F2: a lower revision never replaces the stored row.
+$rvStore = Join-Path $fsDir 'revision.jsonl'
+$rv2 = New-Night '2026-09-23' '2026-09-23-023000' 700; $rv2 | Add-Member -NotePropertyName revision -NotePropertyValue 2 -Force
+$rv1 = New-Night '2026-09-23' '2026-09-23-023000' 600; $rv1 | Add-Member -NotePropertyName revision -NotePropertyValue 1 -Force
+$null = Sync-MetricsStore $rvStore @($rv2)
+$rvRows = @(Sync-MetricsStore $rvStore @($rv1))
+Assert ((@($rvRows).Count -eq 1) -and ("$($rvRows[0].revision)" -eq '2') -and ([int]$rvRows[0].legs.'run-a'.testSeconds -eq 700) -and (@($script:MetricsStaleSkipped).Count -eq 1)) 's40-lower-revision-never-replaces' "$($rvRows[0].revision)"
 Assert (($fsTorn.Malformed.Count -eq 1) -and ($fsRestore -like 'metrics: restored 2 row(s)*') -and ($fsFixed.Rows.Count -eq 2) -and ($fsFixed.Malformed.Count -eq 0)) 's40-torn-store-restores-from-backup' "$fsRestore"
 # Item 11: a partial native row keeps the backfill's fields it lacks.
 $mgStore = Join-Path $s40 'merge.jsonl'
@@ -653,6 +669,10 @@ $mgNat = New-Night '2026-09-22' '2026-09-22-023000'; $mgNat.populationHash = '';
 $null = Sync-MetricsStore $mgStore @($mgBf)
 $mgRows = @(Sync-MetricsStore $mgStore @($mgNat))
 $mgRow = @($mgRows | Where-Object { "$($_.identity)" -eq $mgNat.identity }) | Select-Object -First 1
+# R4-F3: the live native result takes the merged fields too.
+$mgLive = New-Night '2026-09-22' '2026-09-22-023000'; $mgLive.populationHash = ''; $mgLive.harness = ''
+$mgN = Add-MergedEvidence @($mgLive) $mgRows
+Assert (($mgN -eq 1) -and ("$($mgLive.populationHash)" -eq 'popBF001') -and ("$($mgLive.mergedFrom)" -like 'bf-2026-09-22*')) 's40-live-render-takes-merged-evidence' "$mgN $($mgLive.populationHash)"
 Assert ((@($mgRows).Count -eq 1) -and ("$($mgRow.populationHash)" -eq 'popBF001') -and ("$($mgRow.harness)" -eq 'aaaa1111-bbbb2222') -and ("$($mgRow.mergedFrom)" -like 'bf-2026-09-22 (*populationHash*harness*)')) 's40-partial-native-keeps-backfill-evidence' (($mgRows | ConvertTo-Json -Depth 4 -Compress))
 # Item 12: a mixed corpus compares structured metrics and alerts, not
 # only text: corrections, two cohorts, a malformed row, a schedule edit.

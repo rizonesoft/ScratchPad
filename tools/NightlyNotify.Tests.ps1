@@ -259,6 +259,13 @@ $hostRed = New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'; $hostRed |
 $hostGreen = New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'; $hostGreen | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0002' -Force
 $hx = @(Get-RecoveryNotices (Select-CanonicalRuns @($hostRed, $hostGreen)) @($hostRed, $hostGreen) $hostGreen @())
 Assert ($hx.Count -eq 0) 's40-recovery-is-host-scoped' ($hx -join ' | ')
+# R4-F4: an identity two hosts share resolves to this host's run.
+$shB = New-Result '2026-09-24' '2026-09-24-023000' 'green' 'timer'; $shB | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0002' -Force
+$shA = New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'; $shA | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0001' -Force
+$shNow = New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'; $shNow | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0001' -Force
+$shRes = @($shB, $shA, $shNow)
+$shN = @(Get-RecoveryNotices (Select-CanonicalRuns $shRes) $shRes $shNow @())
+Assert (($shN -join ' | ') -eq 'Recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN') 's40-shared-identity-resolves-to-this-host' ($shN -join ' | ')
 
 # Item 14: launch evidence links end to end.
 $diag = Join-Path $dir 'launch-diagnostics'

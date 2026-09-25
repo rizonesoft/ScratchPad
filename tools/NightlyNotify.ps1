@@ -542,7 +542,9 @@ function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLi
   $prev = @($Canonical.Keys | Where-Object { ($_.EndsWith($hostSuffix)) -and ([string]::CompareOrdinal($_, $day) -lt 0) } | Sort-Object -Descending) | Select-Object -First 1
   if ($isCanonicalNow -and ($null -ne $prev) -and ("$($Current.verdict)" -eq 'green')) {
     $pid0 = $Canonical[$prev].Canonical
-    $pr = @(@($Results) | Where-Object { ("$($_.identity)" -eq $pid0) -or ("$($_.stamp)" -eq $pid0) }) | Select-Object -First 1
+    # The previous night's run is this host's (section 40 R4-F4):
+    # an identity two hosts share resolves to the one on this host.
+    $pr = @(@($Results) | Where-Object { (("$($_.identity)" -eq $pid0) -or ("$($_.stamp)" -eq $pid0)) -and ((Get-ResultHostKey $_) -eq (Get-ResultHostKey $Current)) }) | Select-Object -First 1
     if (($null -ne $pr) -and (@('red', 'cancelled') -contains "$($pr.verdict)")) { $notices += "Recovered: night $($prev.Split('|')[0]) was $($pr.verdict.ToString().ToUpper()), $($day.Split('|')[0]) is GREEN" }
   }
   foreach ($ln in @($LedgerLines)) {

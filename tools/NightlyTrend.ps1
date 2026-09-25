@@ -71,6 +71,7 @@ try {
   $live = @{}
   foreach ($r in $results) { $live[(Get-MetricsKey ([pscustomobject]@{ identity = "$($r.identity)"; hostKey = (Get-ResultHostKey $r) }))] = $true }
   $fromMetrics = @($mrows | Where-Object { -not $live.ContainsKey((Get-MetricsKey $_)) } | ForEach-Object { ConvertFrom-MetricsRow $_ })
+  $null = Add-MergedEvidence $results $mrows
   $results += $fromMetrics
   # A backfill a native night superseded leaves the render (item 11).
   $supersessions = @($script:MetricsSupersessions | ForEach-Object { [pscustomobject]@{ Night = "$($_.night)"; Native = "$($_.native)"; Backfill = "$($_.backfill)" } })
@@ -78,6 +79,7 @@ try {
   $results = @($results | Where-Object { $superseded -notcontains (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) })
   $metricsNote = "- Metrics store: $($mrows.Count) row(s), $($fromMetrics.Count) night(s) rendered from metrics after pruning"
   if ("$script:MetricsWriteError" -ne '') { $metricsNote += "; $script:MetricsWriteError" }
+  if (@($script:MetricsStaleSkipped).Count -gt 0) { $metricsNote += "; $(@($script:MetricsStaleSkipped).Count) stale result(s) older than their stored revision left unchanged" }
   if (@($script:MetricsLastMalformed).Count -gt 0) { $metricsNote += "; $(@($script:MetricsLastMalformed).Count) malformed line(s) skipped (lines $(@($script:MetricsLastMalformed) -join ', '); run tools/NightlyTrend.ps1 -Compact)" }
 } catch { $metricsNote = "- Metrics store: unavailable ($($_.Exception.Message))" }
 $quar = Test-QuarantineWindows $LedgerPath (Get-Date)
