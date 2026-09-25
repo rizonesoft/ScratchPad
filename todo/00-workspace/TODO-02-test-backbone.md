@@ -65,13 +65,15 @@ track: W0
 |   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [x]   |
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [x]   |
 |   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
-|   25  |   §25   | Trend and telemetry follow-ups | §17 |  [ ]   |
+|   25  |   §25   | Trend and telemetry follow-ups | §17 |  [x]   |
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [ ]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [ ]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [ ]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [ ]   |
 |   30  |   §30   | Nightly evidence residuals | §22 |  [ ]   |
 |   31  |   §31   | Acknowledgement residuals | §23 |  [ ]   |
+|   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
+|   33  |   §33   | Notification residuals | §24 |  [ ]   |
 
 ---
 
@@ -770,6 +772,7 @@ Why this section exists: the §17 plan review returned 37 findings; 14 file here
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §33 -- notification residuals filed from the §25 plan review.
 - -> XREF: D00 T02 §31 -- shares the notification-version and recovery halves of the acknowledgement contract.
 - -> XREF: D00 T02 §17 -- filed from its plan review; hardens that section's notify surface.
 
@@ -803,6 +806,7 @@ Why this section exists: the §17 plan review returned 37 findings; 10 file here
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §32 -- residual follow-ups filed from this section's plan review.
 - -> XREF: D00 T02 §17 -- filed from its plan review; hardens that section's trend surface.
 
 - [x] Pass-rate denominators read as stated policy: skipped, quarantined, unproven, killed, and budget-cut tests treat explicitly, so `571/4/4 (98.6%)` matches product-quality reporting by rule, not by accident. Done when: the denominator rule reads and a mixed night quotes under it. (D00-T02-S17-PR15.) Done: the trend header states the rule (passed / (passed + failed) over executed tests, skips counted apart, a killed or budget-cut leg makes the night unproven) and `Format-TrendTable` applies it. Fixture (`tools/NightlyTrend.Tests.ps1`): `denominator-excludes-skips` (94/10/50 reads 90.4% of 104 executed), `denominator-killed-leg-unproven`, `denominator-rule-reads`.
@@ -810,14 +814,22 @@ Why this section exists: the §17 plan review returned 37 findings; 10 file here
 - [x] Nights group by run identity and timezone, not an unqualified day string, so overnight runs and later timezone changes cannot misassign results and acknowledgements. Done when: an overnight run plus a timezone move both group correctly. (D00-T02-S17-PR17.) Done: results record `startUtc`, `tz`, and `night` (`Get-NightKey`: noon on D-1 through 11:59 on D serves night D, in the run's recorded offset); `Get-ResultNight` groups canonical selection and the trend, falling back to `day` for older results. Fixture: `night-overnight-run-groups-forward`, `night-timer-run-keeps-its-date`, `night-timezone-move-groups-correctly`, `night-legacy-result-uses-day`.
 - [x] Trend correctness carries missing-night, duplicate-night, out-of-order, retry, corrupted-result, retention-boundary, and clock-change fixtures beyond the two-night render. Done when: all seven fixtures pin their behavior. (D00-T02-S17-PR18.) Done: missing nights render as `missing` rows, rows sort by night, duplicates and retries resolve to one canonical run, corrupted results skip with a note, pruned nights render from metrics, and clock changes use the recorded offset. Fixture: `fixture-missing-night`, `fixture-out-of-order-sorted`, `fixture-duplicate-night-one-canonical`, `fixture-retry-marked`, `fixture-corrupted-result-skipped` and `fixture-retention-boundary-metrics-row` (both through `tools/NightlyTrend.ps1` end to end), `fixture-clock-change-uses-recorded-offset`.
 - [x] The median/p50 duplication resolves into sample count plus rolling p90 or p95, so operators see tail regressions and statistical confidence. Done when: a budget line quotes count plus tail percentiles. (D00-T02-S17-PR19.) Done: the RunA line quotes the sample count plus p50, p90, p95, and max over the last 14 canonical native nights (`Get-Percentile`, nearest rank). Fixture: `percentiles-count-and-tails` (n=14, p50 570, p90 630, p95 640, max 640).
-- [x] Regression thresholds, baseline comparisons, and change-point alerts fire from the series, so a developing performance or flake problem surfaces without an operator watching the slope. Done when: a planted regression alerts with its baseline delta. (D00-T02-S17-PR20.) Done: `Get-TrendAlerts` fires duration (past 125% of the 7-night median and 60 s over), pass-rate (2 points under the baseline median), and recurring-flake alerts into the trend's `## Alerts`, and the morning reconciler routes them once per day through the new `trend-regression` class. Fixture: `alert-duration-regression` (900 s vs baseline 600 s, +50%), `alert-pass-rate-regression`, `alert-recurring-flake`, `alert-steady-series-quiet`; a planted threshold removal fails.
+- -> SOURCE: plan-review-D00-T02-s25-2026-09-25-s25 D00-T02-S25-PR8 (change-point alerts missing from the candidate; fixed in 5fee709 before the stamp)
+- [x] Regression thresholds, baseline comparisons, and change-point alerts fire from the series, so a developing performance or flake problem surfaces without an operator watching the slope. Done when: a planted regression alerts with its baseline delta. (D00-T02-S17-PR20.) Done: `Get-TrendAlerts` fires duration (past 125% of the 7-night median and 60 s over), pass-rate (2 points under the baseline median), and recurring-flake alerts into the trend's `## Alerts`, and the morning reconciler routes them once per day through the new `trend-regression` class. Fixture: `alert-duration-regression` (900 s vs baseline 600 s, +50%), `alert-pass-rate-regression`, `alert-recurring-flake`, `alert-steady-series-quiet`, `alert-unproven-night-has-no-rate`, `alert-zero-baseline-no-divide`; change-point: `alert-change-point-sustained-shift` (a 3-night step to 740 s over 600 s alerts as a shift while the single-night threshold stays quiet) and `alert-change-point-quiet-when-steady`, added in 5fee709 after the plan review (PR8); a planted threshold removal fails.
 - [x] A compact long-term metrics store carries history past the 30-day raw-evidence retention window, so historical percentiles and recurrence trends keep their source nights after pruning. Done when: a pruned night still contributes its metrics row. (D00-T02-S17-PR21.) Done: `Sync-MetricsStore` appends one `metrics/1` row per result identity to `build/nightly/metrics.jsonl` (append-only, outside every prune pattern), and `ConvertFrom-MetricsRow` renders a pruned night marked `(metrics)`. Fixture: `fixture-retention-boundary-metrics-row`, `metrics-store-outlives-retention`, `metrics-store-idempotent-per-identity`; live: the real store took 33 rows on first render.
 - [x] The result validator checks every consumed env field with unknown-state semantics, not only `env.os`, so the dashboard cannot consume unvalidated settings, topology, DPI, session, PowerShell, adapter, or harness values. Done when: each consumed field pins its rule plus its unknown reading. (D00-T02-S17-PR22.) Done: `Test-EnvironmentFields` (called by `Test-ResultFile`) pins a rule per field, reads `unknown`, `unknown (reason)`, and missing fields as unknown, and refuses unlisted fields and secret-shaped values. Fixture: `env-real-block-validates` (two-monitor topology), `env-unknown-state-validates`, `env-missing-fields-read-unknown`, five `env-<field>-malformed-fails`, `env-unlisted-field-fails`; live: all 33 real results still validate (0 skipped).
 - [x] Backfilled results carry per-field provenance with source artifact and confidence, so transcript-derived values never pose as native measurements. Done when: a backfilled row quotes its provenance per field. (D00-T02-S17-PR24.) Done: `tools/NightlyBackfill.ps1` writes `provenance` (legs.counts, legs.gates, timings, incidents, soak, env, verdict, each with source and native, derived, or unknown confidence), and the trend quotes it per backfilled night. Fixture: `backfill-provenance-per-field`.
 - [x] The environment schema allowlists its fields with secret and path redaction tests, so settings, adapters, arguments, and harness metadata cannot expose credentials or sensitive machine details. Done when: a planted secret fails the redaction scan. (D00-T02-S17-PR25.) Done: `Protect-EnvironmentBlock` (applied by `Get-EnvironmentBlock`) keeps only the eight fields, redacts secret-shaped values to their pattern names, and collapses drive and UNC paths to `[path]` (display device names excepted). Fixture: `env-allowlist-drops-unknown-keys`, `env-planted-secret-redacted`, `env-display-names-are-not-paths`, `env-path-redacted`, `env-secret-fails-validation`; a planted secret-check removal fails.
-- [x] Commit: `"workspace: follow up trend and telemetry"` Done: 611acdf. Live proof: run 2026-09-25-055919-pid26392 on 611acdf wrote startUtc, tz `+02:00`, and night `2026-09-25`, passed its own validator with the redacted environment, and rendered the trend with its stated rules, `n=3, p50 547, p90 735, p95 735, max 735`, and `Metrics store: 34 row(s)`; the live trend over 33 real results skipped none. The proof exposed the Windows PowerShell DateTime round-trip of startUtc, fixed in the next commit and pinned under a day-first culture.
+- [x] Commit: `"workspace: follow up trend and telemetry"` Done: 611acdf. Live proof: run 2026-09-25-055919-pid26392 on 611acdf wrote startUtc, tz `+02:00`, and night `2026-09-25`, passed its own validator with the redacted environment, and rendered the trend with its stated rules, `n=3, p50 547, p90 735, p95 735, max 735`, and `Metrics store: 34 row(s)`; the live trend over 33 real results skipped none. The proof exposed the Windows PowerShell DateTime round-trip of startUtc, fixed in ddda0a5 and pinned under a day-first culture.
 
 **Test checkpoint:** Denominators rule, series filter, nights group, fixtures pin, tails read, regressions alert, history outlives retention, env validates, backfills cite, secrets redact. Cheaper substitute that fails: a prettier slope over untrusted numbers.
+
+> **Verified:** 2026-09-25 | §25 | the trend states its rules (executed-only pass rate with skips apart and killed or cut nights unproven; durations, percentiles, and alerts over canonical native nights), groups nights by run identity plus timezone (startUtc, tz, night), renders missing nights, quotes n plus p50/p90/p95/max over 14 nights, alerts on duration, pass rate, recurring flakes, and sustained shifts (routed by the reconciler), keeps an append-only revisable metrics store past retention, validates every env field with unknown-state semantics, allowlists and redacts the env block, and carries artifact-named backfill provenance; fixtures 53/0 with native-filter, duration-alert, env-secret, and change-point plants failing; live trend over 34 real results skips none; proof run 2026-09-25-055919-pid26392 wrote night and tz and validated
+> **Review:** round 3 (Full), candidates `611acdf` `ddda0a5` `6e82a66` `db0489f` `dd57d40` `d991eb6` `5fee709` -- GPT R1-R2 bulk needs-attention (R1-F1..F6, R2-F1..F3 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` approve · `record` approve, R3-F1 and R3-F2 (below bar) fixed in `d991eb6` and re-gated at the stamp; `5fee709` (change-point, from plan review PR8) added after the panel and re-gated by fixtures plus a plant, not panel-reviewed (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s25.md
+> **Plan review:** GPT medium, filed D00 T02 §25, D00 T02 §32, D00 T02 §33 (run 20260925-D00-T02-S25-codex-c06751119-r4)
+> **CRUD:** applicable | the metrics store appends and revises rows (read back by the trend each render; last row per identity wins); results gain startUtc, tz, and night (read back by `Test-ResultFile` and `Get-ResultNight`); backfills write provenance (read back by the trend's provenance lines)
+> **Duration:** 2026-09-25T03:51:28Z to 2026-09-25T04:17:47Z
+> **Reviewed-tip:** 5fee709da5c995b8e4b805140e14090a0ba1d855
 
 ## 26. Sibling Sweep Narrowing
 
@@ -941,6 +953,49 @@ Why this section exists: the §23 plan review returned 17 findings; 14 file here
 - [ ] Commit: `"workspace: close the acknowledgement residuals"`
 
 **Test checkpoint:** Overdue stubs file once and update, corrective actions escalate and close on evidence, dispositions demand their evidence, notification bumps leave acks valid, conflicting copies conflict, retries keep their demands, proof runs queue apart, SLAs precede the default, batch coverage is per incident, withdrawals re-demand, unreadable results demand, recovery leaves investigations open, the XREFs validate, and the helper drafts a valid ack. Cheaper substitute that fails: more fields in the frontmatter with no lifecycle behind them.
+
+## 32. Trend and Telemetry Residuals
+
+Why this section exists: the §25 plan review returned 22 findings; 15 file here, 4 on §33, 1 was fixed in the §25 candidate before its stamp (the change-point detector), and 2 are rejected with reasons in the §25 findings file. §25 made the trend state its rules, group nights, alert, and outlive retention; these carry the statistics, the storage, and the disclosure contract further. -> SOURCE: plan-review-D00-T02-s25-2026-09-25-s32 D00-T02-S25-PR2 D00-T02-S25-PR3 D00-T02-S25-PR4 D00-T02-S25-PR5 D00-T02-S25-PR6 D00-T02-S25-PR7 D00-T02-S25-PR11 D00-T02-S25-PR12 D00-T02-S25-PR13 D00-T02-S25-PR14 D00-T02-S25-PR15 D00-T02-S25-PR16 D00-T02-S25-PR17 D00-T02-S25-PR18 D00-T02-S25-PR22 (night identity across DST, coverage, per-series matrix, cohorts, window semantics, sparse tails, schedule calendar, degraded data, archival before prune, store durability, supersession, equivalence, per-value provenance, disclosure, and attribution from the §25 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §25 -- filed from its plan review; carries the trend and telemetry surface it shipped.
+
+- [ ] Night identity survives daylight-saving transitions and timezone moves by keying on the scheduled night (the task trigger's calendar date) rather than a recorded offset alone, and notification and acknowledgement consumers read the same key. Done when: a DST-transition fixture and a timezone-move fixture keep one night each. (D00-T02-S25-PR2.)
+- [ ] Quarantined and unproven tests read in the table with an execution-coverage figure (executed of discovered), so a high pass rate over a shrunken population shows. Done when: a night with half its tests quarantined quotes its coverage beside the rate. (D00-T02-S25-PR3.)
+- [ ] A per-series inclusion matrix covers every displayed metric (smoke runs, quarantine age, gate verdicts, budget telemetry included). Done when: the matrix reads in the trend header and each series cites its row. (D00-T02-S25-PR4.)
+- [ ] Cohort boundaries (environment, harness version, test population fingerprint) split or flag comparisons, so a configuration change never reads as a regression. Done when: an environment change between nights marks the alert as cross-cohort. (D00-T02-S25-PR5.)
+- [ ] Window semantics are deterministic: minimum samples per alert, the evaluated night excluded from its own baseline, missing nights counted, and an insufficient-data state. Done when: a three-night history reads insufficient data instead of alerting. (D00-T02-S25-PR6.)
+- [ ] Sparse tails read honestly: p95 over fewer than 20 samples is labeled as the maximum, and alerts state their sample size and actionability. Done when: the 14-night line labels p95 accordingly. (D00-T02-S25-PR7.)
+- [ ] Missing-night detection reads a schedule-aware calendar (the task's trigger days, enrollment date, and recorded pauses), distinguishing a missed run from an intentional pause. Done when: a recorded pause night renders as paused, not missing. (D00-T02-S25-PR11.)
+- [ ] Corrupted or skipped results set a visible degraded-data state on the trend and the night it belongs to, so broken evidence never makes a night look healthy. Done when: a corrupted result marks its night degraded. (D00-T02-S25-PR12.)
+- [ ] Archival into the metrics store is a prerequisite of `NightlyRetention.ps1 -Prune`: a stamp directory whose results lack current metrics rows refuses to prune. Done when: pruning a run with no metrics row refuses loud. (D00-T02-S25-PR13.)
+- [ ] The metrics store survives interrupted writes, concurrent writers, malformed rows, schema migration, and growth (a lock, per-line validation, a compaction verb, and a backup). Done when: a truncated last line and a concurrent writer fixture both recover. (D00-T02-S25-PR14.)
+- [ ] Native evidence supersedes a backfill for the same night in the metrics store with a recorded supersession, so stale reconstructions never stay authoritative. Done when: a native row replacing a backfill quotes the supersession. (D00-T02-S25-PR15.)
+- [ ] An equivalence fixture computes every series and alert from raw results and again after deleting the raw results, and they match. Done when: the two trend renders agree line for line apart from the metrics markers. (D00-T02-S25-PR16.)
+- [ ] Provenance records per consumed value with a source locator (file plus line or row) and separates acquisition method from confidence. Done when: a backfilled count quotes its locator and method. (D00-T02-S25-PR17.)
+- [ ] One disclosure contract covers every persisted and displayed channel (provenance paths, incident links, metrics rows, toasts, digests), with redaction fixtures per channel. Done when: a planted secret or private path is redacted in each channel. (D00-T02-S25-PR18.)
+- [ ] Trend alerts carry attribution and drill-through: the contributing runs, the commit range, environment changes, and evidence availability. Done when: an alert quotes its runs and commit range. (D00-T02-S25-PR22.)
+- [ ] Commit: `"workspace: close the trend and telemetry residuals"`
+
+**Test checkpoint:** DST keeps nights, coverage reads, the matrix cites, cohorts flag, windows state insufficiency, tails label honestly, pauses read paused, degraded data marks, prune waits on archival, the store recovers, native supersedes backfill, renders match after deletion, provenance locates, every channel redacts, and alerts attribute. Cheaper substitute that fails: more columns over the same untrusted windows.
+
+## 33. Notification Residuals
+
+Why this section exists: the §25 plan review read §24's notification surface as a neighbor and returned 4 findings that belong to it; §24 itself awaits the operator after its review hard cap, so they file here rather than widen it. -> SOURCE: plan-review-D00-T02-s25-2026-09-25-s33 D00-T02-S25-PR1 D00-T02-S25-PR9 D00-T02-S25-PR19 D00-T02-S25-PR20 (shared canonical identity, alert lifecycle, agreement field coverage, and an independent escalation channel from the §25 plan review).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T02 §24 -- hardens the notification surface it shipped.
+
+- [ ] Notifications and the trend share one canonical-run and night identity contract (the §25 night key, one tie-break for retries, cancellations, and multiple scheduled runs), so they can never select different results for a night. Done when: a fixture night with a retry and a cancellation selects the same run in both. (D00-T02-S25-PR1.)
+- [ ] Trend alerts carry identity and a lifecycle (new, worsening, unchanged, recovered), so the once-per-day dedupe neither hides a new or worse alert nor repeats unresolved noise. Done when: a worsening alert re-notifies and an unchanged one does not. (D00-T02-S25-PR9.)
+- [ ] The report/result agreement enumerates its complete field coverage in `docs/testing.md` and its fixtures cover each field. Done when: the enumeration reads and every listed field has a contradiction fixture. (D00-T02-S25-PR19.)
+- [ ] The fallback is named as deferred delivery, and an independent escalation channel (one that does not depend on the toast API) fires when toasts fail on consecutive nights. Done when: two failed nights escalate through the second channel. (D00-T02-S25-PR20.)
+- [ ] Commit: `"workspace: close the notification residuals"`
+
+**Test checkpoint:** The trend and notifications pick one run, alerts renotify only on change, agreement coverage is enumerated and pinned, and persistent toast failure escalates elsewhere. Cheaper substitute that fails: a longer toast.
 
 ## Verification
 
