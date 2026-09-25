@@ -475,7 +475,9 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
   } catch { $notes += "- $Leg : screenshot failed: $($_.Exception.Message)" }
   $wins = Join-Path $CaptureDir "$Leg-windows.txt"
   try {
-    Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowTitle -ne '' } | ForEach-Object { Format-WindowRow $_.Id $_.ProcessName $_.MainWindowTitle } | Set-Content -Path $wins -Encoding UTF8
+    $owned = @{}
+    try { $owned = Get-DescendantPids @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; ParentProcessId = [int]$_.ParentProcessId; Created = $_.CreationDate } }) $PID } catch { $owned = @{} }
+    Get-Process -ErrorAction Stop | Where-Object { $_.MainWindowTitle -ne '' } | ForEach-Object { Format-WindowRow $_.Id $_.ProcessName $_.MainWindowTitle ($owned.ContainsKey([int]$_.Id)) } | Set-Content -Path $wins -Encoding UTF8
     $notes += "- $Leg : window metadata $Leg-windows.txt"
   } catch { $notes += "- $Leg : window list failed: $($_.Exception.Message)" }
   $evts = Join-Path $CaptureDir "$Leg-events.txt"
@@ -521,13 +523,51 @@ $script:SecretPatterns = @(
   @('slack-token', 'xox[baprs]-[A-Za-z0-9-]{10,}'),
   @('private-key', '-----BEGIN [A-Z ]*PRIVATE KEY-----'),
   @('bearer-token', '(?i)\bbearer\s+[A-Za-z0-9._~+/-]{20,}'),
-  @('assigned-secret', '(?i)\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token)\s*[:=]\s*[^\s''"]{6,}')
+  @('assigned-secret', '(?i)["'']?\b(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?token|auth[_-]?token|token)["'']?\s*[:=]\s*["'']?[^\s''",;}]{6,}')
 )
 
-function Format-WindowRow([int]$ProcId, [string]$Name, [string]$Title) {
-  # Titles name open documents and pages, so only processes the run
-  # owns keep theirs; every other title is redacted at write.
-  if ($script:CaptureOwnedProcesses -contains $Name) { return "pid=$ProcId ${Name}: $Title" }
+function Get-DescendantPids($Processes, [int]$RootPid) {
+  # Run ownership for title disclosure: the root (the governed run's
+  # own PID) plus every process descending from it through
+  # ParentProcessId. A child created before its recorded parent is a
+  # reused parent PID, not a descendant, so the walk refuses it. A
+  # process whose parent already exited is not provably the run's and
+  # stays unowned (its title redacts, the fail-safe direction).
+  # $Processes entries carry ProcessId, ParentProcessId, Created.
+  $byPid = @{}
+  $kids = @{}
+  foreach ($p in @($Processes)) {
+    if ($null -eq $p) { continue }
+    $byPid[[int]$p.ProcessId] = $p
+    $pp = [int]$p.ParentProcessId
+    if (-not $kids.ContainsKey($pp)) { $kids[$pp] = @() }
+    $kids[$pp] += [int]$p.ProcessId
+  }
+  $tree = @{}
+  $queue = New-Object System.Collections.Queue
+  $queue.Enqueue($RootPid)
+  while ($queue.Count -gt 0) {
+    $n = [int]$queue.Dequeue()
+    if ($tree.ContainsKey($n)) { continue }
+    $tree[$n] = $true
+    if (-not $kids.ContainsKey($n)) { continue }
+    foreach ($c in $kids[$n]) {
+      if ($c -eq $n) { continue }
+      $parent = $byPid[$n]
+      $child = $byPid[$c]
+      if (($null -ne $parent) -and ($null -ne $child) -and ($null -ne $parent.Created) -and ($null -ne $child.Created) -and ([datetime]$child.Created -lt [datetime]$parent.Created)) { continue }
+      $queue.Enqueue($c)
+    }
+  }
+  return $tree
+}
+
+function Format-WindowRow([int]$ProcId, [string]$Name, [string]$Title, [bool]$Owned) {
+  # Titles name open documents and pages, so a title survives only
+  # when the process is both a kind the run launches and provably the
+  # run's own (Get-DescendantPids); an operator-opened ScratchPad or
+  # terminal redacts like every other foreign window.
+  if ($Owned -and ($script:CaptureOwnedProcesses -contains $Name)) { return "pid=$ProcId ${Name}: $Title" }
   return "pid=$ProcId ${Name}: [title redacted]"
 }
 
@@ -1018,10 +1058,22 @@ function Read-IncidentLedger([string]$Path) {
   if (-not (Test-Path $Path)) { return $empty }
   try {
     $j = Get-Content $Path -Raw | ConvertFrom-Json
+    $bad = { param($why) [pscustomobject]@{ Ok = $false; Error = "incident ledger invalid: $why"; Incidents = @{} } }
+    if ($null -eq $j) { return (& $bad 'empty document') }
     if ($j.version -ne 1) { return [pscustomobject]@{ Ok = $false; Error = "incident ledger version $($j.version) unsupported"; Incidents = @{} } }
+    if (@($j.PSObject.Properties.Name) -notcontains 'incidents') { return (& $bad 'no incidents array') }
     $map = @{}
     foreach ($e in @($j.incidents)) {
-      if ($null -eq $e) { continue }
+      if ($null -eq $e) { return (& $bad 'null entry') }
+      $names = @($e.PSObject.Properties.Name)
+      foreach ($req in @('id', 'test', 'phase', 'key', 'state', 'firstSeen', 'lastSeen', 'occurrences')) {
+        if ($names -notcontains $req) { return (& $bad "entry $($e.id) lacks $req") }
+      }
+      if ("$($e.id)" -notmatch '^INC-[0-9a-f]{8}$') { return (& $bad "entry id malformed: $($e.id)") }
+      if (@('open', 'closed') -notcontains "$($e.state)") { return (& $bad "entry $($e.id) state $($e.state)") }
+      if (("$($e.test)" -eq '') -or ("$($e.phase)" -eq '')) { return (& $bad "entry $($e.id) has an empty test or phase") }
+      if (@($e.occurrences).Count -eq 0) { return (& $bad "entry $($e.id) has no occurrences") }
+      if ($map.ContainsKey("$($e.id)")) { return (& $bad "duplicate id $($e.id)") }
       $occ = @()
       foreach ($o in @($e.occurrences)) { if ($null -ne $o) { $occ += [pscustomobject]@{ stamp = "$($o.stamp)"; wheres = @($o.wheres) } } }
       $map["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; owner = "$($e.owner)"; state = "$($e.state)"; firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; occurrences = $occ; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)" }
@@ -1039,7 +1091,8 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   # open incident closes only on verified recovery: its test executed
   # and passed in the same phase on $RecoveryRuns separate runs with no
   # failure between (a failure resets the streak; a run that never
-  # executed the test neither counts nor resets), so a flake that
+  # executed the test neither counts nor resets, and any failure of the
+  # same test in the same phase resets it even under another id), so a flake that
   # passes most nights cannot close and reopen nightly. A closed
   # incident seen again reopens with its history. Idempotent per
   # stamp: re-running a stamp appends or counts nothing twice.
@@ -1048,6 +1101,8 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   foreach ($k in $Ledger.Keys) { $map[$k] = $Ledger[$k] }
   $lines = @()
   $seen = @{}
+  $failedHere = @{}
+  foreach ($g in @($Groups)) { if ($null -ne $g) { $failedHere["$($g.Test)|$($g.Phase)"] = $true } }
   foreach ($g in @($Groups)) {
     if ($null -eq $g) { continue }
     $seen[$g.Id] = $true
@@ -1075,6 +1130,13 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   foreach ($id in @($map.Keys | Sort-Object)) {
     $e = $map[$id]
     if (($e.state -ne 'open') -or $seen.ContainsKey($id)) { continue }
+    if ($failedHere.ContainsKey("$($e.test)|$($e.phase)")) {
+      # A different failure of the same test in the same phase is no
+      # recovery: the streak breaks even though this id did not recur.
+      if ([int]$e.passStreak -gt 0) { $lines += "- $id ``$($e.test)``: streak reset (the test failed differently in $($e.phase))" }
+      $e.passStreak = 0; $e.lastPassStamp = $Stamp
+      continue
+    }
     $passed = @()
     if ($PassedByPhase -and $PassedByPhase.ContainsKey($e.phase)) { $passed = @($PassedByPhase[$e.phase]) }
     if ($passed -notcontains $e.test) { continue }

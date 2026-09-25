@@ -206,7 +206,7 @@ if ($incidents.Count -eq 0) {
   foreach ($t in @(Get-ChildItem $RunDir -Filter '*-soak-*.trx' -Recurse -ErrorAction SilentlyContinue)) { $inputs += Get-TrxIncidentInputs $t.FullName $t.BaseName }
   if ($inputs.Count -gt 0) { $incidents = @(Format-Incidents $inputs); $incidentsDerived = $true }
 }
-$soakFailures = @($inputs | Where-Object { $_.Where -eq 'Soak' })
+$soakFailures = @($inputs | Where-Object { "$($_.Where)" -match '^(ui|protocol)-soak-\d+$' })
 
 # Verdict: red on any failure evidence; red without execution
 # evidence (no trx, no counts) since a silent run proves nothing; red

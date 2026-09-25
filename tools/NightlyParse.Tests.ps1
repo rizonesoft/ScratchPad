@@ -823,15 +823,44 @@ $u4 = Update-IncidentLedger $u3b.Incidents @(Get-IncidentGroups @($hrRepeat)) '2
 Assert (($u4.Incidents[$hrId].state -eq 'open') -and (@($u4.Lines | Where-Object { $_ -like "*$hrId*REOPENED*" }).Count -eq 1) -and (@($u4.Incidents[$hrId].occurrences).Count -eq 2)) 'lifecycle-reopens-with-history' ($u4.Lines -join ' | ')
 '{ not json' | Set-Content -Path (Join-Path $s22 'bad.json') -Encoding UTF8
 Assert ((Read-IncidentLedger (Join-Path $s22 'bad.json')).Ok -eq $false) 'lifecycle-corrupt-fails-closed'
+'{"version":1}' | Set-Content -Path (Join-Path $s22 'noarray.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'noarray.json')).Error -like '*no incidents array*') 'lifecycle-missing-array-fails-closed' (Read-IncidentLedger (Join-Path $s22 'noarray.json')).Error
+$goodEntry = '{"id":"INC-0123abcd","test":"UI.X","phase":"run-a","key":"k","state":"open","firstSeen":"s","lastSeen":"s","occurrences":[{"stamp":"s","wheres":["Run A"]}]}'
+('{"version":1,"incidents":[' + $goodEntry + ',' + $goodEntry + ']}') | Set-Content -Path (Join-Path $s22 'dup.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'dup.json')).Error -like '*duplicate id INC-0123abcd*') 'lifecycle-duplicate-id-fails-closed' (Read-IncidentLedger (Join-Path $s22 'dup.json')).Error
+('{"version":1,"incidents":[{"id":"INC-0123abcd","test":"UI.X","state":"open"}]}') | Set-Content -Path (Join-Path $s22 'thin.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'thin.json')).Error -like '*lacks phase*') 'lifecycle-missing-field-fails-closed' (Read-IncidentLedger (Join-Path $s22 'thin.json')).Error
+('{"version":1,"incidents":[' + $goodEntry + ']}') | Set-Content -Path (Join-Path $s22 'one.json') -Encoding UTF8
+Assert ((Read-IncidentLedger (Join-Path $s22 'one.json')).Ok) 'lifecycle-valid-entry-reads'
+$lX = Read-IncidentLedger $ledgerFx
+$xId = (@(Get-IncidentGroups @($hrA)))[0].Id
+$lX.Incidents[$xId].state = 'open'; $lX.Incidents[$xId].passStreak = 2; $lX.Incidents[$xId].lastPassStamp = '2026-09-27-023005'
+$uX = Update-IncidentLedger $lX.Incidents @(Get-IncidentGroups @($hrB)) '2026-09-30-023005' @{ 'run-a' = @('UI.LaunchTests.LargeFileOpensResponsively') } $owners
+Assert (([int]$uX.Incidents[$xId].passStreak -eq 0) -and ($uX.Incidents[$xId].state -eq 'open') -and (@($uX.Lines | Where-Object { $_ -like "*$xId*streak reset*" }).Count -eq 1)) 'lifecycle-different-failure-resets-streak' ($uX.Lines -join ' | ')
 
 # D00 T02 §22 item 1: the failure-capture policy.
 $planted = 'pid=1 chrome: token ' + 'ghp_' + ('A1b2C3d4E5' * 4)
 Assert ((@(Test-CaptureSecrets $planted) -join ',') -eq 'github-token') 'capture-planted-secret-fails-scan' (@(Test-CaptureSecrets $planted) -join ',')
 Assert (@(Test-CaptureSecrets 'pid=4 ScratchPad: Untitled - ScratchPad').Count -eq 0) 'capture-clean-text-passes'
 Assert (@(Test-CaptureSecrets ('password = ' + 'hunter2hunter2')).Count -eq 1) 'capture-assigned-secret'
-Assert ((Format-WindowRow 7 'chrome' 'Bank statement - Chrome') -eq 'pid=7 chrome: [title redacted]') 'capture-foreign-title-redacted'
-Assert ((Format-WindowRow 9 'ScratchPad' 'big8.txt - ScratchPad') -eq 'pid=9 ScratchPad: big8.txt - ScratchPad') 'capture-owned-title-kept'
-Assert ((Format-WindowRow 3 'pwsh' 'R:\private\path - pwsh') -eq 'pid=3 pwsh: [title redacted]') 'capture-operator-shell-title-redacted'
+Assert (@(Test-CaptureSecrets ('password = "' + 'hunter2hunter2"')).Count -eq 1) 'capture-assigned-secret-quoted'
+Assert (@(Test-CaptureSecrets ('{"password":"' + 'hunter2hunter2"}')).Count -eq 1) 'capture-assigned-secret-json'
+Assert (@(Test-CaptureSecrets ('token=' + 'abcdefghi')).Count -eq 1) 'capture-assigned-secret-bare-token'
+Assert (@(Test-CaptureSecrets 'tokens used: 123456').Count -eq 0) 'capture-token-count-is-not-a-secret'
+Assert ((Format-WindowRow 7 'chrome' 'Bank statement - Chrome' $false) -eq 'pid=7 chrome: [title redacted]') 'capture-foreign-title-redacted'
+Assert ((Format-WindowRow 9 'ScratchPad' 'big8.txt - ScratchPad' $true) -eq 'pid=9 ScratchPad: big8.txt - ScratchPad') 'capture-owned-title-kept'
+Assert ((Format-WindowRow 3 'pwsh' 'R:\private\path - pwsh' $true) -eq 'pid=3 pwsh: [title redacted]') 'capture-operator-shell-title-redacted'
+Assert ((Format-WindowRow 8 'ScratchPad' 'diary.txt - ScratchPad' $false) -eq 'pid=8 ScratchPad: [title redacted]') 'capture-operator-scratchpad-title-redacted'
+$t0 = Get-Date '2026-09-25T02:30:00'
+$procs = @(
+  [pscustomobject]@{ ProcessId = 100; ParentProcessId = 4; Created = $t0 },
+  [pscustomobject]@{ ProcessId = 200; ParentProcessId = 100; Created = $t0.AddSeconds(5) },
+  [pscustomobject]@{ ProcessId = 300; ParentProcessId = 200; Created = $t0.AddSeconds(9) },
+  [pscustomobject]@{ ProcessId = 400; ParentProcessId = 999; Created = $t0.AddSeconds(9) },
+  [pscustomobject]@{ ProcessId = 500; ParentProcessId = 100; Created = $t0.AddHours(-3) }
+)
+$tree = Get-DescendantPids $procs 100
+Assert ((@($tree.Keys | Sort-Object) -join ',') -eq '100,200,300') 'capture-owned-pids-descend-from-run' (@($tree.Keys | Sort-Object) -join ',')
 $capFx = Join-Path $s22 'captures-run-a'
 $null = New-Item -ItemType Directory -Force -Path $capFx
 $planted | Set-Content -Path (Join-Path $capFx 'run-a-windows.txt') -Encoding UTF8
