@@ -179,16 +179,60 @@ Copy-Item (Join-Path $nd 'retained-rev1.json') (Join-Path $nd 'retained\late\res
 $gg = Get-Gate
 Assert (@($gg.Lines | Where-Object { $_ -like "*REVISION regression: $run2 revision 1*written after revision 2*" }).Count -eq 1) 's39-lower-revision-written-later-is-flagged' ($gg.Lines -join ' | ')
 Remove-Item (Join-Path $nd 'retained\late') -Recurse; Remove-Item (Join-Path $nd 'retained-rev1.json')
+# R1-F3: a revised run's action still escalates once overdue.
+$gvo = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-12')
+Assert ((@($gvo.CorrectiveOverdue) -contains 'ack-run2.md') -and (@($gvo.Lines | Where-Object { $_ -like '*CORRECTIVE ack-run2.md (INC-bbbb2222*OVERDUE since 2026-10-10*revised after signing*' }).Count -eq 1)) 's39-revised-run-actions-still-escalate' ($gvo.Lines -join ' | ')
+Remove-Item (Join-Path $acks 'ack-run2.md'); Save-All 'drop run2 ack'
 # Item 7: an unrelated fixed commit fails.
 $eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 'notes' | Set-Content -Path (Join-Path $ws 'docs\notes.md') -Encoding UTF8; $null = & git -C $ws add -A 2>&1; $null = & git -C $ws commit -q -m 'docs only' 2>&1
 $docSha = ((& git -C $ws rev-parse HEAD) | Out-String).Trim()
 $ErrorActionPreference = $eap
-Write-Ack 'ack-y.md' @("run: $runY sha256:$($dem[$runY].Current)", 'incidents: none', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $($docSha.Substring(0, 12))", 'signed: 2026-09-25')
+Write-Ack 'ack-y.md' @("run: $run sha256:$($dem[$run].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $($docSha.Substring(0, 12))", 'signed: 2026-09-25')
 Save-All 'ack y fixed by docs'
 $gu = Get-Gate
-Assert (@($gu.Lines | Where-Object { $_ -like "*ack-y.md: INVALID (fixed needs a commit touching src/, tests/, or the failing test's file*" }).Count -eq 1) 's39-unrelated-fixed-commit-fails' ($gu.Lines -join ' | ')
+Assert (@($gu.Lines | Where-Object { $_ -like "*ack-y.md: INVALID (fixed needs a commit that touches the failing test's file or names the test or incident*" }).Count -eq 1) 's39-unrelated-fixed-commit-fails' ($gu.Lines -join ' | ')
 Remove-Item (Join-Path $acks 'ack-y.md'); Save-All 'drop y'
+# R1-F1: a code commit that neither touches the test's file nor names the
+# test or incident is not a fix.
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $ws 'src')
+'class Other {}' | Set-Content -Path (Join-Path $ws 'src\Other.cs') -Encoding UTF8
+Save-All 'refactor Other'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $srcSha = ((& git -C $ws rev-parse HEAD) | Out-String).Trim(); $ErrorActionPreference = $eap
+$dem = Get-Dem
+Write-Ack 'ack-y.md' @("run: $run sha256:$($dem[$run].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $($srcSha.Substring(0, 12))", 'signed: 2026-09-25')
+Save-All 'ack fixed by unrelated code'
+$gs = Get-Gate
+'class A2 {}' | Set-Content -Path (Join-Path $ws 'src\Other.cs') -Encoding UTF8
+Save-All 'fix INC-aaaa1111 in Other'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $namedSha = ((& git -C $ws rev-parse HEAD) | Out-String).Trim(); $ErrorActionPreference = $eap
+Write-Ack 'ack-y.md' @("run: $run sha256:$($dem[$run].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: fixed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $($namedSha.Substring(0, 12))", 'signed: 2026-09-25')
+Save-All 'ack fixed by named commit'
+$gs2 = Get-Gate
+Assert ((@($gs.Lines | Where-Object { $_ -like "*ack-y.md: INVALID (fixed needs a commit that touches the failing test's file or names the test or incident*" }).Count -eq 1) -and ($gs2.Unacked -notcontains $run)) 's39-fixed-commit-must-address-the-failure' (($gs.Lines + $gs2.Lines) -join ' | ')
+Remove-Item (Join-Path $acks 'ack-y.md'); Save-All 'drop y'
+# R1-F2: a cycle through cover-level duplicates acknowledges nothing.
+$dem = Get-Dem
+Write-Ack 'ack-run2.md' @("run: $run2 sha256:$($dem[$run2].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", "cover: INC-aaaa1111 duplicate $fnd evidence $run", 'signed: 2026-09-25')
+Write-Ack 'ack-run.md' @("run: $run sha256:$($dem[$run].Current)", 'incidents: INC-aaaa1111', 'owner: operator', 'disposition: duplicate', "evidence: $run2", 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", 'signed: 2026-09-25')
+Save-All 'cover cycle'
+$gcc = Get-Gate
+Assert ((@($gcc.Lines | Where-Object { $_ -like '*duplicate CYCLE*' }).Count -eq 2) -and ($gcc.Unacked -contains $run) -and ($gcc.Unacked -contains $run2)) 's39-cover-level-duplicate-cycle-acknowledges-nothing' ($gcc.Lines -join ' | ')
+# R1-F5: a draft that would close a cycle is reported as not effective.
+Remove-Item (Join-Path $acks 'ack-run.md'); Save-All 'drop run ack'
+$drc = Invoke-Helper @('-Draft', '-Run', $run, '-Disposition', 'duplicate', '-Evidence', $run2, '-Owner', 'operator', '-Finding', $fnd, '-Today', '2026-09-26', '-WorkspaceRoot', $ws)
+Assert (($drc.Code -eq 1) -and ($drc.Text -like "*the gate would NOT acknowledge $run once committed*CYCLE*")) 's39-draft-reports-governance-not-only-the-checksum' $drc.Text
+Remove-Item (Join-Path $acks "ack-$run.md") -ErrorAction SilentlyContinue
+Remove-Item (Join-Path $acks 'ack-run2.md'); Save-All 'drop run2 ack'
+# R1-F4: a run added to an older ack reads its own, later response time.
+$dem = Get-Dem
+Write-Ack 'ack-xy.md' @("run: $runX sha256:$($dem[$runX].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", 'signed: 2026-09-25')
+Save-All 'ack x on time' '2026-09-25T09:00:00+02:00'
+Write-Ack 'ack-xy.md' @("run: $runX sha256:$($dem[$runX].Current)", "run: $runY sha256:$($dem[$runY].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-10-10', "finding: $fnd", 'signed: 2026-09-30')
+Save-All 'add y late' '2026-09-30T09:00:00+02:00'
+$gxy = Get-Gate
+Assert ((@($gxy.Lines | Where-Object { $_ -like "*LATE response: $runY first acknowledged 2026-09-30*" }).Count -eq 1) -and (@($gxy.Lines | Where-Object { $_ -like "*LATE response: $runX*" }).Count -eq 0)) 's39-run-added-to-an-older-ack-reads-its-own-time' ($gxy.Lines -join ' | ')
+Remove-Item (Join-Path $acks 'ack-xy.md'); Save-All 'drop xy'
 # Item 6: an unreadable result is recorded and, once repaired, maps to
 # its identity with the corruption kept on record.
 $badPath = Join-Path $nd 'morning-2026-09-23-023001.result.json'

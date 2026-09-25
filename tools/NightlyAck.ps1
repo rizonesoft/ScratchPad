@@ -98,6 +98,14 @@ if ($Draft) {
   # once the file is committed.
   $fresh = Get-AckDemands $files (Read-ResultClassifications $nightDir)
   if ($fresh[$Run].Current -ne $d.Current) { Write-Output "ack: drafted $Out, but $Run's result changed while drafting (now $($fresh[$Run].Current.Substring(0, 12))); redraft before committing"; exit 1 }
+  # The whole gate with this draft assumed committed (R1-F5): ties,
+  # duplicate cycles, and governance decide, not the checksum alone.
+  $would = Test-Acknowledgements $Root $ackDir $fresh $now $ackSla (Split-Path -Leaf $Out)
+  if ((@($would.Unacked) -contains $Run) -or (@($would.ProofUnacked) -contains $Run)) {
+    $why = @($would.Lines | Where-Object { ($_ -like "*$Run*") -and (($_ -like '*TIE*') -or ($_ -like '*CYCLE*') -or ($_ -like '*INVALID*') -or ($_ -like '*released*')) })
+    Write-Output "ack: drafted $Out, but the gate would NOT acknowledge $Run once committed ($(if ($why.Count) { $why -join '; ' } else { 'governed elsewhere' })); fix the draft before committing"
+    exit 1
+  }
   Write-Output "ack: drafted $Out; PENDING: the gate acknowledges $Run once this file is committed (checksum $($d.Current.Substring(0, 12)) still current)"
   exit 0
 }
