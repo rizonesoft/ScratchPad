@@ -596,6 +596,23 @@ $staleShared = Get-UiBuildFreshness $bRoot
 (Get-Item (Join-Path $bRoot 'Directory.Build.props')).LastWriteTimeUtc = $tOld
 (Get-Item (Join-Path $bRoot 'src\App\A.cs')).LastWriteTimeUtc = $tOld.AddMinutes(20)
 $staleRef = Get-UiBuildFreshness $bRoot
+# R1-F2: an ancestor Directory.Build.props below the root, an imported
+# targets file outside the tree, and a linked source outside the project
+# directory each count.
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $bRoot 'build-shared'), (Join-Path $bRoot 'shared-src')
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'tests\Directory.Build.props') -Encoding UTF8
+'<Project />' | Set-Content -Path (Join-Path $bRoot 'build-shared\Extra.targets') -Encoding UTF8
+'class L {}' | Set-Content -Path (Join-Path $bRoot 'shared-src\Linked.cs') -Encoding UTF8
+'<Project><Import Project="..\..\build-shared\Extra.targets" /><ItemGroup><Compile Include="..\..\shared-src\Linked.cs" /></ItemGroup></Project>' | Set-Content -Path (Join-Path $bRoot 'src\App\App.csproj') -Encoding UTF8
+foreach ($f in @('tests\Directory.Build.props', 'build-shared\Extra.targets', 'shared-src\Linked.cs', 'src\App\App.csproj')) { (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld }
+$ancestorHits = @()
+foreach ($f in @('tests\Directory.Build.props', 'build-shared\Extra.targets', 'shared-src\Linked.cs')) {
+  (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld.AddMinutes(30)
+  $r = Get-UiBuildFreshness $bRoot
+  if ((-not $r.Ok) -and ($r.Error -like "*$f*")) { $ancestorHits += $f }
+  (Get-Item (Join-Path $bRoot $f)).LastWriteTimeUtc = $tOld
+}
+Assert ($ancestorHits.Count -eq 3) 's37-ancestor-import-and-linked-inputs-refuse' ($ancestorHits -join '|')
 Assert (($freshB.Ok -eq $true) -and ($staleShared.Ok -eq $false) -and ($staleShared.Error -like '*newest build input (Directory.Build.props)*') -and ($staleRef.Ok -eq $false) -and ($staleRef.Error -like '*src\App\A.cs*')) 's37-shared-and-referenced-inputs-refuse' "$($staleShared.Error) | $($staleRef.Error)"
 # Item 6: one of three Theory rows run keeps two owed.
 $owedRows = @(Get-UnexecutedCaseRows @('UI.X.Theory(n: 1)', 'UI.X.Theory(n: 2)', 'UI.X.Theory(n: 3)', 'UI.X.Fact') @('UI.X.Theory(n: 2)', 'UI.X.Fact') 'fixture kill')
@@ -613,6 +630,12 @@ $jobsGreen = [pscustomobject]@{ jobs = @([pscustomobject]@{ name = 'build-window
 $gGreen = Get-CandidateCiGate @([pscustomobject]@{ databaseId = 43; status = 'completed'; conclusion = 'success' }) $jobsGreen 'abc1234'
 $gPending = Get-CandidateCiGate @([pscustomobject]@{ databaseId = 44; status = 'in_progress'; conclusion = '' }) ([pscustomobject]@{ jobs = @() }) 'abc1234'
 $gNone = Get-CandidateCiGate @() $null 'abc1234'
+$aGreen = Resolve-CiAdmission $gGreen $false
+$aPending = Resolve-CiAdmission $gPending $false
+$aNone = Resolve-CiAdmission $gNone $false
+$aOverride = Resolve-CiAdmission $gNone $true
+$aRedOverride = Resolve-CiAdmission $gRed $true
+Assert (($aGreen.Admitted -eq $true) -and ($aPending.Admitted -eq $false) -and ($aNone.Admitted -eq $false) -and ($aNone.Line -like '*only a green CI population check admits it*') -and ($aOverride.Admitted -eq $true) -and ($aOverride.Line -like '*admitted without CI verification (-AllowUnverifiedCi)') -and ($aRedOverride.Admitted -eq $false)) 's37-only-green-admits' "$($aNone.Line) | $($aOverride.Line)"
 Assert (($gRed.State -eq 'red') -and ($gRed.Line -eq 'CI population check failure on abc1234 (run 42): the population is refused') -and ($gGreen.State -eq 'green') -and ($gPending.State -eq 'pending') -and ($gNone.State -eq 'none') -and ($gNone.Line -like '*no build.yml run for abc1234*')) 's37-red-ci-check-refuses-the-population' "$($gRed.Line) | $($gGreen.Line) | $($gPending.Line) | $($gNone.Line)"
 
 # Filter partition: the fingerprinted Run A plus Run B filters select

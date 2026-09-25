@@ -29,6 +29,9 @@
 #>
 [CmdletBinding()]
 param(
+  # Admit the population without a green CI population check (D00 T02
+  # section 37 R1-F1): an explicit operator override, quoted in the report.
+  [switch]$AllowUnverifiedCi,
   [switch]$Force,
   [switch]$SkipDefault,
   [switch]$SkipPrimary,
@@ -755,11 +758,13 @@ try {
       $fpRead = Read-TestPopulationFile $fpPath
       if (-not $fpRead.Ok) { throw $fpRead.Error }
       # The CI population check gates the night (D00 T02 section 37 item
-      # 1): a red check on the commit this run built refuses the
-      # population; pending or absent CI is quoted as not verified.
+      # 1, R1-F1): only a green check on the commit this run built admits
+      # the population; red, pending, or unverifiable CI refuses it unless
+      # the operator passes -AllowUnverifiedCi, which the report quotes.
       $ciGate = Get-CandidateCiState $Root $script:buildHead
+      $ciGate = Resolve-CiAdmission $ciGate ([bool]$AllowUnverifiedCi)
       Write-Output "nightly: $($ciGate.Line)"
-      if ($ciGate.State -eq 'red') { throw $ciGate.Line }
+      if (-not $ciGate.Admitted) { throw $ciGate.Line }
       $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fpRead.RunAFilter $fpRead.RunBFilter $fpRead.InteractiveFilter
       $pop = Compare-TestPopulation $fpPath (Join-Path $PSScriptRoot 'nightly.ps1') $disc
       if (-not $pop.Ok) { throw ("population drift: " + ($pop.Drifts -join '; ')) }

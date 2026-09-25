@@ -1083,28 +1083,56 @@ function Get-UiBuildInputs([string]$Root) {
   # NuGet.config, .editorconfig). Configuration identity: discovery reads
   # Bin/UI/Debug, the configuration the nightly builds (its snapshot line
   # says config Debug), so a Release-only build reads as missing or stale.
+  # R1-F2: besides each project directory, every ancestor
+  # Directory.Build.* between a project and the root, every file an
+  # MSBuild file imports (<Import Project>), and every linked item outside
+  # the project directory (Compile, None, Content, Page, EmbeddedResource
+  # with a relative Include) count, followed transitively. Paths built
+  # from MSBuild properties ($(...)) cannot be resolved statically and
+  # are skipped (the shared files that define them are inputs already).
+  $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
   $dirs = @()
+  $extra = @{}
   $queue = New-Object System.Collections.Generic.Queue[string]
   $queue.Enqueue((Join-Path $Root 'tests\UI\UI.csproj'))
   $seen = @{}
   while ($queue.Count -gt 0) {
-    $proj = [System.IO.Path]::GetFullPath($queue.Dequeue())
-    if ($seen.ContainsKey($proj) -or -not (Test-Path $proj)) { continue }
-    $seen[$proj] = $true
-    $dirs += (Split-Path -Parent $proj)
-    foreach ($m in [regex]::Matches((Get-Content $proj -Raw), '<ProjectReference\s+Include="([^"]+)"')) {
-      $queue.Enqueue((Join-Path (Split-Path -Parent $proj) $m.Groups[1].Value))
+    $file = [System.IO.Path]::GetFullPath($queue.Dequeue())
+    if ($seen.ContainsKey($file) -or -not (Test-Path $file)) { continue }
+    $seen[$file] = $true
+    $extra[$file] = $true
+    $here = Split-Path -Parent $file
+    $text = Get-Content $file -Raw
+    if ($file -like '*proj') {
+      $dirs += $here
+      foreach ($m in [regex]::Matches($text, '<ProjectReference\s+Include="([^"$]+)"')) { $queue.Enqueue((Join-Path $here $m.Groups[1].Value)) }
+      $d = $here
+      while ($d.Length -ge $rootFull.Length) {
+        foreach ($n in @('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props')) {
+          $f = Join-Path $d $n
+          if (Test-Path $f) { $queue.Enqueue($f) }
+        }
+        $parent = Split-Path -Parent $d
+        if ([string]::IsNullOrEmpty($parent) -or ($parent -eq $d)) { break }
+        $d = $parent
+      }
+    }
+    foreach ($m in [regex]::Matches($text, '<Import\s+Project="([^"$]+)"')) { $queue.Enqueue((Join-Path $here $m.Groups[1].Value)) }
+    foreach ($m in [regex]::Matches($text, '<(?:Compile|None|Content|Page|EmbeddedResource|ApplicationDefinition)\s+Include="([^"$*]+)"')) {
+      $linked = [System.IO.Path]::GetFullPath((Join-Path $here $m.Groups[1].Value))
+      if (Test-Path $linked -PathType Leaf) { $extra[$linked] = $true }
     }
   }
   $files = @()
-  foreach ($d in $dirs) {
+  foreach ($d in ($dirs | Sort-Object -Unique)) {
     $files += @(Get-ChildItem -Path $d -Recurse -Include '*.cs', '*.csproj', '*.xaml', '*.props', '*.targets', '*.resw', '*.json' -File |
       Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' })
   }
   foreach ($n in @('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props', 'global.json', 'NuGet.config', '.editorconfig')) {
     $f = Join-Path $Root $n
-    if (Test-Path $f) { $files += Get-Item $f }
+    if (Test-Path $f) { $extra[[System.IO.Path]::GetFullPath($f)] = $true }
   }
+  foreach ($k in $extra.Keys) { $files += Get-Item $k }
   return $files
 }
 
@@ -1155,10 +1183,8 @@ function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check 
   # $Runs is `gh run list --commit <sha> --workflow build.yml --json
   # databaseId,status,conclusion` output (newest first); $Jobs is `gh run
   # view <id> --json jobs` for the newest run. Returns State (green, red,
-  # pending, none) plus the line the report quotes. Only red refuses the
-  # population: pending or absent CI (an unpushed commit, no network)
-  # reads as not verified and the night's own population compare still
-  # gates (recorded default; cost of changing: a pending night waits).
+  # pending, none) plus the line the report quotes; Resolve-CiAdmission
+  # decides admission.
   $run = @($Runs) | Where-Object { $null -ne $_ } | Select-Object -First 1
   if ($null -eq $run) { return [pscustomobject]@{ State = 'none'; Line = "CI population check not verified: no build.yml run for $Sha" } }
   $found = $null
@@ -1171,6 +1197,19 @@ function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check 
   if ($c -eq 'success') { return [pscustomobject]@{ State = 'green'; Line = "CI population check green on $Sha (run $($run.databaseId))" } }
   if ($c -in @('failure', 'cancelled', 'timed_out')) { return [pscustomobject]@{ State = 'red'; Line = "CI population check $c on $Sha (run $($run.databaseId)): the population is refused" } }
   return [pscustomobject]@{ State = 'pending'; Line = "CI population check not verified: step '$Step' in run $($run.databaseId) reads '$c'" }
+}
+
+function Resolve-CiAdmission($Gate, [bool]$AllowUnverified) {
+  # Admission (D00 T02 section 37 R1-F1): only green admits. Red, pending,
+  # or unverifiable CI refuses the population, naming the state; the
+  # operator override admits a non-red state and the line says so. A red
+  # check is never overridden.
+  if ($Gate.State -eq 'green') { return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Line = $Gate.Line } }
+  if (($Gate.State -ne 'red') -and $AllowUnverified) {
+    return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Line = "$($Gate.Line); admitted without CI verification (-AllowUnverifiedCi)" }
+  }
+  $why = if ($Gate.State -eq 'red') { $Gate.Line } else { "$($Gate.Line); the population is refused (only a green CI population check admits it; -AllowUnverifiedCi overrides a non-red state)" }
+  return [pscustomobject]@{ State = $Gate.State; Admitted = $false; Line = $why }
 }
 
 function Get-CandidateCiState([string]$Root, [string]$Sha) {
