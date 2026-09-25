@@ -651,7 +651,7 @@ $null = Compress-MetricsStore $rjStore
 [System.IO.File]::AppendAllText($rjStore, '{"schema":"metrics/1","identity":"torn')
 $rjOut = Restore-MetricsStore $rjStore
 $rjBack = Read-MetricsStore $rjStore
-Assert (($rjOut -like 'metrics: restored *row(s)*1 line(s) the compaction had already rejected stay dropped') -and ($rjBack.Malformed.Count -eq 0) -and ($rjBack.Rows.Count -ge 1)) 's40-backup-with-rejected-marker-restores' $rjOut
+Assert (($rjOut -like 'metrics: restored *row(s)*1 line(s) the compaction had already rejected stay dropped*') -and ($rjBack.Malformed.Count -eq 0) -and ($rjBack.Rows.Count -ge 1)) 's40-backup-with-rejected-marker-restores' $rjOut
 # R4-F2: a lower revision never replaces the stored row.
 $rvStore = Join-Path $fsDir 'revision.jsonl'
 $rv2 = New-Night '2026-09-23' '2026-09-23-023000' 700; $rv2 | Add-Member -NotePropertyName revision -NotePropertyValue 2 -Force
@@ -674,8 +674,11 @@ $mgRow = @($mgRows | Where-Object { "$($_.identity)" -eq $mgNat.identity }) | Se
 # R4-F3: the live native result takes the merged fields too.
 $mgLive = New-Night '2026-09-22' '2026-09-22-023000'; $mgLive.populationHash = ''; $mgLive.harness = ''
 $mgN = Add-MergedEvidence @($mgLive) $mgRows
-Assert (($mgN -eq 1) -and ("$($mgLive.populationHash)" -eq 'popBF001') -and ("$($mgLive.mergedFrom)" -like 'bf-2026-09-22*')) 's40-live-render-takes-merged-evidence' "$mgN $($mgLive.populationHash)"
-Assert ((@($mgRows).Count -eq 1) -and ("$($mgRow.populationHash)" -eq 'popBF001') -and ("$($mgRow.harness)" -eq 'aaaa1111-bbbb2222') -and ("$($mgRow.mergedFrom)" -like 'bf-2026-09-22 (*populationHash*harness*)')) 's40-partial-native-keeps-backfill-evidence' (($mgRows | ConvertTo-Json -Depth 4 -Compress))
+# Section 47 item 6 narrows the merge: a native row with its own counts
+# keeps its own population (never the backfill's), while unit-free fields
+# such as the harness still fill.
+Assert (($mgN -eq 1) -and ("$($mgLive.populationHash)" -eq '') -and ("$($mgLive.harness)" -eq 'aaaa1111-bbbb2222') -and ("$($mgLive.mergedFrom)" -like 'bf-2026-09-22*')) 's40-live-render-takes-merged-evidence' "$mgN $($mgLive.populationHash)"
+Assert ((@($mgRows).Count -eq 1) -and ("$($mgRow.populationHash)" -ne 'popBF001') -and ("$($mgRow.harness)" -eq 'aaaa1111-bbbb2222') -and ("$($mgRow.mergedFrom)" -like 'bf-2026-09-22 (*harness*)') -and ("$($mgRow.mergedFrom)" -notlike '*populationHash*')) 's40-partial-native-keeps-backfill-evidence' (($mgRows | ConvertTo-Json -Depth 4 -Compress))
 # Item 12: a mixed corpus compares structured metrics and alerts, not
 # only text: corrections, two cohorts, a malformed row, a schedule edit.
 $mxStore = Join-Path $s40 'mixed.jsonl'
@@ -808,6 +811,134 @@ $rbLate = New-Night '2026-09-27' '2026-09-27-023000' 900; $rbLate | Add-Member -
 $rbCtx = @(Get-TrendAlerts (@($rbBase) + @($rbLate)) | Where-Object { $_ -like '  - runa-duration context:*' })
 $script:AncestryProbe = $savedProbe
 Assert (($shRoll -eq 'non-linear (rollback to c3)') -and ($shDiv -eq 'non-linear (divergent at c4)') -and ($shUnk -like 'ancestry unavailable*') -and ($shLin -eq 'linear') -and ($rbCtx.Count -eq 1) -and ($rbCtx[0] -like '*revisions c1..c3 (non-linear (rollback to c3))*correlation, not cause')) 's40-attribution-reads-rollback-as-correlation' "$shRoll / $shDiv / $shUnk / $shLin / $($rbCtx -join '')"
+
+# ---- Section 47: trend and telemetry third residuals -----------------
+$d47 = Join-Path $dir 's47'
+$null = New-Item -ItemType Directory -Force -Path $d47
+# Item 1: two governed schedules on one host read as a named conflict.
+$sc1 = New-Night '2026-09-20' '2026-09-20-023000'; $sc1.trigger = 'task \ScratchPad\Nightly UI'
+$sc2 = New-Night '2026-09-20' '2026-09-20-033000'; $sc2.trigger = 'task \ScratchPad\Nightly UI Copy'
+$c1 = Select-CanonicalRuns @($sc1, $sc2)
+$t1 = @(Format-TrendTable @($sc1, $sc2) $Q $today)
+Assert (($c1['2026-09-20|h0st0001'].Canonical -eq '') -and ("$($c1['2026-09-20|h0st0001'].Conflict)" -like 'governed runs from 2 schedules*') -and (@($t1 | Where-Object { $_ -like '- SCHEDULE CONFLICT: night 2026-09-20 on host h0st0001 has governed runs from 2 schedules*never one merged night*' }).Count -eq 1)) 's47-two-schedules-conflict-by-name' ($t1 -join ' | ')
+# Item 2: pre-host results with conflicting environments read unresolved.
+$lg1 = New-Night '2026-09-21' '2026-09-21-023000'; $lg1.hostKey = ''; $lg1.env | Add-Member -NotePropertyName topology -NotePropertyValue 'DISPLAY1 2560x1440' -Force
+$lg2 = New-Night '2026-09-21' '2026-09-21-120000' 600 'manual'; $lg2.hostKey = ''; $lg2.env | Add-Member -NotePropertyName topology -NotePropertyValue 'DISPLAY1 1920x1080' -Force
+$lg3 = New-Night '2026-09-21' '2026-09-21-130000' 600 'manual'; $lg3.hostKey = ''; $lg3.env | Add-Member -NotePropertyName topology -NotePropertyValue 'DISPLAY1 2560x1440' -Force; $lg3.env | Add-Member -NotePropertyName session -NotePropertyValue 'op/Console' -Force
+$lg1.env | Add-Member -NotePropertyName session -NotePropertyValue 'op/' -Force
+$c2 = Select-CanonicalRuns @($lg1, $lg2)
+$c2b = Select-CanonicalRuns @($lg1, $lg3)
+Assert (($c2['2026-09-21|legacy'].Canonical -eq '') -and ("$($c2['2026-09-21|legacy'].Unresolved)" -like '*2 conflicting environments*') -and ($c2b['2026-09-21|legacy'].Canonical -ne '')) 's47-legacy-conflicting-environments-unresolved' "$($c2['2026-09-21|legacy'].Unresolved)"
+# Item 3: a renamed host's old key maps to its new key.
+'| Old | New | Reason |', '| --- | --- | --- |', '| 0a0a0a0a | 0b0b0b0b | renamed host |' | Set-Content -Path (Join-Path $d47 'aliases.md') -Encoding UTF8
+$script:HostAliases = Read-HostAliases (Join-Path $d47 'aliases.md')
+$old = New-Night '2026-09-22' '2026-09-22-023000'; $old.hostKey = '0a0a0a0a'
+$new = New-Night '2026-09-23' '2026-09-23-023000'; $new.hostKey = '0b0b0b0b'
+$k3 = @((Get-ResultHostKey $old), (Get-ResultHostKey $new))
+$script:HostAliases = @{}
+Assert (($k3[0] -eq '0b0b0b0b') -and ($k3[1] -eq '0b0b0b0b')) 's47-host-alias-maps-old-to-new' ($k3 -join ',')
+# Item 4: a persisting alert on green runs is acknowledged.
+$alPath = Join-Path $d47 'alerts.json'
+$ev = [pscustomobject]@{ Night = '2026-09-24'; Host = 'h0st0001'; Identity = 'e1' }
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs baseline 600s') $alPath $ev
+'| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|runa-duration | operator | 2026-09-25 | new UI suite is slower by design |' | Set-Content -Path (Join-Path $d47 'alert-acks.md') -Encoding UTF8
+$ev2 = [pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0001'; Identity = 'e2' }
+$null = Update-AlertLedger @('- ALERT runa-duration: 910s on 2026-09-25 vs baseline 600s') $alPath $ev2 @() (Read-AlertAcks (Join-Path $d47 'alert-acks.md'))
+$lg4 = Read-AlertLedger $alPath
+$pend4 = Get-PendingAlertNotifications $alPath
+$e4 = @($lg4.alerts | Where-Object { $_.id -eq 'h0st0001|runa-duration' })[0]
+Assert (("$($e4.acknowledged)" -like 'operator on 2026-09-25: new UI suite*') -and ($e4.state -eq 'open')) 's47-green-run-alert-acknowledged' "$($e4.acknowledged) state=$($e4.state) persisting=$($pend4.Persisting) acked=$($pend4.Acknowledged)"
+# Item 5: a returning cohort reuses its baseline; a long cold start says so.
+$retRows = @()
+foreach ($i in 1..6) { $n = New-Night ('2026-08-{0:d2}' -f (10 + $i)) ('2026-08-{0:d2}-023000' -f (10 + $i)) 600; $retRows += $n }
+foreach ($i in 1..3) { $n = New-Night ('2026-08-{0:d2}' -f (20 + $i)) ('2026-08-{0:d2}-023000' -f (20 + $i)) 600; $n.harness = 'cccc3333-dddd4444'; $retRows += $n }
+$retLate = New-Night '2026-09-10' '2026-09-10-023000' 5000
+$g5 = @(Get-TrendAlerts (@($retRows) + @($retLate)))
+$coldRows = @()
+foreach ($i in 1..11) { $n = New-Night ('2026-09-{0:d2}' -f $i) ('2026-09-{0:d2}-023000' -f $i) 600; $n.harness = 'eeee5555-ffff6666'; $n.legs.'run-a'.testSeconds = $null; $coldRows += $n }
+$g5b = @(Get-TrendAlerts $coldRows)
+Assert ((@($g5 | Where-Object { $_ -like '- Rebaseline: cohort returned; reusing *earlier same-cohort night(s)*' }).Count -eq 1) -and (@($g5 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@($g5b | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 11 night(s)*' }).Count -eq 1)) 's47-returning-cohort-reuses-and-cold-start-escalates' (($g5 + @('||') + $g5b) -join ' | ')
+# Item 6: a native row with counts never takes the backfill's population;
+# a tombstone blocks a refill.
+$mgS = Join-Path $d47 'merge.jsonl'
+$bf6 = New-Night '2026-09-26' '2026-09-26-023000'; $bf6.identity = 'bf-2026-09-26-pid1'; $bf6 | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ passed = [pscustomobject]@{ confidence = 'high'; source = 'trx' } }) -Force; $bf6.populationHash = 'popBF006'; $bf6 | Add-Member -NotePropertyName commit -NotePropertyValue 'abc1234' -Force
+$nat6 = New-Night '2026-09-26' '2026-09-26-023000'; $nat6.populationHash = ''; $nat6 | Add-Member -NotePropertyName commit -NotePropertyValue '' -Force; $nat6 | Add-Member -NotePropertyName tombstone -NotePropertyValue @('commit') -Force
+$null = Sync-MetricsStore $mgS @($bf6)
+$r6 = @(Sync-MetricsStore $mgS @($nat6)) | Where-Object { "$($_.identity)" -eq $nat6.identity } | Select-Object -First 1
+Assert (("$($r6.populationHash)" -ne 'popBF006') -and ("$($r6.commit)" -ne 'abc1234')) 's47-merge-keeps-units-and-tombstones' (($r6 | ConvertTo-Json -Depth 4 -Compress))
+# Item 7: an all-excluded run reads excluded with zero executions; a green
+# run that executed nothing reads unproven.
+$ex7 = New-Night '2026-09-27' '2026-09-27-023000'; $ex7 | Add-Member -NotePropertyName excluded -NotePropertyValue 'harness experiment' -Force
+$z7 = New-Night '2026-09-28' '2026-09-28-023000' 600 'timer' 0 0 0; $z7.legs.'run-b'.passed = 0
+$t7 = @(Format-TrendTable @($ex7, $z7) $Q $today)
+Assert ((@($t7 | Where-Object { $_ -like '| 2026-09-27 (excluded) | excluded (0 executed counted; recorded green) |*' }).Count -eq 1) -and (@($t7 | Where-Object { $_ -like '| 2026-09-28 | green (0 executed: unproven) |*' }).Count -eq 1)) 's47-excluded-and-empty-runs-never-read-healthy' ($t7 -join ' | ')
+# Item 8: a missing shard manifest reads coverage partial.
+$sh8 = New-Night '2026-09-29' '2026-09-29-023000'; $sh8 | Add-Member -NotePropertyName discovery -NotePropertyValue ([pscustomobject]@{ shards = 3; manifests = 2 }) -Force
+$t8 = @(Format-TrendTable @($sh8) $Q $today)
+Assert (@($t8 | Where-Object { $_ -like '| 2026-09-29 |*| partial (2 of 3 shard manifest(s) read;*' }).Count -eq 1) 's47-missing-shard-reads-partial' ($t8 -join ' | ')
+# Item 9: a run still going past its grace reads overrun; a disabled
+# schedule reads disabled.
+$shPath = Join-Path $d47 'schedule.md'
+'| From | Trigger | Interval days |', '| --- | --- | --- |', '| 2026-09-20 | 02:30 | 1 |', '| 2026-09-25 | 02:30 | 0 |' | Set-Content -Path $shPath -Encoding UTF8
+$sched9 = Read-ScheduleHistory $shPath
+$n9 = New-Night '2026-09-24' '2026-09-24-023000'
+$t9 = @(Format-TrendTable @($n9) $Q (Get-Date '2026-09-27 10:00') @{} @() @() $sched9)
+$sched9b = Read-ScheduleHistory (Join-Path $d47 'none.md')
+$t9b = @(Format-TrendTable @($n9) $Q (Get-Date '2026-09-26 09:00') @{} @() @() $null ([pscustomobject]@{ Night = '2026-09-26'; Started = '2026-09-26 02:30' }))
+Assert ((@($t9 | Where-Object { $_ -like '| 2026-09-25 | disabled | - | schedule disabled from 2026-09-25 |*' }).Count -eq 1) -and (@($t9b | Where-Object { $_ -like '| 2026-09-26 | overrun | - | run still going past its grace (started 2026-09-26 02:30) |*' }).Count -eq 1)) 's47-calendar-names-overrun-and-disabled' (($t9 + @('||') + $t9b) -join ' | ')
+# Item 10: a restore from a stale backup lists the rows lost since it.
+$rs = Join-Path $d47 'restore.jsonl'
+$null = Sync-MetricsStore $rs @((New-Night '2026-09-10' '2026-09-10-023000'))
+$null = Compress-MetricsStore $rs
+$null = Sync-MetricsStore $rs @((New-Night '2026-09-11' '2026-09-11-023000'))
+[System.IO.File]::AppendAllText($rs, "{torn`n")
+$rsOut = Restore-MetricsStore $rs
+Assert ($rsOut -like '*LOST since the backup: 2026-09-11-023000-pid1@h0st0001 (not in the backup)*') 's47-stale-restore-lists-lost-rows' $rsOut
+# Item 11: a restore from a pre-rule backup yields sanitized rows, and the
+# migration rewrites the retained copy once.
+$ds = Join-Path $d47 'disc.jsonl'
+$leak = New-Night '2026-09-12' '2026-09-12-023000'; $leak.trigger = 'token=ghp_' + ('a' * 36)
+$leakRow = ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $leak)) -Depth 6 -Compress
+$leakRow = $leakRow.Replace('"launch":"timer"', '"launch":"timer","note":"api_key=' + ('z' * 12) + '"')
+[System.IO.File]::WriteAllText("$ds.bak", $leakRow + "`n")
+$mig = @(Update-DisclosureMigration $ds)
+$bakText = [System.IO.File]::ReadAllText("$ds.bak")
+[System.IO.File]::WriteAllText("$ds.bak", $leakRow + "`n")
+$null = Restore-MetricsStore $ds
+$restText = [System.IO.File]::ReadAllText($ds)
+Assert ((@($mig).Count -eq 1) -and ($bakText -notlike ('*api_key=' + ('z' * 12) + '*')) -and ($restText -notlike ('*api_key=' + ('z' * 12) + '*')) -and (@(Update-DisclosureMigration $ds).Count -eq 0)) 's47-pre-rule-backup-restores-sanitized' (($mig -join ' | ') + ' || ' + $restText.Substring(0, [math]::Min(200, $restText.Length)))
+# Item 12: capacity warns at 90 percent, and pruning of archived stamps
+# runs while writes are refused.
+$cap = Join-Path $d47 'cap.jsonl'
+$c12 = New-Night '2026-09-13' '2026-09-13-023000'
+$len = [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $c12)) -Depth 6 -Compress) + "`n")
+$null = Sync-MetricsStore $cap @($c12) $null ([long]($len / 0.95))
+$warn12 = "$script:MetricsCapacityWarning"
+$pn = Join-Path $d47 'prune'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $pn '2026-09-13-023000')
+ConvertTo-Json $c12 -Depth 6 | Set-Content -Path (Join-Path $pn 'morning-2026-09-13-023000.result.json') -Encoding UTF8
+$pstore = Join-Path $pn 'metrics.jsonl'
+$null = Sync-MetricsStore $pstore @($c12)
+$null = Sync-MetricsStore $pstore @((New-Night '2026-09-14' '2026-09-14-023000')) $null 10
+$refused12 = "$script:MetricsWriteError"
+$del12 = Remove-ArchivedStamp $pn '2026-09-13-023000' $pstore
+Assert (($warn12 -like 'metrics store at 9*% of its *-byte cap*') -and ($refused12 -like '*over capacity*pruning of archived stamps still runs*') -and $del12.Deleted) 's47-capacity-warns-and-pruning-still-runs' "$warn12 || $refused12 || $($del12.Reason)"
+# Item 13: a derivation-1 row beside derivation-2 rows reads its version
+# where coverage depends on the change.
+$d1 = ConvertFrom-MetricsRow ([pscustomobject](ConvertTo-MetricsRow (New-Night '2026-09-15' '2026-09-15-023000')))
+$d1.PSObject.Properties.Remove('derivation')
+$d1 | Add-Member -NotePropertyName derivation -NotePropertyValue 1 -Force
+$d2 = New-Night '2026-09-16' '2026-09-16-023000'
+$t13 = @(Format-TrendTable @($d1, $d2) $Q $today)
+Assert ((@($t13 | Where-Object { ($_ -like '| 2026-09-15 (metrics) |*') -and $_.Contains('[derivation 1; not comparable with derivation 2] |') }).Count -eq 1) -and (@($t13 | Where-Object { ($_ -like '| 2026-09-16 |*') -and ($_ -like '*derivation*') }).Count -eq 0)) 's47-derivation-reads-its-version' ($t13 -join ' | ')
+# Item 14: an alert's context names baseline values, samples, exclusions,
+# and what recovers it.
+$b14 = @(1..7 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f (19 + $_)) ('2026-09-{0:d2}-023000' -f (19 + $_)) 600 })
+$b14[0].harness = 'other000-harness'
+$l14 = New-Night '2026-09-27' '2026-09-27-023000' 5000
+$g14 = @(Get-TrendAlerts (@($b14) + @($l14)))
+$ctx14 = @($g14 | Where-Object { $_ -like '  - runa-duration context:*' })
+Assert (($ctx14.Count -eq 1) -and $ctx14[0].Contains('baseline values [600, 600, 600, 600, 600, 600]; samples 6') -and ($ctx14[0] -like '*excluded nights: 2026-09-20 (cohort: harness*') -and ($ctx14[0] -like '*recovers when RunA is back under 125% of the 600s baseline median*')) 's47-alert-context-explains-the-calculation' ($ctx14 -join ' | ')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTrend.Tests: $failures FAILURE(S)"; exit 1 }

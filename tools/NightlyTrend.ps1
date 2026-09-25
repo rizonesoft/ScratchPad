@@ -19,6 +19,8 @@ param(
   [string]$PausesPath = 'docs/nightly-pauses.md',
   [string]$ExclusionsPath = 'docs/nightly-exclusions.md',
   [string]$ScheduleHistoryPath = 'docs/nightly-schedule-history.md',
+  [string]$HostAliasesPath = 'docs/nightly-host-aliases.md',
+  [string]$AlertAcksPath = 'docs/nightly-acks/alert-acks.md',
   [switch]$Compact,
   [switch]$Restore
 )
@@ -26,6 +28,8 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 
 $storePath = Join-Path $NightDir 'metrics.jsonl'
+# Host aliases resolve before any key is read (D00 T02 section 47 item 3).
+$script:HostAliases = Read-HostAliases $HostAliasesPath
 if ($Compact) {
   Write-Output (Compress-MetricsStore $storePath)
   exit 0
@@ -66,6 +70,10 @@ foreach ($p in ($paths | Sort-Object -Unique)) {
 # and a night whose raw result retention pruned renders from its row.
 $metricsNote = ''
 $supersessions = @()
+# Retained copies migrate once per disclosure rule version (section 47
+# item 11).
+$migNotes = @()
+try { $migNotes = @(Update-DisclosureMigration $storePath) } catch { $migNotes = @("- disclosure migration failed: $($_.Exception.Message)") }
 try {
   $mrows = @(Sync-MetricsStore $storePath $results)
   $auth = Select-AuthoritativeResults $results $mrows @($script:MetricsStaleSkipped)
@@ -79,6 +87,7 @@ try {
   $results = @($results | Where-Object { $superseded -notcontains (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) })
   $metricsNote = "- Metrics store: $($mrows.Count) row(s), $($fromMetrics.Count) night(s) rendered from metrics after pruning"
   if ("$script:MetricsWriteError" -ne '') { $metricsNote += "; $script:MetricsWriteError" }
+  if ("$script:MetricsCapacityWarning" -ne '') { $metricsNote += "; WARNING: $script:MetricsCapacityWarning" }
   if (@($script:MetricsStaleSkipped).Count -gt 0) { $metricsNote += "; $(@($script:MetricsStaleSkipped).Count) stale result(s) older than their stored revision left unchanged" }
   if (@($script:MetricsLastMalformed).Count -gt 0) { $metricsNote += "; $(@($script:MetricsLastMalformed).Count) malformed line(s) skipped (lines $(@($script:MetricsLastMalformed) -join ', '); run tools/NightlyTrend.ps1 -Compact)" }
 } catch { $metricsNote = "- Metrics store: unavailable ($($_.Exception.Message))" }
@@ -90,7 +99,15 @@ $schedule = Read-ScheduleHistory $ScheduleHistoryPath
 if ($null -eq $schedule) { $schedule = Get-NightlySchedule (Join-Path $PSScriptRoot 'tasks/nightly-ui.xml') }
 $null = Set-ResultExclusions $results (Read-NightlyExclusions $ExclusionsPath)
 $script:TrendAlertGroups = @()
-$lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) } (Get-Date) (Read-NightlyPauses $PausesPath) $degraded $supersessions $schedule
+# The journaled live run (section 47 item 9): a run still going past its
+# grace reads overrun on the calendar.
+$running = $null
+try {
+  $jr = Read-RunJournal $NightDir
+  if ($jr.Exists -and $jr.Ok -and ($jr.Phase -notin @('final', 'cancelled', 'failed-after-result')) -and (Test-JournalProcessAlive $jr.Pid $jr.Started)) { $running = [pscustomobject]@{ Night = (Get-NightKey $jr.Started); Started = $jr.Started.ToString('yyyy-MM-dd HH:mm') } }
+} catch { $running = $null }
+$lines = Format-TrendTable $results @{ Overdue = @($quar.Overdue); DueSoon = @($dueSoon) } (Get-Date) (Read-NightlyPauses $PausesPath) $degraded $supersessions $schedule $running
+$lines += $migNotes
 if ($metricsNote -ne '') { $lines += ''; $lines += $metricsNote; $lines += @(Format-PrunedEvidence $results) }
 # The alert lifecycle (section 40 item 15): new alerts notify once,
 # persisting ones stay quiet, and closed ones name how they closed.
@@ -98,7 +115,7 @@ if (@($script:TrendAlertGroups).Count -gt 0) {
   try {
     $nNew = 0; $nPer = 0; $closedAll = @()
     foreach ($g in @($script:TrendAlertGroups)) {
-      $life = Update-AlertLedger @($g.Alerts) (Join-Path $NightDir 'alerts.json') $g.Evaluation @($supersessions | ForEach-Object { $_.Backfill })
+      $life = Update-AlertLedger @($g.Alerts) (Join-Path $NightDir 'alerts.json') $g.Evaluation @($supersessions | ForEach-Object { $_.Backfill }) (Read-AlertAcks $AlertAcksPath)
       $nNew += @($life.NewIds).Count; $nPer += @($life.Persisting).Count; $closedAll += @($life.Closed)
     }
     $lines += "- Alert lifecycle: $nNew new, $nPer persisting, $(@($closedAll).Count) closed$(if (@($closedAll).Count -gt 0) { ' (' + ((@($closedAll) | ForEach-Object { "$($_.Id) $($_.State)" }) -join '; ') + ')' })"
