@@ -460,18 +460,29 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
   # capture is independent and failures record as notes. Returns notes.
   $notes = @()
   try { $null = New-Item -ItemType Directory -Force -Path $CaptureDir } catch { return @("- $Leg : capture dir failed: $($_.Exception.Message)") }
-  $shot = Join-Path $CaptureDir "$Leg-failure.png"
+  # Screenshots cover app-owned windows only (section 38 item 2): each
+  # window of a ScratchPad process the run launched, clipped to its own
+  # bounds; the rest of the desktop (the operator's windows) is never
+  # captured. No owned window means no screenshot.
   try {
     Add-Type -AssemblyName System.Drawing
-    Add-Type -AssemblyName System.Windows.Forms
-    $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-    $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
-    try {
-      $g = [System.Drawing.Graphics]::FromImage($bmp)
-      try { $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size) } finally { $g.Dispose() }
-      $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
-      $notes += "- $Leg : screenshot $Leg-failure.png"
-    } finally { $bmp.Dispose() }
+    $ownedPids = @{}
+    try { $ownedPids = Get-DescendantPids @(Get-CimInstance Win32_Process -ErrorAction Stop | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; ParentProcessId = [int]$_.ParentProcessId; Created = $_.CreationDate } }) $PID } catch { $ownedPids = @{} }
+    $wins = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.Id; Name = $_.ProcessName; Rect = (Get-WindowRect $_.MainWindowHandle) } })
+    $rects = @(Get-OwnedWindowRects $wins $ownedPids)
+    if ($rects.Count -eq 0) { $notes += "- $Leg : no screenshot (no app-owned window was open)" }
+    $n = 0
+    foreach ($r in $rects) {
+      $n++
+      $shot = Join-Path $CaptureDir "$Leg-failure-$n.png"
+      $bmp = New-Object System.Drawing.Bitmap $r.Width, $r.Height
+      try {
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        try { $g.CopyFromScreen($r.X, $r.Y, 0, 0, (New-Object System.Drawing.Size $r.Width, $r.Height)) } finally { $g.Dispose() }
+        $bmp.Save($shot, [System.Drawing.Imaging.ImageFormat]::Png)
+        $notes += "- $Leg : screenshot $Leg-failure-$n.png (pid $($r.ProcessId) window only)"
+      } finally { $bmp.Dispose() }
+    }
   } catch { $notes += "- $Leg : screenshot failed: $($_.Exception.Message)" }
   $wins = Join-Path $CaptureDir "$Leg-windows.txt"
   try {
@@ -518,6 +529,20 @@ function Invoke-FailureCapture([string]$Leg, [string]$CaptureDir, [bool]$Killed)
 # owns, and the stamp where incident identity contract v2 began.
 $script:TriageOwner = 'operator'
 $script:TriageDays = 2
+# One authoritative source (section 38 item 8): tools/incident-policy.json
+# names the triage owner and the escalation window; the defaults above
+# stand only if it is absent, and an unreadable file is reported.
+$script:IncidentPolicyError = ''
+function Read-IncidentPolicy([string]$Path) {
+  if (-not (Test-Path $Path)) { return [pscustomobject]@{ Ok = $false; Error = "incident policy missing: $Path"; Owner = ''; Days = 0 } }
+  try {
+    $j = Get-Content $Path -Raw | ConvertFrom-Json
+    if (("$($j.triageOwner)" -eq '') -or ("$($j.triageDays)" -notmatch '^[1-9]\d*$')) { return [pscustomobject]@{ Ok = $false; Error = "incident policy invalid: triageOwner must be named and triageDays a positive whole number ($Path)"; Owner = ''; Days = 0 } }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Owner = "$($j.triageOwner)"; Days = [int]$j.triageDays }
+  } catch { return [pscustomobject]@{ Ok = $false; Error = "incident policy unreadable: $($_.Exception.Message)"; Owner = ''; Days = 0 } }
+}
+$policy = Read-IncidentPolicy (Join-Path $PSScriptRoot 'incident-policy.json')
+if ($policy.Ok) { $script:TriageOwner = $policy.Owner; $script:TriageDays = $policy.Days } else { $script:IncidentPolicyError = $policy.Error }
 $script:IncidentContractV2Since = '2026-09-25-000000'
 $script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'ForegroundLog', 'JobControl')
 $script:CaptureMaxBytes = 25MB
@@ -525,6 +550,16 @@ $script:CaptureFailMarker = 'SECRET-SCAN-FAILED.txt'
 $script:CaptureStagingDir = '.staging'
 $script:CaptureBudgetMarker = 'CAPTURE-BUDGET-TRUNCATED.txt'
 $script:RunCaptureMaxBytes = 200MB
+# Per-capture cap and reservation (section 38 item 3): a dump over the
+# cap is refused at capture time (JobControl --dump-max), and a dump is
+# attempted only while the disk keeps the cap plus the markers free.
+$script:CaptureFileMaxBytes = 100MB
+$script:CaptureRefusedMarker = 'CAPTURE-REFUSED.txt'
+$script:DumpDisclosureMarker = 'DUMP-DISCLOSURE-APPROVED.txt'
+# Ledger initialization record (section 38 item 4).
+$script:LedgerRecordPath = 'docs/incident-ledger.md'
+# The lifecycle block's consumer contract version (section 38 item 7).
+$script:LifecycleContractVersion = 1
 $script:SecretPatterns = @(
   @('github-token', 'gh[pousr]_[A-Za-z0-9]{36,}'),
   @('github-pat', 'github_pat_[A-Za-z0-9_]{22,}'),
@@ -573,6 +608,41 @@ function Get-DescendantPids($Processes, [int]$RootPid) {
   return $tree
 }
 
+function Get-WindowRect([IntPtr]$Handle) {
+  if (-not ('NightlyWin32Rect' -as [type])) {
+    Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public static class NightlyWin32Rect { [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; } [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r); }'
+  }
+  $r = New-Object NightlyWin32Rect+RECT
+  if (-not [NightlyWin32Rect]::GetWindowRect($Handle, [ref]$r)) { return $null }
+  return [pscustomobject]@{ X = $r.Left; Y = $r.Top; Width = ($r.Right - $r.Left); Height = ($r.Bottom - $r.Top) }
+}
+
+function Get-OwnedWindowRects($Windows, [hashtable]$OwnedPids) {
+  # The screenshot set (section 38 item 2): windows whose process the run
+  # owns (Get-DescendantPids) and whose name is a kind the run launches,
+  # with a real area. $Windows entries carry ProcessId, Name, Rect.
+  return @(@($Windows) | Where-Object {
+    ($null -ne $_) -and ($null -ne $_.Rect) -and $OwnedPids.ContainsKey([int]$_.ProcessId) -and ($_.Name -eq 'ScratchPad') -and ($_.Rect.Width -gt 0) -and ($_.Rect.Height -gt 0)
+  } | ForEach-Object { [pscustomobject]@{ ProcessId = [int]$_.ProcessId; X = $_.Rect.X; Y = $_.Rect.Y; Width = $_.Rect.Width; Height = $_.Rect.Height } })
+}
+
+function Get-DumpMemoryKind([string]$Path) {
+  # A minidump's header (MINIDUMP_HEADER): signature MDMP at 0, Flags as
+  # a little-endian ULONG64 at 24. MiniDumpWithFullMemory is 0x2. Returns
+  # full, minimal, or unreadable.
+  try {
+    $fs = [System.IO.File]::OpenRead($Path)
+    try {
+      $b = New-Object byte[] 32
+      if ($fs.Read($b, 0, 32) -lt 32) { return 'unreadable' }
+    } finally { $fs.Dispose() }
+    if ([System.Text.Encoding]::ASCII.GetString($b, 0, 4) -ne 'MDMP') { return 'unreadable' }
+    $flags = [System.BitConverter]::ToUInt64($b, 24)
+    if (($flags -band 2) -ne 0) { return 'full' }
+    return 'minimal'
+  } catch { return 'unreadable' }
+}
+
 function Format-WindowRow([int]$ProcId, [string]$Name, [string]$Title, [bool]$Owned) {
   # Titles name open documents and pages, so a title survives only
   # when the process is both a kind the run launches and provably the
@@ -591,6 +661,14 @@ function Test-RetainableCaptures([string]$SourceDir) {
   $reasons = @()
   foreach ($d in @(Get-ChildItem -Path $SourceDir -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
     if (Test-Path (Join-Path $d.FullName $script:CaptureFailMarker)) { $reasons += "$($d.Name)/$($script:CaptureFailMarker) present (an unscanned capture was kept)" }
+    # Dumps (section 38 item 2): a full-memory dump holds the whole heap
+    # (document text, tokens), so it retains only behind an explicit
+    # disclosure marker; an unreadable dump header refuses too.
+    foreach ($dmp in @(Get-ChildItem -Path $d.FullName -File -Recurse -Filter '*.dmp' -ErrorAction SilentlyContinue)) {
+      $kind = Get-DumpMemoryKind $dmp.FullName
+      if (($kind -eq 'full') -and (-not (Test-Path (Join-Path $d.FullName $script:DumpDisclosureMarker)))) { $reasons += "$($d.Name)/$($dmp.Name) is a full-memory dump; retain needs $($script:DumpDisclosureMarker) beside it" }
+      elseif ($kind -eq 'unreadable') { $reasons += "$($d.Name)/$($dmp.Name) has an unreadable dump header" }
+    }
     $stage = Join-Path $d.FullName $script:CaptureStagingDir
     if ((Test-Path $stage) -and (@(Get-ChildItem -LiteralPath $stage -Recurse -File -Force -ErrorAction SilentlyContinue).Count -gt 0)) { $reasons += "$($d.Name)/$($script:CaptureStagingDir) holds unscanned staged captures" }
     foreach ($f in @(Get-ChildItem -Path $d.FullName -File -ErrorAction SilentlyContinue | Where-Object { (@('.txt', '.log', '.json') -contains $_.Extension.ToLower()) -and ($_.Name -ne $script:CaptureFailMarker) })) {
@@ -603,7 +681,38 @@ function Test-RetainableCaptures([string]$SourceDir) {
   return [pscustomobject]@{ Ok = ($reasons.Count -eq 0); Reasons = $reasons }
 }
 
-function Publish-TextCapture([string]$CaptureDir, [string]$Name, [string[]]$Lines, [string]$Leg) {
+function New-StagingDirectory([string]$Path) {
+  # The staging directory carries the run's own ACL (D00 T02 section 38
+  # item 1): inheritance off, full control for the account running the
+  # nightly and nobody else, so no other user's process can write into
+  # the bytes between the scan and the publish.
+  $null = New-Item -ItemType Directory -Force -Path $Path
+  $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+  $acl = New-Object System.Security.AccessControl.DirectorySecurity
+  $acl.SetAccessRuleProtection($true, $false)
+  $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($me, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+  # .NET directly: Set-Acl's module does not load in every host session.
+  [System.IO.Directory]::SetAccessControl($Path, $acl)
+}
+
+function Clear-StaleCaptureStaging([string]$NightDir) {
+  # A run that crashed mid-capture leaves .staging directories whose
+  # bytes were never scanned; the next run sweeps every one at its start
+  # (section 38 item 1). Returns report notes.
+  $notes = @()
+  foreach ($d in @(Get-ChildItem -LiteralPath $NightDir -Directory -Recurse -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $script:CaptureStagingDir })) {
+    try { Remove-Item -LiteralPath $d.FullName -Recurse -Force -ErrorAction Stop; $notes += "- capture staging: swept crash-left $($d.FullName.Substring($NightDir.Length).TrimStart('\'))" }
+    catch { $notes += "- capture staging: could not sweep $($d.FullName) ($($_.Exception.Message)); do not retain that run" }
+  }
+  return $notes
+}
+
+function Get-BytesSha256([byte[]]$Bytes) {
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { return ([System.BitConverter]::ToString($sha.ComputeHash($Bytes)) -replace '-', '') } finally { $sha.Dispose() }
+}
+
+function Publish-TextCapture([string]$CaptureDir, [string]$Name, [string[]]$Lines, [string]$Leg, [scriptblock]$BeforeMove = $null) {
   # Staged text capture (D00 T02 section 30 item 1): the lines land in
   # <CaptureDir>\.staging first and reach the capture directory only
   # after the secret scan passes, so no reader of the directory ever
@@ -616,15 +725,26 @@ function Publish-TextCapture([string]$CaptureDir, [string]$Name, [string[]]$Line
   $staged = Join-Path $stageDir $Name
   $final = Join-Path $CaptureDir $Name
   try {
-    $null = New-Item -ItemType Directory -Force -Path $stageDir
+    New-StagingDirectory $stageDir
     @($Lines) | Set-Content -Path $staged -Encoding UTF8
-    $hits = @(Test-CaptureSecrets ([System.IO.File]::ReadAllText($staged)))
+    # Scan exactly the bytes that will publish (section 38 item 1): the
+    # scan reads the staged bytes once, their hash is kept, and the move
+    # happens only if the file still hashes the same.
+    $scannedBytes = [System.IO.File]::ReadAllBytes($staged)
+    $scannedHash = Get-BytesSha256 $scannedBytes
+    $hits = @(Test-CaptureSecrets ([System.Text.Encoding]::UTF8.GetString($scannedBytes)))
     if ($hits.Count -gt 0) {
       Remove-Item -LiteralPath $staged -Force -ErrorAction Stop
       "[capture redacted by the secret scan: $($hits -join ', '); see docs/testing.md Failure-capture policy]" | Set-Content -Path $final -Encoding UTF8
       $notes += "- $Leg : SECRET-SCAN redacted $Name ($($hits -join ', '))"
     } else {
-      Move-Item -LiteralPath $staged -Destination $final -Force -ErrorAction Stop
+      if ($null -ne $BeforeMove) { & $BeforeMove $staged }
+      if ((Get-BytesSha256 ([System.IO.File]::ReadAllBytes($staged))) -ne $scannedHash) {
+        Remove-Item -LiteralPath $staged -Force -ErrorAction Stop
+        $notes += "- $Leg : SECRET-SCAN refused $Name (the staged bytes changed between the scan and the publish); capture dropped (fail closed)"
+      } else {
+        Move-Item -LiteralPath $staged -Destination $final -Force -ErrorAction Stop
+      }
     }
   } catch {
     $why = $_.Exception.Message
@@ -1582,6 +1702,53 @@ function Read-IncidentLinks([string]$Path) {
   return $links
 }
 
+function Add-IncidentLink([string]$Path, [string]$Id, [string]$Finding, [scriptblock]$Writer = $null) {
+  # Records one incident -> finding link (section 38 item 9), idempotent:
+  # an id already linked to the same finding writes nothing; an id
+  # linked to another finding refuses (triage decides, never an
+  # overwrite); a failed write leaves the file as it was, so the incident
+  # stays unlinked and re-lists next run. The write is temp plus rename
+  # with read-back. Returns Status (linked, already, conflict, failed)
+  # plus Line.
+  if ($Id -notmatch '^INC-[0-9a-f]{8}$') { return [pscustomobject]@{ Status = 'failed'; Line = "link refused: '$Id' is not an incident id" } }
+  if ($Finding -notmatch '^(D\d{2} T\d{2} \u00A7\d+|[0-9a-f]{7,40})$') { return [pscustomobject]@{ Status = 'failed'; Line = "link refused: '$Finding' is not a section ref or commit" } }
+  $links = Read-IncidentLinks $Path
+  if ($links.ContainsKey($Id)) {
+    if ($links[$Id] -eq $Finding) { return [pscustomobject]@{ Status = 'already'; Line = "$Id already links $Finding" } }
+    return [pscustomobject]@{ Status = 'conflict'; Line = "link refused: $Id already links $($links[$Id]), not $Finding" }
+  }
+  try {
+    $text = if (Test-Path $Path) { [System.IO.File]::ReadAllText($Path) } else { "# Incident links`n`n| Incident | Finding | Note |`n| --- | --- | --- |`n" }
+    if (-not $text.EndsWith("`n")) { $text += "`n" }
+    $text += "| $Id | $Finding | |`n"
+    $tmp = "$Path.tmp"
+    if ($null -ne $Writer) { & $Writer $tmp $text } else { [System.IO.File]::WriteAllText($tmp, $text, (New-Object System.Text.UTF8Encoding($false))) }
+    Move-Item -LiteralPath $tmp -Destination $Path -Force
+  } catch {
+    if (Test-Path "$Path.tmp") { Remove-Item "$Path.tmp" -Force -ErrorAction SilentlyContinue }
+    return [pscustomobject]@{ Status = 'failed'; Line = "link write failed for $Id ($($_.Exception.Message)); it stays unlinked and re-lists next run" }
+  }
+  $back = Read-IncidentLinks $Path
+  if ($back[$Id] -ne $Finding) { return [pscustomobject]@{ Status = 'failed'; Line = "link read-back failed for $Id" } }
+  return [pscustomobject]@{ Status = 'linked'; Line = "$Id -> $Finding" }
+}
+
+function Get-OverdueIncidentNotices([hashtable]$Incidents, [datetime]$Today) {
+  # Owner notifications for open incidents past their due date (section
+  # 38 item 8): one per incident, naming its owner, keyed by id and day
+  # so the morning reconcile sends each once a day.
+  $out = @()
+  foreach ($k in ($Incidents.Keys | Sort-Object)) {
+    $e = $Incidents[$k]
+    if (("$($e.state)" -ne 'open') -or ("$($e.due)" -notmatch '^\d{4}-\d{2}-\d{2}$')) { continue }
+    $due = [datetime]::ParseExact("$($e.due)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($due -ge $Today) { continue }
+    $owner = if ("$($e.owner)" -eq '') { $script:TriageOwner } else { "$($e.owner)" }
+    $out += [pscustomobject]@{ Id = "$($e.id)"; Owner = $owner; Due = "$($e.due)"; RunId = "incident-overdue-$($e.id)-$($Today.ToString('yyyy-MM-dd'))"; Title = "Incident $($e.id) overdue (owner $owner, due $($e.due))"; Line = "$($e.id) ``$($e.test)`` is open past its due date $($e.due); owner ${owner}: link its finding in docs/incident-links.md or close it" }
+  }
+  return $out
+}
+
 function Format-UnlinkedIncidents([hashtable]$Incidents) {
   # Open incidents with no recorded finding re-list on every run until
   # triage links one (section 30 item 7).
@@ -1597,7 +1764,10 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
     $e = $Incidents[$_]
     # Identity and history ride each row (section 30 R2-F2), so a rebuild
     # restores an incident whose original results have aged out.
-    [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; occurrenceStamps = @(@($e.occurrences) | ForEach-Object { "$($_.stamp)" }); firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; passStreak = [int]$e.passStreak; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
+    # Lossless (section 38 item 5): the key, closure, last pass, and each
+    # occurrence's wheres ride the row too, so a rebuild reproduces every
+    # ledger field.
+    [pscustomobject]@{ id = "$($e.id)"; test = "$($e.test)"; phase = "$($e.phase)"; key = "$($e.key)"; state = "$($e.state)"; owner = "$($e.owner)"; occurrences = @($e.occurrences).Count; occurrenceStamps = @(@($e.occurrences) | ForEach-Object { "$($_.stamp)" }); occurrenceWheres = @(@($e.occurrences) | ForEach-Object { (@($_.wheres) | Where-Object { $null -ne $_ } | ForEach-Object { "$_" }) -join ',' }); firstSeen = "$($e.firstSeen)"; lastSeen = "$($e.lastSeen)"; closedAt = "$($e.closedAt)"; closedBy = "$($e.closedBy)"; passStreak = [int]$e.passStreak; lastPassStamp = "$($e.lastPassStamp)"; contract = 'v2'; due = "$($e.due)"; finding = "$($e.finding)" }
   })
 }
 
@@ -1704,6 +1874,26 @@ function Get-IncidentResultRows([string[]]$ResultFiles, [string]$Since) {
   return @($rows | Sort-Object Stamp)
 }
 
+function Read-LifecycleBlock($Result) {
+  # The lifecycle block's consumer contract (section 38 item 7; the table
+  # in docs/testing.md): a result without the block (written before
+  # section 30) reads Absent with no rows; a block without a version is
+  # version 1 (written before this contract); a version this code does
+  # not know reads Unsupported and is never trusted. Every consumer
+  # (the presence check, the rebuild, notify, trend, triage) reads the
+  # block through here.
+  if ($null -eq $Result) { return [pscustomobject]@{ State = 'absent'; Version = 0; Rows = @(); Error = '' } }
+  $names = @($Result.PSObject.Properties.Name)
+  if ($names -notcontains 'incidentLifecycle') { return [pscustomobject]@{ State = 'absent'; Version = 0; Rows = @(); Error = '' } }
+  $v = 1
+  if ($names -contains 'incidentLifecycleVersion') {
+    if ("$($Result.incidentLifecycleVersion)" -notmatch '^[1-9]\d*$') { return [pscustomobject]@{ State = 'unsupported'; Version = 0; Rows = @(); Error = "incidentLifecycleVersion '$($Result.incidentLifecycleVersion)' is not a positive whole number" } }
+    $v = [int]$Result.incidentLifecycleVersion
+  }
+  if ($v -gt $script:LifecycleContractVersion) { return [pscustomobject]@{ State = 'unsupported'; Version = $v; Rows = @(); Error = "incidentLifecycleVersion $v is newer than this reader ($($script:LifecycleContractVersion))" } }
+  return [pscustomobject]@{ State = 'ok'; Version = $v; Rows = @($Result.incidentLifecycle | Where-Object { $null -ne $_ }); Error = '' }
+}
+
 function Get-LatestLifecycleSnapshot([string[]]$ResultFiles, [string]$Since) {
   # The newest incidentLifecycle block that is the ledger's own state
   # (source `ledger`, section 30 R2-F1): a run whose ledger was missing
@@ -1715,19 +1905,39 @@ function Get-LatestLifecycleSnapshot([string[]]$ResultFiles, [string]$Since) {
   $snap = @()
   $snapStamp = $null
   $snapFile = ''
+  $snapBlk = $null
   foreach ($f in @($ResultFiles)) {
     try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
-    if ((@($o.PSObject.Properties.Name) -contains 'incidentLifecycle') -and ("$($o.incidentLifecycleSource)" -eq 'ledger') -and ("$($o.stamp)" -ge $Since) -and (($null -eq $snapStamp) -or ("$($o.stamp)" -gt $snapStamp))) { $snap = @($o.incidentLifecycle | Where-Object { $null -ne $_ }); $snapStamp = "$($o.stamp)"; $snapFile = $f }
+    $blk = Read-LifecycleBlock $o
+    if (($blk.State -ne 'absent') -and ("$($o.incidentLifecycleSource)" -eq 'ledger') -and ("$($o.stamp)" -ge $Since) -and (($null -eq $snapStamp) -or ("$($o.stamp)" -gt $snapStamp))) { $snap = $blk.Rows; $snapStamp = "$($o.stamp)"; $snapFile = $f; $snapBlk = $blk }
   }
   $err = ''
-  if ($snapFile -ne '') {
+  if (($snapFile -ne '') -and ($snapBlk.State -eq 'unsupported')) {
+    $err = "lifecycle snapshot $snapStamp ($snapFile) is unreadable: $($snapBlk.Error)"
+  } elseif ($snapFile -ne '') {
     $v = Test-ResultFile $snapFile
     if (-not $v.Ok) { $err = "lifecycle snapshot $snapStamp ($snapFile) is invalid: $($v.Error)" }
   }
   return [pscustomobject]@{ Stamp = $snapStamp; Rows = $snap; Error = $err }
 }
 
-function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles, [string]$Since) {
+function Read-LedgerRecord([string]$Path) {
+  # The tracked initialization record (section 38 item 4): `Ledger
+  # started: YYYY-MM-DD` once, plus `Reset: YYYY-MM-DD <reason>` lines
+  # the operator adds when a ledger loss is intended.
+  if (-not (Test-Path $Path)) { return [pscustomobject]@{ Found = $false; Started = ''; Resets = @() } }
+  $started = ''
+  $resets = @()
+  foreach ($ln in (Get-Content $Path -Encoding UTF8)) {
+    $m = [regex]::Match($ln, '^Ledger started:\s*(\d{4}-\d{2}-\d{2})')
+    if ($m.Success -and ($started -eq '')) { $started = $m.Groups[1].Value }
+    $r = [regex]::Match($ln, '^Reset:\s*(\d{4}-\d{2}-\d{2})\s+\S')
+    if ($r.Success) { $resets += $r.Groups[1].Value }
+  }
+  return [pscustomobject]@{ Found = $true; Started = $started; Resets = $resets }
+}
+
+function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles, [string]$Since, [string]$RecordPath = '', [datetime]$Today = (Get-Date).Date) {
   # A missing ledger reads as empty only when no earlier result carries
   # incidents, either as incident lines or in its published lifecycle
   # snapshot (section 30 item 4, R3-F1: a snapshot outlives the failure
@@ -1737,7 +1947,18 @@ function Test-IncidentLedgerPresence([string]$LedgerPath, [string[]]$ResultFiles
   $rows = @(Get-IncidentResultRows $ResultFiles $Since)
   $snap = Get-LatestLifecycleSnapshot $ResultFiles $Since
   # An invalid snapshot is evidence too: it cannot be read as empty.
-  if (($rows.Count -eq 0) -and (@($snap.Rows).Count -eq 0) -and ($snap.Error -eq '')) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+  if (($rows.Count -eq 0) -and (@($snap.Rows).Count -eq 0) -and ($snap.Error -eq '')) {
+    # No evidence left: legitimate only before the ledger ever started,
+    # or right after the operator recorded an intended reset (section 38
+    # item 4). Otherwise the ledger and every result carrying incidents
+    # were deleted together, and history is gone.
+    if ($RecordPath -eq '') { return [pscustomobject]@{ Ok = $true; Error = '' } }
+    $rec = Read-LedgerRecord $RecordPath
+    if ((-not $rec.Found) -or ($rec.Started -eq '')) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+    $fresh = @($rec.Resets | Where-Object { ([datetime]::ParseExact($_, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)) -ge $Today.AddDays(-1) })
+    if ($fresh.Count -gt 0) { return [pscustomobject]@{ Ok = $true; Error = '' } }
+    return [pscustomobject]@{ Ok = $false; Error = "incident ledger and every result carrying incidents are gone, but $RecordPath records the ledger started $($rec.Started): incident history was lost; if the loss is intended, add ``Reset: $($Today.ToString('yyyy-MM-dd')) <reason>`` there and re-run" }
+  }
   $what = @()
   if ($rows.Count -gt 0) { $what += "$($rows.Count) earlier result(s) carry incidents (latest $($rows[-1].Stamp))" }
   if (@($snap.Rows).Count -gt 0) { $what += "the $($snap.Stamp) lifecycle snapshot holds $(@($snap.Rows).Count) incident(s)" }
@@ -1761,9 +1982,22 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   # history the operator can still recover by repairing the result.
   if ($snap.Error -ne '') { throw "rebuild refused: $($snap.Error); repair or move that result aside, then re-run" }
   foreach ($row in @($snap.Rows)) {
-    $stamps = @(@($row.occurrenceStamps) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+    $stamps = @(@($row.occurrenceStamps) | ForEach-Object { "$_" })
     $closed = ("$($row.state)" -eq 'closed')
-    $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = ''; owner = "$($row.owner)"; state = $(if ($closed) { 'closed' } else { 'open' }); firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = $(if ($closed) { $snap.Stamp } else { '' }); closedBy = $(if ($closed) { "restored from the $($snap.Stamp) result snapshot" } else { '' }); occurrences = @($stamps | Sort-Object | ForEach-Object { [pscustomobject]@{ stamp = $_; wheres = @() } }); passStreak = [int]$row.passStreak; lastPassStamp = ''; due = "$($row.due)"; finding = "$($row.finding)" }
+    $names = @($row.PSObject.Properties.Name)
+    # Rows since section 38 carry every ledger field and restore exactly;
+    # older rows restore what they carry (the section 30 behavior).
+    $full = ($names -contains 'occurrenceWheres') -and ($names -contains 'closedAt')
+    $whereList = @($row.occurrenceWheres)
+    $occ = @()
+    for ($i = 0; $i -lt $stamps.Count; $i++) {
+      if ($stamps[$i] -eq '') { continue }
+      $w = @()
+      if ($full -and ($i -lt $whereList.Count) -and ("$($whereList[$i])" -ne '')) { $w = @("$($whereList[$i])" -split ',') }
+      $occ += [pscustomobject]@{ stamp = $stamps[$i]; wheres = $w }
+    }
+    if (-not $full) { $occ = @($occ | Sort-Object stamp) }
+    $map["$($row.id)"] = [pscustomobject]@{ id = "$($row.id)"; test = "$($row.test)"; phase = "$($row.phase)"; key = $(if ($full) { "$($row.key)" } else { '' }); owner = "$($row.owner)"; state = $(if ($closed) { 'closed' } else { 'open' }); firstSeen = "$($row.firstSeen)"; lastSeen = "$($row.lastSeen)"; closedAt = $(if ($full) { "$($row.closedAt)" } elseif ($closed) { $snap.Stamp } else { '' }); closedBy = $(if ($full) { "$($row.closedBy)" } elseif ($closed) { "restored from the $($snap.Stamp) result snapshot" } else { '' }); occurrences = $occ; passStreak = [int]$row.passStreak; lastPassStamp = $(if ($full) { "$($row.lastPassStamp)" } else { '' }); due = "$($row.due)"; finding = "$($row.finding)" }
   }
   foreach ($r in @(Get-IncidentResultRows $ResultFiles $Since)) {
     if (($null -ne $snap.Stamp) -and ($r.Stamp -le $snap.Stamp)) { continue }
@@ -3005,6 +3239,44 @@ function Get-IncidentAliases($Rows, [string]$V2Since = $script:IncidentContractV
   return $aliases
 }
 
+function Get-IncidentAliasReport($Rows, [string]$V2Since = $script:IncidentContractV2Since) {
+  # The alias migration cases (section 38 item 6), over the same triple
+  # match as Get-IncidentAliases: mapped (one v1 id, one v2 id, joined);
+  # merged (several v1 ids share one v2 id: each joins it, and the report
+  # names the merge); split (one v1 id matches several v2 ids: not
+  # joined, ambiguity keeps the old id); unmapped (no v2 id shares the
+  # triple: not joined, the old id stays on its own). Returns Aliases
+  # (what the trend joins) plus Merged, Split, and Unmapped for the
+  # report lines.
+  $aliases = Get-IncidentAliases $Rows $V2Since
+  $parse = { param($ln) $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)` x\d+ \(([^)]*)\): ?(.*)$'); if (-not $m.Success) { return $null }; $where = @($m.Groups[3].Value -split ',\s*')[0]; [pscustomobject]@{ Id = $m.Groups[1].Value; Triple = "$($m.Groups[2].Value)|$(Get-IncidentPhase $where)|$(Get-FailureClass $m.Groups[4].Value)" } }
+  $v1 = @{}
+  $v2 = @{}
+  foreach ($r in @($Rows)) {
+    foreach ($ln in @($r.incidents)) {
+      $p = & $parse $ln
+      if ($null -eq $p) { continue }
+      if ("$($r.stamp)" -lt $V2Since) { $v1[$p.Id] = $p.Triple }
+      else { if (-not $v2.ContainsKey($p.Triple)) { $v2[$p.Triple] = @() }; if ($v2[$p.Triple] -notcontains $p.Id) { $v2[$p.Triple] += $p.Id } }
+    }
+  }
+  $split = @{}
+  $unmapped = @()
+  foreach ($old in ($v1.Keys | Sort-Object)) {
+    $t = $v1[$old]
+    if (-not $v2.ContainsKey($t)) { $unmapped += $old }
+    elseif (@($v2[$t]).Count -gt 1) { $split[$old] = @($v2[$t] | Sort-Object) }
+  }
+  $merged = @{}
+  foreach ($old in $aliases.Keys) {
+    $new = $aliases[$old]
+    if (-not $merged.ContainsKey($new)) { $merged[$new] = @() }
+    $merged[$new] += $old
+  }
+  foreach ($k in @($merged.Keys)) { if (@($merged[$k]).Count -lt 2) { $merged.Remove($k) } else { $merged[$k] = @($merged[$k] | Sort-Object) } }
+  return [pscustomobject]@{ Aliases = $aliases; Merged = $merged; Split = $split; Unmapped = $unmapped }
+}
+
 function Get-NightlySchedule([string]$TaskXml) {
   # The governed task's calendar (section 32 R1-C1): its first night and
   # its day interval from the CalendarTrigger, so the trend knows which
@@ -3065,6 +3337,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # honest). $Today anchors the oldest-overdue age; fixtures pin it.
   $rows = @($Results | Sort-Object { "$(Get-ResultNight $_)-$($_.stamp)" })
   $aliasMap = Get-IncidentAliases $rows
+  $aliasReport = Get-IncidentAliasReport $rows
   # Canonical runs (D00 T02 §24 item 2): every result keeps its row, but
   # retries, simulations, and stood-down losers are marked and stay out
   # of the p50, the budget ranks, and flake recurrence, so a retry
@@ -3228,6 +3501,12 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   $rec = @($incNights.Keys | Where-Object { (@($incNights[$_] | Sort-Object -Unique).Count) -gt 1 } | Sort-Object)
   $lines += ''
   if ($aliasMap.Count -gt 0) { $lines += ("- Identity aliases (contract v1 to v2): " + ((@($aliasMap.Keys | Sort-Object) | ForEach-Object { "$_ -> $($aliasMap[$_])" }) -join '; ')) }
+  # The migration cases the join leaves out, named (section 38 item 6).
+  if ($null -ne $aliasReport) {
+    if ($aliasReport.Merged.Count -gt 0) { $lines += ("- Identity merges (several v1 ids joined into one v2 id): " + ((@($aliasReport.Merged.Keys | Sort-Object) | ForEach-Object { "$($aliasReport.Merged[$_] -join ', ') -> $_" }) -join '; ')) }
+    if ($aliasReport.Split.Count -gt 0) { $lines += ("- Identity splits (not joined; one v1 id matches several v2 ids): " + ((@($aliasReport.Split.Keys | Sort-Object) | ForEach-Object { "$_ -> $($aliasReport.Split[$_] -join ' | ')" }) -join '; ')) }
+    if (@($aliasReport.Unmapped).Count -gt 0) { $lines += ("- Identity unmapped (not joined; no v2 id shares the failure): " + ($aliasReport.Unmapped -join ', ')) }
+  }
   if ($rec.Count -gt 0) { $lines += ("- Flake recurrence: " + (($rec | ForEach-Object { "$_ ($($incNights[$_] -join ', '))" }) -join '; ') + ' [recurrence]') }
   else { $lines += '- Flake recurrence: none across rendered nights [recurrence]' }
   $canonCount = @($canon.Keys | Where-Object { $canon[$_].Canonical -ne '' }).Count

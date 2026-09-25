@@ -677,6 +677,122 @@ Assert (($aDirty.Admitted -eq $false) -and ($aDirty.Line -like '*the built tree 
 Assert (($aGreen.Admitted -eq $true) -and ($aPending.Admitted -eq $false) -and ($aNone.Admitted -eq $false) -and ($aNone.Line -like '*only a green CI population check admits it*') -and ($aOverride.Admitted -eq $true) -and ($aOverride.Line -like '*admitted without CI verification (-AllowUnverifiedCi)') -and ($aRedOverride.Admitted -eq $false)) 's37-only-green-admits' "$($aNone.Line) | $($aOverride.Line)"
 Assert (($gRed.State -eq 'red') -and ($gRed.Line -eq 'CI population check failure on abc1234 (run 42): the population is refused') -and ($gGreen.State -eq 'green') -and ($gPending.State -eq 'pending') -and ($gNone.State -eq 'none') -and ($gNone.Line -like '*no build.yml run for abc1234*')) 's37-red-ci-check-refuses-the-population' "$($gRed.Line) | $($gGreen.Line) | $($gPending.Line) | $($gNone.Line)"
 
+# Nightly evidence second residuals (D00 T02 section 38).
+$s38 = Join-Path $dir 's38'
+$null = New-Item -ItemType Directory -Force -Path $s38
+# Item 1: a staged file altered between scan and publish refuses; the
+# staging directory carries only the running account's rule; a
+# crash-left staging directory is swept at run start.
+$capT = Join-Path $s38 'captures-tamper'
+$null = New-Item -ItemType Directory -Force -Path $capT
+$aclSeen = $null
+$tamper = @(Publish-TextCapture $capT 'win.txt' @('pid=1 ScratchPad: doc') 'interactive' { param($f) $script:aclSeen = [System.IO.Directory]::GetAccessControl((Split-Path -Parent $f)); Add-Content -LiteralPath $f -Value 'token: sk-live-injected-after-scan' })
+$me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+$aclRules = @($script:aclSeen.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier]))
+Assert ((-not (Test-Path (Join-Path $capT 'win.txt'))) -and (($tamper -join '') -like '*refused win.txt (the staged bytes changed between the scan and the publish)*') -and ($script:aclSeen.AreAccessRulesProtected) -and ($aclRules.Count -eq 1) -and ($aclRules[0].IdentityReference -eq $me)) 's38-staging-tamper-refuses-and-acl-is-own' (($tamper -join '|') + " rules=$($aclRules.Count)")
+$okPub = @(Publish-TextCapture $capT 'clean.txt' @('pid=1 ScratchPad: doc') 'interactive')
+Assert ((Test-Path (Join-Path $capT 'clean.txt')) -and ($okPub.Count -eq 0)) 's38-staging-clean-publishes' ($okPub -join '|')
+$crash = Join-Path $s38 '2026-09-25-020000\captures-interactive\.staging'
+$null = New-Item -ItemType Directory -Force -Path $crash
+'unscanned' | Set-Content -Path (Join-Path $crash 'left.txt') -Encoding UTF8
+$sweep = @(Clear-StaleCaptureStaging $s38)
+Assert ((-not (Test-Path $crash)) -and (($sweep -join '') -like '*swept crash-left 2026-09-25-020000\captures-interactive\.staging*')) 's38-crash-left-staging-swept' ($sweep -join '|')
+# Item 2: screenshots cover app-owned ScratchPad windows only; a
+# full-memory dump retains only behind the disclosure marker.
+$winsFix = @(
+  [pscustomobject]@{ ProcessId = 10; Name = 'ScratchPad'; Rect = [pscustomobject]@{ X = 100; Y = 50; Width = 800; Height = 600 } },
+  [pscustomobject]@{ ProcessId = 11; Name = 'ScratchPad'; Rect = [pscustomobject]@{ X = 0; Y = 0; Width = 800; Height = 600 } },
+  [pscustomobject]@{ ProcessId = 12; Name = 'pwsh'; Rect = [pscustomobject]@{ X = 0; Y = 0; Width = 800; Height = 600 } },
+  [pscustomobject]@{ ProcessId = 13; Name = 'ScratchPad'; Rect = [pscustomobject]@{ X = 0; Y = 0; Width = 0; Height = 0 } }
+)
+$rects = @(Get-OwnedWindowRects $winsFix @{ 10 = $true; 12 = $true; 13 = $true })
+Assert (($rects.Count -eq 1) -and ($rects[0].ProcessId -eq 10) -and ($rects[0].X -eq 100) -and ($rects[0].Width -eq 800)) 's38-screenshot-app-owned-bounds-only' (($rects | ForEach-Object { $_.ProcessId }) -join ',')
+$dumpSrc = Join-Path $s38 'retain-src'
+$dumpCap = Join-Path $dumpSrc 'captures-interactive'
+$null = New-Item -ItemType Directory -Force -Path $dumpCap
+$hdr = New-Object byte[] 64
+[System.Text.Encoding]::ASCII.GetBytes('MDMP').CopyTo($hdr, 0)
+[System.BitConverter]::GetBytes([UInt64]2).CopyTo($hdr, 24)
+[System.IO.File]::WriteAllBytes((Join-Path $dumpCap '4242.dmp'), $hdr)
+$fullRefused = Test-RetainableCaptures $dumpSrc
+'approved for triage of INC-1a2b3c4d' | Set-Content -Path (Join-Path $dumpCap $script:DumpDisclosureMarker) -Encoding UTF8
+$fullGated = Test-RetainableCaptures $dumpSrc
+Remove-Item (Join-Path $dumpCap $script:DumpDisclosureMarker)
+[System.BitConverter]::GetBytes([UInt64]0).CopyTo($hdr, 24)
+[System.IO.File]::WriteAllBytes((Join-Path $dumpCap '4242.dmp'), $hdr)
+$minimalOk = Test-RetainableCaptures $dumpSrc
+Assert (($fullRefused.Ok -eq $false) -and (($fullRefused.Reasons -join '') -like '*4242.dmp is a full-memory dump; retain needs DUMP-DISCLOSURE-APPROVED.txt*') -and ($fullGated.Ok -eq $true) -and ($minimalOk.Ok -eq $true) -and ((Get-DumpMemoryKind (Join-Path $s38 'no.dmp')) -eq 'unreadable')) 's38-full-heap-dump-retains-only-behind-its-gate' ($fullRefused.Reasons -join '|')
+# Item 3: an oversized dump is refused at capture time and the marker
+# names it (the real JobControl, capped at 1 KB).
+$jc = Join-Path $PSScriptRoot '..\Bin\JobControl\Debug\JobControl.exe'
+if (Test-Path $jc) {
+  $jDump = Join-Path $s38 'dumps'
+  $jOut = & $jc 'run' '--job' "Global\s38-fixture-$PID" '--out' (Join-Path $s38 'jc.log') '--timeout' '2' '--dump' $jDump '--dump-max' '1024' '--' (Join-Path $PSHOME 'powershell.exe') '-NoProfile' '-Command' 'Start-Sleep -Seconds 30' 2>&1
+  $refusedText = if (Test-Path (Join-Path $jDump 'CAPTURE-REFUSED.txt')) { Get-Content (Join-Path $jDump 'CAPTURE-REFUSED.txt') -Raw } else { '' }
+  Assert (($refusedText -match '\d+\.dmp refused: \d+ bytes over the 1024-byte cap') -and (@(Get-ChildItem $jDump -Filter '*.dmp' -ErrorAction SilentlyContinue).Count -eq 0) -and ("$jOut" -match 'dumped=0')) 's38-oversized-dump-refused-at-capture' ("$refusedText | $jOut")
+} else { Assert $false 's38-oversized-dump-refused-at-capture' "JobControl missing at $jc (build tools/JobControl first)" }
+# Item 4: with the ledger and every result gone, the initialization
+# record reds; a fresh reset lets a new ledger start.
+$recFile = Join-Path $s38 'incident-ledger.md'
+@('# Incident ledger record', 'Ledger started: 2026-09-25 (contract v2)') | Set-Content -Path $recFile -Encoding UTF8
+$wiped = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' $recFile ([datetime]'2026-10-02')
+Add-Content -Path $recFile -Value 'Reset: 2026-10-02 operator cleared the lab host' -Encoding UTF8
+$reset = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' $recFile ([datetime]'2026-10-02')
+$noRecord = Test-IncidentLedgerPresence (Join-Path $s38 'incidents.json') @() '2026-09-25-000000' (Join-Path $s38 'none.md') ([datetime]'2026-10-02')
+Assert (($wiped.Ok -eq $false) -and ($wiped.Error -like '*records the ledger started 2026-09-25: incident history was lost; if the loss is intended, add *Reset: 2026-10-02 <reason>*') -and ($reset.Ok -eq $true) -and ($noRecord.Ok -eq $true)) 's38-full-wipe-reds-on-the-initialization-record' $wiped.Error
+# Item 5: ledger -> result -> rebuild reproduces every ledger field.
+$rtDir = Join-Path $s38 'roundtrip'
+$null = New-Item -ItemType Directory -Force -Path $rtDir
+$rtLedger = @{
+  'INC-0a0b0c0d' = [pscustomobject]@{ id = 'INC-0a0b0c0d'; test = 'UI.R.Closed'; phase = 'interactive'; key = 'v2|UI.R.Closed|interactive|Assert.Equal() Failure||A.B.C'; owner = 'D01 T01 S9'; state = 'closed'; firstSeen = '2026-09-25-023001'; lastSeen = '2026-09-26-023001'; closedAt = '2026-09-29-023001'; closedBy = 'recovered: 3 passing runs'; occurrences = @([pscustomobject]@{ stamp = '2026-09-25-023001'; wheres = @('interactive') }, [pscustomobject]@{ stamp = '2026-09-26-023001'; wheres = @('interactive', 'ui-soak-2') }); passStreak = 3; lastPassStamp = '2026-09-29-023001'; due = '2026-09-27'; finding = 'abc1234' }
+  'INC-0e0f0a0b' = [pscustomobject]@{ id = 'INC-0e0f0a0b'; test = 'UI.R.Open'; phase = 'run-a'; key = 'v2|UI.R.Open|run-a|TimeoutException|0x80131505|X.Y'; owner = 'operator'; state = 'open'; firstSeen = '2026-09-28-023001'; lastSeen = '2026-09-28-023001'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = '2026-09-28-023001'; wheres = @('run-a') }); passStreak = 1; lastPassStamp = '2026-09-29-023001'; due = '2026-09-30'; finding = '' }
+}
+[pscustomobject]@{ version = 1; stamp = '2026-09-29-023001'; day = '2026-09-29'; identity = '2026-09-29-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycleVersion = 1; incidentLifecycle = @(ConvertTo-IncidentLifecycle $rtLedger) } | ConvertTo-Json -Depth 8 | Set-Content -Path (Join-Path $rtDir 'morning-2026-09-29-023001.result.json') -Encoding UTF8
+$rtBack = New-IncidentLedgerFromResults @((Join-Path $rtDir 'morning-2026-09-29-023001.result.json')) '2026-09-25-000000' @{} @{}
+$rtDiffs = @()
+foreach ($id in $rtLedger.Keys) {
+  $a = $rtLedger[$id]; $b = $rtBack[$id]
+  if ($null -eq $b) { $rtDiffs += "$id missing"; continue }
+  foreach ($f in @('id', 'test', 'phase', 'key', 'owner', 'state', 'firstSeen', 'lastSeen', 'closedAt', 'closedBy', 'passStreak', 'lastPassStamp', 'due', 'finding')) { if ("$($a.$f)" -ne "$($b.$f)") { $rtDiffs += "$id.$f '$($a.$f)' vs '$($b.$f)'" } }
+  $ao = (@($a.occurrences) | ForEach-Object { "$($_.stamp)=$(@($_.wheres) -join ',')" }) -join ';'
+  $bo = (@($b.occurrences) | ForEach-Object { "$($_.stamp)=$(@($_.wheres) -join ',')" }) -join ';'
+  if ($ao -ne $bo) { $rtDiffs += "$id.occurrences '$ao' vs '$bo'" }
+}
+Assert (($rtDiffs.Count -eq 0) -and ($rtBack.Count -eq 2)) 's38-rebuild-round-trip-is-lossless' ($rtDiffs -join '|')
+# Item 6: split, merged, and unmapped aliases read as defined.
+$alRows = @(
+  [pscustomobject]@{ stamp = '2026-09-20-023001'; incidents = @('- INC-00000001 `UI.S.Split` x1 (interactive): Assert.True() Failure', '- INC-00000002 `UI.M.Merge` x1 (run-a): Assert.NotNull() Failure', '- INC-00000003 `UI.M.Merge` x1 (run-a): Assert.NotNull() Failure', '- INC-00000004 `UI.U.Gone` x1 (run-a): Assert.Equal() Failure', '- INC-00000005 `UI.O.One` x1 (run-a): Assert.Equal() Failure') },
+  [pscustomobject]@{ stamp = '2026-09-26-023001'; incidents = @('- INC-0000000a `UI.S.Split` x1 (interactive): Assert.True() Failure', '- INC-0000000b `UI.M.Merge` x1 (run-a): Assert.NotNull() Failure', '- INC-0000000e `UI.O.One` x1 (run-a): Assert.Equal() Failure') },
+  [pscustomobject]@{ stamp = '2026-09-27-023001'; incidents = @('- INC-0000000c `UI.S.Split` x1 (interactive): Assert.True() Failure') }
+)
+$alRep = Get-IncidentAliasReport $alRows
+Assert (($alRep.Aliases['INC-00000005'] -eq 'INC-0000000e') -and (-not $alRep.Aliases.ContainsKey('INC-00000001')) -and (($alRep.Split['INC-00000001'] -join ',') -eq 'INC-0000000a,INC-0000000c') -and (($alRep.Merged['INC-0000000b'] -join ',') -eq 'INC-00000002,INC-00000003') -and (($alRep.Unmapped -join ',') -eq 'INC-00000004')) 's38-alias-split-merge-unmapped-defined' ("split=$($alRep.Split.Keys -join ',') merged=$($alRep.Merged.Keys -join ',') unmapped=$($alRep.Unmapped -join ',')")
+# Item 7: the lifecycle block's consumer contract.
+$lbAbsent = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-20-023001' })
+$lbLegacy = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-0000000a' }) })
+$lbFuture = Read-LifecycleBlock ([pscustomobject]@{ version = 1; stamp = '2026-09-26-023001'; incidentLifecycleVersion = 2; incidentLifecycle = @() })
+Assert (($lbAbsent.State -eq 'absent') -and ($lbLegacy.State -eq 'ok') -and ($lbLegacy.Version -eq 1) -and (@($lbLegacy.Rows).Count -eq 1) -and ($lbFuture.State -eq 'unsupported') -and ($lbFuture.Error -like '*version 2 is newer than this reader (1)*')) 's38-lifecycle-consumer-contract' "$($lbAbsent.State) $($lbLegacy.State) $($lbFuture.State)"
+[pscustomobject]@{ version = 1; stamp = '2026-09-30-023001'; day = '2026-09-30'; identity = '2026-09-30-023001-pid1'; verdict = 'stood-down'; exit = 0; incidents = @(); incidentLifecycleSource = 'ledger'; incidentLifecycleVersion = 2; incidentLifecycle = @() } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $rtDir 'morning-2026-09-30-023001.result.json') -Encoding UTF8
+$futSnap = Get-LatestLifecycleSnapshot @(Get-ChildItem $rtDir -Filter 'morning-*.result.json' | ForEach-Object { $_.FullName }) '2026-09-25-000000'
+Assert ($futSnap.Error -like '*2026-09-30-023001*unreadable: incidentLifecycleVersion 2 is newer*') 's38-future-lifecycle-version-refuses-the-rebuild' $futSnap.Error
+# Item 8: one policy file; an overdue incident notifies its owner.
+$polOk = Read-IncidentPolicy (Join-Path $PSScriptRoot 'incident-policy.json')
+'{ "triageOwner": "", "triageDays": 0 }' | Set-Content -Path (Join-Path $s38 'bad-policy.json') -Encoding UTF8
+$polBad = Read-IncidentPolicy (Join-Path $s38 'bad-policy.json')
+$overdue = @(Get-OverdueIncidentNotices $rtLedger ([datetime]'2026-10-02'))
+Assert (($polOk.Ok -eq $true) -and ($polOk.Owner -eq $script:TriageOwner) -and ($polOk.Days -eq $script:TriageDays) -and ($polBad.Ok -eq $false) -and ($overdue.Count -eq 1) -and ($overdue[0].Id -eq 'INC-0e0f0a0b') -and ($overdue[0].Owner -eq 'operator') -and ($overdue[0].RunId -eq 'incident-overdue-INC-0e0f0a0b-2026-10-02')) 's38-policy-and-overdue-owner-notice' (($overdue | ForEach-Object { $_.Title }) -join '|')
+# Item 9: a failed filing stays unlinked and re-lists; the retry links
+# once; linking again records nothing; a conflicting link refuses.
+$linkFile = Join-Path $s38 'incident-links.md'
+@('# Incident links', '', '| Incident | Finding | Note |', '| --- | --- | --- |') | Set-Content -Path $linkFile -Encoding UTF8
+$l1 = Add-IncidentLink $linkFile 'INC-0e0f0a0b' 'abc1234' { param($f, $t) throw 'disk full' }
+$stillUnlinked = @(Format-UnlinkedIncidents @{ 'INC-0e0f0a0b' = [pscustomobject]@{ id = 'INC-0e0f0a0b'; test = 'UI.R.Open'; state = 'open'; finding = (Read-IncidentLinks $linkFile)['INC-0e0f0a0b']; owner = 'operator'; due = '2026-09-30' } })
+$l2 = Add-IncidentLink $linkFile 'INC-0e0f0a0b' 'abc1234'
+$l3 = Add-IncidentLink $linkFile 'INC-0e0f0a0b' 'abc1234'
+$l4 = Add-IncidentLink $linkFile 'INC-0e0f0a0b' 'def5678'
+$linkRows = @(Get-Content $linkFile | Where-Object { $_ -like '| INC-0e0f0a0b |*' })
+Assert (($l1.Status -eq 'failed') -and ($stillUnlinked.Count -eq 1) -and ($l2.Status -eq 'linked') -and ($l3.Status -eq 'already') -and ($l4.Status -eq 'conflict') -and ($linkRows.Count -eq 1) -and (-not (Test-Path "$linkFile.tmp"))) 's38-failed-then-retried-filing-links-once' "$($l1.Status) $($l2.Status) $($l3.Status) $($l4.Status) rows=$($linkRows.Count)"
+
 # Filter partition: the fingerprinted Run A plus Run B filters select
 # the synthetic population soundly, and edits breaking the partition
 # surface as violations (D00-T02-S13-PR17).

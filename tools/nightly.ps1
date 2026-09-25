@@ -189,10 +189,10 @@ function Invoke-ContainedSuite([string]$Name, [int]$CapSeconds, [string]$Exe, [s
   }
   if (Test-Path $OutLog) { Remove-Item $OutLog -Force }
   $sup = Start-Job -ScriptBlock {
-    param($jc, $job, $out, $cap, $dump, $exe, $argList, $dir)
+    param($jc, $job, $out, $cap, $dump, $exe, $argList, $dir, $dumpMax)
     Set-Location $dir
-    & $jc 'run' '--job' $job '--out' $out '--timeout' "$cap" '--dump' $dump '--' $exe @argList 2>&1
-  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, $DumpDir, $runExe, $runArgs, $Root)
+    & $jc 'run' '--job' $job '--out' $out '--timeout' "$cap" '--dump' $dump '--dump-max' "$dumpMax" '--' $exe @argList 2>&1
+  } -ArgumentList @($JobCtl, $jobName, $OutLog, $CapSeconds, $DumpDir, $runExe, $runArgs, $Root, $script:CaptureFileMaxBytes)
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   $doneSignal = Wait-Job -Job $sup -Timeout ($CapSeconds + $script:killSlack)
   $expired = ($null -eq $doneSignal)
@@ -522,6 +522,9 @@ New-Item -ItemType Directory -Path $nightDir -Force | Out-Null
 # name: the guard plus the operator check one fixed path.
 $trxDir = Join-Path $nightDir $stamp
 New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
+# Crash-left capture staging is swept before this run captures anything
+# (D00 T02 section 38 item 1); the notes join the report's captures.
+$script:stagingSweepNotes = @(Clear-StaleCaptureStaging $nightDir)
 # Next-start recovery (D00 T02 §16 items 4, 12): probe BEFORE writing
 # this run's journal, so a dead previous run lands its RED record
 # exactly once (the probe reads the old journal; the write below
@@ -1191,7 +1194,7 @@ $ledgerPath = Join-Path $nightDir 'incidents.json'
 # a fresh start (D00 T02 section 30 item 4): red with the rebuild line.
 $ledgerResults = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $ledgerResults += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$ledgerPresence = Test-IncidentLedgerPresence $ledgerPath $ledgerResults $script:IncidentContractV2Since
+$ledgerPresence = Test-IncidentLedgerPresence $ledgerPath $ledgerResults $script:IncidentContractV2Since (Join-Path $Root $script:LedgerRecordPath)
 $ledgerRead = if ($ledgerPresence.Ok) { Read-IncidentLedger $ledgerPath } else { [pscustomobject]@{ Ok = $false; Error = $ledgerPresence.Error; Incidents = @{} } }
 $incidentLifecycle = @()
 $incidentLifecycleSource = 'unavailable'
@@ -1206,6 +1209,10 @@ if (-not $ledgerRead.Ok) {
   $openCount = @($ledgerUpd.Incidents.Values | Where-Object { $_.state -eq 'open' }).Count
   if (@($ledgerUpd.Lines).Count -eq 0) { $report += "(no incident changes; $openCount open)" } else { $report += $ledgerUpd.Lines; $report += "- Open incidents: $openCount" }
   $report += @(Format-UnlinkedIncidents $ledgerUpd.Incidents)
+  # One authoritative triage policy (D00 T02 section 38 item 8).
+  if ($script:IncidentPolicyError -ne '') { $failed = $true; $report += "- RED: $($script:IncidentPolicyError) (defaults owner $($script:TriageOwner), $($script:TriageDays) days used)" }
+  $report += @(Get-OverdueIncidentNotices $ledgerUpd.Incidents (Get-Date).Date | ForEach-Object { "- OVERDUE: $($_.Line)" })
+  $report += @($script:stagingSweepNotes)
   if ($ledgerErr -eq '') { $incidentLifecycle = @(ConvertTo-IncidentLifecycle $ledgerUpd.Incidents); $incidentLifecycleSource = 'ledger' }
 }
 $report += ''
@@ -1462,6 +1469,7 @@ $result = [pscustomobject]@{
   # The incident lifecycle machine contract (D00 T02 section 30 item 10).
   incidentLifecycle = @($incidentLifecycle)
   incidentLifecycleSource = $incidentLifecycleSource
+  incidentLifecycleVersion = $script:LifecycleContractVersion
   # Night grouping by run identity plus timezone (D00 T02 §25 item 3).
   startUtc = $runStart.ToUniversalTime().ToString('o')
   tz = $(($runStart - $runStart.ToUniversalTime()).ToString('hh\:mm').Insert(0, $(if (($runStart - $runStart.ToUniversalTime()).Ticks -lt 0) { '-' } else { '+' })))

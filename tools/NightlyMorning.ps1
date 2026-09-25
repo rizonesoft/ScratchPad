@@ -70,6 +70,23 @@ try {
   }
 } catch { $log += "trend alerts: failed: $($_.Exception.Message)" }
 
+# (1c) Overdue incidents (D00 T02 section 38 item 8): each open incident
+# past its due date notifies its owner once a day (the run id names the
+# incident and the day), read from the ledger the nightly keeps.
+try {
+  $lp = Join-Path $NightDir 'incidents.json'
+  $lr = Read-IncidentLedger $lp
+  if (-not $lr.Ok) { $log += "incident overdue: ledger unreadable: $($lr.Error)" }
+  else {
+    $od = @(Get-OverdueIncidentNotices $lr.Incidents $now.Date)
+    foreach ($o in $od) {
+      $on = Invoke-NightlyNotify -Phase 'final' -RunId $o.RunId -ResultPath '' -Class 'incident-overdue' -Title $o.Title -Lines @($o.Line, 'Ledger: build/nightly/incidents.json; links: docs/incident-links.md') -StateDir $NightDir -Sender $sender -NoPersist:$DryRun -Now $now
+      $log += "incident overdue $($o.Id) (owner $($o.Owner)): $($on.Status)"
+    }
+    if ($od.Count -eq 0) { $log += 'incident overdue: none' }
+  }
+} catch { $log += "incident overdue: failed: $($_.Exception.Message)" }
+
 # (2) Digest: every queued routine notification, whole, in
 # build/nightly/digest-<day>.md plus one summary toast; a failed send
 # falls back to the undelivered set.

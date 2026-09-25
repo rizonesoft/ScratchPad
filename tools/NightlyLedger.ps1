@@ -7,9 +7,14 @@
 # nightly runs, restoring each incident with its occurrences, owner,
 # and finding link. Pass streaks are not stored in results, so
 # recovery counting restarts from zero. Refuses to overwrite an
-# existing ledger unless -Force is given.
+# existing ledger unless -Force is given. -Link <INC-id> -Finding <ref>
+# records a triage link in docs/incident-links.md idempotently (D00 T02
+# section 38 item 9): the same link twice writes once, a conflicting link
+# refuses, and a failed write leaves the incident unlinked to re-list.
 param(
   [switch]$Rebuild,
+  [string]$Link = '',
+  [string]$Finding = '',
   [switch]$Force,
   [string]$WorkspaceRoot = ''
 )
@@ -19,7 +24,13 @@ if ($WorkspaceRoot -ne '') { $Root = (Resolve-Path $WorkspaceRoot).Path }
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 $nightDir = Join-Path $Root 'build\nightly'
 $ledgerPath = Join-Path $nightDir 'incidents.json'
-if (-not $Rebuild) { Write-Output 'usage: NightlyLedger.ps1 -Rebuild [-Force] [-WorkspaceRoot <dir>]'; exit 2 }
+if ($Link -ne '') {
+  $r = Add-IncidentLink (Join-Path $Root 'docs/incident-links.md') $Link $Finding
+  Write-Output "ledger: link $($r.Status): $($r.Line)"
+  if (@('linked', 'already') -contains $r.Status) { exit 0 }
+  exit 1
+}
+if (-not $Rebuild) { Write-Output 'usage: NightlyLedger.ps1 -Rebuild [-Force] [-WorkspaceRoot <dir>] | -Link <INC-id> -Finding <ref>'; exit 2 }
 if ((Test-Path $ledgerPath) -and (-not $Force)) { Write-Output "ledger: $ledgerPath exists; pass -Force to replace it"; exit 1 }
 $files = @(Get-ChildItem $nightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
 $files += @(Get-ChildItem (Join-Path $nightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })

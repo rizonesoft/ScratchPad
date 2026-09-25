@@ -2,7 +2,7 @@
 // R3-F2, PR13): legs run out of process inside a named Windows Job
 // Object, so kills reap exactly the leg's tree, abandoned handles kill
 // stragglers at close, and dumps target exact PIDs. Verbs:
-//   JobControl run --job <name> --out <log> --timeout <secs> [--dump <dir>] -- <exe> [args]
+//   JobControl run --job <name> --out <log> --timeout <secs> [--dump <dir>] [--dump-max <bytes>] -- <exe> [args]
 //   JobControl kill --job <name>
 //   JobControl pids --job <name>
 //   JobControl dump --pid <n> --out <file>
@@ -64,6 +64,7 @@ static int Run(string[] rest)
     string? log = Flag(rest, "--out");
     string? timeoutText = Flag(rest, "--timeout");
     string? dumpDir = Flag(rest, "--dump");
+    long dumpMax = long.TryParse(Flag(rest, "--dump-max"), out long parsedMax) && parsedMax > 0 ? parsedMax : long.MaxValue;
     int dash = Array.IndexOf(rest, "--");
     if (job is null || log is null || timeoutText is null || !int.TryParse(timeoutText, out int timeout) || timeout <= 0 || dash < 0 || dash + 1 >= rest.Length)
     {
@@ -170,8 +171,28 @@ static int Run(string[] rest)
                         Directory.CreateDirectory(dumpDir);
                         foreach (long frozen in JobPids(hJob))
                         {
-                            if (DumpPid((int)frozen, Path.Combine(dumpDir, $"{frozen}.dmp")))
+                            // D00 T02 §38 item 3: a dump is attempted only while
+                            // the disk keeps the cap plus the marker free, and a
+                            // dump over the cap is refused at capture time: it
+                            // is deleted at once and the marker names it.
+                            string file = Path.Combine(dumpDir, $"{frozen}.dmp");
+                            string? refusal = DumpReservation(dumpDir, dumpMax);
+                            if (refusal is not null)
                             {
+                                RefuseDump(dumpDir, $"{frozen}.dmp not written: {refusal}");
+                                continue;
+                            }
+
+                            if (DumpPid((int)frozen, file))
+                            {
+                                long written = new FileInfo(file).Length;
+                                if (written > dumpMax)
+                                {
+                                    File.Delete(file);
+                                    RefuseDump(dumpDir, $"{frozen}.dmp refused: {written} bytes over the {dumpMax}-byte cap");
+                                    continue;
+                                }
+
                                 dumped++;
                             }
                         }
@@ -279,6 +300,24 @@ static int Dump(string[] rest)
     Console.WriteLine($"JOBCTL dump={log} bytes={new FileInfo(log).Length}");
     return 0;
 }
+
+// Free space for one dump: the cap plus 64 KB for the marker, else the
+// reason (null when there is room). An unlimited cap reserves nothing.
+static string? DumpReservation(string dumpDir, long dumpMax)
+{
+    if (dumpMax == long.MaxValue)
+    {
+        return null;
+    }
+
+    string? root = Path.GetPathRoot(Path.GetFullPath(dumpDir));
+    long free = root is null ? 0 : new DriveInfo(root).AvailableFreeSpace;
+    long need = dumpMax + (64 * 1024);
+    return free >= need ? null : $"{free} bytes free, the {dumpMax}-byte cap plus the marker needs {need}";
+}
+
+static void RefuseDump(string dumpDir, string line) =>
+    File.AppendAllText(Path.Combine(dumpDir, "CAPTURE-REFUSED.txt"), line + Environment.NewLine);
 
 static bool DumpPid(int pid, string log)
 {
