@@ -70,7 +70,7 @@ track: W0
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [x]   |
 |   28  |   §28   | Binding guard and funnel hardening | §21 |  [x]   |
 |   29  |   §29   | Population fingerprint gate before the night | §15 |  [x]   |
-|   30  |   §30   | Nightly evidence residuals | §22 |  [ ]   |
+|   30  |   §30   | Nightly evidence residuals | §22 |  [x]   |
 |   31  |   §31   | Acknowledgement residuals | §23 |  [ ]   |
 |   32  |   §32   | Trend and telemetry residuals | §25 |  [ ]   |
 |   33  |   §33   | Notification residuals | §24 |  [ ]   |
@@ -78,6 +78,7 @@ track: W0
 |   35  |   §35   | Night-debt lifecycle residuals | §27 |  [ ]   |
 |   36  |   §36   | Binding guard residuals | §28 |  [ ]   |
 |   37  |   §37   | Population gate residuals | §29 |  [ ]   |
+|   38  |   §38   | Nightly evidence second residuals | §30 |  [ ]   |
 
 ---
 
@@ -963,6 +964,7 @@ Why this section exists: the §22 plan review returned 21 findings; 10 file here
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D00 T02 §38 -- residual follow-ups filed from this section's plan review.
 - -> XREF: D00 T02 §22 -- filed from its plan review; hardens the capture policy, retention quota, and incident lifecycle it shipped.
 
 - [x] Text captures are written to a staging name and renamed into the capture directory only after `Protect-CaptureDir` scans them, so no reader of the capture directory ever sees an unscanned file. Done when: a fixture shows the staging file absent after a clean scan and never renamed on a hit. (D00-T02-S22-PR1.)
@@ -978,6 +980,13 @@ Why this section exists: the §22 plan review returned 21 findings; 10 file here
 - [x] Commit: `"workspace: close the nightly evidence residuals"`
 
 **Test checkpoint:** Staging never exposes unscanned text, the byte budget truncates with a marker, a quota refusal lists release candidates, a missing ledger reds with its rebuild instruction, recurrence joins across the alias map, unowned incidents name the default owner, unlinked incidents re-list, the catalog line reads truthfully, the XREF pairs validate, and the result JSON carries the validated lifecycle block. Cheaper substitute that fails: notes in the report with no enforcement behind them.
+
+> **Verified:** 2026-09-25 | §30 | text captures publish only after the scan (four staging fixtures); a run's captures share a 200 MB budget dropping screenshots, then dumps, then text with a marker; quota refusals name the oldest exemptions and their citations and the docs give a release path that never deletes the only copy; a missing ledger reds from results or a validated snapshot and `tools/NightlyLedger.ps1 -Rebuild` restores the snapshot first then replays later results (live rebuild in a temp workspace); v1 ids alias to v2 in the trend; unowned incidents route to the triage owner with a due date; `docs/incident-links.md` links findings and unlinked incidents re-list; `Catalog: retained runs verified (N)`; the XREF pairs validate; the result carries a validated `incidentLifecycle` block with its source; all five nightly suites green; proof runs 2026-09-25-085626-pid54660 and 2026-09-25-090645-pid49952 acknowledged
+> **Review:** round 5 (Full), candidates `95d18fd` `f2cad6f` `3f60472` `5cb5992` `222a7ad` `fdd8ded` `74e9d5e` -- GPT R1-R2 bulk needs-attention (R1-F1..F3 fixed, R1-F4 rejected, R2-F1..F2 fixed), GPT R3 sign-off needs-attention (R3-F1..F2 fixed as blocking), GPT R4 depth (R4-F1 fixed), GPT R5 depth governing: `adversarial` approve · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); below-bar R5-F1 fixed in `74e9d5e` and re-gated at the stamp. Raw findings: docs/reviews/00-workspace/D00-T02-s30.md
+> **Plan review:** GPT medium, filed D00 T02 §38, D00 T09 §1, D00 T09 §8 (run 20260925-D00-T02-S30-codex-c06751119-r6)
+> **CRUD:** applicable | captures stage then move atomically; the budget marker lists every deletion; the ledger writes atomically with read-back and the rebuild refuses to overwrite without -Force or to restore from an invalid snapshot; retention deletes nothing on refusal
+> **Duration:** 2026-09-25T06:46:56Z to 2026-09-25T07:22:17Z
+> **Reviewed-tip:** 74e9d5e12f245f948fbc0c3f2d300960a1706050
 
 ## 31. Acknowledgement Residuals
 
@@ -1122,6 +1131,25 @@ Why this section exists: the §29 plan review returned 10 findings; 6 file here 
 - [ ] Commit: `"workspace: settle the population gate residuals"`
 
 **Test checkpoint:** A red check stops the night's population, a shared-input touch refuses the regen, capability rows list identically, restoration holds on failure, a row swap drifts, and a partial Theory keeps its owed cases. Cheaper substitute that fails: a doc note asking authors to wait for CI.
+
+## 38. Nightly Evidence Second Residuals
+
+Why this section exists: the §30 plan review returned 18 findings; 9 file here, 4 on D00 T09 §1, and 5 on D00 T09 §8. §30 staged text captures, budgeted a run's captures, gave quota refusals a release path, made ledger loss detectable and rebuildable, aliased incident identity across contracts, and published the lifecycle as JSON; these settle what those mechanisms still leave to trust. -> SOURCE: plan-review-D00-T02-s30-2026-09-25-s38 D00-T02-S30-PR1 D00-T02-S30-PR2 D00-T02-S30-PR3 D00-T02-S30-PR4 D00-T02-S30-PR5 D00-T02-S30-PR6 D00-T02-S30-PR7 D00-T02-S30-PR8 D00-T02-S30-PR9 (staging integrity, binary capture privacy, budget reservation, durable ledger initialization, lossless rebuild, alias migrations, consumer contract, owner accountability, and filing retry from the §30 plan review).
+
+- -> XREF: D00 T02 §30 -- filed from its plan review; settles the residuals of the evidence mechanisms it shipped.
+
+- [ ] Staging integrity: the `.staging` directory is created with the run's own ACL, a crash-left staging directory is swept at run start, and the rename publishes exactly the bytes scanned (scan the staged file's hash, compare before the move). Done when: a fixture that alters the staged file between scan and move refuses the publish. (D00-T02-S30-PR1.)
+- [ ] Binary capture privacy: screenshots and dumps get a minimization rule (screenshot the app's windows only, dumps without full heap unless the leg asks) and a disclosure gate before any retain. Done when: a screenshot fixture captures only app-owned window bounds and a full-heap dump refuses retain without its gate. (D00-T02-S30-PR2.)
+- [ ] The budget reserves room before capture begins (per-capture caps, a pre-capture free-space check, the marker's own bytes reserved), so a single oversized dump cannot fill the disk before truncation runs. Done when: an oversized-dump fixture is refused at capture time with the marker naming it. (D00-T02-S30-PR3.)
+- [ ] Ledger initialization is durable: a tracked record notes when the ledger started, and retention keeps at least the newest ledger-sourced snapshot, so deleting the ledger plus every result cannot silently reset incident history. Done when: a fixture with the ledger and all results removed reds on the initialization record. (D00-T02-S30-PR4.)
+- [ ] The rebuild is proven lossless by a round-trip fixture: ledger to results to rebuild reproduces finding links, due dates, pass streaks, and alias history exactly. Done when: the round-trip fixture compares the two ledgers field for field. (D00-T02-S30-PR5.)
+- [ ] Alias migrations define split, merged, ambiguous, and unmappable cases (today only an unambiguous one-to-one maps), with the trend naming each unmapped id instead of joining it. Done when: a split and a merge fixture each read as defined. (D00-T02-S30-PR6.)
+- [ ] The lifecycle block gets a versioned consumer contract (field types, enums, invariants, and how older results read) that notify, trend, and triage validate against. Done when: an older result without the block and a future contract version each read as the contract says. (D00-T02-S30-PR7.)
+- [ ] The triage owner and escalation window live in one authoritative configuration, and an overdue incident notifies its owner. Done when: an incident past its due date raises an owner notification fixture. (D00-T02-S30-PR8.)
+- [ ] Finding links retry idempotently: an incident whose first filing failed is re-offered each run until linked, and linking twice records once. Done when: a failed-then-retried filing fixture ends with one link. (D00-T02-S30-PR9.)
+- [ ] Commit: `"workspace: settle the second nightly evidence residuals"`
+
+**Test checkpoint:** A tampered stage refuses, binary captures minimize and gate, oversized dumps refuse at capture, a full wipe reds on the initialization record, the round trip is lossless, split and merge aliases read as defined, the consumer contract holds, overdue incidents notify, and filings retry once. Cheaper substitute that fails: more prose in the capture policy.
 
 ## Verification
 
