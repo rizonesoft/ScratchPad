@@ -4226,8 +4226,9 @@ def night_debt_line(d: dict) -> str:
     if d.get("extensions"):
         # Every extension, append-only (§35 item 8).
         line += " extended " + "; ".join(f"{x['date']} by {x['by']} from {x['from'] or '?'} to {x['due']}" for x in d["extensions"])
-    if d.get("state") in ("red-repeat", "acknowledged") and d.get("red_repeat"):
-        # A red-repeat debt links its remediation (§35 item 10).
+    if d.get("red_repeat"):
+        # A red-repeat debt links its remediation in every state it can
+        # reach, response-overdue included (§35 item 10, R3-F1).
         line += f" finding {d.get('finding') or 'none'}"
     if d["overdue"]:
         line += f" OVERDUE escalate {d['owner']} by {d['respond_by'] or '?'}: {d['action']}"
@@ -26125,6 +26126,10 @@ track: Z1
             f"**Night-owed:** D90-T01-S1-N28 ({_o}2026-09-10)\n"
             "**Night-accepted:** D90-T01-S1-N28 (approver operator, owner operator, date 2026-09-12, expires 2026-10-01, rationale stands)\n"
             "**Night-revoked:** D90-T01-S1-N28 (2026-09-18, by operator)\n"
+            f"**Night-owed:** D90-T01-S1-N29 ({_o}2026-09-10)\n"
+            f"**Night-red:** 2026-09-12 D90-T01-S1-N29{_red}m1)\n"
+            f"**Night-red:** 2026-09-14 D90-T01-S1-N29{_red}m2)\n"
+            "**Night-ack:** D90-T01-S1-N29 (2026-09-15, owner operator, finding D00-T02-S35-F8, action fix the wait)\n"
             # Item 7: owed timestamps against the trigger.
             f"**Night-owed:** D90-T01-S1-N14 ({_o}2026-09-17T01:00)\n"
             f"**Night-owed:** D90-T01-S1-N15 ({_o}2026-09-17T03:00)\n"
@@ -26247,6 +26252,11 @@ track: Z1
             "§35 R1-F4: a finding on a red line links the red-repeat; without one the action says to file it",
             "finding D00-T02-S35-F9" in _n35.get("D90-T01-S1-N27", "") and "file the staged finding" not in _n35.get("D90-T01-S1-N27", "")
             and "file the staged finding and record it" in _n35.get("D90-T01-S1-N4", ""),
+            True,
+        )
+        check(
+            "§35 R3-F1: a response-overdue red-repeat keeps quoting its finding",
+            "state response-overdue" in _n35.get("D90-T01-S1-N29", "") and "finding D00-T02-S35-F8" in _n35.get("D90-T01-S1-N29", ""),
             True,
         )
         check(
