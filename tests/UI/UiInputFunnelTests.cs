@@ -244,6 +244,24 @@ public sealed class UiInputFunnelTests
         Assert.Equal(['a'], typed);
     }
 
+    // §28 R3-F2: a press that closes the target window hands input to
+    // another process by design; with the window gone that is the command
+    // working, while the same departure with the window alive aborts.
+    [Fact]
+    public void ClosingTheTargetWindowIsNotAnInterruption()
+    {
+        bool pressed = false;
+        int up = 0;
+        UiInput.SendChecked(App, Target, () => pressed ? (0x200, Thief) : (Target, App), () => new UiInput.FocusRead(pressed ? Thief : App, true),
+            () => pressed = true, () => up++, () => true, () => true, () => { }, targetAlive: () => false);
+        Assert.Equal(1, up);
+        pressed = false;
+        Assert.Throws<InvalidOperationException>(() =>
+            UiInput.SendChecked(App, Target, () => pressed ? (0x200, Thief) : (Target, App), () => new UiInput.FocusRead(pressed ? Thief : App, true),
+                () => pressed = true, () => up++, () => true, () => true, () => { }, targetAlive: () => true));
+        Assert.Equal(2, up);
+    }
+
     // §28 R2-F2: typed text owns only the modifiers its character's
     // injection uses (VkKeyScan's shift state), so an operator's Alt
     // pressed while a plain letter is typed is never released.

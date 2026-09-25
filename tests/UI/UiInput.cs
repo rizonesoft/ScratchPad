@@ -175,7 +175,8 @@ internal static class UiInput
             },
             () => ModifiersReleased(AllModifiers),
             () => ModifiersReleased(mods),
-            () => ReleaseModifiers(mods));
+            () => ReleaseModifiers(mods),
+            () => Native.IsWindow(ExpectedRoot(target)));
     }
 
     // What the UIA focus probe read: the focused element's pid (null when
@@ -197,7 +198,8 @@ internal static class UiInput
         Action keyUp,
         Func<bool> noModifierHeld,
         Func<bool> modifiersReleased,
-        Action releaseModifiers)
+        Action releaseModifiers,
+        Func<bool>? targetAlive = null)
     {
         ArgumentNullException.ThrowIfNull(foreground);
         ArgumentNullException.ThrowIfNull(focus);
@@ -253,7 +255,11 @@ internal static class UiInput
                 keyDown();
                 var fg = foreground();
                 var f = focus();
-                if (fg.Pid != expectedPid || f.Pid != expectedPid)
+                // A press that closes the target window (Ctrl+W on the
+                // last tab, Ctrl+Shift+W) hands input to another process
+                // by design; only a departure while the window lives is
+                // an interruption (§28 R3-F2).
+                if ((fg.Pid != expectedPid || f.Pid != expectedPid) && (targetAlive?.Invoke() ?? true))
                 {
                     interrupted = Describe(fg, f, expectedPid, expectedRoot);
                 }
@@ -429,6 +435,11 @@ internal static class UiInput
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern short VkKeyScanW(char ch);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool IsWindow(nint hwnd);
     }
 
     // Appends text through ValuePattern: no focus, no keystrokes. For

@@ -212,6 +212,7 @@ run-a:
   UI.UiForegroundTests.LargestSecondaryWins
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI.UiInputFunnelTests.ClosingTheTargetWindowIsNotAnInterruption
   UI.UiInputFunnelTests.CommandMovingFocusInsideTheAppIsNotAnInterruption
   UI.UiInputFunnelTests.FocusChangeBetweenKeyDownAndKeyUpAbortsCleanly
   UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
@@ -235,8 +236,8 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 229
-run-a-cases: 282
+run-a-methods: 230
+run-a-cases: 283
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
