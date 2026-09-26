@@ -64,7 +64,7 @@ track: W0
 |   21  |   §21   | Accelerator sweep follow-ups | §12 |  [x]   |
 |   22  |   §22   | Nightly evidence hardening follow-ups | §15 |  [x]   |
 |   23  |   §23   | Nightly acknowledgement hardening | §17 |  [x]   |
-|   24  |   §24   | Notify follow-ups | §17 |  [ ]   |
+|   24  |   §24   | Notify follow-ups | §17 |  [x]   |
 |   25  |   §25   | Trend and telemetry follow-ups | §17 |  [x]   |
 |   26  |   §26   | Sibling sweep narrowing | §18 |  [x]   |
 |   27  |   §27   | Night-debt escalation lifecycle | §19 |  [x]   |
@@ -95,6 +95,7 @@ track: W0
 |   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
 |   53  |   §53   | Nightly evidence fourth residuals | §45 |  [ ]   |
 |   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [ ]   |
+|   55  |   §55   | Notify redesign residuals | §24 |  [ ]   |
 
 ---
 
@@ -809,6 +810,7 @@ Why this section exists: the §17 plan review returned 37 findings; 14 file here
 - -> XREF: D00 T02 §31 -- shares the notification-version and recovery halves of the acknowledgement contract.
 - -> XREF: D00 T02 §23 -- the acknowledgement half of the shared contract: its acks never bind to this section's notification state, and this section's SLAs shorten its deadlines.
 - -> XREF: D00 T02 §17 -- filed from its plan review; hardens that section's notify surface.
+- -> XREF: D00 T02 §55 -- its plan review's residuals.
 
 - [x] §17's dependency and XREF edges to §§14-15 plus the §22 incident-key work read in the plan, since §17 consumes their deadlines, result schema, retention, scheduler, and incident contracts. Done when: §17's XREF block names §§14, §15, and §22 with return lines. (D00-T02-S17-PR1.) Done: §17's XREF block names §14 (deadline, reserve, session matrix), §15 (per-leg evidence, retention, incident ids), and §22 (incident identity contract), and each points back; `validate` 0 fatal.
 - [x] A canonical-run selection rule covers multiple same-day retries, manual runs, backfills, simulations, and stood-down losers, so counting every result as a night cannot duplicate data or bias trends. Done when: a duplicate-heavy day selects one canonical run per rule. (D00-T02-S17-PR2.) Done: `Select-CanonicalRuns` (per day: the scheduler-launched run, else an on-demand task run, else the latest manual run; simulations and stood-down losers never count) drives `Format-TrendTable`, which marks retries and keeps them out of the p50, the budget ranks, and recurrence. Fixture: `canonical-timer-wins`, `canonical-demand-beats-manual`, `canonical-others-carry-reasons`, `canonical-trend-marks-retries`, `canonical-p50-counts-nights-not-attempts`; a planted p50-over-attempts fails.
@@ -831,6 +833,13 @@ Why this section exists: the §17 plan review returned 37 findings; 14 file here
 > **Redesigned 2026-09-26 (operator decision 2026-09-25, after the round-5 escalation):** the cancellation trap no longer reads an in-memory publication flag. The run's own result file is the publication receipt: `Write-AtomicReport` lands it by an atomic rename, and once it exists for the stamp (`Get-TrapDisposition`) the trap never rewrites the day report or the result; it writes `morning-<stamp>-failure.md` (`Write-PostResultFailure`), journals `failed-after-result`, and sends the alert from the landed result (idempotent per run and checksum). This closes the R3-F1, R4-F2, and R5-F1 family in one place, including the window between the result write and the report publication that the flag never covered. `SCRATCHPAD_NIGHTLY_FAULT=after-result` is the fault seam for that window. The review restarts at round 1 on the redesign candidate.
 
 **Test checkpoint:** Edges read, runs canonicalize, delivery retries, silence alerts, finals fire, sends dedupe, states deliver, nights digest, outcomes list, classes route, caps prioritize, reports agree, recoveries notify, incidents link. Cheaper substitute that fails: a louder toast over the same gaps.
+
+> **Verified:** 2026-09-26 | §24 | canonical-run selection, toast retry with a second channel and delivery-health escalation, the independent morning reconciler for no-start (enrollment recorded at provisioning as the first scheduled trigger's night), final-only notification, run-plus-checksum idempotency, the delivery matrix, the morning digest with immediate urgent alerts, labels, class-to-owner and SLA mappings, the capped line list with links, typed report and result agreement, recovery notices, and diagnostic links; the redesigned trap reads the landed result as its receipt, never overwrites it, journals failed-after-result, and alerts only outside simulation; NightlyNotify suite green on 69867fd; the live fault-seam run on 6c12f22 left the 7407-byte result untouched
+> **Review:** round 8 (Full), candidates `1c17978`..`ab5fee0` (rounds 1-5, escalated at the cap on R5-F1), then the operator-directed redesign `6c12f22` `25c4a3a` `69867fd` -- redesign R6 bulk needs-attention (R6-A1, I1 fixed, R6-R1 advisory answered by the live proof), R7 sign-off needs-attention (R7-A1 fixed in 69867fd), R8 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T02-s24.md
+> **Plan review:** GPT medium, filed D00 T02 §55 (run 20260926-D00-T02-S24-codex-c06751119-r4)
+> **CRUD:** not-applicable | notification state and run scratch under build/nightly plus the schedule-history record provisioning writes once; no user data
+> **Duration:** 2026-09-25T03:08:26Z to 2026-09-26T02:52:59Z
+> **Reviewed-tip:** 69867fd
 
 - -> XREF: D00 T09 §4 -- adds Pause, Stop, and Skip action buttons to the nightly toast over this section's delivery path.
 
@@ -1101,6 +1110,7 @@ Why this section exists: the §25 plan review read §24's notification surface a
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §24 -- hardens the notification surface it shipped.
+- -> XREF: D00 T02 §57 -- the §24 plan review's residuals that name this section's queue, escalation, and night identity surface.
 
 - [ ] Notifications and the trend share one canonical-run and night identity contract (the §25 night key, one tie-break for retries, cancellations, and multiple scheduled runs), so they can never select different results for a night. Done when: a fixture night with a retry and a cancellation selects the same run in both. (D00-T02-S25-PR1.)
 - [ ] Trend alerts carry identity and a lifecycle (new, worsening, unchanged, recovered), so the once-per-day dedupe neither hides a new or worse alert nor repeats unresolved noise. Done when: a worsening alert re-notifies and an unchanged one does not. (D00-T02-S25-PR9.)
@@ -1684,6 +1694,34 @@ Why this section exists: the §47 plan review returned 20 findings; 17 file here
 - [ ] Commit: `"workspace: settle the fourth trend and telemetry residuals"`
 
 **Test checkpoint:** Aliases and legacy nights resolve, alert acks have identity and stay apart from recovery, insufficiency escalates, merges and tombstones follow a schema, shards read an inventory, the calendar resolves one status per slot, recovery states its loss and stays consistent, migration survives interruption, a full store compacts, derivations never mix, explanations are immutable, the proofs are broad, and one summary routes to action. Cheaper substitute that fails: more report lines with no owner behind them.
+
+## 55. Notify Redesign Residuals
+
+Why this section exists: the §24 plan review (run after its redesign) returned 17 findings; all 17 file here. §24 shipped canonical selection, delivery fallback, an independent no-start reconciler, final-only notification, idempotency, a delivery matrix, digests, labels, class mappings, capped lines, typed agreement, recovery notices, and diagnostic links, and its redesign made the landed result the trap's receipt with enrollment recorded at provisioning; these carry that through a committed generation, the failed-after-result identity, start evidence, no-start acceptance, one night identity, supersession, combined routing, the SLA clock, durable queues, lifecycle reconciliation, delivery evidence, escalation timing, an external heartbeat, schema-bound agreement, recovery semantics, link privacy, and the current taxonomy. -> SOURCE: plan-review-D00-T02-s24-2026-09-26-s55 D00-T02-S24-PR1 D00-T02-S24-PR2 D00-T02-S24-PR3 D00-T02-S24-PR4 D00-T02-S24-PR5 D00-T02-S24-PR6 D00-T02-S24-PR7 D00-T02-S24-PR8 D00-T02-S24-PR9 D00-T02-S24-PR10 D00-T02-S24-PR11 D00-T02-S24-PR12 D00-T02-S24-PR13 D00-T02-S24-PR14 D00-T02-S24-PR15 D00-T02-S24-PR16 D00-T02-S24-PR17
+
+- -> XREF: D00 T02 §24 -- filed from its plan review; carries the notify surface it settled and redesigned.
+- -> XREF: D00 T02 §33 -- notification residuals it owns: queue durability, escalation, the heartbeat path, and one night identity here name it.
+
+- [ ] The result and its Markdown report publish as one committed generation, and a crash window between them is proven, so an alert never links a missing or mismatched report. Done when: a crash after the result and before the report never notifies a broken link. (D00-T02-S24-PR1.)
+- [ ] A failure after the result landed has its own operational alert identity, so result-checksum deduplication never suppresses it, including on a GREEN result. Done when: a GREEN result followed by failed-after-result alerts once. (D00-T02-S24-PR2.)
+- [ ] The no-start check distinguishes never-started, still-running, hung, and started-without-result from durable start evidence. Done when: each state reads its own name. (D00-T02-S24-PR3.)
+- [ ] No-start has an executable acceptance contract over enrollment, paused schedules, skipped nights, and historical coverage, so installation or reconciliation never invents missed runs. Done when: a pause and a skip each read without a no-start. (D00-T02-S24-PR4.)
+- [ ] One night identity applies to no-start, recurrence, recovery, and delivery escalation, not only trend and notifications (§33). Done when: one night never reads two decisions. (D00-T02-S24-PR5.)
+- [ ] A late scheduled result that supersedes an already-notified manual result has replacement and correction rules naming the authoritative verdict (§33). Done when: the correction notice names the superseding verdict. (D00-T02-S24-PR6.)
+- [ ] Multi-label alerts combine urgency, owners, and deadlines across labels, so a secondary critical failure never inherits a slower route. Done when: a secondary critical label routes immediately. (D00-T02-S24-PR7.)
+- [ ] The notification SLA's effect on acknowledgement deadlines names the clock origin, the strictest deadline, and retry behavior, shared with §23 and §31. Done when: a delayed delivery never resets the deadline. (D00-T02-S24-PR8.)
+- [ ] Digest and undelivered queues have atomic update, concurrent-writer, corruption, and restart contracts (§33). Done when: a crash mid-flush loses and duplicates nothing. (D00-T02-S24-PR9.)
+- [ ] Queued alerts reconcile against current lifecycle state before the morning flush (§33). Done when: a failure that recovered before the flush reads recovered in the digest. (D00-T02-S24-PR10.)
+- [ ] Delivery states separate API acceptance from operator visibility, with evidence, so `Delivery: healthy` never implies a human saw it. Done when: an accepted but unseen toast reads accepted, not delivered. (D00-T02-S24-PR11.)
+- [ ] Urgent alerts escalate on elapsed time by severity, and a failed escalation channel is handled (§33). Done when: a critical alert escalates within its time bound. (D00-T02-S24-PR12.)
+- [ ] Host outage and scheduler-wide failure have an external missed-heartbeat path or a recorded accepted limitation (§33). Done when: the limitation or the path is named with its owner. (D00-T02-S24-PR13.)
+- [ ] Agreement coverage binds to the versioned result schema, including labels, routing, and links, so schema growth cannot bypass the check. Done when: a new result field without agreement coverage fails. (D00-T02-S24-PR14.)
+- [ ] Night-level and incident-level recovery use comparable evidence and define partial recovery and flapping, so a notice says exactly what recovered. Done when: a flapping incident reads flapping, not recovered. (D00-T02-S24-PR15.)
+- [ ] Diagnostic links survive evidence relocation within retention, and lock-screen summaries stay privacy-safe. Done when: a relocated bundle's link still opens and the lock-screen text names no test content. (D00-T02-S24-PR16.)
+- [ ] The plan names the current class taxonomy (nine routes over the class set) and §33's post-redesign state while preserving historical evidence. Done when: §24 and §33 read one taxonomy. (D00-T02-S24-PR17.)
+- [ ] Commit: `"workspace: settle the notify redesign residuals"`
+
+**Test checkpoint:** Generations commit whole, late failures alert, starts are evidenced, no-start is accepted, nights have one identity, supersession corrects, routing combines, the SLA clock is defined, queues are durable and reconciled, delivery is evidenced, escalation is timed, host outage has a path, agreement tracks the schema, recovery is exact, links last and stay private, and the taxonomy is current. Cheaper substitute that fails: one more toast line.
 
 ## Verification
 
