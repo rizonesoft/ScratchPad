@@ -2438,9 +2438,25 @@ $akR1 = Resolve-AlertAck $akE1 $akMap['1234abcd|duration'] $akMetaD '2026-09-21'
 $akE2 = [pscustomobject]@{ id = '1234abcd|duration'; firstNight = '2026-09-25'; magnitude = 10; state = 'open' }
 $akR2 = Resolve-AlertAck $akE2 $akMap['1234abcd|duration'] $akMetaD '2026-09-26'
 $akR3 = Resolve-AlertAck ([pscustomobject]@{ id = '1234abcd|flake'; firstNight = '2026-09-05'; magnitude = 2; state = 'open' }) $akMap['1234abcd|flake'] $script:AlertAckMeta['1234abcd|flake'] '2026-09-26'
-$akE4 = [pscustomobject]@{ id = '1234abcd|duration'; firstNight = '2026-09-18'; magnitude = 200; ackedMagnitude = 10; state = 'open' }
+$akE4 = [pscustomobject]@{ id = '1234abcd|duration'; firstNight = '2026-09-18'; magnitude = 200; ackedMagnitude = 10; ackRevision = '2026-09-20'; state = 'open' }
 $akR4 = Resolve-AlertAck $akE4 $akMap['1234abcd|duration'] $akMetaD '2026-09-26'
 Assert (($akMetaD.Date -eq '2026-09-20') -and ($akMetaD.Until -eq '2026-10-20') -and ($akR1.Acknowledged -like 'ann on 2026-09-20: revised*') -and ($akR2.Acknowledged -eq '') -and ($akR2.Note -like '*predates this occurrence*') -and ($akR3.Acknowledged -eq '') -and ($akR3.Note -like 'ack expired 2026-09-15*') -and ($akR4.Acknowledged -eq '') -and ($akR4.Note -like 'materially worse than acknowledged*') -and ($akE1.state -eq 'open')) 's54-ack-identity-revision-deadline-and-worse-recurrence' "$($akR2.Note) | $($akR3.Note) | $($akR4.Note)"
+# D00 T02 §54 R1-A4: an ack revision bound to an earlier occurrence covers
+# no later one; a revised ack rebinds the magnitude.
+$a4Old = [pscustomobject]@{ id = '1234abcd|duration'; occurrence = 'occ-1'; firstNight = '2026-09-20'; state = 'closed'; ackRevision = '2026-09-20'; ackedOccurrence = 'occ-1' }
+$a4New = [pscustomobject]@{ id = '1234abcd|duration'; occurrence = 'occ-2'; firstNight = '2026-09-20'; magnitude = 10; state = 'open' }
+$a4R = Resolve-AlertAck $a4New $akMap['1234abcd|duration'] $akMetaD '2026-09-21' @($a4Old, $a4New)
+$a4Rev = [pscustomobject]@{ id = '1234abcd|duration'; occurrence = 'occ-3'; firstNight = '2026-09-18'; magnitude = 200; ackedMagnitude = 10; ackRevision = '2026-09-10'; state = 'open' }
+$a4R2 = Resolve-AlertAck $a4Rev $akMap['1234abcd|duration'] $akMetaD '2026-09-21' @($a4Rev)
+# R1-A3: a rename without an effective date keeps its history; the old
+# key reporting after the new key appeared is a clone.
+$a3Was = $script:HostAliases
+$script:HostAliases = @{ 'aaaa0001' = [pscustomobject]@{ New = 'bbbb0001'; Effective = '' } }
+$a3Rename = @(Test-HostAliasClones @([pscustomobject]@{ hostKey = 'aaaa0001'; night = '2026-09-01' }, [pscustomobject]@{ hostKey = 'bbbb0001'; night = '2026-09-05' }))
+$script:HostAliases = @{ 'aaaa0001' = [pscustomobject]@{ New = 'bbbb0001'; Effective = '' } }
+$a3Clone = @(Test-HostAliasClones @([pscustomobject]@{ hostKey = 'bbbb0001'; night = '2026-09-05' }, [pscustomobject]@{ hostKey = 'aaaa0001'; night = '2026-09-07' }))
+$script:HostAliases = $a3Was
+Assert (($a4R.Acknowledged -eq '') -and ($a4R.Note -like 'ack of 2026-09-20 already covered an earlier occurrence*') -and ($a4R2.Acknowledged -ne '') -and ($a4R2.AckedMagnitude -eq 200) -and ($a3Rename.Count -eq 0) -and ($a3Clone.Count -eq 1)) 's54-round1-ack-binding-and-alias-history' "$($a4R.Note) | rebound=$($a4R2.AckedMagnitude) | rename=$($a3Rename.Count) clone=$($a3Clone.Count)"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

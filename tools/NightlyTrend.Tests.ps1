@@ -884,8 +884,8 @@ $g54Id = if ($g54Line.Count -gt 0) { Get-AlertIdentity $g54Line[0] 'abcd1234' } 
 $g54Dir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-insufficient'
 if (Test-Path $g54Dir) { Remove-Item $g54Dir -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $g54Dir
-$g54Life = Update-AlertLedger @($g54Line | ForEach-Object { "abcd1234|$_" }) (Join-Path $g54Dir 'alerts.json') ([pscustomobject]@{ Night = '2026-08-20'; Id = 'eval-1' })
-Assert (($g54Line.Count -eq 1) -and ($g54Line[0] -like '*owner operator*') -and ($g54Id -eq 'abcd1234|insufficient-runa-duration')) 's54-prolonged-insufficiency-is-an-owned-alert' (($g54Line -join ' | ') + " id=$g54Id new=$(@($g54Life.NewIds) -join ',')")
+$g54Life = Update-AlertLedger @($g54Line) (Join-Path $g54Dir 'alerts.json') ([pscustomobject]@{ Night = '2026-08-20'; Host = 'abcd1234'; Identity = 'eval-1' })
+Assert (($g54Line.Count -eq 1) -and ($g54Line[0] -like '*owner operator*') -and ($g54Id -eq 'abcd1234|insufficient-runa-duration') -and (@($g54Life.NewIds) -contains 'abcd1234|insufficient-runa-duration')) 's54-prolonged-insufficiency-is-an-owned-alert' (($g54Line -join ' | ') + " id=$g54Id new=$(@($g54Life.NewIds) -join ',')")
 Remove-Item $g54Dir -Recurse -Force -ErrorAction SilentlyContinue
 # D00 T02 §54 item 6: every field the merge can fill belongs to a named
 # unit, and fields outside the units never merge.
@@ -958,13 +958,20 @@ $dmDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-disclosure'
 if (Test-Path $dmDir) { Remove-Item $dmDir -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $dmDir
 $dmStore = Join-Path $dmDir 'metrics.jsonl'
-'{"schema":"metrics/1","identity":"x","note":"plain"}' | Set-Content -LiteralPath "$dmStore.bak" -Encoding UTF8
-$dmHold = [System.IO.File]::Open("$dmStore.bak", 'Open', 'Read', 'None')
+$dmLeak = '{"schema":"metrics/1","identity":"x","note":"C:\\Users\\someone\\secret.txt"}'
+$dmLeak | Set-Content -LiteralPath "$dmStore.bak" -Encoding UTF8
+$dmLeak | Set-Content -LiteralPath "$dmStore.rejected" -Encoding UTF8
+# The first run sanitizes the backup, then is interrupted: the rejected
+# archive is locked, so it is named and the marker stays unwritten.
+$dmHold = [System.IO.File]::Open("$dmStore.rejected", 'Open', 'Read', 'None')
 try { $dm1 = @(Update-DisclosureMigration $dmStore) } finally { $dmHold.Dispose() }
 $dmMarker1 = Test-Path "$dmStore.disclosure"
+$dmProg = @(Get-Content -LiteralPath "$dmStore.disclosure.progress" -ErrorAction SilentlyContinue)
+$dmBak1 = Get-Content -LiteralPath "$dmStore.bak" -Raw
 $dm2 = @(Update-DisclosureMigration $dmStore)
 $dmMarker2 = Test-Path "$dmStore.disclosure"
-Assert ((@($dm1 | Where-Object { $_ -like '*could not sanitize metrics.jsonl.bak*' }).Count -eq 1) -and (-not $dmMarker1) -and $dmMarker2 -and (-not (Test-Path "$dmStore.disclosure.progress"))) 's54-disclosure-migration-resumes-and-names-failures' (($dm1 + $dm2) -join ' | ')
+$dmRej2 = Get-Content -LiteralPath "$dmStore.rejected" -Raw
+Assert ((@($dm1 | Where-Object { $_ -like '*could not sanitize metrics.jsonl.rejected*' }).Count -eq 1) -and (@($dm1 | Where-Object { $_ -like '*sanitized in metrics.jsonl.bak*' }).Count -eq 1) -and (-not $dmMarker1) -and ($dmProg -contains "$($script:DisclosureRuleVersion)|metrics.jsonl.bak") -and ($dmBak1 -notlike '*someone*') -and (@($dm2 | Where-Object { $_ -like '*metrics.jsonl.bak*' }).Count -eq 0) -and ($dmRej2 -notlike '*someone*') -and $dmMarker2 -and (-not (Test-Path "$dmStore.disclosure.progress"))) 's54-disclosure-migration-resumes-and-names-failures' (($dm1 + $dm2) -join ' | ')
 Remove-Item $dmDir -Recurse -Force
 # D00 T02 §54 item 13: an append that would eat compaction's working
 # space refuses by name, and a store at its cap still compacts.
@@ -1016,6 +1023,27 @@ $thLines = @('| 2026-09-20 | missing | - | no result |', '- UNRESOLVED: night 20
 $thSum = @(Get-TrendHealthSummary $thLines @('metrics store at 93 percent of its cap'))
 $thOk = @(Get-TrendHealthSummary @('| 2026-09-20 | green | ...'))
 Assert (($thSum[2] -eq '- DEGRADED: 4 state(s)') -and (@($thSum | Where-Object { $_ -like '- missing evidence: 1 line(s) (next: *' }).Count -eq 1) -and (@($thSum | Where-Object { $_ -like '- unresolved identity: 1*' }).Count -eq 1) -and (@($thSum | Where-Object { $_ -like '- storage pressure: 1*compact*' }).Count -eq 1) -and (@($thSum | Where-Object { $_ -like '- suppressed detection: 1*' }).Count -eq 1) -and ($thOk[2] -like '- healthy:*')) 's54-one-trend-health-summary-routes-to-action' ($thSum -join ' | ')
+# D00 T02 §54 R1: an incomplete or torn inventory reads unknown loss; the
+# health summary counts a percent-sign capacity warning; a series with no
+# comparable baseline keeps its alert open; the restore gap holds a
+# corrected closure too.
+$r1Dir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-r1'
+if (Test-Path $r1Dir) { Remove-Item $r1Dir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $r1Dir
+$r1Store = Join-Path $r1Dir 'metrics.jsonl'
+'{"key":"a@h1","revision":1}' | Set-Content -LiteralPath "$r1Store.writes.jsonl" -Encoding UTF8
+'x' | Set-Content -LiteralPath "$r1Store.writes.incomplete" -Encoding UTF8
+$r1Inc = Get-MetricsRestoreLoss $r1Store ([ordered]@{})
+Remove-Item "$r1Store.writes.incomplete"
+Add-Content -LiteralPath "$r1Store.writes.jsonl" -Value '{ torn'
+$r1Torn = Get-MetricsRestoreLoss $r1Store ([ordered]@{})
+$r1Sum = @(Get-TrendHealthSummary @() @('metrics store at 93% of its 100-byte cap'))
+$r1Ledger = Join-Path $r1Dir 'alerts.json'
+$r1Alert = '- ALERT runa-duration: 900s on 2026-09-20 vs baseline 600s (+50%)'
+$null = Update-AlertLedger @($r1Alert) $r1Ledger ([pscustomobject]@{ Night = '2026-09-20'; Host = 'abcd1234'; Identity = 'e1' })
+$r1Ins = Update-AlertLedger @('- Insufficient data: runa-duration (0 measured baseline night(s) of 5 needed)') $r1Ledger ([pscustomobject]@{ Night = '2026-09-21'; Host = 'abcd1234'; Identity = 'e2' })
+Assert ((-not $r1Inc.Known) -and (-not $r1Torn.Known) -and (@($r1Sum | Where-Object { $_ -like '- storage pressure: 1*' }).Count -eq 1) -and (@($r1Ins.Closed).Count -eq 0)) 's54-round1-inventory-summary-and-insufficient-hold' "sum=$($r1Sum -join ' / ') closed=$(@($r1Ins.Closed).Count)"
+Remove-Item $r1Dir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
@@ -1030,7 +1058,11 @@ Assert (("$($r6.populationHash)" -ne 'popBF006') -and ("$($r6.commit)" -ne 'abc1
 $rsLines = @([System.IO.File]::ReadAllLines($mgS) | ForEach-Object { $o7 = $_ | ConvertFrom-Json; if ("$($o7.identity)" -eq $nat6.identity) { $o7.PSObject.Properties.Remove('tombstone'); $o7 | ConvertTo-Json -Depth 8 -Compress } else { $_ } })
 [System.IO.File]::WriteAllLines($mgS, [string[]]$rsLines)
 $r7 = @(Sync-MetricsStore $mgS @()) | Where-Object { "$($_.identity)" -eq $nat6.identity } | Select-Object -First 1
-Assert (("$($r7.commit)" -ne 'abc1234') -and (Test-Path "$mgS.tombstones.jsonl")) 's54-restore-after-tombstone-keeps-the-field-deleted' (($r7 | ConvertTo-Json -Depth 4 -Compress))
+$exp = @(Expand-MetricsTombstones @('provenance', 'reserve'))
+$rsLines2 = @([System.IO.File]::ReadAllLines($mgS) | ForEach-Object { $o8 = $_ | ConvertFrom-Json; if ("$($o8.identity)" -eq $nat6.identity) { $o8 | Add-Member -NotePropertyName commit -NotePropertyValue 'restored-value' -Force; $o8 | ConvertTo-Json -Depth 8 -Compress } else { $_ } })
+[System.IO.File]::WriteAllLines($mgS, [string[]]$rsLines2)
+$r8 = @(Sync-MetricsStore $mgS @()) | Where-Object { "$($_.identity)" -eq $nat6.identity } | Select-Object -First 1
+Assert (("$($r7.commit)" -ne 'abc1234') -and (Test-Path "$mgS.tombstones.jsonl") -and ($null -eq $r8.PSObject.Properties['commit']) -and (($exp -join ',') -eq 'commit,harness,reserve')) 's54-restore-after-tombstone-keeps-the-field-deleted' (($r7 | ConvertTo-Json -Depth 4 -Compress))
 # R2-C1: a native row with its own population but no counts keeps its
 # unit (no backfill hash joins it); a native row with none of the unit
 # takes the backfill's counts, hash, and timings together.

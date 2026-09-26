@@ -4723,10 +4723,13 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
   # Returns Known (bool) and Lost (lines).
   $p = "$StorePath.writes.jsonl"
   if (-not (Test-Path -LiteralPath $p)) { return [pscustomobject]@{ Known = $false; Lost = @() } }
+  # An inventory that missed an append, or holds a torn line, cannot prove
+  # a restore complete (section 54 R1-A1).
+  if (Test-Path -LiteralPath "$StorePath.writes.incomplete") { return [pscustomobject]@{ Known = $false; Lost = @() } }
   $newest = @{}
   foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
     if ("$ln".Trim() -eq '') { continue }
-    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Known = $false; Lost = @() } }
     $k = "$($o.key)"; $r = [int]$o.revision
     if ((-not $newest.ContainsKey($k)) -or ($r -gt $newest[$k])) { $newest[$k] = $r }
   }
@@ -4752,7 +4755,7 @@ function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
   $states = @(
     @('missing evidence', '(\| missing \||\| degraded \||partial \(missing )', 'run the missed night or record its pause in docs/nightly-pauses.md; repair an unreadable result'),
     @('unresolved identity', '(UNRESOLVED:|host alias refused|legacy assignment refused|SCHEDULE CONFLICT)', 'assign the run in docs/nightly-host-aliases.md (with evidence) or fix the refused alias row'),
-    @('storage pressure', '(metrics store at \d+ percent|over capacity|append refused|UNKNOWN LOSS|could not sanitize)', 'compact: tools/NightlyTrend.ps1 -Compact; free disk space; retry the disclosure migration'),
+    @('storage pressure', '(metrics store at \d+( ?%| percent)|over capacity|append refused|UNKNOWN LOSS|could not sanitize)', 'compact: tools/NightlyTrend.ps1 -Compact; free disk space; retry the disclosure migration'),
     @('suppressed detection', '(Insufficient data:|PROLONGED INSUFFICIENCY|not comparable with derivation)', 'find what keeps the series from measuring (harness churn, missing timings); acknowledge only with a reason')
   )
   $out = @()
@@ -4762,6 +4765,16 @@ function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
   }
   if ($out.Count -eq 0) { return @('## Trend health', '', '- healthy: no missing evidence, unresolved identity, storage pressure, or suppressed detection', '') }
   return @('## Trend health', '', "- DEGRADED: $($out.Count) state(s)") + $out + @('')
+}
+
+function Expand-MetricsTombstones($Names) {
+  # Tombstone names as fields: a unit name stands for every field of its
+  # unit (section 54 R1-C1).
+  $out = @()
+  foreach ($n in @($Names | Where-Object { "$_" -ne '' })) {
+    if ($script:MetricsMergeUnits.Contains("$n")) { $out += @($script:MetricsMergeUnits["$n"]) } else { $out += "$n" }
+  }
+  return @($out | Sort-Object -Unique)
 }
 
 function Get-MetricsMergeUnitOf([string]$Field) {
@@ -4890,7 +4903,12 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           # The acknowledged-write inventory (section 54 item 10): once the
           # append landed, each row key and revision it wrote is recorded in
           # a file of its own, so a restore can name exactly what it lost.
-          try { Add-MetricsWriteInventory $Path @($add) } catch { $script:MetricsWriteError = "metrics write inventory append failed: $($_.Exception.Message); a later restore reads unknown loss" }
+          try { Add-MetricsWriteInventory $Path @($add) } catch {
+            # A lost inventory line makes every later loss count unknown
+            # (section 54 R1-A1): the incomplete marker says so durably.
+            try { Set-Content -LiteralPath "$Path.writes.incomplete" -Value "$((Get-Date).ToUniversalTime().ToString('o')) $($_.Exception.Message)" -Encoding UTF8 } catch { }
+            $script:MetricsWriteError = "metrics write inventory append failed: $($_.Exception.Message); a later restore reads unknown loss"
+          }
         }
         catch {
           $script:MetricsWriteError = "metrics append failed: $($_.Exception.Message); the store keeps its prior rows"
@@ -4923,6 +4941,8 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           # The ledger's tombstones join the row's own (section 54 item 7), so a
           # row restored or re-ingested without its tombstone stays deleted.
           if ($ledgerTombs.ContainsKey($rk)) { $tomb = @(@($tomb) + @($ledgerTombs[$rk]) | Sort-Object -Unique) }
+          # A unit name expands to its fields (section 54 R1-C1).
+          $tomb = @(Expand-MetricsTombstones $tomb)
           $hasCounts = { param($x) @(@($(try { $x.legs.PSObject.Properties } catch { @() })) | Where-Object { ($null -ne $_.Value.passed) -or ($null -ne $_.Value.failed) }).Count -gt 0 }
           $isSet = { param($v) ($null -ne $v) -and ("$v" -ne '') -and ("$v" -notlike 'unknown*') }
           $unit = @($script:MetricsMergeUnits['execution'] | Where-Object { $_ -ne 'legs' })
@@ -4946,6 +4966,15 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           }
           foreach ($ek in @($script:EnvFields)) { if ($tomb -contains "env.$ek") { continue }; $nv = "$(try { $merged.env.$ek } catch { '' })"; $bv = "$(try { $bf.env.$ek } catch { '' })"; if ((($nv -eq '') -or ($nv -like 'unknown*')) -and ($bv -ne '') -and ($bv -notlike 'unknown*') -and ($null -ne $merged.env)) { $merged.env | Add-Member -NotePropertyName $ek -NotePropertyValue $bv -Force; $filled += "env.$ek" } }
           if ($filled.Count -gt 0) { $merged | Add-Member -NotePropertyName 'mergedFrom' -NotePropertyValue "$($bf.identity) ($($filled -join ', '))" -Force; $merged | Add-Member -NotePropertyName 'mergedFields' -NotePropertyValue @($filled) -Force; $out += $merged; continue }
+        }
+      }
+      # A tombstoned field never renders, however the row came back (a
+      # restore, a re-ingestion): the ledger strips it (section 54 R1-A2).
+      if ($ledgerTombs.ContainsKey($rk)) {
+        $strip = @(Expand-MetricsTombstones @($ledgerTombs[$rk]))
+        if (@($strip | Where-Object { $null -ne $row.PSObject.Properties[$_] }).Count -gt 0) {
+          $row = $row | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+          foreach ($f in $strip) { if ($f -like 'env.*') { try { $row.env.PSObject.Properties.Remove($f.Substring(4)) } catch { } } else { $row.PSObject.Properties.Remove($f) } }
         }
       }
       $out += $row
@@ -5091,7 +5120,7 @@ function Read-AlertAcks([string]$Path, [string]$Root = '') {
   return $map
 }
 
-function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night) {
+function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night, $Entries = @()) {
   # Acknowledgement identity (D00 T02 section 54 items 3, 4): an ack
   # covers an alert occurrence only when dated on or after the night the
   # occurrence began (an older ack belonged to an earlier occurrence, so a
@@ -5104,8 +5133,14 @@ function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night) {
   if ("$AckText" -eq '') { return (& $none '') }
   if (($null -ne $Meta) -and ([string]::CompareOrdinal("$($Meta.Date)", "$($Entry.firstNight)") -lt 0)) { return (& $none "ack of $($Meta.Date) predates this occurrence (began $($Entry.firstNight)): unowned") }
   if (($null -ne $Meta) -and ("$($Meta.Until)" -ne '') -and ([string]::CompareOrdinal($Night, "$($Meta.Until)") -gt 0)) { return (& $none "ack expired $($Meta.Until): unowned") }
+  # One ack revision covers one occurrence (section 54 R1-A4): an ack
+  # revision already bound to an earlier occurrence of this alert covers no
+  # later one, and a new revision rebinds the magnitude it is given at.
+  $rev = if ($null -ne $Meta) { "$($Meta.Date)" } else { '' }
+  $boundElsewhere = @(@($Entries) | Where-Object { ($null -ne $_) -and ("$($_.id)" -eq "$($Entry.id)") -and ("$($_.ackRevision)" -eq $rev) -and ("$($_.ackedOccurrence)" -ne '') -and ("$($_.ackedOccurrence)" -ne "$($Entry.occurrence)") })
+  if (($rev -ne '') -and ($boundElsewhere.Count -gt 0) -and ("$($Entry.ackRevision)" -ne $rev)) { return (& $none "ack of $rev already covered an earlier occurrence: unowned") }
   $acked = $null
-  try { if ("$($Entry.ackedMagnitude)" -ne '') { $acked = [double]$Entry.ackedMagnitude } } catch { }
+  if ("$($Entry.ackRevision)" -eq $rev) { try { if ("$($Entry.ackedMagnitude)" -ne '') { $acked = [double]$Entry.ackedMagnitude } } catch { } }
   $mag = $null
   try { if ("$($Entry.magnitude)" -ne '') { $mag = [double]$Entry.magnitude } } catch { }
   if ($null -eq $acked) { $acked = $mag }
@@ -5114,16 +5149,17 @@ function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night) {
 }
 
 function Test-RecentMetricsRestore([string]$AlertLedgerPath, [string]$Night) {
-  # A metrics restore leaves restored.json beside the alert ledger (the
-  # night directory); it counts as recent for the night it names and the
-  # next one (section 54 item 11).
+  # A metrics restore leaves metrics-restored.json beside the alert ledger
+  # (the night directory); it counts as recent for seven nights from the
+  # night it names (section 54 item 11, R1-I1), long enough for the next
+  # evaluations to re-derive the restored rows.
   $m = Join-Path (Split-Path -Parent $AlertLedgerPath) 'metrics-restored.json'
   if (-not (Test-Path -LiteralPath $m)) { return $false }
   try {
     $o = Get-Content -LiteralPath $m -Raw | ConvertFrom-Json
     $rn = [datetime]::ParseExact("$($o.night)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
     $en = [datetime]::ParseExact($Night, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    return (($en -ge $rn) -and (($en - $rn).TotalDays -le 1))
+    return (($en -ge $rn) -and (($en - $rn).TotalDays -le 7))
   } catch { return $false }
 }
 
@@ -5188,7 +5224,11 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
       # did not raise stays open instead of closing, so a restored store
       # never closes and re-opens it (a duplicate notification) or strands
       # its effective acknowledgement on a new occurrence.
-      if (($state -eq 'recovered') -and (Test-RecentMetricsRestore $Path $night)) { $e | Add-Member -NotePropertyName restoreHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
+      # No comparable baseline is no recovery evidence (section 54 R1-I3):
+      # an alert whose series reads insufficient tonight stays open.
+      $eSeries = ("$($e.id)" -split '\|')[1]
+      if (($state -eq 'recovered') -and (@(@($Alerts) | Where-Object { "$_" -match ('Insufficient data: ' + [regex]::Escape($eSeries) + ' \(') }).Count -gt 0)) { $e | Add-Member -NotePropertyName insufficientHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
+      if ((@('recovered', 'corrected') -contains $state) -and (Test-RecentMetricsRestore $Path $night)) { $e | Add-Member -NotePropertyName restoreHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
       $e.state = $state; $e.closedNight = $night
       $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $false -Force
       $closed += [pscustomobject]@{ Id = "$($e.id)"; State = $state; Line = "$($e.line)" }
@@ -5199,10 +5239,14 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     foreach ($e in @($entries | Where-Object { "$($_.state)" -eq 'open' })) {
       $ak = if ($Acks.ContainsKey("$($e.id)")) { $Acks["$($e.id)"] } else { '' }
       $meta = if (($null -ne $script:AlertAckMeta) -and $script:AlertAckMeta.ContainsKey("$($e.id)")) { $script:AlertAckMeta["$($e.id)"] } else { $null }
-      $r = Resolve-AlertAck $e $ak $meta $night
+      $r = Resolve-AlertAck $e $ak $meta $night $entries
       $e | Add-Member -NotePropertyName acknowledged -NotePropertyValue $r.Acknowledged -Force
       $e | Add-Member -NotePropertyName ackNote -NotePropertyValue $r.Note -Force
-      if (($r.Acknowledged -ne '') -and ($null -ne $r.AckedMagnitude)) { $e | Add-Member -NotePropertyName ackedMagnitude -NotePropertyValue $r.AckedMagnitude -Force }
+      if ($r.Acknowledged -ne '') {
+        if ($null -ne $r.AckedMagnitude) { $e | Add-Member -NotePropertyName ackedMagnitude -NotePropertyValue $r.AckedMagnitude -Force }
+        $e | Add-Member -NotePropertyName ackRevision -NotePropertyValue "$($meta.Date)" -Force
+        $e | Add-Member -NotePropertyName ackedOccurrence -NotePropertyValue "$($e.occurrence)" -Force
+      }
     }
     $out = [pscustomobject]@{ schema = 'alerts/1'; alerts = @($entries) }
     Write-AtomicReport @((ConvertTo-Json $out -Depth 6)) $Path
@@ -5983,7 +6027,15 @@ function Test-HostAliasClones($Results) {
     $row = $script:HostAliases[$old]
     if ($row -is [string]) { continue }
     $eff = "$($row.Effective)"
-    $live = @(@($Results) | Where-Object { ("$($_.hostKey)" -eq $old) -and (($eff -eq '') -or ([string]::CompareOrdinal((Get-ResultNight $_), $eff) -ge 0)) })
+    # Without an effective date the alias took effect when the new key
+    # first reported (section 54 R1-A3): only the old key reporting after
+    # that is concurrent use, so a rename's history never reads as a clone.
+    if ($eff -eq '') {
+      $newNights = @(@($Results) | Where-Object { "$($_.hostKey)" -eq "$($row.New)" } | ForEach-Object { Get-ResultNight $_ } | Sort-Object)
+      if ($newNights.Count -eq 0) { continue }
+      $eff = $newNights[0]
+    }
+    $live = @(@($Results) | Where-Object { ("$($_.hostKey)" -eq $old) -and ([string]::CompareOrdinal((Get-ResultNight $_), $eff) -gt 0) })
     if ($live.Count -gt 0) {
       $problems += "host alias refused: $old still reports results after the alias took effect (night $(Get-ResultNight $live[-1])); a clone keeps its own key"
       $script:HostAliases.Remove($old)
@@ -6367,7 +6419,7 @@ function Get-SlotAnnotations($Result, $Schedule) {
     $finish = $start.AddSeconds($consumed)
     if ($finish -gt $deadline) { $notes += "completed late: overran its grace by $([int][math]::Ceiling(($finish - $deadline).TotalMinutes)) min" }
   } catch { }
-  try { $se = Get-ScheduleEntry $Schedule $night; if (($null -ne $se) -and ([int]$se.IntervalDays -eq 0)) { $notes += "schedule disabled from $($se.First) during the run" } } catch { }
+  try { $se = Get-ScheduleEntry $Schedule $night; if (($null -ne $se) -and ([int]$se.IntervalDays -eq 0)) { $notes += "schedule disabled from $($se.First), on or before this night (the history records dates, not times)" } } catch { }
   if (@('cancelled', 'stood-down') -contains "$($Result.verdict)") { $notes += "$($Result.verdict): the slot's run is still missed" }
   return $notes
 }
@@ -6536,6 +6588,9 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     }
     # A run that executed nothing never reads healthy (section 47 item 7).
     $vCell = if (($exec -eq 0) -and ($v -eq 'green')) { 'green (0 executed: unproven)' } else { $v }
+    # A cancelled or stood-down canonical run keeps its slot missed
+    # (section 54 R1-C2): the status reads missed, the run's verdict after it.
+    if ((& $isCanon $r) -and (@('cancelled', 'stood-down') -contains "$v")) { $vCell = "missed ($v)" }
     $rowEntries += [pscustomobject]@{ Night = $day; Stamp = "$($r.stamp)"; Line = "| $nightCell | $vCell | $c | $pass | $ra | $rb | $soak | $gates | $res | $od/$ds$qage | $sf | $envShort | $cov |" }
   }
   # Missing nights (D00 T02 §25 item 4): every night between the first

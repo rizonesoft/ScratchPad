@@ -88,6 +88,6 @@ if ($skipped.Count -gt 0) {
 }
 # One health summary on top routes each degraded state to its action
 # (D00 T02 section 54 item 17).
-$lines = @(Get-TrendHealthSummary $lines @($script:HostAliasProblems) @(if ("$script:MetricsCapacityWarning" -ne '') { $script:MetricsCapacityWarning }) ) + $lines
+$lines = @(Get-TrendHealthSummary $lines (@($script:HostAliasProblems) + @(if ("$script:MetricsCapacityWarning" -ne '') { $script:MetricsCapacityWarning }))) + $lines
 Write-AtomicReport $lines $OutFile
 Write-Output ("trend: {0} nights from {1} results ({2} skipped) -> {3}" -f @(@($results | ForEach-Object { $_.day } | Sort-Object -Unique).Count, $results.Count, $skipped.Count, $OutFile))
