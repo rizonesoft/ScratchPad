@@ -2214,6 +2214,16 @@ $ac2 = Move-AliasedIncidents $acLed2 @{ 'INC-0000000b' = 'INC-1000000b' }
 $ac2n = $ac2.Incidents['INC-1000000b']
 $acS1 = @($ac1n.occurrences | Where-Object { $_.stamp -eq 's1' })[0]
 Assert (($ac1n.owner -eq 'D01 T01 s3') -and ($ac1n.due -eq '2026-10-01') -and ($ac1n.finding -eq 'D00 T02 s9') -and (($acS1.wheres -join ',') -eq 'interactive,run-a') -and (-not $ac1.Incidents.ContainsKey('INC-0000000a')) -and ($ac2n.owner -eq 'owner-new') -and ($ac2n.due -eq '2026-10-05') -and ($ac2n.finding -eq 'D00 T02 s9') -and ((@($ac2.Lines) -join '') -like '*collision: owner owner-old (due 2026-10-01) set aside for owner-new; link D00 T02 s8 set aside for D00 T02 s9*')) 's53-alias-collisions-keep-ownership-and-deadline' ((@($ac1.Lines) + @($ac2.Lines)) -join ' | ')
+# D00 T02 §53 item 8: a killed soak does not hold the streak of a Run A
+# regression; a failure in an untrusted phase still holds it; a whole-run
+# untrusted run trusts no phase.
+$q8Mk = { [pscustomobject]@{ id = 'INC-000000c8'; test = 'UI.Q.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's1' } }
+$q8Grp = @([pscustomobject]@{ Id = 'INC-000000c8'; Test = 'UI.Q.T'; Phase = 'run-a'; Key = 'k'; Wheres = @('Run A (default)') })
+$q8Trusted = Get-TrustedPhases @('ui-soak') $false
+$q8a = Update-IncidentLedger @{ 'INC-000000c8' = (& $q8Mk) } $q8Grp 's2' @{} @{} 3 @{} '' 'soak killed (ui-soak-2)' $null $q8Trusted
+$q8b = Update-IncidentLedger @{ 'INC-000000c8' = (& $q8Mk) } $q8Grp 's2' @{} @{} 3 @{} '' 'run-a killed or overran' $null (Get-TrustedPhases @('run-a') $false)
+$q8c = Update-IncidentLedger @{ 'INC-000000c8' = (& $q8Mk) } $q8Grp 's2' @{} @{} 3 @{} '' 'simulation or stubbed legs' $null (Get-TrustedPhases @() $true)
+Assert (([int]$q8a.Incidents['INC-000000c8'].passStreak -eq 0) -and ((@($q8a.Lines) -join '') -like '*streak reset by a trusted run-a failure (the run is not qualifying: soak killed*') -and ([int]$q8b.Incidents['INC-000000c8'].passStreak -eq 2) -and ([int]$q8c.Incidents['INC-000000c8'].passStreak -eq 2) -and ((Get-TrustedPhases @() $true).Count -eq 0)) 's53-trusted-failure-resets-on-a-non-qualifying-run' ((@($q8a.Lines) + @($q8b.Lines)) -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

@@ -1281,7 +1281,16 @@ if (-not $ledgerRead.Ok) {
   # The proof binding (D00 T02 section 52 item 1): a streak survives a
   # later candidate only when it descends from the recorded one.
   $descends = { param($old, $new) $null = git -C $Root merge-base --is-ancestor $old $new 2>$null; return ($LASTEXITCODE -eq 0) }.GetNewClosure()
-  $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-ProofBinding $Root "$script:buildHead") ($notQual -join '; ') $descends
+  # Phases a named defect touched (section 53 item 8); the rest stay
+  # trustworthy for streak resets on a non-qualifying run.
+  $untrustedPhases = @()
+  if (($null -ne $gateA) -and ($gateA.Killed -or $gateA.Overrun -or ($gateA.GateCode -ne 0))) { $untrustedPhases += 'run-a' }
+  if (($null -ne $gateB) -and ($gateB.Killed -or $gateB.Overrun -or ($gateB.GateCode -ne 0))) { $untrustedPhases += 'run-b' }
+  if ($interactiveKilled) { $untrustedPhases += 'interactive' }
+  foreach ($bc in @($budgetCut)) { switch -Wildcard ("$bc") { 'Run A*' { $untrustedPhases += 'run-a' } 'Run B*' { $untrustedPhases += 'run-b' } 'Interactive*' { $untrustedPhases += 'interactive' } 'ui-soak*' { $untrustedPhases += 'ui-soak' } 'protocol-soak*' { $untrustedPhases += 'protocol-soak' } 'entire run*' { $untrustedPhases += @('run-a', 'run-b', 'interactive', 'ui-soak', 'protocol-soak') } } }
+  foreach ($sk in @($soakKilled)) { if ("$sk" -like 'ui-soak*') { $untrustedPhases += 'ui-soak' } elseif ("$sk" -like 'protocol-soak*') { $untrustedPhases += 'protocol-soak' } }
+  $trustedPhases = Get-TrustedPhases $untrustedPhases ([bool]$simMode -or (@($conservationNotes).Count -gt 0) -or ($null -ne $script:ciOverride))
+  $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-ProofBinding $Root "$script:buildHead") ($notQual -join '; ') $descends $trustedPhases
   if (@($moved.Lines).Count -gt 0) { $ledgerUpd.Lines = @($moved.Lines) + @($ledgerUpd.Lines) }
   $ledgerErr = ''
   # The run's checkpoint (D00 T02 section 45 item 4) lands first, in this

@@ -2705,6 +2705,15 @@ function Get-StringHash([string]$Text) {
   } finally { $sha.Dispose() }
 }
 
+function Get-TrustedPhases([string[]]$Untrusted, [bool]$WholeRunUntrusted) {
+  # The phases whose failures are trustworthy on a run that is not
+  # qualifying overall (section 53 item 8): every incident phase except
+  # those a named defect touched; none when the whole run is untrusted
+  # (a simulation, broken count conservation, a CI override).
+  if ($WholeRunUntrusted) { return @() }
+  return @(@('run-a', 'run-b', 'interactive', 'ui-soak', 'protocol-soak') | Where-Object { @($Untrusted) -notcontains $_ })
+}
+
 function Get-IncidentPhase([string]$Where) {
   # Phase part of the incident identity (D00 T02 §22 item 3): the leg
   # family, so soak iterations of one suite merge while the same test
@@ -2959,7 +2968,7 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
   })
 }
 
-function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '', [string]$NotQualifying = '', [scriptblock]$Descends = $null) {
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '', [string]$NotQualifying = '', [scriptblock]$Descends = $null, [string[]]$TrustedPhases = @()) {
   # Verified recovery counts only qualifying runs (D00 T02 section 45
   # item 6): a run named not qualifying ($NotQualifying: aborted, killed
   # or budget-cut, a stub or simulation, or evidence that failed its own
@@ -3014,7 +3023,15 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     $already = @($e.occurrences | Where-Object { "$($_.stamp)" -eq $Stamp }).Count -gt 0
     if (-not $already) { $e.occurrences = @($e.occurrences) + @([pscustomobject]@{ stamp = $Stamp; wheres = @($g.Wheres) }) }
     $e.lastSeen = $Stamp
-    if ($NotQualifying -eq '') { $e.passStreak = 0 }
+    # Qualification per incident (D00 T02 section 53 item 8): on a run that
+    # is not qualifying overall, a failure in a phase whose own evidence
+    # is trustworthy ($TrustedPhases: it ran, was not killed, cut, or
+    # gate-red) still resets the streak, so an unrelated leg defect never
+    # hides a regression. Passes on such a run still count for nothing.
+    if (($NotQualifying -eq '') -or (@($TrustedPhases) -contains "$($g.Phase)")) {
+      if (($NotQualifying -ne '') -and ([int]$e.passStreak -gt 0)) { $lines += "- $($g.Id) ``$($g.Test)``: streak reset by a trusted $($g.Phase) failure (the run is not qualifying: $NotQualifying)" }
+      $e.passStreak = 0
+    }
     $n = @($e.occurrences).Count
     if ($e.state -eq 'closed') {
       $e.state = 'open'; $e.closedAt = ''; $e.closedBy = ''
