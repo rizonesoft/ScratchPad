@@ -2198,6 +2198,22 @@ $ro3 = Get-ReplayOrder @($roA, $roDup, $roRoll, $roS1, $roS2)
 $roRebuild = ''
 try { $null = New-IncidentLedgerFromResults @($roA, $roDup) '' @{} } catch { $roRebuild = "$($_.Exception.Message)" }
 Assert ((@($ro1.Refusals).Count -eq 0) -and (@($ro1.Files).Count -eq 3) -and ((@($ro1.Files | ForEach-Object { Split-Path -Leaf $_ }) -join ',') -eq 'a.json,c.json,b.json') -and ((@($ro1.Files) -join '|') -eq (@($ro2.Files) -join '|')) -and (@($ro3.Refusals | Where-Object { $_ -like 'conflicting duplicate result id-a*' }).Count -eq 1) -and (@($ro3.Refusals | Where-Object { $_ -like 'clock rollback: result 2026-09-24-010000 (id-r) names predecessor 2026-09-25-023001*' }).Count -eq 1) -and (@($ro3.Refusals | Where-Object { $_ -like 'conflicting snapshots at 2026-09-27-023001*' }).Count -eq 1) -and ($roRebuild -like 'rebuild refused: conflicting duplicate result id-a*')) 's53-replay-orders-deterministically-or-refuses' ((@($ro3.Refusals) + $roRebuild) -join ' | ')
+# D00 T02 §53 item 7: alias collisions reconcile deterministically. A
+# specific owner adopted from the old id carries its due date; two
+# specific owners keep the new id's and name the other; different links
+# keep the new id's and name the other; one stamp on both sides keeps
+# both sides' wheres; and the merge does not depend on the order given.
+$acMk = { param($id, $owner, $due, $finding, $occ, $streak, $last) [pscustomobject]@{ id = $id; test = 'UI.A.C'; phase = 'run-a'; key = 'k'; owner = $owner; state = 'open'; firstSeen = 's1'; lastSeen = $last; closedAt = ''; closedBy = ''; occurrences = $occ; passStreak = $streak; lastPassStamp = ''; due = $due; finding = $finding } }
+$acOcc1 = @([pscustomobject]@{ stamp = 's1'; wheres = @('run-a') })
+$acOcc2 = @([pscustomobject]@{ stamp = 's1'; wheres = @('interactive') }, [pscustomobject]@{ stamp = 's2'; wheres = @('run-a') })
+$acLed1 = @{ 'INC-0000000a' = (& $acMk 'INC-0000000a' 'D01 T01 s3' '2026-10-01' '' $acOcc1 0 's1'); 'INC-1000000a' = (& $acMk 'INC-1000000a' $script:TriageOwner '2026-09-28' 'D00 T02 s9' $acOcc2 0 's2') }
+$ac1 = Move-AliasedIncidents $acLed1 @{ 'INC-0000000a' = 'INC-1000000a' }
+$ac1n = $ac1.Incidents['INC-1000000a']
+$acLed2 = @{ 'INC-0000000b' = (& $acMk 'INC-0000000b' 'owner-old' '2026-10-01' 'D00 T02 s8' $acOcc1 0 's1'); 'INC-1000000b' = (& $acMk 'INC-1000000b' 'owner-new' '2026-10-05' 'D00 T02 s9' $acOcc2 0 's2') }
+$ac2 = Move-AliasedIncidents $acLed2 @{ 'INC-0000000b' = 'INC-1000000b' }
+$ac2n = $ac2.Incidents['INC-1000000b']
+$acS1 = @($ac1n.occurrences | Where-Object { $_.stamp -eq 's1' })[0]
+Assert (($ac1n.owner -eq 'D01 T01 s3') -and ($ac1n.due -eq '2026-10-01') -and ($ac1n.finding -eq 'D00 T02 s9') -and (($acS1.wheres -join ',') -eq 'interactive,run-a') -and (-not $ac1.Incidents.ContainsKey('INC-0000000a')) -and ($ac2n.owner -eq 'owner-new') -and ($ac2n.due -eq '2026-10-05') -and ($ac2n.finding -eq 'D00 T02 s9') -and ((@($ac2.Lines) -join '') -like '*collision: owner owner-old (due 2026-10-01) set aside for owner-new; link D00 T02 s8 set aside for D00 T02 s9*')) 's53-alias-collisions-keep-ownership-and-deadline' ((@($ac1.Lines) + @($ac2.Lines)) -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

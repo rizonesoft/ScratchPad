@@ -5626,14 +5626,31 @@ function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtab
     # Each side's own last failure, before the merge widens lastSeen (R1-F3).
     $lastBySide = @{ o = "$($o.lastSeen)"; n = "$($n.lastSeen)" }
     foreach ($field in @('due', 'finding', 'passStreak', 'lastPassStamp', 'closedAt', 'closedBy')) { if (@($n.PSObject.Properties.Name) -notcontains $field) { $n | Add-Member -NotePropertyName $field -NotePropertyValue $(if ($field -eq 'passStreak') { 0 } else { '' }) } }
+    # Occurrences union by stamp; one stamp on both sides keeps both
+    # sides' wheres (D00 T02 section 53 item 7), sorted, so neither side's
+    # evidence is dropped and the result is order-independent.
     $byStamp = @{}
-    foreach ($x in @($n.occurrences) + @($o.occurrences)) { if (($null -ne $x) -and (-not $byStamp.ContainsKey("$($x.stamp)"))) { $byStamp["$($x.stamp)"] = $x } }
+    foreach ($x in @($n.occurrences) + @($o.occurrences)) {
+      if ($null -eq $x) { continue }
+      $k = "$($x.stamp)"
+      if (-not $byStamp.ContainsKey($k)) { $byStamp[$k] = [pscustomobject]@{ stamp = $x.stamp; wheres = @(@($x.wheres) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" } | Sort-Object -Unique) }; continue }
+      $byStamp[$k].wheres = @(@($byStamp[$k].wheres) + @(@($x.wheres) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" }) | Sort-Object -Unique)
+    }
     $n.occurrences = @($byStamp.Keys | Sort-Object | ForEach-Object { $byStamp[$_] })
+    $conflicts = @()
     if ("$($o.firstSeen)" -lt "$($n.firstSeen)") { $n.firstSeen = $o.firstSeen }
     if ("$($o.lastSeen)" -gt "$($n.lastSeen)") { $n.lastSeen = $o.lastSeen }
-    if ((("$($n.owner)" -eq '') -or ($n.owner -eq $script:TriageOwner)) -and ("$($o.owner)" -ne '') -and ($o.owner -ne $script:TriageOwner)) { $n.owner = $o.owner; $n.due = '' }
-    elseif (("$($o.due)" -ne '') -and (("$($n.due)" -eq '') -or ("$($o.due)" -lt "$($n.due)")) -and ($n.owner -eq $script:TriageOwner)) { $n.due = $o.due }
+    # Ownership (section 53 item 7, absorbing section 45 R4-F1): a specific
+    # owner adopted from the old id carries that id's due date with it;
+    # two different specific owners keep the new id's owner and due and
+    # name the other; two triage-default owners keep the earlier due.
+    $oSpecific = ("$($o.owner)" -ne '') -and ($o.owner -ne $script:TriageOwner)
+    $nSpecific = ("$($n.owner)" -ne '') -and ($n.owner -ne $script:TriageOwner)
+    if ($oSpecific -and (-not $nSpecific)) { $n.owner = $o.owner; $n.due = "$($o.due)" }
+    elseif ($oSpecific -and $nSpecific -and ($o.owner -ne $n.owner)) { $conflicts += "owner $($o.owner) (due $(if ("$($o.due)" -ne '') { $o.due } else { 'none' })) set aside for $($n.owner)" }
+    elseif ((-not $nSpecific) -and ("$($o.due)" -ne '') -and (("$($n.due)" -eq '') -or ("$($o.due)" -lt "$($n.due)"))) { $n.due = $o.due }
     if ("$($n.finding)" -eq '') { $n.finding = $(if ("$($o.finding)" -ne '') { $o.finding } elseif ($lk.ContainsKey($new)) { $lk[$new] } else { '' }) }
+    elseif (("$($o.finding)" -ne '') -and ($o.finding -ne $n.finding)) { $conflicts += "link $($o.finding) set aside for $($n.finding)" }
     if (($o.state -eq 'open') -or ($n.state -eq 'open')) {
       # A streak survives the merge only from a side whose own last
       # failure is the newest of the two (R1-F3): a side that failed
@@ -5655,7 +5672,7 @@ function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtab
       $n.state = 'open'; $n.closedAt = ''; $n.closedBy = ''
     }
     $map.Remove($old)
-    $lines += "- $old -> ${new}: alias joined; state merged (state $($n.state), owner $($n.owner), $(@($n.occurrences).Count) occurrences, streak $($n.passStreak)$(if ("$($n.finding)" -ne '') { ", link $($n.finding)" }))"
+    $lines += "- $old -> ${new}: alias joined; state merged (state $($n.state), owner $($n.owner), $(@($n.occurrences).Count) occurrences, streak $($n.passStreak)$(if ("$($n.finding)" -ne '') { ", link $($n.finding)" }))$(if ($conflicts.Count -gt 0) { "; collision: $($conflicts -join '; ')" })"
   }
   return [pscustomobject]@{ Incidents = $map; Links = $lk; Lines = $lines }
 }
