@@ -18,6 +18,7 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 | [TODO-09](./TODO-09-nightly-operator-control.md) | Nightly Operator Control | draft |
 | [TODO-10](./TODO-10-launch-harness-residuals.md) | Launch Harness Residuals | draft |
 | [TODO-11](./TODO-11-todo-tooling-follow-ups.md) | TODO Tooling Follow-Ups | draft |
+| [TODO-12](./TODO-12-ui-input-residuals.md) | UI Input Residuals | draft |
 
 ## Completed
 

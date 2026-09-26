@@ -91,7 +91,7 @@ track: W0
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [x]   |
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [x]   |
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [x]   |
-|   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
+|   51  |   §51   | Binding guard third residuals | §43 |  [x]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
 |   53  |   §53   | Nightly evidence fourth residuals | §45 |  [ ]   |
 |   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [ ]   |
@@ -1644,6 +1644,7 @@ Why this section exists: the §42 plan review returned 12 findings; 11 file here
 Why this section exists: the §43 plan review returned 13 findings; 12 file here and 1 is rejected with its reason in the §43 findings file. §43 proved mutation activation, owned in-app focus moves and cleanup failures, classified held keys, and read enablement across transitions; these carry that through execution acknowledgment, failure attribution, negative routing, key-state reconciliation, containment, hold resets, parity capture, one counting rule, enumerated transitions, owned held-key debt, child isolation, and combined matrices. -> SOURCE: plan-review-D00-T02-s43-2026-09-25-s51 D00-T02-S43-PR1 D00-T02-S43-PR2 D00-T02-S43-PR3 D00-T02-S43-PR5 D00-T02-S43-PR6 D00-T02-S43-PR7 D00-T02-S43-PR8 D00-T02-S43-PR9 D00-T02-S43-PR10 D00-T02-S43-PR11 D00-T02-S43-PR12 D00-T02-S43-PR13
 
 - -> XREF: D00 T02 §43 -- filed from its plan review; carries the guard it settled.
+- -> XREF: D00 T12 §1 -- its plan review's residuals.
 
 - [x] Mutation activation requires a correlated execution acknowledgment: the swap line carries the substitute's own completion (or an observable substitute effect), so a logged but unexecuted swap never credits a kill. Done when: a swap logged but whose substitute throws before running reads inconclusive. (D00-T02-S43-PR1.)
 - [x] A kill distinguishes an outcome mismatch from cleanup, focus, timeout, and unrelated assertion failures, so an infrastructure fault after the press never counts as coverage. Done when: a post-press timeout failure reads inconclusive, not killed. (D00-T02-S43-PR2.)
@@ -1664,6 +1665,13 @@ Why this section exists: the §43 plan review returned 13 findings; 12 file here
 **Night-owed:** D00-T02-S51-N2 (1 Category=Interactive&FullyQualifiedName~UI.HeldKeyParityTests., collector Nightly UI 02:30, owed 2026-09-26, digest 81ab31d6dd8ade29). The stock held-key parity capture behind the repeat-class table (item 7): `tools/CaptureBaseline held-keys` against stock Notepad, compared with docs/ui-input-audit.md's Held-key repeat classes.
 
 **Test checkpoint:** Kills need executed substitutes and matching outcomes, negative routing proves zero dispatch, stuck keys reconcile and contain, holds reset, repeat classes carry captures, counting has one rule, transitions enumerate, held-key debt is owned, children are isolated, and combined matrices hold. Cheaper substitute that fails: more fixtures over the pure cores with no physical proof owed.
+
+> **Verified:** 2026-09-26 | §51 | a swap credits a kill only with its substitute's own completion line; a kill needs the failure on an outcome assertion inside the chord's segment and reads inconclusive on infrastructure, cleanup, or timeout failures; negative routing proves zero dispatch over a titles, tabs, text, selection, caret, font, and zoom snapshot; a thrown release reconciles against the observed key state, and a confirmed or unknown stuck key blocks further physical input with press, cleanup, and recovery failures kept together; held chords reset on focus loss, re-press runs, and one counting definition covers repeats and double registrations; each bound command names its repeat class beside a stock capture; enablement transitions read before, entry, and exit, with a guard that no bound command disables at runtime; the held-key proof owns its night debt (N1, N2); mutation children are armed, logged apart, and killed at their bound; holds recheck input ownership before every repeat, and a menu or Shift-dependent Plus mid-hold reads its documented outcome.
+> **Review:** round 5 (Full), candidates `055285a` `94115cf` `b34c05f` `2fb53ef` `71f3992` -- GPT R1-R2 bulk needs-attention (R1-A1, A2, A3, C1, I1, I2 and R2-A1, A2, C1, I1 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); R3-A1 rejected with its reason, R3-I1, I2 fixed in 2fb53ef, R4 depth R4-I1, I2 fixed in 71f3992, R5 depth (`adversarial` approve · `consistency` approve · `record` approve) left below-bar R5-I1, filed to D00 T12 §1. Raw findings: docs/reviews/00-workspace/D00-T02-s51.md
+> **Plan review:** GPT medium, filed D00 T12 §1 (run 20260926-D00-T02-S51-codex-c06751119-r6)
+> **CRUD:** not-applicable | test-harness input mechanics and an accelerator helper; no user data
+> **Duration:** 2026-09-26T05:43:37Z to 2026-09-26T07:47:20Z
+> **Reviewed-tip:** 71f3992
 
 ## 52. Population Gate Third Residuals
 
