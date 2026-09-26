@@ -1289,7 +1289,9 @@ if (-not $ledgerRead.Ok) {
   if ($interactiveKilled) { $untrustedPhases += 'interactive' }
   foreach ($bc in @($budgetCut)) { switch -Wildcard ("$bc") { 'Run A*' { $untrustedPhases += 'run-a' } 'Run B*' { $untrustedPhases += 'run-b' } 'Interactive*' { $untrustedPhases += 'interactive' } 'ui-soak*' { $untrustedPhases += 'ui-soak' } 'protocol-soak*' { $untrustedPhases += 'protocol-soak' } 'entire run*' { $untrustedPhases += @('run-a', 'run-b', 'interactive', 'ui-soak', 'protocol-soak') } } }
   foreach ($sk in @($soakKilled)) { if ("$sk" -like 'ui-soak*') { $untrustedPhases += 'ui-soak' } elseif ("$sk" -like 'protocol-soak*') { $untrustedPhases += 'protocol-soak' } }
-  $trustedPhases = Get-TrustedPhases $untrustedPhases ([bool]$simMode -or (@($conservationNotes).Count -gt 0) -or ($null -ne $script:ciOverride))
+  # A failed build (stale binaries) or invalid Primary placement taints
+  # every phase's evidence (section 53 R1-I2).
+  $trustedPhases = Get-TrustedPhases $untrustedPhases ([bool]$simMode -or (@($conservationNotes).Count -gt 0) -or ($null -ne $script:ciOverride) -or ("$buildError" -ne '') -or ("$placementError" -ne ''))
   $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-ProofBinding $Root "$script:buildHead") ($notQual -join '; ') $descends $trustedPhases
   if (@($moved.Lines).Count -gt 0) { $ledgerUpd.Lines = @($moved.Lines) + @($ledgerUpd.Lines) }
   $ledgerErr = ''
@@ -1366,8 +1368,11 @@ if ($debtQueryError -ne '') {
       $redPath = Join-Path $Root $debt.File
       $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
       $redLine = Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp (Get-Date).ToString('HH:mm') "red-$stamp-$($debt.Id)"
-      try { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
-      $redNote = Add-RedLine $redPath $debt.Id $day $redLine
+      # The intent must land before the write (section 53 R1-A2): a failed
+      # intent writes nothing and the debt stays open.
+      $intentOk = $true
+      try { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine } catch { $intentOk = $false; $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message)); nothing written, debt stays open"; $failed = $true }
+      $redNote = if ($intentOk) { Add-RedLine $redPath $debt.Id $day $redLine } else { 'failed: write-ahead intent failed; nothing written' }
       try { if ([System.IO.File]::ReadAllText($redPath).Contains($redLine)) { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine -Written } } catch { }
       Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
       Write-Output "nightly: night-debt $($debt.Id): $redNote"
@@ -1388,8 +1393,11 @@ if ($debtQueryError -ne '') {
         $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
         $colPath = Join-Path $Root $debt.File
         $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
-        try { Add-TrackedWriteIntent $trxDir $Root $colPath $line } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
-        $note = Invoke-CollectedLine $colPath $debt.Id $line
+        # The intent must land before the write (section 53 R1-A2): a failed
+        # intent writes nothing and the debt stays open.
+        $intentOk = $true
+        try { Add-TrackedWriteIntent $trxDir $Root $colPath $line } catch { $intentOk = $false; $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message)); nothing written, debt stays open"; $failed = $true }
+        $note = if ($intentOk) { Invoke-CollectedLine $colPath $debt.Id $line } else { 'failed: write-ahead intent failed; nothing written' }
         try { if ([System.IO.File]::ReadAllText($colPath).Contains($line)) { Add-TrackedWriteIntent $trxDir $Root $colPath $line -Written } } catch { }
         Register-TrackedWrite $trackedWrites $Root $colPath $line $note $colBefore
         Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
@@ -1401,8 +1409,11 @@ if ($debtQueryError -ne '') {
         $redPath = Join-Path $Root $debt.File
         $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
         $redLine = Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp (Get-Date).ToString('HH:mm') "red-$stamp-$($debt.Id)"
-        try { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
-        $redNote = Add-RedLine $redPath $debt.Id $day $redLine
+        # The intent must land before the write (section 53 R1-A2): a failed
+        # intent writes nothing and the debt stays open.
+        $intentOk = $true
+        try { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine } catch { $intentOk = $false; $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message)); nothing written, debt stays open"; $failed = $true }
+        $redNote = if ($intentOk) { Add-RedLine $redPath $debt.Id $day $redLine } else { 'failed: write-ahead intent failed; nothing written' }
         try { if ([System.IO.File]::ReadAllText($redPath).Contains($redLine)) { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine -Written } } catch { }
         Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
         Write-Output "nightly: night-debt $($debt.Id): $redNote"
@@ -1446,8 +1457,11 @@ if ($debtQueryError -ne '') {
     $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
     $colPath = Join-Path $Root $debt.File
     $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
-    try { Add-TrackedWriteIntent $trxDir $Root $colPath $line } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
-    $note = Invoke-CollectedLine $colPath $debt.Id $line
+    # The intent must land before the write (section 53 R1-A2): a failed
+    # intent writes nothing and the debt stays open.
+    $intentOk = $true
+    try { Add-TrackedWriteIntent $trxDir $Root $colPath $line } catch { $intentOk = $false; $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message)); nothing written, debt stays open"; $failed = $true }
+    $note = if ($intentOk) { Invoke-CollectedLine $colPath $debt.Id $line } else { 'failed: write-ahead intent failed; nothing written' }
     try { if ([System.IO.File]::ReadAllText($colPath).Contains($line)) { Add-TrackedWriteIntent $trxDir $Root $colPath $line -Written } } catch { }
     Register-TrackedWrite $trackedWrites $Root $colPath $line $note $colBefore
     Write-Output "nightly: night-debt $($debt.Id): $note"
@@ -1692,8 +1706,12 @@ try {
 # newest result on disk before this one, so a rebuild detects a missing
 # intermediate result.
 $previousStamp = ''
-$prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $stamp) } | Sort-Object Name | Select-Object -Last 1)
+# The predecessor is the result written last before this one, by write
+# time, not by stamp (section 53 R1-I1): after a clock rollback it still
+# names the real previous run, whose later stamp the replay then refuses.
+$prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -ne $stamp) } | Sort-Object LastWriteTimeUtc -Descending)
 if ($prevRes.Count -gt 0) { $previousStamp = ($prevRes[0].Name -replace '^morning-', '' -replace '\.result\.json$', '') }
+if (($previousStamp -ne '') -and ([string]::CompareOrdinal($previousStamp, $stamp) -ge 0)) { $report += "- Clock rollback: the previous run $previousStamp is stamped at or after this run $stamp; a ledger rebuild refuses until the clock is corrected"; $failed = $true }
 # Evidence completeness, one record for the result and the report
 # (section 53 item 12): every class line is written by now.
 $evidenceRecord = Get-EvidenceCompleteness $report

@@ -787,6 +787,57 @@ function Test-ReparsePoint([System.IO.FileSystemInfo]$Item) {
   return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
 }
 
+function Remove-VerifiedItem([string]$Path, [string]$Root) {
+  # Handle-bound delete (D00 T02 section 53 R1-A1): the item is opened
+  # without following a reparse point, its final path is read FROM THAT
+  # HANDLE, and the same handle is marked for deletion only when that
+  # path lies inside $Root and the item is no reparse point, so a
+  # component swapped for a junction between any check and the delete can
+  # never redirect it outside the evidence root. Throws naming the cause.
+  if (-not ('NightlyVerifiedDelete' -as [type])) {
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+public static class NightlyVerifiedDelete {
+  [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+  static extern SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr sa, uint disposition, uint flags, IntPtr template);
+  [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+  static extern uint GetFinalPathNameByHandleW(SafeFileHandle h, StringBuilder buf, uint len, uint flags);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool GetFileInformationByHandle(SafeFileHandle h, out BY_HANDLE_FILE_INFORMATION info);
+  [DllImport("kernel32.dll", SetLastError = true)]
+  static extern bool SetFileInformationByHandle(SafeFileHandle h, int cls, ref byte disposition, uint size);
+  [StructLayout(LayoutKind.Sequential)]
+  struct BY_HANDLE_FILE_INFORMATION { public uint Attributes; public long c; public long a; public long w; public uint serial; public uint sizeHigh; public uint sizeLow; public uint links; public uint idHigh; public uint idLow; }
+  public static string Delete(string path, string root) {
+    // DELETE | FILE_READ_ATTRIBUTES; share read/write/delete; OPEN_EXISTING;
+    // FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT.
+    using (SafeFileHandle h = CreateFileW(path, 0x00010000 | 0x0080, 7, IntPtr.Zero, 3, 0x02000000 | 0x00200000, IntPtr.Zero)) {
+      if (h.IsInvalid) { return "cannot open " + path + " (Win32 error " + Marshal.GetLastWin32Error() + ")"; }
+      BY_HANDLE_FILE_INFORMATION info;
+      if (!GetFileInformationByHandle(h, out info)) { return "cannot read " + path; }
+      if ((info.Attributes & 0x400) != 0 && (info.Attributes & 0x10) == 0) { /* a file symlink: deleting the link itself is safe */ }
+      StringBuilder sb = new StringBuilder(1024);
+      uint n = GetFinalPathNameByHandleW(h, sb, 1024, 0);
+      if (n == 0 || n >= 1024) { return "cannot resolve " + path; }
+      string final = sb.ToString();
+      if (final.StartsWith(@"\\?\UNC\")) { final = @"\\" + final.Substring(8); } else if (final.StartsWith(@"\\?\")) { final = final.Substring(4); }
+      string r = root.TrimEnd('\\') + "\\";
+      if (!final.StartsWith(r, StringComparison.OrdinalIgnoreCase)) { return "refused: " + path + " resolves to " + final + ", outside " + root.TrimEnd('\\'); }
+      byte yes = 1;
+      if (!SetFileInformationByHandle(h, 4, ref yes, 1)) { return "delete failed for " + path + " (Win32 error " + Marshal.GetLastWin32Error() + ")"; }
+      return "";
+    }
+  }
+}
+"@
+  }
+  $why = [NightlyVerifiedDelete]::Delete($Path, [System.IO.Path]::GetFullPath($Root))
+  if ($why -ne '') { throw "sweep refused: $why" }
+}
+
 function Test-PathChainNoReparse([string]$Root, [string]$Path) {
   # Every component from $Root down to $Path, $Root included, must exist
   # and be no reparse point (D00 T02 section 53 item 1). Returns '' or
@@ -818,15 +869,19 @@ function Remove-TreeNoFollow([string]$Path, [string]$Root = '', [scriptblock]$Be
     if ($null -ne $BeforeDelete) { & $BeforeDelete $p }
     if ($Root -ne '') { $why = Test-PathChainNoReparse $Root (Split-Path -Parent $p); if ($why -ne '') { throw "sweep refused: $why (the path changed during the sweep)" } }
   }
+  # With $Root, every delete is handle-bound (R1-A1): Remove-VerifiedItem
+  # resolves the opened object itself, so no pathname swap between the
+  # guard and the delete can redirect it.
+  $del = { param($p, $isDir) if ($Root -ne '') { Remove-VerifiedItem $p $Root } elseif ($isDir) { [System.IO.Directory]::Delete($p, $false) } else { [System.IO.File]::Delete($p) } }
   foreach ($c in @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)) {
     if (Test-ReparsePoint $c) {
       & $guard $c.FullName
-      if ($c.PSIsContainer) { [System.IO.Directory]::Delete($c.FullName, $false) } else { [System.IO.File]::Delete($c.FullName) }
+      & $del $c.FullName $c.PSIsContainer
     } elseif ($c.PSIsContainer) { Remove-TreeNoFollow $c.FullName $Root $BeforeDelete }
-    else { & $guard $c.FullName; $c.Attributes = 'Normal'; [System.IO.File]::Delete($c.FullName) }
+    else { & $guard $c.FullName; $c.Attributes = 'Normal'; & $del $c.FullName $false }
   }
   & $guard $Path
-  [System.IO.Directory]::Delete($Path, $false)
+  & $del $Path $true
 }
 
 function Write-RunOwner([string]$RunDir, [int]$ProcId, [datetime]$Started) {
@@ -880,18 +935,20 @@ function Clear-CaptureLeftovers([string]$NightDir, [string]$TempDir, [datetime]$
   # delete that fails is reported by name, never dropped silently; a
   # reparse point is never followed. Returns report notes.
   $notes = @()
+  $nightItem = Get-Item -LiteralPath $NightDir -Force -ErrorAction SilentlyContinue
+  if (($null -ne $nightItem) -and (Test-ReparsePoint $nightItem)) { return @("- capture leftovers: sweep refused ($NightDir is a reparse point)") }
   $dumpCut = $Now.AddDays(-$script:DumpExpiryDays)
   foreach ($s in @(Get-ChildItem -LiteralPath $NightDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (-not (Test-ReparsePoint $_)) -and ($LiveStamps -notcontains $_.Name) })) {
     foreach ($cd in @(Get-ChildItem -LiteralPath $s.FullName -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -like 'captures-*') -and (-not (Test-ReparsePoint $_)) })) {
       foreach ($f in @(Get-ChildItem -LiteralPath $cd.FullName -Filter '*.dmp' -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $dumpCut })) {
-        try { [System.IO.File]::Delete($f.FullName); $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired ($($script:DumpExpiryDays) days), deleted" }
+        try { Remove-VerifiedItem $f.FullName $NightDir; $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired ($($script:DumpExpiryDays) days), deleted" }
         catch { $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired but could not be deleted ($($_.Exception.Message))" }
       }
     }
   }
   $tempCut = $Now.AddDays(-$script:TempExpiryDays)
   foreach ($f in @(Get-ChildItem -LiteralPath $TempDir -Filter 'bounded-*.code' -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $tempCut })) {
-    try { [System.IO.File]::Delete($f.FullName); $notes += "- capture leftovers: temporary $($f.Name) expired ($($script:TempExpiryDays) day), deleted" }
+    try { Remove-VerifiedItem $f.FullName $TempDir; $notes += "- capture leftovers: temporary $($f.Name) expired ($($script:TempExpiryDays) day), deleted" }
     catch { $notes += "- capture leftovers: temporary $($f.Name) expired but could not be deleted ($($_.Exception.Message))" }
   }
   return $notes
@@ -3127,7 +3184,8 @@ function Get-ReplayOrder([string[]]$ResultFiles) {
     try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
     $id = "$($o.identity)"; $st = "$($o.stamp)"
     $key = if ($id -ne '') { $id } else { "stamp:$st" }
-    $digest = Get-CaseHash @((ConvertTo-Json @($o.incidents) -Compress -Depth 4), (ConvertTo-Json $o.incidentLifecycle -Compress -Depth 8), "$($o.verdict)")
+    # Replay-critical provenance counts too (R1-C2).
+    $digest = Get-CaseHash @((ConvertTo-Json @($o.incidents) -Compress -Depth 4), (ConvertTo-Json $o.incidentLifecycle -Compress -Depth 8), "$($o.verdict)", "stamp=$st", "previous=$(if ($null -ne $o.PSObject.Properties['previousStamp']) { $o.previousStamp })", "source=$($o.incidentLifecycleSource)", "lifecycleVersion=$($o.incidentLifecycleVersion)")
     if ($seen.ContainsKey($key)) {
       if ($seen[$key].Digest -ne $digest) { $refusals += "conflicting duplicate result $key ($(Split-Path -Leaf $seen[$key].File) and $(Split-Path -Leaf $f) differ)" }
       continue
@@ -3648,6 +3706,10 @@ function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$
   # Four states, each with its own opening words (D00 T02 section 53 item
   # 10): an actually clean tree never reads like one holding the
   # collector's pending writes.
+  # A collector-touched file that was already dirty at start carries a
+  # user edit beneath the collector's lines (R1-C1): not clean.
+  $preDirty = @(@($Start.Rows) | ForEach-Object { (("$_" -split '\|')[1]) -replace '\\', '/' } | Where-Object { $expected -contains $_ })
+  if (($sRows.Count -eq 0) -and ($preDirty.Count -gt 0)) { return [pscustomobject]@{ Ok = $true; State = 'stable-with-pending-collector-writes'; Expected = $expected; Line = "stable ($($preDirty.Count) collector-touched file(s) already changed at start: $($preDirty -join ', '))$exp" } }
   if ($sRows.Count -eq 0) {
     if ($expected.Count -eq 0) { return [pscustomobject]@{ Ok = $true; State = 'clean'; Expected = $expected; Line = 'clean at start and end' } }
     return [pscustomobject]@{ Ok = $true; State = 'pending-collector-writes'; Expected = $expected; Line = "PENDING collector writes (clean apart from them$exp)" }

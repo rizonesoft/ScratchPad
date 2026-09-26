@@ -2278,7 +2278,76 @@ $cxRes = Join-Path $cxDir "morning-$cxStamp.result.json"
 [pscustomobject]@{ version = 1; stamp = $cxStamp; identity = "$cxStamp-pid1"; previousStamp = ''; verdict = 'red'; incidents = @('- INC-0000c0de `UI.X.T` x1 (Run A (default))') } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $cxRes -Encoding UTF8
 $cxLedger = New-IncidentLedgerFromResults @($cxRes) '' @{}
 $cxIntents = Read-TrackedWriteIntents $cxRun
-Assert ((@($cxNotes | Where-Object { $_ -like '*CAPTURE-REFUSED*' }).Count -ge 1) -and (@($cxNotes | Where-Object { $_ -match 'truncat|TRUNCATED|dropped' }).Count -ge 1) -and $cxStaged -and (-not (Test-Path (Join-Path $cxCap '.staging'))) -and (($cxSweep -join '|') -like "*swept crash-left $cxStamp\captures-run-a\.staging*") -and (-not $cxRecord.complete) -and ($cxRecord.severity -eq 'warn') -and $cxLedger.ContainsKey('INC-0000c0de') -and (@($cxIntents.Writes).Count -eq 1)) 's53-compound-night-ends-recoverable' ((@($cxNotes) + @($cxSweep) + "severity=$($cxRecord.severity)") -join ' | ')
+# The collector line and triage (section 53 R1-R1): the night's line
+# lands in a committed TODO file after its intent; a stray edit makes
+# triage refuse; after the revert the retry is ready and commits.
+$cxRepo = Join-Path $dir 's53-compound-repo'
+if (Test-Path $cxRepo) { Remove-Item $cxRepo -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $cxRepo 'todo')
+$cxTodo = Join-Path $cxRepo 'todo\T.md'
+[System.IO.File]::WriteAllText($cxTodo, "# T`n- Night-owed: x`nend`n")
+$cxEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+foreach ($ga in @(@('init', '-q'), @('config', 'user.name', 'fx'), @('config', 'user.email', 'fx@example.invalid'), @('config', 'commit.gpgsign', 'false'), @('config', 'core.autocrlf', 'false'), @('add', '-A'), @('commit', '-q', '-m', 'base'))) { $null = & git -C $cxRepo @ga 2>&1 }
+$ErrorActionPreference = $cxEap
+$cxRepoRun = Join-Path $cxRepo "build\nightly\$cxStamp"
+$null = New-Item -ItemType Directory -Force -Path $cxRepoRun
+$cxLine = '**Night-collected:** 2026-09-26 x (1 passed, 0 failed, 0 skipped; log l)'
+Add-TrackedWriteIntent $cxRepoRun $cxRepo $cxTodo $cxLine
+[System.IO.File]::WriteAllText($cxTodo, "# T`n- Night-owed: x`n$cxLine`nend`n")
+Add-TrackedWriteIntent $cxRepoRun $cxRepo $cxTodo $cxLine -Written
+$cxTriage = Join-Path $PSScriptRoot 'NightlyTriage.ps1'
+[System.IO.File]::WriteAllText($cxTodo, "# T stray`n- Night-owed: x`n$cxLine`nend`n")
+$cxT1 = (@(& powershell -NoProfile -ExecutionPolicy Bypass -File $cxTriage -WorkspaceRoot $cxRepo 2>&1 | ForEach-Object { "$_" }) -join ' '); $cxT1Code = $LASTEXITCODE
+[System.IO.File]::WriteAllText($cxTodo, "# T`n- Night-owed: x`n$cxLine`nend`n")
+$cxSid = $env:CLAUDE_CODE_SESSION_ID; $env:CLAUDE_CODE_SESSION_ID = 'fixture-s53-compound'
+$cxT2 = (@(& powershell -NoProfile -ExecutionPolicy Bypass -File $cxTriage -WorkspaceRoot $cxRepo -Commit 2>&1 | ForEach-Object { "$_" }) -join ' '); $cxT2Code = $LASTEXITCODE
+$env:CLAUDE_CODE_SESSION_ID = $cxSid
+$cxEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$cxHead = ((& git -C $cxRepo show HEAD:todo/T.md 2>$null) | Out-String)
+$ErrorActionPreference = $cxEap
+Assert ((@($cxNotes | Where-Object { $_ -like '*CAPTURE-REFUSED*' }).Count -ge 1) -and (@($cxNotes | Where-Object { $_ -match 'truncat|TRUNCATED|dropped' }).Count -ge 1) -and $cxStaged -and (-not (Test-Path (Join-Path $cxCap '.staging'))) -and (($cxSweep -join '|') -like "*swept crash-left $cxStamp\captures-run-a\.staging*") -and (-not $cxRecord.complete) -and ($cxRecord.severity -eq 'warn') -and $cxLedger.ContainsKey('INC-0000c0de') -and (@($cxIntents.Writes).Count -eq 1) -and ($cxT1Code -eq 1) -and ($cxT1 -like '*REFUSED: todo/T.md differs from HEAD beyond*') -and ($cxT2Code -eq 0) -and ($cxT2 -like '*has no manifest*committed 1 file(s)*') -and $cxHead.Contains($cxLine)) 's53-compound-night-ends-recoverable' ((@($cxNotes) + @($cxSweep) + "severity=$($cxRecord.severity)" + $cxT1 + $cxT2) -join ' | ')
+# D00 T02 §53 R1-A1: a delete is bound to the opened object: a path
+# through a junction to outside the root is refused and nothing outside
+# is touched; an item inside is deleted.
+$vdRoot = Join-Path $dir 's53-verified'
+$vdOut = Join-Path $dir 's53-verified-outside'
+foreach ($p in @($vdRoot, $vdOut)) { if (Test-Path $p) { Remove-Item $p -Recurse -Force } }
+$null = New-Item -ItemType Directory -Force -Path $vdRoot, $vdOut
+'keep' | Set-Content -LiteralPath (Join-Path $vdOut 'f.txt') -Encoding UTF8
+'gone' | Set-Content -LiteralPath (Join-Path $vdRoot 'in.txt') -Encoding UTF8
+$null = New-Item -ItemType Junction -Path (Join-Path $vdRoot 'j') -Target $vdOut
+$vdRefused = ''
+try { Remove-VerifiedItem (Join-Path $vdRoot 'j\f.txt') $vdRoot } catch { $vdRefused = "$($_.Exception.Message)" }
+Remove-VerifiedItem (Join-Path $vdRoot 'in.txt') $vdRoot
+Assert (($vdRefused -like "sweep refused: refused: *f.txt resolves to *s53-verified-outside\f.txt, outside *") -and (Test-Path (Join-Path $vdOut 'f.txt')) -and (-not (Test-Path (Join-Path $vdRoot 'in.txt')))) 's53-delete-is-bound-to-the-opened-object' $vdRefused
+[System.IO.Directory]::Delete((Join-Path $vdRoot 'j'), $false)
+# D00 T02 §53 R1-A2: every collector write in the nightly runs only after
+# its write-ahead intent landed.
+$nsrc = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot 'nightly.ps1'))
+$nWrites = ([regex]::Matches($nsrc, '(Add-RedLine \$redPath|Invoke-CollectedLine \$colPath)')).Count
+$nGuarded = ([regex]::Matches($nsrc, 'if \(\$intentOk\) \{ (Add-RedLine \$redPath|Invoke-CollectedLine \$colPath)')).Count
+Assert (($nWrites -eq 4) -and ($nGuarded -eq 4)) 's53-no-collector-write-without-its-intent' "writes=$nWrites guarded=$nGuarded"
+# D00 T02 §53 R1-C1: a collector-touched file already dirty at start is not clean.
+$c1Root = Join-Path $dir 's53-tree-predirty'
+if (Test-Path $c1Root) { Remove-Item $c1Root -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $c1Root 'todo')
+$c1File = Join-Path $c1Root 'todo\T.md'
+[System.IO.File]::WriteAllText($c1File, "# T user edit`n")
+$c1W = @{}
+Register-TrackedWrite $c1W $c1Root $c1File 'L1' 'appended' "# T user edit`n"
+[System.IO.File]::WriteAllText($c1File, "# T user edit`nL1`n")
+$c1Dirty = [pscustomobject]@{ State = 'dirty'; Count = 1; Fingerprint = 'x'; Rows = @(' M|todo/T.md') }
+$c1Cmp = Compare-TreeWithTrackedWrites $c1Root $c1Dirty $c1Dirty $c1W
+Assert (($c1Cmp.State -eq 'stable-with-pending-collector-writes') -and ($c1Cmp.Line -like 'stable (1 collector-touched file(s) already changed at start: todo/T.md)*')) 's53-pre-dirty-collector-file-is-not-clean' $c1Cmp.Line
+# D00 T02 §53 R1-C2: duplicates that differ only in provenance refuse.
+$c2Dir = Join-Path $dir 's53-dup-prov'
+if (Test-Path $c2Dir) { Remove-Item $c2Dir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $c2Dir
+$c2a = Join-Path $c2Dir 'a.json'; $c2b = Join-Path $c2Dir 'b.json'
+[pscustomobject]@{ stamp = '2026-09-25-023001'; identity = 'id-p'; previousStamp = '2026-09-24-023001'; verdict = 'red'; incidents = @() } | ConvertTo-Json | Set-Content -LiteralPath $c2a -Encoding UTF8
+[pscustomobject]@{ stamp = '2026-09-25-023001'; identity = 'id-p'; previousStamp = '2026-09-23-023001'; verdict = 'red'; incidents = @() } | ConvertTo-Json | Set-Content -LiteralPath $c2b -Encoding UTF8
+$c2 = Get-ReplayOrder @($c2a, $c2b)
+Assert (@($c2.Refusals | Where-Object { $_ -like 'conflicting duplicate result id-p*' }).Count -eq 1) 's53-provenance-conflict-refuses' (@($c2.Refusals) -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
