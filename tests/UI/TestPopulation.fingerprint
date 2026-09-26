@@ -242,6 +242,7 @@ run-a:
   UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
   UI.UiInputFunnelTests.AbandonedQueuedReleaseNeverInjectsLater
+  UI.UiInputFunnelTests.AThrowingRecoveryKeepsTheSavedFailures
   UI.UiInputFunnelTests.BlockingReleaseIsReportedWithinTheBound
   UI.UiInputFunnelTests.CancelledReleaseAndTheBoundReportEveryStuckKey
   UI.UiInputFunnelTests.ClosingTheTargetWindowIsNotAnInterruption
@@ -277,9 +278,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 270
-run-a-cases: 334
-run-a-case-hash: 3175a8ff9184b0f4
+run-a-methods: 271
+run-a-cases: 335
+run-a-case-hash: d7dc47822ccbbbad
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -579,6 +580,7 @@ run-a-case-rows:
   UI|UI.UiForegroundTests.LargestSecondaryWins
   UI|UI.UiForegroundTests.SingleMonitorFallsBackOffscreen
   UI|UI.UiForegroundTests.TwoMonitorBoxUsesSecondaryWorkingArea
+  UI|UI.UiInputFunnelTests.AThrowingRecoveryKeepsTheSavedFailures
   UI|UI.UiInputFunnelTests.AbandonedQueuedReleaseNeverInjectsLater
   UI|UI.UiInputFunnelTests.BlockingReleaseIsReportedWithinTheBound
   UI|UI.UiInputFunnelTests.CancelledReleaseAndTheBoundReportEveryStuckKey

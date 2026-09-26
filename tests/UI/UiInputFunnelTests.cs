@@ -602,5 +602,30 @@ public sealed class UiInputFunnelTests
         var ex = Assert.Throws<InvalidOperationException>(() => UiInput.RepeatWhileOwned(5, App, () => ++reads <= 2 ? (Target, App) : (Target, Thief), () => sent++));
         Assert.Equal(2, sent);
         Assert.Contains($"input interrupted mid-hold: the foreground belongs to pid {Thief}, not the target {App}, before repeat 3 of 5", ex.Message, StringComparison.Ordinal);
+
+        // R4-I1: the foreground is read after the pause, so a loss during
+        // the pause stops the repeat that would follow it.
+        sent = 0;
+        bool stolen = false;
+        var afterPause = Assert.Throws<InvalidOperationException>(() => UiInput.RepeatWhileOwned(3, App, () => stolen ? (Target, Thief) : (Target, App), () => sent++, pause: () => stolen = sent == 1));
+        Assert.Equal(1, sent);
+        Assert.Contains("before repeat 2 of 3", afterPause.Message, StringComparison.Ordinal);
+    }
+
+    // §51 R4-I2: a modifier recovery that throws joins the press and cleanup
+    // failures instead of replacing them.
+    [Fact]
+    public void AThrowingRecoveryKeepsTheSavedFailures()
+    {
+        var all = Assert.Throws<AggregateException>(() =>
+            UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => throw new InvalidOperationException("key-down failed"), () => throw new InvalidOperationException("input cleanup failed: CONTROL"), () => true, () => false, () => throw new InvalidOperationException("recovery failed"), containment: new UiInput.InputContainment()));
+        Assert.Equal(3, all.InnerExceptions.Count);
+        Assert.Contains("key-down failed", all.InnerExceptions[0].Message, StringComparison.Ordinal);
+        Assert.Contains("input cleanup failed", all.InnerExceptions[1].Message, StringComparison.Ordinal);
+        Assert.Contains("recovery failed", all.InnerExceptions[2].Message, StringComparison.Ordinal);
+        var two = Assert.Throws<AggregateException>(() =>
+            UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => throw new InvalidOperationException("key-down failed"), () => { }, () => true, () => throw new InvalidOperationException("probe failed"), () => { }, containment: new UiInput.InputContainment()));
+        Assert.Equal(2, two.InnerExceptions.Count);
+        Assert.Contains("probe failed", two.InnerExceptions[1].Message, StringComparison.Ordinal);
     }
 }

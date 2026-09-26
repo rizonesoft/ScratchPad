@@ -140,21 +140,40 @@ static int CaptureHeldKeys(string outFile)
     // Every key this tool pressed is released even when a hold throws
     // (D00 T02 §51 R1-I2), so a failed capture never leaves a modifier down
     // for the physical tests that follow.
+    // Every injection first checks that stock Notepad still owns the
+    // foreground (R4-I1), so a window that takes it mid-hold never receives
+    // the rest of the hold; the throw releases what was pressed.
+    int notepadPid = window.Properties.ProcessId.Value;
+    void PressOwned(VirtualKeyShort k)
+    {
+        int owner = Native.ForegroundPid();
+        if (owner != notepadPid)
+        {
+            throw new InvalidOperationException($"input interrupted mid-hold: the foreground belongs to pid {owner}, not Notepad {notepadPid}");
+        }
+
+        Keyboard.Press(k);
+    }
+
     void Hold(VirtualKeyShort key, int keyDowns, bool shift = false)
     {
         Exception? pressFailure = null;
         try
         {
-            Keyboard.Press(VirtualKeyShort.CONTROL);
+            PressOwned(VirtualKeyShort.CONTROL);
             if (shift)
             {
-                Keyboard.Press(VirtualKeyShort.SHIFT);
+                PressOwned(VirtualKeyShort.SHIFT);
             }
 
             for (int i = 0; i < keyDowns; i++)
             {
-                Keyboard.Press(key);
-                Thread.Sleep(60);
+                if (i > 0)
+                {
+                    Thread.Sleep(60);
+                }
+
+                PressOwned(key);
             }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -411,8 +430,23 @@ static class Native
         return (NativeMethods.GetWindowLong(window.Properties.NativeWindowHandle.Value, exStyle) & topmostBit) != 0;
     }
 
+    // The process that owns the foreground window (0 when none).
+    internal static int ForegroundPid()
+    {
+        _ = NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out uint pid);
+        return (int)pid;
+    }
+
     static class NativeMethods
     {
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern nint GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);

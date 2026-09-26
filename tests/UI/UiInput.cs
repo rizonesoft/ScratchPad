@@ -262,11 +262,7 @@ internal static class UiInput
                 // An action while the chord is held (a menu opening
                 // mid-chord, §51 item 12) runs after the first key-down.
                 midHold?.Invoke();
-                RepeatWhileOwned(repeats, target.Properties.ProcessId.Value, ForegroundProbe, () =>
-                {
-                    Thread.Sleep(60);
-                    Keyboard.Press(key);
-                });
+                RepeatWhileOwned(repeats, target.Properties.ProcessId.Value, ForegroundProbe, () => Keyboard.Press(key), pause: () => Thread.Sleep(60));
             },
             () => ChordUp(injected, Keyboard.Release, isDown: KeyIsDown, containment: Containment),
             () => ModifiersReleased(AllModifiers),
@@ -275,16 +271,18 @@ internal static class UiInput
             () => Native.IsWindow(ExpectedRoot(target)));
     }
 
-    // The hold's repeats (D00 T02 §51 R3-I1): input ownership is read again
-    // before every repeat, so a window that takes the foreground mid-hold
-    // (a dialog, another app) never receives the rest of the repeats; the
-    // throw stops the hold and the funnel's cleanup releases the chord.
-    internal static void RepeatWhileOwned(int repeats, int pid, Func<(nint Root, int Pid)> probe, Action repeat)
+    // The hold's repeats (D00 T02 §51 R3-I1, R4-I1): input ownership is
+    // read again immediately before every repeat, after the pause between
+    // repeats, so a window that takes the foreground mid-hold (a dialog,
+    // another app) never receives the rest of the repeats; the throw stops
+    // the hold and the funnel's cleanup releases the chord.
+    internal static void RepeatWhileOwned(int repeats, int pid, Func<(nint Root, int Pid)> probe, Action repeat, Action? pause = null)
     {
         ArgumentNullException.ThrowIfNull(probe);
         ArgumentNullException.ThrowIfNull(repeat);
         for (int i = 0; i < repeats; i++)
         {
+            pause?.Invoke();
             int owner = probe().Pid;
             if (owner != pid)
             {
@@ -574,18 +572,29 @@ internal static class UiInput
         if (original is not null || cleanup is not null)
         {
             // A sender that dies mid-chord must not leave a modifier down
-            // for whatever the operator types next.
-            if (!modifiersReleased())
+            // for whatever the operator types next. The recovery is guarded
+            // (§51 R4-I2): a recovery that throws joins the saved failures
+            // instead of replacing them.
+            Exception? recovery = null;
+            try
             {
-                releaseModifiers();
+                if (!modifiersReleased())
+                {
+                    releaseModifiers();
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                recovery = ex;
             }
 
-            if (original is not null && cleanup is not null)
+            var kept = new[] { original, cleanup, recovery }.Where(e => e is not null).Cast<Exception>().ToArray();
+            if (kept.Length > 1)
             {
-                throw new AggregateException($"input press failed ({original.Message}) and its cleanup failed too ({cleanup.Message})", original, cleanup);
+                throw new AggregateException($"input press failed ({original?.Message ?? "no"}), its cleanup {(cleanup is null ? "succeeded" : $"failed too ({cleanup.Message})")}, and its modifier recovery {(recovery is null ? "succeeded" : $"failed ({recovery.Message})")}", kept);
             }
 
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(original ?? cleanup!).Throw();
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(kept[0]).Throw();
         }
 
         if (!modifiersReleased())
