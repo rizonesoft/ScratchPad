@@ -93,7 +93,11 @@ function Repair-OneTask($Spec) {
           $lines = @(Get-Content $hist -Encoding UTF8)
           $at = [Array]::IndexOf($lines, @($lines | Where-Object { $_ -like '| From |*' })[0])
           if ($at -lt 0) { $at = $lines.Count }
-          $new = @($lines[0..([math]::Max(0, $at - 1))]) + @("Enrolled: $((Get-Date).AddDays(1).ToString('yyyy-MM-dd'))", '') + @($lines[$at..($lines.Count - 1)])
+          # The first scheduled trigger after registration decides the
+          # night (§24 R7), never a fixed tomorrow.
+          $next = $null
+          try { $next = (Get-ScheduledTaskInfo -TaskPath $Spec.Path -TaskName $Spec.Name -ErrorAction Stop).NextRunTime } catch { }
+          $new = @($lines[0..([math]::Max(0, $at - 1))]) + @("Enrolled: $(Get-EnrollmentNight $next (Get-Date) $Spec.Time)", '') + @($lines[$at..($lines.Count - 1)])
           $tmp = "$hist.tmp"; $new | Set-Content -Path $tmp -Encoding UTF8; Move-Item -Path $tmp -Destination $hist -Force
         }
       }

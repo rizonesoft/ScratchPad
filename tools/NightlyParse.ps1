@@ -3407,6 +3407,17 @@ function Get-ScheduledNight([datetime]$LocalStart, [string[]]$TriggerTimes) {
   return $best.Date.ToString('yyyy-MM-dd')
 }
 
+function Get-EnrollmentNight($NextRun, [datetime]$Now, [string]$Time = '02:30') {
+  # The night a newly registered nightly is first owed (D00 T02 §24 R7):
+  # the night of its first scheduled trigger after registration, read
+  # from the task's next run time, else from its daily trigger time, so a
+  # task provisioned at 00:30 before tonight's 02:30 trigger owes tonight.
+  if (($NextRun -is [datetime]) -and ($NextRun -gt $Now)) { return (Get-NightKey $NextRun) }
+  $at = [datetime]::ParseExact("$($Now.ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)) $Time", 'yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture)
+  if ($at -le $Now) { $at = $at.AddDays(1) }
+  return (Get-NightKey $at)
+}
+
 function Get-ResultNight($Result) {
   # Grouping key for a result: its recorded night, else the night
   # derived from startUtc plus its tz offset, else the legacy day.

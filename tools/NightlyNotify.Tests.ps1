@@ -146,6 +146,9 @@ Assert (-not (Get-NoStartVerdict @() (Get-Date '2026-09-25 07:05') '06:50' 7).No
 $never = Get-NoStartVerdict @() (Get-Date '2026-09-25 07:05') '06:50' 3 '2026-09-23'
 $hs = Join-Path $dir 'history-enrolled.md'
 '# history', '', 'Enrolled: 2026-09-23', '', '| From | Trigger | Interval days |' | Set-Content -Path $hs -Encoding UTF8
+# §24 R7: enrollment is the first trigger after registration, so a task
+# provisioned at 00:30 before its 02:30 trigger owes that same night.
+Assert (((Get-EnrollmentNight $null (Get-Date '2026-09-25 00:30') '02:30') -eq '2026-09-25') -and ((Get-EnrollmentNight $null (Get-Date '2026-09-25 03:00') '02:30') -eq '2026-09-26') -and ((Get-EnrollmentNight (Get-Date '2026-09-25 02:30') (Get-Date '2026-09-25 00:30')) -eq '2026-09-25')) 'enrollment-is-the-first-trigger-after-registration'
 Assert ($never.NoStart -and ((@($never.Missed) -join ',') -eq '2026-09-23,2026-09-24,2026-09-25') -and ((Read-NightlyEnrollment $hs) -eq '2026-09-23') -and ((Read-NightlyEnrollment (Join-Path $dir 'none.md')) -eq '')) 'nostart-enrolled-task-that-never-ran-alerts' ((@($never.Missed) -join ','))
 $mDir = Join-Path $dir 'morning'
 $null = New-Item -ItemType Directory -Force -Path $mDir
