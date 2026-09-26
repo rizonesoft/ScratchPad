@@ -48,7 +48,7 @@ try {
   $log += @($gen.Lines | ForEach-Object { "$_" })
   # Eligibility is the ledger's, not the repair's (R1-A2): every settled
   # result the ledger never recorded notifies, whatever its report state.
-  foreach ($gr in @(Get-UnnotifiedResults $NightDir $results $now)) {
+  foreach ($gr in @(Get-UnnotifiedResults $NightDir $results $now -LookbackDays $LookbackDays -Starts @((Read-StartEvidence $NightDir).Rows))) {
     $gs = "$($gr.stamp)"
     $gid = "$($gr.identity)"; if ($gid -eq '') { $gid = $gs }
     $gcls = 'infrastructure'

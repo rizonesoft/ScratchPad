@@ -1019,7 +1019,10 @@ function Test-NightlyGeneration([string]$NightDir, [string]$Stamp) {
   if (-not (Test-Path -LiteralPath $rep -PathType Leaf)) { return 'missing-report' }
   if (-not (Test-Path -LiteralPath $man -PathType Leaf)) { return 'no-manifest' }
   $m = $null
-  try { $m = Get-Content -LiteralPath $man -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { return 'no-manifest' }
+  # An unreadable manifest proves nothing (section 55 R2-A1): it reads
+  # manifest-unreadable, alerts link the result, and repair leaves it.
+  try { $m = Get-Content -LiteralPath $man -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { return 'manifest-unreadable' }
+  if ("$($m.schema)" -ne 'generation/1') { return 'manifest-unreadable' }
   if ("$($m.result)" -ne (Get-FileSha256 $res)) { return 'stale' }
   if ("$($m.report)" -ne (Get-FileSha256 $rep)) { return 'report-changed' }
   return 'committed'
@@ -1087,6 +1090,8 @@ function Repair-NightlyGenerations([string]$NightDir, [datetime]$Now, [string]$S
     } elseif ($st -eq 'no-manifest') {
       if (-not $NoPersist) { $null = Write-NightlyGeneration $NightDir $stamp }
       $lines += "generation ${stamp}: manifest missing after both files landed; committed"
+    } elseif ($st -eq 'manifest-unreadable') {
+      $lines += "generation ${stamp}: manifest unreadable; alerts link the result and the files are left for inspection"
     } elseif ($st -eq 'stale') {
       $lines += "generation ${stamp}: result revised after its report; alerts link the result, the report is kept as it was"
     }
@@ -1108,12 +1113,18 @@ function Repair-NightlyGenerations([string]$NightDir, [datetime]$Now, [string]$S
   return [pscustomobject]@{ Lines = $lines; Recovered = $recovered }
 }
 
-function Get-UnnotifiedResults([string]$NightDir, $Results, [datetime]$Now, [string]$Since = $script:GenerationSince, [int]$SettleMinutes = 30) {
+function Get-UnnotifiedResults([string]$NightDir, $Results, [datetime]$Now, [string]$Since = $script:GenerationSince, [int]$SettleMinutes = 30, [int]$LookbackDays = 7, $Starts = $null, [scriptblock]$IsAlive = { param($p, $s) Test-JournalProcessAlive $p $s }) {
   # Every settled, non-simulated result from $Since on whose run the
   # notify ledger never recorded (section 55 R1-A2): a run that crashed
   # before its notification, whatever state its report generation is in,
   # stays eligible until the ledger records it, so neither a repair nor a
-  # crash after one strands an urgent result. Returns the results.
+  # crash after one strands an urgent result. Only the final publication
+  # writes morning-<stamp>.result.json (the pre-soak core publication
+  # writes -core reports only), so a landed result is final; a run whose
+  # start evidence shows it still alive is still publishing and waits
+  # (R2-I1). Only results inside the reconciler's lookback count, far
+  # inside the ledger's 90-day retention, so a pruned record never
+  # replays an old alert (R2-I2). Returns the results.
   $out = @()
   foreach ($r in @($Results)) {
     if ($null -eq $r) { continue }
@@ -1123,6 +1134,15 @@ function Get-UnnotifiedResults([string]$NightDir, $Results, [datetime]$Now, [str
     $f = Join-Path $NightDir "morning-$stamp.result.json"
     if (-not (Test-Path -LiteralPath $f)) { continue }
     if (($Now - (Get-Item -LiteralPath $f).LastWriteTime).TotalMinutes -lt $SettleMinutes) { continue }
+    $sd = [datetime]::ParseExact($stamp.Substring(0, 10), 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($sd -lt $Now.Date.AddDays(-$LookbackDays)) { continue }
+    $live = $false
+    foreach ($se in @(@($Starts) | Where-Object { ($null -ne $_) -and ("$($_.stamp)" -eq $stamp) })) {
+      $sst = [datetime]::MinValue
+      if ($se.started -is [datetime]) { $sst = $se.started } else { $null = [datetime]::TryParse("$($se.started)", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::RoundtripKind, [ref]$sst) }
+      try { if ([bool](& $IsAlive ([int]$se.pid) $sst)) { $live = $true } } catch { }
+    }
+    if ($live) { continue }
     $id = "$($r.identity)"; if ($id -eq '') { $id = $stamp }
     if (-not (Test-RunNotified $NightDir $id)) { $out += $r }
   }
@@ -1307,7 +1327,19 @@ function Get-QueuedEntryState($Entry, $Canonical, $Results) {
   if ($null -ne $later) {
     $lid = "$($Canonical[$later].Canonical)"
     $lr = @(@($Results) | Where-Object { ("$($_.identity)" -eq $lid) -or ("$($_.stamp)" -eq $lid) }) | Select-Object -First 1
-    if (($null -ne $lr) -and ("$($lr.verdict)" -eq 'green')) { return [pscustomobject]@{ State = 'recovered'; Note = "night $($later.Split('|')[0]) is GREEN ($lid)" } }
+    if (($null -ne $lr) -and ("$($lr.verdict)" -eq 'green')) {
+      # The same comparability and flapping rules as Get-RecoveryNotices
+      # (section 55 R2-C1): another population or a flapping service is
+      # never a recovery in the digest either.
+      $er = @(@($Results) | Where-Object { ("$($_.identity)" -eq "$($Entry.run)") -or ("$($_.stamp)" -eq "$($Entry.run)") }) | Select-Object -First 1
+      $ep = if ($null -ne $er) { "$(try { $er.populationIdentity } catch { '' })" } else { '' }
+      $lp = "$(try { $lr.populationIdentity } catch { '' })"
+      if (($ep -ne '') -and ($lp -ne '') -and ($ep -ne $lp)) { return [pscustomobject]@{ State = 'current'; Note = "night $($later.Split('|')[0]) is GREEN on another test population (not comparable)" } }
+      $fs = $null
+      try { $fs = Get-FlapState $Canonical $Results $lr } catch { }
+      if (($null -ne $fs) -and $fs.Flapping) { return [pscustomobject]@{ State = 'current'; Note = "night $($later.Split('|')[0]) is GREEN but the service is flapping ($($fs.Changes) changes)" } }
+      return [pscustomobject]@{ State = 'recovered'; Note = "night $($later.Split('|')[0]) is GREEN ($lid)" }
+    }
   }
   return [pscustomobject]@{ State = 'current'; Note = '' }
 }

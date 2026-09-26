@@ -780,12 +780,12 @@ $u21 = New-Result '2026-09-27' '2026-09-27-023000' 'red' 'timer'
 Write-AtomicReport @(ConvertTo-Json $u21 -Depth 6) (Join-Path $g21 'morning-2026-09-27-023000.result.json')
 Write-AtomicReport @('# report') (Join-Path $g21 'morning-2026-09-27-023000.md')
 $null = Write-NightlyGeneration $g21 '2026-09-27-023000'
-(Get-Item (Join-Path $g21 'morning-2026-09-27-023000.result.json')).LastWriteTime = (Get-Date).AddHours(-2)
-$un1 = @(Get-UnnotifiedResults $g21 @($u21) (Get-Date))
+(Get-Item (Join-Path $g21 'morning-2026-09-27-023000.result.json')).LastWriteTime = [datetime]'2026-09-27 03:00'
+$un1 = @(Get-UnnotifiedResults $g21 @($u21) ([datetime]'2026-09-27 07:05'))
 Remove-Item (Join-Path $g21 'morning-2026-09-27-023000.generation.json')
-$un2 = @(Get-UnnotifiedResults $g21 @($u21) (Get-Date))
+$un2 = @(Get-UnnotifiedResults $g21 @($u21) ([datetime]'2026-09-27 07:05'))
 $null = Invoke-NightlyNotify -Phase 'final' -RunId '2026-09-27-023000-pid1' -ResultPath '' -Class 'test' -Title 't' -Lines @('x') -StateDir $g21 -Sender { param($t, $l) $true }
-$un3 = @(Get-UnnotifiedResults $g21 @($u21) (Get-Date))
+$un3 = @(Get-UnnotifiedResults $g21 @($u21) ([datetime]'2026-09-27 07:05'))
 Assert (($un1.Count -eq 1) -and ($un2.Count -eq 1) -and ($un3.Count -eq 0)) 's55-matrix-interrupted-after-commit-or-before-manifest-still-notifies' "committed=$($un1.Count) no-manifest=$($un2.Count) after-ledger=$($un3.Count)"
 $st21 = @([pscustomobject]@{ stamp = 'm'; pid = 555; started = '2026-09-20T23:50:00'; night = '2026-09-21'; scheduled = $false; simulated = $false })
 Assert ((Get-NightStartState '2026-09-21' @() $st21 ([datetime]'2026-09-21 07:05') -IsAlive { param($p, $s) $true }) -eq 'never-started') 's55-manual-start-is-no-schedule-evidence'
@@ -799,6 +799,31 @@ $script:deskEsc = @()
 $n22 = Invoke-NightlyNotify -Phase 'final' -RunId 'r22' -ResultPath '' -Class 'test' -Labels @('scheduler-no-start') -Title 'Nightly 2026-09-27 : RED (test)' -Lines @('x') -StateDir $g22 -Sender { param($t, $l) $false } -Retries 0
 $p22 = @(Get-ChildItem (Join-Path $g22 'undelivered') -Filter '*.json')[0] | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json }
 Assert (($n22.Status -eq 'fallback') -and ($p22.severity -eq 'critical') -and ("$($p22.escalatedAt)" -ne '') -and ($script:deskEsc.Count -eq 1) -and (@($n22.Notes | Where-Object { $_ -like 'Urgent escalation: sent*critical*' }).Count -eq 1)) 's55-matrix-fallback-escalates-at-once-with-its-effective-severity' ($n22.Notes -join ' | ')
+# Round 2 (section 55 R2): an unreadable manifest is never committed; a
+# live run waits; an old result past the lookback never replays after
+# retention; a digest recovery needs comparable, non-flapping evidence.
+$g31 = Join-Path $d55 'r2'
+$null = New-Item -ItemType Directory -Force -Path $g31
+$u31 = New-Result '2026-09-27' '2026-09-27-023000' 'red' 'timer'
+Write-AtomicReport @(ConvertTo-Json $u31 -Depth 6) (Join-Path $g31 'morning-2026-09-27-023000.result.json')
+Write-AtomicReport @('# report') (Join-Path $g31 'morning-2026-09-27-023000.md')
+'{broken' | Set-Content -LiteralPath (Join-Path $g31 'morning-2026-09-27-023000.generation.json')
+(Get-Item (Join-Path $g31 'morning-2026-09-27-023000.result.json')).LastWriteTime = [datetime]'2026-09-27 03:00'
+$rp31 = Repair-NightlyGenerations $g31 ([datetime]'2026-09-27 07:05')
+$lk31 = Resolve-NotifyReportLink $g31 '2026-09-27-023000'
+Assert (($lk31.State -eq 'manifest-unreadable') -and ($lk31.Link -like '*.result.json') -and ((Get-Content (Join-Path $g31 'morning-2026-09-27-023000.generation.json') -Raw) -like '{broken*')) 's55-unreadable-manifest-is-never-committed' ($rp31.Lines -join ' | ')
+$liveSt = @([pscustomobject]@{ stamp = '2026-09-27-023000'; pid = 777; started = '2026-09-27T02:30:00'; night = '2026-09-27'; scheduled = $true; simulated = $false })
+$un31 = @(Get-UnnotifiedResults $g31 @($u31) ([datetime]'2026-09-27 07:05') -Starts $liveSt -IsAlive { param($p, $s) $true })
+$un32 = @(Get-UnnotifiedResults $g31 @($u31) ([datetime]'2026-09-27 07:05') -Starts $liveSt -IsAlive { param($p, $s) $false })
+$un33 = @(Get-UnnotifiedResults $g31 @($u31) ([datetime]'2026-10-30 07:05') -Starts $liveSt -IsAlive { param($p, $s) $false })
+Assert (($un31.Count -eq 0) -and ($un32.Count -eq 1) -and ($un33.Count -eq 0)) 's55-live-run-waits-and-pruned-history-never-replays' "live=$($un31.Count) dead=$($un32.Count) old=$($un33.Count)"
+$ra = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $ra | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p1'
+$rb = New-Result '2026-09-21' '2026-09-21-023000' 'green' 'timer'; $rb | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p2'
+$qa = [pscustomobject]@{ key = 'q'; run = '2026-09-20-023000-pid1'; class = 'test'; slot = '2026-09-20|legacy' }
+$sa = Get-QueuedEntryState $qa (Select-CanonicalRuns @($ra, $rb)) @($ra, $rb)
+$qf = [pscustomobject]@{ key = 'q'; run = '2026-09-24-023000-pid1'; class = 'test'; slot = '2026-09-24|legacy' }
+$sf = Get-QueuedEntryState $qf $fc $fl
+Assert (($sa.State -eq 'current') -and ($sa.Note -like '*not comparable*') -and ($sf.State -eq 'current') -and ($sf.Note -like '*flapping*')) 's55-digest-recovery-needs-comparable-non-flapping-evidence' "$($sa.State): $($sa.Note) | $($sf.State): $($sf.Note)"
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyNotify.Tests: all green'
