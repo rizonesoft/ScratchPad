@@ -4313,8 +4313,19 @@ def _captured(recs: list, kind: str, need: tuple, warnings: list) -> list:
     for r in recs:
         d = r.get("date") or ""
         missing = [k for k in need if not r.get(k)]
-        if d >= NIGHT_DEBT_GOVERNANCE_CUTOVER and missing:
-            warnings.append(f"{kind} dated {d} lacks {', '.join(missing)} (required from {NIGHT_DEBT_GOVERNANCE_CUTOVER}); it takes no effect")
+        # A present field must also be well formed (R3-A1): an effective
+        # time is a real HH:MM on the 24-hour clock.
+        bad = []
+        if "at" in need and r.get("at"):
+            try:
+                datetime.strptime(r["at"], "%H:%M")
+                if not re.fullmatch(r"\d{2}:\d{2}", r["at"]):
+                    raise ValueError(r["at"])
+            except ValueError:
+                bad.append(f"at '{r['at']}'")
+        if d >= NIGHT_DEBT_GOVERNANCE_CUTOVER and (missing or bad):
+            what = ", ".join(([f"lacks {', '.join(missing)}"] if missing else []) + ([f"has a malformed {', '.join(bad)}"] if bad else []))
+            warnings.append(f"{kind} dated {d} {what} (required from {NIGHT_DEBT_GOVERNANCE_CUTOVER}); it takes no effect")
             continue
         out.append(r)
     return out
@@ -4513,7 +4524,8 @@ def night_debts(todos: list["Todo"], today_d):
                 runm = re.search(r"\brun\s+(\S+?)[;)]?(?:\s|$)", rm.group(3))
                 fm = re.search(r"\bfinding\s+([^;)\s]+)", rm.group(3))
                 _rx = {k: v for k, v in re.findall(r"\b(at|event)\s+([^;)\s]+)", rm.group(3))}
-                reds.setdefault(rm.group(2), []).append({"date": rm.group(1), "log": log, "run": runm.group(1) if runm else None, "finding": fm.group(1) if fm else None, "_raw": rm.group(3).strip(), "at": _rx.get("at"), "event": _rx.get("event")})
+                # The date is part of the record (R3-C1).
+                reds.setdefault(rm.group(2), []).append({"date": rm.group(1), "log": log, "run": runm.group(1) if runm else None, "finding": fm.group(1) if fm else None, "_raw": f"{rm.group(1)} {rm.group(3).strip()}", "at": _rx.get("at"), "event": _rx.get("event")})
                 continue
             am = NIGHT_ACK_RE.search(ln)
             if am and DEBT_ID_RE.match(am.group(1)):
@@ -4765,6 +4777,14 @@ def night_debts(todos: list["Todo"], today_d):
                 if r.get("event"):
                     _ev_r.setdefault(r["event"], []).append(r)
             _bad_r = {id(r) for g in _ev_r.values() if len(g) > 1 for r in g}
+            # Records at one replay position (a date with an effective time)
+            # that differ are contradictory whatever run they name (R3-C1);
+            # legacy reds without a time stay one attempt per run and date.
+            _pos_r: dict = {}
+            for r in _reds:
+                if _eff_key(r)[1]:
+                    _pos_r.setdefault(_eff_key(r), []).append(r)
+            _bad_r |= {id(r) for g in _pos_r.values() if len(g) > 1 for r in g}
             _reds = [r for r in _reds if id(r) not in _bad_r]
             _by_att: dict = {}
             for r in _reds:
@@ -27045,6 +27065,26 @@ track: Z1
             ])
         finally:
             NIGHT_DEBT_GOVERNANCE_CUTOVER = _cut_saved
+        _cut_saved2 = NIGHT_DEBT_GOVERNANCE_CUTOVER
+        NIGHT_DEBT_GOVERNANCE_CUTOVER = "2026-09-11"
+        try:
+            _l50d, _ = _nd50_run([
+                f"**Night-owed:** D90-T01-S1-N1 ({_o50}2026-09-10)",
+                "**Night-accepted:** D90-T01-S1-N1 (approver operator, owner operator, date 2026-09-15, at 99:99, event a1, expires 2026-10-01, rationale bad time)",
+                f"**Night-owed:** D90-T01-S1-N2 ({_o50}2026-09-10)",
+                "**Night-red:** 2026-09-12 D90-T01-S1-N2 (0 passed, 1 failed, 0 skipped; log r.trx; run p1; at 02:40; event r1)",
+                "**Night-red:** 2026-09-12 D90-T01-S1-N2 (0 passed, 1 failed, 0 skipped; log r.trx; run p2; at 02:40; event r2)",
+                f"**Night-owed:** D90-T01-S1-N3 ({_o50}2026-09-10)",
+                "**Night-red:** 2026-09-12 D90-T01-S1-N3 (0 passed, 1 failed, 0 skipped; log r.trx; run q1; at 02:40; event s1)",
+                "**Night-red:** 2026-09-14 D90-T01-S1-N3 (0 passed, 1 failed, 0 skipped; log r.trx; run q1; at 02:40; event s1)",
+            ])
+        finally:
+            NIGHT_DEBT_GOVERNANCE_CUTOVER = _cut_saved2
+        check("§50 R3-A1, R3-C1: a malformed effective time takes no effect; reds tied at one position, or sharing an event across dates, take no effect",
+              (any("WARN D90-T01-S1-N1: Night-accepted dated 2026-09-15 has a malformed at '99:99'" in ln for ln in _l50d),
+               any(" D90-T01-S1-N1 " in ln and "state accepted" in ln for ln in _l50d),
+               any(" D90-T01-S1-N2 " in ln and " state red" in ln for ln in _l50d),
+               any(" D90-T01-S1-N3 " in ln and " state red" in ln for ln in _l50d)), (True, False, False, False))
         check("§50 R1-I1: from the cutover an owed line without its capture cannot close, and a record without at and event takes no effect",
               (any("WARN D90-T01-S1-N1: owed on 2026-09-12 without candidate, schedule, tz, tests" in ln for ln in _l50c),
                any("WARN D90-T01-S1-N1: Night-collected dated 2026-09-18 lacks candidate, run, at, event" in ln for ln in _l50c),
