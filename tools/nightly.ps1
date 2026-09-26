@@ -1301,6 +1301,7 @@ $debtEntries = @()
 $capDebtPath = Join-Path $nightDir 'capability-debt.json'
 $capDebt = @{}
 $capDebtError = ''
+$capTouched = @()
 try { $capDebt = Read-CapabilityDebt $capDebtPath } catch { $capDebtError = "capability debt state unreadable: $($_.Exception.Message) (due dates not advanced tonight)" }
 $stagedStubs = @()
 # The collector's tracked writes (D00 T02 section 45 item 7): recorded
@@ -1389,6 +1390,7 @@ if ($debtQueryError -ne '') {
       continue
     }
     $split = Split-DebtSkips $sumI.Skipped
+    $capTouched += $debt.Id
     if ($capDebtError -eq '') { $debtEntries += @(Update-CapabilityDebt $capDebt $debt.Id @(@($sumI.Skipped) | Where-Object { $_ -match 'unavailable on this host|CAPABILITY: ' }) (Get-HostKey) (Get-Date)) }
     if (($split.Capability -gt 0) -or ($split.Other -gt 0)) {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: $($split.Capability) capability plus $($split.Other) other skips never executed: debt stays open"
@@ -1428,7 +1430,7 @@ if ($interactiveRan -and ($null -ne $sumI) -and ($sumI.FailedCount -gt 0)) {
   $stagedStubs = @(Format-FindingStubs $sumI.Failed $Root)
 }
 if ($capDebtError -ne '') { $debtEntries += "- $capDebtError" }
-else { $capWrite = Write-CapabilityDebt $capDebt $capDebtPath; if ($capWrite -ne '') { $debtEntries += "- $capWrite" } }
+else { $debtEntries += @(Get-CapabilityDebtEscalations $capDebt (Get-Date) $capTouched); $capWrite = Write-CapabilityDebt $capDebt $capDebtPath; if ($capWrite -ne '') { $debtEntries += "- $capWrite" } }
 $report += '## Night debt'
 $report += ''
 if ($debtEntries.Count -eq 0) { $report += '(no open debt at run start)'; $report += '' }
@@ -1479,7 +1481,7 @@ if ($stagedExtra -gt 0) { $nightOwedRows += "- Staging journal carries $stagedEx
 # Journal-only cases carry their original identity tokens (R1-A3).
 $stagedIds = @{}; foreach ($k in @($prevRead.Identities.Keys)) { $stagedIds[$k] = $prevRead.Identities[$k] }
 foreach ($k in @($stagedOpen.Ids.Keys)) { if (-not $stagedIds.ContainsKey($k)) { $stagedIds[$k] = $stagedOpen.Ids[$k] } }
-$prevRead = [pscustomobject]@{ Owed = $stagedMerged; Identities = $stagedIds; From = $prevRead.From; Unreadable = $prevRead.Unreadable }
+$prevRead = [pscustomobject]@{ Owed = $stagedMerged; Identities = $stagedIds; IdentitiesRecorded = ([bool]$prevRead.IdentitiesRecorded -or ($stagedExtra -gt 0)); From = $prevRead.From; Unreadable = $prevRead.Unreadable }
 if (@($prevRead.Unreadable).Count -gt 0) { $failed = $true; $nightOwedRows += "- Carried per-case debt: RED: unreadable result(s) $($prevRead.Unreadable -join '; '); owed cases carried from $(if ($prevRead.From -ne '') { $prevRead.From } else { 'no readable result' }) instead; repair the result" }
 $carryListed = @()
 try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
@@ -1489,7 +1491,7 @@ try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation
 $owedIdsNow = @{}
 $owedIdsError = ''
 try { $owedIdsNow = Get-OwedCaseIdentities @($prevRead.Owed) (Get-CaseIdentityRunner (Join-Path $Root 'tests\UI\UI.csproj')) } catch { $owedIdsError = "$($_.Exception.Message)" }
-$migration = Resolve-OwedCaseMigration @($prevRead.Owed) $prevRead.Identities $owedIdsNow $(if ($carryListed.Count -gt 0) { $carryListed } else { $null }) (Read-OwedCaseRetirements (Join-Path $Root 'docs\owed-case-retirements.md'))
+$migration = Resolve-OwedCaseMigration @($prevRead.Owed) $prevRead.Identities $owedIdsNow $(if ($carryListed.Count -gt 0) { $carryListed } else { $null }) (Read-OwedCaseRetirements (Join-Path $Root 'docs\owed-case-retirements.md')) ([bool]$prevRead.IdentitiesRecorded)
 $nightOwedRows += @($migration.Lines)
 if ($owedIdsError -ne '') { $nightOwedRows += "- Owed case identities unreadable tonight ($owedIdsError): cut owed cases hold, none close" ; $migration = [pscustomobject]@{ Closable = @(@($migration.Closable) | Where-Object { -not (Test-CutCaseName "$_") }); Held = @(@($migration.Held) + @(@($migration.Closable) | Where-Object { Test-CutCaseName "$_" })); Retired = $migration.Retired; Ids = $migration.Ids; Lines = $migration.Lines } }
 # An overridden run discharges no carried debt (section 52 R1-I1).

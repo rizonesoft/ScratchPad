@@ -200,6 +200,11 @@ $cdRead = Read-CapabilityDebt $cdPath
 $cdDue = $cdRead['D01-T09-S2-N1'].due
 $cd3 = @(Update-CapabilityDebt $cdRead 'D01-T09-S2-N1' @() 'HOST-A' ([datetime]::new(2026, 9, 17)) 14)
 $cdOk = ($cd1[0] -like '- D01-T09-S2-N1 capability debt owed since 2026-09-01, due 2026-09-15 (checked on HOST-A)*') -and ($cd2[0] -like '- ESCALATED D01-T09-S2-N1 capability debt past its due 2026-09-15 (owed since 2026-09-01; hosts still lacking it: HOST-A, HOST-B)*') -and ($cdWrite -eq '') -and ($cdDue -eq '2026-09-15') -and ($cd3[0] -like '- D01-T09-S2-N1 capability debt cleared on 2026-09-17*') -and (-not $cdRead.ContainsKey('D01-T09-S2-N1'))
+# R3-I2: an overdue debt the collector never reached still escalates.
+$cdIdle = @{ 'D01-T09-S2-N2' = [pscustomobject]@{ id = 'D01-T09-S2-N2'; since = '2026-09-01'; due = '2026-09-15'; lastSeen = '2026-09-10'; hosts = @('HOST-A'); capabilities = @('printer') }; 'D01-T09-S2-N3' = [pscustomobject]@{ id = 'D01-T09-S2-N3'; since = '2026-09-20'; due = '2026-10-04'; lastSeen = '2026-09-20'; hosts = @('HOST-A'); capabilities = @('hooks') } }
+$cdEsc = @(Get-CapabilityDebtEscalations $cdIdle ([datetime]::new(2026, 9, 26)) @())
+$cdEscTouched = @(Get-CapabilityDebtEscalations $cdIdle ([datetime]::new(2026, 9, 26)) @('D01-T09-S2-N2'))
+$cdOk = $cdOk -and ($cdEsc.Count -eq 1) -and ($cdEsc[0] -like '- ESCALATED D01-T09-S2-N2 capability debt past its due 2026-09-15*not collected tonight*') -and ($cdEscTouched.Count -eq 0)
 if ($cdOk) { Write-Output 'PASS s52-capability-debt-escalates-past-its-due' } else { Write-Output ("FAIL s52-capability-debt-escalates-past-its-due " + (($cd1 + $cd2 + $cd3 + $cdWrite) -join ' | ')); $failures++ }
 
 if ($failures -gt 0) { Write-Output "NightDebt.Tests: $failures FAILURE(S)"; exit 1 }

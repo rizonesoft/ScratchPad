@@ -425,6 +425,22 @@ function Update-CapabilityDebt([hashtable]$State, [string]$DebtId, [string[]]$Ca
   return @("- $DebtId capability debt owed since $($e.since), due $($e.due) (checked on $HostKey): $what")
 }
 
+function Get-CapabilityDebtEscalations([hashtable]$State, [datetime]$Today, $Touched) {
+  # Escalation without a collection (R3-I2): every capability debt past
+  # its due date that tonight's collector did not reach (the leg skipped,
+  # the debt uncovered, the host unavailable) still escalates in the
+  # morning report. Debts the collector reached report through
+  # Update-CapabilityDebt.
+  $day = $Today.ToString('yyyy-MM-dd')
+  $lines = @()
+  foreach ($k in @($State.Keys | Sort-Object)) {
+    if (@($Touched) -contains $k) { continue }
+    $e = $State[$k]
+    if ([string]::CompareOrdinal($day, "$($e.due)") -gt 0) { $lines += "- ESCALATED $k capability debt past its due $($e.due) (owed since $($e.since), last checked $($e.lastSeen) on $(@($e.hosts) -join ', '); not collected tonight): $(@($e.capabilities) -join '; '); collect on a capable host or reassign the debt" }
+  }
+  return $lines
+}
+
 function Split-DebtSkips([string[]]$SkipLines) {
   # Closure-safe split (plan PR4): quarantine-declared skips
   # transfer their proof to the quarantine window and may close

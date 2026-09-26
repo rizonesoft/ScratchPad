@@ -1938,7 +1938,7 @@ function Read-OwedCaseRetirements([string]$Path) {
   return $rows
 }
 
-function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hashtable]$NowIds, $ListedNow, [hashtable]$Retirements) {
+function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hashtable]$NowIds, $ListedNow, [hashtable]$Retirements, [bool]$TokensRequired = $false) {
   # Owed cases across population changes (D00 T02 section 52 item 8).
   # Each earlier owed case either retires with evidence (a retirement row
   # with evidence and approver), stays owed without a chance to close
@@ -1960,6 +1960,10 @@ function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hash
       $lines += "- Owed case retirement ignored for ``$k``: the row needs evidence and an approver"
     }
     if ($haveListing -and (-not $listed.ContainsKey($k))) { $held += $k; $lines += "- Owed case no longer listed: ``$k`` carries its obligation until retired with evidence in docs/owed-case-retirements.md"; continue }
+    # A cut case owed where tokens were recorded but its own is missing
+    # (identity generation failed that night) holds: without its original
+    # identity no same-prefix pass can prove it ran (R3-I1).
+    if ($TokensRequired -and (Test-CutCaseName $k) -and (-not $PreviousIds.ContainsKey($k))) { $held += $k; $lines += "- Owed case identity unrecorded: ``$k`` was owed without its identity token, so a same-prefix case cannot close it (retire with evidence)"; continue }
     if ($PreviousIds.ContainsKey($k) -and $NowIds.ContainsKey($k) -and ($PreviousIds[$k] -ne $NowIds[$k])) { $held += $k; $lines += "- Owed case identity changed: ``$k`` was owed as $($PreviousIds[$k]), the listing now reads $($NowIds[$k]); a same-prefix case never closes it (retire with evidence or re-owe)"; continue }
     $closable += $k
   }
@@ -2048,9 +2052,20 @@ function Add-StagedDebtLines([string]$Path, $Cases, [string]$State, [string]$Sta
     }
   }
   if ($lines.Count -gt 0) {
+    # A crash can leave an unterminated last line (R3-A2): the append
+    # starts on a fresh line, so the torn fragment stays one bad line and
+    # never swallows the first new receipt.
+    $lead = ''
+    if (Test-Path -LiteralPath $Path) {
+      $len = (Get-Item -LiteralPath $Path).Length
+      if ($len -gt 0) {
+        $rs = [System.IO.File]::OpenRead($Path)
+        try { $null = $rs.Seek(-1, [System.IO.SeekOrigin]::End); if ($rs.ReadByte() -ne 10) { $lead = "`n" } } finally { $rs.Dispose() }
+      }
+    }
     $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
     try {
-      $bytes = [System.Text.Encoding]::UTF8.GetBytes((($lines -join "`n") + "`n"))
+      $bytes = [System.Text.Encoding]::UTF8.GetBytes(($lead + ($lines -join "`n") + "`n"))
       $fs.Write($bytes, 0, $bytes.Length)
       $fs.Flush($true)
     } finally { $fs.Dispose() }
@@ -2103,10 +2118,12 @@ function Read-PreviousOwedCases([string]$NightDir, [string]$Stamp) {
       $ids = @{}
       $idProp = $o.PSObject.Properties['owedIdentities']
       if (($null -ne $idProp) -and ($null -ne $idProp.Value)) { foreach ($pp in @($idProp.Value.PSObject.Properties)) { $ids["$($pp.Name)"] = "$($pp.Value)" } }
-      return [pscustomobject]@{ Owed = @(@($o.owedCases) | Where-Object { "$_" -ne '' }); Identities = $ids; From = $f.Name; Unreadable = $bad }
+      # A result from after owed identities existed (the field present)
+      # owes a token for each cut case; a missing one holds (R3-I1).
+      return [pscustomobject]@{ Owed = @(@($o.owedCases) | Where-Object { "$_" -ne '' }); Identities = $ids; IdentitiesRecorded = ($null -ne $idProp); From = $f.Name; Unreadable = $bad }
     } catch { $bad += "$($f.Name) ($($_.Exception.Message))" }
   }
-  return [pscustomobject]@{ Owed = @(); Identities = @{}; From = ''; Unreadable = $bad }
+  return [pscustomobject]@{ Owed = @(); Identities = @{}; IdentitiesRecorded = $false; From = ''; Unreadable = $bad }
 }
 
 function Get-PopulationIdentity([string]$FingerprintPath) {
@@ -2255,6 +2272,7 @@ function Read-TrxCaseResults([string]$TrxPath, $Expect = $null) {
     if (($id -eq '') -and ("$($r.executionId)" -eq '')) { $refuse.Add("ambiguous: result $n ($name) has neither testId nor executionId"); continue }
     if (($id -eq '') -and ($null -ne $Expect)) { $refuse.Add("unmatched: result $n ($name) has no testId, so no test definition can match it"); continue }
     if ($id -eq '') { $id = "exec-$($r.executionId)" }
+    elseif (($defs.Count -gt 0) -and $defs.ContainsKey($id) -and ($defs[$id] -cne $name)) { $refuse.Add("ambiguous: result $n names $name, but its testId $id is defined as $($defs[$id])"); continue }
     elseif ((($defs.Count -gt 0) -or ($null -ne $Expect)) -and (-not $defs.ContainsKey($id))) { $refuse.Add("unmatched: result $n ($name) names testId $id, which no test definition carries"); continue }
     $end = [datetime]::MinValue
     try { $end = ([datetimeoffset]::Parse("$($r.endTime)", [System.Globalization.CultureInfo]::InvariantCulture)).UtcDateTime } catch { }
