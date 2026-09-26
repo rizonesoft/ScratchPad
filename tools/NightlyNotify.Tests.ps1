@@ -728,13 +728,21 @@ Assert ((@($qn | Where-Object { $_ -like 'Service GREEN on a different test popu
 # Item 16: a relocated bundle's link still opens, a gone one reads
 # expired, and a title naming test content is lock-screen safe.
 $g16 = Join-Path $d55 'links'
-$null = New-Item -ItemType Directory -Force -Path (Join-Path $g16 'retained/run1/bundles/MenuBarTests-cs-Open-023000')
-'x' | Set-Content -LiteralPath (Join-Path $g16 'retained/run1/bundles/MenuBarTests-cs-Open-023000/bundle.json')
-$lk1 = Resolve-EvidenceLink 'bundle C:\gone\bundles\MenuBarTests-cs-Open-023000\bundle.json' $g16
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $g16 'retained/run1/bundles/20260925/MenuBarTests-cs-Open-023000')
+'x' | Set-Content -LiteralPath (Join-Path $g16 'retained/run1/bundles/20260925/MenuBarTests-cs-Open-023000/bundle.json')
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $g16 'retained/run2/bundles/20260926/MenuBarTests-cs-Open-023000')
+'y' | Set-Content -LiteralPath (Join-Path $g16 'retained/run2/bundles/20260926/MenuBarTests-cs-Open-023000/bundle.json')
+$lk1 = Resolve-EvidenceLink 'bundle C:\gone\bundles\20260925\MenuBarTests-cs-Open-023000\bundle.json' $g16
+# R4-A1: two retained runs share the folder name; each link opens its
+# own day, and a match on two copies links neither.
+$lk1b = Resolve-EvidenceLink 'bundle C:\gone\bundles\20260926\MenuBarTests-cs-Open-023000\bundle.json' $g16
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $g16 'retained/run3/bundles/20260926/MenuBarTests-cs-Open-023000')
+'z' | Set-Content -LiteralPath (Join-Path $g16 'retained/run3/bundles/20260926/MenuBarTests-cs-Open-023000/bundle.json')
+$lk1c = Resolve-EvidenceLink 'bundle C:\gone\bundles\20260926\MenuBarTests-cs-Open-023000\bundle.json' $g16
 $lk2 = Resolve-EvidenceLink 'screenshot C:\gone\bundles\Other-cs-X-010101\leak.png' $g16
 $ls1 = Protect-LockScreenTitle 'Nightly 2026-09-25 : RED MenuBarTests.OpenFile failed'
 $ls2 = Protect-LockScreenTitle 'Nightly 2026-09-25 : RED (test)'
-Assert (($lk1.State -eq 'relocated') -and (Test-Path ($lk1.Link.Substring(7))) -and ($lk2.State -eq 'expired') -and ($ls1 -eq 'Nightly 2026-09-25 : details on unlock') -and ($ls2 -eq 'Nightly 2026-09-25 : RED (test)') -and (Test-LockScreenSafe 'Incident INC-0123abcd overdue (owner operator, due 2026-09-30)')) 's55-links-relocate-and-lock-screen-stays-private' "$($lk1.Link) | $($lk2.Link) | $ls1"
+Assert (($lk1.State -eq 'relocated') -and ($lk1.Link -like '*run1*20260925*') -and ($lk1b.Link -like '*run2*20260926*') -and ($lk1c.State -eq 'ambiguous') -and (Test-Path ($lk1.Link.Substring(7))) -and ($lk2.State -eq 'expired') -and ($ls1 -eq 'Nightly 2026-09-25 : details on unlock') -and ($ls2 -eq 'Nightly 2026-09-25 : RED (test)') -and (Test-LockScreenSafe 'Incident INC-0123abcd overdue (owner operator, due 2026-09-30)')) 's55-links-relocate-and-lock-screen-stays-private' "$($lk1.Link) | $($lk2.Link) | $ls1"
 
 # Item 17: one taxonomy: every class routes in docs/testing.md, and §24
 # and §33 name the code-derived taxonomy.

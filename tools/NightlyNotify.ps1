@@ -1488,11 +1488,17 @@ function Resolve-EvidenceLink([string]$Link, [string]$NightDir) {
   if (-not $m.Success) { return [pscustomobject]@{ Link = $Link; State = 'expired' } }
   $kind = $m.Groups[1].Value; $path = $m.Groups[2].Value; $ln = $m.Groups[3].Value
   if (Test-Path -LiteralPath $path) { return [pscustomobject]@{ Link = $Link; State = 'present' } }
+  # The match keeps the originating run's identity (section 55 R4-A1):
+  # the last three path parts (the day folder, the bundle folder named by
+  # test and time, and the file) must match, and more than one retained
+  # match is ambiguous and links nothing, so an alert never opens another
+  # run's evidence.
   $parts = @($path -split '[\\/]' | Where-Object { $_ -ne '' })
-  $tail = if ($parts.Count -ge 2) { Join-Path $parts[-2] $parts[-1] } else { $parts[-1] }
+  $k = [math]::Min(3, $parts.Count)
+  $tail = '\' + ((@($parts | Select-Object -Last $k)) -join '\')
   $ret = Join-Path $NightDir 'retained'
-  foreach ($c in @(Get-ChildItem -LiteralPath $ret -Recurse -File -Filter $parts[-1] -ErrorAction SilentlyContinue)) {
-    if ($c.FullName.EndsWith($tail, [System.StringComparison]::OrdinalIgnoreCase)) { return [pscustomobject]@{ Link = "$kind $($c.FullName)$ln"; State = 'relocated' } }
-  }
+  $hits = @(Get-ChildItem -LiteralPath $ret -Recurse -File -Filter $parts[-1] -ErrorAction SilentlyContinue | Where-Object { ($_.FullName -replace '/', '\').EndsWith($tail, [System.StringComparison]::OrdinalIgnoreCase) })
+  if ($hits.Count -eq 1) { return [pscustomobject]@{ Link = "$kind $($hits[0].FullName)$ln"; State = 'relocated' } }
+  if ($hits.Count -gt 1) { return [pscustomobject]@{ Link = "$kind $path$ln (ambiguous: $($hits.Count) retained copies match; not linked)"; State = 'ambiguous' } }
   return [pscustomobject]@{ Link = "$kind $path$ln (expired: past retention)"; State = 'expired' }
 }
