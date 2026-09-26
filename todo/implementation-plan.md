@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **138 of 328 sections complete (42%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **138 of 329 sections complete (42%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -321,6 +321,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T01 §33` | F1 context help                                                     |   4   |
 | [ ] | `D01 T01 §34` | Pinned-tab close regressions                                        |   3   |
 | [ ] | `D01 T01 §35` | Fix-or-remove the night-triage quarantines                          |  11   |
+| [ ] | `D01 T01 §36` | Bounded single-instance redirect                                    |   4   |
 | [ ] | `D02 T03 §1`  | Spellcheck engine over the buffer                                   |   6   |
 | [ ] | `D02 T03 §2`  | Squiggles and suggestions UI                                        |   6   |
 | [ ] | `D02 T03 §3`  | Autocorrect                                                         |   4   |

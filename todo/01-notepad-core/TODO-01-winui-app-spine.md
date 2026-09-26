@@ -91,6 +91,7 @@ track: N1
 |  32   |   §33   | F1 context help | D07 T01 §11 |  [ ]   |
 |  33   |   §34   | Pinned-tab close regressions | §13 |  [ ]   |
 |  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9, D01 T01 §34, D01 T02 §16, D00 T02 §5 |  [ ]   |
+|  35   |   §36   | Bounded single-instance redirect | §8 |  [ ]   |
 
 ---
 
@@ -322,6 +323,8 @@ Why this section exists: this section is the last line before data loss. Every d
 > **Started:** 2026-09-15T16:48:37Z
 
 Why this section exists: Notepad opens from Explorer and from the command line. An exact clone does both.
+
+- -> XREF: D01 T01 §36 -- bounds this section's single-instance redirect (a second launch into a closing primary hung).
 
 **Groomed 2026-09-13:** Notepad audit: the Jump List, Explorer file-drop, and the /P + /PT print flags are now explicit.
 
@@ -1074,6 +1077,30 @@ Why this section exists: the D00 T02 §9 night triage quarantined 7 UI tests (re
 - [ ] Commit: `"notepad-core: fix-or-remove the night-triage quarantines"`
 
 **Test checkpoint:** All seven windows closed by fix (un-skipped, soak-green) or removal (decision row with replacement coverage or accepted risk) (PR26); full UI run green. Cheaper substitute that fails: removals without rows, or fixes without soak proof.
+
+## 36. Bounded Single-Instance Redirect
+
+Why this section exists: a second launch that finds a primary instance still shutting down hangs forever. `RedirectAndExitAsync` (`src/ScratchPad/App.Launch.cs`) awaits `AppInstance.RedirectActivationToAsync` with no bound, so the launcher lives on with no window and never exits. Measured 2026-09-26 in the D00 T02 §48 stamp Run A: `DirtyPromptTests` launched pid 53276 while the previous test's primary was closing; it sat idle (all threads waiting, zero top-level windows) for over 20 minutes, and every later launch redirected into it and exited, cascading five UI failures. For a user, the files a second launch was asked to open would never appear.
+
+**Fidelity:** new build, no baseline (stock Notepad's second launch into a closing instance was not probed; the parity rule it must keep is §8's single-instance routing).
+
+**Job:** A second launch always ends: it hands its files to a live primary, becomes the primary itself when the old one is gone, or fails loud; the files a user opened never vanish. Consumer: §8's command-line and association routing.
+
+**Treatment:** Bound the redirect; on timeout, check whether the registered primary still lives; if it is gone, re-register for the key and continue as the primary (draining `LaunchDrops`, which already hold the files); if it lives but never answers, exit non-zero with the drops kept for the next primary. Cheaper substitute that fails the checkpoint: a timeout that exits and drops the files.
+
+**Chrome:** none (no surface).
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T01 §8 -- owns the single-instance routing whose redirect this section bounds.
+- -> SOURCE: runa-2026-09-26-s48b (`UI.DirtyPromptTests.SaveOnPathedDirtyTabWritesBytesAndCloses` launched pid 53276 with no window; `LaunchTests.PrintToBogusPrinterExits2`, `SessionRestoreTests.MissingFileNotifiesOnActivationAndDropsFromSnapshot`, `SessionRestoreTests.WindowCloseRecordsNoRecent`, and `SettingsPageTests.AboutShowsNameAndVersion` failed behind it; all five pass in isolation)
+
+- [ ] The redirect is bounded: `RedirectActivationToAsync` waits at most a stated bound, and the launcher never outlives it. Done when: a fixture whose primary never answers ends the launcher within the bound.
+- [ ] A launcher whose primary is gone becomes the primary: it re-registers for the single-instance key, drains `LaunchDrops`, and opens the requested files. Done when: a second launch racing the primary's exit opens its file in a new primary window.
+- [ ] A primary that lives but never answers fails loud: the launcher exits non-zero, logs why, and keeps the drops for the next primary. Done when: the drops survive and the next launch opens them.
+- [ ] Commit: `"notepad-core: bound the single-instance redirect"`
+
+**Test checkpoint:** A second launch into a closing, a gone, and a silent primary each ends within the bound with its files opened or kept; no launcher survives without a window. Cheaper substitute that fails: a timeout that exits and drops the files.
 
 ## Verification
 
