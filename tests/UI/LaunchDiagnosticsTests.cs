@@ -45,6 +45,17 @@ public sealed class LaunchDiagnosticsTests
             var b = UiLaunchDiagnostics.SweepSummary(log, 0xB2);
             var c = UiLaunchDiagnostics.SweepSummary(log, 0xC3);
             var t = UiLaunchDiagnostics.SweepSummary(["sweep main=0xD4 target=-32000,-3"], 0xD4);
+            // R1-I1: a lone delayed pass, two generations, and a line cut
+            // after its generation are never complete; other records for
+            // the main (retarget, cost) are not sweep lines.
+            var lone = UiLaunchDiagnostics.SweepSummary(["sweep-late main=0xE5 target=-32000,-32000 gen=9 pinned= skipped= verdict=pass"], 0xE5);
+            var mixed = UiLaunchDiagnostics.SweepSummary(["sweep main=0xF6 target=-32000,-32000 gen=9 pinned= skipped= verdict=pass", "sweep-late main=0xF6 target=-32000,-32000 gen=10 pinned= skipped= verdict=pass"], 0xF6);
+            var cut = UiLaunchDiagnostics.SweepSummary(["sweep main=0xA7 target=-32000,-32000 gen=7 ", "sweep-late main=0xA7 target=-32000,-32000 gen=7 pinned= skipped= verdict=pass"], 0xA7);
+            var other = UiLaunchDiagnostics.SweepSummary(["sweep main=0xA8 target=-32000,-32000 gen=3 pinned= skipped= verdict=pass", "retarget main=0xA8 from=0,0 to=-32000,-32000", "cost phase=sweep main=0xA8 ms=1.0 claims=1 pending-late=1 windows=2", "sweep-late main=0xA8 target=-32000,-32000 gen=3 pinned= skipped= verdict=pass"], 0xA8);
+            Assert.Equal("initial-missing", lone.Outcome);
+            Assert.Equal(("conflict", "conflict"), ((string)mixed.Generation!, mixed.Outcome));
+            Assert.Equal("truncated", cut.Outcome);
+            Assert.Equal((3L, "complete"), ((long)other.Generation!, other.Outcome));
             Assert.Equal((7L, "complete"), ((long)a.Generation!, a.Outcome));
             Assert.Equal((8L, "late-missing"), ((long)b.Generation!, b.Outcome));
             Assert.Equal("log-missing", c.Outcome);

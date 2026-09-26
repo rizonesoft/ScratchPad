@@ -279,6 +279,48 @@ public sealed class SiblingSelectionTests
         Assert.Equal(SiblingSelection.Pin, d[0x900]);
     }
 
+    // §48 item 6 (R1-R1): the factory's failure path, driven through the
+    // helper App.AddWindow constructs every window with. A construction
+    // whose base constructor begins its snapshot and then throws, before
+    // the derived constructor body runs, leaves no pending snapshot or
+    // claim, so the next birth sweeps clean.
+    [Fact]
+    public void BaseConstructorFailureThroughTheFactoryLeavesTheNextBirthClean()
+    {
+        var slot = new SiblingSnapshotSlot();
+        SiblingSnapshot? begun = null;
+        var ex = Assert.Throws<InvalidOperationException>(() => SiblingSelection.ConstructOrAbandon(() => new FailingWindow(slot, s => begun = s), () => slot.Abandon()));
+        Assert.Equal("base constructor failed", ex.Message);
+        Assert.NotNull(begun);
+        Assert.Null(slot.Take(begun));
+        Assert.Empty(slot.Claims);
+        SiblingSnapshot next = slot.Begin(SiblingSelection.Begin([0x300], UiThread));
+        SiblingSnapshot? taken = slot.Take(next);
+        Assert.NotNull(taken);
+        var d = SiblingSelection.Decide([new(0x300, 0x300, UiThread, false), new(0x900, 0x900, UiThread, false)], taken, Main, slot.Claims).ToDictionary(x => x.Handle, x => x.Reason);
+        Assert.Equal("preexisting", d[0x300]);
+        Assert.Equal(SiblingSelection.Pin, d[0x900]);
+    }
+
+    // A window whose base constructor begins the birth's snapshot and then
+    // fails, as a WinUI base constructor can.
+    class FailingBase
+    {
+        protected FailingBase(SiblingSnapshotSlot slot, Action<SiblingSnapshot> begun)
+        {
+            begun(slot.Begin(SiblingSelection.Begin([0x300], UiThread)));
+            throw new InvalidOperationException("base constructor failed");
+        }
+    }
+
+    sealed class FailingWindow : FailingBase
+    {
+        internal FailingWindow(SiblingSnapshotSlot slot, Action<SiblingSnapshot> begun)
+            : base(slot, begun)
+        {
+        }
+    }
+
     // §48 item 8: a target a monitor attached since now shows is recomputed
     // before the delayed move; one still off-screen is kept.
     [Fact]
@@ -291,7 +333,10 @@ public sealed class SiblingSelectionTests
     }
 
     // §48 item 9: twenty births and teardowns keep the claim table bounded
-    // by the live windows and each decision within its latency budget.
+    // by the live windows and each decision within its latency budget. This
+    // bounds the pure decision; the native enumeration, pins, and delayed
+    // passes are measured in the app by the UI suite's
+    // LaunchTests.TwentyBirthsAndTeardownsStayWithinBudget (R1-R2).
     [Fact]
     public void RepeatedBirthsKeepClaimsAndLatencyBounded()
     {

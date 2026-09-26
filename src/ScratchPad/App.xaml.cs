@@ -87,18 +87,10 @@ public partial class App : Application
 
     private void AddWindow(SessionWindow? restore)
     {
-        MainWindow window;
-        try
-        {
-            window = new MainWindow(firstWindow: windows.Count == 0, restore: restore);
-        }
-        catch
-        {
-            // A construction that threw before its sweep leaves nothing for
-            // the next birth (D00 T02 §48 item 6).
-            MainWindow.AbandonPendingSweep();
-            throw;
-        }
+        // A construction that threw before its sweep leaves nothing for the
+        // next birth (D00 T02 §48 item 6): the shared factory helper
+        // abandons its pending snapshot before the exception propagates.
+        MainWindow window = SiblingSelection.ConstructOrAbandon(() => new MainWindow(firstWindow: windows.Count == 0, restore: restore), MainWindow.AbandonPendingSweep);
 
         windows.Add(window);
         window.Closed += (_, _) => windows.Remove(window);

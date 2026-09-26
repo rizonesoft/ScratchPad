@@ -446,6 +446,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // which handles the sweep chose instead of inferring it from moves.
         internal static void Sweep(nint main, SiblingSnapshot? token)
         {
+            long started = Stopwatch.GetTimestamp();
             SiblingSnapshot? snapshot = Pending.Take(token);
             Pending.Release((h, gen) => NativeMethods.IsWindow(h) && (long)NativeMethods.GetProp(h, ClaimProperty) == gen);
             List<SiblingTopLevel> windows = ProcessTopLevels();
@@ -462,6 +463,18 @@ public sealed partial class MainWindow : Window, IDisposable
             }
 
             LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep", generation, SiblingSelection.PlacementVerdict(final, windows.ToDictionary(w => w.Handle))));
+            LogCost("sweep", main, started, windows.Count);
+        }
+
+        // The cost of one pass (D00 T02 §48 item 9, R1-R2): its elapsed time
+        // (enumeration, attribution, pins, readback) and the state it
+        // leaves retained, the claim table and the pending delayed passes,
+        // so the UI suite proves the budget on the real native path.
+        static void LogCost(string phase, nint main, long started, int windows)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            double ms = Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            LogSweep($"cost phase={phase} main=0x{((long)main).ToString("X", inv)} ms={ms.ToString("F1", inv)} claims={Pending.Claims.Count.ToString(inv)} pending-late={PendingLate.Count.ToString(inv)} windows={windows.ToString(inv)}");
         }
 
         // A construction that failed before its sweep (§48 item 6): the
@@ -514,6 +527,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // once more on the first UI-thread idle after the show.
         internal static void Late(nint main)
         {
+            long started = Stopwatch.GetTimestamp();
             if (!PendingLate.Remove(main, out var last))
             {
                 return;
@@ -536,6 +550,7 @@ public sealed partial class MainWindow : Window, IDisposable
             var (final, pinnedAt) = PinDecided(main, windows, decisions);
             ClaimAll(last.Snapshot.Generation, final.Where(d => d.Reason == SiblingSelection.Pin).Select(d => d.Handle));
             LogSweep(SiblingSelection.Describe(main, targetX, targetY, final, pinnedAt, "sweep-late", last.Snapshot.Generation, SiblingSelection.PlacementVerdict(final, windows.ToDictionary(w => w.Handle))));
+            LogCost("sweep-late", main, started, windows.Count);
         }
 
         // Records the claims and stamps each window with its claim mark.

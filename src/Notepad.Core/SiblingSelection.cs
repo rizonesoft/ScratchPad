@@ -74,6 +74,26 @@ public static class SiblingSelection
 
     static long generations;
 
+    // The window factory's failure path (§48 item 6, R1-R1): runs the
+    // construction and, when it throws (a base constructor included, before
+    // the constructor body ran), abandons the pending snapshot before the
+    // exception propagates, so the failed birth leaves nothing for the next
+    // one. App.AddWindow constructs every window through it.
+    public static T ConstructOrAbandon<T>(Func<T> construct, Action abandon)
+    {
+        ArgumentNullException.ThrowIfNull(construct);
+        ArgumentNullException.ThrowIfNull(abandon);
+        try
+        {
+            return construct();
+        }
+        catch
+        {
+            abandon();
+            throw;
+        }
+    }
+
     public static SiblingSnapshot Begin(IEnumerable<nint> current, uint constructingThread)
     {
         ArgumentNullException.ThrowIfNull(current);

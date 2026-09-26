@@ -233,12 +233,15 @@ internal static class UiLaunchDiagnostics
         return found;
     }
 
-    // One record's sweep summary (D00 T02 §48 item 7): only lines naming
-    // this main count; the generation is theirs (null when none, or
-    // "conflict" when they disagree); the outcome is complete (a sweep
-    // and its delayed pass), late-missing, log-missing (no line for a
-    // background birth), truncated (a line the parser cannot read), or
-    // none (no background birth).
+    // One record's sweep summary (D00 T02 §48 item 7, R1-I1): only sweep
+    // and delayed-pass lines naming this main count (retarget, cost, and
+    // planted lines are other records); the generation is theirs (null
+    // when none, or "conflict" when they disagree); the outcome is complete
+    // (one whole initial sweep and a whole delayed pass of one
+    // generation), truncated (a line missing any field through its
+    // verdict), initial-missing (a delayed pass with no sweep), conflict
+    // (lines of more than one generation), late-missing, log-missing (no
+    // line for a background birth), or none (no background birth).
     internal static (object? Generation, string Outcome) SweepSummary(string[] lines, nint main)
     {
         if (main == nint.Zero || Environment.GetEnvironmentVariable(UiLaunch.BackgroundVariable) != "1")
@@ -246,29 +249,45 @@ internal static class UiLaunchDiagnostics
             return (null, lines.Length == 0 ? "none" : "unexpected-lines");
         }
 
-        string prefix = $" main=0x{(long)main:X} ";
-        var mine = lines.Where(l => l.Contains(prefix, StringComparison.Ordinal)).ToList();
+        string hex = $"0x{(long)main:X}";
+        var mine = lines.Where(l => l.StartsWith($"sweep main={hex} ", StringComparison.Ordinal) || l.StartsWith($"sweep-late main={hex} ", StringComparison.Ordinal)).ToList();
         if (mine.Count == 0)
         {
             return (null, "log-missing");
         }
 
         var gens = new HashSet<long>();
+        bool initial = false;
+        bool late = false;
         foreach (string l in mine)
         {
-            var m = Regex.Match(l, @" gen=(\d+) ");
-            if (m.Success)
+            if (l.StartsWith("sweep-late ", StringComparison.Ordinal) && l.Contains(" missing:", StringComparison.Ordinal))
             {
-                gens.Add(long.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
+                continue;
             }
-            else if (!l.Contains(" missing:", StringComparison.Ordinal))
+
+            var m = Regex.Match(l, @"^(sweep|sweep-late) main=0x[0-9A-F]+ target=-?\d+,-?\d+ gen=(\d+) pinned=\S* skipped=\S* verdict=\S+$");
+            if (!m.Success)
             {
                 return (null, "truncated");
             }
+
+            gens.Add(long.Parse(m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture));
+            initial |= m.Groups[1].Value == "sweep";
+            late |= m.Groups[1].Value == "sweep-late";
         }
 
         object? gen = gens.Count == 1 ? gens.First() : gens.Count == 0 ? null : "conflict";
-        bool late = mine.Any(l => l.StartsWith("sweep-late ", StringComparison.Ordinal) && !l.Contains(" missing:", StringComparison.Ordinal));
+        if (gens.Count > 1)
+        {
+            return (gen, "conflict");
+        }
+
+        if (!initial)
+        {
+            return (gen, "initial-missing");
+        }
+
         return (gen, late ? "complete" : "late-missing");
     }
 

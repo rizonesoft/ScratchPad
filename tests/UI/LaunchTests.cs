@@ -1268,15 +1268,78 @@ public sealed class LaunchTests
     }
 
     // D00 T02 §48 item 5: the completeness check fails on a helper the sweep
-    // log never names, whatever the snapshot said.
+    // log never names, whatever the snapshot said, and (R1-A1) on a newly
+    // observed helper the sweep skipped as preexisting or another owner's
+    // instead of pinning it; the app's own worker-thread window passes.
     [Fact]
     public void FirstBirthGapsNameAHelperAbsentFromTheSweepLog()
     {
-        var birth = new SweepLine(0x100, -32000, -32000, [0x300], new() { [0x300] = (-32000, -32000) }, new() { [0x200] = "preexisting" }, "sweep");
-        var late = new SweepLine(0x100, -32000, -32000, [], [], new() { [0x400] = "other-owner" }, "sweep-late") { Phase = "sweep-late" };
-        var gaps = FirstBirthGaps([0x100, 0x200, 0x300, 0x400, 0x500], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late);
-        Assert.Equal(new List<nint> { 0x500 }, gaps);
-        Assert.Empty(FirstBirthGaps([0x100, 0x200, 0x300, 0x400], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late));
+        var birth = new SweepLine(0x100, -32000, -32000, [0x300], new() { [0x300] = (-32000, -32000) }, new() { [0x200] = "preexisting", [0x600] = "preexisting" }, "sweep");
+        var late = new SweepLine(0x100, -32000, -32000, [0x410], new() { [0x410] = (-32000, -32000) }, new() { [0x400] = "other-owner", [0x700] = "worker-thread" }, "sweep-late") { Phase = "sweep-late" };
+        var gaps = FirstBirthGaps([0x100, 0x200, 0x300, 0x400, 0x410, 0x500, 0x600, 0x700], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late);
+        Assert.Equal(new List<nint> { 0x400, 0x500, 0x600 }, gaps);
+        Assert.Empty(FirstBirthGaps([0x100, 0x200, 0x300, 0x410, 0x700], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late));
+    }
+
+    // D00 T02 §48 item 9 (R1-R2): the budget on the real native path.
+    // Twenty menu births, each closed again, run the app's enumeration,
+    // attribution, pins, and delayed pass; every pass logs its elapsed
+    // time and the state it leaves retained (claims, pending delayed
+    // passes). Each pass stays under the latency budget, and the claim
+    // table and pending passes never grow past the first birth's.
+    // Focus-free: background births paint off-screen and the menu is
+    // invoked through UIA.
+    [Fact]
+    public void TwentyBirthsAndTeardownsStayWithinBudget()
+    {
+        const double PassBudgetMs = 250;
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true, WhenStarts = WhenStartsRouting.Fresh }, drainLaunchDrops: true);
+        using var sweepLog = new SweepLogScope();
+        nint fgBefore = UiForeground.Capture();
+        using var app = UiLaunch.LaunchAppWithArgs(string.Empty, drainLaunchDrops: true);
+        using var automation = new UIA3Automation();
+        var first = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+        UiForeground.Background(first, fgBefore);
+        Assert.NotNull(first);
+        try
+        {
+            nint firstMain = first.Properties.NativeWindowHandle.Value;
+            _ = sweepLog.ReadLate(firstMain);
+            var born = new List<nint>();
+            for (int i = 0; i < 20; i++)
+            {
+                UiInput.InvokeMenuItem(first, "MenuFile", "MenuFileNewWindow");
+                var windows = Retry.While(
+                    () => app.GetAllTopLevelWindows(automation).ToList(),
+                    found => found.Count != 2,
+                    TimeSpan.FromSeconds(10),
+                    TimeSpan.FromMilliseconds(200),
+                    lastValueOnTimeout: true).Result ?? [];
+                Assert.True(windows.Count == 2, $"birth {i + 1} did not open a second window ({windows.Count} window(s))");
+                Window child = windows.First(w => w.Properties.NativeWindowHandle.Value != firstMain);
+                nint childMain = child.Properties.NativeWindowHandle.Value;
+                _ = sweepLog.ReadLate(childMain);
+                born.Add(childMain);
+                child.Close();
+                int left = Retry.While(() => app.GetAllTopLevelWindows(automation).Length, n => n != 1, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200), lastValueOnTimeout: true).Result;
+                Assert.True(left == 1, $"teardown {i + 1} left {left} window(s)");
+            }
+
+            var costs = sweepLog.ReadCosts().Where(c => born.Contains(c.Main)).ToList();
+            output.WriteLine(string.Join(Environment.NewLine, costs.Select(c => c.Raw)));
+            Assert.True(costs.Count(c => c.Phase == "sweep") == 20 && costs.Count(c => c.Phase == "sweep-late") == 20, $"expected a cost line per pass for 20 births, read {costs.Count}");
+            var slow = costs.Where(c => c.Ms > PassBudgetMs).ToList();
+            Assert.True(slow.Count == 0, $"pass(es) over the {PassBudgetMs} ms budget: {string.Join("; ", slow.Select(c => c.Raw))}");
+            var firstBirth = costs.Where(c => c.Main == born[0]).ToList();
+            int claimBudget = firstBirth.Max(c => c.Claims);
+            int lateBudget = firstBirth.Max(c => c.PendingLate);
+            var grown = costs.Where(c => c.Claims > claimBudget || c.PendingLate > lateBudget).ToList();
+            Assert.True(grown.Count == 0, $"retained state grew past the first birth's (claims {claimBudget}, pending delayed passes {lateBudget}): {string.Join("; ", grown.Select(c => c.Raw))}");
+        }
+        finally
+        {
+            CloseAll(app, automation);
+        }
     }
 
     // D00 T02 §41 item 9: the first birth's preexisting set, checked against
@@ -1460,25 +1523,32 @@ public sealed class LaunchTests
         internal string Verdict { get; init; } = string.Empty;
     }
 
-    // The first-birth completeness check (D00 T02 §48 item 5): every
+    // The first-birth completeness check (D00 T02 §48 item 5, R1-A1): every
     // window observed from outside after the birth that the outside
-    // observation before it never saw, and that is no main, must appear
-    // in the birth's sweep or its delayed pass; one the sweep log never
-    // names escaped both the snapshot and the sweep. Returns the missed
-    // handles.
+    // observation before it never saw, and that is no main, must be pinned
+    // by the birth's sweep or its delayed pass (the pin check then proves
+    // it reached the target). A helper the sweep log never names escaped
+    // both the snapshot and the sweep; one it skipped as preexisting,
+    // another owner's, or anything but the app's own worker thread was
+    // misclassified. Returns the missed handles.
     internal static List<nint> FirstBirthGaps(IEnumerable<nint> observedAfter, ISet<nint> observedBefore, ISet<nint> mains, SweepLine birth, SweepLine? late)
     {
-        var named = new HashSet<nint>(birth.Pinned.Concat(birth.Skipped.Keys));
+        var pinned = new HashSet<nint>(birth.Pinned);
+        var worker = new HashSet<nint>(birth.Skipped.Where(kv => kv.Value == "worker-thread").Select(kv => kv.Key));
         if (late is not null)
         {
-            named.UnionWith(late.Pinned.Concat(late.Skipped.Keys));
+            pinned.UnionWith(late.Pinned);
+            worker.UnionWith(late.Skipped.Where(kv => kv.Value == "worker-thread").Select(kv => kv.Key));
         }
 
-        return [.. observedAfter.Where(h => !observedBefore.Contains(h) && !mains.Contains(h) && !named.Contains(h))];
+        return [.. observedAfter.Where(h => !observedBefore.Contains(h) && !mains.Contains(h) && !pinned.Contains(h) && !worker.Contains(h))];
     }
 
     // Arms the app's test-only sweep log (the run marker plus the log path,
     // both inherited by the launched app) and restores both on dispose.
+    // One pass's cost line (D00 T02 §48 R1-R2).
+    internal sealed record SweepCost(string Phase, nint Main, double Ms, int Claims, int PendingLate, string Raw);
+
     internal sealed class SweepLogScope : IDisposable
     {
         readonly string? priorLog = Environment.GetEnvironmentVariable("SCRATCHPAD_SWEEP_LOG");
@@ -1499,6 +1569,28 @@ public sealed class LaunchTests
 
         // The delayed pass's line for a birth (D00 T02 §41 item 4).
         internal SweepLine ReadLate(nint main) => Read(line => line.Phase == "sweep-late" && line.Main == main, $"no delayed-pass line for the birth of 0x{main:X}");
+
+        // Every pass's cost line (D00 T02 §48 R1-R2) logged so far.
+        internal List<SweepCost> ReadCosts()
+        {
+            var costs = new List<SweepCost>();
+            if (!File.Exists(Path))
+            {
+                return costs;
+            }
+
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            foreach (string line in File.ReadAllLines(Path))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(line, @"^cost phase=(sweep|sweep-late) main=0x([0-9A-F]+) ms=(\d+(?:\.\d+)?) claims=(\d+) pending-late=(\d+) windows=(\d+)$");
+                if (m.Success)
+                {
+                    costs.Add(new SweepCost(m.Groups[1].Value, (nint)long.Parse(m.Groups[2].Value, System.Globalization.NumberStyles.HexNumber, inv), double.Parse(m.Groups[3].Value, inv), int.Parse(m.Groups[4].Value, inv), int.Parse(m.Groups[5].Value, inv), line));
+                }
+            }
+
+            return costs;
+        }
 
         // The handle the late-helper seam planted for a birth, or zero.
         internal nint ReadPlanted(nint main)
