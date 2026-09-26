@@ -966,6 +966,23 @@ $dm2 = @(Update-DisclosureMigration $dmStore)
 $dmMarker2 = Test-Path "$dmStore.disclosure"
 Assert ((@($dm1 | Where-Object { $_ -like '*could not sanitize metrics.jsonl.bak*' }).Count -eq 1) -and (-not $dmMarker1) -and $dmMarker2 -and (-not (Test-Path "$dmStore.disclosure.progress"))) 's54-disclosure-migration-resumes-and-names-failures' (($dm1 + $dm2) -join ' | ')
 Remove-Item $dmDir -Recurse -Force
+# D00 T02 §54 item 13: an append that would eat compaction's working
+# space refuses by name, and a store at its cap still compacts.
+$cpDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-capacity'
+if (Test-Path $cpDir) { Remove-Item $cpDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $cpDir
+$cpStore = Join-Path $cpDir 'metrics.jsonl'
+$null = Sync-MetricsStore $cpStore @((New-Night '2026-09-10' '2026-09-10-023000'))
+$cpSize = (Get-Item $cpStore).Length
+$script:MetricsFreeBytes = 1000
+$null = Sync-MetricsStore $cpStore @((New-Night '2026-09-11' '2026-09-11-023000'))
+$cpErr = $script:MetricsWriteError
+$script:MetricsFreeBytes = $null
+$null = Sync-MetricsStore $cpStore @((New-Night '2026-09-11' '2026-09-11-023000')) -MaxBytes ((Get-Item $cpStore).Length + 10)
+$cpCap = $script:MetricsWriteError
+$cpCompact = Compress-MetricsStore $cpStore
+Assert (($cpErr -like 'metrics append refused: it would leave less than the working space*') -and ((Get-Item $cpStore).Length -gt 0) -and ($cpCap -like '*over capacity*') -and ($cpCompact -like 'metrics: compacted *')) 's54-store-at-cap-still-compacts' "$cpErr | $cpCap | $cpCompact"
+Remove-Item $cpDir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'

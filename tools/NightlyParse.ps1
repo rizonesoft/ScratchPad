@@ -4718,6 +4718,9 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
   return [pscustomobject]@{ Known = $true; Lost = $lost }
 }
 
+# Free-space seam for fixtures (section 54 item 13); $null reads the disk.
+$script:MetricsFreeBytes = $null
+
 function Get-MetricsMergeUnitOf([string]$Field) {
   # The unit a merged field belongs to, or '' when it never merges.
   foreach ($u in @($script:MetricsMergeUnits.Keys)) { if (@($script:MetricsMergeUnits[$u]) -contains $Field) { return $u } }
@@ -4825,7 +4828,14 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
       # refused write never blocks pruning of archived stamps (pruning
       # only reads the store).
       if ((($size + $payloadBytes) -le $MaxBytes) -and (($size + $payloadBytes) -ge (0.9 * $MaxBytes))) { $script:MetricsCapacityWarning = "metrics store at $([int](100 * ($size + $payloadBytes) / $MaxBytes))% of its $MaxBytes-byte cap; run tools/NightlyTrend.ps1 -Compact or raise the cap before writes are refused (pruning of archived stamps keeps running either way)" }
-      if (($size + $payloadBytes) -gt $MaxBytes) { $script:MetricsWriteError = "metrics store over capacity ($size bytes + $payloadBytes > $MaxBytes); run tools/NightlyTrend.ps1 -Compact, then raise the cap if it is still over (history is never deleted; pruning of archived stamps still runs)" }
+      # Working space (section 54 item 13): an append must leave the disk room
+      # for a later compaction's backup and temp copy (twice the grown store)
+      # plus a restore, so a full store can always regain capacity.
+      $freeNow = $script:MetricsFreeBytes
+      if ($null -eq $freeNow) { try { $freeNow = (New-Object System.IO.DriveInfo ([System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path)))).AvailableFreeSpace } catch { $freeNow = [long]::MaxValue } }
+      $workNeed = $payloadBytes + (2 * ($size + $payloadBytes)) + 1MB
+      if ([long]$freeNow -lt $workNeed) { $script:MetricsWriteError = "metrics append refused: it would leave less than the working space a compaction and restore need ($workNeed bytes; $freeNow free); run tools/NightlyTrend.ps1 -Compact or free disk space" }
+      elseif (($size + $payloadBytes) -gt $MaxBytes) { $script:MetricsWriteError = "metrics store over capacity ($size bytes + $payloadBytes > $MaxBytes); run tools/NightlyTrend.ps1 -Compact, then raise the cap if it is still over (history is never deleted; pruning of archived stamps still runs)" }
       else {
         # A failed append (a full disk) leaves the store as it was: the
         # write is one call, and a partial line is repaired by the clean-end
