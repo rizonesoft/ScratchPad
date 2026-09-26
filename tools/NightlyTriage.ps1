@@ -74,9 +74,12 @@ foreach ($file in @($byFile.Keys)) {
   # An intent-only run's line with no completion record was never written
   # (the run stopped between the intent and the write); with one, its
   # absence is an edit.
-  $neverWritten = @($edited | Where-Object { ($intentOnly -contains $_.Stamp) -and (-not $writtenIntent.ContainsKey("$($_.Stamp)|$file|$($_.Line)")) })
-  foreach ($e in $neverWritten) { Write-Output "triage: $file never received a line intended by $($e.Stamp) (the run stopped before the write); nothing to commit for it" }
-  $edited = @($edited | Where-Object { $neverWritten -notcontains $_ })
+  # Without a completion record a missing line is ambiguous (section 53
+  # R2-A1): the run may have stopped before the write, or after it and
+  # before recording completion, with the line removed since. Triage
+  # fails closed and names how the operator confirms it.
+  $unconfirmed = @($edited | Where-Object { ($intentOnly -contains $_.Stamp) -and (-not $writtenIntent.ContainsKey("$($_.Stamp)|$file|$($_.Line)")) })
+  if ($unconfirmed.Count -gt 0) { Write-Output "triage: REFUSED: $file lacks $($unconfirmed.Count) line(s) $(@($unconfirmed | ForEach-Object { $_.Stamp } | Sort-Object -Unique) -join ', ') intended with no completion record (it stopped between the intent and the record, so the write may have landed and been removed); confirm the line was never written, then remove its intent from that run's tracked-writes.intent.jsonl"; $refused++; continue }
   if ($edited.Count -gt 0) { Write-Output "triage: REFUSED: $file no longer carries $($edited.Count) line(s) recorded by $(@($edited | ForEach-Object { $_.Stamp } | Sort-Object -Unique) -join ', ') (edited or removed after the run; restore the recorded text or re-run the collection)"; $refused++; continue }
   if ($pendingRows.Count -eq 0) { Write-Output "triage: $file already carries every recorded line"; continue }
   $pending = @($pendingRows | ForEach-Object { $_.Line })

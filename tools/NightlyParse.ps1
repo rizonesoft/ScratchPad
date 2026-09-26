@@ -919,14 +919,19 @@ function Invoke-WithSweepLock([scriptblock]$Body, [int]$WaitMs = 30000) {
 #   <stamp>\captures-*\.staging  interrupted captures: the next run's start
 #                                  sweep (Clear-StaleCaptureStaging)
 #   <stamp>\captures-*\*.dmp     process dumps: 7 days (Clear-CaptureLeftovers)
-#   <stamp>\captures-*            screenshots and text: the run folder's
-#                                  retention (NightlyRetention, 30 days)
+#   <stamp>\captures-*            text: the run folder's retention
+#                                  (NightlyRetention, 30 days)
+#   <stamp>\captures-*\*.png     screenshots: 30 days on their own
+#                                  (Clear-CaptureLeftovers), since the
+#                                  protected snapshot's folder outlives
+#                                  pruning (section 53 R2-C1)
 #   %TEMP%\bounded-*.code         diagnostic temporaries: 1 day
 #                                  (Clear-CaptureLeftovers)
 #   refused retention              a run refused retention keeps no retained
 #                                  copy; its captures follow the run folder
 $script:DumpExpiryDays = 7
 $script:TempExpiryDays = 1
+$script:ScreenshotExpiryDays = 30
 
 function Clear-CaptureLeftovers([string]$NightDir, [string]$TempDir, [datetime]$Now, [string[]]$LiveStamps = @()) {
   # Sweeps binary leftovers past their expiry (section 53 item 4): dumps
@@ -940,6 +945,10 @@ function Clear-CaptureLeftovers([string]$NightDir, [string]$TempDir, [datetime]$
   $dumpCut = $Now.AddDays(-$script:DumpExpiryDays)
   foreach ($s in @(Get-ChildItem -LiteralPath $NightDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (-not (Test-ReparsePoint $_)) -and ($LiveStamps -notcontains $_.Name) })) {
     foreach ($cd in @(Get-ChildItem -LiteralPath $s.FullName -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -like 'captures-*') -and (-not (Test-ReparsePoint $_)) })) {
+      foreach ($f in @(Get-ChildItem -LiteralPath $cd.FullName -Filter '*.png' -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $Now.AddDays(-$script:ScreenshotExpiryDays) })) {
+        try { Remove-VerifiedItem $f.FullName $NightDir; $notes += "- capture leftovers: screenshot $($s.Name)\$($cd.Name)\$($f.Name) expired ($($script:ScreenshotExpiryDays) days), deleted" }
+        catch { $notes += "- capture leftovers: screenshot $($s.Name)\$($cd.Name)\$($f.Name) expired but could not be deleted ($($_.Exception.Message))" }
+      }
       foreach ($f in @(Get-ChildItem -LiteralPath $cd.FullName -Filter '*.dmp' -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $dumpCut })) {
         try { Remove-VerifiedItem $f.FullName $NightDir; $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired ($($script:DumpExpiryDays) days), deleted" }
         catch { $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired but could not be deleted ($($_.Exception.Message))" }
@@ -2187,7 +2196,12 @@ function Read-StagedDebt([string]$Path) {
     $occ = $(try { [int]$o.occurrence } catch { 1 })
     $maxOcc["$($o.case)"] = [Math]::Max($occ, $(if ($maxOcc.ContainsKey("$($o.case)")) { $maxOcc["$($o.case)"] } else { 0 }))
     if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = [pscustomobject]@{ Case = "$($o.case)"; Occurrence = $occ; Token = "$($o.token)" } }
-    elseif ("$($o.state)" -eq 'collected') { $open.Remove("$($o.receipt)"); $collected += [pscustomobject]@{ Case = "$($o.case)"; Stamp = "$($o.stamp)" } }
+    elseif ("$($o.state)" -eq 'collected') {
+      $open.Remove("$($o.receipt)")
+      # One collection per receipt (section 53 R2-I1): a replayed record
+      # of the same receipt never removes a second obligation.
+      if (@($collected | Where-Object { $_.Receipt -eq "$($o.receipt)" }).Count -eq 0) { $collected += [pscustomobject]@{ Receipt = "$($o.receipt)"; Case = "$($o.case)"; Stamp = "$($o.stamp)" } }
+    }
     else { $bad += $n }
   }
   return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc; Collected = $collected }

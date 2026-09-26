@@ -106,9 +106,13 @@ $never = '**Night-collected:** 2026-09-26 b (1 passed, 0 failed, 0 skipped; log 
 @(([pscustomobject]@{ file = 'todo/T.md'; line = $line2; written = $false } | ConvertTo-Json -Compress), ([pscustomobject]@{ file = 'todo/T.md'; line = $line2; written = $true } | ConvertTo-Json -Compress), ([pscustomobject]@{ file = 'todo/T.md'; line = $never; written = $false } | ConvertTo-Json -Compress)) | Set-Content -LiteralPath (Join-Path $run2 'tracked-writes.intent.jsonl') -Encoding UTF8
 [System.IO.File]::WriteAllText($todo2, "# T`n- Night-owed: a`n$line2`nend`n")
 $crash = Invoke-Triage @('-WorkspaceRoot', $ws2)
+# Once the operator confirms the unwritten line and removes its intent,
+# the written line is attributed and ready.
+@(([pscustomobject]@{ file = 'todo/T.md'; line = $line2; written = $false } | ConvertTo-Json -Compress), ([pscustomobject]@{ file = 'todo/T.md'; line = $line2; written = $true } | ConvertTo-Json -Compress)) | Set-Content -LiteralPath (Join-Path $run2 'tracked-writes.intent.jsonl') -Encoding UTF8
+$confirmed = Invoke-Triage @('-WorkspaceRoot', $ws2)
 [System.IO.File]::WriteAllText($todo2, "# T`n- Night-owed: a`n$($line2 -replace '1 passed', '2 passed')`nend`n")
 $edited = Invoke-Triage @('-WorkspaceRoot', $ws2)
-Assert (($crash.Code -eq 0) -and ($crash.Text -like '*2026-09-26-023001 has no manifest*attributed from the write-ahead intents*') -and ($crash.Text -like '*never received a line intended by 2026-09-26-023001*') -and ($crash.Text -like '*todo/T.md ready (1 line(s) from 2026-09-26-023001)*') -and ($edited.Code -eq 1) -and ($edited.Text -like '*REFUSED: todo/T.md no longer carries 1 line(s) recorded by 2026-09-26-023001 (edited or removed after the run*')) 's53-crash-before-the-manifest-is-attributed-and-edits-refuse' "$($crash.Text) || $($edited.Text)"
+Assert (($crash.Text -like '*2026-09-26-023001 has no manifest*attributed from the write-ahead intents*') -and ($crash.Code -eq 1) -and ($crash.Text -like '*REFUSED: todo/T.md lacks 1 line(s) 2026-09-26-023001 intended with no completion record*') -and ($confirmed.Code -eq 0) -and ($confirmed.Text -like '*todo/T.md ready (1 line(s) from 2026-09-26-023001)*') -and ($edited.Code -eq 1) -and ($edited.Text -like '*REFUSED: todo/T.md no longer carries 1 line(s) recorded by 2026-09-26-023001 (edited or removed after the run*')) 's53-crash-before-the-manifest-is-attributed-and-edits-refuse' "$($crash.Text) || $($confirmed.Text) || $($edited.Text)"
 Remove-Item $ws2 -Recurse -Force
 $env:CLAUDE_CODE_SESSION_ID = $savedSession
 Remove-Item $ws -Recurse -Force

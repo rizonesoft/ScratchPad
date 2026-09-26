@@ -2348,6 +2348,24 @@ $c2a = Join-Path $c2Dir 'a.json'; $c2b = Join-Path $c2Dir 'b.json'
 [pscustomobject]@{ stamp = '2026-09-25-023001'; identity = 'id-p'; previousStamp = '2026-09-23-023001'; verdict = 'red'; incidents = @() } | ConvertTo-Json | Set-Content -LiteralPath $c2b -Encoding UTF8
 $c2 = Get-ReplayOrder @($c2a, $c2b)
 Assert (@($c2.Refusals | Where-Object { $_ -like 'conflicting duplicate result id-p*' }).Count -eq 1) 's53-provenance-conflict-refuses' (@($c2.Refusals) -join ' | ')
+# D00 T02 §53 R2-I1: a collection record replayed for one receipt closes
+# one obligation, never two; R2-C1: an old screenshot expires on its own.
+$r2j = Join-Path $dir 's53-dup-collect.jsonl'
+if (Test-Path $r2j) { Remove-Item $r2j -Force }
+$null = Add-StagedDebtLines $r2j @('UI.D.T', 'UI.D.T') 'staged' '2026-09-25-023001' 'twins'
+$null = Add-StagedDebtLines $r2j @('UI.D.T') 'collected' '2026-09-26-023001' 'one'
+$r2line = @([System.IO.File]::ReadAllLines($r2j) | Where-Object { $_ -like '*"collected"*' })[0]
+Add-Content -LiteralPath $r2j -Value $r2line
+$r2read = Read-StagedDebt $r2j
+$r2rem = Remove-CollectedSinceResult @('UI.D.T', 'UI.D.T') @($r2read.Collected) '2026-09-25-120000'
+$r2png = Join-Path $dir 's53-png'
+if (Test-Path $r2png) { Remove-Item $r2png -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $r2png '2026-08-01-023001\captures-run-a')
+$r2shot = Join-Path $r2png '2026-08-01-023001\captures-run-a\run-a.png'
+'png' | Set-Content -LiteralPath $r2shot -Encoding UTF8
+(Get-Item $r2shot).LastWriteTime = [datetime]::new(2026, 8, 1)
+$r2notes = @(Clear-CaptureLeftovers $r2png (Join-Path $dir 's53-png-tmp') ([datetime]::new(2026, 9, 26)))
+Assert ((@($r2read.Collected).Count -eq 1) -and (@($r2rem.Owed).Count -eq 1) -and (-not (Test-Path $r2shot)) -and (($r2notes -join '') -like '*screenshot 2026-08-01-023001\captures-run-a\run-a.png expired (30 days), deleted*')) 's53-replayed-collection-and-old-screenshot' "owed=$(@($r2rem.Owed).Count) | $($r2notes -join ' | ')"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
