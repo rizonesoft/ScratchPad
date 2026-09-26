@@ -93,7 +93,7 @@ track: W0
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [x]   |
 |   51  |   §51   | Binding guard third residuals | §43 |  [x]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [x]   |
-|   53  |   §53   | Nightly evidence fourth residuals | §45 |  [ ]   |
+|   53  |   §53   | Nightly evidence fourth residuals | §45 |  [x]   |
 |   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [ ]   |
 |   55  |   §55   | Notify redesign residuals | §24 |  [ ]   |
 
@@ -1734,6 +1734,13 @@ Why this section exists: the §45 plan review returned 15 findings; 13 file here
 - [x] Commit: `"workspace: settle the fourth nightly evidence residuals"`
 
 **Test checkpoint:** Sweeps stay inside the root and coordinate, consent is explicit, binary copies expire everywhere, snapshots survive low disk, replay has invariants, alias collisions reconcile, qualification is per incident, writes order recoverably, the tree line says what it holds, the chain is end-to-end, completeness is structured, and a compound failure recovers. Cheaper substitute that fails: another note in the morning report.
+
+> **Verified:** 2026-09-26 | §53 | the staging and leftover sweeps delete only handle-bound objects inside the evidence root and spare every live owner under one lock; the report names the capture policy in force; every binary capture location has an expiry; a snapshot replacement reserves room and never strands a partial copy; the ledger rebuild orders its replay deterministically or refuses duplicates, rollbacks, and ambiguous or conflicting snapshots and checkpoints by name; alias collisions keep ownership and deadlines; a trusted failure resets streaks on a non-qualifying run; collector writes follow a write-ahead intent and triage attributes a stopped run and refuses edits; the tree line distinguishes clean from pending collector writes; evidence completeness is one structured record; one real-graph chain and one compound night end recoverable; and the §52 carry-ins (snapshot presence, array identity, journaled collection) hold.
+> **Review:** round 5 (Full), candidates `a367718`..`d3a713d` `554df53` `995cc95` `089d516` `9a2ef32` -- GPT R1-R2 bulk needs-attention (R1-A1, A2, C1, C2, I1, I2, R1 and R2-A1, C1, I1 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` advisory · `integration` needs-attention · `record` approve (gpt-6-astra); R3-I1 and the advisory C1 fixed in 089d516, R4 depth R4-C1, I1, I2 fixed in 9a2ef32, R5 depth (`adversarial` approve · `consistency` approve · `record` approve) left R5-I1, rejected as unreachable under the single-instance guard. Raw findings: docs/reviews/00-workspace/D00-T02-s53.md
+> **Plan review:** GPT medium, 14 rejected under the 2026-09-26 filing bar (fourth-residuals depth: 7 already hold, 7 hardening), none filed (run 20260926-D00-T02-S53-codex-c06751119-r6)
+> **CRUD:** not-applicable | nightly evidence and triage tooling; no user data
+> **Duration:** 2026-09-26T10:26:57Z to 2026-09-26T12:03:57Z
+> **Reviewed-tip:** 9a2ef32
 
 ## 54. Trend and Telemetry Fourth Residuals
 
