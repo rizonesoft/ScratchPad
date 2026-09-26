@@ -1044,6 +1044,12 @@ SEVERITY_MAP: dict[str, str] = {
     # duration past a day, tokens past a billion): totals rest on checked
     # records (D00 T04 §1 items 12-13).
     "panel-telemetry-shape": "fatal",
+    # a plan-review ledger whose derived filed, rejected, duplicate,
+    # deferred, or accepted totals disagree with the counts its Triage
+    # header or its stamp states, or a SOURCE parenthetical whose parts do
+    # not sum to its `N findings`: hand-counted tallies drift (D00 T04 §1
+    # item 19).
+    "ledger-tally-mismatch": "fatal",
     # an outage marker whose (rung, event-day) key resolves to no
     # findings-file outage note, an outage note no marker keys, or a
     # duplicated or malformed note key: unattributed failure
@@ -11046,6 +11052,8 @@ track: Z1
 |  90   |   §90   | Duplicate and out-of-range Telemetry lines fire | - |  [x]   |
 |  91   |   §91   | Near-miss Telemetry shapes fire as malformed | - |  [x]   |
 |  92   |   §92   | Clean Telemetry per round stays silent | - |  [x]   |
+|  93   |   §93   | Ledger tallies that disagree fire | - |  [x]   |
+|  94   |   §94   | Ledger tallies that agree stay silent | - |  [x]   |
 
 ---
 
@@ -12061,6 +12069,32 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tel-ok.md
 > **Plan review:** GPT high, no findings
 
+## 93. Ledger tallies that disagree fire
+
+Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s1-2026-09-27-s93 (5 findings, 1 filed here, 2 rejected)
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §93 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tally-bad.md
+> **Plan review:** GPT high, no findings
+
+## 94. Ledger tallies that agree stay silent
+
+Why this section exists: fixture.
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §94 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tally-ok.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12511,6 +12545,9 @@ track: Z1
         (rev_dir / "90-panel-arch-noround.md").write_text("# Review: fixture\nArch trigger: storage - settings format changes\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         (rev_dir / "90-panel-arch-badhead.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review\n\nverdict: approve\n\nArch outage: both rungs - timeout\n\nArch outage: somewhere - x\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         (rev_dir / "90-panel-arch-ok.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review (Arch-1 fallback)\n\nArch outage: arch-primary - timeout\n\nverdict: approve\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        # Ledger tallies (D00 T04 §1 item 19).
+        (rev_dir / "90-panel-tally-bad.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\n## Plan review\n\nRound: fixture. Triage: 2 rejected under the bar; 0 accepted; none filed\n\nLedger:\n\n- [D90-T06-S93-PR1] [minor] a -> rejected below the bar\n- [D90-T06-S93-PR2] [minor] b -> accepted for triage\n\nEnd of ledger\n", encoding="utf-8")
+        (rev_dir / "90-panel-tally-ok.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\n## Plan review\n\nRound: fixture. Triage: 2 rejected under the bar; none filed\n\nLedger:\n\n- [D90-T06-S94-PR1] [minor] a -> rejected below the bar\n- [D90-T06-S94-PR2] [minor] b -> rejected below the bar\n\nEnd of ledger\n", encoding="utf-8")
         # Telemetry shapes (D00 T04 §1 items 12-13).
         (rev_dir / "90-panel-tel-missing.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n", encoding="utf-8")
         (rev_dir / "90-panel-tel-dup.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 2; model gpt-6-astra; effort galactic; duration 90000s; outcome approve; tokens 1000\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
@@ -12951,6 +12988,26 @@ track: Z1
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "Triage header stating a count the ledger does not carry fires",
+            any("TODO-06-panel.md" in ln and "§93 " in ln and "Triage header states 2 rejected but the ledger carries 1" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "a zero count beside a matching ledger row fires",
+            any("TODO-06-panel.md" in ln and "§93 " in ln and "states 0 accepted but the ledger carries 1" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "ledger tallies that agree stay silent",
+            any("TODO-06-panel.md" in ln and "§94 " in ln and "ledger carries" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "a post-cutover SOURCE summary whose parts do not sum fires",
+            any("TODO-06-panel.md" in ln and "SOURCE summary" in ln and "sums its parts to 3, not 5 findings" in ln for ln in panel_out),
+            True,
+        )
         check(
             "panel round without a Telemetry line fires",
             any("TODO-06-panel.md" in ln and "§89 " in ln and "round 1 carries no Telemetry line" in ln for ln in panel_out),

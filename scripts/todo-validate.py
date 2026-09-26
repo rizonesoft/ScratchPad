@@ -637,6 +637,79 @@ def validate(graph, _args) -> int:
                 else:
                     flag("panel-telemetry-shape", f"{_twhere} has a malformed Telemetry line: `{_ml[:80]}`")
 
+    # Ledger tallies self-check (D00 T04 §1 item 19). (a) On stamps after
+    # the disposition cutover, every count the plan review's Triage text
+    # (the section text before `Ledger:`) or the stamp's `Plan review:`
+    # marker states as `<n> filed|rejected|duplicate(s)|deferred|accepted`
+    # (or `none filed`) must equal the ledger rows with that disposition.
+    # (b) A parenthetical `(... <N> findings, ...)` on a SOURCE line whose
+    # plan-review key is dated after the cutover must sum its filed,
+    # duplicate, and rejected parts to N.
+    _tally_re = re.compile(r"\b([0-9]{1,4})\s+(filed|rejected|duplicates?|deferred|accepted)\b", re.IGNORECASE)
+    _none_filed_re = re.compile(r"\bnone filed\b", re.IGNORECASE)
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is None or s.stamped_on <= graph.DISPOSITION_CUTOVER:
+                continue
+            _lm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not _lm:
+                continue
+            try:
+                _ltext = (graph.TODO_DIR.parent / _lm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _ltext, _lunb = graph.strip_fenced_code(_ltext)
+            if _lunb is not None:
+                continue
+            _lwhere = f"{t.path}:{s.line}: §{num} findings {_lm.group(1)}"
+            for _h in graph.PLAN_REVIEW_HEADING_RE.finditer(_ltext):
+                _sec = _ltext[_h.end():]
+                _nx = re.search(r"^#{1,6}\s+", _sec, re.MULTILINE)
+                if _nx:
+                    _sec = _sec[: _nx.start()]
+                _block, _prob = graph.ledger_block(_sec)
+                if _block is None:
+                    continue
+                _derived: dict[str, int] = {}
+                for _lr in graph.LEDGER_ROW_RE.finditer(_block):
+                    _k = _lr.group(3).lower()
+                    _derived[_k] = _derived.get(_k, 0) + 1
+                _head = _sec[: graph.LEDGER_OPEN_RE.search(_sec).start()] if graph.LEDGER_OPEN_RE.search(_sec) else ""
+                for _src, _txt in (("Triage header", _head), ("stamp's Plan review marker", getattr(s, "plan_review_body", "") or "")):
+                    _stated: dict[str, int] = {}
+                    for _tm2 in _tally_re.finditer(_txt):
+                        _w = _tm2.group(2).lower().rstrip("s")
+                        _w = "duplicate" if _w.startswith("duplicate") else _w
+                        _stated.setdefault(_w, graph.parse_bounded_int(_tm2.group(1), 9999) or 0)
+                    if _none_filed_re.search(_txt):
+                        _stated.setdefault("filed", 0)
+                    for _w, _n in _stated.items():
+                        if _derived.get(_w, 0) != _n:
+                            flag("ledger-tally-mismatch", f"{_lwhere} {_src} states {_n} {_w} but the ledger carries {_derived.get(_w, 0)}")
+    _src_paren_re = re.compile(r"\(([^()]*?\b([0-9]{1,4}) findings\b[^()]*)\)")
+    _src_part_re = re.compile(r"\b([0-9]{1,4})\s+(filed here|filed at siblings|filed|duplicates?|rejected)\b", re.IGNORECASE)
+    for t in todos:
+        try:
+            _tlines = (graph.TODO_DIR.parent / t.path).read_text(encoding="utf-8").splitlines()
+        except OSError:
+            _tlines = []
+        for _li, _line in enumerate(_tlines, 1):
+            if "-> SOURCE:" not in _line:
+                continue
+            # Forward only: older SOURCE parentheticals are narrative (they
+            # count sibling filings elsewhere, items, or unnumbered rows), so
+            # only plan-review keys dated after the cutover are summed.
+            _kd = re.findall(r"plan-review-[A-Za-z0-9-]*?-(\d{4}-\d{2}-\d{2})", _line)
+            if not _kd or max(_kd) <= graph.DISPOSITION_CUTOVER:
+                continue
+            for _pm in _src_paren_re.finditer(_line):
+                _total = graph.parse_bounded_int(_pm.group(2), 9999) or 0
+                _parts = [graph.parse_bounded_int(x.group(1), 9999) or 0 for x in _src_part_re.finditer(_pm.group(1))]
+                if _parts and sum(_parts) != _total:
+                    flag("ledger-tally-mismatch", f"{t.path}:{_li}: SOURCE summary `({_pm.group(1)[:90]})` sums its parts to {sum(_parts)}, not {_total} findings")
+
     # Panel disposition tables (D00 T04 §1 items 3 and 4). Every panel
     # round's findings get IDs (`R<round>-<lens letter><n>`, or the older
     # `R<round>-F<n>`), and the LAST `| ID | Disposition | Evidence |`

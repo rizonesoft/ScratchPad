@@ -64,19 +64,19 @@ Why this section exists: the About bar is the repo's thirty-second pitch and the
   1. Click the About gear icon again.
   2. In the `Topics` field, type each name and press Enter: `notepad`, `winui-3`, `dotnet`, `acp`, `ai-agents`, `windows-11`, `text-editor`.
   3. Click `Save changes`.
-- [ ] The social preview shows the hero screenshot. Done when: the Settings social-preview box renders the hero image.
-  1. Download the hero shot: open `https://github.com/rizonesoft/ScratchPad/raw/main/docs/assets/readme-hero.png` and save it to your machine (or copy it from your local clone).
+- [ ] The social preview shows the hero screenshot. Done when: the Settings social-preview box renders the hero image. Quality criteria (D00 T04 §1 item 17): the uploaded image is exactly 1280 x 640 (GitHub's recommended size; D00 T03 §4 produces `docs/assets/social-preview.png` at that size), and its product name and window content stay readable when the card shows at about 400 x 200 in a link unfurl.
+  1. Download the preview image: open `https://github.com/rizonesoft/ScratchPad/raw/main/docs/assets/social-preview.png` (until D00 T03 §4 ships it, the hero `docs/assets/readme-hero.png`, which GitHub crops) and save it to your machine (or copy it from your local clone).
   2. Open `https://github.com/rizonesoft/ScratchPad/settings`, scroll to `Social preview`, and click `Edit`.
   3. Click `Upload an image...`, pick the saved hero file, and click `Save`.
-- [ ] Proof is captured in the repo. Done when: `docs/assets/setup-proof/phase99-s1-about.png` exists on `main` and shows the finished About bar.
-  1. Screenshot the repo page About bar (description plus topics visible), cropped to the About bar with avatars, account menus, and browser chrome excluded, and save it as `phase99-s1-about.png`.
+- [ ] Proof is captured in the repo. Done when: `docs/assets/setup-proof/phase99-s1-about.png` exists on `main` and shows the finished About bar, and `docs/assets/setup-proof/phase99-s1-social-preview.png` exists on `main` and shows the finished Settings social-preview box with the uploaded image (the durable artifact for the preview, since the Settings form is visible only to the owner).
+  1. Screenshot the repo page About bar (description plus topics visible), cropped to the About bar with avatars, account menus, and browser chrome excluded, and save it as `phase99-s1-about.png`; then screenshot the Settings `Social preview` box after the save, cropped to the box, and save it as `phase99-s1-social-preview.png`.
   2. On GitHub, open the `docs/assets/setup-proof/` folder (create the folders with `Add file`, `Create new file`, typing `docs/assets/setup-proof/.gitkeep` first if the folder does not exist yet), click `Add file`, `Upload files`, drop the screenshot, and click `Commit changes`.
-- [ ] Agent verification (agent-run, after your record commit below lands): the agent curls the public repo API and reads the proof image. Done when: the API quotes the description plus all seven topics and the proof image shows them.
+- [ ] Agent verification (agent-run, after your record commit below lands): the agent curls the public repo API, reads both proof images, and checks the public unfurl: the repo page's `og:image` meta points at the uploaded preview (`repository-images.githubusercontent.com`), not GitHub's generated default card (`opengraph.githubassets.com`). Done when: the API quotes the description plus all seven topics, the proof images show them and the preview box, and the `og:image` URL is quoted from the logged-out page.
 - [ ] Commit: `"docs: record Phase 99 §1 completion with proof"` -- operator ticks every item above except agent verification via the GitHub web editor (open this file, pencil icon, `- [ ]` to `- [x]` on each finished line, `Commit changes`); the agent verifies, ticks its item, and appends its verification note in a second commit, and review stamps the range.
 
 **Requires:** operator -- owner's logged-in browser session for About, topics, and social preview; agents hold no GitHub credentials (D00 T01 §42).
 
-**Test checkpoint:** a logged-out browser on the repo page shows the description and topics, the social-preview box in Settings renders the hero, and the proof file exists on `main`. Cheaper substitute that fails: trusting the Settings form without reloading the public page.
+**Test checkpoint:** each check has its actor. Operator (in session, logged in): the Settings social-preview box renders the uploaded 1280 x 640 image, and both proof files are committed. Agent (public, logged out): the repo API quotes the description and all seven topics, the proof images show the About bar and the preview box, and the repo page's `og:image` points at the uploaded preview rather than the generated default. Cheaper substitute that fails: trusting the Settings form without reloading the public page.
 
 ## 2. Branch Protection with Required Checks
 
