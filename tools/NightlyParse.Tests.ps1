@@ -2246,6 +2246,39 @@ $ecClean = Get-EvidenceCompleteness @('- nothing degraded')
 $ecText = @(Format-EvidenceSummary @() 's' $ecRec)
 $ecJson = ConvertTo-Json $ecRec -Depth 4 | ConvertFrom-Json
 Assert (($ecRec.schema -eq 'evidence/1') -and (-not $ecRec.complete) -and ($ecRec.severity -eq 'red') -and (@($ecRec.classes | Where-Object { ($_.name -eq 'ledger faults') -and ($_.exitEffect -eq 'already red') }).Count -eq 1) -and (@($ecRec.classes | Where-Object { ($_.name -eq 'capture refusals') -and ($_.exitEffect -eq 'none') }).Count -eq 1) -and $ecClean.complete -and ($ecClean.severity -eq 'none') -and ($ecText[0] -eq '- Evidence DEGRADED for s: 2 class(es), severity red') -and ($ecJson.classes.Count -eq 2)) 's53-evidence-completeness-is-one-record' ($ecText -join ' | ')
+# D00 T02 §53 item 13: one compound scenario. A night refuses its binary
+# capture, hits the run capture quota, and stops mid-publication; the
+# next run sweeps the interrupted staging, its evidence record names the
+# degraded classes without a red, the ledger rebuilds from the results,
+# and the write-ahead intents keep the collector line attributable for
+# triage. The whole night ends recoverable.
+$cxDir = Join-Path $dir 's53-compound'
+if (Test-Path $cxDir) { Remove-Item $cxDir -Recurse -Force }
+$cxStamp = '2026-09-26-023001'
+$cxRun = Join-Path $cxDir $cxStamp
+$cxCap = Join-Path $cxRun 'captures-run-a'
+$null = New-Item -ItemType Directory -Force -Path $cxCap
+$cxWasBin = $script:BinaryCapturesAllowed
+$script:BinaryCapturesAllowed = $false
+$cxNotes = @(Invoke-FailureCapture 'run-a' $cxCap $true)
+$script:BinaryCapturesAllowed = $cxWasBin
+[System.IO.File]::WriteAllBytes((Join-Path $cxCap 'big-a.txt'), (New-Object byte[] 4096))
+[System.IO.File]::WriteAllBytes((Join-Path $cxCap 'big-b.txt'), (New-Object byte[] 4096))
+$cxNotes += @(Limit-RunCaptureBudget $cxRun 5000)
+$cxPub = @(try { Publish-TextCapture $cxCap 'late.txt' @('late text') 'run-a' { throw 'process killed mid-publication (fixture)' } } catch { "- run-a : publication interrupted ($($_.Exception.Message))" })
+$cxNotes += $cxPub
+# A kill (not a caught failure) leaves the staged bytes behind.
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $cxCap '.staging')
+'unscanned late text' | Set-Content -LiteralPath (Join-Path $cxCap '.staging\late.txt') -Encoding UTF8
+$cxStaged = Test-Path (Join-Path $cxCap '.staging')
+Add-TrackedWriteIntent $cxRun $cxDir (Join-Path $cxDir 'todo.md') '**Night-collected:** x'
+$cxSweep = @(Clear-StaleCaptureStaging $cxDir '2026-09-27-023001' @('2026-09-27-023001'))
+$cxRecord = Get-EvidenceCompleteness $cxNotes
+$cxRes = Join-Path $cxDir "morning-$cxStamp.result.json"
+[pscustomobject]@{ version = 1; stamp = $cxStamp; identity = "$cxStamp-pid1"; previousStamp = ''; verdict = 'red'; incidents = @('- INC-0000c0de `UI.X.T` x1 (Run A (default))') } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $cxRes -Encoding UTF8
+$cxLedger = New-IncidentLedgerFromResults @($cxRes) '' @{}
+$cxIntents = Read-TrackedWriteIntents $cxRun
+Assert ((@($cxNotes | Where-Object { $_ -like '*CAPTURE-REFUSED*' }).Count -ge 1) -and (@($cxNotes | Where-Object { $_ -match 'truncat|TRUNCATED|dropped' }).Count -ge 1) -and $cxStaged -and (-not (Test-Path (Join-Path $cxCap '.staging'))) -and (($cxSweep -join '|') -like "*swept crash-left $cxStamp\captures-run-a\.staging*") -and (-not $cxRecord.complete) -and ($cxRecord.severity -eq 'warn') -and $cxLedger.ContainsKey('INC-0000c0de') -and (@($cxIntents.Writes).Count -eq 1)) 's53-compound-night-ends-recoverable' ((@($cxNotes) + @($cxSweep) + "severity=$($cxRecord.severity)") -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
