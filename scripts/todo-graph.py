@@ -248,6 +248,10 @@ REQUIRES_ALLOWED: tuple[str, ...] = (
     "operator",
 )
 REQUIRES_BLOCK_RE = re.compile(r"^\*\*Requires:\*\*\s*(?P<body>.+?)\s*$")
+# `**Manual:** <value> -- <reason>` (D00 T04 §1 item 16): the only value is
+# `operator-only`, and it must travel with `**Requires:** operator`.
+MANUAL_BLOCK_RE = re.compile(r"^\*\*Manual:\*\*\s*(?P<body>.*?)\s*$")
+MANUAL_ALLOWED = ("operator-only",)
 REQUIRES_REASON_SEP = " -- "
 
 
@@ -367,6 +371,7 @@ class Section:
     requires: list[str] = field(default_factory=list)  # closed-list values
     requires_unknown: list[str] = field(default_factory=list)  # values outside REQUIRES_ALLOWED
     requires_reason: str = ""        # the cited measurement (required)
+    manual_raw: str | None = None    # `**Manual:**` value as written (D00 T04 §1 item 16)
     line: int = 0
     duration_minutes: int | None = None
     duration_end: str | None = None  # `Duration:` range end instant, Zulu shaped or None
@@ -747,6 +752,9 @@ def parse_todo(path: Path) -> Todo:
                 current.needs_raw = needs.group("value").strip()
                 key = NEEDS_ALLOWED.get(current.needs_raw)
                 current.needs = [key] if key else []
+            man = MANUAL_BLOCK_RE.match(st)
+            if man:
+                current.manual_raw = man.group("body").partition(REQUIRES_REASON_SEP)[0].strip()
             req = REQUIRES_BLOCK_RE.match(st)
             if req:
                 current.requires_has_line = True
@@ -1064,6 +1072,10 @@ SEVERITY_MAP: dict[str, str] = {
     # a `**Requires:**` mark without its reason: the citation is what makes
     # the mark auditable instead of vibes (D00 T01 §13).
     "requires-no-reason": "fatal",
+    # a `**Manual:** operator-only` section without `**Requires:**
+    # operator`, or a Manual value outside the closed list: the manual
+    # mark must travel with the gate that parks the row (D00 T04 §1 item 16).
+    "manual-requires-mismatch": "fatal",
     # a stamp dated after the plan-review rule landed that carries no
     # `Plan review:` completion marker: the second-family round is required
     # procedure, so an unmarked stamp reads as fully reviewed while the
@@ -9770,6 +9782,31 @@ def cmd_self_test(args) -> int:
                   any("§9" in ln and "with no reason" in ln for ln in rfatal), True)
             check("a valid operator mark draws no Requires FATAL",
                   any("§7" in ln for ln in rfatal), False)
+            # Manual rows self-enforce their mark (D00 T04 §1 item 16).
+            _man = root / "todo" / "90-selftest" / "TODO-09-self-test-manual.md"
+            _man.write_text(
+                "---\nschema_version: 1\nid: self-test-manual\ndomain: 90-selftest\nstatus: active\n"
+                "title: \"TODO-09 -- Self-test manual\"\ntrack: Z1\n---\n\n# TODO-09 -- Self-test manual\n\n"
+                "> **Goal:** Fixture. Manual marks.\n\n## Implementation Order\n\n"
+                "| Order | Section | Deliverable | Depends On | Status |\n| :---: | :-----: | ----------- | ---------- | :----: |\n"
+                "|   1   |   §1    | Manual without Requires | -- |  [ ]   |\n|   2   |   §2    | Unknown Manual value | -- |  [ ]   |\n"
+                "|   3   |   §3    | Manual with Requires | -- |  [ ]   |\n\n---\n\n"
+                "## 1. Manual without Requires\n\n**Manual:** operator-only -- owner clicks\n\n- [ ] Do\n- [ ] Commit: `\"x\"`\n\n**Test checkpoint:** `true`\n\n"
+                "## 2. Unknown Manual value\n\n**Manual:** agent-maybe -- unclear\n\n**Requires:** operator -- owner clicks\n\n- [ ] Do\n- [ ] Commit: `\"x\"`\n\n**Test checkpoint:** `true`\n\n"
+                "## 3. Manual with Requires\n\n**Manual:** operator-only -- owner clicks\n\n**Requires:** operator -- owner clicks\n\n- [ ] Do\n- [ ] Commit: `\"x\"`\n\n**Test checkpoint:** `true`\n",
+                encoding="utf-8",
+            )
+            _mbuf = _bio.StringIO()
+            with _bctx.redirect_stdout(_mbuf), _bctx.redirect_stderr(_bio.StringIO()):
+                cmd_validate(None)
+            _man.unlink()
+            _mf = [ln for ln in _mbuf.getvalue().splitlines() if "TODO-09-self-test-manual.md" in ln and "Manual" in ln]
+            check("a Manual operator-only row without Requires operator is FATAL",
+                  any("§1 " in ln and "without **Requires:** operator" in ln for ln in _mf), True)
+            check("an unknown Manual value is FATAL",
+                  any("§2 " in ln and "not in the closed list" in ln for ln in _mf), True)
+            check("a Manual operator-only row with Requires operator stays silent",
+                  any("§3 " in ln for ln in _mf), False)
             check("display-session holds on Windows with SESSIONNAME",
                   detect_context(platform="win32", environ={"SESSIONNAME": "Console"}),
                   {"display-session"})
@@ -9785,18 +9822,31 @@ def cmd_self_test(args) -> int:
             check("display-session fails in session 0 (Services)",
                   detect_context(platform="win32", environ={"SESSIONNAME": "Services"}),
                   set())
-            check("operator never self-reports on Windows with SESSIONNAME",
-                  detect_context(platform="win32", environ={"SESSIONNAME": "Console"}),
-                  {"display-session"})
-            check("operator never self-reports when SESSIONNAME is missing",
-                  detect_context(platform="win32", environ={}),
-                  set())
-            check("operator never self-reports off Windows",
-                  detect_context(platform="linux", environ={}),
-                  set())
-            check("operator never self-reports in session 0 (Services)",
-                  detect_context(platform="win32", environ={"SESSIONNAME": "Services"}),
-                  set())
+            # Operator is never self-reported (D00 T04 §1 item 15): one
+            # not-in sweep over a wider matrix than the display cases,
+            # including operator-suggestive fakes (a USERNAME, an OPERATOR
+            # or SCRATCHPAD_OPERATOR variable, an interactive-looking
+            # terminal, an elevated-looking session) that no display case
+            # covers, so the property is tested rather than restated.
+            _op_matrix = [
+                ("win32", {"SESSIONNAME": "Console"}),
+                ("win32", {"SESSIONNAME": "RDP-Tcp#3"}),
+                ("win32", {}),
+                ("win32", {"SESSIONNAME": "Services"}),
+                ("linux", {}),
+                ("darwin", {"TERM": "xterm-256color"}),
+                ("win32", {"SESSIONNAME": "Console", "OPERATOR": "1"}),
+                ("win32", {"SESSIONNAME": "Console", "SCRATCHPAD_OPERATOR": "yes"}),
+                ("win32", {"USERNAME": "operator", "USERDOMAIN": "OPERATOR"}),
+                ("win32", {"SESSIONNAME": "Console", "PROMPT": "$P$G", "WT_SESSION": "abc"}),
+                ("linux", {"DISPLAY": ":0", "USER": "operator", "SUDO_USER": "operator"}),
+                ("win32", {"SESSIONNAME": "Console", "OPERATOR_PRESENT": "true", "CI": ""}),
+            ]
+            check(
+                "operator never self-reports across the environment matrix (incl. operator-suggestive fakes)",
+                [("operator" in detect_context(platform=p, environ=e)) for p, e in _op_matrix],
+                [False] * len(_op_matrix),
+            )
 
             def ready_lines(**kw):
                 buf = _bio.StringIO()

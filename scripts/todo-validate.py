@@ -193,6 +193,22 @@ def validate(graph, _args) -> int:
                     f"{t.path}:{s.line}: §{num} has **Requires:** with no reason; "
                     "cite the measurement that convicted the section after ` -- `",
                 )
+            # 8e. a Manual mark travels with its gate (D00 T04 §1 item 16):
+            # `**Manual:** operator-only` needs `**Requires:** operator`, and
+            # the Manual value comes from its closed list.
+            if s.manual_raw is not None:
+                if s.manual_raw not in graph.MANUAL_ALLOWED:
+                    flag(
+                        "manual-requires-mismatch",
+                        f"{t.path}:{s.line}: §{num} has **Manual:** `{s.manual_raw}`, not in the closed list "
+                        f"({', '.join('`' + x + '`' for x in graph.MANUAL_ALLOWED)})",
+                    )
+                elif "operator" not in s.requires:
+                    flag(
+                        "manual-requires-mismatch",
+                        f"{t.path}:{s.line}: §{num} is **Manual:** operator-only without **Requires:** operator "
+                        "(the mark parks the row for agents; without it a manual row reads agent-runnable)",
+                    )
             # 13. every section ends on a commit item
             if not s.has_commit_item:
                 flag("no-commit-item", f"{t.path}:{s.line}: §{num} has no '- [ ] Commit:' checklist item")
