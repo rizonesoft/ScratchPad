@@ -983,6 +983,18 @@ $cpCap = $script:MetricsWriteError
 $cpCompact = Compress-MetricsStore $cpStore
 Assert (($cpErr -like 'metrics append refused: it would leave less than the working space*') -and ((Get-Item $cpStore).Length -gt 0) -and ($cpCap -like '*over capacity*') -and ($cpCompact -like 'metrics: compacted *')) 's54-store-at-cap-still-compacts' "$cpErr | $cpCap | $cpCompact"
 Remove-Item $cpDir -Recurse -Force
+# D00 T02 §54 item 14: a derivation-1 value never enters a derivation-2
+# baseline for a series derivation 2 changed.
+$dvWas = $script:DerivationSeries
+$script:DerivationSeries = @{ 2 = @('coverage', 'runa-duration') }
+$dvRows = @()
+foreach ($i in 1..7) { $n = New-Night ('2026-07-{0:d2}' -f $i) ('2026-07-{0:d2}-023000' -f $i) 600; $n | Add-Member -NotePropertyName derivation -NotePropertyValue 1 -Force; $dvRows += $n }
+$dvLatest = New-Night '2026-07-08' '2026-07-08-023000' 5000
+$dvLatest | Add-Member -NotePropertyName derivation -NotePropertyValue 2 -Force
+$dvOut = @(Get-TrendAlerts (@($dvRows) + @($dvLatest)))
+$dvCmp = Test-DerivationComparable $dvRows[0] $dvLatest 'pass-rate'
+$script:DerivationSeries = $dvWas
+Assert ((@($dvOut | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($dvOut | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured*' }).Count -eq 1) -and $dvCmp) 's54-older-derivation-never-enters-a-newer-baseline' ($dvOut -join ' | ')
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'

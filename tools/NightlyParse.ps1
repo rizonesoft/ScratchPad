@@ -4610,6 +4610,27 @@ $script:DisclosureRuleVersion = 2
 # Series whose meaning a derivation changed (section 47 item 13): a row
 # built under an older derivation reads its version in these series.
 $script:DerivationSeries = @{ 2 = @('coverage') }
+
+function Get-RowDerivation($Row) {
+  # A row's derivation: its own field, else 1 for a metrics-sourced row
+  # written before the field, else the current one (a native result).
+  $dv = $(try { $Row.derivation } catch { $null })
+  if ($null -ne $dv) { return [int]$dv }
+  if ([bool]$(try { $Row.fromMetrics } catch { $false })) { return 1 }
+  return [int]$script:MetricsDerivation
+}
+
+function Test-DerivationComparable($Row, $Latest, [string]$Series) {
+  # Derivation isolation (D00 T02 section 54 item 14): a row feeds a
+  # series' baseline, alert, or recovery only when no derivation between
+  # its own and the evaluated row's changed that series' meaning, so an
+  # older derivation's value never enters a newer baseline.
+  $a = Get-RowDerivation $Row; $b = Get-RowDerivation $Latest
+  if ($a -eq $b) { return $true }
+  $lo = [math]::Min($a, $b); $hi = [math]::Max($a, $b)
+  foreach ($dk in @($script:DerivationSeries.Keys)) { if (([int]$dk -gt $lo) -and ([int]$dk -le $hi) -and (@($script:DerivationSeries[$dk]) -contains $Series)) { return $false } }
+  return $true
+}
 $script:MetricsCapacityWarning = ''
 
 # The merge schema (D00 T02 section 54 item 6): every field a native row
@@ -5747,7 +5768,9 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   }
   $la = $null
   try { $la = [double]$latest.legs.'run-a'.testSeconds } catch { }
-  $pa = @($prev | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
+  # Only derivation-comparable nights enter a series' baseline (section 54
+  # item 14).
+  $pa = @($prev | Where-Object { Test-DerivationComparable $_ $latest 'runa-duration' } | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
   # Nights in the baseline that measured no duration are exclusions too
   # (section 47 R1-C1), named with their reason.
   $durExcluded = @($excludedNights) + @($prev | Where-Object { $v = $null; try { $v = $_.legs.'run-a'.testSeconds } catch { }; $null -eq $v } | ForEach-Object { "$(Get-ResultNight $_) (no RunA duration measured)" })
@@ -5797,7 +5820,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   }
   $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
   $lr = & $rate $latest
-  $pr = @($prev | ForEach-Object { & $rate $_ } | Where-Object { $null -ne $_ })
+  $pr = @($prev | Where-Object { Test-DerivationComparable $_ $latest 'pass-rate' } | ForEach-Object { & $rate $_ } | Where-Object { $null -ne $_ })
   $rateExcluded = @($excludedNights) + @($prev | Where-Object { $null -eq (& $rate $_) } | ForEach-Object { "$(Get-ResultNight $_) (pass rate unproven: a killed or cut leg, or no executions)" })
   if ($pr.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'pass-rate' $pr.Count) }
   elseif (($null -ne $lr) -and ($pr.Count -gt 0)) {
