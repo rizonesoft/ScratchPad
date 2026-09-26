@@ -4663,7 +4663,7 @@ function Get-MetricsTombstones([string]$StorePath) {
   if (-not (Test-Path -LiteralPath $p)) { return $map }
   foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
     if ("$ln".Trim() -eq '') { continue }
-    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $script:MetricsTombstoneError = "tombstone ledger has an unreadable line; repair <store>.tombstones.jsonl"; continue }
     $k = "$($o.key)"; $f = "$($o.field)"
     if (($k -eq '') -or ($f -eq '')) { continue }
     if (-not $map.ContainsKey($k)) { $map[$k] = @() }
@@ -4753,6 +4753,7 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
 # Free-space seam for fixtures (section 54 item 13); $null reads the disk.
 $script:MetricsFreeBytes = $null
 $script:MetricsRestoreHold = ''
+$script:MetricsTombstoneError = ''
 
 function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
   # One trend health summary (D00 T02 section 54 item 17): each degraded
@@ -4780,8 +4781,12 @@ function Remove-TombstonedFields($Row, [string]$Key, [hashtable]$LedgerTombs) {
   # Every rendered row, merged or not, drops each field the ledger
   # tombstoned, `env.<name>` fields included (section 54 R2-A1). The row
   # is copied before any change, so the store's own object stays intact.
-  if (($null -eq $LedgerTombs) -or (-not $LedgerTombs.ContainsKey($Key))) { return $Row }
-  $strip = @(Expand-MetricsTombstones @($LedgerTombs[$Key]))
+  # The row's own tombstone counts beside the ledger (section 54 R4-A1), so
+  # a failed ledger write never lets its value render.
+  $own = @(@($(try { $Row.tombstone } catch { @() })) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+  $led = if (($null -ne $LedgerTombs) -and $LedgerTombs.ContainsKey($Key)) { @($LedgerTombs[$Key]) } else { @() }
+  if ((@($own) + @($led)).Count -eq 0) { return $Row }
+  $strip = @(Expand-MetricsTombstones (@($own) + @($led)))
   $has = { param($r, $f) if ($f -like 'env.*') { ($null -ne $r.PSObject.Properties['env']) -and ($null -ne $r.env) -and ($null -ne $r.env.PSObject.Properties[$f.Substring(4)]) } else { $null -ne $r.PSObject.Properties[$f] } }
   if (@($strip | Where-Object { & $has $Row $_ }).Count -eq 0) { return $Row }
   $copy = $Row | ConvertTo-Json -Depth 8 | ConvertFrom-Json
@@ -4845,7 +4850,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     # Every row's tombstone reaches the durable ledger (section 54 item 7).
     foreach ($tk in @($store.Rows.Keys)) {
       $tf = @(@($(try { $store.Rows[$tk].tombstone } catch { @() })) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
-      if ($tf.Count -gt 0) { try { Add-MetricsTombstones $Path $tk $tf $(try { $store.Rows[$tk].revision } catch { $null }) } catch { } }
+      if ($tf.Count -gt 0) { try { Add-MetricsTombstones $Path $tk $tf $(try { $store.Rows[$tk].revision } catch { $null }) } catch { $script:MetricsTombstoneError = "tombstone ledger write failed for ${tk}: $($_.Exception.Message); the row's own tombstone still applies" } }
     }
     $ledgerTombs = Get-MetricsTombstones $Path
     # Native supersedes backfill for the same night (item 11).
@@ -5581,7 +5586,7 @@ function ConvertFrom-MetricsRow($Row) {
   # same trend code, flagged so its row reads (metrics).
   $legs = [pscustomobject]@{}
   foreach ($prop in @($Row.legs.PSObject.Properties)) { $legs | Add-Member -NotePropertyName $prop.Name -NotePropertyValue $prop.Value }
-  return [pscustomobject]@{ version = 1; revision = $(try { $Row.revision } catch { $null }); identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }); hostKey = "$($Row.hostKey)"; populationState = "$($Row.populationState)"; executedUnique = $(try { $Row.executedUnique } catch { $null }); excluded = "$($Row.excluded)"; metricsSource = "$($Row.source)"; derivation = $(try { $Row.derivation } catch { $null }); mergedFrom = "$($Row.mergedFrom)" }
+  return [pscustomobject]@{ version = 1; revision = $(try { $Row.revision } catch { $null }); identity = "$($Row.identity)"; stamp = "$($Row.stamp)"; day = "$($Row.day)"; night = "$($Row.night)"; verdict = "$($Row.verdict)"; launch = "$($Row.launch)"; simulated = [bool]$Row.simulated; legs = $legs; soak = $(if ($null -ne $Row.soak) { $Row.soak } else { [pscustomobject]@{ verdict = '' } }); incidents = @($Row.incidents); reserve = $Row.reserve; consumed = $Row.consumed; env = $(try { $Row.env } catch { [pscustomobject]@{ os = 'unknown'; dpi = 'unknown' } }); fromMetrics = $true; startUtc = $(try { "$($Row.startUtc)" } catch { '' }); tz = $(try { "$($Row.tz)" } catch { '' }); discovery = $(try { $Row.discovery } catch { $null }); metricsBackfill = [bool]$Row.backfill; provenance = $(try { $Row.provenance } catch { $null }); timings = $(try { $Row.timings } catch { $null }); population = $(try { "$($Row.population)" } catch { '' }); commit = $(try { "$($Row.commit)" } catch { '' }); recovered = $(if ("$($Row.recovered)" -ne '') { "$($Row.recovered)" } else { 'none' }); omissionOk = $(if ($null -ne $Row.omissionOk) { [bool]$Row.omissionOk } else { $null }); buildError = "$($Row.buildError)"; scheduler = $(if ($null -ne $Row.scheduler) { $Row.scheduler } else { [pscustomobject]@{ voted = $false; faults = @() } }); quarantine = $(if ($null -ne $Row.quarantine) { $Row.quarantine } else { [pscustomobject]@{ overdue = @(); dueSoon = @() } }); harness = "$($Row.harness)"; populationHash = "$($Row.populationHash)"; incidentEvidence = $(try { $Row.incidentEvidence } catch { $null }); hostKey = "$($Row.hostKey)"; populationState = "$($Row.populationState)"; executedUnique = $(try { $Row.executedUnique } catch { $null }); excluded = "$($Row.excluded)"; metricsSource = "$($Row.source)"; derivation = $(try { $Row.derivation } catch { $null }); mergedFrom = "$($Row.mergedFrom)" }
 }
 
 # Trend window semantics (D00 T02 section 32 items 5 and 6): an alert
@@ -5685,7 +5690,7 @@ function Get-CommitRangeShape([string[]]$Commits) {
   return 'linear'
 }
 
-function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null, $Excluded = @(), [string]$Recovery = '', [int]$WindowNights = 0) {
+function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null, $Excluded = @(), [string]$Recovery = '', [int]$WindowNights = 0, $CoverageRows = $null) {
   # Attribution and drill-through for one alert (section 32 item 15):
   # the contributing runs, the commit range, environment changes, and
   # whether raw evidence or only metrics remain, on an indented line so
@@ -5710,7 +5715,11 @@ function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null,
   # Calendar nights inside the baseline span with no result at all are
   # exclusions too (section 54 item 15, absorbing section 47 R5-C1).
   $exAll = @($Excluded)
-  $seenNights = @(@($Baseline) + @($Latest) | ForEach-Object { Get-ResultNight $_ } | Where-Object { "$_" -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object -Unique)
+  # The nights that have a result come from the coverage rows when the
+  # caller names them (every measured night of the window, section 54
+  # R4-C2), else from the baseline.
+  $covRows = if ($null -ne $CoverageRows) { @($CoverageRows) } else { @($Baseline) }
+  $seenNights = @(@($covRows) + @($Baseline) + @($Latest) | ForEach-Object { Get-ResultNight $_ } | Where-Object { "$_" -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object -Unique)
   if ($seenNights.Count -ge 1) {
     $inv = [System.Globalization.CultureInfo]::InvariantCulture
     $latestNight = [datetime]::ParseExact((Get-ResultNight $Latest), 'yyyy-MM-dd', $inv)
@@ -5795,7 +5804,9 @@ function Get-TrendInputResults([string]$NightDir, [string]$StorePath) {
   # Clone validation runs on the raw results before any row is stored
   # under an alias (section 54 R3-I1), so a refused alias never merges a
   # clone's rows into the target host.
-  $null = Test-HostAliasClones $results
+  $storedRows = @()
+  try { if (Test-Path -LiteralPath $StorePath) { $storedRows = @((Read-MetricsStore $StorePath).Rows.Values) } } catch { }
+  $null = Test-HostAliasClones (@($results) + @($storedRows))
   try {
     $mrows = @(Sync-MetricsStore $StorePath $results)
     $auth = Select-AuthoritativeResults $results $mrows @($script:MetricsStaleSkipped)
@@ -5813,6 +5824,7 @@ function Get-TrendInputResults([string]$NightDir, [string]$StorePath) {
     $results = @($results | Where-Object { $superseded -notcontains (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) })
     $metricsNote = "- Metrics store: $($mrows.Count) row(s), $($fromMetrics.Count) night(s) rendered from metrics after pruning"
     if ("$script:MetricsWriteError" -ne '') { $metricsNote += "; $script:MetricsWriteError" }
+    if ("$script:MetricsTombstoneError" -ne '') { $metricsNote += "; $script:MetricsTombstoneError" }
     if ("$script:MetricsCapacityWarning" -ne '') { $metricsNote += "; WARNING: $script:MetricsCapacityWarning" }
     if (@($script:MetricsStaleSkipped).Count -gt 0) { $metricsNote += "; $(@($script:MetricsStaleSkipped).Count) stale result(s) older than their stored revision left unchanged" }
     if (@($script:MetricsLastMalformed).Count -gt 0) { $metricsNote += "; $(@($script:MetricsLastMalformed).Count) malformed line(s) skipped (lines $(@($script:MetricsLastMalformed) -join ', '); run tools/NightlyTrend.ps1 -Compact)" }
@@ -5925,7 +5937,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   # A cohort still short of samples after many nights says so plainly
   # (section 47 item 5): frequent harness or environment changes must not
   # disable detection silently.
-  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t = @($t, "- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence") } }; $t }
+  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t = @($t, "- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence", (Format-AlertContext $latest $prev "insufficient-$series" $null @() "$series has $($script:TrendMinSamples) comparable baseline nights" $Baseline)) } }; $t }
   if ($pa.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'runa-duration' $pa.Count) }
   elseif (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50
@@ -5951,7 +5963,13 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
     $priorFrom = $latestNight.AddDays(-9).ToString('yyyy-MM-dd'); $priorTo = $latestNight.AddDays(-3).ToString('yyyy-MM-dd')
     $recentRows = @(Select-SameCohort $latest @($r | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $recentFrom) } | Where-Object { try { $null -ne $_.legs.'run-a'.testSeconds } catch { $false } }))
     $priorRows = @(Select-SameCohort $latest @($r | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $priorFrom) -and ($nk -le $priorTo) } | Where-Object { try { $null -ne $_.legs.'run-a'.testSeconds } catch { $false } }))
+    $shiftBefore = ($recentRows.Count -ge 3) -and ($priorRows.Count -ge $script:TrendMinSamples)
+    # Derivation isolation (section 54 R4-C1): only comparable nights, and
+    # a shift left without enough of them says so instead of recovering.
+    $recentRows = @($recentRows | Where-Object { Test-DerivationComparable $_ $latest 'runa-shift' })
+    $priorRows = @($priorRows | Where-Object { Test-DerivationComparable $_ $latest 'runa-shift' })
     $shiftOk = ($recentRows.Count -ge 3) -and ($priorRows.Count -ge $script:TrendMinSamples)
+    if ($shiftBefore -and (-not $shiftOk)) { $alerts += "- Insufficient data: runa-shift ($($priorRows.Count) comparable prior night(s) and $($recentRows.Count) recent after derivation isolation); no runa-shift alert is actionable yet" }
   }
   if ($shiftOk) {
     $recentMed = Get-Percentile @($recentRows | ForEach-Object { [double]$_.legs.'run-a'.testSeconds }) 50
@@ -5959,7 +5977,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
     if (($recentMed -gt 1.2 * $priorMed) -and (($recentMed - $priorMed) -ge 60)) {
       $shift = if ($priorMed -gt 0) { "+$([int][math]::Round(100 * ($recentMed - $priorMed) / $priorMed))%" } else { "+$([int]($recentMed - $priorMed))s over a zero baseline" }
       $alerts += "- ALERT runa-shift: last 3 nights median $([int]$recentMed)s vs the prior 7 nights median $([int]$priorMed)s ($shift, sustained)"
-      $alerts += Format-AlertContext $latest (@($priorRows) + @($recentRows | Where-Object { $_ -ne $latest })) 'runa-shift' @($priorRows | ForEach-Object { [double]$_.legs.'run-a'.testSeconds }) $excludedNights "the last 3 nights' median returns under 120% of the prior 7 nights' median or within 60 s of it"
+      $alerts += Format-AlertContext $latest (@($priorRows) + @($recentRows | Where-Object { $_ -ne $latest })) 'runa-shift' @($priorRows | ForEach-Object { [double]$_.legs.'run-a'.testSeconds }) $excludedNights "the last 3 nights' median returns under 120% of the prior 7 nights' median or within 60 s of it" 9
     }
   }
   $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
@@ -5984,6 +6002,8 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
     $rTo = $latestNight.AddDays(-1).ToString('yyyy-MM-dd')
     $recent = @($r[0..($r.Count - 2)] | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $rFrom) -and ($nk -le $rTo) })
   } else { $recent = @($r[0..($r.Count - 2)] | Select-Object -Last 2) }
+  # Derivation isolation (section 54 R4-C1).
+  $recent = @($recent | Where-Object { Test-DerivationComparable $_ $latest 'recurring-flake' })
   foreach ($id in ($li | Sort-Object -Unique)) {
     $hits = @($recent | Where-Object { (& $ids $_) -contains $id })
     if ($hits.Count -gt 0) {
@@ -5994,7 +6014,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
       $winVals = @()
       if ($windowed) { foreach ($dn in @($rFrom, $rTo)) { $at = @($recent | Where-Object { (Get-ResultNight $_) -eq $dn }); $winVals += $(if ($at.Count -eq 0) { "$dn missing" } elseif (@($at | Where-Object { (& $ids $_) -contains $id }).Count -gt 0) { "$dn hit" } else { "$dn clear" }) } }
       else { $winVals = @($recent | ForEach-Object { "$(Get-ResultNight $_) $(if ((& $ids $_) -contains $id) { 'hit' } else { 'clear' })" }) }
-      $alerts += Format-AlertContext $latest $hits "recurring-flake $id" $winVals $excludedNights "$id does not recur on the next two nights"
+      $alerts += Format-AlertContext $latest $hits "recurring-flake $id" $winVals $excludedNights "$id does not recur on the next two nights" 2 $recent
     }
   }
   return $alerts
@@ -6106,8 +6126,9 @@ function Get-ResultHostKey($Result) {
   # maps an old key to its current one (section 47 item 3).
   $h = ''
   try { $h = "$($Result.hostKey)" } catch { }
-  if ($h -eq '') {
-    # A pre-host run an operator assigned with evidence joins its host's
+  if (($h -eq '') -or ($h -eq 'legacy')) {
+    # A pre-host run (or its metrics row, stored as `legacy`) an operator
+    # assigned with evidence joins its host's
     # series (section 54 item 2); every series recomputes on read.
     $id = "$(try { $Result.identity } catch { '' })"
     if (($id -ne '') -and $script:LegacyAssignments.ContainsKey($id)) { return (Resolve-HostKey "$($script:LegacyAssignments[$id].Host)" (Get-ResultNight $Result)) }
@@ -8222,7 +8243,12 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       $alAcks = Read-AlertAcks (Join-Path $AckDir 'alert-acks.md') $Root
       foreach ($pl in @($script:AlertAcksPending)) { $alertLines += "- ALERT ack pending (uncommitted, not yet effective): $("$pl".Trim())" }
       foreach ($ae in @(@((Read-AlertLedger $alertPath).alerts) | Where-Object { ($null -ne $_) -and ("$($_.state)" -eq 'open') })) {
-        if ($alAcks.ContainsKey("$($ae.id)")) { $alertLines += "- ALERT acknowledged: $($ae.id) ($($alAcks["$($ae.id)"]))" }
+        # The gate resolves an ack exactly as the ledger does (section 54
+        # R4-I3): expired, earlier-occurrence, and worsened acks read unowned.
+        $gMeta = if ($script:AlertAckMeta.ContainsKey("$($ae.id)")) { $script:AlertAckMeta["$($ae.id)"] } else { $null }
+        $gRes = Resolve-AlertAck $ae $(if ($alAcks.ContainsKey("$($ae.id)")) { $alAcks["$($ae.id)"] } else { '' }) $gMeta "$($ae.lastNight)" @((Read-AlertLedger $alertPath).alerts)
+        if ($gRes.Acknowledged -ne '') { $alertLines += "- ALERT acknowledged: $($ae.id) ($($gRes.Acknowledged))" }
+        elseif ($gRes.Note -ne '') { $alertLines += "- ALERT unowned: $($ae.id) ($($gRes.Note)); acknowledge it again in docs/nightly-acks/alert-acks.md" }
         elseif ("$($ae.lastNight)" -ne "$($ae.firstNight)") { $alertLines += "- ALERT unowned: $($ae.id) open since $($ae.firstNight), still firing $($ae.lastNight); acknowledge it in docs/nightly-acks/alert-acks.md" }
       }
     } catch { $alertLines += "- ALERT ledger unreadable: $($_.Exception.Message)" }

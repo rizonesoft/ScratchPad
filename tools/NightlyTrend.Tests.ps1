@@ -1107,6 +1107,32 @@ $r3Again = Update-AlertLedger $r3Out $r3NLedger ([pscustomobject]@{ Night = '202
 $r3P3 = Get-PendingAlertNotifications $r3NLedger
 Assert ($r3Incomplete -and (@($r3Loss.Lost) -join '') -like '*acknowledged content at revision*differs*' -and ($r3Ctx -like '*excluded nights: 2026-09-13 (no result); 2026-09-14 (no result); 2026-09-16 (no result)*') -and ("$($r3M.startUtc)" -eq '2026-09-12T00:30:00Z') -and ("$($r3M.tz)" -eq '+02:00') -and ($r3A.calculation -like '*runs one*') -and ($r3B.calculation -like '*runs two*') -and (@($r3P1.Lines | Where-Object { $_ -like '*ALERT insufficient-runa-duration*' }).Count -eq 1) -and (@($r3P2.Lines).Count -eq 0) -and (@($r3Again.NewIds).Count -eq 0) -and (@($r3P3.Lines).Count -eq 0)) 's54-round3-inventory-window-rows-flakes-and-delivery' "loss=$(@($r3Loss.Lost) -join ';') | p1=$(@($r3P1.Lines).Count) p2=$(@($r3P2.Lines).Count) p3=$(@($r3P3.Lines).Count) | ctx=$r3Ctx"
 Remove-Item $r3Dir -Recurse -Force
+# D00 T02 §54 R4: a metrics round trip keeps startUtc, tz, and discovery;
+# a stored `legacy` row resolves through an assignment; a row's own
+# tombstone strips without the ledger; an insufficiency alert records a
+# calculation; a shift left short by derivation isolation says so.
+$r4Src = New-Night '2026-09-12' '2026-09-12-023000'
+$r4Src | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-09-12T00:30:00Z' -Force
+$r4Src | Add-Member -NotePropertyName tz -NotePropertyValue '+02:00' -Force
+$r4Src | Add-Member -NotePropertyName discovery -NotePropertyValue ([pscustomobject]@{ inventoryVersion = 1; expected = @('run-a'); read = @() }) -Force
+$r4Back = ConvertFrom-MetricsRow ((ConvertTo-MetricsRow $r4Src) | ConvertTo-Json -Depth 8 | ConvertFrom-Json)
+$r4Was = $script:LegacyAssignments
+$script:LegacyAssignments = @{ '2026-09-01-023001-pid11' = [pscustomobject]@{ Host = '1234abcd'; Evidence = 'x' } }
+$r4Legacy = Get-ResultHostKey ([pscustomobject]@{ identity = '2026-09-01-023001-pid11'; hostKey = 'legacy'; night = '2026-09-01' })
+$script:LegacyAssignments = $r4Was
+$r4Own = Remove-TombstonedFields ([pscustomobject]@{ identity = 'k'; commit = 'abc'; tombstone = @('commit') }) 'k' @{}
+$r4Churn = @()
+foreach ($i in 1..12) { $n = New-Night ('2026-10-{0:d2}' -f $i) ('2026-10-{0:d2}-023000' -f $i) 600; $n.harness = ('{0:x8}-churn{1:d3}' -f $i, $i); $r4Churn += $n }
+$r4Out = @(Get-TrendAlerts $r4Churn)
+$r4InsCtx = @($r4Out | Where-Object { "$_" -like '  - insufficient-runa-duration context:*' })
+$r4DvWas = $script:DerivationSeries
+$script:DerivationSeries = @{ 2 = @('coverage', 'runa-shift') }
+$r4Sh = @()
+foreach ($i in 1..10) { $n = New-Night ('2026-11-{0:d2}' -f $i) ('2026-11-{0:d2}-023000' -f $i) 600; $n | Add-Member -NotePropertyName derivation -NotePropertyValue 1 -Force; $r4Sh += $n }
+foreach ($i in 11..13) { $n = New-Night ('2026-11-{0:d2}' -f $i) ('2026-11-{0:d2}-023000' -f $i) 900; $n | Add-Member -NotePropertyName derivation -NotePropertyValue 2 -Force; $r4Sh += $n }
+$r4ShOut = @(Get-TrendAlerts $r4Sh)
+$script:DerivationSeries = $r4DvWas
+Assert (("$($r4Back.startUtc)" -eq '2026-09-12T00:30:00Z') -and ("$($r4Back.tz)" -eq '+02:00') -and ($null -ne $r4Back.discovery) -and ($r4Legacy -eq '1234abcd') -and ($null -eq $r4Own.PSObject.Properties['commit']) -and ($r4InsCtx.Count -eq 1) -and (@($r4ShOut | Where-Object { $_ -like '- ALERT runa-shift*' }).Count -eq 0) -and (@($r4ShOut | Where-Object { $_ -like '- Insufficient data: runa-shift*derivation isolation*' }).Count -eq 1)) 's54-round4-rows-legacy-tombstone-context-and-shift' ("ins=$($r4InsCtx.Count) | " + (@($r4ShOut | Where-Object { $_ -like '*runa-shift*' }) -join ' | '))
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
