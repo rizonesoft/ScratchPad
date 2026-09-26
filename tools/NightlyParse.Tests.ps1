@@ -2239,6 +2239,13 @@ Register-TrackedWrite $t10W $t10Root $t10File 'L1' 'appended' "# T`n"
 $t10End = [pscustomobject]@{ State = 'dirty'; Count = 1; Fingerprint = 'y'; Rows = @(' M|todo/T.md') }
 $t10Pend = Compare-TreeWithTrackedWrites $t10Root $t10Empty $t10End $t10W
 Assert (($t10Clean.State -eq 'clean') -and ($t10Clean.Line -eq 'clean at start and end') -and ($t10Pend.State -eq 'pending-collector-writes') -and ($t10Pend.Line -like 'PENDING collector writes (clean apart from them; collector wrote 1 line(s) to todo/T.md*')) 's53-clean-and-pending-trees-read-differently' "$($t10Clean.Line) | $($t10Pend.Line)"
+# D00 T02 §53 item 12: evidence completeness is one structured record
+# the result carries; the report renders the same record.
+$ecRec = Get-EvidenceCompleteness @('- RED: incident ledger write failed (fixture)', '- run-a : CAPTURE-REFUSED screenshot')
+$ecClean = Get-EvidenceCompleteness @('- nothing degraded')
+$ecText = @(Format-EvidenceSummary @() 's' $ecRec)
+$ecJson = ConvertTo-Json $ecRec -Depth 4 | ConvertFrom-Json
+Assert (($ecRec.schema -eq 'evidence/1') -and (-not $ecRec.complete) -and ($ecRec.severity -eq 'red') -and (@($ecRec.classes | Where-Object { ($_.name -eq 'ledger faults') -and ($_.exitEffect -eq 'already red') }).Count -eq 1) -and (@($ecRec.classes | Where-Object { ($_.name -eq 'capture refusals') -and ($_.exitEffect -eq 'none') }).Count -eq 1) -and $ecClean.complete -and ($ecClean.severity -eq 'none') -and ($ecText[0] -eq '- Evidence DEGRADED for s: 2 class(es), severity red') -and ($ecJson.classes.Count -eq 2)) 's53-evidence-completeness-is-one-record' ($ecText -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
@@ -2371,7 +2378,7 @@ Assert ($twStartOk.Ok -and (-not $twStartBad.Ok) -and ($twStartBad.Line -like 'M
 $sumLines = @('- run-a : CAPTURE-REFUSED screenshot and dump (binaryCaptures is off)', '- OVERDUE: INC-0000e001 `UI.S.T` triage due 2026-09-20 (owner operator)', '- run-a : window metadata run-a-windows.txt')
 $sumBlock = @(Format-EvidenceSummary $sumLines '2026-09-25-023001')
 $sumClean = @(Format-EvidenceSummary @('- run-a : window metadata run-a-windows.txt'))
-Assert (($sumBlock[0] -eq '- Evidence DEGRADED for 2026-09-25-023001: 2 class(es)') -and ((@($sumBlock | Where-Object { $_ -like '- capture refusals: 1 (next: *' })).Count -eq 1) -and ((@($sumBlock | Where-Object { $_ -like '- overdue incidents: 1 (next: *' })).Count -eq 1) -and ($sumClean.Count -eq 1) -and ($sumClean[0] -like '- Evidence complete:*')) 's45-one-summary-names-degraded-evidence' ($sumBlock -join ' | ')
+Assert (($sumBlock[0] -eq '- Evidence DEGRADED for 2026-09-25-023001: 2 class(es), severity warn') -and ((@($sumBlock | Where-Object { $_ -like '- capture refusals: 1 `[warn`] (next: *' })).Count -eq 1) -and ((@($sumBlock | Where-Object { $_ -like '- overdue incidents: 1 `[warn`] (next: *' })).Count -eq 1) -and ($sumClean.Count -eq 1) -and ($sumClean[0] -like '- Evidence complete:*')) 's45-one-summary-names-degraded-evidence' ($sumBlock -join ' | ')
 # D00 T02 §24 redesign: the landed result is the publication receipt. No
 # result (or only a .tmp) lets the trap write its cancelled record; a
 # landed result, even one that no longer parses, is never replaced, and

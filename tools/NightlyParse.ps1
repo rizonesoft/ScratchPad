@@ -3700,26 +3700,39 @@ function Write-TrackedWriteManifest([hashtable]$Writes, [string]$Path) {
   Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ version = 1; writes = @($list) }) -Depth 5)) $Path
 }
 
-function Format-EvidenceSummary([string[]]$Lines, [string]$Stamp = '') {
-  # One summary block per run (D00 T02 section 45 item 8): the degraded
-  # evidence of the run, each class with its count and next action,
-  # scanned from the report lines the run already wrote. Classes:
-  # capture refusals, truncation, privacy gates, ledger faults, overdue
-  # incidents. A run with none reads one complete line.
+function Get-EvidenceCompleteness([string[]]$Lines) {
+  # Evidence completeness as one structured record (D00 T02 section 53
+  # item 12), the single source the result carries and the report renders,
+  # so automation and operators read the same thing. Each class carries
+  # its count, severity, exit effect, and next action. Severity: `red`
+  # for ledger faults (the run already reds on them; this record adds
+  # nothing to the exit), `warn` for the others (report only, the exit
+  # code unchanged). The record's own severity is the worst class.
   $classes = @(
-    @('capture refusals', '(CAPTURE-REFUSED|capture refused|dump refused|\.dmp (not written|refused))', 'review tools/incident-policy.json binaryCaptures and the refusal marker; rerun the leg to capture'),
-    @('truncation', '(TRUNCATED|truncated)', 'read the capture budget marker; raise the cap or narrow the leg'),
-    @('privacy gates', '(SECRET-SCAN|redacted|PROTECTION REFUSED)', 'inspect the redacted capture; never retain it unredacted'),
-    @('ledger faults', '(RED: incident ledger|incident ledger (write|read-back|missing|invalid|unreadable)|ledger checkpoint write failed)', 'repair or rebuild the ledger: tools/NightlyLedger.ps1 -Rebuild'),
-    @('overdue incidents', '^- OVERDUE: ', 'triage each overdue incident and link its finding: tools/NightlyLedger.ps1 -Link')
+    @('capture refusals', '(CAPTURE-REFUSED|capture refused|dump refused|\.dmp (not written|refused))', 'warn', 'review tools/incident-policy.json binaryCaptures and the refusal marker; rerun the leg to capture'),
+    @('truncation', '(TRUNCATED|truncated)', 'warn', 'read the capture budget marker; raise the cap or narrow the leg'),
+    @('privacy gates', '(SECRET-SCAN|redacted|PROTECTION REFUSED)', 'warn', 'inspect the redacted capture; never retain it unredacted'),
+    @('ledger faults', '(RED: incident ledger|incident ledger (write|read-back|missing|invalid|unreadable)|ledger checkpoint write failed)', 'red', 'repair or rebuild the ledger: tools/NightlyLedger.ps1 -Rebuild'),
+    @('overdue incidents', '^- OVERDUE: ', 'warn', 'triage each overdue incident and link its finding: tools/NightlyLedger.ps1 -Link')
   )
-  $out = @()
+  $found = @()
   foreach ($c in $classes) {
     $hits = @(@($Lines) | Where-Object { "$_" -match $c[1] })
-    if ($hits.Count -gt 0) { $out += "- $($c[0]): $($hits.Count) (next: $($c[2]))" }
+    if ($hits.Count -gt 0) { $found += [pscustomobject][ordered]@{ name = $c[0]; count = $hits.Count; severity = $c[2]; exitEffect = $(if ($c[2] -eq 'red') { 'already red' } else { 'none' }); next = $c[3] } }
   }
-  if ($out.Count -eq 0) { return @('- Evidence complete: no capture refusals, truncation, privacy gates, ledger faults, or overdue incidents') }
-  return @("- Evidence DEGRADED$(if ($Stamp -ne '') { " for $Stamp" }): $($out.Count) class(es)") + $out
+  $sev = if (@($found | Where-Object { $_.severity -eq 'red' }).Count -gt 0) { 'red' } elseif ($found.Count -gt 0) { 'warn' } else { 'none' }
+  return [pscustomobject][ordered]@{ schema = 'evidence/1'; complete = ($found.Count -eq 0); severity = $sev; classes = @($found) }
+}
+
+function Format-EvidenceSummary([string[]]$Lines, [string]$Stamp = '', $Record = $null) {
+  # One summary block per run (D00 T02 section 45 item 8), rendered from
+  # the structured record (section 53 item 12): each degraded class with
+  # its count, severity, and next action. A run with none reads one
+  # complete line.
+  if ($null -eq $Record) { $Record = Get-EvidenceCompleteness $Lines }
+  if ($Record.complete) { return @('- Evidence complete: no capture refusals, truncation, privacy gates, ledger faults, or overdue incidents') }
+  $out = @(@($Record.classes) | ForEach-Object { "- $($_.name): $($_.count) [$($_.severity)] (next: $($_.next))" })
+  return @("- Evidence DEGRADED$(if ($Stamp -ne '') { " for $Stamp" }): $($out.Count) class(es), severity $($Record.severity)") + $out
 }
 
 function Test-ProjectCoverage([string]$TestsRoot, [string[]]$Executed) {

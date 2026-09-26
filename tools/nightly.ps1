@@ -1694,8 +1694,11 @@ try {
 $previousStamp = ''
 $prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $stamp) } | Sort-Object Name | Select-Object -Last 1)
 if ($prevRes.Count -gt 0) { $previousStamp = ($prevRes[0].Name -replace '^morning-', '' -replace '\.result\.json$', '') }
+# Evidence completeness, one record for the result and the report
+# (section 53 item 12): every class line is written by now.
+$evidenceRecord = Get-EvidenceCompleteness $report
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); ciOverride = $script:ciOverride; eligible = ($null -eq $script:ciOverride); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); evidenceCompleteness = $evidenceRecord; ciOverride = $script:ciOverride; eligible = ($null -eq $script:ciOverride); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError
@@ -1794,7 +1797,8 @@ $reportPath = Join-Path $nightDir "morning-$day.md"
 $report += ''
 $report += '## Evidence completeness'
 $report += ''
-$report += @(Format-EvidenceSummary $report $stamp)
+# Rendered from the record the result carries (section 53 item 12).
+$report += @(Format-EvidenceSummary $report $stamp $evidenceRecord)
 Publish-NightlyReport $report ''
 # The landed result already protects the record (the trap reads it from
 # disk: D00 T02 §24 redesign), so no flag is needed here.
