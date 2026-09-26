@@ -10,12 +10,12 @@ Every image under `docs/assets/` is a real capture of the shipped app, never a m
 | `readme-hero-light.png` | 1382 x 851 | 8e4d7affc3fbd196 | light |
 | `readme-hero-dark.png` | 1382 x 851 | d638fd80cac9e789 | dark |
 
-- Captured: 2026-09-26 18:57 +02:00 at app commit `444aa412cd623bdc31f51c1f1639544af58fb3ca`; recaptured 19:03 +02:00 at `d47393c333a4ed23a01653f9b52afc293ee87627` (the capture script's exclusive-store guard) with byte-identical results, so the shots reproduce.
+- Captured: 2026-09-26 18:57 +02:00 at app commit `444aa412cd623bdc31f51c1f1639544af58fb3ca`; recaptured at `d47393c333a4ed23a01653f9b52afc293ee87627` and again at `cbe82a9a8f40cbebdaf237fe1300fb8df2cbb93b` (the capture's private profile) with byte-identical results each time, so the shots reproduce.
 - Host: the operator's Windows 11 dev box (host key `fec14402`, OS 10.0.26200.0), interactive desktop session.
-- App commit: `d47393c333a4ed23a01653f9b52afc293ee87627` (app sources unchanged since `444aa41`), built from a fresh clone at that commit (its `Bin/` empty before the build).
+- App commit: `cbe82a9a8f40cbebdaf237fe1300fb8df2cbb93b` (app sources unchanged since `444aa41`), built from a fresh clone at that commit (its `Bin/` empty before the build).
 - Build configuration: Debug, repo-local SDK (`.tools/dotnet-win-x64`).
-- Command: `powershell -ExecutionPolicy Bypass -File tools\capture-readme.ps1 -Commit d47393c333a4ed23a01653f9b52afc293ee87627` (it refuses while any ScratchPad instance runs, because it seeds the shared settings store).
-- What the script does: builds the clone, seeds a two-tab session (`release-notes.md` active, `groceries.txt`) in a 1400 x 860 DIP window with word wrap and the status bar on, launches once per theme in background mode (`SCRATCHPAD_BACKGROUND=1`, off-screen, no foreground steal), captures with `PrintWindow` (full content) from a per-monitor DPI-aware thread, crops to the visible frame, and refuses a shot under 1280 px wide or with no luminance spread. The operator's settings and session files are backed up first and restored after (verified byte-identical for this capture).
+- Command: `powershell -ExecutionPolicy Bypass -File tools\capture-readme.ps1 -Commit cbe82a9a8f40cbebdaf237fe1300fb8df2cbb93b` (it refuses while any ScratchPad instance runs, because a launch would redirect into it).
+- What the script does: builds the clone, seeds a two-tab session (`release-notes.md` active, `groceries.txt`) in a 1400 x 860 DIP window with word wrap and the status bar on, launches once per theme in background mode (`SCRATCHPAD_BACKGROUND=1`, off-screen, no foreground steal), captures with `PrintWindow` (full content) from a per-monitor DPI-aware thread, crops to the visible frame, and refuses a shot under 1280 px wide or with no luminance spread. Every launch runs against a private throwaway profile (`LOCALAPPDATA` and `USERPROFILE` point under the capture's work folder), so the operator's own settings and session are never read or written (verified: their modification times and sizes did not change).
 
 ## Agent panel
 
