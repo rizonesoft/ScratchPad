@@ -4483,6 +4483,8 @@ function ConvertTo-MetricsRow($Result) {
     source = "morning-$($Result.stamp).result.json"; hostKey = (Get-ResultHostKey $Result); derivation = $script:MetricsDerivation; excluded = "$(try { $Result.excluded } catch { '' })"
     # Explicit deletions ride the row (section 47 item 6).
     tombstone = @(@($(try { $Result.tombstone } catch { @() })) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+    # Slot annotations survive pruning (section 54 R3-I4).
+    startUtc = "$(try { $Result.startUtc } catch { '' })"; tz = "$(try { $Result.tz } catch { '' })"
     # Sharded discovery (section 47 item 8): shards expected and manifests
     # read, when the result records them.
     discovery = $(try { $Result.discovery } catch { $null })
@@ -4711,7 +4713,8 @@ function Add-MetricsWriteInventory([string]$StorePath, [string[]]$JsonLines) {
   foreach ($j in @($JsonLines)) {
     try { $o = $j | ConvertFrom-Json -ErrorAction Stop } catch { continue }
     if ("$($o.schema)" -ne 'metrics/1') { continue }
-    $inv += ([pscustomobject][ordered]@{ key = (Get-MetricsKey $o); revision = $(try { [int]$o.revision } catch { 0 }); at = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress)
+    # The content digest tells two writes at one revision apart (R3-A3).
+    $inv += ([pscustomobject][ordered]@{ key = (Get-MetricsKey $o); revision = $(try { [int]$o.revision } catch { 0 }); digest = (Get-CaseHash @((ConvertTo-Json $o -Depth 8 -Compress))); at = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress)
   }
   if ($inv.Count -gt 0) { [System.IO.File]::AppendAllText("$StorePath.writes.jsonl", (($inv -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false))) }
 }
@@ -4731,13 +4734,18 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
     if ("$ln".Trim() -eq '') { continue }
     try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { return [pscustomobject]@{ Known = $false; Lost = @() } }
     $k = "$($o.key)"; $r = [int]$o.revision
-    if ((-not $newest.ContainsKey($k)) -or ($r -gt $newest[$k])) { $newest[$k] = $r }
+    # The last acknowledged write of the newest revision governs.
+    if ((-not $newest.ContainsKey($k)) -or ($r -ge $newest[$k].Revision)) { $newest[$k] = [pscustomobject]@{ Revision = $r; Digest = "$($o.digest)" } }
   }
   $lost = @()
   foreach ($k in @($newest.Keys | Sort-Object)) {
-    if (-not $BackupRows.Contains($k)) { $lost += "$k (acknowledged revision $($newest[$k]); not in the backup)"; continue }
+    $want = $newest[$k]
+    if (-not $BackupRows.Contains($k)) { $lost += "$k (acknowledged revision $($want.Revision); not in the backup)"; continue }
     $br = 0; try { $br = [int]$BackupRows[$k].revision } catch { }
-    if ($newest[$k] -gt $br) { $lost += "$k (acknowledged revision $($newest[$k]); the backup holds $br)" }
+    if ($want.Revision -gt $br) { $lost += "$k (acknowledged revision $($want.Revision); the backup holds $br)"; continue }
+    # Same revision, different content: the backup predates an accepted
+    # update (section 54 R3-A3).
+    if (($want.Revision -eq $br) -and ("$($want.Digest)" -ne '') -and ((Get-CaseHash @((ConvertTo-Json $BackupRows[$k] -Depth 8 -Compress))) -ne "$($want.Digest)")) { $lost += "$k (acknowledged content at revision $br differs from the backup's)" }
   }
   return [pscustomobject]@{ Known = $true; Lost = $lost }
 }
@@ -4883,7 +4891,9 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     # hold ends; with no complete inventory it stays and says so.
     $rmark = Join-Path (Split-Path -Parent $Path) 'metrics-restored.json'
     if (Test-Path -LiteralPath $rmark) {
-      $rl = Get-MetricsRestoreLoss $Path $store.Rows
+      # Only a store read back from disk counts (R3-I2): staged rows whose
+      # append failed or was refused never end the hold.
+      $rl = if ("$script:MetricsWriteError" -eq '') { Get-MetricsRestoreLoss $Path (Read-MetricsStore $Path).Rows } else { [pscustomobject]@{ Known = $false; Lost = @() } }
       if ($rl.Known -and (@($rl.Lost).Count -eq 0)) { Remove-Item -LiteralPath $rmark -Force -ErrorAction SilentlyContinue }
       else { $script:MetricsRestoreHold = "restore hold active: $(if ($rl.Known) { "$(@($rl.Lost).Count) acknowledged write(s) not yet re-derived" } else { 'no complete write inventory proves the restore reconstructed; remove metrics-restored.json once the history is re-derived' }); alerts do not recover or correct meanwhile" }
     }
@@ -4926,7 +4936,11 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
         # append, so a crash or a full disk between them reads unknown loss;
         # a marker that cannot be written skips the append.
         $pendingOk = $true
-        try { Set-Content -LiteralPath "$Path.writes.pending" -Value (Get-Date).ToUniversalTime().ToString('o') -Encoding UTF8 -ErrorAction Stop } catch { $pendingOk = $false; $script:MetricsWriteError = "metrics append skipped: the write-inventory pending marker could not be written ($($_.Exception.Message))" }
+        # A pending marker already present means an earlier append was never
+        # inventoried (section 54 R3-A1): it becomes the incomplete marker
+        # for good instead of being overwritten and cleared.
+        if (Test-Path -LiteralPath "$Path.writes.pending") { try { Set-Content -LiteralPath "$Path.writes.incomplete" -Value "$((Get-Date).ToUniversalTime().ToString('o')) an earlier append was never inventoried" -Encoding UTF8 -ErrorAction Stop } catch { $pendingOk = $false; $script:MetricsWriteError = "metrics append skipped: the incomplete-inventory marker could not be written ($($_.Exception.Message))" } }
+        if ($pendingOk) { try { Set-Content -LiteralPath "$Path.writes.pending" -Value (Get-Date).ToUniversalTime().ToString('o') -Encoding UTF8 -ErrorAction Stop } catch { $pendingOk = $false; $script:MetricsWriteError = "metrics append skipped: the write-inventory pending marker could not be written ($($_.Exception.Message))" } }
         if ($pendingOk) { try {
           if ($null -ne $Append) { & $Append $Path $payload } else { [System.IO.File]::AppendAllText($Path, $payload, (New-Object System.Text.UTF8Encoding($false))) }
           # The acknowledged-write inventory (section 54 item 10): once the
@@ -5183,10 +5197,10 @@ function Test-RecentMetricsRestore([string]$AlertLedgerPath, [string]$Night) {
   # alert recovers or corrects. Nights before the restore are unaffected.
   $m = Join-Path (Split-Path -Parent $AlertLedgerPath) 'metrics-restored.json'
   if (-not (Test-Path -LiteralPath $m)) { return $false }
-  try {
-    $o = Get-Content -LiteralPath $m -Raw | ConvertFrom-Json
-    return ([string]::CompareOrdinal($Night, "$($o.night)") -ge 0)
-  } catch { return $true }
+  # Any night evaluated while the marker exists is held, older nights
+  # included (section 54 R3-I3): a re-evaluation of history is exactly
+  # what a restore invites.
+  return $true
 }
 
 function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [string[]]$SupersededIds = @(), [hashtable]$Acks = @{}) {
@@ -5212,8 +5226,10 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     # evaluation or correction.
     $contexts = [ordered]@{}
     foreach ($id in @($current.Keys)) {
-      $series = ("$id" -split '\|')[1]
-      $ctx = @(@($Alerts) | Where-Object { "$_" -match ('^\s*-\s*' + [regex]::Escape($series) + ' context:') }) | Select-Object -First 1
+      $parts = "$id" -split '\|'
+      # A flake's context names its incident (section 54 R3-C1).
+      $ctxName = if ($parts.Count -gt 2) { "$($parts[1]) $($parts[2])" } else { $parts[1] }
+      $ctx = @(@($Alerts) | Where-Object { "$_" -match ('^\s*-\s*' + [regex]::Escape($ctxName) + ' context:') }) | Select-Object -First 1
       if ($null -ne $ctx) { $contexts[$id] = "$ctx".Trim().TrimStart('-', ' ') }
     }
     $new = @(); $persist = @(); $closed = @(); $worse = @()
@@ -5472,10 +5488,10 @@ function Restore-MetricsStore([string]$Path) {
     # backup written before a rule existed never reintroduces a value the
     # rule now withholds.
     $lines = @($b.Rows.Keys | ForEach-Object { $clean = ConvertTo-Json (Protect-DisclosedObject $b.Rows[$_]) -Depth 6 -Compress; if ($clean -ne (ConvertTo-Json $b.Rows[$_] -Depth 6 -Compress)) { $clean } else { $b.Raw[$_] } }) + @($b.Supersessions | ForEach-Object { ConvertTo-Json (Protect-DisclosedObject $_) -Compress })
+    # The restore marker lands before the store is replaced (section 54
+    # item 11, R3-I2): if it cannot be written the restore does not run.
+    Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ night = (Get-Date).ToString('yyyy-MM-dd'); at = (Get-Date).ToUniversalTime().ToString('o'); store = (Split-Path -Leaf $Path) }) -Compress)) (Join-Path (Split-Path -Parent $Path) 'metrics-restored.json')
     Write-AtomicReport $lines $Path
-    # The restore marker (section 54 item 11): the alert ledger holds open
-    # alerts through the restore gap instead of closing and re-opening them.
-    try { Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ night = (Get-Date).ToString('yyyy-MM-dd'); at = (Get-Date).ToUniversalTime().ToString('o'); store = (Split-Path -Leaf $Path) }) -Compress)) (Join-Path (Split-Path -Parent $Path) 'metrics-restored.json') } catch { }
     # Loss from the inventory when there is one (section 54 item 10);
     # without it the restore says the loss is unknown.
     $invLoss = Get-MetricsRestoreLoss $Path $b.Rows
@@ -5669,7 +5685,7 @@ function Get-CommitRangeShape([string[]]$Commits) {
   return 'linear'
 }
 
-function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null, $Excluded = @(), [string]$Recovery = '') {
+function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null, $Excluded = @(), [string]$Recovery = '', [int]$WindowNights = 0) {
   # Attribution and drill-through for one alert (section 32 item 15):
   # the contributing runs, the commit range, environment changes, and
   # whether raw evidence or only metrics remain, on an indented line so
@@ -5695,9 +5711,13 @@ function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null,
   # exclusions too (section 54 item 15, absorbing section 47 R5-C1).
   $exAll = @($Excluded)
   $seenNights = @(@($Baseline) + @($Latest) | ForEach-Object { Get-ResultNight $_ } | Where-Object { "$_" -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object -Unique)
-  if ($seenNights.Count -ge 2) {
+  if ($seenNights.Count -ge 1) {
     $inv = [System.Globalization.CultureInfo]::InvariantCulture
-    for ($d = [datetime]::ParseExact($seenNights[0], 'yyyy-MM-dd', $inv).AddDays(1); $d -lt [datetime]::ParseExact($seenNights[-1], 'yyyy-MM-dd', $inv); $d = $d.AddDays(1)) {
+    $latestNight = [datetime]::ParseExact((Get-ResultNight $Latest), 'yyyy-MM-dd', $inv)
+    # From the window's first night when the caller names the window (R3-C2),
+    # else from the earliest baseline night, up to the evaluated night.
+    $from = if ($WindowNights -gt 0) { $latestNight.AddDays(-$WindowNights) } else { [datetime]::ParseExact($seenNights[0], 'yyyy-MM-dd', $inv).AddDays(1) }
+    for ($d = $from; $d -lt $latestNight; $d = $d.AddDays(1)) {
       $ds = $d.ToString('yyyy-MM-dd')
       if (($seenNights -notcontains $ds) -and (@($exAll | Where-Object { "$_".StartsWith($ds) }).Count -eq 0)) { $exAll += "$ds (no result)" }
     }
@@ -5772,6 +5792,10 @@ function Get-TrendInputResults([string]$NightDir, [string]$StorePath) {
   # item 11).
   $migNotes = @()
   try { $migNotes = @(Update-DisclosureMigration $StorePath) } catch { $migNotes = @("- disclosure migration failed: $($_.Exception.Message)") }
+  # Clone validation runs on the raw results before any row is stored
+  # under an alias (section 54 R3-I1), so a refused alias never merges a
+  # clone's rows into the target host.
+  $null = Test-HostAliasClones $results
   try {
     $mrows = @(Sync-MetricsStore $StorePath $results)
     $auth = Select-AuthoritativeResults $results $mrows @($script:MetricsStaleSkipped)
@@ -5779,6 +5803,10 @@ function Get-TrendInputResults([string]$NightDir, [string]$StorePath) {
     $fromMetrics = @($auth.FromMetrics)
     $null = Add-MergedEvidence $results $mrows
     $results += $fromMetrics
+    # Live results obey the tombstone ledger too (section 54 R3-A2): a
+    # re-ingested result never renders a deleted field.
+    $liveTombs = Get-MetricsTombstones $StorePath
+    if ($liveTombs.Count -gt 0) { $results = @($results | ForEach-Object { Remove-TombstonedFields $_ (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) $liveTombs }) }
     # A backfill a native night superseded leaves the render (item 11).
     $supersessions = @($script:MetricsSupersessions | ForEach-Object { [pscustomobject]@{ Night = "$($_.night)"; Native = "$($_.native)"; Backfill = "$($_.backfill)" } })
     $superseded = @($supersessions | ForEach-Object { $_.Backfill })
@@ -5905,7 +5933,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
       # A zero baseline has no percentage (R3-F1): the delta rides alone.
       $pct = if ($med -gt 0) { "+$([int][math]::Round(100 * ($la - $med) / $med))%" } else { "+$([int]($la - $med))s over a zero baseline" }
       $alerts += "- ALERT runa-duration: $([int]$la)s on $(Get-ResultNight $latest) vs baseline $([int]$med)s ($pct, median of $($pa.Count) night(s))"
-      $alerts += Format-AlertContext $latest $prev 'runa-duration' $pa $durExcluded "RunA is back under 125% of the $([int]$med)s baseline median or within 60 s of it on a later night"
+      $alerts += Format-AlertContext $latest $prev 'runa-duration' $pa $durExcluded "RunA is back under 125% of the $([int]$med)s baseline median or within 60 s of it on a later night" $Baseline
     }
   }
   # An unproven night (a killed or budget-cut leg) contributes no rate,
@@ -5943,7 +5971,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
     $med = Get-Percentile $pr 50
     if ($lr -lt ($med - 2)) {
       $alerts += "- ALERT pass-rate: $([math]::Round($lr, 1))% on $(Get-ResultNight $latest) vs baseline $([math]::Round($med, 1))% ($([math]::Round($lr - $med, 1)) points, median of $($pr.Count) night(s))"
-      $alerts += Format-AlertContext $latest $prev 'pass-rate' $pr $rateExcluded "the pass rate returns within 2 points of the $([math]::Round($med, 1))% baseline median on a later night"
+      $alerts += Format-AlertContext $latest $prev 'pass-rate' $pr $rateExcluded "the pass rate returns within 2 points of the $([math]::Round($med, 1))% baseline median on a later night" $Baseline
     }
   }
   $aliasMap = Get-IncidentAliases $Rows
@@ -5966,7 +5994,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
       $winVals = @()
       if ($windowed) { foreach ($dn in @($rFrom, $rTo)) { $at = @($recent | Where-Object { (Get-ResultNight $_) -eq $dn }); $winVals += $(if ($at.Count -eq 0) { "$dn missing" } elseif (@($at | Where-Object { (& $ids $_) -contains $id }).Count -gt 0) { "$dn hit" } else { "$dn clear" }) } }
       else { $winVals = @($recent | ForEach-Object { "$(Get-ResultNight $_) $(if ((& $ids $_) -contains $id) { 'hit' } else { 'clear' })" }) }
-      $alerts += Format-AlertContext $latest $hits 'recurring-flake' $winVals $excludedNights "$id does not recur on the next two nights"
+      $alerts += Format-AlertContext $latest $hits "recurring-flake $id" $winVals $excludedNights "$id does not recur on the next two nights"
     }
   }
   return $alerts

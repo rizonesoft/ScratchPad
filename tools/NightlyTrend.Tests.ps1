@@ -1066,6 +1066,47 @@ $r2Row = [pscustomobject]@{ identity = 'k1'; env = [pscustomobject]@{ os = 'Wind
 $r2Out = Remove-TombstonedFields $r2Row 'k1' $r2Tomb
 Assert ($r2NoPending -and (-not $r2Pend.Known) -and $r2HoldGone -and ($null -eq $r2Out.env.PSObject.Properties['os']) -and ($r2Out.env.dpi -eq '96') -and ($r2Row.env.os -eq 'Windows 11')) 's54-round2-pending-reconstruction-and-env-tombstone' "pending=$($r2Pend.Known) holdGone=$r2HoldGone"
 Remove-Item $r2Dir -Recurse -Force
+# D00 T02 §54 R3: a stale pending marker escalates to incomplete; a
+# same-revision content change reads lost; the window's first nights are
+# named when missing; rows keep startUtc and tz; each flake alert records
+# its own calculation; twenty insufficient nights notify once and are
+# confirmed, never re-sent.
+$r3Dir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-r3'
+if (Test-Path $r3Dir) { Remove-Item $r3Dir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $r3Dir
+$r3Store = Join-Path $r3Dir 'metrics.jsonl'
+'x' | Set-Content -LiteralPath "$r3Store.writes.pending" -Encoding UTF8
+$r3Rows = @(Sync-MetricsStore $r3Store @((New-Night '2026-09-10' '2026-09-10-023000')))
+$r3Incomplete = Test-Path "$r3Store.writes.incomplete"
+Remove-Item "$r3Store.writes.incomplete"
+$r3Row = $r3Rows[0]
+$r3Changed = $r3Row | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+$r3Changed | Add-Member -NotePropertyName harness -NotePropertyValue 'different' -Force
+$r3Loss = Get-MetricsRestoreLoss $r3Store ([ordered]@{ "$(Get-MetricsKey $r3Row)" = $r3Changed })
+$r3Ctx = Format-AlertContext (New-Night '2026-09-20' '2026-09-20-023000' 900) @((New-Night '2026-09-15' '2026-09-15-023000' 600), (New-Night '2026-09-19' '2026-09-19-023000' 600)) 'runa-duration' @(600, 600) @() '' 7
+$r3Src = New-Night '2026-09-12' '2026-09-12-023000'
+$r3Src | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-09-12T00:30:00Z' -Force
+$r3Src | Add-Member -NotePropertyName tz -NotePropertyValue '+02:00' -Force
+$r3M = ConvertTo-MetricsRow $r3Src
+$r3Ledger = Join-Path $r3Dir 'alerts.json'
+$r3Flakes = @('- ALERT recurring-flake: INC-0000aaa1 on 3 of 3 nights', '  - recurring-flake INC-0000aaa1 context: runs one', '- ALERT recurring-flake: INC-0000bbb2 on 2 of 3 nights', '  - recurring-flake INC-0000bbb2 context: runs two')
+$null = Update-AlertLedger $r3Flakes $r3Ledger ([pscustomobject]@{ Night = '2026-09-20'; Host = 'abcd1234'; Identity = 'e1' })
+$r3Doc = (Get-Content -LiteralPath $r3Ledger -Raw | ConvertFrom-Json).alerts
+$r3A = @($r3Doc | Where-Object { $_.id -eq 'abcd1234|recurring-flake|INC-0000aaa1' })[0]
+$r3B = @($r3Doc | Where-Object { $_.id -eq 'abcd1234|recurring-flake|INC-0000bbb2' })[0]
+# Delivery of the insufficiency alert: pending, sent, confirmed, not resent.
+$r3NLedger = Join-Path $r3Dir 'alerts-insufficient.json'
+$r3Churn = @()
+foreach ($i in 1..20) { $n = New-Night ('2026-08-{0:d2}' -f $i) ('2026-08-{0:d2}-023000' -f $i) 600; $n.harness = ('{0:x8}-churn{1:d3}' -f $i, $i); $r3Churn += $n }
+$r3Out = @(Get-TrendAlerts $r3Churn)
+$null = Update-AlertLedger $r3Out $r3NLedger ([pscustomobject]@{ Night = '2026-08-20'; Host = 'abcd1234'; Identity = 'n1' })
+$r3P1 = Get-PendingAlertNotifications $r3NLedger
+Confirm-AlertNotifications $r3NLedger @($r3P1.Keys)
+$r3P2 = Get-PendingAlertNotifications $r3NLedger
+$r3Again = Update-AlertLedger $r3Out $r3NLedger ([pscustomobject]@{ Night = '2026-08-21'; Host = 'abcd1234'; Identity = 'n2' })
+$r3P3 = Get-PendingAlertNotifications $r3NLedger
+Assert ($r3Incomplete -and (@($r3Loss.Lost) -join '') -like '*acknowledged content at revision*differs*' -and ($r3Ctx -like '*excluded nights: 2026-09-13 (no result); 2026-09-14 (no result); 2026-09-16 (no result)*') -and ("$($r3M.startUtc)" -eq '2026-09-12T00:30:00Z') -and ("$($r3M.tz)" -eq '+02:00') -and ($r3A.calculation -like '*runs one*') -and ($r3B.calculation -like '*runs two*') -and (@($r3P1.Lines | Where-Object { $_ -like '*ALERT insufficient-runa-duration*' }).Count -eq 1) -and (@($r3P2.Lines).Count -eq 0) -and (@($r3Again.NewIds).Count -eq 0) -and (@($r3P3.Lines).Count -eq 0)) 's54-round3-inventory-window-rows-flakes-and-delivery' "loss=$(@($r3Loss.Lost) -join ';') | p1=$(@($r3P1.Lines).Count) p2=$(@($r3P2.Lines).Count) p3=$(@($r3P3.Lines).Count) | ctx=$r3Ctx"
+Remove-Item $r3Dir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
@@ -1194,7 +1235,7 @@ $l14b = New-Night '2026-09-27' '2026-09-27-023000' 5000
 $l14b | Add-Member -NotePropertyName incidents -NotePropertyValue @('INC-abcd1234 UI.Flaky') -Force
 $g14b = @(Get-TrendAlerts (@($b14b) + @($l14b)))
 $ctx14b = @($g14b | Where-Object { $_ -like '  - runa-duration context:*' })
-$ctx14c = @($g14b | Where-Object { $_ -like '  - recurring-flake context:*' })
+$ctx14c = @($g14b | Where-Object { $_ -like '  - recurring-flake INC-abcd1234 context:*' })
 Assert (($ctx14b.Count -eq 1) -and ($ctx14b[0] -like '*excluded nights: 2026-09-22 (no RunA duration measured)*') -and ($ctx14c.Count -eq 1) -and $ctx14c[0].Contains('baseline values [2026-09-25 clear, 2026-09-26 hit]; samples 2') -and ($ctx14c[0] -like '*recovers when INC-abcd1234 does not recur*')) 's47-alert-context-names-missing-measurements-and-flake-window' (($ctx14b + $ctx14c) -join ' | ')
 Assert (($ctx14.Count -eq 1) -and $ctx14[0].Contains('baseline values [600, 600, 600, 600, 600, 600]; samples 6') -and ($ctx14[0] -like '*excluded nights: 2026-09-20 (cohort: harness*') -and ($ctx14[0] -like '*recovers when RunA is back under 125% of the 600s baseline median*')) 's47-alert-context-explains-the-calculation' ($ctx14 -join ' | ')
 
