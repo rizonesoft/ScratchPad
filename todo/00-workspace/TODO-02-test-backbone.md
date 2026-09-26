@@ -90,7 +90,7 @@ track: W0
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [x]   |
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [x]   |
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [x]   |
-|   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
+|   50  |   §50   | Night-debt governance second residuals | §42 |  [x]   |
 |   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
 |   53  |   §53   | Nightly evidence fourth residuals | §45 |  [ ]   |
@@ -1613,6 +1613,7 @@ Why this section exists: the §41 Run A rerun of 2026-09-25 went red on `event-p
 Why this section exists: the §42 plan review returned 12 findings; 11 file here and 1 is rejected with its reason in the §42 findings file. §42 made replay order-free, transferred acknowledgements, kept accepted remediation, governed extensions, bound closure to the owed tests' digest, and recorded unrecorded closures; these carry that through causal replay, conflict effect, inventory, candidate binding, one extension authority, schedule capture, escalation visibility, reconciliation, provenance, boundaries, and evidence retention. -> SOURCE: plan-review-D00-T02-s42-2026-09-25-s50 D00-T02-S42-PR1 D00-T02-S42-PR2 D00-T02-S42-PR3 D00-T02-S42-PR5 D00-T02-S42-PR6 D00-T02-S42-PR7 D00-T02-S42-PR8 D00-T02-S42-PR9 D00-T02-S42-PR10 D00-T02-S42-PR11 D00-T02-S42-PR12
 
 - -> XREF: D00 T02 §42 -- filed from its plan review; carries the governance it settled.
+- -> XREF: D00 T11 §2 -- its plan review's residuals.
 
 - [x] Replay has a causal definition: each lifecycle record carries an event identity and an effective timestamp, and same-date conflicts resolve by an explicit precedence consistent with §35, never by record wording. Done when: two same-date records whose texts sort differently resolve by the precedence rule. (D00-T02-S42-PR1.)
 - [x] Contradictory records have a defined effect: a contradicted collection, acceptance, or extension takes no effect until resolved, so ambiguous evidence never closes a debt or suppresses its escalation. Done when: a contradicted acceptance leaves the debt escalated. (D00-T02-S42-PR2.)
@@ -1628,6 +1629,13 @@ Why this section exists: the §42 plan review returned 12 findings; 11 file here
 - [x] Commit: `"workspace: settle the second night-debt governance residuals"`
 
 **Test checkpoint:** Replay resolves by rule, contradictions take no effect, the owed inventory is fixed, closure binds to its candidate, every extension shares one authority, schedules are captured, accepted remediation stays visible, writes reconcile once, reassignment keeps provenance, boundaries pin, and evidence survives cleanup. Cheaper substitute that fails: more WARN lines with no rule behind them.
+
+> **Verified:** 2026-09-26 | §50 | lifecycle records replay by date then effective time and contradicted records (by position, event id, or attempt) take no effect with a warning; the owed inventory, candidate, and schedule identity are captured and, from 2026-09-27, required; closure binds to the owed digest and a descendant candidate; the inline due shares Night-extend's authority and cap; the schedule history governs the trigger under a stated DST policy; an accepted red-repeat names its overdue remediation; the collector writes its capture and reads appended, reconciled, failed, or unknown, idempotent by event id; a reassigned ack names acknowledger and reassigner; pruned logs read durable evidence or a named gap; a failed post-run query never reads as collected, proven end to end against a real graph; self-test 1678/0 and the NightDebt suite green
+> **Review:** round 5 (Full), candidates `73c25ca` `01a7d0e` `17f5a27` `c7d5368` `2b93880` -- GPT R1-R2 bulk needs-attention (R1-A1, A2, C1, I1, I2, R1 and R2-A1, C1, I1, R1 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` needs-attention · `integration` approve · `record` approve (gpt-6-astra); R3-A1, C1 fixed in c7d5368, R4 depth R4-A1, C1 fixed in 2b93880, R5 depth (`adversarial` approve · `consistency` approve · `record` approve) left below-bar R5-I1, filed to D00 T11 §2. Raw findings: docs/reviews/00-workspace/D00-T02-s50.md
+> **Plan review:** GPT medium, filed D00 T11 §2 (run 20260926-D00-T02-S50-codex-c06751119-r6)
+> **CRUD:** not-applicable | TODO-file lifecycle lines the collector appends and the graph replays; no user data
+> **Duration:** 2026-09-26T04:25:35Z to 2026-09-26T05:55:50Z
+> **Reviewed-tip:** 2b93880
 
 ## 51. Binding Guard Third Residuals
 
