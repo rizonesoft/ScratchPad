@@ -131,10 +131,17 @@ public sealed class BindingMutationTests
         Assert.Equal(BindingMutation.SwapEvidence.Completed, BindingMutation.EvidenceOf(["armed:MenuFileNewTab", "swap:MenuFileNewTab", "swap-done:MenuFileNewTab"], "MenuFileNewTab"));
         Assert.Equal(BindingMutation.SwapEvidence.Started, BindingMutation.EvidenceOf(["swap:MenuFileNewTab"], "MenuFileNewTab"));
         Assert.True(BindingMutation.ArmedIn(["armed:MenuFileNewTab"], "MenuFileNewTab") && !BindingMutation.ArmedIn(["armed:MenuFileOpen"], "MenuFileNewTab"));
-        Assert.Null(BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "modal", "suppress", [], 1, 1));
-        Assert.Contains("dispatched MenuFileOpen", BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "modal", "suppress", ["MenuFileOpen"], 1, 1), StringComparison.Ordinal);
-        Assert.Contains("window count changed", BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "modal", "suppress", [], 1, 2), StringComparison.Ordinal);
-        Assert.Null(BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "editor", "execute", ["MenuFileNewTab"], 1, 1));
+        const string S = "Untitled - ScratchPad|tabs=1|text=|sel=";
+        Assert.Null(BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "modal", "suppress", [], S, S));
+        Assert.Contains("dispatched MenuFileOpen", BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "modal", "suppress", ["MenuFileOpen"], S, S), StringComparison.Ordinal);
+        Assert.Contains("the state changed", BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "modal", "suppress", [], S, "Untitled - ScratchPad|tabs=1|text=n|sel="), StringComparison.Ordinal);
+        Assert.Null(BindingMutation.RoutingProblem("Ctrl+N", "MenuFileNewTab", "editor", "execute", ["MenuFileNewTab"], S, S));
+        // R1-A2: a failure on an assertion that is not an outcome assertion
+        // for the chord is inconclusive.
+        var withOutcome = c with { OutcomeLines = new HashSet<int> { 5 } };
+        Assert.Null(BindingMutation.Problem(withOutcome, green, Fail("Assert.Equal() Failure: Values differ", 5), BindingMutation.SwapEvidence.Completed));
+        Assert.Contains("not one of the covering method's outcome assertions", BindingMutation.Problem(withOutcome, green, Fail("Assert.Equal() Failure: Values differ", 6), BindingMutation.SwapEvidence.Completed), StringComparison.Ordinal);
+        Assert.Equal(new HashSet<int> { 5 }, BindingManifest.OutcomeAssertLines("class Z { void M() {\n var w = 1;\n var n = 0;\n UiInput.PressKey(w, VirtualKeyShort.KEY_N, withControl: true);\n Assert.Equal(2, Count(w));\n Assert.Equal(1, 1);\n } }", "M", "Ctrl+N").ToHashSet());
     }
 
     // One unmutated child run per covering test, cached for the run (the

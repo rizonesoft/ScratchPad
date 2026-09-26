@@ -103,13 +103,26 @@ public sealed class HeldKeyTests
     {
         WithWindow((app, automation, window) =>
         {
+            // Before, on entry (text on the clipboard), and on exit (the
+            // clipboard emptied): Paste reads disabled in all three (R1-C1).
+            bool PasteEnabled()
+            {
+                var edit = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuEdit"));
+                Assert.NotNull(edit);
+                edit.Patterns.Invoke.Pattern.Invoke();
+                var paste = Retry.WhileNull(() => window.FindFirstDescendant(cf => cf.ByAutomationId("MenuEditPaste")), TimeSpan.FromSeconds(5)).Result;
+                Assert.NotNull(paste);
+                bool enabled = paste.IsEnabled;
+                edit.Patterns.Invoke.Pattern.Invoke();
+                Thread.Sleep(300);
+                return enabled;
+            }
+
+            Assert.False(PasteEnabled(), "Paste reads enabled before the clipboard changed");
             Assert.True(SetClipboardText("scratchpad clipboard transition"), "the clipboard could not be written");
-            var edit = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuEdit"));
-            Assert.NotNull(edit);
-            edit.Patterns.Invoke.Pattern.Invoke();
-            var paste = Retry.WhileNull(() => window.FindFirstDescendant(cf => cf.ByAutomationId("MenuEditPaste")), TimeSpan.FromSeconds(5)).Result;
-            Assert.NotNull(paste);
-            Assert.False(paste.IsEnabled, "Paste is documented disabled until its owner lands, but reads enabled after a clipboard change");
+            Assert.False(PasteEnabled(), "Paste is documented disabled until its owner lands, but reads enabled after the clipboard gained text");
+            Assert.True(EmptyClipboardNow(), "the clipboard could not be emptied");
+            Assert.False(PasteEnabled(), "Paste reads enabled after the clipboard was emptied");
         });
     }
 
@@ -149,6 +162,23 @@ public sealed class HeldKeyTests
 
     static int WaitForTabCount(Window window, int expected) =>
         Retry.While(() => TabItems(window).Count, count => count != expected, TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(250)).Result;
+
+    static bool EmptyClipboardNow()
+    {
+        if (!Native.OpenClipboard(0))
+        {
+            return false;
+        }
+
+        try
+        {
+            return Native.EmptyClipboard();
+        }
+        finally
+        {
+            _ = Native.CloseClipboard();
+        }
+    }
 
     static bool SetClipboardText(string text)
     {

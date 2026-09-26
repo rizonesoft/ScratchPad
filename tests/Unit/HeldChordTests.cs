@@ -48,8 +48,24 @@ public sealed class HeldChordTests
         string newTab = TestMutation.Key(0x54, 1);
         Assert.Equal(1, HeldChord.Count(newTab, "dddu"));
         Assert.Equal(2, HeldChord.Count(newTab, "dddudd"));
-        Assert.Equal(2, HeldChord.Count(newTab, "ddfd"));
+        // Focus loss while still held: the OS keeps reporting repeats, so a
+        // one-shot command still does not repeat; releasing and pressing
+        // again dispatches (R1-I1).
+        Assert.Equal(1, HeldChord.Count(newTab, "ddfd"));
+        Assert.Equal(2, HeldChord.Count(newTab, "ddfud"));
         Assert.Equal(4, HeldChord.Count("MenuViewZoomIn", "ddfddu"));
+    }
+
+    // §51 item 9 (R1-C1): a disablement during a held chord. While disabled
+    // no handler runs; once re-enabled the hold's repeats still never
+    // dispatch a one-shot command; the next deliberate press dispatches.
+    [Fact]
+    public void DisablementDuringAHoldNeverRepeats()
+    {
+        string newTab = TestMutation.Key(0x54, 1);
+        Assert.Equal(1, HeldChord.Count(newTab, "dxxdd"));
+        Assert.Equal(2, HeldChord.Count(newTab, "dxxddud"));
+        Assert.Equal(3, HeldChord.Count("MenuViewZoomIn", "dxxdd"));
     }
 
     // §51 item 8: one counting definition. A chord registered twice (two

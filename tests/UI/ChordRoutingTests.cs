@@ -200,7 +200,7 @@ public sealed class ChordRoutingTests
     static void Observe(FlaUI.Core.Application app, DispatchLogScope log, List<string[]> oracle, string chord, string command, string surface, Action press, List<string> mismatches)
     {
         _ = log.Next(TimeSpan.Zero);
-        int windowsBefore = WindowCount(app);
+        string stateBefore = StateOf(app);
         press();
         string[] fresh = log.Next(TimeSpan.FromMilliseconds(500));
         // A failed dispatch-log write ends the app (§36 R2-F2): lost
@@ -209,18 +209,39 @@ public sealed class ChordRoutingTests
         // Negative routing needs zero dispatch and unchanged state (D00 T02
         // §51 item 3), judged by the one rule the pure fixture pins.
         string want = BindingManifest.RoutingExpectation(oracle, chord, command, surface);
-        string? problem = BindingMutation.RoutingProblem(chord, command, surface, want, fresh, windowsBefore, WindowCount(app));
+        string? problem = BindingMutation.RoutingProblem(chord, command, surface, want, fresh, stateBefore, StateOf(app));
         if (problem is not null)
         {
             mismatches.Add(problem);
         }
     }
 
-    // The app's top-level window count, read from outside (§51 item 3).
-    static int WindowCount(FlaUI.Core.Application app)
+    // The relevant state for negative routing, read from outside (§51 item
+    // 3, R1-A3): each top-level window's title, tab count, document text,
+    // and selection, in window order.
+    static string StateOf(FlaUI.Core.Application app)
     {
         using var automation = new FlaUI.UIA3.UIA3Automation();
-        return app.GetAllTopLevelWindows(automation).Length;
+        var parts = new List<string>();
+        foreach (var w in app.GetAllTopLevelWindows(automation))
+        {
+            int tabs = w.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.TabItem)).Length;
+            var box = w.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox();
+            string text = box?.Text ?? string.Empty;
+            string sel = string.Empty;
+            try
+            {
+                sel = box?.Patterns.Text.PatternOrDefault?.GetSelection().FirstOrDefault()?.GetText(-1) ?? string.Empty;
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or COMException)
+            {
+                sel = "?";
+            }
+
+            parts.Add($"{w.Title}|tabs={tabs}|text={text}|sel={sel}");
+        }
+
+        return string.Join(" / ", parts);
     }
 
     // Presses a declared chord (letters, digits, Tab) into a target.

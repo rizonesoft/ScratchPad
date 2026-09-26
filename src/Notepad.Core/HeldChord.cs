@@ -104,9 +104,15 @@ public static class HeldChord
     }
 
     // The documented count for an input sequence (§51 items 6 and 8), read
-    // through the same rule the app runs: 'd' a key-down (a repeat when the
-    // key is already held), 'u' a key-up, 'f' focus loss; each key-down
-    // reaches `registrations` bound handlers.
+    // through the same rule the app runs: 'd' a key-down that reaches the
+    // bound handlers (a repeat when the key is already held), 'x' a
+    // key-down while the command is disabled (the framework never invokes
+    // a disabled accelerator, so no handler runs), 'u' a key-up, 'f' focus
+    // loss (the key stays physically held: the next key-down is still a
+    // repeat, as the OS reports it); each reached key-down reaches
+    // `registrations` bound handlers. State is per key event (NotePress
+    // sets it from the event's own repeat flag), so no path leaves a stale
+    // suppression: a release and re-press always dispatches again.
     public static int Count(string command, string sequence, int registrations = 1)
     {
         ArgumentNullException.ThrowIfNull(sequence);
@@ -140,9 +146,18 @@ public static class HeldChord
                     NoteRelease();
                     held = false;
                     break;
+                case 'x':
+                    NotePress(held, pending.Add);
+                    held = true;
+                    foreach (Action a in pending)
+                    {
+                        a();
+                    }
+
+                    pending.Clear();
+                    break;
                 case 'f':
                     Reset();
-                    held = false;
                     break;
                 default:
                     throw new ArgumentException($"unknown step '{c}' in {sequence}", nameof(sequence));

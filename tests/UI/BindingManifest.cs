@@ -643,6 +643,44 @@ internal static class BindingManifest
         return false;
     }
 
+    // The covering method's outcome assertions for a chord (D00 T02 §51
+    // item 2, R1-A2): the 1-based lines of `Assert.*` calls after the
+    // chord's first press whose subject reads state (the static rule's own
+    // criterion). A failure elsewhere is not the command's outcome.
+    internal static IReadOnlySet<int> OutcomeAssertLines(string source, string method, string chord)
+    {
+        var lines = new HashSet<int>();
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
+        foreach (MethodDeclarationSyntax m in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == method))
+        {
+            var presses = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(c => c.Expression.ToString() is "UiInput.Press" or "UiInput.PressKey" && PressedChords(PressOnly(m, c), method).Contains(chord)).ToList();
+            if (presses.Count == 0)
+            {
+                continue;
+            }
+
+            int after = presses.Min(c => c.SpanStart);
+            var fresh = m.DescendantNodes().Where(n => n.SpanStart > after).SelectMany(n => n switch
+            {
+                VariableDeclaratorSyntax v => [v.Identifier.Text],
+                AssignmentExpressionSyntax { Left: IdentifierNameSyntax id } => [id.Identifier.Text],
+                _ => Array.Empty<string>(),
+            }).ToHashSet(StringComparer.Ordinal);
+            foreach (InvocationExpressionSyntax c in m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(c => c.SpanStart > after && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal) && SubjectArguments(c).Any(a => ReadsState(a, fresh))))
+            {
+                var span = tree.GetLineSpan(c.Span);
+                for (int l = span.StartLinePosition.Line + 1; l <= span.EndLinePosition.Line + 1; l++)
+                {
+                    lines.Add(l);
+                }
+            }
+        }
+
+        return lines;
+    }
+
     static readonly HashSet<string> UnaryAsserts = new(["True", "False", "Null", "NotNull", "Empty", "NotEmpty", "Single"], StringComparer.Ordinal);
 
     static IEnumerable<ExpressionSyntax> SubjectArguments(InvocationExpressionSyntax call)

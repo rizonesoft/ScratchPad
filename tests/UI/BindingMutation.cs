@@ -26,7 +26,9 @@ internal static class BindingMutation
 {
     // CleanupLines: the covering method's lines inside `finally` blocks
     // (D00 T02 §51 item 2), where a failure is cleanup, not the outcome.
-    internal sealed record Case(string Chord, string Command, string TestClass, string TestMethod, string Target, int PressLine, IReadOnlySet<int>? CleanupLines = null);
+    // OutcomeLines: the covering method's outcome assertions for the chord
+    // (§51 R1-A2); a kill must fail on one of them.
+    internal sealed record Case(string Chord, string Command, string TestClass, string TestMethod, string Target, int PressLine, IReadOnlySet<int>? CleanupLines = null, IReadOnlySet<int>? OutcomeLines = null);
 
     // What the child's dispatch log proves about the swap (§51 item 1):
     // nothing, a started swap whose substitute never returned, or a
@@ -76,10 +78,11 @@ internal static class BindingMutation
     }
 
     // Negative routing (§51 item 3): a suppress cell requires zero dispatch
-    // of ANY bound command and unchanged relevant state (the window count),
+    // of ANY bound command and unchanged relevant state (every window's
+    // title, tab count, document text, and selection),
     // never a swap; an execute cell requires the command reached. Returns
     // the mismatch, or null.
-    internal static string? RoutingProblem(string chord, string command, string surface, string want, IReadOnlyCollection<string> fresh, int windowsBefore, int windowsAfter)
+    internal static string? RoutingProblem(string chord, string command, string surface, string want, IReadOnlyCollection<string> fresh, string stateBefore, string stateAfter)
     {
         string at = $"{chord} -> {command} on {surface}";
         bool reached = fresh.Contains(Target(chord, command), StringComparer.Ordinal);
@@ -93,7 +96,9 @@ internal static class BindingMutation
             return $"{at}: oracle says suppress, the press dispatched {string.Join(", ", fresh)}";
         }
 
-        return windowsAfter != windowsBefore ? $"{at}: oracle says suppress, but the window count changed from {windowsBefore} to {windowsAfter}" : null;
+        // The relevant state (§51 R1-A3): every window's title, tab count,
+        // document text, and selection, read from outside.
+        return stateAfter != stateBefore ? $"{at}: oracle says suppress, but the state changed ({stateBefore} -> {stateAfter})" : null;
     }
 
     internal sealed record ChildOutcome(int Passed, int Failed, int Skipped, string? FailureMessage, int? FailureLine, string Tail);
@@ -111,7 +116,7 @@ internal static class BindingMutation
                 string method = t.Groups[2].Value;
                 string? src = testSource(cls);
                 int line = src is null ? 0 : PressLine(src, method, row.Chord);
-                cases.Add(new Case(row.Chord, row.Command, cls, method, Target(row.Chord, row.Command), line, src is null ? null : CleanupLinesOf(src, method)));
+                cases.Add(new Case(row.Chord, row.Command, cls, method, Target(row.Chord, row.Command), line, src is null ? null : CleanupLinesOf(src, method), src is null ? null : BindingManifest.OutcomeAssertLines(src, method, row.Chord)));
             }
         }
 
@@ -261,6 +266,14 @@ internal static class BindingMutation
             if (o.FailureLine is not null && c.CleanupLines is not null && c.CleanupLines.Contains(o.FailureLine.Value))
             {
                 return $"{at} is inconclusive: it failed in the covering method's cleanup (line {o.FailureLine.Value.ToString(CultureInfo.InvariantCulture)}, a finally block), not on the command's outcome";
+            }
+
+            // The failure must be an outcome assertion (§51 R1-A2): an assert
+            // after the press whose subject reads state; any other assertion
+            // failing proves nothing about this command.
+            if (o.FailureLine is not null && c.OutcomeLines is not null && !c.OutcomeLines.Contains(o.FailureLine.Value))
+            {
+                return $"{at} is inconclusive: it failed at line {o.FailureLine.Value.ToString(CultureInfo.InvariantCulture)}, which is not one of the covering method's outcome assertions for {c.Chord} (lines {string.Join(", ", c.OutcomeLines.Order())})";
             }
 
             if (c.PressLine <= 0 || o.FailureLine is null || o.FailureLine <= c.PressLine)

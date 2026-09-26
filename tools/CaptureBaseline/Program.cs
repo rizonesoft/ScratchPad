@@ -137,35 +137,53 @@ static int CaptureHeldKeys(string outFile)
     AutomationElement[] TabItems() => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.TabItem));
     int SelectedTab() => Array.FindIndex(TabItems(), t => t.Patterns.SelectionItem.PatternOrDefault?.IsSelected.ValueOrDefault == true);
     string Zoom() => window.FindAllDescendants().Select(e => e.Name ?? string.Empty).FirstOrDefault(n => System.Text.RegularExpressions.Regex.IsMatch(n, "^\\d+%$")) ?? string.Empty;
+    // Every key this tool pressed is released even when a hold throws
+    // (D00 T02 §51 R1-I2), so a failed capture never leaves a modifier down
+    // for the physical tests that follow.
     void Hold(VirtualKeyShort key, int keyDowns, bool shift = false)
     {
-        Keyboard.Press(VirtualKeyShort.CONTROL);
-        if (shift)
+        try
         {
-            Keyboard.Press(VirtualKeyShort.SHIFT);
+            Keyboard.Press(VirtualKeyShort.CONTROL);
+            if (shift)
+            {
+                Keyboard.Press(VirtualKeyShort.SHIFT);
+            }
+
+            for (int i = 0; i < keyDowns; i++)
+            {
+                Keyboard.Press(key);
+                Thread.Sleep(60);
+            }
+        }
+        finally
+        {
+            Keyboard.Release(key);
+            if (shift)
+            {
+                Keyboard.Release(VirtualKeyShort.SHIFT);
+            }
+
+            Keyboard.Release(VirtualKeyShort.CONTROL);
         }
 
-        for (int i = 0; i < keyDowns; i++)
-        {
-            Keyboard.Press(key);
-            Thread.Sleep(60);
-        }
-
-        Keyboard.Release(key);
-        if (shift)
-        {
-            Keyboard.Release(VirtualKeyShort.SHIFT);
-        }
-
-        Keyboard.Release(VirtualKeyShort.CONTROL);
         Thread.Sleep(800);
     }
 
     int tabs0 = TabItems().Length;
     Hold(VirtualKeyShort.KEY_T, 7);
     int oneShot = TabItems().Length - tabs0;
-    while (TabItems().Length < 10)
+    // Bounded (R1-I2): tabs that will not open fail the capture instead of
+    // looping until an external kill.
+    for (int tries = 0; TabItems().Length < 10; tries++)
     {
+        if (tries >= 20)
+        {
+            window.Close();
+            Console.WriteLine($"stock Notepad did not reach 10 tabs within 20 presses ({TabItems().Length})");
+            return 1;
+        }
+
         Hold(VirtualKeyShort.KEY_T, 1);
     }
 

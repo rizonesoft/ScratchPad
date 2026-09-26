@@ -100,30 +100,40 @@ public sealed class MenuLabelTests
             foreach (string[] t in here)
             {
                 Assert.Equal("unchanged", t[2]);
-                var (entry, exit) = t[1] switch
+                // Read before the transition, on entry, and on exit (R1-C1):
+                // `unchanged` means entry and exit both read as before.
+                var (before, entry, exit) = t[1] switch
                 {
                     "tab-switch" => WithApp($"\"{a}\" \"{b}\"", window =>
                     {
+                        string home = window.Title;
                         var pre = ReadBound(window, all);
-                        var first = window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.TabItem)).First(t => (t.Name ?? string.Empty).Contains("scratchpad-transition-a-", StringComparison.Ordinal));
-                        first.Patterns.SelectionItem.Pattern.Select();
-                        Assert.True(Retry.WhileFalse(() => window.Title.Contains("scratchpad-transition-a-", StringComparison.Ordinal), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200)).Result, $"the tab switch did not reach the first document: {window.Title}");
-                        return (pre, ReadBound(window, all));
+                        SelectTab(window, "scratchpad-transition-a-");
+                        var on = ReadBound(window, all);
+                        SelectTab(window, home.Contains("scratchpad-transition-b-", StringComparison.Ordinal) ? "scratchpad-transition-b-" : "Untitled");
+                        return (pre, on, ReadBound(window, all));
                     }),
                     "undo-history" => WithApp(null, window =>
                     {
                         var box = ContentBox(window);
+                        string original = box.Text ?? string.Empty;
                         var pre = ReadBound(window, all);
                         UiInput.AppendText(box, "one");
                         UiInput.AppendText(box, "two");
-                        return (pre, ReadBound(window, all));
+                        var on = ReadBound(window, all);
+                        box.Text = original;
+                        Thread.Sleep(200);
+                        return (pre, on, ReadBound(window, all));
                     }),
                     _ => throw new InvalidOperationException($"the Enablement transitions row '{t[0]}' names setup '{t[1]}', which this test cannot build"),
                 };
-                var missing = all.Where(id => !entry.ContainsKey(id) || !exit.ContainsKey(id)).ToList();
-                Assert.True(missing.Count == 0, $"{t[0]}: {missing.Count} bound item(s) were not read: {string.Join(", ", missing)}");
-                var changed = all.Where(id => entry[id].Enabled != exit[id].Enabled).ToList();
-                Assert.True(changed.Count == 0, $"{t[0]}: documented unchanged, but {string.Join(", ", changed.Select(id => $"{id} {(entry[id].Enabled ? "enabled" : "disabled")} -> {(exit[id].Enabled ? "enabled" : "disabled")}"))}");
+                foreach (var (phase, reads) in new[] { ("on entry", entry), ("on exit", exit) })
+                {
+                    var missing = all.Where(id => !before.ContainsKey(id) || !reads.ContainsKey(id)).ToList();
+                    Assert.True(missing.Count == 0, $"{t[0]} {phase}: {missing.Count} bound item(s) were not read: {string.Join(", ", missing)}");
+                    var changed = all.Where(id => before[id].Enabled != reads[id].Enabled).ToList();
+                    Assert.True(changed.Count == 0, $"{t[0]} {phase}: documented unchanged, but {string.Join(", ", changed.Select(id => $"{id} {(before[id].Enabled ? "enabled" : "disabled")} -> {(reads[id].Enabled ? "enabled" : "disabled")}"))}");
+                }
             }
         }
         finally
@@ -131,6 +141,14 @@ public sealed class MenuLabelTests
             File.Delete(a);
             File.Delete(b);
         }
+    }
+
+    static void SelectTab(Window window, string namePart)
+    {
+        var tab = Retry.WhileNull(() => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.TabItem)).FirstOrDefault(t => (t.Name ?? string.Empty).Contains(namePart, StringComparison.Ordinal)), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200)).Result;
+        Assert.True(tab is not null, $"no tab named like {namePart}");
+        tab.Patterns.SelectionItem.Pattern.Select();
+        Assert.True(Retry.WhileFalse(() => window.Title.Contains(namePart, StringComparison.Ordinal), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200)).Result, $"the tab switch did not reach {namePart}: {window.Title}");
     }
 
     // D00 T02 §43 item 5 (R1-F2): enablement is read across a transition,

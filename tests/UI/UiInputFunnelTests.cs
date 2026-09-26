@@ -560,16 +560,20 @@ public sealed class UiInputFunnelTests
         Assert.Contains("state unknown: SHIFT", unk.Message, StringComparison.Ordinal);
     }
 
-    // §51 item 5: a confirmed stuck key blocks the next physical press with
-    // a named reason (an unknown state blocks nothing), and a press whose
-    // key-down and cleanup both fail keeps both failures.
+    // §51 item 5: a confirmed stuck key, and a key whose release cannot be
+    // confirmed (R1-A1), each block the next physical press with a named
+    // reason; a released key blocks nothing; and a press whose key-down and
+    // cleanup both fail keeps both failures.
     [Fact]
     public void ConfirmedStuckKeyContainsInputAndBothFailuresAreKept()
     {
         void Throws(VirtualKeyShort k) => throw new InvalidOperationException("SendInput failed");
         var unknownBox = new UiInput.InputContainment();
         _ = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(new List<VirtualKeyShort> { VirtualKeyShort.CONTROL }, Throws, isDown: _ => null, containment: unknownBox));
-        Assert.Null(unknownBox.Reason);
+        Assert.Contains("could not be confirmed: CONTROL", unknownBox.Reason, StringComparison.Ordinal);
+        var releasedBox = new UiInput.InputContainment();
+        _ = UiInput.ChordUp(new List<VirtualKeyShort> { VirtualKeyShort.CONTROL }, Throws, isDown: _ => false, containment: releasedBox);
+        Assert.Null(releasedBox.Reason);
         var box = new UiInput.InputContainment();
         _ = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(new List<VirtualKeyShort> { VirtualKeyShort.CONTROL }, Throws, isDown: _ => true, containment: box));
         Assert.Contains("confirmed stuck key(s): CONTROL", box.Reason, StringComparison.Ordinal);

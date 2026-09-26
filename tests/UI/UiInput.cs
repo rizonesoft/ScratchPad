@@ -337,7 +337,8 @@ internal static class UiInput
     // and is reported so (the return value), a key that reads down is
     // confirmed stuck (it fails the pass and, with a containment, blocks
     // further physical input), and a key whose state cannot be read is
-    // unknown (it fails the pass, but blocks nothing on a guess).
+    // unknown (it fails the pass and, with a containment, blocks further
+    // physical input too: a release that cannot be confirmed is not safe).
     internal static string ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release, TimeSpan? bound = null, Func<TimeSpan>? elapsed = null, Func<Action, Task>? start = null, Func<VirtualKeyShort, bool?>? isDown = null, InputContainment? containment = null)
     {
         ArgumentNullException.ThrowIfNull(injected);
@@ -422,9 +423,16 @@ internal static class UiInput
         }
 
         injected.Clear();
+        // A release that cannot be confirmed contains input for the run
+        // (D00 T02 §51 item 5, R1-A1): a key that reads down, and one whose
+        // state cannot be read, both block every later physical press.
         if (confirmed.Count > 0)
         {
             containment?.Block($"confirmed stuck key(s): {string.Join(", ", confirmed)}");
+        }
+        else if (stuck.Count > 0)
+        {
+            containment?.Block($"key(s) whose release could not be confirmed: {string.Join(", ", stuck)}");
         }
 
         if (confirmed.Count > 0 || stuck.Count > 0)
