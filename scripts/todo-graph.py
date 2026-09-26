@@ -1030,6 +1030,12 @@ SEVERITY_MAP: dict[str, str] = {
     # round suffix, or an `Arch outage:` line that does not parse
     # (D00 T04 §1 item 10). Later skill edits cannot drop the governance.
     "arch-record-shape": "fatal",
+    # a findings file stamped after the disposition cutover whose panel
+    # round carries no Telemetry line, two of them, a malformed one, or
+    # one out of range (round mismatch, unknown outcome or effort,
+    # duration past a day, tokens past a billion): totals rest on checked
+    # records (D00 T04 §1 items 12-13).
+    "panel-telemetry-shape": "fatal",
     # an outage marker whose (rung, event-day) key resolves to no
     # findings-file outage note, an outage note no marker keys, or a
     # duplicated or malformed note key: unattributed failure
@@ -1253,6 +1259,9 @@ DISPOSITION_CUTOVER = "2026-09-26"
 # gate surface), so the check runs forward, like the disposition rule,
 # and those records stay as written.
 ARCH_RECORD_CUTOVER = "2026-09-26"
+TELEMETRY_EFFORTS = ("minimal", "low", "medium", "high", "xhigh", "max", "unknown")
+TELEMETRY_MAX_TOKENS = 1_000_000_000
+TELEMETRY_MAX_SECONDS = 86_400
 ARCH_SURFACES = ("editor state", "storage", "extensibility", "AI integration", "protocol", "consent/undo")
 DISPOSITION_WORDS = ("fixed", "live", "filed", "rejected", "duplicate", "escalated")
 # Fallback-family cutover (D00 T04 §25): stamps dated after this day
@@ -2822,7 +2831,10 @@ TELEMETRY_LINE_RE = re.compile(
     r"\s*duration\s+([^;]+?)\s*;\s*outcome\s+([^;]+?)\s*;\s*tokens\s+([^;]+?)\s*$"
 )
 TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|Claude panel|GPT panel|Grok panel)\b(.*)$", re.IGNORECASE)
-TELEMETRY_NEAR_RE = re.compile(r"^\s{0,3}[*>\-]?\s*Telemetry\s*:", re.IGNORECASE)
+# Near misses (D00 T04 §1 item 12): any run of list markers (`*`, `+`,
+# `-`, numbered `1.` or `1)`), nested quotes, or an opening backtick
+# before the word counts malformed instead of dropping silently.
+TELEMETRY_NEAR_RE = re.compile(r"^\s{0,3}(?:(?:[*+>\-]|[0-9]{1,9}[.)]|`)\s*)*Telemetry\s*:", re.IGNORECASE)
 TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
 TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
 TELEMETRY_ROUND_RE = re.compile(r"round\s+(\d+)", re.IGNORECASE)
@@ -10980,6 +10992,10 @@ track: Z1
 |  86   |   §86   | Triggered surface without a gate round fires | - |  [x]   |
 |  87   |   §87   | Gate heading without a round and a bad outage line fire | - |  [x]   |
 |  88   |   §88   | Well-formed triggered gate record stays silent | - |  [x]   |
+|  89   |   §89   | Panel round without a Telemetry line fires | - |  [x]   |
+|  90   |   §90   | Duplicate and out-of-range Telemetry lines fire | - |  [x]   |
+|  91   |   §91   | Near-miss Telemetry shapes fire as malformed | - |  [x]   |
+|  92   |   §92   | Clean Telemetry per round stays silent | - |  [x]   |
 
 ---
 
@@ -11951,6 +11967,50 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-arch-ok.md
 > **Plan review:** GPT high, no findings
 
+## 89. Panel round without a Telemetry line fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §89 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tel-missing.md
+> **Plan review:** GPT high, no findings
+
+## 90. Duplicate and out-of-range Telemetry lines fire
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §90 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tel-dup.md
+> **Plan review:** GPT high, no findings
+
+## 91. Near-miss Telemetry shapes fire as malformed
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §91 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tel-near.md
+> **Plan review:** GPT high, no findings
+
+## 92. Clean Telemetry per round stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §92 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tel-ok.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12391,18 +12451,24 @@ track: Z1
                 "# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n"
                 "**adversarial: needs-attention** (2)\n1. first\n2. second\n**consistency: approve**\n"
                 "**integration: approve**\n**record: approve**\n\n"
+                "Telemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n"
                 "| ID | Disposition | Evidence |\n| --- | --- | --- |\n" + _drows,
                 encoding="utf-8",
             )
         # Architecture-gate record shapes (D00 T04 §1 item 10).
-        (rev_dir / "90-panel-arch-missing.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
-        (rev_dir / "90-panel-arch-badtrig.md").write_text("# Review: fixture\nArch trigger: sometimes - maybe\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
-        (rev_dir / "90-panel-arch-noround.md").write_text("# Review: fixture\nArch trigger: storage - settings format changes\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
-        (rev_dir / "90-panel-arch-badhead.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review\n\nverdict: approve\n\nArch outage: both rungs - timeout\n\nArch outage: somewhere - x\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
-        (rev_dir / "90-panel-arch-ok.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review (Arch-1 fallback)\n\nArch outage: arch-primary - timeout\n\nverdict: approve\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-missing.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-badtrig.md").write_text("# Review: fixture\nArch trigger: sometimes - maybe\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-noround.md").write_text("# Review: fixture\nArch trigger: storage - settings format changes\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-badhead.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review\n\nverdict: approve\n\nArch outage: both rungs - timeout\n\nArch outage: somewhere - x\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-ok.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review (Arch-1 fallback)\n\nArch outage: arch-primary - timeout\n\nverdict: approve\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        # Telemetry shapes (D00 T04 §1 items 12-13).
+        (rev_dir / "90-panel-tel-missing.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n", encoding="utf-8")
+        (rev_dir / "90-panel-tel-dup.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 2; model gpt-6-astra; effort galactic; duration 90000s; outcome approve; tokens 1000\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        (rev_dir / "90-panel-tel-near.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n+ Telemetry: round 1; model m; effort medium; duration 1s; outcome approve; tokens 1\n1. Telemetry: round 1; model m; effort medium; duration 1s; outcome approve; tokens 1\n> > Telemetry: round 1; model m; effort medium; duration 1s; outcome approve; tokens 1\n`Telemetry: round 1; model m; effort medium; duration 1s; outcome approve; tokens 1`\n", encoding="utf-8")
+        (rev_dir / "90-panel-tel-ok.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         # Interrupted reviews resume before they stamp (D00 T04 §1 item 6).
-        (rev_dir / "90-panel-stop-open.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n", encoding="utf-8")
-        (rev_dir / "90-panel-stop-resumed.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n\n## GPT panel Round 2\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n", encoding="utf-8")
+        (rev_dir / "90-panel-stop-open.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n", encoding="utf-8")
+        (rev_dir / "90-panel-stop-resumed.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n\n## GPT panel Round 2\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 2; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
         # findings carry provenance, so the panel fixtures carry it too.
         for _ppf in sorted(rev_dir.glob("90-panel-*.md")):
@@ -12835,6 +12901,31 @@ track: Z1
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "panel round without a Telemetry line fires",
+            any("TODO-06-panel.md" in ln and "§89 " in ln and "round 1 carries no Telemetry line" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "duplicate Telemetry line fires",
+            any("TODO-06-panel.md" in ln and "§90 " in ln and "second Telemetry line" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "out-of-range Telemetry fires (round mismatch, effort, duration)",
+            [any("TODO-06-panel.md" in ln and "§90 " in ln and w in ln for ln in panel_out) for w in ("names round 2", "effort `galactic`", "duration 90000s")],
+            [True, True, True],
+        )
+        check(
+            "near-miss Telemetry shapes fire as malformed (+, numbered, nested quote, backtick)",
+            sum(1 for ln in panel_out if "TODO-06-panel.md" in ln and "§91 " in ln and "malformed Telemetry line" in ln),
+            4,
+        )
+        check(
+            "clean Telemetry per round stays silent",
+            any("TODO-06-panel.md" in ln and "§92 " in ln and "Telemetry" in ln for ln in panel_out),
+            False,
+        )
         check(
             "arch record without a trigger line fires",
             any("TODO-06-panel.md" in ln and "§84 " in ln and "carries no `Arch trigger:` line" in ln for ln in panel_out),
@@ -15945,6 +16036,28 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             _al = _att.split("\n")
             _at = 2 if (len(_al) > 1 and _al[1].startswith("Provenance:")) else 1
             _atf.write_text("\n".join(_al[:_at] + ["Arch trigger: none - fixture review; no gate surface"] + _al[_at:]), encoding="utf-8")
+        # Telemetry per panel round (D00 T04 §1 item 13), for the same
+        # reason: each panel heading gets its round's line right after it,
+        # numbered the way telemetry_parse numbers rounds.
+        for _ttf in sorted(rev_dir.glob("90-*.md")):
+            _ttt = _ttf.read_text(encoding="utf-8")
+            if "Telemetry:" in _ttt:
+                continue
+            _trounds = telemetry_parse(strip_fenced_code(_ttt)[0])["rounds"]
+            if not _trounds:
+                continue
+            _tout: list[str] = []
+            _tk = 0
+            for _tln in _ttt.split("\n"):
+                _tout.append(_tln)
+                if TELEMETRY_PANEL_RE.match(_tln) and _tk < len(_trounds):
+                    # The outcome is the round's worst verdict, as the
+                    # parser requires.
+                    _tv = [TELEMETRY_WORST[v.lower()] for _a, v in _trounds[_tk]["verdicts"]]
+                    _tw = {w: k for k, w in TELEMETRY_WORST.items()}[max(_tv)] if _tv else "approve"
+                    _tout.append(f"Telemetry: round {_trounds[_tk]['n']}; model fixture; effort medium; duration unknown; outcome {_tw}; tokens unknown")
+                    _tk += 1
+            _ttf.write_text("\n".join(_tout), encoding="utf-8")
         # Canned git bytes (D00 T01 §19 items 3, 8): the clearance proof
         # reads fix commits and the history rule reads HEAD, so the test
         # patches the readers instead of a repo. `aaa1111000000000000000000000000000000000` carries the §2

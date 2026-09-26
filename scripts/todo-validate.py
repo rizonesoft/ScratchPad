@@ -576,6 +576,51 @@ def validate(graph, _args) -> int:
                 elif _ok.group(2).lower() == "both rungs" and not _ok.group(1) and s.stamped_on > graph.DISPOSITION_CUTOVER:
                     flag("arch-record-shape", f"{_awhere} has a both-rungs outage line without its Arch round (want `Arch outage: Arch-N both rungs - <failures>`)")
 
+    # Telemetry shapes (D00 T04 §1 items 12-13), on findings files stamped
+    # after the disposition cutover: every panel round carries exactly
+    # one bare Telemetry line whose round matches, whose outcome and
+    # effort are in the vocabulary, and whose duration and tokens are in
+    # range; near-miss shapes and duplicates fire instead of dropping.
+    _tel_outcomes = ("approve", "advisory", "needs-attention")
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is None or s.stamped_on <= graph.DISPOSITION_CUTOVER:
+                continue
+            _tm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not _tm:
+                continue
+            try:
+                _ttext = (graph.TODO_DIR.parent / _tm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _ttext, _tunb = graph.strip_fenced_code(_ttext)
+            if _tunb is not None:
+                continue
+            _twhere = f"{t.path}:{s.line}: §{num} findings {_tm.group(1)}"
+            _tp = graph.telemetry_parse(_ttext)
+            for _r in _tp["rounds"]:
+                _tl = _r["telemetry"]
+                if _tl is None:
+                    flag("panel-telemetry-shape", f"{_twhere} panel round {_r['n']} carries no Telemetry line")
+                    continue
+                if _tl["round"] != _r["n"]:
+                    flag("panel-telemetry-shape", f"{_twhere} panel round {_r['n']}'s Telemetry line names round {_tl['round']}")
+                if _tl["outcome"] not in _tel_outcomes:
+                    flag("panel-telemetry-shape", f"{_twhere} panel round {_r['n']}'s Telemetry outcome `{_tl['outcome']}` is not approve, advisory, or needs-attention")
+                if _tl["effort"].lower() not in graph.TELEMETRY_EFFORTS:
+                    flag("panel-telemetry-shape", f"{_twhere} panel round {_r['n']}'s Telemetry effort `{_tl['effort']}` is not one of {', '.join(graph.TELEMETRY_EFFORTS)}")
+                if _tl["duration"] is not None and _tl["duration"] > graph.TELEMETRY_MAX_SECONDS:
+                    flag("panel-telemetry-shape", f"{_twhere} panel round {_r['n']}'s Telemetry duration {_tl['duration']}s is past a day")
+                if _tl["tokens"] is not None and _tl["tokens"] > graph.TELEMETRY_MAX_TOKENS:
+                    flag("panel-telemetry-shape", f"{_twhere} panel round {_r['n']}'s Telemetry tokens {_tl['tokens']} are past a billion")
+            for _ml in _tp["malformed"]:
+                if graph.TELEMETRY_LINE_RE.match(_ml):
+                    flag("panel-telemetry-shape", f"{_twhere} has a Telemetry line that does not count (a second Telemetry line in one round, a line outside any round, a round with no recognized verdicts, or an outcome other than the round's worst verdict): `{_ml[:80]}`")
+                else:
+                    flag("panel-telemetry-shape", f"{_twhere} has a malformed Telemetry line: `{_ml[:80]}`")
+
     # Panel disposition tables (D00 T04 §1 items 3 and 4). Every panel
     # round's findings get IDs (`R<round>-<lens letter><n>`, or the older
     # `R<round>-F<n>`), and the LAST `| ID | Disposition | Evidence |`
