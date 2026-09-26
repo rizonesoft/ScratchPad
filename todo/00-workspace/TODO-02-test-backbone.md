@@ -1548,13 +1548,15 @@ Why this section exists: the §41 plan review returned 12 findings; 9 file here 
 
 ## 49. Gate Process Attribution Under PID Reuse
 
+> **Started:** 2026-09-26T00:16:08Z
+
 Why this section exists: the §41 Run A rerun of 2026-09-25 went red on `event-primary=1` for a `#32770` window titled "Granola Setup" at 1542,752 on the primary, attributed to ScratchPad pid 47576 (gate log gate41b.log, event 398184). `tools/ForegroundLog/Program.cs` caches pid-to-process-name lookups for the whole run and never invalidates them, so a pid a ScratchPad test process held earlier and a foreign installer reused later reads as ScratchPad; the suite itself was green (UI 295/16/0). A gate that reds on foreign windows trains everyone to rerun instead of reading it. -> SOURCE: live-gate-2026-09-25-gate41b-pid47576
 
 - -> XREF: D00 T02 §18 -- the foreground and placement gate it hardens.
 
-- [ ] Process identity is resolved per event as (pid, process start time), never from a run-long pid cache, so a pid reused by another process is attributed to that process. Done when: a fixture that reuses a cached pid for a foreign window is not counted against ScratchPad.
-- [ ] Every EVENT and census line names the process's executable path and start time, so a foreign window reads as foreign in the log. Done when: the log line for a planted foreign window names its executable.
-- [ ] Commit: `"workspace: attribute gate events by process identity, not a reused pid"`
+- [x] Process identity is resolved per event as (pid, process start time), never from a run-long pid cache, so a pid reused by another process is attributed to that process. Done when: a fixture that reuses a cached pid for a foreign window is not counted against ScratchPad.
+- [x] Every EVENT and census line names the process's executable path and start time, so a foreign window reads as foreign in the log. Done when: the log line for a planted foreign window names its executable.
+- [x] Commit: `"workspace: attribute gate events by process identity, not a reused pid"`
 
 **Test checkpoint:** A reused pid never attributes a foreign window to ScratchPad, and every gate line names the process it counted. Cheaper substitute that fails: a longer allowlist of foreign window titles.
 

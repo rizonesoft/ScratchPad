@@ -72,6 +72,7 @@ run-a:
   UI.ExportTests.ExportMarkdownWritesConvertedFile
   UI.ExportTests.ExportPlainStripsMarkers
   UI.ExportTests.UntitledShowsSaveFirstNote
+  UI.GateAttributionTests.ReusedPidIsNeverAttributedToTheAppAndLinesNameTheExecutable
   UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
   UI.GoldenComparisonTests.FreshCaptureMatchesGolden
   UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
@@ -268,9 +269,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 261
-run-a-cases: 325
-run-a-case-hash: c156a4078a6ff01d
+run-a-methods: 262
+run-a-cases: 326
+run-a-case-hash: b951968d810f2a42
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -340,6 +341,7 @@ run-a-case-rows:
   UI|UI.ExportTests.ExportMarkdownWritesConvertedFile
   UI|UI.ExportTests.ExportPlainStripsMarkers
   UI|UI.ExportTests.UntitledShowsSaveFirstNote
+  UI|UI.GateAttributionTests.ReusedPidIsNeverAttributedToTheAppAndLinesNameTheExecutable
   UI|UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
   UI|UI.GoldenComparisonTests.FreshCaptureMatchesGolden
   UI|UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison

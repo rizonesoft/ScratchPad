@@ -13,6 +13,13 @@
 // parent-client accidents, never placements. Usage:
 //   ForegroundLog <seconds> <logpath> [process-name-to-flag] [--expect-primary]
 //   ForegroundLog launch <exe> [args]  (no-activate process start for probing)
+//   ForegroundLog selftest              (attribution fixtures, exit 0 when green)
+// Process identity (D00 T02 §49): every event and census window is
+// attributed to its process by (pid, process start time), resolved when the
+// event arrives, never from a run-long pid cache, so a pid a ScratchPad test
+// process held earlier and another process reused later reads as that other
+// process. Each EVENT and CENSUS line names the executable and the start
+// time it counted (exe=, started=), so a foreign window reads as foreign.
 // The gate is green when the app never held the foreground AND the census
 // and the event log agree (exit 0). Resting means seen visibly on the
 // primary twice. The event log's first visible rect is the birth, even
@@ -34,6 +41,11 @@ if (args.Length > 0 && args[0] == "launch")
     return Launch(args.Skip(1).ToArray());
 }
 
+if (args.Length > 0 && args[0] == "selftest")
+{
+    return SelfTest();
+}
+
 if (args.Length < 2 || !int.TryParse(args[0], out int seconds) || seconds <= 0)
 {
     Console.Error.WriteLine("usage: ForegroundLog <seconds> <logpath> [process-name] [--expect-primary]");
@@ -52,7 +64,7 @@ var primarySeen = new HashSet<nint>();
 var monitors = new List<(Native.Rect Rect, bool Primary)>();
 var openBirths = new Dictionary<nint, EventEntry>();
 var closedBirths = new List<(nint Hwnd, EventEntry Entry)>();
-var processNames = new Dictionary<uint, string>();
+var identities = new Dictionary<(uint Pid, long Start), ProcIdentity>();
 int birthSeq = 0;
 Native.WinEventProc onEvent = (hook, eventType, hwnd, idObject, idChild, threadId, time) =>
 {
@@ -98,21 +110,11 @@ Native.WinEventProc onEvent = (hook, eventType, hwnd, idObject, idChild, threadI
     try
     {
         _ = Native.GetWindowThreadProcessId(hwnd, out uint pid);
-        if (!processNames.TryGetValue(pid, out string? process))
-        {
-            try
-            {
-                process = Process.GetProcessById((int)pid).ProcessName;
-            }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-            {
-                return;
-            }
-
-            processNames[pid] = process;
-        }
-
-        if (!string.Equals(process, flag, StringComparison.OrdinalIgnoreCase))
+        // The process that owns the window now, by (pid, start time): a pid
+        // reused since an earlier sighting resolves to its new process
+        // (D00 T02 §49).
+        ProcIdentity? who = Attribute(pid, Probe, identities);
+        if (who is null || !string.Equals(who.Name, flag, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -178,7 +180,7 @@ Native.WinEventProc onEvent = (hook, eventType, hwnd, idObject, idChild, threadI
         }
 
         string kind = eventType == Native.EventObjectShow ? "show" : "location";
-        openBirths[hwnd] = new EventEntry(birthSeq++, (int)pid, Classify(bounds, monitors), $"{bounds.Left},{bounds.Top},{width}x{height}", kind, WindowTitle(hwnd), WindowClass(hwnd));
+        openBirths[hwnd] = new EventEntry(birthSeq++, (int)pid, Classify(bounds, monitors), $"{bounds.Left},{bounds.Top},{width}x{height}", kind, WindowTitle(hwnd), WindowClass(hwnd), who.Exe, who.StartText);
     }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or Win32Exception)
     {
@@ -240,7 +242,7 @@ try
         // show a window for ~1 s, and a 1 s cadence demonstrably misses them
         // (Run B probe: census=0 over two 2 s tests). EnumWindows each tick is
         // cheap next to the suite it watches.
-        UpdateCensus(census, sightings, primarySeen, flag, monitors);
+        UpdateCensus(census, sightings, primarySeen, flag, monitors, identities);
     }
 }
 finally
@@ -280,7 +282,7 @@ foreach ((nint hwnd, EventEntry entry) in events)
         eventPrimary++;
     }
 
-    log.WriteLine($"EVENT {hwnd} pid={entry.Pid} {entry.Monitor} {entry.Rect} {entry.Kind} class={entry.Class} {entry.Title}");
+    log.WriteLine(EventLine(hwnd, entry));
 }
 
 int uncovered = 0;
@@ -316,7 +318,7 @@ foreach ((nint hwnd, CensusEntry entry) in census)
 
 foreach ((nint hwnd, CensusEntry entry) in census.OrderBy(pair => pair.Key))
 {
-    log.WriteLine($"CENSUS {hwnd} pid={entry.Pid} {entry.Monitor} {entry.Rect} iconic={entry.Iconic} visible={entry.Visible} class={entry.Class} {entry.Title}");
+    log.WriteLine($"CENSUS {hwnd} pid={entry.Pid} exe={entry.Exe} started={entry.Started} {entry.Monitor} {entry.Rect} iconic={entry.Iconic} visible={entry.Visible} class={entry.Class} {entry.Title}");
 }
 
 log.Flush();
@@ -379,24 +381,16 @@ static string Classify(Native.Rect bounds, List<(Native.Rect Rect, bool Primary)
 // streams agreeing, not a coverage gap.
 static bool Placed(CensusEntry entry) => !entry.Iconic && entry.Visible && entry.Area > 0 && entry.Monitor != "offscreen";
 
-void UpdateCensus(Dictionary<nint, CensusEntry> census, Dictionary<nint, int> sightings, HashSet<nint> primarySeen, string flag, List<(Native.Rect Rect, bool Primary)> monitors)
+void UpdateCensus(Dictionary<nint, CensusEntry> census, Dictionary<nint, int> sightings, HashSet<nint> primarySeen, string flag, List<(Native.Rect Rect, bool Primary)> monitors, Dictionary<(uint Pid, long Start), ProcIdentity> identities)
 {
     Native.EnumWindows(
         (hwnd, unused) =>
         {
             _ = unused;
             _ = Native.GetWindowThreadProcessId(hwnd, out uint pid);
-            string process;
-            try
-            {
-                process = Process.GetProcessById((int)pid).ProcessName;
-            }
-            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
-            {
-                return true;
-            }
-
-            if (!string.Equals(process, flag, StringComparison.OrdinalIgnoreCase))
+            // Census attribution by (pid, start time) too (D00 T02 §49).
+            ProcIdentity? who = Attribute(pid, Probe, identities);
+            if (who is null || !string.Equals(who.Name, flag, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -444,7 +438,7 @@ void UpdateCensus(Dictionary<nint, CensusEntry> census, Dictionary<nint, int> si
             // so first-sighting-only lines would read iconic forever and
             // carry no placement. Non-iconic sightings overwrite; never-shown
             // windows keep their iconic birth record.
-            var entry = new CensusEntry((int)pid, monitor, rect, iconic, visible, WindowTitle(hwnd), area, WindowClass(hwnd));
+            var entry = new CensusEntry((int)pid, monitor, rect, iconic, visible, WindowTitle(hwnd), area, WindowClass(hwnd), who.Exe, who.StartText);
             if (iconic)
             {
                 census.TryAdd(hwnd, entry);
@@ -473,6 +467,88 @@ static bool IntersectsAnyMonitor(Native.Rect bounds, List<(Native.Rect Rect, boo
     }
 
     return false;
+}
+
+static string EventLine(nint hwnd, EventEntry entry) =>
+    $"EVENT {hwnd} pid={entry.Pid} exe={entry.Exe} started={entry.Started} {entry.Monitor} {entry.Rect} {entry.Kind} class={entry.Class} {entry.Title}";
+
+// The live probe: the process that holds `pid` right now, with its start
+// time (UTC ticks); null when it is gone or cannot be read. The start time
+// is what tells a reused pid apart.
+static (string Name, long Start, string Exe)? Probe(uint pid)
+{
+    try
+    {
+        using Process p = Process.GetProcessById((int)pid);
+        long start = 0;
+        try
+        {
+            start = p.StartTime.ToUniversalTime().Ticks;
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            // Another user's or a protected process: its start time is not
+            // readable, and it is never the flagged app (which this user
+            // launches), so it is identified by name only.
+        }
+
+        string exe = p.ProcessName + ".exe";
+        try
+        {
+            exe = Path.GetFileName(p.MainModule?.FileName ?? exe);
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException)
+        {
+            // The name stands in for the module path.
+        }
+
+        return (p.ProcessName, start, exe.Replace(' ', '_'));
+    }
+    catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+    {
+        return null;
+    }
+}
+
+// Attribution by (pid, start time) (D00 T02 §49): the probe is asked every
+// time, and the cache answers only for the same pid AND the same start, so
+// a pid another process reused never inherits an earlier process's name.
+static ProcIdentity? Attribute(uint pid, Func<uint, (string Name, long Start, string Exe)?> probe, Dictionary<(uint Pid, long Start), ProcIdentity> cache)
+{
+    var now = probe(pid);
+    if (now is null)
+    {
+        return null;
+    }
+
+    var key = (pid, now.Value.Start);
+    if (!cache.TryGetValue(key, out ProcIdentity? id))
+    {
+        string startText = now.Value.Start == 0 ? "unknown" : new DateTime(now.Value.Start, DateTimeKind.Utc).ToString("o", System.Globalization.CultureInfo.InvariantCulture);
+        id = new ProcIdentity(now.Value.Name, now.Value.Exe, startText);
+        cache[key] = id;
+    }
+
+    return id;
+}
+
+// Attribution fixtures (D00 T02 §49), run by `ForegroundLog selftest`: a
+// pid cached as the app and later reused by a foreign process is attributed
+// to the foreign one, and an event line names its executable.
+static int SelfTest()
+{
+    var cache = new Dictionary<(uint Pid, long Start), ProcIdentity>();
+    long t1 = new DateTime(2026, 9, 25, 2, 0, 0, DateTimeKind.Utc).Ticks;
+    long t2 = t1 + TimeSpan.FromHours(1).Ticks;
+    ProcIdentity? before = Attribute(100, _ => ("ScratchPad", t1, "ScratchPad.exe"), cache);
+    ProcIdentity? after = Attribute(100, _ => ("Photos", t2, "Photos.exe"), cache);
+    bool reuse = before?.Name == "ScratchPad" && after?.Name == "Photos" && !string.Equals(after.Name, "ScratchPad", StringComparison.OrdinalIgnoreCase);
+    Console.WriteLine($"selftest: reused pid attributed to {after?.Name ?? "nothing"} (not flagged): {(reuse ? "ok" : "FAIL")}");
+    ProcIdentity? self = Attribute((uint)Environment.ProcessId, Probe, cache);
+    string line = EventLine(0x1234, new EventEntry(0, Environment.ProcessId, "primary", "1,2,3x4", "SHOW", "planted foreign window", "Foreign", self?.Exe ?? "?", self?.StartText ?? "?"));
+    bool names = line.Contains($"exe={self?.Exe}", StringComparison.Ordinal) && (self?.Exe ?? string.Empty).StartsWith("ForegroundLog", StringComparison.OrdinalIgnoreCase) && !line.Contains("started=unknown", StringComparison.Ordinal);
+    Console.WriteLine($"selftest: event line names its executable ({line}): {(names ? "ok" : "FAIL")}");
+    return reuse && names ? 0 : 1;
 }
 
 static string ProcessName(nint hwnd)
@@ -774,6 +850,9 @@ static class EventHook
     internal static Native.WinEventProc? Proc;
 }
 
-sealed record CensusEntry(int Pid, string Monitor, string Rect, bool Iconic, bool Visible, string Title, int Area, string Class);
+sealed record CensusEntry(int Pid, string Monitor, string Rect, bool Iconic, bool Visible, string Title, int Area, string Class, string Exe = "?", string Started = "unknown");
 
-sealed record EventEntry(int Seq, int Pid, string Monitor, string Rect, string Kind, string Title, string Class);
+sealed record EventEntry(int Seq, int Pid, string Monitor, string Rect, string Kind, string Title, string Class, string Exe = "?", string Started = "unknown");
+
+// A process identity (D00 T02 §49): its name, executable, and start time.
+sealed record ProcIdentity(string Name, string Exe, string StartText);
