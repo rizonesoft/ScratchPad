@@ -5276,6 +5276,10 @@ $script:TrendTailMin = 20
 # same-cohort baseline counts only within this many days, and a cohort
 # short of samples for this many nights says so.
 $script:TrendBaselineExpiryDays = 60
+# Past the line it escalates (section 54 item 5): the prolonged line is an
+# `ALERT insufficient-<series>` alert with the triage owner, so it enters
+# the alert ledger, notifies once as a new alert, can be acknowledged, and
+# closes when the series measures again.
 $script:TrendProlongedNights = 10
 # How far back the insufficiency streak is counted (section 47 R1-A1).
 $script:TrendStreakScan = 60
@@ -5575,7 +5579,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   # A cohort still short of samples after many nights says so plainly
   # (section 47 item 5): frequent harness or environment changes must not
   # disable detection silently.
-  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t += "`n- PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes); check what keeps it from measuring (harness churn, missing timings) before trusting silence" } }; $t }
+  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t += "`n- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence" } }; $t }
   if ($pa.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'runa-duration' $pa.Count) }
   elseif (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50

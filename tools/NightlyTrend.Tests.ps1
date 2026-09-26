@@ -861,7 +861,7 @@ $g5 = @(Get-TrendAlerts (@($retRows) + @($retLate)))
 $coldRows = @()
 foreach ($i in 1..11) { $n = New-Night ('2026-09-{0:d2}' -f $i) ('2026-09-{0:d2}-023000' -f $i) 600; $n.harness = 'eeee5555-ffff6666'; $n.legs.'run-a'.testSeconds = $null; $coldRows += $n }
 $g5b = @(Get-TrendAlerts $coldRows)
-Assert ((@($g5 | Where-Object { $_ -like '- Rebaseline: cohort returned; reusing *earlier same-cohort night(s)*' }).Count -eq 1) -and (@($g5 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@($g5b | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 11 night(s)*' }).Count -eq 1)) 's47-returning-cohort-reuses-and-cold-start-escalates' (($g5 + @('||') + $g5b) -join ' | ')
+Assert ((@($g5 | Where-Object { $_ -like '- Rebaseline: cohort returned; reusing *earlier same-cohort night(s)*' }).Count -eq 1) -and (@($g5 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@($g5b | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 11 evaluated calendar night(s)*' }).Count -eq 1)) 's47-returning-cohort-reuses-and-cold-start-escalates' (($g5 + @('||') + $g5b) -join ' | ')
 # R1-A1: a harness that changes every night still reaches the prolonged
 # line (the streak counts across cohort changes); R1-R1: a returning
 # cohort's baseline older than the expiry is never reused.
@@ -872,7 +872,21 @@ $expRows = @()
 foreach ($i in 1..6) { $expRows += New-Night ('2026-06-{0:d2}' -f $i) ('2026-06-{0:d2}-023000' -f $i) 600 }
 foreach ($i in 1..3) { $n = New-Night ('2026-06-{0:d2}' -f (10 + $i)) ('2026-06-{0:d2}-023000' -f (10 + $i)) 600; $n.harness = 'cccc3333-dddd4444'; $expRows += $n }
 $g5d = @(Get-TrendAlerts (@($expRows) + @(New-Night '2026-09-10' '2026-09-10-023000' 5000)))
-Assert ((@($g5c | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 12 night(s) (counted across cohort changes)*' }).Count -eq 1) -and (@($g5d | Where-Object { $_ -like '- Rebaseline: cohort returned*' }).Count -eq 0) -and (@($g5d | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($g5d | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured*' }).Count -eq 1)) 's47-churn-escalates-and-expired-baseline-is-not-reused' (($g5c + @('||') + $g5d) -join ' | ')
+Assert ((@($g5c | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 12 evaluated calendar night(s) (counted across cohort changes*' }).Count -eq 1) -and (@($g5d | Where-Object { $_ -like '- Rebaseline: cohort returned*' }).Count -eq 0) -and (@($g5d | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($g5d | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured*' }).Count -eq 1)) 's47-churn-escalates-and-expired-baseline-is-not-reused' (($g5c + @('||') + $g5d) -join ' | ')
+# D00 T02 §54 item 5: twenty insufficient nights notify, not only print:
+# the prolonged line is an ALERT with an owner, so it has an alert identity
+# and enters the alert ledger as a new alert.
+$churn20 = @()
+foreach ($i in 1..20) { $n = New-Night ('2026-08-{0:d2}' -f $i) ('2026-08-{0:d2}-023000' -f $i) 600; $n.harness = ('{0:x8}-churn{1:d3}' -f $i, $i); $churn20 += $n }
+$g54 = @(Get-TrendAlerts $churn20)
+$g54Line = @($g54 | ForEach-Object { "$_" -split "`n" } | Where-Object { $_ -like '- ALERT insufficient-runa-duration:*' })
+$g54Id = if ($g54Line.Count -gt 0) { Get-AlertIdentity $g54Line[0] 'abcd1234' } else { '' }
+$g54Dir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-insufficient'
+if (Test-Path $g54Dir) { Remove-Item $g54Dir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $g54Dir
+$g54Life = Update-AlertLedger @($g54Line | ForEach-Object { "abcd1234|$_" }) (Join-Path $g54Dir 'alerts.json') ([pscustomobject]@{ Night = '2026-08-20'; Id = 'eval-1' })
+Assert (($g54Line.Count -eq 1) -and ($g54Line[0] -like '*owner operator*') -and ($g54Id -eq 'abcd1234|insufficient-runa-duration')) 's54-prolonged-insufficiency-is-an-owned-alert' (($g54Line -join ' | ') + " id=$g54Id new=$(@($g54Life.NewIds) -join ',')")
+Remove-Item $g54Dir -Recurse -Force -ErrorAction SilentlyContinue
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
