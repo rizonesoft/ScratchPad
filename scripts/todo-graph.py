@@ -15349,6 +15349,72 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
 > **Review:** round 1 -- Raw findings: docs/reviews/90-receipt-job.md
 > **Plan review:** GPT high, no findings
 > **Duration:** __D5__T10:00:00Z to __D5__T18:00:00Z
+
+## 154. Three-member range one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+## 155. Three-member range middle
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+## 156. Three-member range final
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §154-§156 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-range3.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S154-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S154-gpt-r2, supersedes 20260920-D90-T07-S154-gpt)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S154-gpt-r3, supersedes 20260920-D90-T07-S154-gpt-r2)
+
+## 157. Mixed outage and rerun range one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+## 158. Mixed outage and rerun range final
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §157-§158 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-rangemixed.md
+> **Plan review:** Opus outage then all failed, outage: both rungs (owner ann, due 2099-01-01) class infra attempts 2 event 2026-09-20
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S157-gpt-r2, follows-outage)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S157-gpt-r3, supersedes 20260920-D90-T07-S157-gpt-r2)
+
+## 159. R1-synonym range one
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+## 160. R1-synonym range final
+
+- [x] Did the thing
+- [x] Commit: `"selftest: marker"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §159-§160 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-health-ranger1.md
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S159-gpt-r1)
+> **Plan review:** GPT high, filed §2 (run 20260920-D90-T07-S159-gpt-r2, supersedes 20260920-D90-T07-S159-gpt-r1)
 """.replace("__D2__", d2).replace("__D4__", d4).replace("__D5__", d5).replace("__LONG9__", "9" * 4300),
             encoding="utf-8",
         )
@@ -16042,6 +16108,22 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "End of ledger\n",
             encoding="utf-8",
         )
+        # Range-lineage matrix (D00 T04 §1 item 21): a three-member range
+        # (middle and final members), a mixed outage-then-rerun chain, and
+        # an `-r1` synonym chain; the fallback skip keeps each silent.
+        for _rn, _secs, _run in (
+            ("90-health-range3.md", "D90 T07 §154, D90 T07 §155, D90 T07 §156", "20260920-D90-T07-S154-gpt-r3"),
+            ("90-health-rangemixed.md", "D90 T07 §157, D90 T07 §158", "20260920-D90-T07-S157-gpt-r3"),
+            ("90-health-ranger1.md", "D90 T07 §159, D90 T07 §160", "20260920-D90-T07-S159-gpt-r2"),
+        ):
+            (rev_dir / _rn).write_text(
+                opus_panel
+                + f"Manifest: sections [{_secs}]; dependents [none]; bytes 100; run {_run}\n\n"
+                "Ledger:\n"
+                "- [D90-T07-S4-PR2] [major] Re-cited range matrix finding -> filed §2\n"
+                "End of ledger\n",
+                encoding="utf-8",
+            )
         (rev_dir / "90-health-manifestonly.md").write_text(
             opus_panel
             + "Manifest: sections [D90 T07 §98]; dependents [none]; bytes 100; run 20260920-D90-T07-S98-gpt\n\n"
@@ -18582,6 +18664,16 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             ),
             0,
         )
+        for _lbl, _grp in (
+            ("three-member range (middle and final members)", ("§154 ", "§155 ", "§156 ")),
+            ("mixed outage-then-rerun range", ("§157 ", "§158 ")),
+            ("-r1-synonym range", ("§159 ", "§160 ")),
+        ):
+            check(
+                f"range-lineage matrix: {_lbl} fires exactly zero",
+                [ln for ln in marker_out if "TODO-07-marker.md" in ln and "FATAL" in ln and any(g in ln for g in _grp)],
+                [],
+            )
         check(
             "§98 fires exactly zero (manifest-only host silence)",
             sum(1 for ln in marker_out if "TODO-07-marker.md" in ln and "§98 " in ln and "FATAL" in ln),

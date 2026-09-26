@@ -1098,6 +1098,13 @@ def validate(graph, _args) -> int:
     def section_markers(todo, num: int) -> list[str] | None:
         return graph.section_markers(todo_lines, todo, num)
 
+    # The raw span read beside the chain read (D00 T04 §1 item 20): one
+    # local wrapper per graph helper, so rule bodies never pass the
+    # line cache themselves. It delegates to the one graph API
+    # (span_marker_bodies); there is no parallel implementation.
+    def span_markers(todo, num: int) -> list[str] | None:
+        return graph.span_marker_bodies(todo_lines, todo, num)
+
     def marker_states(body: str) -> dict[str, bool]:
         return graph.marker_states(body)
 
@@ -1423,7 +1430,7 @@ def validate(graph, _args) -> int:
             # the range fallback (the parsed last marker standing in
             # for a range member), never a provable singleton: the
             # genesis and follows checks below skip it.
-            _span = graph.span_marker_bodies(todo_lines, t, num) or []
+            _span = span_markers(t, num) or []
             _fallback = bool(chain) and not _span
             if heads and chain:
                 runs: list[str | None] = []
