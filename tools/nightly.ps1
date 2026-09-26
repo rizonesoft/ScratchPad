@@ -1856,6 +1856,9 @@ if ((-not $Smoke) -and (-not $simMode)) {
       # host aliases resolved, so the two surfaces select from the same runs.
       $script:HostAliases = Read-HostAliases (Join-Path $Root 'docs/nightly-host-aliases.md')
       $allResults = @((Get-TrendInputResults $nightDir (Join-Path $nightDir 'metrics.jsonl')).Results)
+      # Alias refusals, clones included (D00 T02 section 54 item 1).
+      $null = Test-HostAliasClones $allResults
+      foreach ($hp in @($script:HostAliasProblems)) { $report += "- $hp" }
       # One canonical map for the night (D00 T02 section 33 item 1): the
       # recovery check and the night's voice read the selection the trend
       # renders, and a run that does not speak for its night says which

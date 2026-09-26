@@ -2391,6 +2391,24 @@ $null = Write-IncidentLedger @{} $r4cp3 '2026-09-30-023001'
 $r4Conf = ''; try { $null = New-IncidentLedgerFromResults @() '' @{} @{} @($r4cp1, $r4cp2) } catch { $r4Conf = "$($_.Exception.Message)" }
 $r4Amb = ''; try { $null = New-IncidentLedgerFromResults @($r4Res1, $r4Res2) '' @{} @{} @($r4cp3) } catch { $r4Amb = "$($_.Exception.Message)" }
 Assert (($r4A.Incidents['INC-1000000c'].due -eq '2026-10-02') -and ([int]$r4U.Incidents['INC-000000d1'].passStreak -eq 0) -and ($r4Conf -like '*conflicting checkpoints at 2026-09-29-023001*') -and ($r4Amb -like '*ambiguous replay cutoff at 2026-09-30-023001: the checkpoint*id-r4a, id-r4b*')) 's53-round4-ownership-trust-and-checkpoints' "due=$($r4A.Incidents['INC-1000000c'].due) streak=$($r4U.Incidents['INC-000000d1'].passStreak) | $r4Conf | $r4Amb"
+# D00 T02 §54 item 1: host alias rules. A rename applies from its
+# effective night; two old keys may join one new key; a cycle and a
+# conflicting target refuse by name; a clone (the old key still reporting)
+# is refused and stays a separate host.
+$haDir = Join-Path $dir 's54-aliases'
+$null = New-Item -ItemType Directory -Force -Path $haDir
+$haPath = Join-Path $haDir 'aliases.md'
+@('| Old key | New key | Reason | Effective |', '| --- | --- | --- | --- |', '| aaaaaaa1 | bbbbbbb1 | renamed | 2026-09-10 |', '| aaaaaaa2 | bbbbbbb1 | reinstalled | |', '| ccccccc1 | ccccccc2 | loop | |', '| ccccccc2 | ccccccc1 | loop | |', '| ddddddd1 | eeeeeee1 | x | |', '| ddddddd1 | eeeeeee2 | y | |', '| fffffff1 | fffffff2 | cloned by mistake | 2026-09-01 |') | Set-Content -LiteralPath $haPath -Encoding UTF8
+$haWas = $script:HostAliases
+$script:HostAliases = Read-HostAliases $haPath
+$haProblems = @($script:HostAliasProblems)
+$haBefore = Resolve-HostKey 'aaaaaaa1' '2026-09-05'
+$haAfter = Resolve-HostKey 'aaaaaaa1' '2026-09-12'
+$haJoin = Resolve-HostKey 'aaaaaaa2' '2026-09-12'
+$haClone = @(Test-HostAliasClones @([pscustomobject]@{ hostKey = 'fffffff1'; night = '2026-09-20' }))
+$haCloneKey = Resolve-HostKey 'fffffff1' '2026-09-20'
+$script:HostAliases = $haWas
+Assert (($haBefore -eq 'aaaaaaa1') -and ($haAfter -eq 'bbbbbbb1') -and ($haJoin -eq 'bbbbbbb1') -and (@($haProblems | Where-Object { $_ -eq 'host alias refused: cycle ccccccc1 -> ccccccc2' }).Count -eq 1) -and (@($haProblems | Where-Object { $_ -eq 'host alias refused: ddddddd1 maps to more than one new key' }).Count -eq 1) -and ($haClone.Count -eq 1) -and ($haClone[0] -like '*fffffff1 still reports results after the alias took effect*') -and ($haCloneKey -eq 'fffffff1')) 's54-host-alias-rules' ((@($haProblems) + @($haClone)) -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

@@ -43,6 +43,9 @@ if ($Restore) {
 # authoritative rows, superseded backfills removed) come from one shared
 # loader the nightly's notification also reads (D00 T02 section 33 R2-I1).
 $inputs = Get-TrendInputResults $NightDir $storePath
+# Alias refusals, clones included, print by name (D00 T02 section 54 item 1).
+$null = Test-HostAliasClones @($inputs.Results)
+foreach ($hp in @($script:HostAliasProblems)) { Write-Output "trend: $hp" }
 $results = @($inputs.Results)
 $skipped = @($inputs.Skipped)
 $degraded = @($inputs.Degraded)

@@ -1744,11 +1744,13 @@ Why this section exists: the §45 plan review returned 15 findings; 13 file here
 
 ## 54. Trend and Telemetry Fourth Residuals
 
+> **Started:** 2026-09-26T12:06:52Z
+
 Why this section exists: the §47 plan review returned 20 findings; 17 file here, 1 was applied (the §39 links and §40's correction), and 2 are rejected with reasons in the §47 findings file; one filed item absorbs the §47 round-5 finding R5-C1. §47 made the trend's identities stable, acknowledgeable, rebaselined with expiry, merged whole, recoverable with reported loss, sanitized, capacity-aware, versioned, and explained; these carry that through alias and legacy lifecycles, acknowledgement identity, escalation, merge and tombstone schemas, shard inventories, calendar precedence, durable recovery, migration resilience, working space, incomparability, immutable explanations, broader proofs, and one operator summary. -> SOURCE: plan-review-D00-T02-s47-2026-09-26-s54 D00-T02-S47-PR2 D00-T02-S47-PR3 D00-T02-S47-PR4 D00-T02-S47-PR5 D00-T02-S47-PR7 D00-T02-S47-PR8 D00-T02-S47-PR9 D00-T02-S47-PR10 D00-T02-S47-PR11 D00-T02-S47-PR12 D00-T02-S47-PR13 D00-T02-S47-PR14 D00-T02-S47-PR15 D00-T02-S47-PR16 D00-T02-S47-PR17 D00-T02-S47-PR19 D00-T02-S47-PR20 D00-T02-S47-R5-C1
 
 - -> XREF: D00 T02 §47 -- filed from its plan review; carries the trend and telemetry surface it settled.
 
-- [ ] Host aliases have collision, cycle, and effective-date rules: two old keys mapping to one new key, a cycle, and an alias effective from a date are each defined, with rename, reinstall, and clone fixtures. Done when: a cycle is refused by name and a clone stays a separate host. (D00-T02-S47-PR2.)
+- [x] Host aliases have collision, cycle, and effective-date rules: two old keys mapping to one new key, a cycle, and an alias effective from a date are each defined, with rename, reinstall, and clone fixtures. Done when: a cycle is refused by name and a clone stays a separate host. (D00-T02-S47-PR2.)
 - [ ] Legacy ambiguity has a resolution lifecycle: an unresolved pre-host night can be reassigned with evidence, and its downstream series recompute. Done when: a reassigned unresolved night joins its host's series. (D00-T02-S47-PR3.)
 - [ ] Alert acknowledgement has a governing identity with revisions, multi-night coverage, a deadline, and committed effectiveness, compatible with §39's run-plus-checksum key, so an ack survives a legitimate update without covering a new regression. Done when: a revised ack keeps its alert and a new alert id stays unowned. (D00-T02-S47-PR4.)
 - [ ] Acknowledgement and recovery are independent: acknowledging never marks an alert recovered, and a materially worse recurrence of an acknowledged alert reads unowned again. Done when: a doubled regression under an old ack reads unowned. (D00-T02-S47-PR5.)

@@ -5618,24 +5618,79 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
 # history never splits; a clone keeps its own machine name and so its own
 # key, and an alias is the only way two keys become one host.
 $script:HostAliases = @{}
+$script:HostAliasProblems = @()
 
 function Read-HostAliases([string]$Path) {
-  # Rows `| <old key> | <new key> | <reason> |` in
-  # docs/nightly-host-aliases.md, keys being the 8-hex host hashes.
-  $map = @{}
-  if (-not (Test-Path -LiteralPath $Path)) { return $map }
+  # Rows `| <old key> | <new key> | <reason> | [<effective YYYY-MM-DD>] |`
+  # in docs/nightly-host-aliases.md, keys being the 8-hex host hashes.
+  # Rules (D00 T02 section 54 item 1): an old key maps to one new key (a
+  # second row with a different target refuses both); a cycle refuses
+  # every row on it; an effective date makes the alias apply only to
+  # nights on or after it (the old key keeps its earlier history); two
+  # old keys may map to one new key (sequential renames or reinstalls).
+  # A clone is caught against the results (Test-HostAliasClones). Refused
+  # rows land in $script:HostAliasProblems by name. Returns old key ->
+  # { New, Effective }.
+  $script:HostAliasProblems = @()
+  $rows = @{}
+  $dup = @{}
+  if (-not (Test-Path -LiteralPath $Path)) { return @{} }
   foreach ($ln in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
-    $m = [regex]::Match($ln, '^\|\s*([0-9a-f]{8})\s*\|\s*([0-9a-f]{8})\s*\|\s*([^|]*?)\s*\|')
-    if ($m.Success -and ($m.Groups[1].Value -ne $m.Groups[2].Value)) { $map[$m.Groups[1].Value] = $m.Groups[2].Value }
+    $m = [regex]::Match($ln, '^\|\s*([0-9a-f]{8})\s*\|\s*([0-9a-f]{8})\s*\|\s*([^|]*?)\s*\|(?:\s*(\d{4}-\d{2}-\d{2})?\s*\|)?')
+    if ((-not $m.Success) -or ($m.Groups[1].Value -eq $m.Groups[2].Value)) { continue }
+    $old = $m.Groups[1].Value; $new = $m.Groups[2].Value; $eff = $m.Groups[4].Value
+    if ($rows.ContainsKey($old) -and ($rows[$old].New -ne $new)) { $dup[$old] = $true; continue }
+    $rows[$old] = [pscustomobject]@{ New = $new; Effective = $eff }
   }
-  return $map
+  foreach ($k in @($dup.Keys | Sort-Object)) { $script:HostAliasProblems += "host alias refused: $k maps to more than one new key"; $rows.Remove($k) }
+  # Cycles: follow each chain; a key seen twice refuses every row on it.
+  $inCycle = @{}
+  foreach ($start in @($rows.Keys | Sort-Object)) {
+    $seen = @($start); $k = $start
+    while ($rows.ContainsKey($k)) {
+      $k = $rows[$k].New
+      if ($seen -contains $k) { foreach ($x in $seen[([array]::IndexOf($seen, $k))..($seen.Count - 1)]) { $inCycle[$x] = $true }; break }
+      $seen += $k
+    }
+  }
+  if ($inCycle.Count -gt 0) {
+    $script:HostAliasProblems += "host alias refused: cycle $(@($inCycle.Keys | Sort-Object) -join ' -> ')"
+    foreach ($k in @($inCycle.Keys)) { $rows.Remove($k) }
+  }
+  return $rows
 }
 
-function Resolve-HostKey([string]$Key) {
-  # Follows the alias chain to the current key (bounded, so a cycle ends).
+function Resolve-HostKey([string]$Key, [string]$Night = '') {
+  # Follows the alias chain to the current key (bounded), honoring each
+  # row's effective date for the night given (section 54 item 1).
   $k = $Key
-  for ($i = 0; ($i -lt 8) -and $script:HostAliases.ContainsKey($k); $i++) { $k = $script:HostAliases[$k] }
+  for ($i = 0; ($i -lt 8) -and $script:HostAliases.ContainsKey($k); $i++) {
+    $row = $script:HostAliases[$k]
+    $new = if ($row -is [string]) { $row } else { "$($row.New)" }
+    $eff = if ($row -is [string]) { '' } else { "$($row.Effective)" }
+    if (($eff -ne '') -and ($Night -ne '') -and ([string]::CompareOrdinal($Night, $eff) -lt 0)) { break }
+    $k = $new
+  }
   return $k
+}
+
+function Test-HostAliasClones($Results) {
+  # A clone keeps its own key (section 54 item 1): an old key that still
+  # reports results on or after its alias took effect is a live machine,
+  # not a renamed one, so the alias is refused by name and dropped.
+  $problems = @()
+  foreach ($old in @($script:HostAliases.Keys | Sort-Object)) {
+    $row = $script:HostAliases[$old]
+    if ($row -is [string]) { continue }
+    $eff = "$($row.Effective)"
+    $live = @(@($Results) | Where-Object { ("$($_.hostKey)" -eq $old) -and (($eff -eq '') -or ([string]::CompareOrdinal((Get-ResultNight $_), $eff) -ge 0)) })
+    if ($live.Count -gt 0) {
+      $problems += "host alias refused: $old still reports results after the alias took effect (night $(Get-ResultNight $live[-1])); a clone keeps its own key"
+      $script:HostAliases.Remove($old)
+    }
+  }
+  $script:HostAliasProblems += $problems
+  return $problems
 }
 
 function Get-ResultHostKey($Result) {
@@ -5646,7 +5701,7 @@ function Get-ResultHostKey($Result) {
   $h = ''
   try { $h = "$($Result.hostKey)" } catch { }
   if ($h -eq '') { return 'legacy' }
-  return (Resolve-HostKey $h)
+  return (Resolve-HostKey $h (Get-ResultNight $Result))
 }
 
 function Get-NightSlotKey($Result) {
