@@ -368,6 +368,8 @@ if ($CheckOnly) { Write-Output 'nightly: environment OK'; exit 0 }
 # holder owns the proof. The OS releases the mutex at process exit; an
 # abandoned hold from a dead run reads as acquired.
 $runStart = Get-Date
+# Discovery that never ran leaves every shard missing (section 54 item 8).
+$script:DiscoveryInventory = [pscustomobject]@{ inventoryVersion = 1; expected = @('run-a', 'run-b', 'interactive', 'all-cases'); read = @() }
 $script:ciOverride = $null
 # The UI trx files this run reads must be this run's and this build's
 # (D00 T02 section 52 item 5): a leftover or another build's trx refuses.
@@ -804,6 +806,9 @@ try {
       Write-Output "nightly: $($ciGate.Line)"
       if (-not $ciGate.Admitted) { throw $ciGate.Line }
       $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fpRead.RunAFilter $fpRead.RunBFilter $fpRead.InteractiveFilter
+      # The shard inventory (section 54 item 8): the discovery listings this
+      # run expects and the ones it read.
+      $script:DiscoveryInventory = [pscustomobject]@{ inventoryVersion = 1; expected = @('run-a', 'run-b', 'interactive', 'all-cases'); read = @(@('run-a', 'run-b', 'interactive') + @(if ($null -ne $disc.PSObject.Properties['Excluded']) { 'all-cases' })) }
       $pop = Compare-TestPopulation $fpPath (Join-Path $PSScriptRoot 'nightly.ps1') $disc
       if (-not $pop.Ok) { throw ("population drift: " + ($pop.Drifts -join '; ')) }
       $populationLine = "OK (run-a=$($disc.RunAMethods)/$($disc.RunACases) run-b=$($disc.RunBMethods)/$($disc.RunBCases) interactive=$($disc.InteractiveMethods)/$($disc.InteractiveCases)); $($ciGate.Line)"
@@ -1716,7 +1721,7 @@ if (($previousStamp -ne '') -and ([string]::CompareOrdinal($previousStamp, $stam
 # (section 53 item 12): every class line is written by now.
 $evidenceRecord = Get-EvidenceCompleteness $report
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); evidenceCompleteness = $evidenceRecord; ciOverride = $script:ciOverride; eligible = ($null -eq $script:ciOverride); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); discovery = $script:DiscoveryInventory; evidenceCompleteness = $evidenceRecord; ciOverride = $script:ciOverride; eligible = ($null -eq $script:ciOverride); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

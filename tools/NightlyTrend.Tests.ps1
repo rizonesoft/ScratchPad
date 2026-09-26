@@ -907,6 +907,14 @@ $tbMap = Get-MetricsTombstones $tbStore
 $tbLines = @([System.IO.File]::ReadAllLines("$tbStore.tombstones.jsonl") | Where-Object { $_ -ne '' })
 Assert (($tbMap['id-native@abcd1234'] -contains 'commit') -and ($tbLines.Count -eq 1)) 's54-tombstone-ledger-records-once' ($tbLines -join ' | ')
 Remove-Item $tbDir -Recurse -Force
+# D00 T02 §54 item 8: a shard the inventory expects and the run did not
+# read reads missing by name, never unknown; counts alone read partial; no
+# inventory reads unknown.
+$shA = Get-ShardCoverage ([pscustomobject]@{ inventoryVersion = 1; expected = @('run-a', 'run-b', 'interactive'); read = @('run-a', 'run-b') })
+$shB = Get-ShardCoverage ([pscustomobject]@{ inventoryVersion = 1; expected = @('run-a'); read = @('run-a') })
+$shC = Get-ShardCoverage ([pscustomobject]@{ shards = 3; manifests = 2 })
+$shD = Get-ShardCoverage $null
+Assert (($shA.State -eq 'partial') -and (($shA.Missing -join ',') -eq 'interactive') -and ($shA.Line -like 'partial (missing interactive; 2 of 3 shard(s) read, inventory v1)') -and ($shB.State -eq 'complete') -and ($shC.Line -like 'partial (2 of 3*names not recorded)') -and ($shD.State -eq 'unknown')) 's54-missing-shard-reads-missing' "$($shA.Line) | $($shC.Line) | $($shD.Line)"
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'

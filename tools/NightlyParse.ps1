@@ -4661,6 +4661,29 @@ function Add-MetricsTombstones([string]$StorePath, [string]$Key, [string[]]$Fiel
   if ($lines.Count -gt 0) { [System.IO.File]::AppendAllText("$StorePath.tombstones.jsonl", (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false))) }
 }
 
+function Get-ShardCoverage($Discovery) {
+  # Sharded coverage from an authoritative, versioned inventory (D00 T02
+  # section 54 item 8): a result records `discovery = { inventoryVersion,
+  # expected: [shard names], read: [shard names] }`. Discovery is complete
+  # only when every expected shard was read; a shard the inventory expects
+  # and the run did not read reads missing by name, never unknown. A
+  # result carrying only counts (section 47) reads partial with its count;
+  # no inventory at all reads unknown. Returns State, Missing, Line.
+  if ($null -eq $Discovery) { return [pscustomobject]@{ State = 'unknown'; Missing = @(); Line = 'unknown (no shard inventory recorded)' } }
+  $ver = "$(try { $Discovery.inventoryVersion } catch { '' })"
+  if ($ver -ne '') {
+    $exp = @(@($Discovery.expected) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+    $read = @(@($Discovery.read) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+    $missing = @($exp | Where-Object { $read -notcontains $_ })
+    if ($missing.Count -eq 0) { return [pscustomobject]@{ State = 'complete'; Missing = @(); Line = "complete ($($read.Count) of $($exp.Count) shard(s), inventory v$ver)" } }
+    return [pscustomobject]@{ State = 'partial'; Missing = $missing; Line = "partial (missing $($missing -join ', '); $($exp.Count - $missing.Count) of $($exp.Count) shard(s) read, inventory v$ver)" }
+  }
+  $shards = $(try { [int]$Discovery.shards } catch { 0 }); $mans = $(try { [int]$Discovery.manifests } catch { 0 })
+  if (($shards -gt 0) -and ($mans -lt $shards)) { return [pscustomobject]@{ State = 'partial'; Missing = @(); Line = "partial ($mans of $shards shard manifest(s) read; names not recorded)" } }
+  if ($shards -gt 0) { return [pscustomobject]@{ State = 'complete'; Missing = @(); Line = "complete ($mans of $shards shard manifest(s))" } }
+  return [pscustomobject]@{ State = 'unknown'; Missing = @(); Line = 'unknown (no shard inventory recorded)' }
+}
+
 function Get-MetricsMergeUnitOf([string]$Field) {
   # The unit a merged field belongs to, or '' when it never merges.
   foreach ($u in @($script:MetricsMergeUnits.Keys)) { if (@($script:MetricsMergeUnits[$u]) -contains $Field) { return $u } }
@@ -6307,8 +6330,10 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     if ($degradedNights -contains $day) { $nightCell += ' (degraded)' }
     # Sharded discovery (section 47 item 8): a result that expected more
     # shard manifests than it read reads partial coverage, never a rate.
-    $shards = $(try { [int]$r.discovery.shards } catch { 0 }); $mans = $(try { [int]$r.discovery.manifests } catch { 0 })
-    if (($popState -eq 'partial') -or (($shards -gt 0) -and ($mans -lt $shards))) { $cov = "partial ($mans of $shards shard manifest(s) read; $uniq executed of an incomplete discovery)" }
+    # The inventory names what is missing (section 54 item 8).
+    $shardCov = Get-ShardCoverage $(try { $r.discovery } catch { $null })
+    if ($shardCov.State -eq 'partial') { $cov = "$($shardCov.Line); $uniq executed of an incomplete discovery" }
+    elseif ($popState -eq 'partial') { $cov = "partial ($uniq executed of an incomplete discovery)" }
     $myDeriv = & $rowDeriv $r
     if (($derivsInView.Count -gt 1) -and ($myDeriv -lt [int]$script:MetricsDerivation)) {
       $changed = @(); foreach ($dk in @($script:DerivationSeries.Keys)) { if ([int]$dk -gt $myDeriv) { $changed += @($script:DerivationSeries[$dk]) } }
