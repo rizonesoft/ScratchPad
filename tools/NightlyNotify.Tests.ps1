@@ -141,6 +141,12 @@ Assert ((@($lb.Missed) -join ',') -eq '2026-09-23,2026-09-24') 'nostart-lookback
 $enr = Get-NoStartVerdict @((New-Result '2026-09-22' '2026-09-22-023000' 'red' 'timer'), (New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer')) (Get-Date '2026-09-25 07:05') '06:50' 7
 Assert ((@($enr.Missed) -join ',') -eq '2026-09-23,2026-09-25') 'nostart-skips-nights-before-enrollment' ((@($enr.Missed) -join ','))
 Assert (-not (Get-NoStartVerdict @() (Get-Date '2026-09-25 07:05') '06:50' 7).NoStart) 'nostart-no-governed-history-reports-nothing'
+# D00 T02 §24 redesign review: a provisioned task that never produced a
+# result still alerts from its recorded enrollment night.
+$never = Get-NoStartVerdict @() (Get-Date '2026-09-25 07:05') '06:50' 3 '2026-09-23'
+$hs = Join-Path $dir 'history-enrolled.md'
+'# history', '', 'Enrolled: 2026-09-23', '', '| From | Trigger | Interval days |' | Set-Content -Path $hs -Encoding UTF8
+Assert ($never.NoStart -and ((@($never.Missed) -join ',') -eq '2026-09-23,2026-09-24,2026-09-25') -and ((Read-NightlyEnrollment $hs) -eq '2026-09-23') -and ((Read-NightlyEnrollment (Join-Path $dir 'none.md')) -eq '')) 'nostart-enrolled-task-that-never-ran-alerts' ((@($never.Missed) -join ','))
 $mDir = Join-Path $dir 'morning'
 $null = New-Item -ItemType Directory -Force -Path $mDir
 $enrolledMorning = New-Result ((Get-Date).AddDays(-3).ToString('yyyy-MM-dd')) ((Get-Date).AddDays(-3).ToString('yyyy-MM-dd') + '-023000') 'green' 'timer'

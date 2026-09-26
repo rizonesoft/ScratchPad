@@ -424,7 +424,9 @@ trap {
     $note = ''
     try { $note = Write-PostResultFailure $nightDir $stamp $day $msg } catch { }
     try { Write-RunJournal $nightDir $stamp $PID $runStart 'failed-after-result' } catch { }
-    try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $disp.ResultPath -Class 'cancelled' -Title "Nightly $day : FAILED after its result landed" -Lines @("Run failed after its result landed: $msg", "Record: build/nightly/morning-$stamp-failure.md", "Result: build/nightly/morning-$stamp.result.json (untouched)") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { }
+    # A simulated run never alerts (the normal simulation guard, §24
+    # redesign review), including one failing through the fault seam.
+    if (-not $simMode) { try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $disp.ResultPath -Class 'cancelled' -Title "Nightly $day : FAILED after its result landed" -Lines @("Run failed after its result landed: $msg", "Record: build/nightly/morning-$stamp-failure.md", "Result: build/nightly/morning-$stamp.result.json (untouched)") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { } }
     Write-Output "nightly: failure after the result landed (record stands; $($disp.Reason)): $msg$(if ($note -ne '') { "; note $note" })"
     if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
     exit 1

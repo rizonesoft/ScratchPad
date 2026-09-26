@@ -246,7 +246,17 @@ function Get-DeliveryHealth([string]$StateDir, [datetime]$Now = (Get-Date), [int
   return [pscustomobject]@{ Ok = $false; Count = $files.Count; Lines = $lines }
 }
 
-function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50', [int]$LookbackDays = 7) {
+function Read-NightlyEnrollment([string]$Path) {
+  # The recorded enrollment night (D00 T02 §24 redesign review): the
+  # `Enrolled: YYYY-MM-DD` line in docs/nightly-schedule-history.md, the
+  # night governed results began, written by provisioning when it
+  # registers the nightly task. '' when absent.
+  if (-not (Test-Path -LiteralPath $Path)) { return '' }
+  foreach ($ln in (Get-Content -LiteralPath $Path -Encoding UTF8)) { $m = [regex]::Match($ln, '^Enrolled:\s*(\d{4}-\d{2}-\d{2})\s*$'); if ($m.Success) { return $m.Groups[1].Value } }
+  return ''
+}
+
+function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50', [int]$LookbackDays = 7, [string]$EnrolledSince = '') {
   # The independent no-start check (item 4): a night counts as started
   # only by a governed result (timer- or demand-launched, not simulated,
   # not a stood-down loser) or a supervisor tombstone. Every night in
@@ -267,6 +277,11 @@ function Get-NoStartVerdict($Results, [datetime]$Now, [string]$ExpectBy = '06:50
       if (($d0 -match '^\d{4}-\d{2}-\d{2}$') -and (($null -eq $enrolled) -or ([string]::CompareOrdinal($d0, $enrolled) -lt 0))) { $enrolled = $d0 }
     }
   }
+  # A recorded enrollment counts even with no result at all (the §24
+  # redesign review): a task that was provisioned but never started is
+  # the no-start this check exists for, so it cannot wait for a first
+  # result to enroll.
+  if (($EnrolledSince -match '^\d{4}-\d{2}-\d{2}$') -and (($null -eq $enrolled) -or ([string]::CompareOrdinal($EnrolledSince, $enrolled) -lt 0))) { $enrolled = $EnrolledSince }
   $started = @{}
   foreach ($r in @($Results)) {
     if ($null -eq $r) { continue }

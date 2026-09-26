@@ -84,6 +84,19 @@ function Repair-OneTask($Spec) {
     try {
       $xml = Get-Content (Join-Path $Root $Spec.Xml) -Raw
       Register-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name -Xml $xml -Force | Out-Null
+      # Registering the nightly records its enrollment night once (D00 T02
+      # §24 redesign review), so the morning no-start check alerts even
+      # when the task never produces a first result.
+      if ($Spec.Name -eq 'Nightly UI') {
+        $hist = Join-Path $Root 'docs/nightly-schedule-history.md'
+        if ((Test-Path $hist) -and (-not ((Get-Content $hist -Raw) -match '(?m)^Enrolled:\s*\d{4}-\d{2}-\d{2}'))) {
+          $lines = @(Get-Content $hist -Encoding UTF8)
+          $at = [Array]::IndexOf($lines, @($lines | Where-Object { $_ -like '| From |*' })[0])
+          if ($at -lt 0) { $at = $lines.Count }
+          $new = @($lines[0..([math]::Max(0, $at - 1))]) + @("Enrolled: $((Get-Date).AddDays(1).ToString('yyyy-MM-dd'))", '') + @($lines[$at..($lines.Count - 1)])
+          $tmp = "$hist.tmp"; $new | Set-Content -Path $tmp -Encoding UTF8; Move-Item -Path $tmp -Destination $hist -Force
+        }
+      }
       return "re-registered from $($Spec.Xml)"
     } catch { return "re-register failed: $_" }
   }

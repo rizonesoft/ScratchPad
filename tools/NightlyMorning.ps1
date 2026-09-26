@@ -40,7 +40,7 @@ foreach ($f in $resultFiles) {
 }
 
 # (1) No-start: independent of any governed run firing.
-$ns = Get-NoStartVerdict $results $now $ExpectBy $LookbackDays
+$ns = Get-NoStartVerdict $results $now $ExpectBy $LookbackDays (Read-NightlyEnrollment (Join-Path $Root 'docs/nightly-schedule-history.md'))
 $log += "no-start: $($ns.Line)"
 if ($ns.NoStart) {
   # One alert per missed date: the ledger key names the date, so a
