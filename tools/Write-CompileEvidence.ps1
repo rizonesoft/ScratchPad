@@ -18,16 +18,34 @@ the one the evidence names.
 param(
   [Parameter(Mandatory = $true)][string]$Root,
   [Parameter(Mandatory = $true)][string]$ProjectDir,
-  [Parameter(Mandatory = $true)][string]$Assembly,
-  [Parameter(Mandatory = $true)][string]$Out
+  [string]$Assembly = '',
+  [string]$Out = '',
+  # One consistent snapshot (D00 T02 section 52 R4-A1): the target before
+  # CoreCompile writes the inputs digest to -Snapshot (-Phase before); the
+  # after phase recomputes it and, when an input changed during the build,
+  # writes evidence that names the change instead of an inputs digest, so
+  # freshness refuses rather than bind the old assembly to new sources.
+  [ValidateSet('before', 'after')][string]$Phase = 'after',
+  [string]$Snapshot = ''
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 $rootFull = [System.IO.Path]::GetFullPath($Root)
 $d = Get-ProjectOwnInputsDigest $rootFull ([System.IO.Path]::GetFullPath($ProjectDir))
+if ($Phase -eq 'before') {
+  $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Snapshot)
+  [System.IO.File]::WriteAllText($Snapshot, $d.Digest, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Output "compile inputs snapshot $($d.Digest) -> $Snapshot"
+  exit 0
+}
+$inputsLine = "inputs $($d.Digest)"
+if (($Snapshot -ne '') -and (Test-Path -LiteralPath $Snapshot)) {
+  $before = ([System.IO.File]::ReadAllText($Snapshot)).Trim()
+  if ($before -ne $d.Digest) { $inputsLine = "inputs changed-during-build (before $before, after $($d.Digest))" }
+}
 $asm = Get-FileSha256 ([System.IO.Path]::GetFullPath($Assembly))
 $tmp = "$Out.tmp"
-[System.IO.File]::WriteAllText($tmp, "inputs $($d.Digest)`nassembly $asm`n" + (($d.Lines) -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::WriteAllText($tmp, "$inputsLine`nassembly $asm`n" + (($d.Lines) -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
 Move-Item -Path $tmp -Destination $Out -Force
 Write-Output "compile evidence $($d.Digest) ($($d.Lines.Count) inputs) -> $Out"
 exit 0

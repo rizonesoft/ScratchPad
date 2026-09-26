@@ -1740,6 +1740,7 @@ function Test-BuildBinding([string]$Root, [string]$BindingFile, $ExpectedProject
     if ($ln -match '^ref (\S+) evidence (\S+) copy (\S+)$') { $problems += "reference $($Matches[1]) has no usable compile evidence ($($Matches[2]))"; continue }
     if ($ln -match '^ref (\S+) project (\S+) inputs (\S+) assembly (\S+) copy (\S+)$') {
       $name = $Matches[1]; $proj = $Matches[2]; $inputs = $Matches[3]; $asm = $Matches[4]; $copy = $Matches[5]
+      if ($inputs -notmatch '^[0-9a-f]{16}$') { $problems += "reference $name has no consistent compile evidence (its inputs changed during the build or the evidence is unreadable)"; continue }
       $now = Get-ProjectOwnInputsDigest $Root (Split-Path -Parent (Join-Path $Root $proj))
       if ($inputs -ne $now.Digest) { $problems += "reference $name did not recompile after its sources changed (evidence inputs $inputs, now $($now.Digest))"; continue }
       if ($asm -ne $copy) { $problems += "the UI output's $name.dll is not the assembly $name's compile produced"; continue }
@@ -1963,7 +1964,9 @@ function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hash
     # A cut case owed where tokens were recorded but its own is missing
     # (identity generation failed that night) holds: without its original
     # identity no same-prefix pass can prove it ran (R3-I1).
-    if ($TokensRequired -and (Test-CutCaseName $k) -and (-not $PreviousIds.ContainsKey($k))) { $held += $k; $lines += "- Owed case identity unrecorded: ``$k`` was owed without its identity token, so a same-prefix case cannot close it (retire with evidence)"; continue }
+    # The hold persists (R4-I1): the case carries the explicit token
+    # `unrecorded`, so no later run adopts tonight's rows as its identity.
+    if ((Test-CutCaseName $k) -and ((($TokensRequired -and (-not $PreviousIds.ContainsKey($k)))) -or ("$($PreviousIds[$k])" -eq 'unrecorded'))) { $held += $k; $ids[$k] = 'unrecorded'; $lines += "- Owed case identity unrecorded: ``$k`` was owed without its identity token, so a same-prefix case cannot close it (retire with evidence)"; continue }
     if ($PreviousIds.ContainsKey($k) -and $NowIds.ContainsKey($k) -and ($PreviousIds[$k] -ne $NowIds[$k])) { $held += $k; $lines += "- Owed case identity changed: ``$k`` was owed as $($PreviousIds[$k]), the listing now reads $($NowIds[$k]); a same-prefix case never closes it (retire with evidence or re-owe)"; continue }
     $closable += $k
   }
@@ -2253,7 +2256,12 @@ function Read-TrxCaseResults([string]$TrxPath, $Expect = $null) {
     }
   }
   $defs = @{}
-  foreach ($d in @($t.TestRun.TestDefinitions.UnitTest)) { if ($null -ne $d) { $defs["$($d.id)"] = "$($d.name)" } }
+  foreach ($d in @($t.TestRun.TestDefinitions.UnitTest)) {
+    if ($null -eq $d) { continue }
+    # One definition per testId (R4-A2): two that disagree refuse.
+    if ($defs.ContainsKey("$($d.id)") -and ($defs["$($d.id)"] -cne "$($d.name)")) { $refuse.Add("ambiguous: $leaf defines testId $($d.id) as both $($defs["$($d.id)"]) and $($d.name)"); continue }
+    $defs["$($d.id)"] = "$($d.name)"
+  }
   # Bound reads (section 52 R1-I3): a trx this run reads must carry its
   # test definitions (so every result can match one) and live under the
   # run's own results directory (a per-run folder, so a contemporaneous

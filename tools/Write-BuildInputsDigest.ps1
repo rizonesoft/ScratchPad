@@ -12,13 +12,30 @@ tests/UI/UI.csproj runs this after every build:
 #>
 param(
   [Parameter(Mandatory = $true)][string]$Root,
-  [Parameter(Mandatory = $true)][string]$Out,
-  [string]$Sdk = ''
+  [string]$Out = '',
+  [string]$Sdk = '',
+  # One consistent snapshot (D00 T02 section 52 R4-A1): -Phase before
+  # (before CoreCompile) records the inputs digest to -Snapshot; the
+  # after phase writes nothing, and removes a stale digest and binding,
+  # when an input changed during the build, so freshness refuses.
+  [ValidateSet('before', 'after')][string]$Phase = 'after',
+  [string]$Snapshot = ''
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 $rootFull = [System.IO.Path]::GetFullPath($Root)
 $d = Get-BuildInputsDigest $rootFull $Sdk
+if ($Phase -eq 'before') {
+  $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Snapshot)
+  [System.IO.File]::WriteAllText($Snapshot, $d.Digest, (New-Object System.Text.UTF8Encoding($false)))
+  Write-Output "build-inputs snapshot $($d.Digest) -> $Snapshot"
+  exit 0
+}
+if (($Snapshot -ne '') -and (Test-Path -LiteralPath $Snapshot) -and (([System.IO.File]::ReadAllText($Snapshot)).Trim() -ne $d.Digest)) {
+  foreach ($f in @($Out, (Join-Path (Split-Path -Parent $Out) 'build-binding.txt'))) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force } }
+  Write-Output "build-inputs changed during the build; no digest written (rebuild): dotnet build src/ScratchPad.slnx --no-incremental"
+  exit 0
+}
 # The binaries this digest describes (D00 T02 section 52 item 2), taken in
 # the same run: UI.dll plus each reference's compile evidence and copy.
 $bindingOut = Join-Path (Split-Path -Parent $Out) 'build-binding.txt'

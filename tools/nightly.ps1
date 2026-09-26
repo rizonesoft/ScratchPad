@@ -991,6 +991,14 @@ try {
       $listedI = Get-ListTestsCases $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $collectFilter 'killed-interactive'
       $executedI = Get-TrxExecutedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect
       $nightOwedRows += @(Get-UnexecutedCaseRows $listedI.Cases $executedI "interactive killed $stamp")
+      # Durable at once (R4-I2): the unexecuted cases are journaled with
+      # their identity tokens before the report exists.
+      $killedOwed = @(Close-OwedCases @($listedI.Cases) @($executedI))
+      try {
+        $killIds = @{}
+        try { $killIds = Get-OwedCaseIdentities $killedOwed (Get-CaseIdentityRunner (Join-Path $Root 'tests\UI\UI.csproj')) } catch { $nightOwedRows += "- Killed-leg staging carries no identity tokens: $($_.Exception.Message)" }
+        $null = Add-StagedDebtLines (Join-Path $nightDir 'staged-debt.jsonl') $killedOwed 'staged' $stamp "interactive killed $stamp" $killIds
+      } catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message) (the report and result still carry the rows)" }
     } catch {
       $nightOwedRows += "- Night-owed: collection unverifiable after the kill ($_) | collector filter: $collectFilter (full collection re-owed)"
     }

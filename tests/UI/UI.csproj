@@ -57,8 +57,11 @@
        what it last compiled (or none), so an edit whose timestamp was
        restored still reads stale and the refusal names a rebuild with
        no incremental skips. -->
+  <Target Name="SnapshotBuildInputs" BeforeTargets="CoreCompile" Condition="'$(OS)' == 'Windows_NT'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Write-BuildInputsDigest.ps1&quot; -Phase before -Root &quot;$(MSBuildThisFileDirectory)..\..&quot; -Sdk &quot;$(NETCoreSdkVersion)&quot; -Snapshot &quot;$(MSBuildProjectDirectory)\$(IntermediateOutputPath)build-inputs.before&quot;" StandardOutputImportance="low" />
+  </Target>
   <Target Name="WriteBuildInputsDigest" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and '$(_AssemblyTimestampBeforeCompile)' != '$(_AssemblyTimestampAfterCompile)'">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Write-BuildInputsDigest.ps1&quot; -Root &quot;$(MSBuildThisFileDirectory)..\..&quot; -Out &quot;$(OutputPath)build-inputs.digest&quot; -Sdk &quot;$(NETCoreSdkVersion)&quot;" StandardOutputImportance="low" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\tools\Write-BuildInputsDigest.ps1&quot; -Root &quot;$(MSBuildThisFileDirectory)..\..&quot; -Out &quot;$(OutputPath)build-inputs.digest&quot; -Sdk &quot;$(NETCoreSdkVersion)&quot; -Snapshot &quot;$(MSBuildProjectDirectory)\$(IntermediateOutputPath)build-inputs.before&quot;" StandardOutputImportance="low" />
   </Target>
 
 </Project>
