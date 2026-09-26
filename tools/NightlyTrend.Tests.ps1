@@ -995,6 +995,21 @@ $dvOut = @(Get-TrendAlerts (@($dvRows) + @($dvLatest)))
 $dvCmp = Test-DerivationComparable $dvRows[0] $dvLatest 'pass-rate'
 $script:DerivationSeries = $dvWas
 Assert ((@($dvOut | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($dvOut | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured*' }).Count -eq 1) -and $dvCmp) 's54-older-derivation-never-enters-a-newer-baseline' ($dvOut -join ' | ')
+# D00 T02 §54 item 15: an alert's recorded calculation is unchanged by a
+# later correction, and a calendar night with no result is named among
+# the exclusions.
+$icDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-immutable'
+if (Test-Path $icDir) { Remove-Item $icDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $icDir
+$icLedger = Join-Path $icDir 'alerts.json'
+$icA = @('- ALERT runa-duration: 900s on 2026-09-20 vs baseline 600s (+50%)', '  - runa-duration context: runs a; excluded nights: none; row revisions 2026-09-19@r1')
+$icB = @('- ALERT runa-duration: 950s on 2026-09-20 vs baseline 610s (+56%)', '  - runa-duration context: runs a, b (corrected); excluded nights: none; row revisions 2026-09-19@r2')
+$null = Update-AlertLedger $icA $icLedger ([pscustomobject]@{ Night = '2026-09-20'; Host = 'abcd1234'; Identity = 'e1' })
+$null = Update-AlertLedger $icB $icLedger ([pscustomobject]@{ Night = '2026-09-20'; Host = 'abcd1234'; Identity = 'e1-corrected' })
+$icEntry = @((Get-Content -LiteralPath $icLedger -Raw | ConvertFrom-Json).alerts | Where-Object { $_.id -eq 'abcd1234|runa-duration' })[0]
+$icCtx = Format-AlertContext (New-Night '2026-09-20' '2026-09-20-023000' 900) @((New-Night '2026-09-16' '2026-09-16-023000' 600), (New-Night '2026-09-18' '2026-09-18-023000' 600)) 'runa-duration' @(600, 600)
+Assert (($icEntry.calculation -like 'runa-duration context: runs a; *r1') -and ($icEntry.line -like '*950s*') -and ($icCtx -like '*excluded nights: 2026-09-17 (no result); 2026-09-19 (no result)*') -and ($icCtx -like '*row revisions*detector min samples*')) 's54-alert-calculation-is-immutable' "$($icEntry.calculation) | $icCtx"
+Remove-Item $icDir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'

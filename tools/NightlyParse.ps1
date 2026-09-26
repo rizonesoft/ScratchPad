@@ -5123,6 +5123,15 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     $night = "$($Evaluation.Night)"; $hk = "$($Evaluation.Host)"; $evalId = "$($Evaluation.Identity)"
     $current = [ordered]@{}
     foreach ($a in @($Alerts)) { $id = Get-AlertIdentity $a $hk; if ($id -ne '') { $current[$id] = $a.TrimStart('-', ' ') } }
+    # Each alert's calculation, recorded once when it opens (section 54
+    # item 15): the context line of its series, never rewritten by a later
+    # evaluation or correction.
+    $contexts = [ordered]@{}
+    foreach ($id in @($current.Keys)) {
+      $series = ("$id" -split '\|')[1]
+      $ctx = @(@($Alerts) | Where-Object { "$_" -match ('^\s*-\s*' + [regex]::Escape($series) + ' context:') }) | Select-Object -First 1
+      if ($null -ne $ctx) { $contexts[$id] = "$ctx".Trim().TrimStart('-', ' ') }
+    }
     $new = @(); $persist = @(); $closed = @(); $worse = @()
     foreach ($id in @($current.Keys)) {
       $e = @($entries | Where-Object { ("$($_.id)" -eq $id) -and ("$($_.state)" -eq 'open') }) | Select-Object -First 1
@@ -5147,7 +5156,7 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
       }
       # Each opening is its own occurrence (R3-F2), so a reopening on the
       # same night never shares a delivery key with the earlier one.
-      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true; magnitude = $mag; notifiedMagnitude = $null }; $new += $id }
+      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; calculation = $(if ($contexts.Contains($id)) { $contexts[$id] } else { '' }); calculationNight = $night; closedNight = ''; notifiedOpen = $false; notifiedClose = $true; magnitude = $mag; notifiedMagnitude = $null }; $new += $id }
     }
     foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
       $state = if (@(@($SupersededIds) | ForEach-Object { "$_".Split('@')[0] }) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
@@ -5590,8 +5599,23 @@ function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null,
   # A value is a number, or a labeled observation (a recurrence window's
   # `<night> hit`); a missing night is not a sample.
   if ($null -ne $Values) { $vals = @(@($Values) | ForEach-Object { if ($_ -is [string]) { "$_" } else { [math]::Round([double]$_, 1) } }); $calc += "; baseline values [$($vals -join ', ')]; samples $(@($vals | Where-Object { "$_" -notlike '* missing' }).Count)" }
-  $exText = if (@($Excluded).Count -gt 0) { @($Excluded) -join '; ' } else { 'none' }
+  # Calendar nights inside the baseline span with no result at all are
+  # exclusions too (section 54 item 15, absorbing section 47 R5-C1).
+  $exAll = @($Excluded)
+  $seenNights = @(@($Baseline) + @($Latest) | ForEach-Object { Get-ResultNight $_ } | Where-Object { "$_" -match '^\d{4}-\d{2}-\d{2}$' } | Sort-Object -Unique)
+  if ($seenNights.Count -ge 2) {
+    $inv = [System.Globalization.CultureInfo]::InvariantCulture
+    for ($d = [datetime]::ParseExact($seenNights[0], 'yyyy-MM-dd', $inv).AddDays(1); $d -lt [datetime]::ParseExact($seenNights[-1], 'yyyy-MM-dd', $inv); $d = $d.AddDays(1)) {
+      $ds = $d.ToString('yyyy-MM-dd')
+      if (($seenNights -notcontains $ds) -and (@($exAll | Where-Object { "$_".StartsWith($ds) }).Count -eq 0)) { $exAll += "$ds (no result)" }
+    }
+  }
+  $exText = if (@($exAll).Count -gt 0) { @($exAll) -join '; ' } else { 'none' }
   $calc += "; excluded nights: $exText"
+  # The rows behind the numbers, by revision, and the detector settings
+  # (section 54 item 15), so the recorded calculation is complete.
+  $revs = @(@($Baseline) + @($Latest) | ForEach-Object { "$(Get-ResultNight $_)@r$(try { [int]$_.revision } catch { 1 })" })
+  $calc += "; row revisions $($revs -join ', '); detector min samples $($script:TrendMinSamples)"
   if ($Recovery -ne '') { $calc += "; recovers when $Recovery" }
   return "  - $Name context: runs $($runs -join ', '); commits $range; revisions $exact; env $env; evidence $evidence$calc; correlation, not cause"
 }
