@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **140 of 332 sections complete (42%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **141 of 332 sections complete (42%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -158,7 +158,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §30` | Nightly evidence residuals                                |  11   |
 | [x] | `D00 T02 §31` | Acknowledgement residuals                                 |  15   |
 | [x] | `D00 T02 §32` | Trend and telemetry residuals                             |  16   |
-| [ ] | `D00 T02 §33` | Notification residuals                                    |   8   |
+| [x] | `D00 T02 §33` | Notification residuals                                    |   8   |
 | [x] | `D00 T02 §34` | Sibling sweep residuals                                   |   7   |
 | [x] | `D00 T02 §35` | Night-debt lifecycle residuals                            |  13   |
 | [x] | `D00 T02 §36` | Binding guard residuals                                   |   9   |
@@ -180,7 +180,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T02 §52` | Population gate third residuals                           |  12   |
 | [ ] | `D00 T02 §53` | Nightly evidence fourth residuals                         |  14   |
 | [ ] | `D00 T02 §54` | Trend and telemetry fourth residuals                      |  18   |
-| [ ] | `D00 T02 §55` | Notify redesign residuals                                 |  18   |
+| [ ] | `D00 T02 §55` | Notify redesign residuals                                 |  21   |
 | [ ] | `D00 T10 §1`  | Sibling sweep fourth residuals                            |  16   |
 | [ ] | `D00 T10 §2`  | Gate attribution residuals                                |  13   |
 | [ ] | `D00 T11 §1`  | Unresolvable reference refusal                            |   4   |
