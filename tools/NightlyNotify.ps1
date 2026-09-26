@@ -186,7 +186,8 @@ function Invoke-NightlyNotify {
     [string]$Title, [string[]]$Lines, [string]$StateDir,
     [scriptblock]$Sender, [int]$Retries = 2, [datetime]$Now = (Get-Date),
     [switch]$NoPersist, [int]$LockTimeoutSeconds = 60,
-    [string]$Kind = '', [string[]]$Labels = @(), [string]$Slot = ''
+    [string]$Kind = '', [string[]]$Labels = @(), [string]$Slot = '',
+    [scriptblock]$Escalate = { param($t, $l) Send-NightlyEscalation $t $l }
   )
   # Section 55: -Kind gives an operational event its own identity beside
   # the result's (item 2: a failure after the result landed is never a
@@ -224,7 +225,7 @@ function Invoke-NightlyNotify {
   $possibleDup = $intent.Count -gt 0
   $ledger = @($ledger | Where-Object { -not (((Get-NotifyDedupKey "$($_.key)") -eq $dk) -and ("$($_.status)" -eq 'sending')) })
   $route = if (@($Labels).Count -gt 0) { Get-CombinedRoute $Class $Labels } else { Get-AlertRoute $Class }
-  $entry = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; at = $Now.ToString('o'); status = ''; slot = $Slot; visibility = '' }
+  $entry = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; severity = $route.Severity; at = $Now.ToString('o'); status = ''; slot = $Slot; visibility = '' }
   if ($route.Channel -eq 'none') {
     $out.Status = 'skipped'; $out.Notes += "class $Class routes nowhere"
   } elseif ($route.Channel -eq 'digest') {
@@ -242,7 +243,7 @@ function Invoke-NightlyNotify {
     # The intent carries its payload (R1-I1), so the morning reconciler
     # can re-send an alert whose run crashed before or during the send,
     # whatever stamp a later run carries.
-    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @(@($ledger) + @([pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; at = $Now.ToString('o'); status = 'sending'; title = $Title; lines = @($Lines) })) -Depth 6) $ledgerPath }
+    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @(@($ledger) + @([pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; severity = $route.Severity; at = $Now.ToString('o'); status = 'sending'; title = $Title; lines = @($Lines) })) -Depth 6) $ledgerPath }
     $sendTitle = if ($possibleDup) { "$Title (possible duplicate)" } else { $Title }
     if ($possibleDup) { $out.Notes += 'a send intent was left by an interrupted run: re-sent, marked possible duplicate' }
     $ok = $false
@@ -260,8 +261,10 @@ function Invoke-NightlyNotify {
       # Named by run plus a hash of the whole key (R3-F1): two failed
       # notifications for different results of one run keep two files.
       $safe = ($RunId -replace '[^A-Za-z0-9-]', '-') + '-' + (Get-StringHash $key)
-      $payload = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; title = $Title; lines = @($Lines); failedAt = $Now.ToString('o'); attempts = $out.Attempts }
+      $payload = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; severity = $route.Severity; title = $Title; lines = @($Lines); failedAt = $Now.ToString('o'); attempts = $out.Attempts }
       if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "$safe.json") }
+      # Critical and high escalate now (section 55 R1-I1).
+      if (-not $NoPersist) { $out.Notes += @(Invoke-UrgentEscalation -StateDir $StateDir -Now $Now -Escalate $Escalate | ForEach-Object { "$_".TrimStart('-', ' ') }) }
       $out.Status = 'fallback'; $out.Notes += "delivery failed after $($out.Attempts) attempt(s); fallback undelivered/$safe.json, re-sent by the morning reconciler and escalated in every report until delivered"
     }
   }
@@ -607,7 +610,7 @@ function Invoke-UndeliveredResend {
         $uDir = Join-Path $StateDir 'undelivered'
         $null = New-Item -ItemType Directory -Force -Path $uDir
         $safe = ("$($e.run)" -replace '[^A-Za-z0-9-]', '-') + '-' + (Get-StringHash "$($e.key)")
-        Write-AtomicReport @(ConvertTo-Json ([pscustomobject]@{ key = "$($e.key)"; run = "$($e.run)"; class = "$($e.class)"; title = "$($e.title) (possible duplicate)"; lines = @($e.lines); failedAt = (Get-Date).ToString('o'); attempts = 1 }) -Depth 6) (Join-Path $uDir "$safe.json")
+        Write-AtomicReport @(ConvertTo-Json ([pscustomobject]@{ key = "$($e.key)"; run = "$($e.run)"; class = "$($e.class)"; severity = "$(try { $e.severity } catch { '' })"; title = "$($e.title) (possible duplicate)"; lines = @($e.lines); failedAt = (Get-Date).ToString('o'); attempts = 1 }) -Depth 6) (Join-Path $uDir "$safe.json")
         $e.status = 'fallback'; $lines += "intent $($e.key): still failing; fallback undelivered/$safe.json"
       }
       $changed = $true
@@ -831,15 +834,21 @@ function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLi
   if ($isCanonicalNow -and ($null -ne $prev) -and ("$($Current.verdict)" -eq 'red')) {
     $pid1 = $Canonical[$prev].Canonical
     $pr1 = @(@($Results) | Where-Object { (("$($_.identity)" -eq $pid1) -or ("$($_.stamp)" -eq $pid1)) -and ((Get-ResultHostKey $_) -eq (Get-ResultHostKey $Current)) }) | Select-Object -First 1
-    if (($null -ne $pr1) -and ("$($pr1.verdict)" -eq 'red')) {
+    $pp1 = "$(try { $pr1.populationIdentity } catch { '' })"; $cp1 = "$(try { $Current.populationIdentity } catch { '' })"
+    if (($null -ne $pr1) -and ("$($pr1.verdict)" -eq 'red') -and ($pp1 -ne '') -and ($cp1 -ne '') -and ($pp1 -ne $cp1)) { $notices += "Partial recovery: not comparable: night $($prev.Split('|')[0]) ran another test population, so no incident reads recovered from it" }
+    elseif (($null -ne $pr1) -and ("$($pr1.verdict)" -eq 'red')) {
       $was = @(Get-ResultIncidentIds $pr1); $now1 = @(Get-ResultIncidentIds $Current)
       $gone = @($was | Where-Object { $now1 -notcontains $_ }); $still = @($was | Where-Object { $now1 -contains $_ })
       if (($gone.Count -gt 0) -and ($now1.Count -gt 0)) { $notices += "Partial recovery: $($gone.Count) of $($was.Count) incident(s) from night $($prev.Split('|')[0]) no longer fail ($($gone -join ', ')); still failing: $(if ($still.Count -gt 0) { $still -join ', ' } else { 'none of the earlier ones' })" }
     }
   }
+  # An incident closed while the service flaps says so (section 55
+  # R1-C2): its recovery is verified for its own test, not a stable night.
+  $flapNow = $false
+  try { $flapNow = (Get-FlapState $Canonical $Results $Current).Flapping } catch { }
   foreach ($ln in @($LedgerLines)) {
     $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)`: CLOSED')
-    if ($m.Success) { $notices += "Recovered: $($m.Groups[1].Value) $($m.Groups[2].Value) (closed on verified recovery)" }
+    if ($m.Success) { $notices += "Recovered: $($m.Groups[1].Value) $($m.Groups[2].Value) (closed on verified recovery$(if ($flapNow) { '; the service is flapping, so this is not a stable recovery' }))" }
   }
   # A GREEN never implies completed triage (D00 T02 section 33 item 7):
   # a recovery notice states the acknowledgements still pending and the
@@ -900,9 +909,12 @@ function Find-IncidentEvidence([string]$DiagRoot, [string]$Test, [string[]]$Days
 $script:GenerationSince = '2026-09-27'
 # Severity order for combined routing (item 7) and the elapsed-time
 # escalation bounds in hours (item 12): a critical alert escalates at
-# its first failed delivery; info never escalates.
+# its first failed delivery; info never escalates. No scheduler checks
+# more often than the nightly and the 07:05 reconciler, so critical and
+# high escalate at their first failed delivery wherever it happens
+# (section 55 R1-I1); medium and low wait for a later reconcile.
 $script:SeverityRank = @{ 'critical' = 4; 'high' = 3; 'medium' = 2; 'low' = 1; 'info' = 0 }
-$script:EscalateAfterHours = @{ 'critical' = 0; 'high' = 4; 'medium' = 24; 'low' = 72 }
+$script:EscalateAfterHours = @{ 'critical' = 0; 'high' = 0; 'medium' = 24; 'low' = 72 }
 # Notify-state retention and capacity (item 9). Dedup records outlive
 # every retry path (the reconciler looks back 7 days), so a pruned key is
 # never re-sent by a retry; undelivered payloads are never pruned.
@@ -996,8 +1008,10 @@ function Write-NightlyGeneration([string]$NightDir, [string]$Stamp) {
 function Test-NightlyGeneration([string]$NightDir, [string]$Stamp) {
   # The generation's state: committed, no-result, missing-report,
   # no-manifest (a crash between the report and its manifest), stale
-  # (the result was revised after the manifest), or republished (the
-  # report changed after the manifest, the result did not).
+  # (the result was revised after the manifest), or report-changed (the
+  # report differs from the one the manifest names; the nightly rewrites
+  # the manifest after each republish, so a difference is a crash in that
+  # window or a damaged report, and it is never linked: section 55 R1-A1).
   $res = Join-Path $NightDir "morning-$Stamp.result.json"
   $rep = Join-Path $NightDir "morning-$Stamp.md"
   $man = Join-Path $NightDir "morning-$Stamp.generation.json"
@@ -1007,7 +1021,7 @@ function Test-NightlyGeneration([string]$NightDir, [string]$Stamp) {
   $m = $null
   try { $m = Get-Content -LiteralPath $man -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { return 'no-manifest' }
   if ("$($m.result)" -ne (Get-FileSha256 $res)) { return 'stale' }
-  if ("$($m.report)" -ne (Get-FileSha256 $rep)) { return 'republished' }
+  if ("$($m.report)" -ne (Get-FileSha256 $rep)) { return 'report-changed' }
   return 'committed'
 }
 
@@ -1020,7 +1034,7 @@ function Resolve-NotifyReportLink([string]$NightDir, [string]$Stamp, [string]$Si
   $st = Test-NightlyGeneration $NightDir $Stamp
   $rep = "build/nightly/morning-$Stamp.md"
   $res = "build/nightly/morning-$Stamp.result.json"
-  if (@('committed', 'republished') -contains $st) { return [pscustomobject]@{ Link = $rep; State = $st; Note = '' } }
+  if ($st -eq 'committed') { return [pscustomobject]@{ Link = $rep; State = $st; Note = '' } }
   if (($st -eq 'no-manifest') -and ([string]::CompareOrdinal($Stamp, $Since) -lt 0)) { return [pscustomobject]@{ Link = $rep; State = 'legacy'; Note = '' } }
   if ($st -eq 'no-result') { return [pscustomobject]@{ Link = $rep; State = $st; Note = 'no result landed' } }
   return [pscustomobject]@{ Link = $res; State = $st; Note = "report generation $st; linking the result" }
@@ -1050,8 +1064,10 @@ function Repair-NightlyGenerations([string]$NightDir, [datetime]$Now, [string]$S
   # wrote both from one result); a result revised after its manifest
   # keeps its report untouched and links the result instead. A
   # stamp-scoped report with no result is an orphan, moved to orphans/.
-  # Returns Lines and Recovered (the stamps whose report was rebuilt, so
-  # the caller can notify any the ledger never saw).
+  # Returns Lines and Recovered (the stamps whose report was rebuilt).
+  # Notification eligibility is decided apart from repair
+  # (Get-UnnotifiedResults, R1-A2), so a crash after a repair never
+  # strands a result.
   $lines = @(); $recovered = @()
   foreach ($f in @(Get-ChildItem -LiteralPath $NightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Sort-Object Name)) {
     $m = [regex]::Match($f.Name, '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$')
@@ -1060,7 +1076,8 @@ function Repair-NightlyGenerations([string]$NightDir, [datetime]$Now, [string]$S
     if ([string]::CompareOrdinal($stamp, $Since) -lt 0) { continue }
     if (($Now - $f.LastWriteTime).TotalMinutes -lt $SettleMinutes) { continue }
     $st = Test-NightlyGeneration $NightDir $stamp
-    if (@('committed', 'republished') -contains $st) { if (($st -eq 'republished') -and (-not $NoPersist)) { $null = Write-NightlyGeneration $NightDir $stamp }; continue }
+    if ($st -eq 'committed') { continue }
+    if ($st -eq 'report-changed') { $lines += "generation ${stamp}: report differs from its generation; alerts link the result, the report is kept for inspection"; continue }
     if ($st -eq 'missing-report') {
       $r = $null
       try { $r = Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop } catch { $lines += "generation ${stamp}: report missing and the result is unreadable; left for the corruption record"; continue }
@@ -1089,6 +1106,27 @@ function Repair-NightlyGenerations([string]$NightDir, [datetime]$Now, [string]$S
     $lines += "generation ${stamp}: report without a result moved to orphans/$($f.Name) (no alert links it)"
   }
   return [pscustomobject]@{ Lines = $lines; Recovered = $recovered }
+}
+
+function Get-UnnotifiedResults([string]$NightDir, $Results, [datetime]$Now, [string]$Since = $script:GenerationSince, [int]$SettleMinutes = 30) {
+  # Every settled, non-simulated result from $Since on whose run the
+  # notify ledger never recorded (section 55 R1-A2): a run that crashed
+  # before its notification, whatever state its report generation is in,
+  # stays eligible until the ledger records it, so neither a repair nor a
+  # crash after one strands an urgent result. Returns the results.
+  $out = @()
+  foreach ($r in @($Results)) {
+    if ($null -eq $r) { continue }
+    $stamp = "$($r.stamp)"
+    if (($stamp -notmatch '^\d{4}-\d{2}-\d{2}-\d{6}$') -or ([string]::CompareOrdinal($stamp, $Since) -lt 0)) { continue }
+    if ([bool]$(try { $r.simulated } catch { $false })) { continue }
+    $f = Join-Path $NightDir "morning-$stamp.result.json"
+    if (-not (Test-Path -LiteralPath $f)) { continue }
+    if (($Now - (Get-Item -LiteralPath $f).LastWriteTime).TotalMinutes -lt $SettleMinutes) { continue }
+    $id = "$($r.identity)"; if ($id -eq '') { $id = $stamp }
+    if (-not (Test-RunNotified $NightDir $id)) { $out += $r }
+  }
+  return $out
 }
 
 function Test-RunNotified([string]$StateDir, [string]$RunId) {
@@ -1128,7 +1166,10 @@ function Get-NightStartState([string]$Night, [string[]]$StartedNights, $Starts, 
   # start with no result), or never-started (no start evidence at all).
   # Simulated starts are not evidence.
   if (@($StartedNights) -contains $Night) { return 'completed' }
-  $mine = @(@($Starts) | Where-Object { ($null -ne $_) -and ("$($_.night)" -eq $Night) -and (-not [bool]$_.simulated) })
+  # A manual start is no evidence the schedule fired (section 55 R1-C1):
+  # only scheduler-launched starts count, so a manual run on a night the
+  # task never started keeps it never-started (the scheduler's route).
+  $mine = @(@($Starts) | Where-Object { ($null -ne $_) -and ("$($_.night)" -eq $Night) -and (-not [bool]$_.simulated) -and ("$($_.scheduled)" -ne 'False') })
   if ($mine.Count -eq 0) { return 'never-started' }
   $last = @($mine | Sort-Object { "$($_.started)" })[-1]
   $st = [datetime]::MinValue
@@ -1274,7 +1315,7 @@ function Get-QueuedEntryState($Entry, $Canonical, $Results) {
 function Invoke-UrgentEscalation {
   # Elapsed-time escalation by severity (section 55 item 12): an
   # undelivered notification whose delivery has failed for its severity's
-  # bound (critical at once, high 4 h, medium 24 h, low 72 h) escalates
+  # bound (critical and high at once, medium 24 h, low 72 h) escalates
   # once through the independent channel, and the payload records it. A
   # failed escalation channel writes build/nightly/ESCALATION-UNSENT.md,
   # the fallback destination every report names (Get-DeliveryHealth), so
@@ -1287,7 +1328,10 @@ function Invoke-UrgentEscalation {
       $p = $null
       try { $p = [System.IO.File]::ReadAllText($u.FullName) | ConvertFrom-Json -ErrorAction Stop } catch { continue }
       if ("$(try { $p.escalatedAt } catch { '' })" -ne '') { continue }
-      $sev = (Get-AlertRoute "$($p.class)").Severity
+      # The effective severity the payload carries (section 55 R1-I2), so a
+      # secondary critical label keeps its bound; else the class's.
+      $sev = "$(try { $p.severity } catch { '' })"
+      if ($sev -eq '') { $sev = (Get-AlertRoute "$($p.class)").Severity }
       if (-not $script:EscalateAfterHours.ContainsKey($sev)) { continue }
       $fa = [datetime]::MinValue
       $fv = $p.failedAt

@@ -6,6 +6,10 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 . (Join-Path $PSScriptRoot 'NightlyNotify.ps1')
 
+# The independent escalation channel never writes to the real desktop
+# from a fixture (section 55 R1-I1 escalates from the fallback path).
+function Send-NightlyEscalation([string]$Title, [string[]]$Lines) { $script:deskEsc += $Title; return $true }
+$script:deskEsc = @()
 $failures = 0
 function Assert([bool]$Cond, [string]$Name, [string]$Detail = '') {
   if ($Cond) { Write-Output "PASS $Name" }
@@ -536,7 +540,7 @@ Write-AtomicReport @('# republished') (Join-Path $g1 'morning-2026-09-27-023000.
 $g1Repub = Resolve-NotifyReportLink $g1 '2026-09-27-023000'
 Write-AtomicReport @('{}') (Join-Path $g1 'morning-2026-09-20-023000.result.json'); Write-AtomicReport @('# old') (Join-Path $g1 'morning-2026-09-20-023000.md')
 $g1Legacy = Resolve-NotifyReportLink $g1 '2026-09-20-023000'
-Assert (($g1Stale.State -eq 'stale') -and ($g1Stale.Link -like '*.result.json') -and ($g1Repub.State -eq 'republished') -and ($g1Repub.Link -like '*023000.md') -and ($g1Legacy.State -eq 'legacy')) 's55-generation-stale-republished-and-legacy-links' "$($g1Stale.State) $($g1Repub.State) $($g1Legacy.State)"
+Assert (($g1Stale.State -eq 'stale') -and ($g1Stale.Link -like '*.result.json') -and ($g1Repub.State -eq 'report-changed') -and ($g1Repub.Link -like '*023000.result.json') -and ($g1Legacy.State -eq 'legacy')) 's55-generation-stale-republished-and-legacy-links' "$($g1Stale.State) $($g1Repub.State) $($g1Legacy.State)"
 
 # Item 2: a GREEN result followed by a failure after it landed alerts
 # once, under its own identity.
@@ -685,7 +689,7 @@ ConvertTo-Json ([pscustomobject]@{ key = 'h'; run = 'h'; class = 'infrastructure
 $script:esc12 = @()
 $e12 = @(Invoke-UrgentEscalation -StateDir $g12 -Now $now12 -Escalate { param($t, $l) $script:esc12 += $t; $true })
 $e12b = @(Invoke-UrgentEscalation -StateDir $g12 -Now $now12.AddHours(4) -Escalate { param($t, $l) $script:esc12 += $t; $true })
-Assert ((@($e12).Count -eq 1) -and ($e12[0] -like '*sent for c.json (critical*') -and (@($e12b).Count -eq 1) -and ($e12b[0] -like '*sent for h.json (high*') -and ($script:esc12.Count -eq 2)) 's55-critical-escalates-within-its-bound' (($e12 + $e12b) -join ' | ')
+Assert ((@($e12).Count -eq 2) -and ($e12[0] -like '*sent for c.json (critical*') -and ($e12[1] -like '*sent for h.json (high*') -and (@($e12b).Count -eq 0) -and ($script:esc12.Count -eq 2)) 's55-critical-and-high-escalate-at-first-failure-once' (($e12 + $e12b) -join ' | ')
 ConvertTo-Json ([pscustomobject]@{ key = 'c2'; run = 'c2'; class = 'scheduler-no-start'; title = 'NO START 2'; lines = @('x'); failedAt = $now12.ToString('o'); attempts = 3 }) | Set-Content -LiteralPath (Join-Path $g12 'undelivered/c2.json') -Encoding UTF8
 $e12c = @(Invoke-UrgentEscalation -StateDir $g12 -Now $now12 -Escalate { param($t, $l) throw 'channel down' })
 $h12 = Get-DeliveryHealth $g12 $now12
@@ -766,6 +770,35 @@ Confirm-AlertNotifications $al20 @($snap20.Keys)
 $after20 = Get-PendingAlertNotifications $al20
 Assert ((@($after20.Lines).Count -eq 1) -and ($after20.Lines[0] -like 'WORSENING (from 50 to 95): ALERT runa-duration*')) 's55-confirm-time-worsening-reads-pending-at-once' (@($after20.Lines) -join ' | ')
 
+# Round 1 (section 55 R1): eligibility is the ledger's, never the
+# repair's; a manual start is no schedule evidence; partial recovery
+# needs a comparable population; an incident closed while flapping says
+# so; a fallback escalates at once with the severity it carries.
+$g21 = Join-Path $d55 'unnotified'
+$null = New-Item -ItemType Directory -Force -Path $g21
+$u21 = New-Result '2026-09-27' '2026-09-27-023000' 'red' 'timer'
+Write-AtomicReport @(ConvertTo-Json $u21 -Depth 6) (Join-Path $g21 'morning-2026-09-27-023000.result.json')
+Write-AtomicReport @('# report') (Join-Path $g21 'morning-2026-09-27-023000.md')
+$null = Write-NightlyGeneration $g21 '2026-09-27-023000'
+(Get-Item (Join-Path $g21 'morning-2026-09-27-023000.result.json')).LastWriteTime = (Get-Date).AddHours(-2)
+$un1 = @(Get-UnnotifiedResults $g21 @($u21) (Get-Date))
+Remove-Item (Join-Path $g21 'morning-2026-09-27-023000.generation.json')
+$un2 = @(Get-UnnotifiedResults $g21 @($u21) (Get-Date))
+$null = Invoke-NightlyNotify -Phase 'final' -RunId '2026-09-27-023000-pid1' -ResultPath '' -Class 'test' -Title 't' -Lines @('x') -StateDir $g21 -Sender { param($t, $l) $true }
+$un3 = @(Get-UnnotifiedResults $g21 @($u21) (Get-Date))
+Assert (($un1.Count -eq 1) -and ($un2.Count -eq 1) -and ($un3.Count -eq 0)) 's55-matrix-interrupted-after-commit-or-before-manifest-still-notifies' "committed=$($un1.Count) no-manifest=$($un2.Count) after-ledger=$($un3.Count)"
+$st21 = @([pscustomobject]@{ stamp = 'm'; pid = 555; started = '2026-09-20T23:50:00'; night = '2026-09-21'; scheduled = $false; simulated = $false })
+Assert ((Get-NightStartState '2026-09-21' @() $st21 ([datetime]'2026-09-21 07:05') -IsAlive { param($p, $s) $true }) -eq 'never-started') 's55-manual-start-is-no-schedule-evidence'
+$pa = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $pa.incidents = @('- INC-aaaaaaa1 x', '- INC-bbbbbbb2 y'); $pa | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p1'
+$pb = New-Result '2026-09-21' '2026-09-21-023000' 'red' 'timer'; $pb.incidents = @('- INC-bbbbbbb2 y'); $pb | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p2'
+$pnc = @(Get-RecoveryNotices (Select-CanonicalRuns @($pa, $pb)) @($pa, $pb) $pb @())
+$fin = @(Get-RecoveryNotices $fc $fl $fl[5] @('- INC-cccccccc `UI.C`: CLOSED on verified recovery'))
+Assert ((@($pnc | Where-Object { $_ -like 'Partial recovery: not comparable*' }).Count -eq 1) -and (@($pnc | Where-Object { $_ -like 'Partial recovery: 1 of*' }).Count -eq 0) -and (@($fin | Where-Object { $_ -like 'Recovered: INC-cccccccc*the service is flapping*' }).Count -eq 1)) 's55-matrix-comparable-partial-and-flapping-incident' (($pnc + $fin) -join ' | ')
+$g22 = Join-Path $d55 'fallback-escalates'
+$script:deskEsc = @()
+$n22 = Invoke-NightlyNotify -Phase 'final' -RunId 'r22' -ResultPath '' -Class 'test' -Labels @('scheduler-no-start') -Title 'Nightly 2026-09-27 : RED (test)' -Lines @('x') -StateDir $g22 -Sender { param($t, $l) $false } -Retries 0
+$p22 = @(Get-ChildItem (Join-Path $g22 'undelivered') -Filter '*.json')[0] | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json }
+Assert (($n22.Status -eq 'fallback') -and ($p22.severity -eq 'critical') -and ("$($p22.escalatedAt)" -ne '') -and ($script:deskEsc.Count -eq 1) -and (@($n22.Notes | Where-Object { $_ -like 'Urgent escalation: sent*critical*' }).Count -eq 1)) 's55-matrix-fallback-escalates-at-once-with-its-effective-severity' ($n22.Notes -join ' | ')
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyNotify.Tests: all green'

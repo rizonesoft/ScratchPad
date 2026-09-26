@@ -46,15 +46,15 @@ foreach ($f in $resultFiles) {
 try {
   $gen = Repair-NightlyGenerations $NightDir $now -NoPersist:$DryRun
   $log += @($gen.Lines | ForEach-Object { "$_" })
-  foreach ($gs in @($gen.Recovered)) {
-    $gr = @($results | Where-Object { "$($_.stamp)" -eq $gs }) | Select-Object -First 1
-    if ($null -eq $gr) { continue }
+  # Eligibility is the ledger's, not the repair's (R1-A2): every settled
+  # result the ledger never recorded notifies, whatever its report state.
+  foreach ($gr in @(Get-UnnotifiedResults $NightDir $results $now)) {
+    $gs = "$($gr.stamp)"
     $gid = "$($gr.identity)"; if ($gid -eq '') { $gid = $gs }
-    if (Test-RunNotified $NightDir $gid) { continue }
     $gcls = 'infrastructure'
     try { $gcls = (Classify-NightlyOutcome $gr).Class } catch { }
     $gl = Resolve-NotifyReportLink $NightDir $gs
-    $gn = Invoke-NightlyNotify -Phase 'final' -RunId $gid -ResultPath (Join-Path $NightDir "morning-$gs.result.json") -Class $gcls -Labels @(Get-OutcomeLabels $gr) -Slot (Get-NightSlotKey $gr) -Title "Nightly $(Get-ResultNight $gr) : $("$($gr.verdict)".ToUpper()) ($gcls, recovered publication)" -Lines @("The run's report did not land; rebuilt from its result.", "Report: $($gl.Link)") -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
+    $gn = Invoke-NightlyNotify -Phase 'final' -RunId $gid -ResultPath (Join-Path $NightDir "morning-$gs.result.json") -Class $gcls -Labels @(Get-OutcomeLabels $gr) -Slot (Get-NightSlotKey $gr) -Title "Nightly $(Get-ResultNight $gr) : $("$($gr.verdict)".ToUpper()) ($gcls, recovered publication)" -Lines @("The run's own notification never recorded (a crash before it); sent by the morning reconciler.", "Report: $($gl.Link)") -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
     $log += "generation $gs notify: $($gn.Status)"
   }
 } catch { $log += "generation: failed: $($_.Exception.Message)" }
