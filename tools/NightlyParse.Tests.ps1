@@ -2370,6 +2370,27 @@ $r2shot = Join-Path $r2png '2026-08-01-023001\captures-run-a\run-a.png'
 (Get-Item $r2shot).LastWriteTime = [datetime]::new(2026, 8, 1)
 $r2notes = @(Clear-CaptureLeftovers $r2png (Join-Path $dir 's53-png-tmp') ([datetime]::new(2026, 9, 26)))
 Assert ((@($r2read.Collected).Count -eq 1) -and (@($r2rem.Owed).Count -eq 1) -and (-not (Test-Path $r2shot)) -and (($r2notes -join '') -like '*screenshot 2026-08-01-023001\captures-run-a\run-a.png expired (30 days), deleted*')) 's53-replayed-collection-and-old-screenshot' "owed=$(@($r2rem.Owed).Count) | $($r2notes -join ' | ')"
+# D00 T02 §53 R4: the same specific owner keeps the old due date; a
+# trusted same-test failure under another id resets the older incident on
+# a non-qualifying run; checkpoints refuse ambiguous and conflicting stamps.
+$r4Led = @{ 'INC-0000000c' = (& $acMk 'INC-0000000c' 'owner-x' '2026-10-02' '' $acOcc1 0 's1'); 'INC-1000000c' = (& $acMk 'INC-1000000c' 'owner-x' '' '' $acOcc2 0 's2') }
+$r4A = Move-AliasedIncidents $r4Led @{ 'INC-0000000c' = 'INC-1000000c' }
+$r4Old = [pscustomobject]@{ id = 'INC-000000d1'; test = 'UI.Q.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's1' }
+$r4Grp = @([pscustomobject]@{ Id = 'INC-000000d2'; Test = 'UI.Q.T'; Phase = 'run-a'; Key = 'k2'; Wheres = @('Run A (default)') })
+$r4U = Update-IncidentLedger @{ 'INC-000000d1' = $r4Old } $r4Grp 's2' @{} @{} 3 @{} '' 'soak killed (ui-soak-1)' $null (Get-TrustedPhases @('ui-soak') $false)
+$r4Dir = Join-Path $dir 's53-cp'
+if (Test-Path $r4Dir) { Remove-Item $r4Dir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $r4Dir
+$r4cp1 = Join-Path $r4Dir 'cp1.json'; $r4cp2 = Join-Path $r4Dir 'cp2.json'
+$null = Write-IncidentLedger @{ 'INC-000000e1' = [pscustomobject]@{ id = 'INC-000000e1'; test = 'UI.C.P'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('run-a') }); passStreak = 0; lastPassStamp = '' } } $r4cp1 '2026-09-29-023001'
+$null = Write-IncidentLedger @{ 'INC-000000e1' = [pscustomobject]@{ id = 'INC-000000e1'; test = 'UI.C.P'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'closed'; firstSeen = 's0'; lastSeen = 's0'; closedAt = 's1'; closedBy = 'x'; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('run-a') }); passStreak = 3; lastPassStamp = '' } } $r4cp2 '2026-09-29-023001'
+$r4Res1 = & $roW 'r4a.json' ([pscustomobject]@{ stamp = '2026-09-30-023001'; identity = 'id-r4a'; verdict = 'green'; incidents = @() })
+$r4Res2 = & $roW 'r4b.json' ([pscustomobject]@{ stamp = '2026-09-30-023001'; identity = 'id-r4b'; verdict = 'green'; incidents = @() })
+$r4cp3 = Join-Path $r4Dir 'cp3.json'
+$null = Write-IncidentLedger @{} $r4cp3 '2026-09-30-023001'
+$r4Conf = ''; try { $null = New-IncidentLedgerFromResults @() '' @{} @{} @($r4cp1, $r4cp2) } catch { $r4Conf = "$($_.Exception.Message)" }
+$r4Amb = ''; try { $null = New-IncidentLedgerFromResults @($r4Res1, $r4Res2) '' @{} @{} @($r4cp3) } catch { $r4Amb = "$($_.Exception.Message)" }
+Assert (($r4A.Incidents['INC-1000000c'].due -eq '2026-10-02') -and ([int]$r4U.Incidents['INC-000000d1'].passStreak -eq 0) -and ($r4Conf -like '*conflicting checkpoints at 2026-09-29-023001*') -and ($r4Amb -like '*ambiguous replay cutoff at 2026-09-30-023001: the checkpoint*id-r4a, id-r4b*')) 's53-round4-ownership-trust-and-checkpoints' "due=$($r4A.Incidents['INC-1000000c'].due) streak=$($r4U.Incidents['INC-000000d1'].passStreak) | $r4Conf | $r4Amb"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

@@ -3115,7 +3115,10 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   foreach ($id in @($map.Keys | Sort-Object)) {
     $e = $map[$id]
     if (($e.state -ne 'open') -or $seen.ContainsKey($id)) { continue }
-    if ($NotQualifying -ne '') {
+    # A trusted failure of the same test in the same phase breaks the
+    # streak even on a run that is not qualifying (section 53 R4-I1).
+    $trustedHere = $failedHere.ContainsKey("$($e.test)|$($e.phase)") -and (@($TrustedPhases) -contains "$($e.phase)")
+    if (($NotQualifying -ne '') -and (-not $trustedHere)) {
       if ([int]$e.passStreak -gt 0) { $lines += "- $id ``$($e.test)``: streak held at $($e.passStreak) of $RecoveryRuns (run not qualifying: $NotQualifying)" }
       continue
     }
@@ -3437,6 +3440,24 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   # it without its result, so it is restored instead and only results
   # after it replay.
   $base = $snap.Stamp
+  # Checkpoints get the snapshot's checks (section 53 R4-I2): two readable
+  # checkpoints at one stamp that disagree refuse, and a checkpoint whose
+  # stamp another run's result shares refuses as an ambiguous cutoff.
+  $cpByStamp = @{}
+  foreach ($cf in @($CheckpointFiles)) {
+    $cr = Read-IncidentLedger $cf
+    if ((-not $cr.Ok) -or ("$($cr.Stamp)" -eq '')) { continue }
+    $cd = Get-CaseHash @(@($cr.Incidents.Keys | Sort-Object | ForEach-Object { ConvertTo-Json $cr.Incidents[$_] -Compress -Depth 6 }))
+    if (-not $cpByStamp.ContainsKey($cr.Stamp)) { $cpByStamp[$cr.Stamp] = @() }
+    $cpByStamp[$cr.Stamp] = @($cpByStamp[$cr.Stamp]) + @($cd)
+  }
+  $cpRefuse = @()
+  foreach ($k in @($cpByStamp.Keys | Sort-Object)) {
+    if (@($cpByStamp[$k] | Sort-Object -Unique).Count -gt 1) { $cpRefuse += "conflicting checkpoints at $k" }
+    $idsAt = @(foreach ($f in @($ResultFiles)) { try { $ro = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop; if ("$($ro.stamp)" -eq $k) { "$($ro.identity)" } } catch { } })
+    if (@($idsAt | Sort-Object -Unique).Count -gt 1) { $cpRefuse += "ambiguous replay cutoff at ${k}: the checkpoint's stamp is shared by runs $(@($idsAt | Sort-Object -Unique) -join ', ')" }
+  }
+  if ($cpRefuse.Count -gt 0) { throw "rebuild refused: $($cpRefuse -join '; ')" }
   $cp = $null
   $cpStamps = @()
   foreach ($c in @($CheckpointFiles)) {
@@ -5804,6 +5825,7 @@ function Move-AliasedIncidents([hashtable]$Ledger, [hashtable]$Aliases, [hashtab
     $oSpecific = ("$($o.owner)" -ne '') -and ($o.owner -ne $script:TriageOwner)
     $nSpecific = ("$($n.owner)" -ne '') -and ($n.owner -ne $script:TriageOwner)
     if ($oSpecific -and (-not $nSpecific)) { $n.owner = $o.owner; $n.due = "$($o.due)" }
+    elseif ($oSpecific -and $nSpecific -and ($o.owner -eq $n.owner)) { if (("$($o.due)" -ne '') -and (("$($n.due)" -eq '') -or ("$($o.due)" -lt "$($n.due)"))) { $n.due = $o.due } }
     elseif ($oSpecific -and $nSpecific -and ($o.owner -ne $n.owner)) { $conflicts += "owner $($o.owner) (due $(if ("$($o.due)" -ne '') { $o.due } else { 'none' })) set aside for $($n.owner)" }
     elseif ((-not $nSpecific) -and ("$($o.due)" -ne '') -and (("$($n.due)" -eq '') -or ("$($o.due)" -lt "$($n.due)"))) { $n.due = $o.due }
     if ("$($n.finding)" -eq '') { $n.finding = $(if ("$($o.finding)" -ne '') { $o.finding } elseif ($lk.ContainsKey($new)) { $lk[$new] } else { '' }) }
