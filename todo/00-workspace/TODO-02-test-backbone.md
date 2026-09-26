@@ -1110,7 +1110,7 @@ Why this section exists: the §25 plan review read §24's notification surface a
 **Needs:** Windows host (build/test)
 
 - -> XREF: D00 T02 §24 -- hardens the notification surface it shipped.
-- -> XREF: D00 T02 §57 -- the §24 plan review's residuals that name this section's queue, escalation, and night identity surface.
+- -> XREF: D00 T02 §55 -- the §24 plan review's residuals that name this section's queue, escalation, and night identity surface.
 
 - [ ] Notifications and the trend share one canonical-run and night identity contract (the §25 night key, one tie-break for retries, cancellations, and multiple scheduled runs), so they can never select different results for a night. Done when: a fixture night with a retry and a cancellation selects the same run in both. (D00-T02-S25-PR1.)
 - [ ] Trend alerts carry identity and a lifecycle (new, worsening, unchanged, recovered), so the once-per-day dedupe neither hides a new or worse alert nor repeats unresolved noise. Done when: a worsening alert re-notifies and an unchanged one does not. (D00-T02-S25-PR9.)
