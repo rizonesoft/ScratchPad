@@ -816,7 +816,7 @@ $liveSt = @([pscustomobject]@{ stamp = '2026-09-27-023000'; pid = 777; started =
 $un31 = @(Get-UnnotifiedResults $g31 @($u31) ([datetime]'2026-09-27 07:05') -Starts $liveSt -IsAlive { param($p, $s) $true })
 $un32 = @(Get-UnnotifiedResults $g31 @($u31) ([datetime]'2026-09-27 07:05') -Starts $liveSt -IsAlive { param($p, $s) $false })
 $un33 = @(Get-UnnotifiedResults $g31 @($u31) ([datetime]'2026-10-30 07:05') -Starts $liveSt -IsAlive { param($p, $s) $false })
-Assert (($un31.Count -eq 0) -and ($un32.Count -eq 1) -and ($un33.Count -eq 0)) 's55-live-run-waits-and-pruned-history-never-replays' "live=$($un31.Count) dead=$($un32.Count) old=$($un33.Count)"
+Assert (($un31.Count -eq 0) -and ($un32.Count -eq 1) -and ($un33.Count -eq 0)) 's55-live-run-waits-and-results-past-the-lookback-never-count' "live=$($un31.Count) dead=$($un32.Count) old=$($un33.Count)"
 $ra = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $ra | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p1'
 $rb = New-Result '2026-09-21' '2026-09-21-023000' 'green' 'timer'; $rb | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p2'
 $qa = [pscustomobject]@{ key = 'q'; run = '2026-09-20-023000-pid1'; class = 'test'; slot = '2026-09-20|legacy' }
@@ -824,6 +824,39 @@ $sa = Get-QueuedEntryState $qa (Select-CanonicalRuns @($ra, $rb)) @($ra, $rb)
 $qf = [pscustomobject]@{ key = 'q'; run = '2026-09-24-023000-pid1'; class = 'test'; slot = '2026-09-24|legacy' }
 $sf = Get-QueuedEntryState $qf $fc $fl
 Assert (($sa.State -eq 'current') -and ($sa.Note -like '*not comparable*') -and ($sf.State -eq 'current') -and ($sf.Note -like '*flapping*')) 's55-digest-recovery-needs-comparable-non-flapping-evidence' "$($sa.State): $($sa.Note) | $($sf.State): $($sf.Note)"
+# Round 3 (section 55 R3): a no-manifest pair commits only on agreement;
+# lookups stay on the slot's host; capacity pruning keeps recent records,
+# so a reconciled result inside the lookback never replays.
+$g41 = Join-Path $d55 'r3'
+$null = New-Item -ItemType Directory -Force -Path $g41
+$u41 = New-Result '2026-09-27' '2026-09-27-023000' 'red' 'timer'
+Write-AtomicReport @(ConvertTo-Json $u41 -Depth 6) (Join-Path $g41 'morning-2026-09-27-023000.result.json')
+Write-AtomicReport @('# a report that is not this result') (Join-Path $g41 'morning-2026-09-27-023000.md')
+(Get-Item (Join-Path $g41 'morning-2026-09-27-023000.result.json')).LastWriteTime = [datetime]'2026-09-27 03:00'
+(Get-Item (Join-Path $g41 'morning-2026-09-27-023000.md')).LastWriteTime = [datetime]'2026-09-27 03:00'
+$rp41 = Repair-NightlyGenerations $g41 ([datetime]'2026-09-27 07:05')
+Assert ((-not (Test-Path (Join-Path $g41 'morning-2026-09-27-023000.generation.json'))) -and ((Resolve-NotifyReportLink $g41 '2026-09-27-023000').Link -like '*.result.json') -and (@($rp41.Lines | Where-Object { $_ -like '*does not agree*nothing committed' }).Count -eq 1)) 's55-no-manifest-pair-commits-only-on-agreement' ($rp41.Lines -join ' | ')
+$h1 = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $h1 | Add-Member -NotePropertyName hostKey -NotePropertyValue 'aaaa0001'
+$h2 = New-Result '2026-09-21' '2026-09-21-023000' 'green' 'timer'; $h2 | Add-Member -NotePropertyName hostKey -NotePropertyValue 'bbbb0002'
+$h3 = New-Result '2026-09-21' '2026-09-21-023000' 'red' 'timer'; $h3 | Add-Member -NotePropertyName hostKey -NotePropertyValue 'aaaa0001'
+$hc = Select-CanonicalRuns @($h1, $h2, $h3)
+$hq = Get-QueuedEntryState ([pscustomobject]@{ key = 'q'; run = '2026-09-20-023000-pid1'; class = 'test'; slot = '2026-09-20|aaaa0001' }) $hc @($h2, $h1, $h3)
+Assert ($hq.State -eq 'current') 's55-digest-recovery-reads-only-its-own-host' "$($hq.State): $($hq.Note)"
+$g42 = Join-Path $d55 'cap'
+$null = New-Item -ItemType Directory -Force -Path $g42
+$now42 = [datetime]'2026-09-27 07:05'
+$u42 = New-Result '2026-09-27' '2026-09-27-023000' 'red' 'timer'
+Write-AtomicReport @(ConvertTo-Json $u42 -Depth 6) (Join-Path $g42 'morning-2026-09-27-023000.result.json')
+(Get-Item (Join-Path $g42 'morning-2026-09-27-023000.result.json')).LastWriteTime = [datetime]'2026-09-27 03:00'
+$led42 = @([pscustomobject]@{ key = 'k0'; run = 'old0'; status = 'sent'; at = $now42.AddDays(-30).ToString('o') }, [pscustomobject]@{ key = 'k1'; run = '2026-09-27-023000-pid1'; status = 'sent'; at = $now42.AddHours(-4).ToString('o') }, [pscustomobject]@{ key = 'k2'; run = 'r2'; status = 'sent'; at = $now42.AddHours(-3).ToString('o') }, [pscustomobject]@{ key = 'k3'; run = 'r3'; status = 'sent'; at = $now42.AddHours(-2).ToString('o') })
+ConvertTo-Json $led42 -Depth 4 | Set-Content -LiteralPath (Join-Path $g42 'notify-ledger.json') -Encoding UTF8
+$capWas = $script:NotifyLedgerCap
+$script:NotifyLedgerCap = 2
+$ret42 = @(Invoke-NotifyStateRetention -StateDir $g42 -Now $now42)
+$script:NotifyLedgerCap = $capWas
+$kept42 = @(@(Read-JsonState (Join-Path $g42 'notify-ledger.json') @()) | ForEach-Object { $_.key })
+$un42 = @(Get-UnnotifiedResults $g42 @($u42) $now42)
+Assert ((($kept42 -join ',') -eq 'k1,k2,k3') -and ($un42.Count -eq 0) -and (@($ret42 | Where-Object { $_ -like '*over its cap*kept' }).Count -eq 1)) 's55-capacity-pruning-keeps-recent-records-so-nothing-replays' "kept=$($kept42 -join ',') unnotified=$($un42.Count) | $($ret42 -join ' | ')"
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyNotify.Tests: all green'

@@ -920,6 +920,10 @@ $script:EscalateAfterHours = @{ 'critical' = 0; 'high' = 0; 'medium' = 24; 'low'
 # never re-sent by a retry; undelivered payloads are never pruned.
 $script:NotifyLedgerRetentionDays = 90
 $script:NotifyLedgerCap = 5000
+# Records this recent are never pruned for capacity (section 55 R3-I1):
+# twice the reconciler's 7-day lookback, so no eligible result's record
+# can go and replay its alert.
+$script:NotifyLedgerProtectDays = 14
 $script:DigestFileRetentionDays = 60
 $script:DigestQueueCap = 500
 # A flapping service (item 15): this many verdict changes inside the
@@ -1088,8 +1092,17 @@ function Repair-NightlyGenerations([string]$NightDir, [datetime]$Now, [string]$S
       $recovered += $stamp
       $lines += "generation ${stamp}: report missing; rebuilt from the result$(if ($NoPersist) { ' (dry run: not written)' })"
     } elseif ($st -eq 'no-manifest') {
-      if (-not $NoPersist) { $null = Write-NightlyGeneration $NightDir $stamp }
-      $lines += "generation ${stamp}: manifest missing after both files landed; committed"
+      # The pair commits only when the report agrees with the result
+      # field by field (section 55 R3-A1), the same check the run itself
+      # applies, so a mismatched report never gains a manifest.
+      $ag = $null
+      try { $ag = Test-ReportResultAgreement @(Get-Content -LiteralPath (Join-Path $NightDir "morning-$stamp.md") -Encoding UTF8) (Get-Content -LiteralPath $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json -ErrorAction Stop) } catch { $ag = $null }
+      if (($null -ne $ag) -and $ag.Ok) {
+        if (-not $NoPersist) { $null = Write-NightlyGeneration $NightDir $stamp }
+        $lines += "generation ${stamp}: manifest missing after both files landed; report agrees with the result; committed"
+      } else {
+        $lines += "generation ${stamp}: manifest missing and the report does not agree with the result$(if ($null -ne $ag) { " ($(@($ag.Breaks)[0]))" }); alerts link the result, nothing committed"
+      }
     } elseif ($st -eq 'manifest-unreadable') {
       $lines += "generation ${stamp}: manifest unreadable; alerts link the result and the files are left for inspection"
     } elseif ($st -eq 'stale') {
@@ -1243,7 +1256,9 @@ function Get-SupersessionCorrection($Canonical, $Results, $Current, $LedgerEntri
     if (($null -eq $e) -or ("$($e.status)" -eq 'sending')) { continue }
     $run = "$($e.run)"
     if (($run -eq '') -or ($run -eq $curId) -or ($prior -contains $run)) { continue }
-    $r = @(@($Results) | Where-Object { ("$($_.identity)" -eq $run) -or ("$($_.stamp)" -eq $run) }) | Select-Object -First 1
+    # Scoped to this run's host (section 55 R3-C1): hosts may share an id.
+    $curHost = Get-ResultHostKey $Current
+    $r = @(@($Results) | Where-Object { (("$($_.identity)" -eq $run) -or ("$($_.stamp)" -eq $run)) -and ((Get-ResultHostKey $_) -eq $curHost) }) | Select-Object -First 1
     $eSlot = "$(try { $e.slot } catch { '' })"
     if (($eSlot -eq '') -and ($null -ne $r)) { $eSlot = Get-NightSlotKey $r }
     if ($eSlot -eq $voice.Slot) { $prior += $run }
@@ -1253,7 +1268,7 @@ function Get-SupersessionCorrection($Canonical, $Results, $Current, $LedgerEntri
   $cv = "$($Current.verdict)".ToUpper()
   $lines = @()
   foreach ($p in $prior) {
-    $r = @(@($Results) | Where-Object { ("$($_.identity)" -eq $p) -or ("$($_.stamp)" -eq $p) }) | Select-Object -First 1
+    $r = @(@($Results) | Where-Object { (("$($_.identity)" -eq $p) -or ("$($_.stamp)" -eq $p)) -and ((Get-ResultHostKey $_) -eq (Get-ResultHostKey $Current)) }) | Select-Object -First 1
     $pv = if ($null -ne $r) { "$($r.verdict)".ToUpper() } else { 'UNKNOWN' }
     $lines += "Correction: $curId ($cv) supersedes $p ($pv) as the verdict for night $night"
     if (@('RED', 'CANCELLED') -contains $pv) { $lines += "Earlier $p stays owed: its acknowledgement, deadline, and incidents stand (a correction never erases triage)" }
@@ -1291,9 +1306,11 @@ function Invoke-NotifyStateRetention([string]$StateDir, [datetime]$Now, [switch]
       $cut = $Now.AddDays(-$script:NotifyLedgerRetentionDays)
       $keep = @($l | Where-Object { $at = [datetime]::MinValue; ("$($_.status)" -eq 'sending') -or (-not [datetime]::TryParse("$($_.at)", [ref]$at)) -or ($at -ge $cut) })
       if ($keep.Count -gt $script:NotifyLedgerCap) {
-        $settled = @($keep | Where-Object { "$($_.status)" -ne 'sending' } | Sort-Object { "$($_.at)" })
+        $protect = $Now.AddDays(-$script:NotifyLedgerProtectDays)
+        $settled = @($keep | Where-Object { $at = [datetime]::MinValue; ("$($_.status)" -ne 'sending') -and [datetime]::TryParse("$($_.at)", [ref]$at) -and ($at -lt $protect) } | Sort-Object { "$($_.at)" })
         $drop = @($settled | Select-Object -First ($keep.Count - $script:NotifyLedgerCap))
         $keep = @($keep | Where-Object { $drop -notcontains $_ })
+        if ($keep.Count -gt $script:NotifyLedgerCap) { $lines += "retention: notify ledger over its cap ($($keep.Count) > $($script:NotifyLedgerCap)); records from the last $($script:NotifyLedgerProtectDays) days are kept" }
       }
       if ($keep.Count -lt $l.Count) {
         $lines += "retention: notify ledger $($l.Count) -> $($keep.Count) entries (older than $($script:NotifyLedgerRetentionDays) days or past the cap of $($script:NotifyLedgerCap))"
@@ -1326,12 +1343,13 @@ function Get-QueuedEntryState($Entry, $Canonical, $Results) {
   $later = @($Canonical.Keys | Where-Object { $_.EndsWith($hostSuffix) -and ([string]::CompareOrdinal($_, $slot) -gt 0) -and ("$($Canonical[$_].Canonical)" -ne '') } | Sort-Object -Descending) | Select-Object -First 1
   if ($null -ne $later) {
     $lid = "$($Canonical[$later].Canonical)"
-    $lr = @(@($Results) | Where-Object { ("$($_.identity)" -eq $lid) -or ("$($_.stamp)" -eq $lid) }) | Select-Object -First 1
+    $slotHost = $slot.Split('|')[1]
+    $lr = @(@($Results) | Where-Object { (("$($_.identity)" -eq $lid) -or ("$($_.stamp)" -eq $lid)) -and ((Get-ResultHostKey $_) -eq $slotHost) }) | Select-Object -First 1
     if (($null -ne $lr) -and ("$($lr.verdict)" -eq 'green')) {
       # The same comparability and flapping rules as Get-RecoveryNotices
       # (section 55 R2-C1): another population or a flapping service is
       # never a recovery in the digest either.
-      $er = @(@($Results) | Where-Object { ("$($_.identity)" -eq "$($Entry.run)") -or ("$($_.stamp)" -eq "$($Entry.run)") }) | Select-Object -First 1
+      $er = @(@($Results) | Where-Object { (("$($_.identity)" -eq "$($Entry.run)") -or ("$($_.stamp)" -eq "$($Entry.run)")) -and ((Get-ResultHostKey $_) -eq $slotHost) }) | Select-Object -First 1
       $ep = if ($null -ne $er) { "$(try { $er.populationIdentity } catch { '' })" } else { '' }
       $lp = "$(try { $lr.populationIdentity } catch { '' })"
       if (($ep -ne '') -and ($lp -ne '') -and ($ep -ne $lp)) { return [pscustomobject]@{ State = 'current'; Note = "night $($later.Split('|')[0]) is GREEN on another test population (not comparable)" } }
