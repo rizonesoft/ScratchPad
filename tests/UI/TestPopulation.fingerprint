@@ -31,6 +31,7 @@ run-a:
   UI.BindingManifestTests.LiveTreeDeclaresFortyFourBindings
   UI.BindingManifestTests.LiveTreeManifestIsClean
   UI.BindingManifestTests.MismatchedMenuLabelFails
+  UI.BindingManifestTests.NoBoundCommandChangesEnablementAfterStartup
   UI.BindingManifestTests.NumPadDeclarationWithMainRowPressFails
   UI.BindingManifestTests.OwnerStillClaimingTheLiveCommandShipsDisabledFails
   UI.BindingManifestTests.OwnerThatNoLongerOwesTheChordFails
@@ -275,9 +276,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 268
-run-a-cases: 332
-run-a-case-hash: 0481f20617fe97bf
+run-a-methods: 269
+run-a-cases: 333
+run-a-case-hash: 91b40978b6bc9705
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -303,6 +304,7 @@ run-a-case-rows:
   UI|UI.BindingManifestTests.LiveTreeDeclaresFortyFourBindings
   UI|UI.BindingManifestTests.LiveTreeManifestIsClean
   UI|UI.BindingManifestTests.MismatchedMenuLabelFails
+  UI|UI.BindingManifestTests.NoBoundCommandChangesEnablementAfterStartup
   UI|UI.BindingManifestTests.NumPadDeclarationWithMainRowPressFails
   UI|UI.BindingManifestTests.OwnerStillClaimingTheLiveCommandShipsDisabledFails
   UI|UI.BindingManifestTests.OwnerThatNoLongerOwesTheChordFails

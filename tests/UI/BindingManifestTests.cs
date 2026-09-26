@@ -510,6 +510,45 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.Empty(problems);
     }
 
+    // D00 T02 §51 item 9 (R2-C1): a disablement during a held chord cannot
+    // occur yet, because no bound command changes its enablement after
+    // startup: every `SetEnabled` call is in the window's constructor and
+    // enables, and the menu's own `IsEnabled` writes live only in
+    // `SetEnabled`. A runtime disablement fails here, so its owner adds the
+    // physical held-disable case in the same change.
+    [Fact]
+    public void NoBoundCommandChangesEnablementAfterStartup()
+    {
+        var problems = new List<string>();
+        foreach (string path in Directory.GetFiles(Path.Combine(RepoRoot(), "src", "ScratchPad"), "*.cs"))
+        {
+            var root = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(File.ReadAllText(path)).GetRoot();
+            foreach (var call in root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax>().Where(c => c.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.MemberAccessExpressionSyntax { Name.Identifier.Text: "SetEnabled" }))
+            {
+                var ctor = call.Ancestors().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.ConstructorDeclarationSyntax>().FirstOrDefault();
+                string enabled = call.ArgumentList.Arguments.Count > 1 ? call.ArgumentList.Arguments[1].ToString() : string.Empty;
+                if (ctor is null || ctor.Identifier.Text != "MainWindow" || enabled != "true")
+                {
+                    problems.Add($"{Path.GetFileName(path)}: {call} changes a bound command's enablement outside the MainWindow constructor's startup enables");
+                }
+            }
+
+            if (Path.GetFileName(path) == "MenuBar.xaml.cs")
+            {
+                foreach (var set in root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.AssignmentExpressionSyntax>().Where(a => a.Left.ToString().EndsWith(".IsEnabled", StringComparison.Ordinal)))
+                {
+                    var method = set.Ancestors().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.MethodDeclarationSyntax>().FirstOrDefault();
+                    if (method?.Identifier.Text != "SetEnabled")
+                    {
+                        problems.Add($"MenuBar.xaml.cs: {set} writes a menu item's enablement outside SetEnabled");
+                    }
+                }
+            }
+        }
+
+        Assert.Empty(problems);
+    }
+
     [Fact]
     public void RoutingOraclePlantsFail()
     {

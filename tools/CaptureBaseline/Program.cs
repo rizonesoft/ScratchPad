@@ -158,13 +158,32 @@ static int CaptureHeldKeys(string outFile)
         }
         finally
         {
-            Keyboard.Release(key);
+            // Each release is attempted on its own (R2-I1): one that throws
+            // never stops the others.
+            var keys = new List<VirtualKeyShort> { key };
             if (shift)
             {
-                Keyboard.Release(VirtualKeyShort.SHIFT);
+                keys.Add(VirtualKeyShort.SHIFT);
             }
 
-            Keyboard.Release(VirtualKeyShort.CONTROL);
+            keys.Add(VirtualKeyShort.CONTROL);
+            var failed = new List<string>();
+            foreach (var k in keys)
+            {
+                try
+                {
+                    Keyboard.Release(k);
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    failed.Add($"{k} ({ex.Message})");
+                }
+            }
+
+            if (failed.Count > 0)
+            {
+                Console.WriteLine($"key release failed: {string.Join(", ", failed)}");
+            }
         }
 
         Thread.Sleep(800);

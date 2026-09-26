@@ -141,7 +141,7 @@ public sealed class BindingMutationTests
         var withOutcome = c with { OutcomeLines = new HashSet<int> { 5 } };
         Assert.Null(BindingMutation.Problem(withOutcome, green, Fail("Assert.Equal() Failure: Values differ", 5), BindingMutation.SwapEvidence.Completed));
         Assert.Contains("not one of the covering method's outcome assertions", BindingMutation.Problem(withOutcome, green, Fail("Assert.Equal() Failure: Values differ", 6), BindingMutation.SwapEvidence.Completed), StringComparison.Ordinal);
-        Assert.Equal(new HashSet<int> { 5 }, BindingManifest.OutcomeAssertLines("class Z { void M() {\n var w = 1;\n var n = 0;\n UiInput.PressKey(w, VirtualKeyShort.KEY_N, withControl: true);\n Assert.Equal(2, Count(w));\n Assert.Equal(1, 1);\n } }", "M", "Ctrl+N").ToHashSet());
+        Assert.Equal(new HashSet<int> { 5 }, BindingManifest.OutcomeAssertLines("class Z { void M() {\n var w = 1;\n var n = 0;\n UiInput.PressKey(w, VirtualKeyShort.KEY_N, withControl: true);\n Assert.Equal(2, Count(w));\n Assert.Equal(1, 1);\n UiInput.PressKey(w, VirtualKeyShort.KEY_O, withControl: true);\n Assert.Equal(3, Count(w));\n } }", "M", "Ctrl+N").ToHashSet());
     }
 
     // One unmutated child run per covering test, cached for the run (the

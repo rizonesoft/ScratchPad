@@ -644,9 +644,10 @@ internal static class BindingManifest
     }
 
     // The covering method's outcome assertions for a chord (D00 T02 §51
-    // item 2, R1-A2): the 1-based lines of `Assert.*` calls after the
-    // chord's first press whose subject reads state (the static rule's own
-    // criterion). A failure elsewhere is not the command's outcome.
+    // item 2, R1-A2, R2-A1): the 1-based lines of `Assert.*` calls between
+    // the chord's first press and the next physical input whose subject
+    // reads state (the static rule's own criterion). A failure elsewhere is
+    // not the command's outcome.
     internal static IReadOnlySet<int> OutcomeAssertLines(string source, string method, string chord)
     {
         var lines = new HashSet<int>();
@@ -661,14 +662,20 @@ internal static class BindingManifest
             }
 
             int after = presses.Min(c => c.SpanStart);
-            var fresh = m.DescendantNodes().Where(n => n.SpanStart > after).SelectMany(n => n switch
+            // The segment ends at the next physical input of any kind (R2-A1):
+            // an assertion after a later press observes that press, not this
+            // chord's command.
+            int until = m.DescendantNodes().OfType<InvocationExpressionSyntax>()
+                .Where(c => c.SpanStart > after && c.Expression.ToString() is "UiInput.Press" or "UiInput.PressKey" or "UiInput.HoldChord" or "UiInput.Wheel" or "UiInput.Type")
+                .Select(c => c.SpanStart).DefaultIfEmpty(int.MaxValue).Min();
+            var fresh = m.DescendantNodes().Where(n => n.SpanStart > after && n.SpanStart < until).SelectMany(n => n switch
             {
                 VariableDeclaratorSyntax v => [v.Identifier.Text],
                 AssignmentExpressionSyntax { Left: IdentifierNameSyntax id } => [id.Identifier.Text],
                 _ => Array.Empty<string>(),
             }).ToHashSet(StringComparer.Ordinal);
             foreach (InvocationExpressionSyntax c in m.DescendantNodes().OfType<InvocationExpressionSyntax>()
-                .Where(c => c.SpanStart > after && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal) && SubjectArguments(c).Any(a => ReadsState(a, fresh))))
+                .Where(c => c.SpanStart > after && c.SpanStart < until && c.Expression.ToString().StartsWith("Assert.", StringComparison.Ordinal) && SubjectArguments(c).Any(a => ReadsState(a, fresh))))
             {
                 var span = tree.GetLineSpan(c.Span);
                 for (int l = span.StartLinePosition.Line + 1; l <= span.EndLinePosition.Line + 1; l++)

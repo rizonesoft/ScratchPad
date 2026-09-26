@@ -229,16 +229,32 @@ public sealed class ChordRoutingTests
             var box = w.FindFirstDescendant(cf => cf.ByAutomationId("TabContentBox"))?.AsTextBox();
             string text = box?.Text ?? string.Empty;
             string sel = string.Empty;
+            string caret = string.Empty;
+            string font = string.Empty;
             try
             {
-                sel = box?.Patterns.Text.PatternOrDefault?.GetSelection().FirstOrDefault()?.GetText(-1) ?? string.Empty;
+                var tp = box?.Patterns.Text.PatternOrDefault;
+                var range = tp?.GetSelection().FirstOrDefault();
+                sel = range?.GetText(-1) ?? string.Empty;
+                if (tp is not null && range is not null)
+                {
+                    // The caret's offset (R2-A2): the text before the
+                    // selection's start, so a caret move reads as a change.
+                    var head = tp.DocumentRange.Clone();
+                    head.MoveEndpointByRange(FlaUI.Core.Definitions.TextPatternRangeEndpoint.End, range, FlaUI.Core.Definitions.TextPatternRangeEndpoint.Start);
+                    caret = head.GetText(-1).Length.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    font = $"{tp.DocumentRange.GetAttributeValue(automation.TextAttributeLibrary.FontSize)}";
+                }
             }
             catch (Exception ex) when (ex is InvalidOperationException or COMException)
             {
                 sel = "?";
             }
 
-            parts.Add($"{w.Title}|tabs={tabs}|text={text}|sel={sel}");
+            // Zoom (R2-A2): the editor's font size and any status-bar
+            // percentage.
+            string zoom = w.FindAllDescendants().Select(e => e.Name ?? string.Empty).FirstOrDefault(n => System.Text.RegularExpressions.Regex.IsMatch(n, @"^\d+%$")) ?? string.Empty;
+            parts.Add($"{w.Title}|tabs={tabs}|text={text}|sel={sel}|caret={caret}|font={font}|zoom={zoom}");
         }
 
         return string.Join(" / ", parts);
