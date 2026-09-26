@@ -2162,6 +2162,20 @@ foreach ($f in @($lvOld, $lvLive, $lvLocked)) { (Get-Item $f).LastWriteTime = $l
 $lvHold = [System.IO.File]::Open($lvLocked, 'Open', 'Read', 'None')
 try { $lvNotes = @(Clear-CaptureLeftovers $lvDir $lvTmp $lvNow @('2026-09-11-023001')) } finally { $lvHold.Dispose() }
 Assert ((-not (Test-Path $lvOld)) -and (Test-Path $lvNew) -and (Test-Path $lvLive) -and (-not (Test-Path $lvTemp)) -and (Test-Path $lvLocked) -and (@($lvNotes | Where-Object { $_ -like '*locked.dmp expired but could not be deleted*' }).Count -eq 1) -and (@($lvNotes | Where-Object { $_ -like '*old.dmp expired (7 days), deleted' }).Count -eq 1) -and (@($lvNotes | Where-Object { $_ -like '*temporary bounded-x.code expired*' }).Count -eq 1)) 's53-binary-leftovers-expire-or-are-named' ($lvNotes -join ' | ')
+# D00 T02 §53 item 5: a replacement that cannot fit beside the old
+# snapshot refuses before touching it, and a write that fails part-way
+# leaves no temporary; the old snapshot stays readable either way.
+$awDir = Join-Path $dir 's53-atomic'
+if (Test-Path $awDir) { Remove-Item $awDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $awDir
+$awPath = Join-Path $awDir 'morning-2026-09-26-023001.result.json'
+Write-AtomicReport @('{ "old": true }') $awPath
+$awFull = ''
+try { Write-AtomicReport @('{ "new": true }') $awPath 100 } catch { $awFull = "$($_.Exception.Message)" }
+$awFault = ''
+try { Write-AtomicReport @('{ "new": true }') $awPath $null { param($t) Set-Content -LiteralPath $t -Value 'partial' -Encoding UTF8; throw 'disk full (fixture)' } } catch { $awFault = "$($_.Exception.Message)" }
+$awNow = Get-Content -LiteralPath $awPath -Raw
+Assert (($awFull -like 'write refused for morning-2026-09-26-023001.result.json: low disk*the previous file is kept') -and ($awFault -eq 'disk full (fixture)') -and (-not (Test-Path "$awPath.tmp")) -and ($awNow -like '*"old": true*')) 's53-snapshot-replacement-keeps-the-old-on-a-full-disk' "$awFull | $awFault"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

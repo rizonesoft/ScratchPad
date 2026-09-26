@@ -3414,13 +3414,32 @@ function Get-QuarantineOwners([string]$LedgerPath) {
   return $owners
 }
 
-function Write-AtomicReport([string[]]$Lines, [string]$Path) {
+function Write-AtomicReport([string[]]$Lines, [string]$Path, $FreeBytes = $null, [scriptblock]$Fault = $null) {
   # Same-volume rename is atomic on NTFS: a kill between the write and
   # the rename leaves the previous report, never a truncation. Shared
   # by the governed run and the outer supervisor (D00 T02 §15 PR1).
+  # Space is reserved first (D00 T02 section 53 item 5): the volume must
+  # hold the replacement beside the file it replaces (twice the new
+  # bytes plus 1 MB) or the write refuses before touching anything, and
+  # a write that fails part-way removes its temporary, so a full disk
+  # always leaves the previous snapshot readable and never strands a
+  # partial copy eating the space it needs. $FreeBytes and $Fault are
+  # fixture seams.
+  $text = $Lines -join "`r`n"
+  $need = (2 * [long]([System.Text.Encoding]::UTF8.GetByteCount($text) + 3)) + 1MB
+  if ($null -eq $FreeBytes) {
+    try { $FreeBytes = (New-Object System.IO.DriveInfo ([System.IO.Path]::GetPathRoot([System.IO.Path]::GetFullPath($Path)))).AvailableFreeSpace } catch { $FreeBytes = [long]::MaxValue }
+  }
+  if ([long]$FreeBytes -lt $need) { throw "write refused for $(Split-Path -Leaf $Path): low disk (need $need bytes free, $FreeBytes available); the previous file is kept" }
   $tmp = "$Path.tmp"
-  $Lines -join "`r`n" | Set-Content -Path $tmp -Encoding UTF8
-  Move-Item -Path $tmp -Destination $Path -Force
+  try {
+    if ($null -ne $Fault) { & $Fault $tmp }
+    $text | Set-Content -Path $tmp -Encoding UTF8
+    Move-Item -Path $tmp -Destination $Path -Force
+  } catch {
+    if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+    throw
+  }
 }
 
 function Get-ShortHash([string]$Path) {
