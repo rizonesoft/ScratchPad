@@ -3747,6 +3747,13 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
     $script:MetricsSupersessions = @($sups)
     $script:MetricsWriteError = ''
     $script:MetricsCapacityWarning = ''
+    # A no-op run still reports a store already past 90 percent (section
+    # 47 R4-C1): the warning follows the store's size, not whether this run
+    # wrote.
+    if ($add.Count -eq 0) {
+      $size0 = if (Test-Path $Path) { (Get-Item $Path).Length } else { 0 }
+      if ($size0 -ge (0.9 * $MaxBytes)) { $script:MetricsCapacityWarning = "metrics store at $([int](100 * $size0 / $MaxBytes))% of its $MaxBytes-byte cap; run tools/NightlyTrend.ps1 -Compact or raise the cap before writes are refused (pruning of archived stamps keeps running either way)" }
+    }
     if ($add.Count -gt 0) {
       $lead = if ($store.EndsClean) { '' } else { "`n" }
       $payload = $lead + ($add -join "`n") + "`n"

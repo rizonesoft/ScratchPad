@@ -954,6 +954,9 @@ $c12 = New-Night '2026-09-13' '2026-09-13-023000'
 $len = [System.Text.Encoding]::UTF8.GetByteCount((ConvertTo-Json ([pscustomobject](ConvertTo-MetricsRow $c12)) -Depth 6 -Compress) + "`n")
 $null = Sync-MetricsStore $cap @($c12) $null ([long]($len / 0.95))
 $warn12 = "$script:MetricsCapacityWarning"
+# R4-C1: rerunning with unchanged results keeps the warning.
+$null = Sync-MetricsStore $cap @($c12) $null ([long]($len / 0.95))
+$warn12b = "$script:MetricsCapacityWarning"
 $pn = Join-Path $d47 'prune'
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $pn '2026-09-13-023000')
 ConvertTo-Json $c12 -Depth 6 | Set-Content -Path (Join-Path $pn 'morning-2026-09-13-023000.result.json') -Encoding UTF8
@@ -962,7 +965,7 @@ $null = Sync-MetricsStore $pstore @($c12)
 $null = Sync-MetricsStore $pstore @((New-Night '2026-09-14' '2026-09-14-023000')) $null 10
 $refused12 = "$script:MetricsWriteError"
 $del12 = Remove-ArchivedStamp $pn '2026-09-13-023000' $pstore
-Assert (($warn12 -like 'metrics store at 9*% of its *-byte cap*') -and ($refused12 -like '*over capacity*pruning of archived stamps still runs*') -and $del12.Deleted) 's47-capacity-warns-and-pruning-still-runs' "$warn12 || $refused12 || $($del12.Reason)"
+Assert (($warn12 -like 'metrics store at 9*% of its *-byte cap*') -and ($warn12b -like 'metrics store at 9*% of its *-byte cap*') -and ($refused12 -like '*over capacity*pruning of archived stamps still runs*') -and $del12.Deleted) 's47-capacity-warns-and-pruning-still-runs' "$warn12 || $refused12 || $($del12.Reason)"
 # Item 13: a derivation-1 row beside derivation-2 rows reads its version
 # where coverage depends on the change.
 $d1 = ConvertFrom-MetricsRow ([pscustomobject](ConvertTo-MetricsRow (New-Night '2026-09-15' '2026-09-15-023000')))
