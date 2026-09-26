@@ -1712,7 +1712,14 @@ if ((-not $Smoke) -and (-not $simMode)) {
     try {
       $allResults = @()
       foreach ($rp in $ackResultFiles) { try { $allResults += (Get-Content $rp -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { } }
-      $recNotices = @(Get-RecoveryNotices (Select-CanonicalRuns $allResults) $allResults $result @($ledgerUpd.Lines))
+      # One canonical map for the night (D00 T02 section 33 item 1): the
+      # recovery check and the night's voice read the selection the trend
+      # renders, and a run that does not speak for its night says which
+      # run does.
+      $canonMap = Select-CanonicalRuns $allResults
+      $voice = Get-NightVoice $canonMap $result
+      if ((-not $voice.IsVoice) -and ($voice.Canonical -ne '')) { $items += New-ToastItem 1 "Not the night's verdict: $($voice.Canonical) speaks for $($voice.Slot.Split('|')[0]) (the trend reads the same run)" }
+      $recNotices = @(Get-RecoveryNotices $canonMap $allResults $result @($ledgerUpd.Lines) $ackCheck)
     } catch { }
     $ord = 0
     foreach ($rn in $recNotices) { $items += New-ToastItem 3 $rn $ord; $ord++ }

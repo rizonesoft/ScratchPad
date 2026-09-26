@@ -130,6 +130,12 @@ try {
 # (3) Undelivered: re-send under the notify lock, remove on success.
 try { $log += @(Invoke-UndeliveredResend -StateDir $NightDir -Sender $sender -NoPersist:$DryRun) } catch { $log += "undelivered: failed: $($_.Exception.Message)" }
 
+# (4) Delivery health and the independent escalation (D00 T02 section 33
+# items 4 and 6): what is still undelivered after the re-send is written
+# to this log, and consecutive failing nights escalate outside the toast
+# API, so a persistently failing toast surfaces without any toast.
+try { $log += @(Get-MorningDeliveryLines -StateDir $NightDir -Now $now -NoPersist:$DryRun | ForEach-Object { "$_".TrimStart('-', ' ') }) } catch { $log += "delivery: failed: $($_.Exception.Message)" }
+
 $stampLine = "$($now.ToString('yyyy-MM-dd HH:mm:ss'))$(if ($DryRun) { ' (dry run)' })"
 $log | ForEach-Object { Write-Output "morning: $_" }
 if (-not $DryRun) {

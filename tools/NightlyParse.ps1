@@ -3976,13 +3976,29 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     $night = "$($Evaluation.Night)"; $hk = "$($Evaluation.Host)"; $evalId = "$($Evaluation.Identity)"
     $current = [ordered]@{}
     foreach ($a in @($Alerts)) { $id = Get-AlertIdentity $a $hk; if ($id -ne '') { $current[$id] = $a.TrimStart('-', ' ') } }
-    $new = @(); $persist = @(); $closed = @()
+    $new = @(); $persist = @(); $closed = @(); $worse = @()
     foreach ($id in @($current.Keys)) {
       $e = @($entries | Where-Object { ("$($_.id)" -eq $id) -and ("$($_.state)" -eq 'open') }) | Select-Object -First 1
-      if ($null -ne $e) { $e.lastNight = $night; $e.evaluated = $evalId; $e.line = $current[$id]; $persist += $id }
+      $mag = Get-AlertMagnitude $current[$id]
+      if ($null -ne $e) {
+        $e.lastNight = $night; $e.evaluated = $evalId; $e.line = $current[$id]; $persist += $id
+        # A persisting alert that grew by its series' step since it was
+        # last notified is worsening (D00 T02 section 33 item 2): it takes
+        # a new occurrence and notifies again; an unchanged or improving
+        # one stays quiet. An entry from before magnitudes starts its
+        # baseline here.
+        $base = $null
+        try { if ("$($e.notifiedMagnitude)" -ne '') { $base = [double]$e.notifiedMagnitude } } catch { }
+        if (($null -ne $mag) -and ($null -ne $base) -and ($mag -ge ($base + (Get-AlertWorsenStep $id)))) {
+          $e | Add-Member -NotePropertyName occurrence -NotePropertyValue ([guid]::NewGuid().ToString('N').Substring(0, 16)) -Force; $e | Add-Member -NotePropertyName notifiedOpen -NotePropertyValue $false -Force
+          $e | Add-Member -NotePropertyName worsening -NotePropertyValue "from $base to $mag" -Force
+          $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $mag -Force
+          $worse += $id
+        } elseif (($null -ne $mag) -and ($null -eq $base)) { $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $mag -Force }
+      }
       # Each opening is its own occurrence (R3-F2), so a reopening on the
       # same night never shares a delivery key with the earlier one.
-      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true }; $new += $id }
+      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true; notifiedMagnitude = $mag }; $new += $id }
     }
     foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
       $state = if (@(@($SupersededIds) | ForEach-Object { "$_".Split('@')[0] }) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
@@ -4000,8 +4016,31 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     }
     $out = [pscustomobject]@{ schema = 'alerts/1'; alerts = @($entries) }
     Write-AtomicReport @((ConvertTo-Json $out -Depth 6)) $Path
-    return [pscustomobject]@{ New = @($new | ForEach-Object { $current[$_] }); NewIds = @($new); Persisting = @($persist); Closed = @($closed) }
+    return [pscustomobject]@{ New = @($new | ForEach-Object { $current[$_] }); NewIds = @($new); Persisting = @($persist); Closed = @($closed); Worsened = @($worse) }
   })
+}
+
+function Get-AlertMagnitude([string]$Line) {
+  # How bad an alert line is, on its series' own scale (D00 T02 section
+  # 33 item 2): the percent over baseline for a duration or shift (the
+  # seconds over a zero baseline), the points below baseline for a pass
+  # rate, and the nights hit for a recurring flake. $null when unread.
+  if ($Line -match 'ALERT (runa-duration|runa-shift):') {
+    $m = [regex]::Match($Line, '\(\+(\d+)%'); if ($m.Success) { return [double]$m.Groups[1].Value }
+    $m = [regex]::Match($Line, '\(\+(\d+)s over a zero baseline'); if ($m.Success) { return [double]$m.Groups[1].Value }
+    return $null
+  }
+  if ($Line -match 'ALERT pass-rate:') { $m = [regex]::Match($Line, '\((-?[\d.]+) points'); if ($m.Success) { return [math]::Abs([double]::Parse($m.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture)) }; return $null }
+  if ($Line -match 'ALERT recurring-flake: INC-[0-9a-f]{8} on \S+ and (.+)$') { return [double](@($Matches[1] -split ',\s*').Count + 1) }
+  return $null
+}
+
+function Get-AlertWorsenStep([string]$Id) {
+  # The growth that counts as worsening, per series: 25 percentage points
+  # of duration or shift, 2 pass-rate points, one more flake night.
+  if ($Id -match '\|pass-rate') { return 2 }
+  if ($Id -match '\|recurring-flake') { return 1 }
+  return 25
 }
 
 function Read-AlertLedger([string]$Path) {
@@ -4033,7 +4072,7 @@ function Get-PendingAlertNotifications([string]$Path) {
   foreach ($e in @($lg.alerts)) {
     if ($null -eq $e) { continue }
     $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
-    if ($e.notifiedOpen -eq $false) { $lines += "$($e.line)"; $keys += "open|$($e.id)|$occ" }
+    if ($e.notifiedOpen -eq $false) { $lines += "$(if ("$($e.state)" -eq 'open' -and "$($e.worsening)" -ne '') { "WORSENING ($($e.worsening)): " })$($e.line)"; $keys += "open|$($e.id)|$occ" }
     elseif (("$($e.state)" -eq 'open') -and ("$($e.acknowledged)" -eq '')) { $persisting++ }
     elseif ("$($e.state)" -eq 'open') { $acked++ }
     if (("$($e.state)" -ne 'open') -and ($e.notifiedClose -eq $false)) { $lines += "closed ($($e.state) on $($e.closedNight)): $($e.id)"; $keys += "close|$($e.id)|$occ" }

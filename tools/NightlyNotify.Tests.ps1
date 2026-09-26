@@ -256,7 +256,7 @@ Assert (@($b13 | Where-Object { $_ -like "soak ui-soak-4: result failed, report 
 # Item 13: recovery notices, night-level and incident-level.
 $hist = @((New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'))
 $rn = @(Get-RecoveryNotices (Select-CanonicalRuns $hist) $hist $hist[1] @('- INC-aaaa1111 `UI.A`: CLOSED (verified recovery: passed in run-a on 3 runs through s)'))
-Assert ((($rn -join ' | ') -eq 'Recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN | Recovered: INC-aaaa1111 UI.A (closed on verified recovery)')) 'recovery-notice-night-and-incident' ($rn -join ' | ')
+Assert ((($rn -join ' | ') -eq 'Service recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN | Recovered: INC-aaaa1111 UI.A (closed on verified recovery)')) 'recovery-notice-night-and-incident' ($rn -join ' | ')
 $still = @(Get-RecoveryNotices (Select-CanonicalRuns $hist) $hist (New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer') @())
 Assert ($still.Count -eq 0) 'recovery-none-while-red'
 $retryDay = @((New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-023000' 'red' 'timer'), (New-Result '2026-09-25' '2026-09-25-093000' 'green' 'manual'))
@@ -274,7 +274,7 @@ $shA = New-Result '2026-09-24' '2026-09-24-023000' 'red' 'timer'; $shA | Add-Mem
 $shNow = New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'; $shNow | Add-Member -NotePropertyName hostKey -NotePropertyValue 'h0st0001' -Force
 $shRes = @($shB, $shA, $shNow)
 $shN = @(Get-RecoveryNotices (Select-CanonicalRuns $shRes) $shRes $shNow @())
-Assert (($shN -join ' | ') -eq 'Recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN') 's40-shared-identity-resolves-to-this-host' ($shN -join ' | ')
+Assert (($shN -join ' | ') -eq 'Service recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN') 's40-shared-identity-resolves-to-this-host' ($shN -join ' | ')
 
 # Item 14: launch evidence links end to end.
 $diag = Join-Path $dir 'launch-diagnostics'
@@ -299,6 +299,105 @@ $tok = 'ghp_' + ('A1b2C3d4E5' * 4)
 $dToast = @(Format-ToastLines @((New-ToastItem 1 "leak $tok at C:\Users\someone\AppData\x.log")) 'build/nightly/morning-x.md')
 $dDig = Format-Digest @([pscustomobject]@{ run = "C:\Users\someone\run $tok"; class = 'test' }) '2026-09-25'
 Assert ((($dToast -join ' ') -notlike '*ghp_*') -and (($dToast -join ' ') -notlike '*Users\someone*') -and (($dToast -join ' ') -like '*`[redacted: github-token`]*') -and ((@($dDig.Lines) -join ' ') -notlike '*ghp_*') -and ((@($dDig.Lines) -join ' ') -notlike '*Users\someone*')) 'notify-channels-disclose-nothing' (($dToast -join ' | ') + ' || ' + (@($dDig.Lines) -join ' | '))
+
+# D00 T02 section 33 item 1: one night identity. A night with a RED timer
+# run, a cancelled run, and a GREEN manual retry: the trend's selection
+# and the notification's voice name the same run, and a run that does not
+# speak for its night knows which one does.
+$n33 = @((New-Result '2026-09-26' '2026-09-26-023000' 'red' 'timer'), (New-Result '2026-09-26' '2026-09-26-031500' 'cancelled' 'timer'), (New-Result '2026-09-26' '2026-09-26-093000' 'green' 'manual'))
+$c33 = Select-CanonicalRuns $n33
+$trendPick = $c33[(Get-NightSlotKey $n33[0])].Canonical
+$voices = @($n33 | ForEach-Object { Get-NightVoice $c33 $_ })
+Assert ((@($voices | ForEach-Object { $_.Canonical } | Sort-Object -Unique).Count -eq 1) -and ($voices[0].Canonical -eq $trendPick) -and (@($voices | Where-Object { $_.IsVoice }).Count -eq 1)) 's33-notify-and-trend-pick-one-run' "trend $trendPick; voices $(@($voices | ForEach-Object { "$($_.Canonical)/$($_.IsVoice)" }) -join ',')"
+
+# Item 2: a worsening alert re-notifies, an unchanged one does not.
+$al33 = Join-Path $dir 'alerts33.json'
+$ev1 = [pscustomobject]@{ Night = '2026-09-24'; Host = 'h0st0001'; Identity = 'a1' }
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs baseline 600s (+50%, median of 5 night(s))') $al33 $ev1
+$p1 = Get-PendingAlertNotifications $al33; Confirm-AlertNotifications $al33 @($p1.Keys)
+$null = Update-AlertLedger @('- ALERT runa-duration: 910s on 2026-09-25 vs baseline 600s (+52%, median of 5 night(s))') $al33 ([pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0001'; Identity = 'a2' })
+$p2 = Get-PendingAlertNotifications $al33
+$w3 = Update-AlertLedger @('- ALERT runa-duration: 1200s on 2026-09-26 vs baseline 600s (+100%, median of 5 night(s))') $al33 ([pscustomobject]@{ Night = '2026-09-26'; Host = 'h0st0001'; Identity = 'a3' })
+$p3 = Get-PendingAlertNotifications $al33
+Assert ((@($p2.Lines).Count -eq 0) -and (@($w3.Worsened) -contains 'h0st0001|runa-duration') -and (@($p3.Lines).Count -eq 1) -and ($p3.Lines[0] -like 'WORSENING (from 50 to 100): ALERT runa-duration: 1200s*')) 's33-worsening-renotifies-unchanged-does-not' "p2=$(@($p2.Lines) -join '|') p3=$(@($p3.Lines) -join '|')"
+
+# Item 3: every enumerated agreement field has a contradiction fixture;
+# the result is changed one field at a time and the named break reads.
+$fields33 = @(
+  @('run-a passed', { param($r) $r.legs.'run-a'.passed = 99 }, 'run-a passed: report 10 vs result 99'),
+  @('run-a failed', { param($r) $r.legs.'run-a'.failed = 99 }, 'run-a failed: report 0 vs result 99'),
+  @('run-a skipped', { param($r) $r.legs.'run-a'.skipped = 99 }, 'run-a skipped: report 1 vs result 99'),
+  @('run-a gate', { param($r) $r.legs.'run-a'.gate = 5 }, 'run-a gate: report exit 0 vs result 5'),
+  @('run-b passed', { param($r) $r.legs.'run-b'.passed = 99 }, 'run-b passed: report 4 vs result 99'),
+  @('run-b failed', { param($r) $r.legs.'run-b'.failed = 99 }, 'run-b failed: report 0 vs result 99'),
+  @('run-b skipped', { param($r) $r.legs.'run-b'.skipped = 99 }, 'run-b skipped: report 0 vs result 99'),
+  @('run-b gate', { param($r) $r.legs.'run-b'.gate = 5 }, 'run-b gate: report exit 0 vs result 5'),
+  @('interactive passed', { param($r) $r.legs.interactive.passed = 99 }, 'interactive passed: report 3 vs result 99'),
+  @('interactive failed', { param($r) $r.legs.interactive.failed = 99 }, 'interactive failed: report 0 vs result 99'),
+  @('interactive skipped', { param($r) $r.legs.interactive.skipped = 99 }, 'interactive skipped: report 0 vs result 99'),
+  @('incidents', { param($r) $r.incidents = @() }, 'incidents: report [INC-aaaa1111] vs result []'),
+  @('budget consumed', { param($r) $r.consumed = 1 }, 'budget consumed: report 600s vs result 1'),
+  @('budget reserve', { param($r) $r.reserve = 1 }, 'budget reserve: report 900s vs result 1'),
+  @('timings reserve', { param($r) $r.reserve = 1 }, 'timings reserve: report 900s vs result 1'),
+  @('soak verdict', { param($r) $r.soak.verdict = 'red' }, 'soak: report green vs result red'),
+  @('soak failed list', { param($r) $r.soak | Add-Member -NotePropertyName failed -NotePropertyValue @('ui-soak-9') -Force }, 'soak ui-soak-9: result lists it, report soak rows omit it'),
+  @('soak killed list', { param($r) $r.soak | Add-Member -NotePropertyName killed -NotePropertyValue @('ui-soak-9') -Force }, 'soak ui-soak-9: result lists it, report soak rows omit it'),
+  @('soak cut list', { param($r) $r.soak | Add-Member -NotePropertyName cut -NotePropertyValue @('ui-soak-9') -Force }, 'soak ui-soak-9: result lists it, report soak rows omit it'),
+  @('exit', { param($r) $r.exit = 7 }, 'exit: report 1 vs result 7')
+)
+foreach ($k in @('os', 'powershell', 'dotnet', 'session', 'topology', 'dpi', 'adapters', 'settings')) { $fields33 += , @("environment $k", [scriptblock]::Create("param(`$r) `$r.env.$k = 'zz'"), "environment ${k}: report ") }
+$miss33 = @()
+foreach ($f in $fields33) {
+  $r33 = $agreeRes | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+  & $f[1] $r33
+  $br = @((Test-ReportResultAgreement $rep $r33).Breaks)
+  if (@($br | Where-Object { "$_".StartsWith($f[2]) }).Count -eq 0) { $miss33 += "$($f[0]) (got: $($br -join '; '))" }
+}
+$doc33 = Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'docs/testing.md') -Raw -Encoding UTF8
+$undoc33 = @($fields33 | Where-Object { -not $doc33.Contains('`' + $_[0] + '`') } | ForEach-Object { $_[0] })
+Assert (($miss33.Count -eq 0) -and ($undoc33.Count -eq 0) -and ($fields33.Count -eq 28)) 's33-every-agreement-field-has-a-contradiction-fixture' "missing: $($miss33 -join ' | '); undocumented: $($undoc33 -join ', ')"
+
+# Item 4: two consecutive failing nights escalate once through the
+# independent channel; a success ends the episode.
+$st33 = Join-Path $dir 'state33'
+$null = New-Item -ItemType Directory -Force -Path $st33
+$fail = { param($t, $l) $false }
+$null = Invoke-NightlyNotify -Phase 'final' -RunId 'r33a' -ResultPath '' -Class 'test-failure' -Title 'n1' -Lines @('x') -StateDir $st33 -Sender $fail -Now (Get-Date '2026-09-24 03:00')
+$esc1 = @(Invoke-DeliveryEscalation -StateDir $st33 -Now (Get-Date '2026-09-24 07:05') -Escalate { param($t, $l) $script:esc33 += $t; $true })
+$null = Invoke-NightlyNotify -Phase 'final' -RunId 'r33b' -ResultPath '' -Class 'test-failure' -Title 'n2' -Lines @('x') -StateDir $st33 -Sender $fail -Now (Get-Date '2026-09-25 03:00')
+$script:esc33 = @()
+$esc2 = @(Invoke-DeliveryEscalation -StateDir $st33 -Now (Get-Date '2026-09-25 07:05') -Escalate { param($t, $l) $script:esc33 += $t; $true })
+$esc3 = @(Invoke-DeliveryEscalation -StateDir $st33 -Now (Get-Date '2026-09-25 08:00') -Escalate { param($t, $l) $script:esc33 += $t; $true })
+Assert (($esc1.Count -eq 0) -and ($esc2[0] -like '- Delivery escalation: sent through the independent channel for the episode from 2026-09-24*') -and ($script:esc33.Count -eq 1) -and ($esc3[0] -like '*already sent for the episode from 2026-09-24*')) 's33-two-failed-nights-escalate-once' "$($esc1 -join '|') / $($esc2 -join '|') / $($esc3 -join '|') / $($script:esc33 -join '|')"
+
+# Item 5: the crash window. A send intent left behind re-sends marked as a
+# possible duplicate; a recorded fallback never sent is re-sent by the
+# reconciler; a digest key already queued is not queued twice.
+$st33b = Join-Path $dir 'state33b'
+$null = New-Item -ItemType Directory -Force -Path $st33b
+$k33 = "r33c|noresult|v$($script:NotifyVersion)"
+ConvertTo-Json @([pscustomobject]@{ key = $k33; run = 'r33c'; class = 'test-failure'; channel = 'immediate'; at = '2026-09-25T03:00:00+02:00'; status = 'sending' }) -Depth 4 | Set-Content -Path (Join-Path $st33b 'notify-ledger.json') -Encoding UTF8
+$script:sent33 = @()
+$cw = Invoke-NightlyNotify -Phase 'final' -RunId 'r33c' -ResultPath '' -Class 'test-failure' -Title 'crash' -Lines @('x') -StateDir $st33b -Sender { param($t, $l) $script:sent33 += $t; $true }
+$cw2 = Invoke-NightlyNotify -Phase 'final' -RunId 'r33c' -ResultPath '' -Class 'test-failure' -Title 'crash' -Lines @('x') -StateDir $st33b -Sender { param($t, $l) $script:sent33 += $t; $true }
+$null = Invoke-NightlyNotify -Phase 'final' -RunId 'r33d' -ResultPath '' -Class 'test-failure' -Title 'lost' -Lines @('x') -StateDir $st33b -Sender $fail
+$rs33 = @(Invoke-UndeliveredResend -StateDir $st33b -Sender { param($t, $l) $script:sent33 += $t; $true })
+$qk = "r33e|noresult|v$($script:NotifyVersion)"
+ConvertTo-Json @([pscustomobject]@{ key = $qk; run = 'r33e'; class = 'green'; title = 'q'; lines = @('x'); at = '2026-09-25T03:00:00+02:00' }) -Depth 4 | Set-Content -Path (Join-Path $st33b 'digest-queue.json') -Encoding UTF8
+$qd = Invoke-NightlyNotify -Phase 'final' -RunId 'r33e' -ResultPath '' -Class 'green' -Title 'q' -Lines @('x') -StateDir $st33b -Sender $fail
+$q33 = @(Get-Content (Join-Path $st33b 'digest-queue.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
+Assert (($cw.Status -eq 'sent') -and ($script:sent33[0] -eq 'crash (possible duplicate)') -and ($cw2.Status -eq 'duplicate') -and (@($rs33 | Where-Object { $_ -like '*re-sent*' }).Count -eq 1) -and ($script:sent33 -contains 'lost (re-sent)') -and ($qd.Status -eq 'queued') -and (@($q33 | Where-Object { $_.key -eq $qk }).Count -eq 1)) 's33-crash-window-resends-marked-and-queues-once' "sent=$($script:sent33 -join '|') cw2=$($cw2.Status) q=$(@($q33).Count)"
+
+# Item 6: a toast failing every morning still reads in the reconciler's
+# log lines, with no toast involved.
+$ml33 = @(Get-MorningDeliveryLines -StateDir $st33 -Now (Get-Date '2026-09-25 07:10') -Escalate { param($t, $l) $true })
+Assert ((@($ml33 | Where-Object { $_ -like '- Delivery RED: 2 undelivered notification(s)*' }).Count -eq 1) -and (@($ml33 | Where-Object { $_ -like '*undelivered/r33a-*' }).Count -eq 1)) 's33-failing-toast-reads-in-the-morning-log' ($ml33 -join ' | ')
+
+# Item 7: a recovery after an unacknowledged RED names the pending ack
+# and the open corrective action on their own lines.
+$gate33 = [pscustomobject]@{ Unacked = @('2026-09-24-023000-pid1'); Corrective = @('- CORRECTIVE ack-x.md (D00 T02 §9): open, due 2026-10-01 (owner operator)', '- CORRECTIVE ack-y.md (D00 T02 §9): closed (abc)') }
+$rn33 = @(Get-RecoveryNotices (Select-CanonicalRuns $hist) $hist $hist[1] @() $gate33)
+Assert (($rn33[0] -like 'Service recovered: night 2026-09-24 was RED*') -and ($rn33 -contains 'Pending acknowledgement: 1 RED run(s) still unacknowledged (2026-09-24-023000-pid1)') -and ($rn33 -contains 'Open corrective actions: 1 (ack-x.md (D00 T02 §9))')) 's33-recovery-names-pending-ack-and-open-actions' ($rn33 -join ' | ')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }

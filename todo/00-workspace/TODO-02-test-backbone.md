@@ -1105,6 +1105,8 @@ Why this section exists: the §25 plan review returned 22 findings; 15 file here
 
 ## 33. Notification Residuals
 
+> **Started:** 2026-09-26T03:38:43Z
+
 Why this section exists: the §25 plan review read §24's notification surface as a neighbor and returned 4 findings that belong to it; §24 itself awaits the operator after its review hard cap, so they file here rather than widen it. -> SOURCE: plan-review-D00-T02-s25-2026-09-25-s33 D00-T02-S25-PR1 D00-T02-S25-PR9 D00-T02-S25-PR19 D00-T02-S25-PR20 (shared canonical identity, alert lifecycle, agreement field coverage, and an independent escalation channel from the §25 plan review).
 
 **Needs:** Windows host (build/test)
@@ -1112,14 +1114,14 @@ Why this section exists: the §25 plan review read §24's notification surface a
 - -> XREF: D00 T02 §24 -- hardens the notification surface it shipped.
 - -> XREF: D00 T02 §55 -- the §24 plan review's residuals that name this section's queue, escalation, and night identity surface.
 
-- [ ] Notifications and the trend share one canonical-run and night identity contract (the §25 night key, one tie-break for retries, cancellations, and multiple scheduled runs), so they can never select different results for a night. Done when: a fixture night with a retry and a cancellation selects the same run in both. (D00-T02-S25-PR1.)
-- [ ] Trend alerts carry identity and a lifecycle (new, worsening, unchanged, recovered), so the once-per-day dedupe neither hides a new or worse alert nor repeats unresolved noise. Done when: a worsening alert re-notifies and an unchanged one does not. (D00-T02-S25-PR9.)
-- [ ] The report/result agreement enumerates its complete field coverage in `docs/testing.md` and its fixtures cover each field. Done when: the enumeration reads and every listed field has a contradiction fixture. (D00-T02-S25-PR19.)
-- [ ] The fallback is named as deferred delivery, and an independent escalation channel (one that does not depend on the toast API) fires when toasts fail on consecutive nights. Done when: two failed nights escalate through the second channel. (D00-T02-S25-PR20.)
-- [ ] The send-versus-record crash window is defined: a toast sent but not recorded retries as a possible duplicate marked as such, and one recorded but not sent is re-sent, so recovery neither loses alerts nor claims exactly-once. Done when: both crash-window fixtures read as defined. (D00-T02-S31-PR12, from the D00 T02 §31 plan review.)
-- [ ] The undelivered channel is independently observable (a tracked or morning-report line the operator reads without toasts), or the limitation is recorded as an accepted risk with its owner. Done when: a persistently failing toast still surfaces in the morning report. (D00-T02-S31-PR13.)
-- [ ] Recovery notices state service recovery, pending acknowledgements, and open corrective actions separately, so a GREEN never implies completed triage. Done when: a recovery toast after an unacked RED names the pending ack. (D00-T02-S31-PR14.)
-- [ ] Commit: `"workspace: close the notification residuals"`
+- [x] Notifications and the trend share one canonical-run and night identity contract (the §25 night key, one tie-break for retries, cancellations, and multiple scheduled runs), so they can never select different results for a night. Done when: a fixture night with a retry and a cancellation selects the same run in both. (D00-T02-S25-PR1.)
+- [x] Trend alerts carry identity and a lifecycle (new, worsening, unchanged, recovered), so the once-per-day dedupe neither hides a new or worse alert nor repeats unresolved noise. Done when: a worsening alert re-notifies and an unchanged one does not. (D00-T02-S25-PR9.)
+- [x] The report/result agreement enumerates its complete field coverage in `docs/testing.md` and its fixtures cover each field. Done when: the enumeration reads and every listed field has a contradiction fixture. (D00-T02-S25-PR19.)
+- [x] The fallback is named as deferred delivery, and an independent escalation channel (one that does not depend on the toast API) fires when toasts fail on consecutive nights. Done when: two failed nights escalate through the second channel. (D00-T02-S25-PR20.)
+- [x] The send-versus-record crash window is defined: a toast sent but not recorded retries as a possible duplicate marked as such, and one recorded but not sent is re-sent, so recovery neither loses alerts nor claims exactly-once. Done when: both crash-window fixtures read as defined. (D00-T02-S31-PR12, from the D00 T02 §31 plan review.)
+- [x] The undelivered channel is independently observable (a tracked or morning-report line the operator reads without toasts), or the limitation is recorded as an accepted risk with its owner. Done when: a persistently failing toast still surfaces in the morning report. (D00-T02-S31-PR13.)
+- [x] Recovery notices state service recovery, pending acknowledgements, and open corrective actions separately, so a GREEN never implies completed triage. Done when: a recovery toast after an unacked RED names the pending ack. (D00-T02-S31-PR14.)
+- [x] Commit: `"workspace: close the notification residuals"`
 
 **Test checkpoint:** The trend and notifications pick one run, alerts renotify only on change, agreement coverage is enumerated and pinned, and persistent toast failure escalates elsewhere. Cheaper substitute that fails: a longer toast.
 

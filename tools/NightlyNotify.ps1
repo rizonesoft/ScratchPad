@@ -179,7 +179,17 @@ function Invoke-NightlyNotify {
   return (Invoke-WithNotifyLock -TimeoutSeconds $LockTimeoutSeconds -Body {
   $ledgerPath = Join-Path $StateDir 'notify-ledger.json'
   $ledger = @(Read-JsonState $ledgerPath @())
-  if (@($ledger | Where-Object { "$($_.key)" -eq $key }).Count -gt 0) { $out.Status = 'duplicate'; $out.Notes += "already notified for $key"; return $out }
+  # The send-versus-record crash window (D00 T02 section 33 item 5): an
+  # immediate send first records a `sending` intent, then sends, then
+  # records the outcome. An intent left behind means a crash between the
+  # send and its record (or before the send): the retry sends again,
+  # marked as a possible duplicate, so recovery never loses an alert and
+  # never claims exactly-once. A recorded fallback that was never sent is
+  # the undelivered file the reconciler re-sends.
+  $intent = @($ledger | Where-Object { ("$($_.key)" -eq $key) -and ("$($_.status)" -eq 'sending') })
+  if (@($ledger | Where-Object { ("$($_.key)" -eq $key) -and ("$($_.status)" -ne 'sending') }).Count -gt 0) { $out.Status = 'duplicate'; $out.Notes += "already notified for $key"; return $out }
+  $possibleDup = $intent.Count -gt 0
+  $ledger = @($ledger | Where-Object { -not (("$($_.key)" -eq $key) -and ("$($_.status)" -eq 'sending')) })
   $route = Get-AlertRoute $Class
   $entry = [pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; at = $Now.ToString('o'); status = '' }
   if ($route.Channel -eq 'none') {
@@ -187,15 +197,21 @@ function Invoke-NightlyNotify {
   } elseif ($route.Channel -eq 'digest') {
     $qPath = Join-Path $StateDir 'digest-queue.json'
     $q = @(Read-JsonState $qPath @())
-    $q += [pscustomobject]@{ key = $key; run = $RunId; class = $Class; title = $Title; lines = @($Lines); at = $Now.ToString('o') }
+    # A crash between the queue write and the ledger write left this key
+    # queued already (section 33 item 5): it is not queued twice.
+    if (@($q | Where-Object { "$($_.key)" -eq $key }).Count -eq 0) { $q += [pscustomobject]@{ key = $key; run = $RunId; class = $Class; title = $Title; lines = @($Lines); at = $Now.ToString('o') } } else { $out.Notes += 'already queued (a crash before its record); not queued twice' }
     if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @($q) -Depth 6) $qPath }
     $out.Status = 'queued'; $out.Notes += "queued for the morning digest ($Class, SLA $($route.SlaHours)h, owner $($route.Owner))"
   } else {
+    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @(@($ledger) + @([pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; at = $Now.ToString('o'); status = 'sending' })) -Depth 6) $ledgerPath }
+    $sendTitle = if ($possibleDup) { "$Title (possible duplicate)" } else { $Title }
+    if ($possibleDup) { $out.Notes += 'a send intent was left by an interrupted run: re-sent, marked possible duplicate' }
     $ok = $false
     for ($i = 0; ($i -le $Retries) -and (-not $ok); $i++) {
       $out.Attempts++
-      try { $ok = [bool](& $Sender $Title $Lines) } catch { $ok = $false; $out.Notes += "attempt $($out.Attempts) threw: $($_.Exception.Message)" }
+      try { $ok = [bool](& $Sender $sendTitle $Lines) } catch { $ok = $false; $out.Notes += "attempt $($out.Attempts) threw: $($_.Exception.Message)" }
     }
+    if (-not $NoPersist) { Update-DeliveryRecord $StateDir $Now $ok }
     if ($ok) { $out.Status = 'sent'; $out.Notes += "sent after $($out.Attempts) attempt(s)" }
     else {
       $uDir = Join-Path $StateDir 'undelivered'
@@ -216,6 +232,70 @@ function Invoke-NightlyNotify {
   if ($NoPersist) { $out.Notes += 'dry run: no state written' }
   return $out
   })
+}
+
+function Update-DeliveryRecord([string]$StateDir, [datetime]$Now, [bool]$Ok) {
+  # Toast delivery outcomes by night (D00 T02 section 33 item 4): the
+  # nights a toast send failed and the last night one succeeded, in
+  # build/nightly/delivery-record.json, so consecutive failing nights are
+  # countable after the undelivered files are re-sent and removed.
+  $p = Join-Path $StateDir 'delivery-record.json'
+  $rec = Read-JsonState $p ([pscustomobject]@{ failedNights = @(); lastSuccess = ''; escalated = '' })
+  $night = Get-NightKey $Now
+  $failed = @(@($rec.failedNights) | Where-Object { "$_" -ne '' })
+  if ($Ok) { $last = $night } else { $last = "$($rec.lastSuccess)"; if ($failed -notcontains $night) { $failed += $night } }
+  $o = [pscustomobject]@{ failedNights = @($failed | Sort-Object -Unique | Select-Object -Last 30); lastSuccess = $last; escalated = "$($rec.escalated)" }
+  Write-AtomicReport @(ConvertTo-Json $o -Depth 4) $p
+}
+
+function Invoke-DeliveryEscalation {
+  # The independent escalation channel (D00 T02 section 33 item 4). The
+  # toast fallback is deferred delivery (the undelivered set the morning
+  # reconciler re-sends); when toasts fail on two consecutive nights with
+  # no successful send since, the episode escalates once through a
+  # channel that does not use the toast API ($Escalate; the default
+  # writes a file on the operator's desktop). Recorded default
+  # 2026-09-26: a desktop file, because every other local channel either
+  # shares the toast stack or needs a credential; the cost of changing is
+  # one sender scriptblock. Returns Lines.
+  param([string]$StateDir, [datetime]$Now = (Get-Date), [scriptblock]$Escalate = { param($t, $l) Send-NightlyEscalation $t $l }, [switch]$NoPersist)
+  $p = Join-Path $StateDir 'delivery-record.json'
+  if (-not (Test-Path -LiteralPath $p)) { return @() }
+  $rec = Read-JsonState $p ([pscustomobject]@{ failedNights = @(); lastSuccess = ''; escalated = '' })
+  $since = "$($rec.lastSuccess)"
+  $fails = @(@($rec.failedNights) | Where-Object { ("$_" -ne '') -and ([string]::CompareOrdinal("$_", $since) -gt 0) } | Sort-Object -Unique)
+  $pair = ''
+  for ($i = 1; $i -lt $fails.Count; $i++) {
+    $a = [datetime]::ParseExact($fails[$i - 1], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($a.AddDays(1).ToString('yyyy-MM-dd') -eq $fails[$i]) { $pair = "$($fails[$i - 1])..$($fails[$i])"; break }
+  }
+  if ($pair -eq '') { return @() }
+  $episode = $fails[0]
+  if ("$($rec.escalated)" -eq $episode) { return @("- Delivery escalation: already sent for the episode from $episode (toasts failing since; consecutive nights $pair)") }
+  $title = "ScratchPad nightly: notifications failing since $episode"
+  $body = @("Toast notifications failed on consecutive nights ($pair) and none has been delivered since $(if ($since -ne '') { $since } else { 'the record began' }).", "Undelivered notifications wait in build/nightly/undelivered and the morning reconciler keeps re-sending them.", "Read build/nightly/morning-reconcile.log and the latest build/nightly/morning-*.md.")
+  $ok = $false
+  try { $ok = [bool](& $Escalate $title $body) } catch { $ok = $false }
+  if ($ok -and (-not $NoPersist)) { $rec | Add-Member -NotePropertyName escalated -NotePropertyValue $episode -Force; Write-AtomicReport @(ConvertTo-Json $rec -Depth 4) $p }
+  return @("- Delivery escalation: $(if ($ok) { 'sent' } else { 'FAILED' }) through the independent channel for the episode from $episode (consecutive failing nights $pair)")
+}
+
+function Send-NightlyEscalation([string]$Title, [string[]]$Lines) {
+  # The default independent channel: a text file on the operator's
+  # desktop, written atomically, which needs neither the toast API nor
+  # a credential. Returns $true when written.
+  $desk = [Environment]::GetFolderPath('Desktop')
+  if ("$desk" -eq '') { return $false }
+  Write-AtomicReport (@($Title, '') + @($Lines)) (Join-Path $desk 'ScratchPad nightly - notifications failing.txt')
+  return $true
+}
+
+function Get-MorningDeliveryLines([string]$StateDir, [datetime]$Now = (Get-Date), [scriptblock]$Escalate = { param($t, $l) Send-NightlyEscalation $t $l }, [switch]$NoPersist) {
+  # What the morning reconciler records after its re-send (section 33
+  # item 6): the delivery health (every still-undelivered notification by
+  # name) and the escalation outcome, so a persistently failing toast is
+  # read in build/nightly/morning-reconcile.log without any toast.
+  return @(@((Get-DeliveryHealth $StateDir $Now).Lines) + @(Invoke-DeliveryEscalation -StateDir $StateDir -Now $Now -Escalate $Escalate -NoPersist:$NoPersist))
 }
 
 function Get-DeliveryHealth([string]$StateDir, [datetime]$Now = (Get-Date), [int]$StaleQueueHours = 26) {
@@ -369,6 +449,7 @@ function Invoke-UndeliveredResend {
         $raw = [System.IO.File]::ReadAllText($u.FullName)
         $p = $raw | ConvertFrom-Json
         $ok = [bool](& $Sender "$($p.title) (re-sent)" @($p.lines))
+        if (-not $NoPersist) { Update-DeliveryRecord $StateDir (Get-Date) $ok }
         if ($ok) {
           if (-not $NoPersist) { Remove-Item -LiteralPath $u.FullName -Force }
           $lines += "undelivered $($u.Name): re-sent$(if ($NoPersist) { ' (dry run: kept)' })"
@@ -539,7 +620,21 @@ function Test-ReportResultAgreement([string[]]$ReportLines, $Result) {
   return [pscustomobject]@{ Ok = ($breaks.Count -eq 0); Breaks = $breaks }
 }
 
-function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLines) {
+function Get-NightVoice($Canonical, $Current) {
+  # One night identity for the notification and the trend (D00 T02
+  # section 33 item 1): the night slot key and the canonical run come
+  # from Select-CanonicalRuns, the same selection the trend renders, so a
+  # retry, a cancellation, or a second scheduled run can never make the
+  # two surfaces speak for different runs. Returns Slot, Canonical (the
+  # id that speaks for the night), and IsVoice.
+  $slot = Get-NightSlotKey $Current
+  $curId = "$($Current.identity)"
+  if ($curId -eq '') { $curId = "$($Current.stamp)" }
+  $can = if ($Canonical.ContainsKey($slot)) { "$($Canonical[$slot].Canonical)" } else { '' }
+  return [pscustomobject]@{ Slot = $slot; Canonical = $can; IsVoice = ($can -eq $curId) }
+}
+
+function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLines, $AckGate = $null) {
   # Recovery notices (item 13): a canonical night that turns GREEN after
   # a RED canonical night says so, and every incident the §22 ledger
   # closed on verified recovery rides the notification by id.
@@ -560,11 +655,20 @@ function Get-RecoveryNotices($Canonical, $Results, $Current, [string[]]$LedgerLi
     # The previous night's run is this host's (section 40 R4-F4):
     # an identity two hosts share resolves to the one on this host.
     $pr = @(@($Results) | Where-Object { (("$($_.identity)" -eq $pid0) -or ("$($_.stamp)" -eq $pid0)) -and ((Get-ResultHostKey $_) -eq (Get-ResultHostKey $Current)) }) | Select-Object -First 1
-    if (($null -ne $pr) -and (@('red', 'cancelled') -contains "$($pr.verdict)")) { $notices += "Recovered: night $($prev.Split('|')[0]) was $($pr.verdict.ToString().ToUpper()), $($day.Split('|')[0]) is GREEN" }
+    if (($null -ne $pr) -and (@('red', 'cancelled') -contains "$($pr.verdict)")) { $notices += "Service recovered: night $($prev.Split('|')[0]) was $($pr.verdict.ToString().ToUpper()), $($day.Split('|')[0]) is GREEN" }
   }
   foreach ($ln in @($LedgerLines)) {
     $m = [regex]::Match("$ln", '^- (INC-[0-9a-f]{8}) `([^`]+)`: CLOSED')
     if ($m.Success) { $notices += "Recovered: $($m.Groups[1].Value) $($m.Groups[2].Value) (closed on verified recovery)" }
+  }
+  # A GREEN never implies completed triage (D00 T02 section 33 item 7):
+  # a recovery notice states the acknowledgements still pending and the
+  # corrective actions still open, each on its own line.
+  if (($notices.Count -gt 0) -and ($null -ne $AckGate)) {
+    $un = @(@($AckGate.Unacked) | Where-Object { "$_" -ne '' })
+    $notices += $(if ($un.Count -gt 0) { "Pending acknowledgement: $($un.Count) RED run(s) still unacknowledged ($($un -join ', '))" } else { 'Pending acknowledgement: none' })
+    $open = @(@($AckGate.Corrective) | Where-Object { ("$_" -match ': open') -or ("$_" -match ': OVERDUE') })
+    $notices += $(if ($open.Count -gt 0) { "Open corrective actions: $($open.Count) ($(@($open | ForEach-Object { ("$_" -replace '^- CORRECTIVE ', '') -replace ':.*$', '' }) -join '; '))" } else { 'Open corrective actions: none' })
   }
   return $notices
 }
