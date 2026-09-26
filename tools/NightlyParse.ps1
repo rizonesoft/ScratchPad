@@ -5310,7 +5310,13 @@ function Add-ResultClassification([string]$NightDir, $Result, [string]$Sha, [str
   $h = Get-ClassChainHash (ConvertTo-Json -Compress ([pscustomobject]$body))
   $body['h'] = $h
   $line = ConvertTo-Json -Compress ([pscustomobject]$body)
-  try { [System.IO.File]::AppendAllText($path, $line + "`n", (New-Object System.Text.UTF8Encoding($false))); return '' } catch { return "result classification write failed: $($_.Exception.Message)" }
+  try {
+    [System.IO.File]::AppendAllText($path, $line + "`n", (New-Object System.Text.UTF8Encoding($false)))
+    # The chain head lives beside the ledger too (section 46 R5-F1), so a
+    # ledger stripped of every chain field no longer passes as legacy.
+    Write-AtomicReport @($h) "$path.head"
+    return ''
+  } catch { return "result classification write failed: $($_.Exception.Message)" }
 }
 
 function Get-ClassChainHash([string]$Text) {
@@ -5401,6 +5407,18 @@ function Read-ResultClassifications([string]$NightDir) {
       $last = "$($o.h)"
     }
     if (("$($o.identity)" -ne '') -and (-not $map.ContainsKey("$($o.identity)"))) { $map["$($o.identity)"] = [pscustomobject]@{ Queue = "$($o.queue)"; Source = "$($o.source)" } }
+  }
+  # The anchored head must match the chain's last line (section 46 R5-F1):
+  # a head with no chained line (every chain field stripped) or a different
+  # last line is tampering, and nothing past the verified part is trusted.
+  $headPath = "$p.head"
+  if (("$($script:ResultClassTampered)" -eq '') -and (Test-Path -LiteralPath $headPath)) {
+    $head = "$(Get-Content -LiteralPath $headPath -Raw)".Trim()
+    if ($head -ne $last) {
+      $script:ResultClassTampered = $(if ($last -eq '') { 'the ledger carries no chained line although its anchored head exists (chain fields stripped)' } else { 'the chain does not end at its anchored head (lines removed or rewritten at the end)' })
+      $map = @{}
+      return $map
+    }
   }
   if (($last -eq '') -and ("$($script:ResultClassTampered)" -eq '')) { foreach ($le in $legacyEntries) { if (("$($le.identity)" -ne '') -and (-not $map.ContainsKey("$($le.identity)"))) { $map["$($le.identity)"] = [pscustomobject]@{ Queue = "$($le.queue)"; Source = "$($le.source)" } } } }
   return $map
@@ -5602,7 +5620,9 @@ function Test-AckV2([string]$Text, [hashtable]$Demands, [hashtable]$Aliases = @{
     $missing = @($want | Where-Object { $listed -notcontains $_ })
     $extra = @()
     if ($stale.Count -eq 0) { $extra = @($listed | Where-Object { $want -notcontains $_ }) }
-    if ($missing.Count -gt 0) { $errs += "incidents missing: $($missing -join ', ')" }
+    # A missing incident rejects only the runs that carry it (section 46
+    # R5-I1): the other runs of the batch still stand.
+    foreach ($mi in $missing) { $covFault[$mi] = "incidents missing: $mi" }
     if ($extra.Count -gt 0) { $errs += "incidents not in the acked runs: $($extra -join ', ')" }
     # Per-incident coverage (section 31 item 9). Every cover line is
     # validated whatever the batch shape (section 46 R1-F1): coverage
@@ -6140,9 +6160,32 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       # The linked finding must exist, and the disposition must carry its
       # own evidence (section 31 item 3).
       $evErr = @(Test-AckEvidence $Root $fm @($v.Acked) $Demands $knownIncidents)
-      if ($evErr.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition } }
+      # A cover's evidence fault rejects only the runs that carry its
+      # incident (section 46 R5-I1); a top-level fault still invalidates
+      # the file.
+      $coverErr = @($evErr | Where-Object { "$_" -match '^cover (INC-[0-9a-f]{8})' })
+      $topErr = @($evErr | Where-Object { "$_" -notmatch '^cover INC-[0-9a-f]{8}' })
+      if ($topErr.Count -gt 0) { $v = [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition; Rejected = @() } }
+      elseif ($coverErr.Count -gt 0) {
+        $bad = @{}
+        foreach ($ce in $coverErr) { $mm = [regex]::Match("$ce", '^cover (INC-[0-9a-f]{8})'); $bad[$mm.Groups[1].Value] = "$ce" }
+        $rej = @(@($v.Rejected))
+        $keep = @()
+        foreach ($rid in @($v.Acked)) {
+          $hit = @(@($Demands[$rid].Incidents) | Where-Object { $bad.ContainsKey($_) })
+          if ($hit.Count -gt 0) { $rej += [pscustomobject]@{ Run = $rid; Why = (@($hit | ForEach-Object { $bad[$_] }) -join '; ') } } else { $keep += $rid }
+        }
+        $v = if ($keep.Count -gt 0) { [pscustomobject]@{ Ok = $true; Acked = $keep; Stale = $v.Stale; Errors = @(); Disposition = $v.Disposition; Rejected = $rej } } else { [pscustomobject]@{ Ok = $false; Acked = @(); Stale = $v.Stale; Errors = $evErr; Disposition = $v.Disposition; Rejected = $rej } }
+      }
     }
-    if (-not $v.Ok) { $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"; continue }
+    if (-not $v.Ok) {
+      $lines += "- $($file.Name): INVALID ($($v.Errors -join '; ')); history $histText"
+      # An ack that turned invalid keeps what its committed versions opened
+      # (section 46 R5-C1): its history still supplies those actions, so a
+      # reassignment to a nonexistent finding never drops them.
+      if ($hist.Committed -and (-not $hist.Dirty)) { $validFiles[$file.Name] = [pscustomobject]@{ File = $file.Name; Fields = @{}; Covers = @(); Disposition = 'invalid'; Runs = @(Get-AckHistoricalRuns $Root $rel) } }
+      continue
+    }
     foreach ($rj in @($v.Rejected)) { $lines += "- $($file.Name): REJECTS $($rj.Run) ($($rj.Why)); its other runs stand" }
     # Every valid file is remembered (section 46 item 2): one superseded or
     # withdrawn over still owes the remediation it opened.
@@ -6401,7 +6444,10 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     $inc = @($pd.Target.Incidents)
     $out = @()
     foreach ($ff in @($validFiles.Keys)) {
-      if (@($validFiles[$ff].Runs) -notcontains $of) { continue }
+      # An ack of a damaged file repaired into $of answers for $of too
+      # (section 46 R5-I2).
+      $runsHere = @(@($validFiles[$ff].Runs) + @(@($validFiles[$ff].Runs) | Where-Object { $corrAlias.ContainsKey("$_") } | ForEach-Object { $corrAlias["$_"] }))
+      if ($runsHere -notcontains $of) { continue }
       foreach ($t in @($targetsByFile[$ff])) {
         if (($inc.Count -eq 0) -or (@($t.Incidents).Count -eq 0) -or (@($t.Incidents | Where-Object { $inc -contains $_ }).Count -gt 0)) { $out += [pscustomobject]@{ File = $ff; Target = $t } }
       }

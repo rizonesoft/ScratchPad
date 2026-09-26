@@ -730,6 +730,49 @@ $jr = Receive-Job (Wait-Job $job -Timeout 30); Remove-Job $job -Force
 $after = Read-DueRecord $dueP
 Assert (("$jr" -eq '') -and ($after['run-x'] -eq $early)) 's46-due-record-lock-keeps-the-minimum' "job=[$jr] now=$($after['run-x'])"
 
+# Section 46 R5-F1: a ledger stripped of every chain field reads tampered
+# against its anchored head.
+$cls3 = Join-Path $ws 'cls3'
+$null = New-Item -ItemType Directory -Force -Path $cls3
+$null = Add-ResultClassification $cls3 ([pscustomobject]@{ identity = 'run-s1'; stamp = '2026-10-30-023001'; proof = $false }) ('5' * 64)
+$l3 = [System.IO.File]::ReadAllLines((Join-Path $cls3 $script:ResultClassLedger))
+$l3 = @($l3 | ForEach-Object { ($_ -replace ',"prev":"[0-9a-f]+"', '' -replace ',"h":"[0-9a-f]+"', '').Replace('"queue":"operational"', '"queue":"proof"') })
+[System.IO.File]::WriteAllLines((Join-Path $cls3 $script:ResultClassLedger), $l3)
+$m3 = Read-ResultClassifications $cls3
+Assert (("$($script:ResultClassTampered)" -like '*no chained line although its anchored head exists*') -and (-not $m3.ContainsKey('run-s1'))) 's46-stripped-chain-reads-tampered' "$($script:ResultClassTampered)"
+# Section 46 R5-C1: an ack reassigned to a nonexistent finding keeps the
+# action its earlier version opened.
+$runIv = '2026-10-30-023001-pid71'
+New-Red $runIv '2026-10-30' @()
+$dIv = Get-Dem
+Write-Ack 'ack-iv.md' @("run: $runIv sha256:$($dIv[$runIv].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-30')
+Save-All 'ack iv'
+Write-Ack 'ack-iv.md' @("run: $runIv sha256:$($dIv[$runIv].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: D99 T99 ${S}999", 'signed: 2026-10-31')
+Save-All 'ack iv reassigned to a missing finding'
+$gIv = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-31')
+Assert ((@($gIv.Lines | Where-Object { $_ -like '*ack-iv.md: INVALID*' }).Count -eq 1) -and (@($gIv.Lines | Where-Object { $_ -like "*CORRECTIVE ack-iv.md ($fnd9 (dropped from the ack*): open*" }).Count -eq 1)) 's46-invalid-ack-keeps-its-earlier-action' ($gIv.Lines -join ' | ')
+# Section 46 R5-I1: a batch that omits run A's incident rejects A only.
+$runBa = '2026-10-31-023001-pid72'; $runBb = '2026-10-31-120001-pid73'
+New-Red $runBa '2026-10-31' @('- INC-f0000009 `UI.C.T` x1 (Run A): boom'); New-Red $runBb '2026-10-31' @()
+$dBa = Get-Dem
+$batchText = ((@('---', 'ack-version: 2', "run: $runBa sha256:$($dBa[$runBa].Current)", "run: $runBb sha256:$($dBa[$runBb].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-31', '---')) -join "`n") + "`n"
+$vBa = Test-AckV2 $batchText $dBa
+Assert ($vBa.Ok -and (@($vBa.Acked) -contains $runBb) -and (@($vBa.Acked) -notcontains $runBa) -and (@($vBa.Rejected | Where-Object { ($_.Run -eq $runBa) -and ($_.Why -like '*incidents missing: INC-f0000009*') }).Count -eq 1)) 's46-missing-incident-rejects-only-its-run' "acked=$($vBa.Acked -join ',') rejected=$(@($vBa.Rejected | ForEach-Object { $_.Run }) -join ',')"
+# Section 46 R5-I2: an ack of a damaged file repaired into run R answers
+# for R in duplicate linkage.
+$runRr = '2026-11-01-023001-pid74'; $runRd = '2026-11-01-120001-pid75'
+New-Red $runRr '2026-11-01' @(); New-Red $runRd '2026-11-01' @()
+$dRr = Get-Dem
+[pscustomobject]@{ version = 1; entries = @([pscustomobject]@{ file = 'morning-2026-10-31-230001.result.json'; firstSeen = '2026-10-31'; reason = 'unreadable'; restored = $runRr; restoredOn = '2026-11-01'; sha = ('b' * 64) }) } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $nd 'ack-corruption.json') -Encoding UTF8
+Write-Ack 'ack-rr-damaged.md' @("run: unreadable:morning-2026-10-31-230001.result.json sha256:$('b' * 64)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-31')
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $headRr = ((& git -C $ws rev-parse HEAD) | Out-String).Trim().Substring(0, 12); $ErrorActionPreference = $eap
+Write-Ack 'ack-rr.md' @("run: $runRr sha256:$($dRr[$runRr].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", "closed: $headRr", 'signed: 2026-11-01')
+Write-Ack 'ack-rd.md' @("run: $runRd sha256:$($dRr[$runRd].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runRr", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-11-01')
+Save-All 'damaged ack, restored run ack, and a duplicate of it'
+$gRr = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-11-01')
+Remove-Item (Join-Path $nd 'ack-corruption.json')
+Assert (@($gRr.Lines | Where-Object { $_ -like "*CORRECTIVE ack-rd.md ($fnd9): open (duplicate of $runRr; open while its action ack-rr-damaged.md ($fnd9) is open*" }).Count -eq 1) 's46-repaired-alias-answers-for-its-run' ($gRr.Lines -join ' | ')
+
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyAck.Tests: all green'
