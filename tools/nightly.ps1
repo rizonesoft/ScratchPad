@@ -1704,7 +1704,7 @@ $result = [pscustomobject]@{
   quarantine = [pscustomobject]@{ overdue = $odNames; dueSoon = @($dueSoon); overdueDetail = @($quar.Overdue | ForEach-Object { [pscustomobject]@{ Test = "$($_.Test)"; Due = "$($_.Due)"; Owner = "$($_.Owner)" } }) }
   incidents = @($incidentLines)
   scheduler = [pscustomobject]@{ voted = $schedVoted; faults = @($schedFaults); enabled = $taskEnabledLive; lastRun = "$taskLastRun"; lastResult = $taskLastResult }
-  tree = [pscustomobject]@{ start = "$($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint)"; end = "$($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint)"; stable = ($treeLine -notlike 'MUTATED*') }
+  tree = [pscustomobject]@{ start = "$($treeStart.State):$($treeStart.Count):$($treeStart.Fingerprint)"; end = "$($treeEnd.State):$($treeEnd.Count):$($treeEnd.Fingerprint)"; stable = ($treeLine -notlike 'MUTATED*'); state = "$($treeCmp.State)" }
   recovered = $recoveredLine; omissionOk = ($omissionError -eq '')
   timings = $phaseTimes; reserve = $reserveLeft; consumed = $consumedSecs
   env = $envBlock

@@ -2224,6 +2224,21 @@ $q8a = Update-IncidentLedger @{ 'INC-000000c8' = (& $q8Mk) } $q8Grp 's2' @{} @{}
 $q8b = Update-IncidentLedger @{ 'INC-000000c8' = (& $q8Mk) } $q8Grp 's2' @{} @{} 3 @{} '' 'run-a killed or overran' $null (Get-TrustedPhases @('run-a') $false)
 $q8c = Update-IncidentLedger @{ 'INC-000000c8' = (& $q8Mk) } $q8Grp 's2' @{} @{} 3 @{} '' 'simulation or stubbed legs' $null (Get-TrustedPhases @() $true)
 Assert (([int]$q8a.Incidents['INC-000000c8'].passStreak -eq 0) -and ((@($q8a.Lines) -join '') -like '*streak reset by a trusted run-a failure (the run is not qualifying: soak killed*') -and ([int]$q8b.Incidents['INC-000000c8'].passStreak -eq 2) -and ([int]$q8c.Incidents['INC-000000c8'].passStreak -eq 2) -and ((Get-TrustedPhases @() $true).Count -eq 0)) 's53-trusted-failure-resets-on-a-non-qualifying-run' ((@($q8a.Lines) + @($q8b.Lines)) -join ' | ')
+# D00 T02 §53 item 10: a clean tree and one holding verified collector
+# writes read differently.
+$t10Root = Join-Path $dir 's53-tree'
+if (Test-Path $t10Root) { Remove-Item $t10Root -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $t10Root 'todo')
+$t10File = Join-Path $t10Root 'todo\T.md'
+[System.IO.File]::WriteAllText($t10File, "# T`n")
+$t10Empty = [pscustomobject]@{ State = 'clean'; Count = 0; Fingerprint = 'x'; Rows = @() }
+$t10Clean = Compare-TreeWithTrackedWrites $t10Root $t10Empty $t10Empty @{}
+$t10W = @{}
+Register-TrackedWrite $t10W $t10Root $t10File 'L1' 'appended' "# T`n"
+[System.IO.File]::WriteAllText($t10File, "# T`nL1`n")
+$t10End = [pscustomobject]@{ State = 'dirty'; Count = 1; Fingerprint = 'y'; Rows = @(' M|todo/T.md') }
+$t10Pend = Compare-TreeWithTrackedWrites $t10Root $t10Empty $t10End $t10W
+Assert (($t10Clean.State -eq 'clean') -and ($t10Clean.Line -eq 'clean at start and end') -and ($t10Pend.State -eq 'pending-collector-writes') -and ($t10Pend.Line -like 'PENDING collector writes (clean apart from them; collector wrote 1 line(s) to todo/T.md*')) 's53-clean-and-pending-trees-read-differently' "$($t10Clean.Line) | $($t10Pend.Line)"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
@@ -2344,7 +2359,7 @@ $twMan = Join-Path $twRoot 'tracked-writes.json'
 Write-TrackedWriteManifest $tw $twMan
 $twDoc = Get-Content -LiteralPath $twMan -Raw | ConvertFrom-Json
 Assert ((@($twDoc.writes).Count -eq 1) -and ($twDoc.writes[0].before -eq $twBefore) -and ($twDoc.writes[0].beforeSha256 -eq (Get-BytesSha256 ([System.Text.Encoding]::UTF8.GetBytes($twBefore)))) -and (@($twDoc.writes[0].lines)[0] -eq $twLine)) 's45-manifest-keeps-the-pre-write-text' ($twDoc.writes[0].beforeSha256)
-Assert ($twOk.Ok -and ($twOk.Line -like 'clean at start and end; collector wrote 1 line(s) to todo/x.md, verified; triage commits them: tools/NightlyTriage.ps1 -Commit') -and (-not $twBad.Ok) -and ($twBad.Line -like 'MUTATED (todo/x.md changed beyond*') -and (-not $twOther.Ok)) 's45-tree-check-expects-collector-lines' "$($twOk.Line) || $($twBad.Line)"
+Assert ($twOk.Ok -and ($twOk.Line -like 'PENDING collector writes (clean apart from them; collector wrote 1 line(s) to todo/x.md, verified; triage commits them: tools/NightlyTriage.ps1 -Commit)') -and (-not $twBad.Ok) -and ($twBad.Line -like 'MUTATED (todo/x.md changed beyond*') -and (-not $twOther.Ok)) 's45-tree-check-expects-collector-lines' "$($twOk.Line) || $($twBad.Line)"
 # R2-F1: an edit between the run's start and the collector's write never
 # joins the accepted baseline.
 [System.IO.File]::WriteAllText($twFile, "# x`n- Night-owed: a`n$twLine`nend`n")

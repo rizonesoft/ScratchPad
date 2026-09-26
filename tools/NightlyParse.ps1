@@ -3643,10 +3643,16 @@ function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$
   $nLines = 0
   foreach ($k in $expected) { $nLines += @($Writes[$k].Lines).Count }
   $exp = if ($expected.Count -gt 0) { "; collector wrote $nLines line(s) to $($expected -join ', '), verified; triage commits them: tools/NightlyTriage.ps1 -Commit" } else { '' }
-  if ($bad.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Expected = $expected; Line = "MUTATED ($($bad -join ', ') changed beyond the collector's recorded lines$exp)" } }
-  if (-not $same) { return [pscustomobject]@{ Ok = $false; Expected = $expected; Line = "MUTATED (start $($Start.State):$($Start.Count):$($Start.Fingerprint), end $($End.State):$($End.Count):$($End.Fingerprint)$exp)" } }
-  $base = if ($sRows.Count -eq 0) { 'clean at start and end' } else { "stable ($($Start.State):$($sRows.Count) path(s) outside the collector's writes)" }
-  return [pscustomobject]@{ Ok = $true; Expected = $expected; Line = "$base$exp" }
+  if ($bad.Count -gt 0) { return [pscustomobject]@{ Ok = $false; State = 'mutated'; Expected = $expected; Line = "MUTATED ($($bad -join ', ') changed beyond the collector's recorded lines$exp)" } }
+  if (-not $same) { return [pscustomobject]@{ Ok = $false; State = 'mutated'; Expected = $expected; Line = "MUTATED (start $($Start.State):$($Start.Count):$($Start.Fingerprint), end $($End.State):$($End.Count):$($End.Fingerprint)$exp)" } }
+  # Four states, each with its own opening words (D00 T02 section 53 item
+  # 10): an actually clean tree never reads like one holding the
+  # collector's pending writes.
+  if ($sRows.Count -eq 0) {
+    if ($expected.Count -eq 0) { return [pscustomobject]@{ Ok = $true; State = 'clean'; Expected = $expected; Line = 'clean at start and end' } }
+    return [pscustomobject]@{ Ok = $true; State = 'pending-collector-writes'; Expected = $expected; Line = "PENDING collector writes (clean apart from them$exp)" }
+  }
+  return [pscustomobject]@{ Ok = $true; State = $(if ($expected.Count -gt 0) { 'stable-with-pending-collector-writes' } else { 'stable' }); Expected = $expected; Line = "stable ($($Start.State):$($sRows.Count) path(s) outside the collector's writes)$exp" }
 }
 
 function Add-TrackedWriteIntent([string]$RunDir, [string]$Root, [string]$Path, [string]$Line, [switch]$Written) {
