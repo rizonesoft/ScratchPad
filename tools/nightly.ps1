@@ -893,6 +893,9 @@ try {
       $owed = Get-ListTestsCases $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $collectFilter 'cut-interactive'
       $nightOwedRows += "- $($owed.MethodCount) methods, $($owed.CaseCount) cases unexecuted (interactive budget-cut $stamp; collector runs each method filter)"
       $nightOwedRows += @(Get-UnexecutedCaseRows $owed.Cases @() "interactive budget-cut $stamp")
+      # Durable handoff (D00 T02 section 52 item 11): each cut case is
+      # journaled with its receipt now, before the report exists.
+      try { $null = Add-StagedDebtLines (Join-Path $nightDir 'staged-debt.jsonl') @($owed.Cases) 'staged' $stamp "interactive budget-cut $stamp" } catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message) (the report and result still carry the rows)" }
       Write-Output "nightly: interactive cut stages $($owed.MethodCount) Night-owed rows"
     } catch {
       $nightOwedRows += "- Night-owed: collection unverifiable ($_) | collector filter: $collectFilter (full collection re-owed)"
@@ -1457,6 +1460,15 @@ $owedCasesTonight = @(Get-OwedCaseNames $nightOwedRows)
 # debt (R2-F5); the obligations merge per case, never summed (R2-F4);
 # twins close only when every listed copy ran green (R2-F2).
 $prevRead = Read-PreviousOwedCases $nightDir $stamp
+# The staging journal's open receipts carry too (D00 T02 section 52 item
+# 11): an obligation staged by a run that crashed before its result, or
+# one triage never filed, is still owed.
+$stagedPath = Join-Path $nightDir 'staged-debt.jsonl'
+$stagedRead = Read-StagedDebt $stagedPath
+if (@($stagedRead.Bad).Count -gt 0) { $nightOwedRows += "- Staging journal lines unreadable: $(@($stagedRead.Bad) -join ', ') in $stagedPath (repair them; obligations they held are not dropped silently)" }
+$stagedOnly = @(@($stagedRead.Open.Values) | Where-Object { @($prevRead.Owed) -notcontains $_ })
+if ($stagedOnly.Count -gt 0) { $nightOwedRows += "- Staging journal carries $($stagedOnly.Count) owed case(s) no result recorded (a crash before the result, or untriaged)" }
+$prevRead = [pscustomobject]@{ Owed = @(Merge-OwedCases @($prevRead.Owed) $stagedOnly); Identities = $prevRead.Identities; From = $prevRead.From; Unreadable = $prevRead.Unreadable }
 if (@($prevRead.Unreadable).Count -gt 0) { $failed = $true; $nightOwedRows += "- Carried per-case debt: RED: unreadable result(s) $($prevRead.Unreadable -join '; '); owed cases carried from $(if ($prevRead.From -ne '') { $prevRead.From } else { 'no readable result' }) instead; repair the result" }
 $carryListed = @()
 try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
@@ -1479,6 +1491,12 @@ $nightOwedRows += @(Get-ExecutionClosureNotes $carryClosed $ledgerUpd.Incidents)
 # A refused trx closes nothing and says why (D00 T02 section 52 item 5).
 foreach ($tr in @($script:TrxRefusals | Sort-Object -Unique)) { $nightOwedRows += "- Trx refused (counted nothing): $tr" }
 $owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))
+# Every obligation tonight is journaled (idempotent), and each case the
+# collection closed tonight closes its receipt (section 52 item 11).
+try {
+  $null = Add-StagedDebtLines $stagedPath @($owedCasesTonight) 'staged' $stamp 'owed at run end'
+  $null = Add-StagedDebtLines $stagedPath @(@($carryClosed) + @($migration.Retired)) 'collected' $stamp 'closed or retired tonight'
+} catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message)" }
 # Identity tokens for tonight's owed cases: carried cases keep their
 # original token, newly owed cut cases get tonight's (section 52 item 8).
 $owedIdentitiesTonight = [ordered]@{}

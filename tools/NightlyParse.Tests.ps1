@@ -623,6 +623,23 @@ Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1
 $legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
 $legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
 Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §52 item 11: a crash between staging and collection keeps every
+# obligation. Night 1 stages two cases and crashes before its result; the
+# next night reads no result but the journal still owes both; staging
+# again is idempotent; a collection closes one receipt and the other
+# stays open; an unreadable line is named, never silently dropped.
+$sjDir = Join-Path $dir 's52-staging'
+$null = New-Item -ItemType Directory -Force -Path $sjDir
+$sj = Join-Path $sjDir 'staged-debt.jsonl'
+if (Test-Path $sj) { Remove-Item $sj -Force }
+$sjW1 = @(Add-StagedDebtLines $sj @('UI.S.A(n: 1)', 'UI.S.B') 'staged' '2026-09-26-023001' 'interactive budget-cut')
+$sjPrev = Read-PreviousOwedCases $sjDir '2026-09-27-023001'
+$sjR1 = Read-StagedDebt $sj
+$sjW2 = @(Add-StagedDebtLines $sj @('UI.S.A(n: 1)') 'staged' '2026-09-27-023001' 'owed at run end')
+$sjW3 = @(Add-StagedDebtLines $sj @('UI.S.A(n: 1)') 'collected' '2026-09-27-023001' 'closed tonight')
+Add-Content -LiteralPath $sj -Value '{ torn'
+$sjR2 = Read-StagedDebt $sj
+Assert (($sjW1.Count -eq 2) -and (@($sjPrev.Owed).Count -eq 0) -and ($sjR1.Open.Count -eq 2) -and (@($sjR1.Open.Values) -contains 'UI.S.B') -and ($sjW2.Count -eq 0) -and ($sjW3.Count -eq 1) -and ($sjR2.Open.Count -eq 1) -and (@($sjR2.Open.Values)[0] -eq 'UI.S.B') -and (@($sjR2.Bad).Count -eq 1)) 's52-staging-survives-a-crash' "w1=$($sjW1.Count) open1=$($sjR1.Open.Count) w2=$($sjW2.Count) w3=$($sjW3.Count) open2=$(@($sjR2.Open.Values) -join ',') bad=$(@($sjR2.Bad) -join ',')"
 # D00 T02 §52 item 10: mixed versions. A population/2 fingerprint is
 # refused by the checker (regen named) but read by a historical proof
 # reader; a streak bound under /2 reads stale by schema name under /3,

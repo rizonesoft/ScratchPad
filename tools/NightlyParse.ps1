@@ -1942,6 +1942,59 @@ function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hash
   return [pscustomobject]@{ Closable = $closable; Held = $held; Retired = $retired; Ids = $ids; Lines = $lines }
 }
 
+function Get-StagedDebtReceipt([string]$Case) {
+  # One receipt per owed case (D00 T02 section 52 item 11), stable across
+  # nights, so staging the same case twice is idempotent.
+  return "rcpt-$((Get-CaseHash @($Case)).Substring(0, 16))"
+}
+
+function Read-StagedDebt([string]$Path) {
+  # The staging journal (section 52 item 11): JSON lines `{receipt, case,
+  # state (staged|collected), stamp, why}`, the last line per receipt
+  # governing. Returns Open (receipt -> case) and Bad (unreadable line
+  # numbers, named by the caller; an unreadable line never drops an
+  # obligation it cannot read, it is reported).
+  $open = [ordered]@{}
+  $bad = @()
+  if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Open = $open; Bad = $bad } }
+  $n = 0
+  foreach ($ln in [System.IO.File]::ReadAllLines($Path)) {
+    $n++
+    if ("$ln".Trim() -eq '') { continue }
+    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $bad += $n; continue }
+    if (("$($o.receipt)" -eq '') -or ("$($o.case)" -eq '')) { $bad += $n; continue }
+    if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = "$($o.case)" }
+    elseif ("$($o.state)" -eq 'collected') { $open.Remove("$($o.receipt)") }
+    else { $bad += $n }
+  }
+  return [pscustomobject]@{ Open = $open; Bad = $bad }
+}
+
+function Add-StagedDebtLines([string]$Path, $Cases, [string]$State, [string]$Stamp, [string]$Why) {
+  # Appends one journal line per case not already in that state
+  # (idempotent by receipt), flushed before returning, so a crash right
+  # after staging keeps every obligation. Returns the receipts written.
+  $cur = Read-StagedDebt $Path
+  $lines = @()
+  $written = @()
+  foreach ($c in @(@($Cases) | Where-Object { "$_" -ne '' } | Sort-Object -Unique)) {
+    $r = Get-StagedDebtReceipt "$c"
+    $isOpen = $cur.Open.Contains($r)
+    if ((($State -eq 'staged') -and $isOpen) -or (($State -eq 'collected') -and (-not $isOpen))) { continue }
+    $lines += ([pscustomobject][ordered]@{ receipt = $r; case = "$c"; state = $State; stamp = $Stamp; why = $Why } | ConvertTo-Json -Compress)
+    $written += $r
+  }
+  if ($lines.Count -gt 0) {
+    $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+    try {
+      $bytes = [System.Text.Encoding]::UTF8.GetBytes((($lines -join "`n") + "`n"))
+      $fs.Write($bytes, 0, $bytes.Length)
+      $fs.Flush($true)
+    } finally { $fs.Dispose() }
+  }
+  return $written
+}
+
 function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan, $ListedCases = $null) {
   # Per-case debt across nights (D00 T02 section 44 R1-F4): the cases the
   # last result still owed close only on their own green row tonight
