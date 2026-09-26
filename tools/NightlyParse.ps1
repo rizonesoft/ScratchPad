@@ -1079,7 +1079,7 @@ function Get-NightlyFilterLiterals([string]$NightlyPath) {
   return [pscustomobject]@{ Literals = $lits; CollectDefault = $collect }
 }
 
-function Read-TestPopulationFile([string]$Path) {
+function Read-TestPopulationFile([string]$Path, [switch]$AllowPrevious) {
   # Strict reader for tests/UI/TestPopulation.fingerprint (D00 T02 §15,
   # D00-T02-S13-PR13): filters, sorted member FQNs, and method plus
   # case counts per leg. Malformed input fails closed (Ok false with
@@ -1115,7 +1115,12 @@ function Read-TestPopulationFile([string]$Path) {
   }
   # The format version first (D00 T02 §44 item 7).
   $ver = if ($filters.ContainsKey('schema')) { $filters['schema'] } else { 'missing (count-only format)' }
-  if ($ver -ne $script:PopulationSchema) { return (& $bad "fingerprint schema $ver is not $script:PopulationSchema; regenerate: $script:PopulationRegen") }
+  # Compatibility (D00 T02 section 52 item 10): the checker, the nightly,
+  # and the collector read the current version only; a historical proof
+  # reader passes -AllowPrevious to read the versions the table lists as
+  # readable, and the result names the version it read.
+  $readable = ($ver -eq $script:PopulationSchema) -or ($AllowPrevious -and ($script:PopulationSchemaPrevious -contains $ver))
+  if (-not $readable) { return (& $bad "fingerprint schema $ver is not $script:PopulationSchema; regenerate: $script:PopulationRegen") }
   foreach ($k in @('run-a-filter', 'run-b-filter', 'interactive-filter')) {
     if (-not $filters.ContainsKey($k)) { return (& $bad "fingerprint missing $k") }
   }
@@ -1133,7 +1138,7 @@ function Read-TestPopulationFile([string]$Path) {
   foreach ($k in @('run-a-case-hash', 'run-b-case-hash', 'interactive-case-hash')) {
     if (-not $filters.ContainsKey($k)) { return (& $bad "fingerprint missing $k") }
   }
-  return [pscustomobject]@{ Ok = $true; Error = ''; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases']; RunACaseHash = $filters['run-a-case-hash']; RunBCaseHash = $filters['run-b-case-hash']; InteractiveCaseHash = $filters['interactive-case-hash']; RunACaseRows = @($rows['run-a']); RunBCaseRows = @($rows['run-b']); InteractiveCaseRows = @($rows['interactive']) }
+  return [pscustomobject]@{ Ok = $true; Error = ''; Schema = $ver; RunA = $runA; RunAFilter = $filters['run-a-filter']; RunBFilter = $filters['run-b-filter']; InteractiveFilter = $filters['interactive-filter']; RunB = $runB; Interactive = $interactive; RunAMethods = $counts['run-a-methods']; RunACases = $counts['run-a-cases']; RunBMethods = $counts['run-b-methods']; RunBCases = $counts['run-b-cases']; InteractiveMethods = $counts['interactive-methods']; InteractiveCases = $counts['interactive-cases']; RunACaseHash = $filters['run-a-case-hash']; RunBCaseHash = $filters['run-b-case-hash']; InteractiveCaseHash = $filters['interactive-case-hash']; RunACaseRows = @($rows['run-a']); RunBCaseRows = @($rows['run-b']); InteractiveCaseRows = @($rows['interactive']) }
 }
 
 function Get-CaseIdentityRows($Cases, [string]$Assembly = 'UI') {
@@ -1235,7 +1240,18 @@ function Get-CaseHash($Cases) {
 
 # The fingerprint format (D00 T02 §44 item 7): readers refuse any other
 # version with the regen command, so an old count-only file never reads.
-$script:PopulationSchema = 'population/2'
+# population/3 (D00 T02 section 52 item 3) carries canonical `case` rows
+# for display names xunit cut, where population/2 carried an
+# args-source digest; its layout is otherwise the same. The migration
+# contract (section 52 item 10, docs/testing.md): producers write only
+# the current version; the checker, the nightly, and the collector
+# accept only it (a previous file refuses with the regen command);
+# historical proof readers accept the previous versions listed here,
+# and a proof bound under another version reads stale with the schema
+# named (Get-ProofBinding records it), never as the same population.
+# Owed debt names cases by display name and is schema-independent.
+$script:PopulationSchema = 'population/3'
+$script:PopulationSchemaPrevious = @('population/2')
 $script:PopulationRegen = 'powershell -File tools/Update-TestFingerprint.ps1 (after a fresh build)'
 
 function Get-DiscoveryCaseRows($Discovery, [string]$Leg) {
@@ -1981,7 +1997,7 @@ function Get-PopulationIdentity([string]$FingerprintPath) {
   # The population a proof stands on (D00 T02 §44 item 6): the three legs'
   # case hashes, so a regen that swaps a case row changes it while a
   # comment or ordering edit does not. 'unknown' when unreadable.
-  $fp = Read-TestPopulationFile $FingerprintPath
+  $fp = Read-TestPopulationFile $FingerprintPath -AllowPrevious
   if (-not $fp.Ok) { return 'unknown' }
   return (Get-CaseHash @("run-a=$($fp.RunACaseHash)", "run-b=$($fp.RunBCaseHash)", "interactive=$($fp.InteractiveCaseHash)"))
 }
@@ -2003,10 +2019,13 @@ function Get-ProofBinding([string]$Root, [string]$Candidate) {
     if (($first.Count -gt 0) -and ("$($first[0])".Trim() -match '^[0-9a-f]{16}$')) { $build = "$($first[0])".Trim() }
   }
   $filters = 'unknown'
-  $fp = Read-TestPopulationFile $fpPath
-  if ($fp.Ok) { $filters = Get-CaseHash @("run-a=$($fp.RunAFilter)", "run-b=$($fp.RunBFilter)", "interactive=$($fp.InteractiveFilter)") }
+  $fp = Read-TestPopulationFile $fpPath -AllowPrevious
+  $schema = 'unknown'
+  if ($fp.Ok) { $filters = Get-CaseHash @("run-a=$($fp.RunAFilter)", "run-b=$($fp.RunBFilter)", "interactive=$($fp.InteractiveFilter)"); $schema = "$($fp.Schema)" }
   $cand = if ("$Candidate".Trim() -match '^[0-9a-f]{7,40}$') { "$Candidate".Trim() } else { 'unknown' }
-  return "population=$pop build=$build filters=$filters config=Debug candidate=$cand"
+  # The fingerprint version the population was read under (section 52
+  # item 10): a migration reads stale by name.
+  return "population=$pop build=$build filters=$filters config=Debug schema=$schema candidate=$cand"
 }
 
 function ConvertFrom-ProofBinding([string]$Binding) {

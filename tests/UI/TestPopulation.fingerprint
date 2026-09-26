@@ -2,7 +2,7 @@
 # One --list-tests discovery per leg filter; member FQNs sorted unique.
 # Regen: tools/Update-TestFingerprint.ps1 (build first). Review the diff:
 # every membership change stales prior proofs until re-accepted here.
-schema: population/2
+schema: population/3
 run-a-filter: Category!=Interactive&Category!=Primary
 run-b-filter: Category=Primary
 interactive-filter: Category=Interactive

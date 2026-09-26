@@ -406,7 +406,7 @@ Assert (($popSkew.Ok -eq $false) -and (($popSkew.Drifts -join '') -like '*run-a-
 $swapDisc = [pscustomobject]@{ RunA = @('UI.A.T1', 'UI.A.X'); RunB = @('UI.B.P1'); Interactive = @('UI.C.I1'); RunAMethods = 2; RunACases = 3; RunBMethods = 1; RunBCases = 1; InteractiveMethods = 1; InteractiveCases = 1 }
 $popSwap = Compare-TestPopulation $fpFile $fakeNightly $swapDisc
 Assert (($popSwap.Ok -eq $false) -and (($popSwap.Drifts -join '') -like '*run-a removed: UI.A.T2*') -and (($popSwap.Drifts -join '') -like '*run-a added: UI.A.X*')) 'fingerprint-run-a-swap' ($popSwap.Drifts -join '|')
-@('schema: population/2', 'run-a-filter: Category!=Interactive&Category!=Primary', 'run-b-filter: Category=Primary', 'interactive-filter: Category=Interactive', 'run-a-methods: 2', 'run-a-cases: 3', 'run-b:', '  UI.B.P1', 'run-b-methods: 1', 'run-b-cases: 1', 'interactive:', '  UI.C.I1', 'interactive-methods: 1', 'interactive-cases: 1') | Set-Content -Path (Join-Path $dir 'pop-noruna.fingerprint') -Encoding UTF8
+@('schema: population/3', 'run-a-filter: Category!=Interactive&Category!=Primary', 'run-b-filter: Category=Primary', 'interactive-filter: Category=Interactive', 'run-a-methods: 2', 'run-a-cases: 3', 'run-b:', '  UI.B.P1', 'run-b-methods: 1', 'run-b-cases: 1', 'interactive:', '  UI.C.I1', 'interactive-methods: 1', 'interactive-cases: 1') | Set-Content -Path (Join-Path $dir 'pop-noruna.fingerprint') -Encoding UTF8
 $popNoRuna = Compare-TestPopulation (Join-Path $dir 'pop-noruna.fingerprint') $fakeNightly $fpDisc
 Assert (($popNoRuna.Ok -eq $false) -and (($popNoRuna.Drifts -join '') -like '*run-a items 0 != methods 2*')) 'fingerprint-run-a-required' ($popNoRuna.Drifts -join '|')
 $fakeNightly2 = Join-Path $dir 'nightly-fake2.ps1'
@@ -417,7 +417,7 @@ $fakeNightly2 = Join-Path $dir 'nightly-fake2.ps1'
 ) | Set-Content -Path $fakeNightly2 -Encoding UTF8
 $popFilter = Compare-TestPopulation $fpFile $fakeNightly2 $fpDisc
 Assert (($popFilter.Ok -eq $false) -and (($popFilter.Drifts -join '') -like "*appears 0 times*")) 'fingerprint-filter-drift' ($popFilter.Drifts -join '|')
-@('schema: population/2', 'run-a-filter: Category!=Interactive&Category!=Primary') | Set-Content -Path (Join-Path $dir 'pop-bad.fingerprint') -Encoding UTF8
+@('schema: population/3', 'run-a-filter: Category!=Interactive&Category!=Primary') | Set-Content -Path (Join-Path $dir 'pop-bad.fingerprint') -Encoding UTF8
 $popBad = Compare-TestPopulation (Join-Path $dir 'pop-bad.fingerprint') $fakeNightly $fpDisc
 Assert (($popBad.Ok -eq $false) -and (($popBad.Drifts -join '') -like '*missing run-b-filter*')) 'fingerprint-malformed' ($popBad.Drifts -join '|')
 
@@ -623,6 +623,29 @@ Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1
 $legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
 $legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
 Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §52 item 10: mixed versions. A population/2 fingerprint is
+# refused by the checker (regen named) but read by a historical proof
+# reader; a streak bound under /2 reads stale by schema name under /3,
+# never as the same population; debt owed by a /2-era result (no owed
+# identities) still carries and closes by exact name, never stranded.
+$mvDir = Join-Path $dir 's52-mixed'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $mvDir 'tests\UI')
+$mvFp = Join-Path $mvDir 'tests\UI\TestPopulation.fingerprint'
+$cur = @(Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'tests\UI\TestPopulation.fingerprint'))
+@($cur | ForEach-Object { $_ -replace '^schema: population/3$', 'schema: population/2' }) | Set-Content -LiteralPath $mvFp -Encoding UTF8
+$mvStrict = Read-TestPopulationFile $mvFp
+$mvOld = Read-TestPopulationFile $mvFp -AllowPrevious
+$mvB2 = Get-ProofBinding $mvDir 'c0ffee1'
+@($cur) | Set-Content -LiteralPath $mvFp -Encoding UTF8
+$mvB3 = Get-ProofBinding $mvDir 'c0ffee1'
+$mvChange = Get-ProofBindingChange $mvB2 $mvB3 $null
+$mvPrev = Join-Path $mvDir 'night'
+$null = New-Item -ItemType Directory -Force -Path $mvPrev
+[pscustomobject]@{ version = 1; stamp = '2026-09-25-023001'; day = '2026-09-25'; identity = '2026-09-25-023001-pid1'; verdict = 'stood-down'; exit = 0; owedCases = @('UI.P.Old(a: 1)') } | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $mvPrev 'morning-2026-09-25-023001.result.json') -Encoding UTF8
+$mvRead = Read-PreviousOwedCases $mvPrev '2026-09-26-023001'
+$mvMig = Resolve-OwedCaseMigration @($mvRead.Owed) $mvRead.Identities @{} @('UI.P.Old(a: 1)') @{}
+$mvCarry = Resolve-CarriedCaseDebt @($mvMig.Closable) @('UI.P.Old(a: 1)') $true
+Assert ((-not $mvStrict.Ok) -and ($mvStrict.Error -like 'fingerprint schema population/2 is not population/3; regenerate:*') -and $mvOld.Ok -and ($mvOld.Schema -eq 'population/2') -and ($mvB2 -like '*schema=population/2*') -and ($mvChange -like '*schema population/2 -> population/3*') -and (@($mvRead.Owed).Count -eq 1) -and ($mvRead.Identities.Count -eq 0) -and (@($mvMig.Closable) -contains 'UI.P.Old(a: 1)') -and (@($mvCarry.Still).Count -eq 0)) 's52-mixed-versions-neither-strand-nor-misread' "strict=$($mvStrict.Error) | change=$mvChange | still=$(@($mvCarry.Still).Count)"
 # D00 T02 §52 item 9: the CI override needs a reason, is recorded for
 # audit, and makes its run's result ineligible for recovery and stamps;
 # a red check is never overridden.
@@ -798,7 +821,7 @@ $pbE4 = $pbU4.Incidents['INC-5200a001'].passStreak
 $pbU5 = Update-IncidentLedger $pbU4.Incidents @() 's5' $pbPass @{} 5 @{} $pb4 '' $pbDesc
 $pbE5 = $pbU5.Incidents['INC-5200a001'].passStreak
 $pbAll = @($pbU2.Lines) + @($pbU4.Lines) + @($pbU5.Lines)
-Assert (($pb1 -like 'population=* build=aaaaaaaaaaaaaaaa filters=* config=Debug candidate=c0ffee1') -and ($pb1 -notlike '*population=unknown*') -and ($pb1 -notlike '*filters=unknown*') -and ([int]$pbE2 -eq 1) -and ((@($pbU2.Lines | Where-Object { $_ -like '*streak reset (build aaaaaaaaaaaaaaaa -> bbbbbbbbbbbbbbbb: the earlier passes stand stale)*' }).Count) -eq 1) -and ([int]$pbE4 -eq 3) -and ((@($pbU4.Lines) -join '') -notlike '*streak reset*') -and ([int]$pbE5 -eq 1) -and ((@($pbU5.Lines | Where-Object { $_ -like '*streak reset (candidate c0ffee2 -> badbad3: not a descendant: *' }).Count) -eq 1)) 's52-proof-reads-stale-after-a-source-edit-with-identical-cases' ("pb1=$pb1 e2=$pbE2 e4=$pbE4 e5=$pbE5 | " + ($pbAll -join ' | '))
+Assert (($pb1 -like 'population=* build=aaaaaaaaaaaaaaaa filters=* config=Debug schema=population/3 candidate=c0ffee1') -and ($pb1 -notlike '*population=unknown*') -and ($pb1 -notlike '*filters=unknown*') -and ([int]$pbE2 -eq 1) -and ((@($pbU2.Lines | Where-Object { $_ -like '*streak reset (build aaaaaaaaaaaaaaaa -> bbbbbbbbbbbbbbbb: the earlier passes stand stale)*' }).Count) -eq 1) -and ([int]$pbE4 -eq 3) -and ((@($pbU4.Lines) -join '') -notlike '*streak reset*') -and ([int]$pbE5 -eq 1) -and ((@($pbU5.Lines | Where-Object { $_ -like '*streak reset (candidate c0ffee2 -> badbad3: not a descendant: *' }).Count) -eq 1)) 's52-proof-reads-stale-after-a-source-edit-with-identical-cases' ("pb1=$pb1 e2=$pbE2 e4=$pbE4 e5=$pbE5 | " + ($pbAll -join ' | '))
 $pbF = Get-ProofBindingChange 'population=p build=b filters=f1 config=Debug candidate=c0ffee1' 'population=p build=b filters=f2 config=Release candidate=c0ffee1' $pbDesc
 $pbLegacy = Get-ProofBindingChange 'p' 'population=p build=b filters=f config=Debug candidate=c0ffee1' $pbDesc
 $pbUnknown = Get-ProofBindingChange 'population=p build=b candidate=c0ffee1' 'population=p build=b candidate=unknown' $pbDesc
@@ -902,7 +925,7 @@ Assert ((@($rtExec | Where-Object { $_ -eq 'UI.D.Dup' }).Count -eq 1) -and (@($r
 $fpOld = Join-Path $dir 'pop-old.fingerprint'
 @('run-a-filter: Category!=Interactive&Category!=Primary', 'run-b-filter: Category=Primary', 'interactive-filter: Category=Interactive', 'run-a-methods: 0', 'run-a-cases: 0', 'run-b-methods: 0', 'run-b-cases: 0', 'interactive-methods: 0', 'interactive-cases: 0') | Set-Content -Path $fpOld -Encoding UTF8
 $oldRead = Read-TestPopulationFile $fpOld
-Assert ((-not $oldRead.Ok) -and ($oldRead.Error -like 'fingerprint schema missing (count-only format) is not population/2; regenerate: *Update-TestFingerprint.ps1*')) 's44-old-format-refuses-with-the-command' $oldRead.Error
+Assert ((-not $oldRead.Ok) -and ($oldRead.Error -like 'fingerprint schema missing (count-only format) is not population/3; regenerate: *Update-TestFingerprint.ps1*')) 's44-old-format-refuses-with-the-command' $oldRead.Error
 $noHash = @(Get-Content $fpHash | Where-Object { $_ -notlike 'run-b-case-hash:*' })
 $noHash | Set-Content -Path (Join-Path $dir 'pop-nohash.fingerprint') -Encoding UTF8
 Assert ((Read-TestPopulationFile (Join-Path $dir 'pop-nohash.fingerprint')).Error -eq 'fingerprint missing run-b-case-hash') 's37-case-hash-required'
