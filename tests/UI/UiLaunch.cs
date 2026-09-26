@@ -261,11 +261,15 @@ internal static class UiLaunch
         }
     }
 
-    // Captured tool runs (D00 T02 §49 Run A finding): a tool whose output
-    // the test reads (the gate's selftest). Both streams drain
-    // asynchronously and the run is bounded: a run past the timeout is
-    // killed with its tree and reads exit -1, never waited on. The start
-    // stays in this one home, so the launch guard sees no bypass.
+    // Captured tool runs (D00 T02 §49 Run A finding, R4-I1): a tool whose
+    // output the test reads (the gate's selftest). One deadline covers
+    // execution, draining, and termination: both streams drain
+    // asynchronously and signal their end of stream, only bounded waits
+    // are used (the parameterless WaitForExit also waits for the drains,
+    // which a descendant holding an inherited pipe can stall forever), and
+    // a run that misses the deadline is killed with its tree and reads
+    // exit -1. The start stays in this one home, so the launch guard sees
+    // no bypass.
     internal static (int ExitCode, string Output) RunToolCaptured(
         string exe,
         string args,
@@ -275,25 +279,39 @@ internal static class UiLaunch
     {
         TakeSeed();
         string testId = TestId(member, file);
+        DateTime deadline = DateTime.UtcNow + timeout;
         using var process = Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true });
         Assert.NotNull(process);
         UiLaunchDiagnostics.Record(testId, args, process.Id, null, "tool", 0, 0, expectWindow: false);
         var output = new System.Text.StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) { lock (output) { output.AppendLine(e.Data); } } };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (output) { output.AppendLine(e.Data); } } };
+        var outDone = new TaskCompletionSource();
+        var errDone = new TaskCompletionSource();
+        process.OutputDataReceived += (_, e) => { if (e.Data is null) { outDone.TrySetResult(); } else { lock (output) { output.AppendLine(e.Data); } } };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is null) { errDone.TrySetResult(); } else { lock (output) { output.AppendLine(e.Data); } } };
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
-        if (!process.WaitForExit(timeout))
+        TimeSpan Left() => deadline - DateTime.UtcNow > TimeSpan.Zero ? deadline - DateTime.UtcNow : TimeSpan.Zero;
+        bool exited = process.WaitForExit(Left());
+        bool drained = exited && Task.WaitAll([outDone.Task, errDone.Task], Left());
+        if (!exited || !drained)
         {
-            process.Kill(entireProcessTree: true);
-            process.WaitForExit();
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // Already gone: a descendant held the pipe past the tool.
+            }
+
+            _ = process.WaitForExit(TimeSpan.FromSeconds(5));
             lock (output)
             {
-                return (-1, $"killed after {timeout.TotalSeconds:0} s: {output}");
+                string why = exited ? "its output did not drain (a descendant holds the pipe)" : "it did not exit";
+                return (-1, $"killed at the {timeout.TotalSeconds:0} s bound: {why}: {output}");
             }
         }
 
-        process.WaitForExit();
         lock (output)
         {
             return (process.ExitCode, output.ToString());
