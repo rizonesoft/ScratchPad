@@ -623,6 +623,24 @@ Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1
 $legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
 $legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
 Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §52 item 8: owed cases migrate by identity. A regen that swaps
+# an owed cut case for a same-prefix case keeps the original owed (its
+# identity token changed), an unlisted case holds until retired with
+# evidence, a retirement without evidence is ignored, and the original
+# token carries.
+$m8Cut = 'UI.M.Long(s: "a very long argument that runs well past the fifty c"' + ([string][char]0xB7 * 3) + ')'
+$m8RunA = { param($m) [pscustomobject]@{ Text = "UI.M.Long(`"a very long argument that runs well past the fifty character cut AAA`")`n"; Code = 0 } }
+$m8RunB = { param($m) [pscustomobject]@{ Text = "UI.M.Long(`"a very long argument that runs well past the fifty character cut BBB`")`n"; Code = 0 } }
+$m8IdA = Get-OwedCaseIdentities @($m8Cut, 'UI.M.Short(n: 1)') $m8RunA
+$m8IdB = Get-OwedCaseIdentities @($m8Cut) $m8RunB
+$m8Listed = @($m8Cut, 'UI.M.Short(n: 1)', 'UI.M.Kept')
+$m8Swap = Resolve-OwedCaseMigration @($m8Cut, 'UI.M.Kept') $m8IdA $m8IdB $m8Listed @{}
+$m8Carry = Resolve-CarriedCaseDebt @($m8Swap.Closable) @($m8Cut, 'UI.M.Kept') $true
+$m8Still = @(@($m8Carry.Still) + @($m8Swap.Held))
+$m8Gone = Resolve-OwedCaseMigration @('UI.M.Gone(n: 2)') @{} @{} $m8Listed @{}
+$m8Ret = Resolve-OwedCaseMigration @('UI.M.Gone(n: 2)', 'UI.M.Bare') @{} @{} $m8Listed @{ 'UI.M.Gone(n: 2)' = [pscustomobject]@{ Evidence = 'removed in abc1234, replaced by UI.M.New'; By = 'operator'; On = '2026-09-26' }; 'UI.M.Bare' = [pscustomobject]@{ Evidence = ''; By = 'operator'; On = '2026-09-26' } }
+$m8Legacy = Resolve-OwedCaseMigration @($m8Cut) @{} $m8IdB $m8Listed @{}
+Assert (($m8IdA.Count -eq 1) -and ($m8IdA[$m8Cut] -like 'rows:*') -and ($m8IdA[$m8Cut] -ne $m8IdB[$m8Cut]) -and ($m8Still -contains $m8Cut) -and ($m8Still -notcontains 'UI.M.Kept') -and ($m8Swap.Ids[$m8Cut] -eq $m8IdA[$m8Cut]) -and (@($m8Swap.Lines | Where-Object { $_ -like '*identity changed*a same-prefix case never closes it*' }).Count -eq 1) -and (@($m8Gone.Held) -contains 'UI.M.Gone(n: 2)') -and (@($m8Gone.Lines)[0] -like '*no longer listed*retired with evidence*') -and (@($m8Ret.Retired) -contains 'UI.M.Gone(n: 2)') -and (@($m8Ret.Retired) -notcontains 'UI.M.Bare') -and (@($m8Ret.Lines | Where-Object { $_ -like '*retirement ignored for*UI.M.Bare*' }).Count -eq 1) -and (@($m8Legacy.Closable) -contains $m8Cut)) 's52-owed-cases-migrate-by-identity' ((@($m8Swap.Lines) + @($m8Gone.Lines) + @($m8Ret.Lines)) -join ' | ')
 # D00 T02 §52 item 6: a case that failed and later passed closes its
 # owed execution while its incident stays open on its own streak.
 $e6Led = @{ 'INC-5206a001' = [pscustomobject]@{ id = 'INC-5206a001'; test = 'UI.F.Case'; phase = 'interactive'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('interactive') }); passStreak = 0; lastPassStamp = '' } }

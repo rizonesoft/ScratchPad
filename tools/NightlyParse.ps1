@@ -1857,6 +1857,75 @@ function Get-TrxPassedNames([string]$TrxPath, $Expect = $null) {
   return @(Get-TrxCaseResults $TrxPath $Expect | Where-Object { $_.Last -eq 'Passed' } | ForEach-Object { $_.Name })
 }
 
+function Test-CutCaseName([string]$Name) {
+  # A display name xunit cut at its 50-character argument limit.
+  return ($Name.Contains(([string][char]0xB7) * 3) -or $Name.Contains('"...'))
+}
+
+function Get-OwedCaseIdentities($OwedCases, [scriptblock]$Runner) {
+  # Identity tokens for owed cases whose display name is cut (D00 T02
+  # section 52 item 8): `rows:<hash>` over the method's canonical case
+  # rows (Get-CanonicalCaseRows), so a regen that swaps or
+  # reparameterizes the method's rows changes the token even when the
+  # cut display name stays the same. A name shown whole is its own
+  # identity and gets no token. A runner failure throws.
+  $ids = @{}
+  $cut = @(@($OwedCases) | Where-Object { ("$_" -ne '') -and (Test-CutCaseName "$_") } | Sort-Object -Unique)
+  if ($cut.Count -eq 0) { return $ids }
+  $rows = @(Get-CanonicalCaseRows $cut $Runner)
+  foreach ($c in $cut) {
+    $m = ("$c" -split '\(', 2)[0].Trim()
+    $mine = @($rows | Where-Object { "$_".StartsWith("case $m(", [StringComparison]::Ordinal) })
+    $ids["$c"] = "rows:$(Get-CaseHash $mine)"
+  }
+  return $ids
+}
+
+function Read-OwedCaseRetirements([string]$Path) {
+  # docs/owed-case-retirements.md (section 52 item 8): `| <case> |
+  # <evidence> | <by> | <YYYY-MM-DD> |`; a row missing its evidence or
+  # its approver is ignored (and named by the caller), never honored.
+  $rows = @{}
+  if (-not (Test-Path -LiteralPath $Path)) { return $rows }
+  foreach ($ln in @(Get-Content -LiteralPath $Path -Encoding UTF8)) {
+    $t = "$ln".Trim()
+    if (-not ($t.StartsWith('|') -and $t.EndsWith('|'))) { continue }
+    $cells = @($t.Substring(1, $t.Length - 2) -split '\|' | ForEach-Object { $_.Trim() })
+    if (($cells.Count -lt 4) -or ($cells[0] -eq 'Case') -or ($cells[0] -match '^:?-{3,}')) { continue }
+    $rows[$cells[0].Trim('`')] = [pscustomobject]@{ Evidence = $cells[1]; By = $cells[2]; On = $cells[3] }
+  }
+  return $rows
+}
+
+function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hashtable]$NowIds, $ListedNow, [hashtable]$Retirements) {
+  # Owed cases across population changes (D00 T02 section 52 item 8).
+  # Each earlier owed case either retires with evidence (a retirement row
+  # with evidence and approver), stays owed without a chance to close
+  # tonight (no longer listed, or its identity token changed since it
+  # was owed, so a same-prefix replacement never closes it), or goes on
+  # to per-case closure. Carried identities are the ORIGINAL tokens.
+  # Returns Closable, Held, Retired, Ids (name -> original token, for the
+  # still-owed), and Lines.
+  $closable = @(); $held = @(); $retired = @(); $lines = @(); $ids = @{}
+  $listed = @{}
+  $haveListing = $null -ne $ListedNow
+  foreach ($l in @($ListedNow)) { if ($null -ne $l) { $listed["$l"] = $true } }
+  foreach ($c in @(@($PreviousOwed) | Where-Object { "$_" -ne '' })) {
+    $k = "$c"
+    if ($PreviousIds.ContainsKey($k)) { $ids[$k] = $PreviousIds[$k] }
+    if ($Retirements.ContainsKey($k)) {
+      $r = $Retirements[$k]
+      if (("$($r.Evidence)" -ne '') -and ("$($r.By)" -ne '')) { $retired += $k; $lines += "- Owed case retired with evidence: ``$k`` ($($r.Evidence); by $($r.By) on $($r.On))"; continue }
+      $lines += "- Owed case retirement ignored for ``$k``: the row needs evidence and an approver"
+    }
+    if ($haveListing -and (-not $listed.ContainsKey($k))) { $held += $k; $lines += "- Owed case no longer listed: ``$k`` carries its obligation until retired with evidence in docs/owed-case-retirements.md"; continue }
+    if ($PreviousIds.ContainsKey($k) -and $NowIds.ContainsKey($k) -and ($PreviousIds[$k] -ne $NowIds[$k])) { $held += $k; $lines += "- Owed case identity changed: ``$k`` was owed as $($PreviousIds[$k]), the listing now reads $($NowIds[$k]); a same-prefix case never closes it (retire with evidence or re-owe)"; continue }
+    $closable += $k
+  }
+  foreach ($k in @($retired)) { $ids.Remove($k) }
+  return [pscustomobject]@{ Closable = $closable; Held = $held; Retired = $retired; Ids = $ids; Lines = $lines }
+}
+
 function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan, $ListedCases = $null) {
   # Per-case debt across nights (D00 T02 section 44 R1-F4): the cases the
   # last result still owed close only on their own green row tonight
@@ -1897,10 +1966,15 @@ function Read-PreviousOwedCases([string]$NightDir, [string]$Stamp) {
       if ("$($o.stamp)" -ne $fs) { throw "stamp $($o.stamp) disagrees with its file name" }
       $owedProp = $o.PSObject.Properties['owedCases']
       if (($null -ne $owedProp) -and ($null -ne $owedProp.Value) -and (@(@($owedProp.Value) | Where-Object { $_ -isnot [string] }).Count -gt 0)) { throw 'owedCases is not a list of case names' }
-      return [pscustomobject]@{ Owed = @(@($o.owedCases) | Where-Object { "$_" -ne '' }); From = $f.Name; Unreadable = $bad }
+      # Owed identities (section 52 item 8): optional, name -> token; a
+      # result written before them reads as none recorded.
+      $ids = @{}
+      $idProp = $o.PSObject.Properties['owedIdentities']
+      if (($null -ne $idProp) -and ($null -ne $idProp.Value)) { foreach ($pp in @($idProp.Value.PSObject.Properties)) { $ids["$($pp.Name)"] = "$($pp.Value)" } }
+      return [pscustomobject]@{ Owed = @(@($o.owedCases) | Where-Object { "$_" -ne '' }); Identities = $ids; From = $f.Name; Unreadable = $bad }
     } catch { $bad += "$($f.Name) ($($_.Exception.Message))" }
   }
-  return [pscustomobject]@{ Owed = @(); From = ''; Unreadable = $bad }
+  return [pscustomobject]@{ Owed = @(); Identities = @{}; From = ''; Unreadable = $bad }
 }
 
 function Get-PopulationIdentity([string]$FingerprintPath) {

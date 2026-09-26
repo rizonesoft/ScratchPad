@@ -1447,15 +1447,31 @@ $prevRead = Read-PreviousOwedCases $nightDir $stamp
 if (@($prevRead.Unreadable).Count -gt 0) { $failed = $true; $nightOwedRows += "- Carried per-case debt: RED: unreadable result(s) $($prevRead.Unreadable -join '; '); owed cases carried from $(if ($prevRead.From -ne '') { $prevRead.From } else { 'no readable result' }) instead; repair the result" }
 $carryListed = @()
 try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
-$carry = Resolve-CarriedCaseDebt $prevRead.Owed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
+# Owed cases migrate by identity (D00 T02 section 52 item 8): retire
+# with evidence, hold when no longer listed or re-identified, and carry
+# the ORIGINAL identity token; only the rest can close tonight.
+$owedIdsNow = @{}
+$owedIdsError = ''
+try { $owedIdsNow = Get-OwedCaseIdentities @($prevRead.Owed) (Get-CaseIdentityRunner (Join-Path $Root 'tests\UI\UI.csproj')) } catch { $owedIdsError = "$($_.Exception.Message)" }
+$migration = Resolve-OwedCaseMigration @($prevRead.Owed) $prevRead.Identities $owedIdsNow $(if ($carryListed.Count -gt 0) { $carryListed } else { $null }) (Read-OwedCaseRetirements (Join-Path $Root 'docs\owed-case-retirements.md'))
+$nightOwedRows += @($migration.Lines)
+if ($owedIdsError -ne '') { $nightOwedRows += "- Owed case identities unreadable tonight ($owedIdsError): cut owed cases hold, none close" ; $migration = [pscustomobject]@{ Closable = @(@($migration.Closable) | Where-Object { -not (Test-CutCaseName "$_") }); Held = @(@($migration.Held) + @(@($migration.Closable) | Where-Object { Test-CutCaseName "$_" })); Retired = $migration.Retired; Ids = $migration.Ids; Lines = $migration.Lines } }
+$carry = Resolve-CarriedCaseDebt @($migration.Closable) @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
+$carry = [pscustomobject]@{ Still = @(@($carry.Still) + @($migration.Held)); Line = $carry.Line }
 if ($carry.Line -ne '') { $nightOwedRows += $carry.Line }
 # The debt a green collection closed never closes its failure (D00 T02
 # section 52 item 6): each closed case with an open incident says so.
-$carryClosed = @(@($prevRead.Owed) | Where-Object { @($carry.Still) -notcontains $_ })
+$carryClosed = @(@($migration.Closable) | Where-Object { @($carry.Still) -notcontains $_ })
 $nightOwedRows += @(Get-ExecutionClosureNotes $carryClosed $ledgerUpd.Incidents)
 # A refused trx closes nothing and says why (D00 T02 section 52 item 5).
 foreach ($tr in @($script:TrxRefusals | Sort-Object -Unique)) { $nightOwedRows += "- Trx refused (counted nothing): $tr" }
 $owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))
+# Identity tokens for tonight's owed cases: carried cases keep their
+# original token, newly owed cut cases get tonight's (section 52 item 8).
+$owedIdentitiesTonight = [ordered]@{}
+$newOwedIds = @{}
+try { $newOwedIds = Get-OwedCaseIdentities @($owedCasesTonight | Where-Object { -not $migration.Ids.ContainsKey("$_") }) (Get-CaseIdentityRunner (Join-Path $Root 'tests\UI\UI.csproj')) } catch { $nightOwedRows += "- Owed case identities not recorded tonight: $($_.Exception.Message)" }
+foreach ($oc in @($owedCasesTonight | Sort-Object -Unique)) { if ($migration.Ids.ContainsKey("$oc")) { $owedIdentitiesTonight["$oc"] = $migration.Ids["$oc"] } elseif ($newOwedIds.ContainsKey("$oc")) { $owedIdentitiesTonight["$oc"] = $newOwedIds["$oc"] } }
 if ($nightOwedRows.Count -gt 0) {
   $report += '### Night-owed (staged; triage files via add-todo)'
   $report += $nightOwedRows
@@ -1596,7 +1612,7 @@ $previousStamp = ''
 $prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $stamp) } | Sort-Object Name | Select-Object -Last 1)
 if ($prevRes.Count -gt 0) { $previousStamp = ($prevRes[0].Name -replace '^morning-', '' -replace '\.result\.json$', '') }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError
