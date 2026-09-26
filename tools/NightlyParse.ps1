@@ -3086,9 +3086,45 @@ function Get-IncidentResultRows([string[]]$ResultFiles, [string]$Since) {
       $wheres = @($m.Groups[3].Value -split ',\s*' | Where-Object { $_ -ne '' })
       $groups += [pscustomobject]@{ Id = $m.Groups[1].Value; Test = $m.Groups[2].Value; Phase = (Get-IncidentPhase ($wheres | Select-Object -First 1)); Key = ''; Wheres = $wheres }
     }
-    if ($groups.Count -gt 0) { $rows += [pscustomobject]@{ Stamp = "$($o.stamp)"; Groups = $groups } }
+    if ($groups.Count -gt 0) { $rows += [pscustomobject]@{ Stamp = "$($o.stamp)"; Identity = "$($o.identity)"; Groups = $groups } }
   }
-  return @($rows | Sort-Object Stamp)
+  # Equal stamps order by run identity (D00 T02 section 53 item 6), so the
+  # replay never depends on file enumeration order.
+  return @($rows | Sort-Object Stamp, Identity)
+}
+
+function Get-ReplayOrder([string[]]$ResultFiles) {
+  # Replay invariants (D00 T02 section 53 item 6), checked before any
+  # rebuild replays: a run identity carried twice with the same content
+  # (a retained copy beside its original) replays once; twice with
+  # different content refuses by name; a result naming a predecessor
+  # stamped at or after its own is a clock rollback and refuses; two
+  # ledger snapshots at one stamp that disagree refuse. Equal stamps from
+  # different runs are legitimate and order by identity. Returns Files
+  # (deduplicated, ordered by stamp then identity) and Refusals.
+  $seen = @{}
+  $refusals = @()
+  $kept = @()
+  foreach ($f in @($ResultFiles | Sort-Object)) {
+    $o = $null
+    try { $o = Get-Content -LiteralPath $f -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    $id = "$($o.identity)"; $st = "$($o.stamp)"
+    $key = if ($id -ne '') { $id } else { "stamp:$st" }
+    $digest = Get-CaseHash @((ConvertTo-Json @($o.incidents) -Compress -Depth 4), (ConvertTo-Json $o.incidentLifecycle -Compress -Depth 8), "$($o.verdict)")
+    if ($seen.ContainsKey($key)) {
+      if ($seen[$key].Digest -ne $digest) { $refusals += "conflicting duplicate result $key ($(Split-Path -Leaf $seen[$key].File) and $(Split-Path -Leaf $f) differ)" }
+      continue
+    }
+    $seen[$key] = [pscustomobject]@{ File = $f; Digest = $digest }
+    $prev = "$(if ($null -ne $o.PSObject.Properties['previousStamp']) { $o.previousStamp })"
+    if (($prev -ne '') -and ($st -ne '') -and ([string]::CompareOrdinal($prev, $st) -ge 0)) { $refusals += "clock rollback: result $st ($key) names predecessor $prev, stamped at or after it" }
+    $snapRows = if ("$($o.incidentLifecycleSource)" -eq 'ledger') { ConvertTo-Json $o.incidentLifecycle -Compress -Depth 8 } else { '' }
+    $kept += [pscustomobject]@{ File = $f; Stamp = $st; Identity = $id; Snapshot = $snapRows }
+  }
+  foreach ($g in @($kept | Where-Object { $_.Snapshot -ne '' } | Group-Object Stamp | Where-Object { $_.Count -gt 1 })) {
+    if (@($g.Group | ForEach-Object { $_.Snapshot } | Sort-Object -Unique).Count -gt 1) { $refusals += "conflicting snapshots at $($g.Name): $(@($g.Group | ForEach-Object { $_.Identity }) -join ' and ') publish different ledger states" }
+  }
+  return [pscustomobject]@{ Files = @($kept | Sort-Object Stamp, Identity | ForEach-Object { $_.File }); Refusals = $refusals }
 }
 
 function Read-LifecycleBlock($Result) {
@@ -3288,6 +3324,11 @@ function New-IncidentLedgerFromResults([string[]]$ResultFiles, [string]$Since, [
   # with its history instead of being overwritten back to closed. With
   # no snapshot, every result replays and recovery restarts from zero.
   $map = @{}
+  # Ordering invariants first (section 53 item 6): the replay input is
+  # deduplicated and deterministic, or the rebuild refuses by name.
+  $order = Get-ReplayOrder $ResultFiles
+  if (@($order.Refusals).Count -gt 0) { throw "rebuild refused: $(@($order.Refusals) -join '; ')" }
+  $ResultFiles = @($order.Files)
   $snap = Get-LatestLifecycleSnapshot $ResultFiles $Since
   # An invalid newest snapshot stops the rebuild (R4-F1): restoring from
   # it, or skipping to an older one, would persist a ledger missing

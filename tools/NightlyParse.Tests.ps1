@@ -2176,6 +2176,28 @@ $awFault = ''
 try { Write-AtomicReport @('{ "new": true }') $awPath $null { param($t) Set-Content -LiteralPath $t -Value 'partial' -Encoding UTF8; throw 'disk full (fixture)' } } catch { $awFault = "$($_.Exception.Message)" }
 $awNow = Get-Content -LiteralPath $awPath -Raw
 Assert (($awFull -like 'write refused for morning-2026-09-26-023001.result.json: low disk*the previous file is kept') -and ($awFault -eq 'disk full (fixture)') -and (-not (Test-Path "$awPath.tmp")) -and ($awNow -like '*"old": true*')) 's53-snapshot-replacement-keeps-the-old-on-a-full-disk' "$awFull | $awFault"
+# D00 T02 §53 item 6: replay ordering invariants. A duplicate result with
+# the same content replays once, equal stamps order by identity whatever
+# the input order, and a conflicting duplicate, a clock rollback, and two
+# disagreeing snapshots at one stamp each refuse by name.
+$roDir = Join-Path $dir 's53-replay'
+if (Test-Path $roDir) { Remove-Item $roDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $roDir 'retained')
+$roW = { param($name, $obj) $p = Join-Path $roDir $name; $obj | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $p -Encoding UTF8; $p }
+$roA = & $roW 'a.json' ([pscustomobject]@{ stamp = '2026-09-25-023001'; identity = 'id-a'; previousStamp = '2026-09-24-023001'; verdict = 'red'; incidents = @('- INC-00000001 `UI.R.T` x1 (run-a)') })
+$roA2 = & $roW 'retained\a.json' ([pscustomobject]@{ stamp = '2026-09-25-023001'; identity = 'id-a'; previousStamp = '2026-09-24-023001'; verdict = 'red'; incidents = @('- INC-00000001 `UI.R.T` x1 (run-a)') })
+$roB = & $roW 'b.json' ([pscustomobject]@{ stamp = '2026-09-26-023001'; identity = 'id-z'; previousStamp = '2026-09-25-023001'; verdict = 'green'; incidents = @() })
+$roC = & $roW 'c.json' ([pscustomobject]@{ stamp = '2026-09-26-023001'; identity = 'id-m'; previousStamp = '2026-09-25-023001'; verdict = 'green'; incidents = @() })
+$ro1 = Get-ReplayOrder @($roB, $roA2, $roC, $roA)
+$ro2 = Get-ReplayOrder @($roA, $roC, $roB, $roA2)
+$roDup = & $roW 'dup.json' ([pscustomobject]@{ stamp = '2026-09-25-023001'; identity = 'id-a'; previousStamp = '2026-09-24-023001'; verdict = 'green'; incidents = @() })
+$roRoll = & $roW 'roll.json' ([pscustomobject]@{ stamp = '2026-09-24-010000'; identity = 'id-r'; previousStamp = '2026-09-25-023001'; verdict = 'green'; incidents = @() })
+$roS1 = & $roW 's1.json' ([pscustomobject]@{ stamp = '2026-09-27-023001'; identity = 'id-s1'; incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-00000001'; state = 'open' }) })
+$roS2 = & $roW 's2.json' ([pscustomobject]@{ stamp = '2026-09-27-023001'; identity = 'id-s2'; incidentLifecycleSource = 'ledger'; incidentLifecycle = @([pscustomobject]@{ id = 'INC-00000001'; state = 'closed' }) })
+$ro3 = Get-ReplayOrder @($roA, $roDup, $roRoll, $roS1, $roS2)
+$roRebuild = ''
+try { $null = New-IncidentLedgerFromResults @($roA, $roDup) '' @{} } catch { $roRebuild = "$($_.Exception.Message)" }
+Assert ((@($ro1.Refusals).Count -eq 0) -and (@($ro1.Files).Count -eq 3) -and ((@($ro1.Files | ForEach-Object { Split-Path -Leaf $_ }) -join ',') -eq 'a.json,c.json,b.json') -and ((@($ro1.Files) -join '|') -eq (@($ro2.Files) -join '|')) -and (@($ro3.Refusals | Where-Object { $_ -like 'conflicting duplicate result id-a*' }).Count -eq 1) -and (@($ro3.Refusals | Where-Object { $_ -like 'clock rollback: result 2026-09-24-010000 (id-r) names predecessor 2026-09-25-023001*' }).Count -eq 1) -and (@($ro3.Refusals | Where-Object { $_ -like 'conflicting snapshots at 2026-09-27-023001*' }).Count -eq 1) -and ($roRebuild -like 'rebuild refused: conflicting duplicate result id-a*')) 's53-replay-orders-deterministically-or-refuses' ((@($ro3.Refusals) + $roRebuild) -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
