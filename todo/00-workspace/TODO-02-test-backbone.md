@@ -87,13 +87,14 @@ track: W0
 |   44  |   §44   | Population gate second residuals | §37 |  [x]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [x]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
-|   47  |   §47   | Trend and telemetry third residuals | §40 |  [ ]   |
+|   47  |   §47   | Trend and telemetry third residuals | §40 |  [x]   |
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [ ]   |
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
 |   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
 |   53  |   §53   | Nightly evidence fourth residuals | §45 |  [ ]   |
+|   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [ ]   |
 
 ---
 
@@ -1270,6 +1271,7 @@ Why this section exists: the §31 plan review returned 17 findings; 12 file here
 
 - -> XREF: D00 T02 §31 -- filed from its plan review and sign-off; settles the residuals of the acknowledgement lifecycle it shipped.
 - -> XREF: D00 T02 §46 -- residual follow-ups filed from this section's plan review.
+- -> XREF: D00 T02 §47 -- alert acknowledgements on passing runs, read by this gate beside the run acks.
 
 - [x] §23's and §24's prose names one governing key contract (run identity plus the result checksum, never the notification version), each marked `**Corrected YYYY-MM-DD:**` pointing at §31. Done when: neither section's text names the notification version as part of the ack key. (D00-T02-S31-PR1.)
 - [x] Corrective actions have disposition-specific transitions: `fixed` with its commit, `expected` with its stamped proof, and `duplicate` of an acknowledged run open closed; only remediation still owed opens. Done when: a `duplicate` ack of an acknowledged run reads closed at signing. (D00-T02-S31-PR2.)
@@ -1318,7 +1320,7 @@ Why this section exists: the §32 plan review returned 19 findings; 17 file here
 - [x] Equivalence is proven on a mixed corpus (corrections, cohorts, malformed rows, schedule changes) by comparing structured metrics and alerts as well as the rendered text. Done when: the mixed-corpus fixture compares both. (D00-T02-S32-PR13.)
 - [x] Historical values stay explainable after pruning: rows keep a durable source identity, a derivation version, and an evidence-availability state. Done when: a pruned night's value names its source and says the raw evidence is gone. (D00-T02-S32-PR14.)
 - [x] The disclosure contract covers backups, diagnostics, rejected rows, and legacy stored values, sanitizing before persistence. Done when: a planted path in a legacy row is redacted on compaction. (D00-T02-S32-PR15.)
-- [x] Alerts get stable identities and a lifecycle (persisting, recovered, corrected, superseded) wired to the §25 reconciler and acknowledgement. Done when: a persisting alert raises once and a recovered one closes. (D00-T02-S32-PR16.) Default recorded 2026-09-25: alerts carry no acknowledgement of their own; the RED run behind a regression is acknowledged through the §39 gate, and the cost of changing this is one ack kind there.
+- [x] Alerts get stable identities and a lifecycle (persisting, recovered, corrected, superseded) wired to the §25 reconciler and acknowledgement. Done when: a persisting alert raises once and a recovered one closes. (D00-T02-S32-PR16.) Default recorded 2026-09-25: alerts carry no acknowledgement of their own; the RED run behind a regression is acknowledged through the §39 gate, and the cost of changing this is one ack kind there. **Corrected 2026-09-26 (§47 plan review, D00-T02-S47-PR18):** superseded by §47 item 4: an alert on a passing run carries its own acknowledgement in `docs/nightly-acks/alert-acks.md`, which the §39 gate reads beside the run acks.
 - [x] Attribution records exact revisions and ancestry availability and labels itself as correlation, not cause. Done when: a rollback between baseline and latest reads as a non-linear range. (D00-T02-S32-PR17.)
 - [x] Long-term storage has a retention, deletion, and capacity policy with its effect on historical confidence stated. Done when: a store past capacity compacts or refuses by policy. (D00-T02-S32-PR18.)
 - [x] Commit: `"workspace: settle the second trend and telemetry residuals"`
@@ -1504,6 +1506,8 @@ Why this section exists: the §39 plan review returned 14 findings; 13 file here
 Why this section exists: the §40 plan review returned 16 findings; 14 file here and 2 are rejected with reasons in the §40 findings file. §40 keyed nights by host, gave the schedule a history and a grace, rebaselined cohorts, counted coverage by identity, separated exclusions, made the store's failures recoverable, gave alerts a delivered lifecycle, and labeled attribution; these carry that surface through identity stability, acknowledgement, baseline reuse, merge semantics, and explanation. -> SOURCE: plan-review-D00-T02-s40-2026-09-25-s47 D00-T02-S40-PR1 D00-T02-S40-PR2 D00-T02-S40-PR3 D00-T02-S40-PR4 D00-T02-S40-PR6 D00-T02-S40-PR7 D00-T02-S40-PR8 D00-T02-S40-PR9 D00-T02-S40-PR10 D00-T02-S40-PR11 D00-T02-S40-PR12 D00-T02-S40-PR13 D00-T02-S40-PR14 D00-T02-S40-PR16
 
 - -> XREF: D00 T02 §40 -- filed from its plan review; carries the trend and telemetry surface it hardened.
+- -> XREF: D00 T02 §39 -- item 4's alert acknowledgements are read by §39's acknowledgement gate beside the run acks.
+- -> XREF: D00 T02 §54 -- its plan review's residuals.
 
 - [x] Schedule identity is enforced or carried: one schedule per host per night is validated (a second governed trigger on a host is refused or flagged), or the slot key regains a schedule part, so overlapping trigger edits and catch-up runs cannot collide. Done when: two governed schedules on one host read as a named conflict, never one merged night. (D00-T02-S40-PR1.)
 - [x] The `legacy` host migration has an ambiguity policy: pre-host results that cannot belong to one host (conflicting environments on one night) are detected and read unresolved instead of merging. Done when: two pre-host results with conflicting environments on one night read unresolved. (D00-T02-S40-PR2.)
@@ -1522,6 +1526,13 @@ Why this section exists: the §40 plan review returned 16 findings; 14 file here
 - [x] Commit: `"workspace: settle the third trend and telemetry residuals"`
 
 **Test checkpoint:** Schedules conflict by name, legacy ambiguity reads unresolved, host aliases hold, green-run alerts acknowledge, cohorts reuse and expire, merges stay whole, all-excluded runs never read healthy, partial discovery reads partial, the calendar names overruns, restores report loss, backups sanitize, capacity warns without blocking pruning, derivations read their version, and alerts explain themselves. Cheaper substitute that fails: more ledger fields with no fixtures behind them.
+
+> **Verified:** 2026-09-26 | §47 | a second governed schedule on one host reads as a named conflict; conflicting pre-host environments read UNRESOLVED; operator aliases map renamed hosts; alerts on green runs acknowledge through committed `docs/nightly-acks/alert-acks.md` rows with a real owner and reason, which the §39 gate lists as acknowledged, unowned, or pending; returning cohorts reuse within 60 days and the insufficiency streak counts across cohort changes; the execution unit merges whole or not at all and tombstones block refills; all-excluded and zero-execution runs never read healthy; a missing shard reads partial; the calendar names overrun, disabled, and overlap; a restore lists rows lost, counts unreadable lines, and keeps the damaged store aside sanitized; the disclosure migration covers backups, rejected archives, and kept stores; capacity warns at 90 percent on every run; derivation versions label dependent series; each alert context names values, samples, exclusions with reasons, and recovery; NightlyTrend, NightlyParse, NightlyAck, NightlyNotify, and NightlyTriage suites green
+> **Review:** round 5 (Full), candidates `c87d2ef` `9500b64` `3a8b059` `90c4a63` `90940a9` -- GPT R1-R2 bulk needs-attention (R1-A1, A2, C1, I1, R1 and R2-A1, C1, C2 fixed), GPT R3 sign-off governing: `adversarial` needs-attention · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra); R3-A1 fixed in 90c4a63, R4 depth R4-C1 fixed in 90940a9, R5 depth (`adversarial` approve · `integration` approve · `record` approve) left below-bar R5-C1, filed to D00 T02 §54. Raw findings: docs/reviews/00-workspace/D00-T02-s47.md
+> **Plan review:** GPT medium, filed D00 T02 §54 (run 20260926-D00-T02-S47-codex-c06751119-r6)
+> **CRUD:** not-applicable | nightly trend tooling over ignored run scratch plus operator-edited record files it only reads; no user data
+> **Duration:** 2026-09-25T23:11:12Z to 2026-09-26T02:15:10Z
+> **Reviewed-tip:** 90940a967962309d2f16e961759a55f3b7ee0f34
 
 
 ## 48. Sibling Sweep Third Residuals
@@ -1646,6 +1657,33 @@ Why this section exists: the §45 plan review returned 15 findings; 13 file here
 - [ ] Commit: `"workspace: settle the fourth nightly evidence residuals"`
 
 **Test checkpoint:** Sweeps stay inside the root and coordinate, consent is explicit, binary copies expire everywhere, snapshots survive low disk, replay has invariants, alias collisions reconcile, qualification is per incident, writes order recoverably, the tree line says what it holds, the chain is end-to-end, completeness is structured, and a compound failure recovers. Cheaper substitute that fails: another note in the morning report.
+
+## 54. Trend and Telemetry Fourth Residuals
+
+Why this section exists: the §47 plan review returned 20 findings; 17 file here, 1 was applied (the §39 links and §40's correction), and 2 are rejected with reasons in the §47 findings file; one filed item absorbs the §47 round-5 finding R5-C1. §47 made the trend's identities stable, acknowledgeable, rebaselined with expiry, merged whole, recoverable with reported loss, sanitized, capacity-aware, versioned, and explained; these carry that through alias and legacy lifecycles, acknowledgement identity, escalation, merge and tombstone schemas, shard inventories, calendar precedence, durable recovery, migration resilience, working space, incomparability, immutable explanations, broader proofs, and one operator summary. -> SOURCE: plan-review-D00-T02-s47-2026-09-26-s54 D00-T02-S47-PR2 D00-T02-S47-PR3 D00-T02-S47-PR4 D00-T02-S47-PR5 D00-T02-S47-PR7 D00-T02-S47-PR8 D00-T02-S47-PR9 D00-T02-S47-PR10 D00-T02-S47-PR11 D00-T02-S47-PR12 D00-T02-S47-PR13 D00-T02-S47-PR14 D00-T02-S47-PR15 D00-T02-S47-PR16 D00-T02-S47-PR17 D00-T02-S47-PR19 D00-T02-S47-PR20 D00-T02-S47-R5-C1
+
+- -> XREF: D00 T02 §47 -- filed from its plan review; carries the trend and telemetry surface it settled.
+
+- [ ] Host aliases have collision, cycle, and effective-date rules: two old keys mapping to one new key, a cycle, and an alias effective from a date are each defined, with rename, reinstall, and clone fixtures. Done when: a cycle is refused by name and a clone stays a separate host. (D00-T02-S47-PR2.)
+- [ ] Legacy ambiguity has a resolution lifecycle: an unresolved pre-host night can be reassigned with evidence, and its downstream series recompute. Done when: a reassigned unresolved night joins its host's series. (D00-T02-S47-PR3.)
+- [ ] Alert acknowledgement has a governing identity with revisions, multi-night coverage, a deadline, and committed effectiveness, compatible with §39's run-plus-checksum key, so an ack survives a legitimate update without covering a new regression. Done when: a revised ack keeps its alert and a new alert id stays unowned. (D00-T02-S47-PR4.)
+- [ ] Acknowledgement and recovery are independent: acknowledging never marks an alert recovered, and a materially worse recurrence of an acknowledged alert reads unowned again. Done when: a doubled regression under an old ack reads unowned. (D00-T02-S47-PR5.)
+- [ ] Prolonged insufficiency names the night kind it counts (evaluated calendar nights) and escalates past the line: an owner and a notification when it persists. Done when: twenty insufficient nights notify, not only print. (D00-T02-S47-PR7.)
+- [ ] The merge unit has a complete field schema and conflict rule, reconciled with §40's retained-field default by a dated correction there. Done when: every merged field belongs to a named unit and §40 reads the correction. (D00-T02-S47-PR8.)
+- [ ] Tombstones have scope, revision precedence, and replay behavior, so backfill, restore, and delayed ingestion never resurrect deleted evidence. Done when: a restore after a tombstone keeps the field deleted. (D00-T02-S47-PR9.)
+- [ ] Sharded coverage reads an authoritative, versioned inventory of expected shards with discovery-completion criteria. Done when: a shard absent from the inventory's run reads missing, not unknown. (D00-T02-S47-PR10.)
+- [ ] Calendar states have precedence and terminal transitions: cancellation, disabling during execution, overlap, overrun, and late completion each resolve one slot to one status without erasing a missed run. Done when: a late completion after overrun keeps the overrun on record. (D00-T02-S47-PR11.)
+- [ ] Recovery reports exact loss from an independently durable inventory of acknowledged writes, or an explicit unknown-loss state when none exists. Done when: a restore with no inventory reads unknown loss, never nothing lost. (D00-T02-S47-PR12.)
+- [ ] Restore is consistent across metrics, alert delivery, acknowledgements, aliases, and schedule history, so restoring one store never duplicates notifications or invalidates an effective ack. Done when: a metrics restore sends no duplicate alert. (D00-T02-S47-PR13.)
+- [ ] Disclosure migration survives interruption and reports copies it cannot sanitize. Done when: an interrupted migration resumes and an unsanitizable copy is named. (D00-T02-S47-PR14.)
+- [ ] Capacity reserves working space for compaction, backup, and recovery, so a full store can still regain capacity. Done when: a store at its cap still compacts. (D00-T02-S47-PR15.)
+- [ ] Derivation versions keep incompatible values out of baselines, alerts, and recovery calculations, not only labeled. Done when: a derivation-1 value never enters a derivation-2 baseline. (D00-T02-S47-PR16.)
+- [ ] Each alert records its calculation immutably at firing time (detector configuration, baseline identity, contributing row revisions), and its explanation names calendar nights with no result among the exclusions (absorbs the §47 round-5 finding R5-C1). Done when: an alert's recorded explanation is unchanged by a later correction, and a missing window night is named. (D00-T02-S47-PR17.)
+- [ ] The checkpoint covers the broader promises, not one example each: expired baseline reuse, alias conflicts, cancellation, tombstone replay, and interrupted disclosure migration. Done when: each named case has its own fixture. (D00-T02-S47-PR19.)
+- [ ] Operators get one trend health summary with drill-through from a degraded trend to its corrective action: missing evidence, unresolved identity, storage pressure, and suppressed detection. Done when: the summary names each degraded state and its next step. (D00-T02-S47-PR20.)
+- [ ] Commit: `"workspace: settle the fourth trend and telemetry residuals"`
+
+**Test checkpoint:** Aliases and legacy nights resolve, alert acks have identity and stay apart from recovery, insufficiency escalates, merges and tombstones follow a schema, shards read an inventory, the calendar resolves one status per slot, recovery states its loss and stays consistent, migration survives interruption, a full store compacts, derivations never mix, explanations are immutable, the proofs are broad, and one summary routes to action. Cheaper substitute that fails: more report lines with no owner behind them.
 
 ## Verification
 
