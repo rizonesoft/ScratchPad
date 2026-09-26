@@ -1017,6 +1017,12 @@ SEVERITY_MAP: dict[str, str] = {
     # a planned-mixed record while Sol never ran: skipped rounds cannot
     # pass silently, so the note (or the Sol run) is mechanical (D00 T01 §37).
     "panel-sol-outage-missing": "fatal",
+    # a post-cutover findings file whose final disposition table misses a
+    # panel finding, repeats an ID, uses a disposition outside the
+    # vocabulary, or sits under a stamp while a row is still live or
+    # escalated: the table is the round's accounting and the round-5 stop
+    # rule, so it executes instead of advising (D00 T04 §1 items 3-4).
+    "panel-disposition-table": "fatal",
     # an outage marker whose (rung, event-day) key resolves to no
     # findings-file outage note, an outage note no marker keys, or a
     # duplicated or malformed note key: unattributed failure
@@ -1229,6 +1235,11 @@ LABEL_CUTOVER = "2026-09-22"
 # stamps fail closed into the new era, like LABEL_CUTOVER. Cost of
 # moving it: every stamp in the moved window changes regime.
 SIGNOFF_FAMILY_CUTOVER = "2026-09-22"
+# Disposition tables are enforced on stamps after this day (D00 T04 §1
+# item 3): earlier records used older ID and vocabulary shapes and are
+# grandfathered, never rewritten.
+DISPOSITION_CUTOVER = "2026-09-26"
+DISPOSITION_WORDS = ("fixed", "live", "filed", "rejected", "duplicate", "escalated")
 # Fallback-family cutover (D00 T04 §25): stamps dated after this day
 # read the six-slot panel. The families come from .conclave/panel.toml
 # (primary = the signoff slot, fallback = the fallback slot, writer =
@@ -10920,6 +10931,11 @@ track: Z1
 |  74   |   §74   | Honest never-opener Sol note stays silent | - |  [x]   |
 |  75   |   §75   | Honest none-opener Sol note stays silent | - |  [x]   |
 |  76   |   §76   | Whole-value never Sol note fires | - |  [x]   |
+|  77   |   §77   | Complete disposition table stays silent | - |  [x]   |
+|  78   |   §78   | Disposition table missing a row fires | - |  [x]   |
+|  79   |   §79   | Duplicate and unknown dispositions fire | - |  [x]   |
+|  80   |   §80   | Stamp over a live row fires | - |  [x]   |
+|  81   |   §81   | Stamp over an escalated row fires | - |  [x]   |
 
 ---
 
@@ -11759,6 +11775,61 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnever.md
 > **Plan review:** GPT high, no findings
 
+## 77. Complete disposition table stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §77 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-ok.md
+> **Plan review:** GPT high, no findings
+
+## 78. Disposition table missing a row fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §78 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-miss.md
+> **Plan review:** GPT high, no findings
+
+## 79. Duplicate and unknown dispositions fire
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §79 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-dup.md
+> **Plan review:** GPT high, no findings
+
+## 80. Stamp over a live row fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §80 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-live.md
+> **Plan review:** GPT high, no findings
+
+## 81. Stamp over an escalated row fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §81 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-esc.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12182,6 +12253,24 @@ track: Z1
                 "**adversarial: approve**\n**consistency: approve**\n"
                 "**integration: approve**\n**record: approve**\n\n"
                 f"Sol outage: {_hv}\n",
+                encoding="utf-8",
+            )
+        # Disposition tables (D00 T04 §1 items 3 and 4): one round with
+        # two adversarial findings, and a final table that is complete,
+        # misses a row, repeats one with an unknown word, or leaves a row
+        # live or escalated under the stamp.
+        for _dn, _drows in (
+                         ("90-panel-disp-ok.md", '| R1-A1 | fixed | abc1234 |\n| R1-A2 | rejected | not reachable |\n'),
+                         ("90-panel-disp-miss.md", '| R1-A1 | fixed | abc1234 |\n'),
+                         ("90-panel-disp-dup.md", '| R1-A1 | fixed | abc1234 |\n| R1-A1 | fixed | abc1234 |\n| R1-A2 | answered | n/a |\n'),
+                         ("90-panel-disp-live.md", '| R1-A1 | live | still reporting |\n| R1-A2 | fixed | abc1234 |\n'),
+                         ("90-panel-disp-esc.md", '| R1-A1 | escalated | operator decides |\n| R1-A2 | fixed | abc1234 |\n'),
+        ):
+            (rev_dir / _dn).write_text(
+                "# Review: fixture\n\n## GPT panel Round 1\n\n"
+                "**adversarial: needs-attention** (2)\n1. first\n2. second\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                "| ID | Disposition | Evidence |\n| --- | --- | --- |\n" + _drows,
                 encoding="utf-8",
             )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
@@ -12616,6 +12705,36 @@ track: Z1
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "complete disposition table stays silent",
+            any("TODO-06-panel.md" in ln and "§77 " in ln and "disposition" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "disposition table missing a reported finding fires",
+            any("TODO-06-panel.md" in ln and "§78 " in ln and "misses 1 reported finding(s): R1-A2" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "duplicate disposition row fires",
+            any("TODO-06-panel.md" in ln and "§79 " in ln and "lists R1-A1 twice" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "unknown disposition word fires",
+            any("TODO-06-panel.md" in ln and "§79 " in ln and "unknown disposition `answered`" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "stamp over a live disposition fires",
+            any("TODO-06-panel.md" in ln and "§80 " in ln and "R1-A1 is still live" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "stamp over an escalated disposition fires (round-5 stop rule)",
+            any("TODO-06-panel.md" in ln and "§81 " in ln and "stamped over the escalated finding R1-A1" in ln for ln in panel_out),
+            True,
+        )
         check(
             "honest never-opener Sol note stays silent (whole-value check)",
             any("TODO-06-panel.md" in ln and "§74 " in ln and "FATAL" in ln for ln in panel_out),

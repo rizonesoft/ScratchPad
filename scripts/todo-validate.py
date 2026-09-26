@@ -524,6 +524,87 @@ def validate(graph, _args) -> int:
         for lens in PANEL_LENSES
     }
 
+    # Panel disposition tables (D00 T04 §1 items 3 and 4). Every panel
+    # round's findings get IDs (`R<round>-<lens letter><n>`, or the older
+    # `R<round>-F<n>`), and the LAST `| ID | Disposition | Evidence |`
+    # table in the findings file is the final accounting: each reported
+    # finding has exactly one row, each disposition is in the vocabulary
+    # (fixed, live, filed, rejected, duplicate, escalated), and a stamp
+    # never sits over a `live` row (unresolved) or an `escalated` row
+    # (a blocking round-5 leftover stops the run with no stamp). The
+    # expected IDs come from each round's declared finding counts
+    # (`**<lens>: needs-attention** (n)`), so a lens without a count
+    # derives nothing and only its listed rows are checked.
+    _disp_lens = {"adversarial": "A", "consistency": "C", "integration": "I", "record": "R"}
+    _disp_round_re = re.compile(r"^#{2,6}\s+\w+ panel\b[^\n]*?\bround\s+(\d+)", re.IGNORECASE | re.MULTILINE)
+    _disp_verdict_re = re.compile(r"^\*\*(adversarial|consistency|integration|record): needs-attention\*\*\s*\((\d{1,4})\)", re.IGNORECASE | re.MULTILINE)
+    _disp_head_re = re.compile(r"^\|\s*ID\s*\|\s*Disposition\s*\|\s*Evidence\s*\|\s*$", re.IGNORECASE | re.MULTILINE)
+    _disp_row_re = re.compile(r"^\|\s*(R\d+-[A-Z]+\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|\n]*?)\s*\|\s*$", re.MULTILINE)
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is None or s.stamped_on <= graph.DISPOSITION_CUTOVER:
+                continue
+            _dm = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not _dm:
+                continue
+            try:
+                _dtext = (graph.TODO_DIR.parent / _dm.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _dtext, _dunb = graph.strip_fenced_code(_dtext)
+            if _dunb is not None:
+                continue
+            _dwhere = f"{t.path}:{s.line}: §{num} findings {_dm.group(1)}"
+            _rounds = list(_disp_round_re.finditer(_dtext))
+            _expected: list[str] = []
+            # The ID style is read per round (older records mix them): a
+            # round whose findings appear anywhere as `R<n>-F<k>` rows is
+            # counted in that style, every other round by lens letter.
+            _f_rounds = {graph.parse_bounded_int(x, 9999) for x in re.findall(r"^\|\s*R(\d+)-F\d+\s*\|", _dtext, re.MULTILINE)}
+            for _i, _rm in enumerate(_rounds):
+                _end = _rounds[_i + 1].start() if _i + 1 < len(_rounds) else len(_dtext)
+                _body = _dtext[_rm.end():_end]
+                _rn = graph.parse_bounded_int(_rm.group(1), 9999) or 0
+                _legacy_f = _rn in _f_rounds
+                _k = 0
+                for _vm in _disp_verdict_re.finditer(_body):
+                    _cnt = graph.parse_bounded_int(_vm.group(2), 9999) or 0
+                    for _j in range(1, _cnt + 1):
+                        _k += 1
+                        _expected.append(f"R{_rn}-F{_k}" if _legacy_f else f"R{_rn}-{_disp_lens[_vm.group(1).lower()]}{_j}")
+            _heads = list(_disp_head_re.finditer(_dtext))
+            if not _heads:
+                if _expected:
+                    flag("panel-disposition-table", f"{_dwhere} reports {len(_expected)} panel finding(s) but carries no `| ID | Disposition | Evidence |` table")
+                continue
+            _tail = _dtext[_heads[-1].end():]
+            _rows = []
+            for _ln in _tail.lstrip("\n").splitlines():
+                if not _ln.startswith("|"):
+                    break
+                _rows.append(_ln)
+            _seen: dict[str, str] = {}
+            for _ln in _rows:
+                _rr = _disp_row_re.match(_ln)
+                if not _rr:
+                    continue
+                _rid, _disp = _rr.group(1), _rr.group(2).strip().lower()
+                if _rid in _seen:
+                    flag("panel-disposition-table", f"{_dwhere} final disposition table lists {_rid} twice")
+                    continue
+                _seen[_rid] = _disp
+                if _disp not in graph.DISPOSITION_WORDS:
+                    flag("panel-disposition-table", f"{_dwhere} final disposition table gives {_rid} the unknown disposition `{_disp}` (want one of {', '.join(graph.DISPOSITION_WORDS)})")
+                elif _disp == "live":
+                    flag("panel-disposition-table", f"{_dwhere} is stamped while {_rid} is still live (fix it, file it, reject it with a reason, or escalate with no stamp)")
+                elif _disp == "escalated":
+                    flag("panel-disposition-table", f"{_dwhere} is stamped over the escalated finding {_rid} (a blocking round-5 leftover stops the run: no stamp until the operator decides)")
+            _miss = [x for x in _expected if x not in _seen]
+            if _miss:
+                flag("panel-disposition-table", f"{_dwhere} final disposition table misses {len(_miss)} reported finding(s): {', '.join(_miss[:8])}{' ...' if len(_miss) > 8 else ''}")
+
     for t in todos:
         for num, s in sorted(t.sections.items()):
             if num not in t.verified_sections:
