@@ -13,9 +13,10 @@
   (the light shot), readme-hero-light.png, readme-hero-dark.png, and
   prints the provenance lines docs/assets/captures.md records.
 
-  The app's settings and session store (%LOCALAPPDATA%\ScratchPad) is
-  backed up before the first launch and restored afterwards, whatever
-  happens, so a capture never replaces the operator's own settings.
+  Every launch runs against a private throwaway profile (LOCALAPPDATA and
+  USERPROFILE point under the work folder), so the operator's own
+  settings and session are never touched; the capture refuses while any
+  ScratchPad runs, because a launch would redirect into it.
 
   A shot fails loud when it is narrower than -MinWidth pixels or its
   pixels do not vary (a black or blank frame).
@@ -91,24 +92,19 @@ $notes = Join-Path $docs 'release-notes.md'
 $todo = Join-Path $docs 'groceries.txt'
 [IO.File]::WriteAllText($todo, (@('Saturday market', '', 'apples (6)', 'sourdough loaf', 'coffee beans, medium roast', 'basil', 'lemons') -join "`r`n"))
 
-# 3. The store is backed up before any launch and restored after. The
-# store is shared by every instance, so the capture needs it exclusively:
-# it refuses while any other ScratchPad runs, re-checks before each
-# launch, and never restores over state a concurrent instance may have
-# written (the backup is then kept beside the store and named).
-function Get-OtherInstances([int[]]$Except = @()) { return @(Get-Process -Name 'ScratchPad' -ErrorAction SilentlyContinue | Where-Object { $Except -notcontains $_.Id }) }
+# 3. A private profile: the app reads its store from %LOCALAPPDATA%, so
+# every launch gets LOCALAPPDATA and USERPROFILE pointed at a throwaway
+# profile under the work folder. The operator's own settings and session
+# are never read, written, backed up, or restored. A running ScratchPad
+# still blocks the capture, because the single-instance redirect would
+# hand the capture's launch to that window instead of starting a new one.
+function Get-OtherInstances { return @(Get-Process -Name 'ScratchPad' -ErrorAction SilentlyContinue) }
 $running = Get-OtherInstances
-if ($running.Count -gt 0) { throw "capture: ScratchPad is running (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); close it first: the capture seeds the shared settings store" }
-$store = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ScratchPad'
+if ($running.Count -gt 0) { throw "capture: ScratchPad is running (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); close it first: a new launch would redirect into it" }
+$profileDir = Join-Path $work 'profile'
+$localDir = Join-Path $profileDir 'AppData\Local'
+$store = Join-Path $localDir 'ScratchPad'
 $null = New-Item -ItemType Directory -Force -Path $store
-$backup = Join-Path $work 'store-backup'
-$null = New-Item -ItemType Directory -Force -Path $backup
-$saved = @{}
-foreach ($n in @('settings.json', 'session.json')) {
-  $p = Join-Path $store $n
-  $saved[$n] = Test-Path -LiteralPath $p
-  if ($saved[$n]) { Copy-Item -LiteralPath $p -Destination (Join-Path $backup $n) -Force }
-}
 
 function Test-FrameVaries([System.Drawing.Bitmap]$Bmp) {
   # Luminance spread over a sample grid; a black or blank frame reads ~0.
@@ -131,9 +127,11 @@ try {
     $session = [pscustomobject]@{ Windows = @([pscustomobject]@{ Tabs = @([pscustomobject]@{ Path = $notes; Caret = 0 }, [pscustomobject]@{ Path = $todo; Caret = 0 }); Active = 0 }); ActiveWindow = 0 }
     [IO.File]::WriteAllText((Join-Path $store 'session.json'), (ConvertTo-Json $session -Depth 6))
     $running = Get-OtherInstances
-    if ($running.Count -gt 0) { throw "capture: another ScratchPad started during the capture (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); stopping before it reads the seeded store" }
+    if ($running.Count -gt 0) { throw "capture: another ScratchPad started during the capture (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); stopping so the launch cannot redirect into it" }
     $psi = New-Object System.Diagnostics.ProcessStartInfo $exe.FullName
     $psi.UseShellExecute = $false
+    $psi.EnvironmentVariables['LOCALAPPDATA'] = $localDir
+    $psi.EnvironmentVariables['USERPROFILE'] = $profileDir
     $psi.EnvironmentVariables['SCRATCHPAD_BACKGROUND'] = '1'
     $proc = [System.Diagnostics.Process]::Start($psi)
     try {
@@ -173,20 +171,7 @@ try {
     }
   }
 } finally {
-  $running = Get-OtherInstances
-  if ($running.Count -gt 0) {
-    # Another instance may own the store now: nothing is overwritten, and
-    # the operator's backup is kept beside the store for them to restore.
-    $kept = Join-Path $store ("capture-backup-" + (Get-Date).ToString('yyyyMMdd-HHmmss'))
-    Copy-Item -LiteralPath $backup -Destination $kept -Recurse -Force
-    Write-Output "capture: another ScratchPad is running (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); the store was NOT restored; your settings and session are kept in $kept"
-  } else {
-    foreach ($n in @('settings.json', 'session.json')) {
-      $p = Join-Path $store $n
-      if ($saved[$n]) { Copy-Item -LiteralPath (Join-Path $backup $n) -Destination $p -Force }
-      elseif (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
-    }
-  }
+  # Nothing to restore: the private profile goes with the work folder.
 }
 Copy-Item -LiteralPath (Join-Path $OutDir 'readme-hero-light.png') -Destination (Join-Path $OutDir 'readme-hero.png') -Force
 $os = [Environment]::OSVersion.Version.ToString()
