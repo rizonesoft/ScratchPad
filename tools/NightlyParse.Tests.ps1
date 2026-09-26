@@ -2423,6 +2423,24 @@ $laAfter2 = Get-ResultHostKey $laR2
 $laProblems = @($script:HostAliasProblems)
 $script:HostAliases = $laWas; $script:LegacyAssignments = $laWasL
 Assert (($laBefore -eq 'legacy') -and ($laAfter1 -eq '1234abcd') -and ($laAfter2 -eq 'legacy') -and (@($laProblems | Where-Object { $_ -eq 'legacy assignment refused: 2026-09-01-023501-pid12 names no evidence' }).Count -eq 1)) 's54-reassigned-legacy-night-joins-its-host' "$laBefore -> $laAfter1 / $laAfter2 | $($laProblems -join ' | ')"
+# D00 T02 §54 items 3-4: a revised ack keeps its alert; an ack older than
+# the occurrence leaves the new regression unowned; an expired ack lapses;
+# a doubled regression under an old ack reads unowned; an ack never
+# recovers an alert.
+$akDir = Join-Path $dir 's54-acks'
+$null = New-Item -ItemType Directory -Force -Path $akDir
+$akPath = Join-Path $akDir 'alert-acks.md'
+@('| Alert | Owner | Date | Reason | Until |', '| --- | --- | --- | --- | --- |', '| 1234abcd|duration | ann | 2026-09-10 | slower runner, tracked | |', '| 1234abcd|duration | ann | 2026-09-20 | revised: new baseline agreed | until 2026-10-20 |', '| 1234abcd|flake | bob | 2026-09-10 | known flake | until 2026-09-15 |') | Set-Content -LiteralPath $akPath -Encoding UTF8
+$akMap = Read-AlertAcks $akPath
+$akMetaD = $script:AlertAckMeta['1234abcd|duration']
+$akE1 = [pscustomobject]@{ id = '1234abcd|duration'; firstNight = '2026-09-18'; magnitude = 10; state = 'open' }
+$akR1 = Resolve-AlertAck $akE1 $akMap['1234abcd|duration'] $akMetaD '2026-09-21'
+$akE2 = [pscustomobject]@{ id = '1234abcd|duration'; firstNight = '2026-09-25'; magnitude = 10; state = 'open' }
+$akR2 = Resolve-AlertAck $akE2 $akMap['1234abcd|duration'] $akMetaD '2026-09-26'
+$akR3 = Resolve-AlertAck ([pscustomobject]@{ id = '1234abcd|flake'; firstNight = '2026-09-05'; magnitude = 2; state = 'open' }) $akMap['1234abcd|flake'] $script:AlertAckMeta['1234abcd|flake'] '2026-09-26'
+$akE4 = [pscustomobject]@{ id = '1234abcd|duration'; firstNight = '2026-09-18'; magnitude = 200; ackedMagnitude = 10; state = 'open' }
+$akR4 = Resolve-AlertAck $akE4 $akMap['1234abcd|duration'] $akMetaD '2026-09-26'
+Assert (($akMetaD.Date -eq '2026-09-20') -and ($akMetaD.Until -eq '2026-10-20') -and ($akR1.Acknowledged -like 'ann on 2026-09-20: revised*') -and ($akR2.Acknowledged -eq '') -and ($akR2.Note -like '*predates this occurrence*') -and ($akR3.Acknowledged -eq '') -and ($akR3.Note -like 'ack expired 2026-09-15*') -and ($akR4.Acknowledged -eq '') -and ($akR4.Note -like 'materially worse than acknowledged*') -and ($akE1.state -eq 'open')) 's54-ack-identity-revision-deadline-and-worse-recurrence' "$($akR2.Note) | $($akR3.Note) | $($akR4.Note)"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

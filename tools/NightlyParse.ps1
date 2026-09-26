@@ -4864,6 +4864,7 @@ function Get-AlertIdentity([string]$Line, [string]$HostKey) {
   return $id
 }
 
+$script:AlertAckMeta = @{}
 function Read-AlertAcks([string]$Path, [string]$Root = '') {
   # Acknowledged alerts (D00 T02 section 47 item 4): rows `| <alert id> |
   # <owner> | <YYYY-MM-DD> | <reason> |` in docs/nightly-acks/alert-acks.md,
@@ -4876,6 +4877,7 @@ function Read-AlertAcks([string]$Path, [string]$Root = '') {
   # the working copy are listed in $script:AlertAcksPending.
   $map = @{}
   $script:AlertAcksPending = @()
+  $script:AlertAckMeta = @{}
   if (-not (Test-Path -LiteralPath $Path)) { return $map }
   $text = @(Get-Content -LiteralPath $Path -Encoding UTF8)
   if ($Root -ne '') {
@@ -4888,16 +4890,47 @@ function Read-AlertAcks([string]$Path, [string]$Root = '') {
     $text = $committed
   }
   foreach ($ln in $text) {
-    $m = [regex]::Match($ln, '^\|\s*([0-9a-z]+\|[a-z-]+(?:\|INC-[0-9a-f]{8})?)\s*\|\s*([^|]+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]*?)\s*\|')
+    # An optional fifth cell `until YYYY-MM-DD` is the ack's deadline
+    # (section 54 item 3).
+    $m = [regex]::Match($ln, '^\|\s*([0-9a-z]+\|[a-z-]+(?:\|INC-[0-9a-f]{8})?)\s*\|\s*([^|]+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]*?)\s*\|(?:\s*(?:until\s+)?(\d{4}-\d{2}-\d{2})?\s*\|)?')
     # An owner and a reason are both required (section 47 R2-C2, R3-A1):
     # each is trimmed, and a blank or placeholder owner or reason
     # acknowledges nothing.
     if (-not $m.Success) { continue }
     $owner = $m.Groups[2].Value.Trim(); $why = $m.Groups[4].Value.Trim()
     $real = { param($v) ($v -ne '') -and ($v -notmatch '^(TBD|TODO|none|n/a|unknown|\?|-+)$') }
-    if ((& $real $owner) -and (& $real $why)) { $map[$m.Groups[1].Value] = "$owner on $($m.Groups[3].Value): $why" }
+    if ((& $real $owner) -and (& $real $why)) {
+      # Revisions (section 54 item 3): the latest dated row for an alert
+      # governs, the file's later row winning a tie.
+      $aid = $m.Groups[1].Value; $adate = $m.Groups[3].Value
+      if ($script:AlertAckMeta.ContainsKey($aid) -and ([string]::CompareOrdinal($adate, $script:AlertAckMeta[$aid].Date) -lt 0)) { continue }
+      $map[$aid] = "$owner on ${adate}: $why"
+      $script:AlertAckMeta[$aid] = [pscustomobject]@{ Date = $adate; Until = $m.Groups[5].Value; Owner = $owner }
+    }
   }
   return $map
+}
+
+function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night) {
+  # Acknowledgement identity (D00 T02 section 54 items 3, 4): an ack
+  # covers an alert occurrence only when dated on or after the night the
+  # occurrence began (an older ack belonged to an earlier occurrence, so a
+  # new regression stays unowned); it lapses after its `until` date; it
+  # binds the magnitude it was given at, and a recurrence materially worse
+  # than that (the alert's worsening step) reads unowned again. An ack
+  # never marks an alert recovered: only recovery closes it. Returns
+  # Acknowledged (text or ''), Note, and AckedMagnitude.
+  $none = { param($note) [pscustomobject]@{ Acknowledged = ''; Note = $note; AckedMagnitude = $null } }
+  if ("$AckText" -eq '') { return (& $none '') }
+  if (($null -ne $Meta) -and ([string]::CompareOrdinal("$($Meta.Date)", "$($Entry.firstNight)") -lt 0)) { return (& $none "ack of $($Meta.Date) predates this occurrence (began $($Entry.firstNight)): unowned") }
+  if (($null -ne $Meta) -and ("$($Meta.Until)" -ne '') -and ([string]::CompareOrdinal($Night, "$($Meta.Until)") -gt 0)) { return (& $none "ack expired $($Meta.Until): unowned") }
+  $acked = $null
+  try { if ("$($Entry.ackedMagnitude)" -ne '') { $acked = [double]$Entry.ackedMagnitude } } catch { }
+  $mag = $null
+  try { if ("$($Entry.magnitude)" -ne '') { $mag = [double]$Entry.magnitude } } catch { }
+  if ($null -eq $acked) { $acked = $mag }
+  if (($null -ne $acked) -and ($null -ne $mag) -and ($mag -ge ($acked + (Get-AlertWorsenStep "$($Entry.id)")))) { return [pscustomobject]@{ Acknowledged = ''; Note = "materially worse than acknowledged (magnitude $mag, acknowledged at $acked): unowned"; AckedMagnitude = $acked } }
+  return [pscustomobject]@{ Acknowledged = $AckText; Note = ''; AckedMagnitude = $acked }
 }
 
 function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [string[]]$SupersededIds = @(), [hashtable]$Acks = @{}) {
@@ -4956,7 +4989,11 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     # by recovery like any other.
     foreach ($e in @($entries | Where-Object { "$($_.state)" -eq 'open' })) {
       $ak = if ($Acks.ContainsKey("$($e.id)")) { $Acks["$($e.id)"] } else { '' }
-      $e | Add-Member -NotePropertyName acknowledged -NotePropertyValue $ak -Force
+      $meta = if (($null -ne $script:AlertAckMeta) -and $script:AlertAckMeta.ContainsKey("$($e.id)")) { $script:AlertAckMeta["$($e.id)"] } else { $null }
+      $r = Resolve-AlertAck $e $ak $meta $night
+      $e | Add-Member -NotePropertyName acknowledged -NotePropertyValue $r.Acknowledged -Force
+      $e | Add-Member -NotePropertyName ackNote -NotePropertyValue $r.Note -Force
+      if (($r.Acknowledged -ne '') -and ($null -ne $r.AckedMagnitude)) { $e | Add-Member -NotePropertyName ackedMagnitude -NotePropertyValue $r.AckedMagnitude -Force }
     }
     $out = [pscustomobject]@{ schema = 'alerts/1'; alerts = @($entries) }
     Write-AtomicReport @((ConvertTo-Json $out -Depth 6)) $Path
