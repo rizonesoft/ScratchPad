@@ -4483,6 +4483,9 @@ function ConvertTo-MetricsRow($Result) {
     source = "morning-$($Result.stamp).result.json"; hostKey = (Get-ResultHostKey $Result); derivation = $script:MetricsDerivation; excluded = "$(try { $Result.excluded } catch { '' })"
     # Explicit deletions ride the row (section 47 item 6).
     tombstone = @(@($(try { $Result.tombstone } catch { @() })) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+    # The key the run itself recorded (section 54 R5-I1): hostKey above is
+    # the alias-resolved one; clone checks read this.
+    originalHostKey = "$(try { $Result.hostKey } catch { '' })"
     # Slot annotations survive pruning (section 54 R3-I4).
     startUtc = "$(try { $Result.startUtc } catch { '' })"; tz = "$(try { $Result.tz } catch { '' })"
     # Sharded discovery (section 47 item 8): shards expected and manifests
@@ -5817,7 +5820,7 @@ function Get-TrendInputResults([string]$NightDir, [string]$StorePath) {
     # Live results obey the tombstone ledger too (section 54 R3-A2): a
     # re-ingested result never renders a deleted field.
     $liveTombs = Get-MetricsTombstones $StorePath
-    if ($liveTombs.Count -gt 0) { $results = @($results | ForEach-Object { Remove-TombstonedFields $_ (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) $liveTombs }) }
+    $results = @($results | ForEach-Object { Remove-TombstonedFields $_ (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) $liveTombs })
     # A backfill a native night superseded leaves the render (item 11).
     $supersessions = @($script:MetricsSupersessions | ForEach-Object { [pscustomobject]@{ Night = "$($_.night)"; Native = "$($_.native)"; Backfill = "$($_.backfill)" } })
     $superseded = @($supersessions | ForEach-Object { $_.Backfill })
@@ -5937,7 +5940,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   # A cohort still short of samples after many nights says so plainly
   # (section 47 item 5): frequent harness or environment changes must not
   # disable detection silently.
-  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t = @($t, "- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence", (Format-AlertContext $latest $prev "insufficient-$series" $null @() "$series has $($script:TrendMinSamples) comparable baseline nights" $Baseline)) } }; $t }
+  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t = @($t, "- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence", (Format-AlertContext $latest @($r | Select-Object -Last $st | Where-Object { $_ -ne $latest }) "insufficient-$series" $null @() "$series has $($script:TrendMinSamples) comparable baseline nights; escalation after $($script:TrendProlongedNights) insufficient nights, scanned up to $($script:TrendStreakScan)" 0 @($r | Select-Object -Last $st))) } }; $t }
   if ($pa.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'runa-duration' $pa.Count) }
   elseif (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50
@@ -6003,7 +6006,9 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
     $recent = @($r[0..($r.Count - 2)] | Where-Object { $nk = Get-ResultNight $_; ($nk -ge $rFrom) -and ($nk -le $rTo) })
   } else { $recent = @($r[0..($r.Count - 2)] | Select-Object -Last 2) }
   # Derivation isolation (section 54 R4-C1).
+  $recentAll = @($recent)
   $recent = @($recent | Where-Object { Test-DerivationComparable $_ $latest 'recurring-flake' })
+  if ($recent.Count -lt $recentAll.Count) { $alerts += "- Insufficient data: recurring-flake ($($recentAll.Count - $recent.Count) of $($recentAll.Count) window night(s) removed by derivation isolation); no recurring-flake alert is actionable yet" }
   foreach ($id in ($li | Sort-Object -Unique)) {
     $hits = @($recent | Where-Object { (& $ids $_) -contains $id })
     if ($hits.Count -gt 0) {
@@ -6105,11 +6110,15 @@ function Test-HostAliasClones($Results) {
     # first reported (section 54 R1-A3): only the old key reporting after
     # that is concurrent use, so a rename's history never reads as a clone.
     if ($eff -eq '') {
-      $newNights = @(@($Results) | Where-Object { "$($_.hostKey)" -eq "$($row.New)" } | ForEach-Object { Get-ResultNight $_ } | Sort-Object)
+      # Only a row that recorded the new key itself counts (a stored row
+      # carries the alias-resolved key, so its original key is read).
+      $origKey = { param($x) if (($null -ne $x.PSObject.Properties['originalHostKey']) -and ("$($x.originalHostKey)" -ne '')) { "$($x.originalHostKey)" } elseif ([bool]$(try { $x.schema -eq 'metrics/1' } catch { $false })) { '' } else { "$($x.hostKey)" } }
+      $newNights = @(@($Results) | Where-Object { (& $origKey $_) -eq "$($row.New)" } | ForEach-Object { Get-ResultNight $_ } | Sort-Object)
       if ($newNights.Count -eq 0) { continue }
       $eff = $newNights[0]
     }
-    $live = @(@($Results) | Where-Object { ("$($_.hostKey)" -eq $old) -and ([string]::CompareOrdinal((Get-ResultNight $_), $eff) -gt 0) })
+    $origKey2 = { param($x) if (($null -ne $x.PSObject.Properties['originalHostKey']) -and ("$($x.originalHostKey)" -ne '')) { "$($x.originalHostKey)" } else { "$($x.hostKey)" } }
+    $live = @(@($Results) | Where-Object { ((& $origKey2 $_) -eq $old) -and ([string]::CompareOrdinal((Get-ResultNight $_), $eff) -gt 0) })
     if ($live.Count -gt 0) {
       $problems += "host alias refused: $old still reports results after the alias took effect (night $(Get-ResultNight $live[-1])); a clone keeps its own key"
       $script:HostAliases.Remove($old)
@@ -8246,7 +8255,7 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
         # The gate resolves an ack exactly as the ledger does (section 54
         # R4-I3): expired, earlier-occurrence, and worsened acks read unowned.
         $gMeta = if ($script:AlertAckMeta.ContainsKey("$($ae.id)")) { $script:AlertAckMeta["$($ae.id)"] } else { $null }
-        $gRes = Resolve-AlertAck $ae $(if ($alAcks.ContainsKey("$($ae.id)")) { $alAcks["$($ae.id)"] } else { '' }) $gMeta "$($ae.lastNight)" @((Read-AlertLedger $alertPath).alerts)
+        $gRes = Resolve-AlertAck $ae $(if ($alAcks.ContainsKey("$($ae.id)")) { $alAcks["$($ae.id)"] } else { '' }) $gMeta $Today.ToString('yyyy-MM-dd') @((Read-AlertLedger $alertPath).alerts)
         if ($gRes.Acknowledged -ne '') { $alertLines += "- ALERT acknowledged: $($ae.id) ($($gRes.Acknowledged))" }
         elseif ($gRes.Note -ne '') { $alertLines += "- ALERT unowned: $($ae.id) ($($gRes.Note)); acknowledge it again in docs/nightly-acks/alert-acks.md" }
         elseif ("$($ae.lastNight)" -ne "$($ae.firstNight)") { $alertLines += "- ALERT unowned: $($ae.id) open since $($ae.firstNight), still firing $($ae.lastNight); acknowledge it in docs/nightly-acks/alert-acks.md" }

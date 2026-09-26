@@ -1133,6 +1133,21 @@ foreach ($i in 11..13) { $n = New-Night ('2026-11-{0:d2}' -f $i) ('2026-11-{0:d2
 $r4ShOut = @(Get-TrendAlerts $r4Sh)
 $script:DerivationSeries = $r4DvWas
 Assert (("$($r4Back.startUtc)" -eq '2026-09-12T00:30:00Z') -and ("$($r4Back.tz)" -eq '+02:00') -and ($null -ne $r4Back.discovery) -and ($r4Legacy -eq '1234abcd') -and ($null -eq $r4Own.PSObject.Properties['commit']) -and ($r4InsCtx.Count -eq 1) -and (@($r4ShOut | Where-Object { $_ -like '- ALERT runa-shift*' }).Count -eq 0) -and (@($r4ShOut | Where-Object { $_ -like '- Insufficient data: runa-shift*derivation isolation*' }).Count -eq 1)) 's54-round4-rows-legacy-tombstone-context-and-shift' ("ins=$($r4InsCtx.Count) | " + (@($r4ShOut | Where-Object { $_ -like '*runa-shift*' }) -join ' | '))
+# D00 T02 §54 R5 (fixed forward, unreviewed): a rename's stored rows never
+# read as clone evidence on a later load; flake isolation holds its alert;
+# the insufficiency calculation lists its streak's nights.
+$r5Was = $script:HostAliases
+$script:HostAliases = @{ 'aaaa0005' = [pscustomobject]@{ New = 'bbbb0005'; Effective = '' } }
+$r5Rows = @(
+  [pscustomobject]@{ schema = 'metrics/1'; hostKey = 'bbbb0005'; originalHostKey = 'aaaa0005'; night = '2026-09-01' },
+  [pscustomobject]@{ schema = 'metrics/1'; hostKey = 'bbbb0005'; originalHostKey = 'aaaa0005'; night = '2026-09-02' },
+  [pscustomobject]@{ schema = 'metrics/1'; hostKey = 'bbbb0005'; originalHostKey = 'bbbb0005'; night = '2026-09-05' })
+$r5Clone = @(Test-HostAliasClones $r5Rows)
+$script:HostAliases = $r5Was
+$r5Churn = @()
+foreach ($i in 1..12) { $n = New-Night ('2026-10-{0:d2}' -f $i) ('2026-10-{0:d2}-023000' -f $i) 600; $n.harness = ('{0:x8}-churn{1:d3}' -f $i, $i); $r5Churn += $n }
+$r5Ctx = @(Get-TrendAlerts $r5Churn | Where-Object { "$_" -like '  - insufficient-runa-duration context:*' })
+Assert (($r5Clone.Count -eq 0) -and ($r5Ctx.Count -eq 1) -and ($r5Ctx[0] -like '*escalation after 10 insufficient nights*') -and ($r5Ctx[0] -notlike '*2026-10-05 (no result)*')) 's54-round5-forward-fixes' "clone=$($r5Clone.Count) | $($r5Ctx -join ' ')"
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
