@@ -524,6 +524,58 @@ def validate(graph, _args) -> int:
         for lens in PANEL_LENSES
     }
 
+    # Architecture-gate record shapes (D00 T04 §1 item 10), on reviews
+    # stamped after graph.ARCH_RECORD_CUTOVER: the trigger lines, the gate headings,
+    # and the outage lines all parse, so the gate's governance survives
+    # later skill edits.
+    _arch_trig_re = re.compile(r"^Arch trigger:(.*)$", re.MULTILINE)
+    _arch_trig_ok = re.compile(r"^ (" + "|".join(re.escape(x) for x in graph.ARCH_SURFACES + ("none",)) + r") - \S", re.IGNORECASE)
+    _arch_head_re = re.compile(r"^#{2,6}\s+Architecture review\b(.*)$", re.MULTILINE)
+    _arch_head_ok = re.compile(r"^\s*\(Arch-[1-9][0-9]{0,2}(?: fallback| terra-fallback)?\)", re.IGNORECASE)
+    _arch_out_re = re.compile(r"^Arch outage:(.*)$", re.MULTILINE)
+    _arch_out_ok = re.compile(r"^ (?:Arch-([1-9][0-9]{0,2}) )?(arch-primary|both rungs|sol-high|opus-high)\s+-\s+\S", re.IGNORECASE)
+    for t in todos:
+        for num, s in sorted(t.sections.items()):
+            if num not in t.verified_sections:
+                continue
+            if s.stamped_on is None or s.stamped_on <= graph.ARCH_RECORD_CUTOVER:
+                continue
+            _am = graph.FINDINGS_RE.search(getattr(s, "review_body", None) or "")
+            if not _am:
+                continue
+            try:
+                _atext = (graph.TODO_DIR.parent / _am.group(1)).read_text(encoding="utf-8")
+            except OSError:
+                continue
+            _atext, _aunb = graph.strip_fenced_code(_atext)
+            if _aunb is not None:
+                continue
+            _awhere = f"{t.path}:{s.line}: §{num} findings {_am.group(1)}"
+            _trigs = [m.group(1) for m in _arch_trig_re.finditer(_atext)]
+            _surfaces = []
+            for _tv in _trigs:
+                _tm = _arch_trig_ok.match(_tv)
+                if not _tm:
+                    flag("arch-record-shape", f"{_awhere} has a malformed trigger line `Arch trigger:{_tv[:60]}` (want `Arch trigger: <surface or none> - <scope or reason>`)")
+                    continue
+                _surfaces.append(_tm.group(1).lower())
+            if not _trigs:
+                flag("arch-record-shape", f"{_awhere} carries no `Arch trigger:` line (one per triggered surface, or `Arch trigger: none - <reason>`)")
+            if "none" in _surfaces and len(_surfaces) > 1:
+                flag("arch-record-shape", f"{_awhere} carries `Arch trigger: none` beside a triggered surface")
+            _heads = list(_arch_head_re.finditer(_atext))
+            for _hm in _heads:
+                if not _arch_head_ok.match(_hm.group(1)):
+                    flag("arch-record-shape", f"{_awhere} has an `Architecture review` heading without its round suffix (want `(Arch-N)` or `(Arch-N fallback)`)")
+            if [x for x in _surfaces if x != "none"] and not _heads:
+                flag("arch-record-shape", f"{_awhere} triggers the architecture gate ({', '.join(x for x in _surfaces if x != 'none')}) but records no `Architecture review (Arch-N)` round")
+            for _om in _arch_out_re.finditer(_atext):
+                _ok = _arch_out_ok.match(_om.group(1))
+                if not _ok:
+                    flag("arch-record-shape", f"{_awhere} has a malformed outage line `Arch outage:{_om.group(1)[:60]}` (want `Arch outage: [Arch-N ]<arch-primary|both rungs> - <what failed>`)")
+                elif _ok.group(2).lower() == "both rungs" and not _ok.group(1) and s.stamped_on > graph.DISPOSITION_CUTOVER:
+                    flag("arch-record-shape", f"{_awhere} has a both-rungs outage line without its Arch round (want `Arch outage: Arch-N both rungs - <failures>`)")
+
     # Panel disposition tables (D00 T04 §1 items 3 and 4). Every panel
     # round's findings get IDs (`R<round>-<lens letter><n>`, or the older
     # `R<round>-F<n>`), and the LAST `| ID | Disposition | Evidence |`

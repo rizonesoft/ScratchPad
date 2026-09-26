@@ -1023,6 +1023,13 @@ SEVERITY_MAP: dict[str, str] = {
     # escalated: the table is the round's accounting and the round-5 stop
     # rule, so it executes instead of advising (D00 T04 §1 items 3-4).
     "panel-disposition-table": "fatal",
+    # a review stamped after D00 T01 §38 whose architecture-gate record
+    # is missing or malformed: no well-formed `Arch trigger:` line, a
+    # `none` line beside a surface, a triggered surface with no
+    # `Architecture review (Arch-N)` round, a gate heading without its
+    # round suffix, or an `Arch outage:` line that does not parse
+    # (D00 T04 §1 item 10). Later skill edits cannot drop the governance.
+    "arch-record-shape": "fatal",
     # an outage marker whose (rung, event-day) key resolves to no
     # findings-file outage note, an outage note no marker keys, or a
     # duplicated or malformed note key: unattributed failure
@@ -1239,6 +1246,14 @@ SIGNOFF_FAMILY_CUTOVER = "2026-09-22"
 # item 3): earlier records used older ID and vocabulary shapes and are
 # grandfathered, never rewritten.
 DISPOSITION_CUTOVER = "2026-09-26"
+# The architecture-gate record is validated on stamps after this day (D00
+# T04 §1 item 10). The mandate dates from D00 T01 §38 (2026-09-19); a
+# one-time sweep of every real record stamped since found only two
+# without trigger lines (D00 T02 §10 and §17, nightly tooling touching no
+# gate surface), so the check runs forward, like the disposition rule,
+# and those records stay as written.
+ARCH_RECORD_CUTOVER = "2026-09-26"
+ARCH_SURFACES = ("editor state", "storage", "extensibility", "AI integration", "protocol", "consent/undo")
 DISPOSITION_WORDS = ("fixed", "live", "filed", "rejected", "duplicate", "escalated")
 # Fallback-family cutover (D00 T04 §25): stamps dated after this day
 # read the six-slot panel. The families come from .conclave/panel.toml
@@ -10938,6 +10953,11 @@ track: Z1
 |  81   |   §81   | Stamp over an escalated row fires | - |  [x]   |
 |  82   |   §82   | Stamp after an unresumed panel stop fires | - |  [x]   |
 |  83   |   §83   | Stamp after a resumed panel stop stays silent | - |  [x]   |
+|  84   |   §84   | Arch record without a trigger line fires | - |  [x]   |
+|  85   |   §85   | Malformed arch trigger line fires | - |  [x]   |
+|  86   |   §86   | Triggered surface without a gate round fires | - |  [x]   |
+|  87   |   §87   | Gate heading without a round and a bad outage line fire | - |  [x]   |
+|  88   |   §88   | Well-formed triggered gate record stays silent | - |  [x]   |
 
 ---
 
@@ -11854,6 +11874,61 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-stop-resumed.md
 > **Plan review:** GPT high, no findings
 
+## 84. Arch record without a trigger line fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §84 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-arch-missing.md
+> **Plan review:** GPT high, no findings
+
+## 85. Malformed arch trigger line fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §85 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-arch-badtrig.md
+> **Plan review:** GPT high, no findings
+
+## 86. Triggered surface without a gate round fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §86 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-arch-noround.md
+> **Plan review:** GPT high, no findings
+
+## 87. Gate heading without a round and a bad outage line fire
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §87 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-arch-badhead.md
+> **Plan review:** GPT high, no findings
+
+## 88. Well-formed triggered gate record stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §88 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-arch-ok.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12291,15 +12366,21 @@ track: Z1
                          ("90-panel-disp-esc.md", '| R1-A1 | escalated | operator decides |\n| R1-A2 | fixed | abc1234 |\n'),
         ):
             (rev_dir / _dn).write_text(
-                "# Review: fixture\n\n## GPT panel Round 1\n\n"
+                "# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n"
                 "**adversarial: needs-attention** (2)\n1. first\n2. second\n**consistency: approve**\n"
                 "**integration: approve**\n**record: approve**\n\n"
                 "| ID | Disposition | Evidence |\n| --- | --- | --- |\n" + _drows,
                 encoding="utf-8",
             )
+        # Architecture-gate record shapes (D00 T04 §1 item 10).
+        (rev_dir / "90-panel-arch-missing.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-badtrig.md").write_text("# Review: fixture\nArch trigger: sometimes - maybe\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-noround.md").write_text("# Review: fixture\nArch trigger: storage - settings format changes\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-badhead.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review\n\nverdict: approve\n\nArch outage: both rungs - timeout\n\nArch outage: somewhere - x\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
+        (rev_dir / "90-panel-arch-ok.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review (Arch-1 fallback)\n\nArch outage: arch-primary - timeout\n\nverdict: approve\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\n", encoding="utf-8")
         # Interrupted reviews resume before they stamp (D00 T04 §1 item 6).
-        (rev_dir / "90-panel-stop-open.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n", encoding="utf-8")
-        (rev_dir / "90-panel-stop-resumed.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n\n## GPT panel Round 2\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n", encoding="utf-8")
+        (rev_dir / "90-panel-stop-open.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n", encoding="utf-8")
+        (rev_dir / "90-panel-stop-resumed.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n\n## GPT panel Round 2\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n", encoding="utf-8")
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
         # findings carry provenance, so the panel fixtures carry it too.
         for _ppf in sorted(rev_dir.glob("90-panel-*.md")):
@@ -12732,6 +12813,41 @@ track: Z1
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "arch record without a trigger line fires",
+            any("TODO-06-panel.md" in ln and "§84 " in ln and "carries no `Arch trigger:` line" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "malformed arch trigger line fires",
+            any("TODO-06-panel.md" in ln and "§85 " in ln and "malformed trigger line" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "triggered surface without a gate round fires",
+            any("TODO-06-panel.md" in ln and "§86 " in ln and "records no `Architecture review (Arch-N)` round" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "gate heading without its round suffix fires",
+            any("TODO-06-panel.md" in ln and "§87 " in ln and "heading without its round suffix" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "both-rungs outage without its Arch round fires",
+            any("TODO-06-panel.md" in ln and "§87 " in ln and "both-rungs outage line without its Arch round" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "malformed arch outage line fires",
+            any("TODO-06-panel.md" in ln and "§87 " in ln and "malformed outage line" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "well-formed triggered gate record stays silent",
+            any("TODO-06-panel.md" in ln and "§88 " in ln and "arch" in ln.lower() for ln in panel_out),
+            False,
+        )
         check(
             "stamp after an unresumed panel stop fires",
             any("TODO-06-panel.md" in ln and "§82 " in ln and "with no resumed panel round 2" in ln for ln in panel_out),
@@ -15796,6 +15912,17 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
                 f"path docs/reviews/{_pf.name}; run {_prun}\n"
             )
             _pf.write_text(_first + _nl + _line + _rest, encoding="utf-8")
+        # Architecture-gate record (D00 T04 §1 item 10): the dynamic-dated
+        # marker sections stamp after the rule's cutover, so the marker
+        # records carry a `none` trigger line, after the provenance line so
+        # line 2 stays provenance.
+        for _atf in sorted(rev_dir.glob("90-*.md")):
+            _att = _atf.read_text(encoding="utf-8")
+            if "Arch trigger:" in _att:
+                continue
+            _al = _att.split("\n")
+            _at = 2 if (len(_al) > 1 and _al[1].startswith("Provenance:")) else 1
+            _atf.write_text("\n".join(_al[:_at] + ["Arch trigger: none - fixture review; no gate surface"] + _al[_at:]), encoding="utf-8")
         # Canned git bytes (D00 T01 §19 items 3, 8): the clearance proof
         # reads fix commits and the history rule reads HEAD, so the test
         # patches the readers instead of a repo. `aaa1111000000000000000000000000000000000` carries the §2
