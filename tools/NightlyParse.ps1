@@ -5619,6 +5619,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
 # key, and an alias is the only way two keys become one host.
 $script:HostAliases = @{}
 $script:HostAliasProblems = @()
+$script:LegacyAssignments = @{}
 
 function Read-HostAliases([string]$Path) {
   # Rows `| <old key> | <new key> | <reason> | [<effective YYYY-MM-DD>] |`
@@ -5632,10 +5633,20 @@ function Read-HostAliases([string]$Path) {
   # rows land in $script:HostAliasProblems by name. Returns old key ->
   # { New, Effective }.
   $script:HostAliasProblems = @()
+  $script:LegacyAssignments = @{}
   $rows = @{}
   $dup = @{}
   if (-not (Test-Path -LiteralPath $Path)) { return @{} }
   foreach ($ln in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+    # Legacy assignments (section 54 item 2): `| <run identity> | <host
+    # key> | <evidence> |` assigns a pre-host run to its host; a row
+    # without evidence is refused by name.
+    $la = [regex]::Match($ln, '^\|\s*(\d{4}-\d{2}-\d{2}-\d{6}-pid\d+)\s*\|\s*([0-9a-f]{8})\s*\|\s*([^|]*?)\s*\|')
+    if ($la.Success) {
+      if ($la.Groups[3].Value -eq '') { $script:HostAliasProblems += "legacy assignment refused: $($la.Groups[1].Value) names no evidence" }
+      else { $script:LegacyAssignments[$la.Groups[1].Value] = [pscustomobject]@{ Host = $la.Groups[2].Value; Evidence = $la.Groups[3].Value } }
+      continue
+    }
     $m = [regex]::Match($ln, '^\|\s*([0-9a-f]{8})\s*\|\s*([0-9a-f]{8})\s*\|\s*([^|]*?)\s*\|(?:\s*(\d{4}-\d{2}-\d{2})?\s*\|)?')
     if ((-not $m.Success) -or ($m.Groups[1].Value -eq $m.Groups[2].Value)) { continue }
     $old = $m.Groups[1].Value; $new = $m.Groups[2].Value; $eff = $m.Groups[4].Value
@@ -5700,7 +5711,13 @@ function Get-ResultHostKey($Result) {
   # maps an old key to its current one (section 47 item 3).
   $h = ''
   try { $h = "$($Result.hostKey)" } catch { }
-  if ($h -eq '') { return 'legacy' }
+  if ($h -eq '') {
+    # A pre-host run an operator assigned with evidence joins its host's
+    # series (section 54 item 2); every series recomputes on read.
+    $id = "$(try { $Result.identity } catch { '' })"
+    if (($id -ne '') -and $script:LegacyAssignments.ContainsKey($id)) { return (Resolve-HostKey "$($script:LegacyAssignments[$id].Host)" (Get-ResultNight $Result)) }
+    return 'legacy'
+  }
   return (Resolve-HostKey $h (Get-ResultNight $Result))
 }
 
@@ -6306,7 +6323,7 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
   # and 2), never merging.
   foreach ($k in @($canon.Keys | Sort-Object)) {
     if ("$($canon[$k].Conflict)" -ne '') { $lines += "- SCHEDULE CONFLICT: night $($k.Replace('|', ' on host ')) has $($canon[$k].Conflict); no canonical run (never one merged night)" }
-    if ("$($canon[$k].Unresolved)" -ne '') { $lines += "- UNRESOLVED: night $($k.Replace('|', ' on host ')) has $($canon[$k].Unresolved); no canonical run until an alias or exclusion assigns them" }
+    if ("$($canon[$k].Unresolved)" -ne '') { $lines += "- UNRESOLVED: night $($k.Replace('|', ' on host ')) has $($canon[$k].Unresolved); no canonical run until a legacy assignment (run identity, host key, evidence in docs/nightly-host-aliases.md) or an exclusion assigns them" }
   }
   # Launch evidence behind the latest canonical night's incidents
   # (D00 T02 §24 item 14), one click from the trend.

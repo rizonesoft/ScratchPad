@@ -2409,6 +2409,20 @@ $haClone = @(Test-HostAliasClones @([pscustomobject]@{ hostKey = 'fffffff1'; nig
 $haCloneKey = Resolve-HostKey 'fffffff1' '2026-09-20'
 $script:HostAliases = $haWas
 Assert (($haBefore -eq 'aaaaaaa1') -and ($haAfter -eq 'bbbbbbb1') -and ($haJoin -eq 'bbbbbbb1') -and (@($haProblems | Where-Object { $_ -eq 'host alias refused: cycle ccccccc1 -> ccccccc2' }).Count -eq 1) -and (@($haProblems | Where-Object { $_ -eq 'host alias refused: ddddddd1 maps to more than one new key' }).Count -eq 1) -and ($haClone.Count -eq 1) -and ($haClone[0] -like '*fffffff1 still reports results after the alias took effect*') -and ($haCloneKey -eq 'fffffff1')) 's54-host-alias-rules' ((@($haProblems) + @($haClone)) -join ' | ')
+# D00 T02 §54 item 2: a reassigned unresolved legacy night joins its
+# host's series; an assignment without evidence is refused by name.
+$la2 = Join-Path $haDir 'legacy.md'
+$laR1 = [pscustomobject]@{ identity = '2026-09-01-023001-pid11'; stamp = '2026-09-01-023001'; night = '2026-09-01'; env = [pscustomobject]@{ os = 'A' } }
+$laR2 = [pscustomobject]@{ identity = '2026-09-01-023501-pid12'; stamp = '2026-09-01-023501'; night = '2026-09-01'; env = [pscustomobject]@{ os = 'B' } }
+@('| Run identity | Host key | Evidence |', '| --- | --- | --- |', '| 2026-09-01-023001-pid11 | 1234abcd | the run log names machine A (scheduler history) |', '| 2026-09-01-023501-pid12 | 5678abcd | |') | Set-Content -LiteralPath $la2 -Encoding UTF8
+$laWas = $script:HostAliases; $laWasL = $script:LegacyAssignments
+$laBefore = Get-ResultHostKey $laR1
+$script:HostAliases = Read-HostAliases $la2
+$laAfter1 = Get-ResultHostKey $laR1
+$laAfter2 = Get-ResultHostKey $laR2
+$laProblems = @($script:HostAliasProblems)
+$script:HostAliases = $laWas; $script:LegacyAssignments = $laWasL
+Assert (($laBefore -eq 'legacy') -and ($laAfter1 -eq '1234abcd') -and ($laAfter2 -eq 'legacy') -and (@($laProblems | Where-Object { $_ -eq 'legacy assignment refused: 2026-09-01-023501-pid12 names no evidence' }).Count -eq 1)) 's54-reassigned-legacy-night-joins-its-host' "$laBefore -> $laAfter1 / $laAfter2 | $($laProblems -join ' | ')"
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

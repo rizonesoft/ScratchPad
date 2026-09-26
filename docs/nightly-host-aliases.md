@@ -6,3 +6,10 @@ Rules (D00 T02 §54 item 1): an old key maps to exactly one new key (two rows fo
 
 | Old key | New key | Reason | Effective |
 | --- | --- | --- | --- |
+
+## Legacy assignments
+
+A pre-host (`legacy`) run carries no host key, so nights whose legacy runs disagree on their environment read `UNRESOLVED`. An operator who knows which machine ran one assigns it here with evidence (D00 T02 §54 item 2): the run then joins that host's series, and every series recomputes on its next read. A row without evidence is refused by name.
+
+| Run identity | Host key | Evidence |
+| --- | --- | --- |
