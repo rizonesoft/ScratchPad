@@ -4768,29 +4768,38 @@ def night_debts(todos: list["Todo"], today_d):
             # (the contradiction warning names them), so wording never picks
             # the governing record or its finding.
             _attempt: dict = {}
+            # Every conflict is found over the whole deduplicated set first
+            # (R4-A1): an attempt (date and run) with differing records, one
+            # event id with differing records, or one replay position (a date
+            # with an effective time) with differing records. Any record in
+            # any conflict takes no effect, and an attempt that holds one is
+            # dropped whole, so removing one conflict never resurrects
+            # another record; each conflict warns (R4-C1).
             _reds_raw: dict = {}
             for r in _captured(reds.get(did, []), "Night-red", ("run", "at", "event"), warnings):
                 _reds_raw.setdefault(r.get("_raw", ""), r)
             _reds = list(_reds_raw.values())
+            _by_att: dict = {}
             _ev_r: dict = {}
-            for r in _reds:
-                if r.get("event"):
-                    _ev_r.setdefault(r["event"], []).append(r)
-            _bad_r = {id(r) for g in _ev_r.values() if len(g) > 1 for r in g}
-            # Records at one replay position (a date with an effective time)
-            # that differ are contradictory whatever run they name (R3-C1);
-            # legacy reds without a time stay one attempt per run and date.
             _pos_r: dict = {}
             for r in _reds:
+                _by_att.setdefault((r.get("date") or "", r.get("run") or r.get("log") or ""), []).append(r)
+                if r.get("event"):
+                    _ev_r.setdefault(r["event"], []).append(r)
                 if _eff_key(r)[1]:
                     _pos_r.setdefault(_eff_key(r), []).append(r)
-            _bad_r |= {id(r) for g in _pos_r.values() if len(g) > 1 for r in g}
-            _reds = [r for r in _reds if id(r) not in _bad_r]
-            _by_att: dict = {}
-            for r in _reds:
-                _by_att.setdefault((r.get("date") or "", r.get("run") or r.get("log") or ""), []).append(r)
+            _bad_r: set = set()
+            for _ek, _g in sorted(_ev_r.items()):
+                if len(_g) > 1:
+                    _bad_r |= {id(r) for r in _g}
+                    warnings.append(f"CONTRADICTORY Night-red lines for event {_ek} ({len(_g)} different records); none of them takes effect until resolved")
+            for _pk, _g in sorted(_pos_r.items()):
+                if len(_g) > 1:
+                    _bad_r |= {id(r) for r in _g}
+                    warnings.append(f"CONTRADICTORY Night-red lines dated {_pk[0]} at {_pk[1]} ({len(_g)} different records); none of them takes effect until resolved")
+            _attempt: dict = {}
             for _k, _rs in _by_att.items():
-                if len(_rs) == 1:
+                if len(_rs) == 1 and id(_rs[0]) not in _bad_r:
                     _attempt[_k] = _rs[0]
             for r in sorted(_attempt.values(), key=_eff_key):
                 rd = _strict_date(r["date"])
@@ -27077,6 +27086,10 @@ track: Z1
                 f"**Night-owed:** D90-T01-S1-N3 ({_o50}2026-09-10)",
                 "**Night-red:** 2026-09-12 D90-T01-S1-N3 (0 passed, 1 failed, 0 skipped; log r.trx; run q1; at 02:40; event s1)",
                 "**Night-red:** 2026-09-14 D90-T01-S1-N3 (0 passed, 1 failed, 0 skipped; log r.trx; run q1; at 02:40; event s1)",
+                f"**Night-owed:** D90-T01-S1-N4 ({_o50}2026-09-10)",
+                "**Night-red:** 2026-09-12 D90-T01-S1-N4 (0 passed, 1 failed, 0 skipped; log r.trx; run a1; at 02:40; event t1)",
+                "**Night-red:** 2026-09-12 D90-T01-S1-N4 (0 passed, 2 failed, 0 skipped; log r.trx; run a1; at 03:10; event t2)",
+                "**Night-red:** 2026-09-12 D90-T01-S1-N4 (0 passed, 1 failed, 0 skipped; log r.trx; run b1; at 03:10; event t3)",
             ])
         finally:
             NIGHT_DEBT_GOVERNANCE_CUTOVER = _cut_saved2
@@ -27084,7 +27097,10 @@ track: Z1
               (any("WARN D90-T01-S1-N1: Night-accepted dated 2026-09-15 has a malformed at '99:99'" in ln for ln in _l50d),
                any(" D90-T01-S1-N1 " in ln and "state accepted" in ln for ln in _l50d),
                any(" D90-T01-S1-N2 " in ln and " state red" in ln for ln in _l50d),
-               any(" D90-T01-S1-N3 " in ln and " state red" in ln for ln in _l50d)), (True, False, False, False))
+               any(" D90-T01-S1-N3 " in ln and " state red" in ln for ln in _l50d),
+               any("WARN D90-T01-S1-N2: CONTRADICTORY Night-red lines dated 2026-09-12 at 02:40" in ln for ln in _l50d),
+               any("WARN D90-T01-S1-N3: CONTRADICTORY Night-red lines for event s1" in ln for ln in _l50d),
+               any(" D90-T01-S1-N4 " in ln and " state red" in ln for ln in _l50d)), (True, False, False, False, True, True, False))
         check("§50 R1-I1: from the cutover an owed line without its capture cannot close, and a record without at and event takes no effect",
               (any("WARN D90-T01-S1-N1: owed on 2026-09-12 without candidate, schedule, tz, tests" in ln for ln in _l50c),
                any("WARN D90-T01-S1-N1: Night-collected dated 2026-09-18 lacks candidate, run, at, event" in ln for ln in _l50c),
