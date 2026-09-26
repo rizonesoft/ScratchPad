@@ -44,7 +44,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | App screenshots captured for the README | D00 T02 §3 |  [x]   |
-|   2   |   §2    | README rewritten plus repo-face files | §1 |  [ ]   |
+|   2   |   §2    | README rewritten plus repo-face files | §1 |  [x]   |
 |   3   |   §3    | Setup-path CI plus reproducibility record | §2 |  [ ]   |
 
 |  4   |  §4    | Premium README presentation | §2 |  [ ]   |
@@ -99,6 +99,13 @@ Why this section exists: the current README has voice but no structure a strange
 - [x] Commit: `"workspace: rewrite README and land repo-face files (D00 T03 §2)"`
 
 **Test checkpoint:** the README headings appear in the specified order, every badge URL returns 200, every internal link resolves to a file that exists, and the issue templates render on a new-issue dry run. Cheaper substitute that fails: a README whose links were never clicked.
+
+> **Verified:** 2026-09-26 | §2 | the README opens with the purpose, badges, and hero, then who it is for, a Windows quick start (with the runtime check), configuration, usage, and troubleshooting, and ends with documentation, contributing, status, and license; every badge returns 200 and every internal link resolves; CONTRIBUTING and the issue and PR templates land; Layout and Deferred match the tree; the product is ScratchPad with one history mention; the live issue chooser check is deferred to §3's push
+> **Review:** round 3 (Full), candidates `0b2db8d` `b72cfac` `f2e33b8` -- GPT R1 bulk needs-attention (R1-C1, I1, R1 fixed in f2e33b8), GPT R2 bulk approve, GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T03-s2.md
+> **Plan review:** GPT medium, 19 rejected under the 2026-09-26 filing bar (6 already hold, 13 §3 or §4 scope or enhancements), none filed (run 20260926-D00-T03-S2-codex-c06751119-r4)
+> **CRUD:** not-applicable | documentation and repository templates; no user data
+> **Duration:** 2026-09-26T17:18:43Z to 2026-09-26T17:30:03Z
+> **Reviewed-tip:** f2e33b8
 
 > **Deferred:** the live new-issue template check (item 7) -> XREF: D00 T03 §3 (item: "The first push after §2 lands shows both issue templates") -- the templates render only on github.com, and the branch reaches it on §3's push.
 
