@@ -16,6 +16,7 @@ Repo, .NET toolchain, CI, this TODO system, and the test backbone every later do
 | [TODO-07](./TODO-07-bin-output-follow-ups.md) | Bin Output Follow-Ups | active |
 | [TODO-08](./TODO-08-unattended-notification-follow-ups.md) | Unattended Notification Follow-Ups | active |
 | [TODO-09](./TODO-09-nightly-operator-control.md) | Nightly Operator Control | draft |
+| [TODO-10](./TODO-10-launch-harness-residuals.md) | Launch Harness Residuals | draft |
 
 ## Completed
 

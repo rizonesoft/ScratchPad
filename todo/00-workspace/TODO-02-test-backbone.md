@@ -88,8 +88,8 @@ track: W0
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [x]   |
 |   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [x]   |
-|   48  |   §48   | Sibling sweep third residuals | §41 |  [ ]   |
-|   49  |   §49   | Gate process attribution under pid reuse | §18 |  [ ]   |
+|   48  |   §48   | Sibling sweep third residuals | §41 |  [x]   |
+|   49  |   §49   | Gate process attribution under pid reuse | §18 |  [x]   |
 |   50  |   §50   | Night-debt governance second residuals | §42 |  [ ]   |
 |   51  |   §51   | Binding guard third residuals | §43 |  [ ]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [ ]   |
@@ -1552,6 +1552,7 @@ Why this section exists: the §40 plan review returned 16 findings; 14 file here
 Why this section exists: the §41 plan review returned 12 findings; 9 file here and 3 are rejected with reasons in the §41 findings file. §41 made the sweep decide by provenance (generations, marks, claims), revalidate before moving, run a delayed pass, and prove the first birth from outside; these carry that through overlap placement, containment, recorder guarantees, failure cleanup, correlation, topology, and cost. -> SOURCE: plan-review-D00-T02-s41-2026-09-25-s48 D00-T02-S41-PR1 D00-T02-S41-PR2 D00-T02-S41-PR3 D00-T02-S41-PR5 D00-T02-S41-PR6 D00-T02-S41-PR7 D00-T02-S41-PR8 D00-T02-S41-PR11 D00-T02-S41-PR12
 
 - -> XREF: D00 T02 §41 -- filed from its plan review; carries the sweep it made provenance-based.
+- -> XREF: D00 T10 §1 -- its plan review's residuals.
 
 - [x] Overlapping constructions have a placement policy beyond pinning nothing: an overlapped birth's helpers are deferred to a later owned pass or the launch fails loud, so safety never silently disappears. Done when: an overlapped birth's helper lands at the target or the launch reports it. (D00-T02-S41-PR1.)
 - [x] Ambiguous and late-unplaced helpers carry a containment and failure policy: a background launch with a visible unplaced helper never passes placement. Done when: an ambiguous visible helper fails the background placement verdict. (D00-T02-S41-PR2.)
@@ -1566,6 +1567,13 @@ Why this section exists: the §41 plan review returned 12 findings; 9 file here 
 
 **Test checkpoint:** Overlapped births place or fail loud, unplaced visible helpers fail the verdict, shared-thread attribution holds both ways, the recorder proves delivery with a control, the first birth's helpers all reach the target, failed constructions leave nothing behind, records correlate by generation, targets follow topology, and cost stays bounded. Cheaper substitute that fails: more reasons in the sweep log with no fixture that forces them.
 
+> **Verified:** 2026-09-26 | §48 | an overlapped birth's helpers are placed by an owned pass or reported overlap-unplaced; a visible ambiguous or unplaced helper fails the placement verdict; claims keep two constructions' helpers apart on shared threads; the location recorder states its limits and fails on overflow; every window born during the first construction must be pinned at its pass's target (only a test-read hidden window owned by a pinned helper is contained); a construction that throws, base constructor included, abandons its snapshot through the factory helper App.AddWindow uses; diagnostics quote only their own generation and state complete, truncated, conflict, or missing outcomes; the delayed pass retargets against the current topology; twenty real births and teardowns stay under 250 ms per pass with retained state bounded; unit 393 green; gated Run A at b5e223c (this candidate plus §49's test-launch fix): UI 309/16/0, unit 393, gate exit 0 flagged=0; the first gated Run A at 2c71c65 read 6 failures, 1 from §49's direct test launch and 5 from one pre-existing single-instance redirect hang, all passing in isolation, with the hang filed
+> **Review:** round 4 (Full), candidates `b8dcce7` `158b528` `c7f2d07` `4f4b30f` `2c71c65` -- GPT R1-R2 bulk needs-attention (R1-A1, I1, R1, R2 and R2-A1, I1 fixed), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); R3-I1 fixed in 2c71c65 and confirmed by the R4 depth round (all four lenses approve). Raw findings: docs/reviews/00-workspace/D00-T02-s48.md
+> **Plan review:** GPT medium, filed D00 T10 §1 (run 20260926-D00-T02-S48-codex-c06751119-r5)
+> **CRUD:** not-applicable | window-placement mechanics under the test-run marker and UI-suite diagnostics; no user data
+> **Duration:** 2026-09-25T23:39:18Z to 2026-09-26T03:28:20Z
+> **Reviewed-tip:** 2c71c65
+
 
 ## 49. Gate Process Attribution Under PID Reuse
 
@@ -1574,12 +1582,20 @@ Why this section exists: the §41 plan review returned 12 findings; 9 file here 
 Why this section exists: the §41 Run A rerun of 2026-09-25 went red on `event-primary=1` for a `#32770` window titled "Granola Setup" at 1542,752 on the primary, attributed to ScratchPad pid 47576 (gate log gate41b.log, event 398184). `tools/ForegroundLog/Program.cs` caches pid-to-process-name lookups for the whole run and never invalidates them, so a pid a ScratchPad test process held earlier and a foreign installer reused later reads as ScratchPad; the suite itself was green (UI 295/16/0). A gate that reds on foreign windows trains everyone to rerun instead of reading it. -> SOURCE: live-gate-2026-09-25-gate41b-pid47576
 
 - -> XREF: D00 T02 §18 -- the foreground and placement gate it hardens.
+- -> XREF: D00 T10 §2 -- its plan review's residuals.
 
 - [x] Process identity is resolved per event as (pid, process start time), never from a run-long pid cache, so a pid reused by another process is attributed to that process. Done when: a fixture that reuses a cached pid for a foreign window is not counted against ScratchPad.
 - [x] Every EVENT and census line names the process's executable path and start time, so a foreign window reads as foreign in the log. Done when: the log line for a planted foreign window names its executable.
 - [x] Commit: `"workspace: attribute gate events by process identity, not a reused pid"`
 
 **Test checkpoint:** A reused pid never attributes a foreign window to ScratchPad, and every gate line names the process it counted. Cheaper substitute that fails: a longer allowlist of foreign window titles.
+
+> **Verified:** 2026-09-26 | §49 | gate attribution resolves each event by (pid, process start time) with no run-long cache, an unreadable start time is never cached, and every EVENT and CENSUS line names the full percent-encoded executable path and start time; the selftest attributes a reused pid to the foreign process and GateAttributionTests drives it through the sanctioned `UiLaunch.RunToolCaptured` under one deadline over execution, draining, and termination; gated Run A at b5e223c UI 309/16/0, unit 393, gate exit 0 flagged=0; LaunchGuard, GateAttribution, and GateCalibration tests green on 700071b
+> **Review:** round 5 (Full), candidates `d3d405c` `23ec82a` `b5e223c` `700071b` -- GPT R1 bulk needs-attention (R1-F1..F3 fixed in 23ec82a), R2 bulk approve, R3 sign-off approve (gpt-6-astra); the stamp Run A then found a direct test launch (RA-1, fixed in b5e223c), R4 depth R4-I1 fixed in 700071b, and R5 depth (`adversarial` approve · `consistency` approve · `record` approve) left below-bar R5-I1, filed to D00 T10 §2. Raw findings: docs/reviews/00-workspace/D00-T02-s49.md
+> **Plan review:** GPT medium, filed D00 T10 §2 (run 20260926-D00-T02-S49-codex-c06751119-r3)
+> **CRUD:** not-applicable | test-harness gate tooling over run scratch logs; no user data
+> **Duration:** 2026-09-26T00:16:08Z to 2026-09-26T03:28:20Z
+> **Reviewed-tip:** 700071b
 
 ## 50. Night-Debt Governance Second Residuals
 
