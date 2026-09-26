@@ -588,4 +588,19 @@ public sealed class UiInputFunnelTests
         Assert.Contains("key-down failed", both.InnerExceptions[0].Message, StringComparison.Ordinal);
         Assert.Contains("input cleanup failed", both.InnerExceptions[1].Message, StringComparison.Ordinal);
     }
+
+    // §51 R3-I1: a hold rereads input ownership before every repeat, so a
+    // window that takes the foreground mid-hold stops the repeats there.
+    [Fact]
+    public void HoldStopsRepeatingWhenTheForegroundIsTaken()
+    {
+        int sent = 0;
+        UiInput.RepeatWhileOwned(3, App, () => (Target, App), () => sent++);
+        Assert.Equal(3, sent);
+        sent = 0;
+        int reads = 0;
+        var ex = Assert.Throws<InvalidOperationException>(() => UiInput.RepeatWhileOwned(5, App, () => ++reads <= 2 ? (Target, App) : (Target, Thief), () => sent++));
+        Assert.Equal(2, sent);
+        Assert.Contains($"input interrupted mid-hold: the foreground belongs to pid {Thief}, not the target {App}, before repeat 3 of 5", ex.Message, StringComparison.Ordinal);
+    }
 }

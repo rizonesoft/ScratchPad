@@ -142,6 +142,7 @@ static int CaptureHeldKeys(string outFile)
     // for the physical tests that follow.
     void Hold(VirtualKeyShort key, int keyDowns, bool shift = false)
     {
+        Exception? pressFailure = null;
         try
         {
             Keyboard.Press(VirtualKeyShort.CONTROL);
@@ -156,34 +157,44 @@ static int CaptureHeldKeys(string outFile)
                 Thread.Sleep(60);
             }
         }
-        finally
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // Each release is attempted on its own (R2-I1): one that throws
-            // never stops the others.
-            var keys = new List<VirtualKeyShort> { key };
-            if (shift)
-            {
-                keys.Add(VirtualKeyShort.SHIFT);
-            }
+            pressFailure = ex;
+        }
 
-            keys.Add(VirtualKeyShort.CONTROL);
-            var failed = new List<string>();
-            foreach (var k in keys)
-            {
-                try
-                {
-                    Keyboard.Release(k);
-                }
-                catch (Exception ex) when (ex is not OutOfMemoryException)
-                {
-                    failed.Add($"{k} ({ex.Message})");
-                }
-            }
+        // Each release is attempted on its own (R2-I1): one that throws
+        // never stops the others.
+        var keys = new List<VirtualKeyShort> { key };
+        if (shift)
+        {
+            keys.Add(VirtualKeyShort.SHIFT);
+        }
 
-            if (failed.Count > 0)
+        keys.Add(VirtualKeyShort.CONTROL);
+        var failed = new List<string>();
+        foreach (var k in keys)
+        {
+            try
             {
-                Console.WriteLine($"key release failed: {string.Join(", ", failed)}");
+                Keyboard.Release(k);
             }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                failed.Add($"{k} ({ex.Message})");
+            }
+        }
+
+        // A release that failed stops the capture (R3-I1): no further key
+        // is injected while one may be down. A press failure propagates
+        // after every release was attempted.
+        if (failed.Count > 0)
+        {
+            throw new InvalidOperationException($"key release failed, capture stopped: {string.Join(", ", failed)}", pressFailure);
+        }
+
+        if (pressFailure is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Throw(pressFailure);
         }
 
         Thread.Sleep(800);

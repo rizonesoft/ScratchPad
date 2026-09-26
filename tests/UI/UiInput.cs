@@ -262,17 +262,37 @@ internal static class UiInput
                 // An action while the chord is held (a menu opening
                 // mid-chord, §51 item 12) runs after the first key-down.
                 midHold?.Invoke();
-                for (int i = 0; i < repeats; i++)
+                RepeatWhileOwned(repeats, target.Properties.ProcessId.Value, ForegroundProbe, () =>
                 {
                     Thread.Sleep(60);
                     Keyboard.Press(key);
-                }
+                });
             },
             () => ChordUp(injected, Keyboard.Release, isDown: KeyIsDown, containment: Containment),
             () => ModifiersReleased(AllModifiers),
             () => ModifiersReleased(mods.Where(everInjected.Contains)),
             () => ReleaseModifiers(mods.Where(everInjected.Contains)),
             () => Native.IsWindow(ExpectedRoot(target)));
+    }
+
+    // The hold's repeats (D00 T02 §51 R3-I1): input ownership is read again
+    // before every repeat, so a window that takes the foreground mid-hold
+    // (a dialog, another app) never receives the rest of the repeats; the
+    // throw stops the hold and the funnel's cleanup releases the chord.
+    internal static void RepeatWhileOwned(int repeats, int pid, Func<(nint Root, int Pid)> probe, Action repeat)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        ArgumentNullException.ThrowIfNull(repeat);
+        for (int i = 0; i < repeats; i++)
+        {
+            int owner = probe().Pid;
+            if (owner != pid)
+            {
+                throw new InvalidOperationException($"input interrupted mid-hold: the foreground belongs to pid {owner}, not the target {pid}, before repeat {i + 1} of {repeats}");
+            }
+
+            repeat();
+        }
     }
 
     // Presses each key in order and records it once its key-down went out;

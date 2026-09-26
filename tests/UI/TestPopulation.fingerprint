@@ -252,6 +252,7 @@ run-a:
   UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
   UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
+  UI.UiInputFunnelTests.HoldStopsRepeatingWhenTheForegroundIsTaken
   UI.UiInputFunnelTests.InAppFocusMoveBetweenCtrlAndWheelStillScrollsOnce
   UI.UiInputFunnelTests.MatchingWindowAndFocusSendsOnce
   UI.UiInputFunnelTests.ModifierPressedMidInjectionOutsideTheChordIsNotReleased
@@ -276,9 +277,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 269
-run-a-cases: 333
-run-a-case-hash: 91b40978b6bc9705
+run-a-methods: 270
+run-a-cases: 334
+run-a-case-hash: 3175a8ff9184b0f4
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -589,6 +590,7 @@ run-a-case-rows:
   UI|UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
   UI|UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
   UI|UI.UiInputFunnelTests.ForegroundLossFailsLoudAndSendsNothing
+  UI|UI.UiInputFunnelTests.HoldStopsRepeatingWhenTheForegroundIsTaken
   UI|UI.UiInputFunnelTests.InAppFocusMoveBetweenCtrlAndWheelStillScrollsOnce
   UI|UI.UiInputFunnelTests.MatchingWindowAndFocusSendsOnce
   UI|UI.UiInputFunnelTests.ModifierPressedMidInjectionOutsideTheChordIsNotReleased
