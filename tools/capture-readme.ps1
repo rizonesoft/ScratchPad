@@ -91,7 +91,14 @@ $notes = Join-Path $docs 'release-notes.md'
 $todo = Join-Path $docs 'groceries.txt'
 [IO.File]::WriteAllText($todo, (@('Saturday market', '', 'apples (6)', 'sourdough loaf', 'coffee beans, medium roast', 'basil', 'lemons') -join "`r`n"))
 
-# 3. The store is backed up before any launch and restored after.
+# 3. The store is backed up before any launch and restored after. The
+# store is shared by every instance, so the capture needs it exclusively:
+# it refuses while any other ScratchPad runs, re-checks before each
+# launch, and never restores over state a concurrent instance may have
+# written (the backup is then kept beside the store and named).
+function Get-OtherInstances([int[]]$Except = @()) { return @(Get-Process -Name 'ScratchPad' -ErrorAction SilentlyContinue | Where-Object { $Except -notcontains $_.Id }) }
+$running = Get-OtherInstances
+if ($running.Count -gt 0) { throw "capture: ScratchPad is running (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); close it first: the capture seeds the shared settings store" }
 $store = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'ScratchPad'
 $null = New-Item -ItemType Directory -Force -Path $store
 $backup = Join-Path $work 'store-backup'
@@ -123,6 +130,8 @@ try {
     [IO.File]::WriteAllText((Join-Path $store 'settings.json'), (ConvertTo-Json ([pscustomobject]$settings) -Depth 4))
     $session = [pscustomobject]@{ Windows = @([pscustomobject]@{ Tabs = @([pscustomobject]@{ Path = $notes; Caret = 0 }, [pscustomobject]@{ Path = $todo; Caret = 0 }); Active = 0 }); ActiveWindow = 0 }
     [IO.File]::WriteAllText((Join-Path $store 'session.json'), (ConvertTo-Json $session -Depth 6))
+    $running = Get-OtherInstances
+    if ($running.Count -gt 0) { throw "capture: another ScratchPad started during the capture (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); stopping before it reads the seeded store" }
     $psi = New-Object System.Diagnostics.ProcessStartInfo $exe.FullName
     $psi.UseShellExecute = $false
     $psi.EnvironmentVariables['SCRATCHPAD_BACKGROUND'] = '1'
@@ -164,10 +173,19 @@ try {
     }
   }
 } finally {
-  foreach ($n in @('settings.json', 'session.json')) {
-    $p = Join-Path $store $n
-    if ($saved[$n]) { Copy-Item -LiteralPath (Join-Path $backup $n) -Destination $p -Force }
-    elseif (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+  $running = Get-OtherInstances
+  if ($running.Count -gt 0) {
+    # Another instance may own the store now: nothing is overwritten, and
+    # the operator's backup is kept beside the store for them to restore.
+    $kept = Join-Path $store ("capture-backup-" + (Get-Date).ToString('yyyyMMdd-HHmmss'))
+    Copy-Item -LiteralPath $backup -Destination $kept -Recurse -Force
+    Write-Output "capture: another ScratchPad is running (pid $(@($running | ForEach-Object { $_.Id }) -join ', ')); the store was NOT restored; your settings and session are kept in $kept"
+  } else {
+    foreach ($n in @('settings.json', 'session.json')) {
+      $p = Join-Path $store $n
+      if ($saved[$n]) { Copy-Item -LiteralPath (Join-Path $backup $n) -Destination $p -Force }
+      elseif (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Force }
+    }
   }
 }
 Copy-Item -LiteralPath (Join-Path $OutDir 'readme-hero-light.png') -Destination (Join-Path $OutDir 'readme-hero.png') -Force
