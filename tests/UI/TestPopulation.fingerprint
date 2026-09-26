@@ -280,7 +280,7 @@ run-a:
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-a-methods: 271
 run-a-cases: 335
-run-a-case-hash: 3d58fa593586f40e
+run-a-case-hash: d4a0f23df533ee1e
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -617,6 +617,17 @@ run-a-case-rows:
   UI|UI.UiLeakBundleTests.ScrubTitleTruncates
   UI|UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI|UI.UntitledTitleTests.TypingFirstLineRenamesTab
+  UI|case UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser("MenuEditDefineBing", true)
+  UI|case UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser("MenuEditSearchBing", false)
+  UI|case UI.DiscoveryListingTests.CapabilityGatedRows(int32:1)
+  UI|case UI.DiscoveryListingTests.CapabilityGatedRows(int32:2)
+  UI|case UI.DiscoveryListingTests.CapabilityGatedRows(int32:3)
+  UI|case UI.LaunchDiagnosticsTests.RedactArgsShapes("--api-key: \"quoted secret\"", "--api-key: ***")
+  UI|case UI.LaunchDiagnosticsTests.RedactArgsShapes("--file x.txt", "--file x.txt")
+  UI|case UI.LaunchDiagnosticsTests.RedactArgsShapes("--password hunter2", "--password ***")
+  UI|case UI.LaunchDiagnosticsTests.RedactArgsShapes("Bearer abc.def.ghi", "Bearer ***")
+  UI|case UI.LaunchDiagnosticsTests.RedactArgsShapes("auth hunter2", "auth ***")
+  UI|case UI.LaunchDiagnosticsTests.RedactArgsShapes("token=abc123", "token=***")
   UI|case UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/MyUiLaunch.cs", false)
   UI|case UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/Sub/Helper.cs", false)
   UI|case UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/UiLaunch.cs", true)
@@ -656,6 +667,34 @@ run-a-case-rows:
   UI|case UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed("class Q { void M() { var t = Microsoft.CodeAnalysis.CSharp.Scripting.CSharpScript.EvaluateAsync(\"1\"); } }")
   UI|case UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed("using System.Runtime.InteropServices; class Q { delegate int D(); void M(nint p) { var d = Marshal.GetDelegateForFunctionPointer<D>(p); d(); } }")
   UI|case UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed("using System.Runtime.InteropServices; unsafe class Q { void M() { var f = (delegate* unmanaged<int>)NativeLibrary.GetExport(NativeLibrary.Load(\"kernel32.dll\"), \"Create\" + \"ProcessW\"); } }")
+  UI|case UI.MainWindowTests.ThemesRenderWithMica("dark", int32:100)
+  UI|case UI.MainWindowTests.ThemesRenderWithMica("light", int32:150)
+  UI|case UI.MainWindowTests.ThemesRenderWithMica("system", int32:100)
+  UI|case UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow("scratchpad://")
+  UI|case UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow("scratchpad://relative/x.txt")
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("00:00", false)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("01:59", false)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("02:00", true)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("04:30", true)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("06:49", true)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("06:50", false)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("12:00", false)
+  UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("23:59", false)
+  UI|case UI.QuietHoursTests.OvernightWindowWrapsPastMidnight("22:00-06:00", "05:59", true)
+  UI|case UI.QuietHoursTests.OvernightWindowWrapsPastMidnight("22:00-06:00", "06:00", false)
+  UI|case UI.QuietHoursTests.OvernightWindowWrapsPastMidnight("22:00-06:00", "12:00", false)
+  UI|case UI.QuietHoursTests.OvernightWindowWrapsPastMidnight("22:00-06:00", "21:59", false)
+  UI|case UI.QuietHoursTests.OvernightWindowWrapsPastMidnight("22:00-06:00", "23:00", true)
+  UI|case UI.QuietHoursTests.UnparseableWindowFailsToParse("")
+  UI|case UI.QuietHoursTests.UnparseableWindowFailsToParse("02:00")
+  UI|case UI.QuietHoursTests.UnparseableWindowFailsToParse("02:00-06:50-extra")
+  UI|case UI.QuietHoursTests.UnparseableWindowFailsToParse("nope")
+  UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:1000, int32:2000, int32:800, int32:1600)
+  UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:1600, int32:1600, int32:1600, int32:1600)
+  UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:2000, int32:1000, int32:1600, int32:800)
+  UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:900, int32:650, int32:900, int32:650)
+  UI|case UI.UiLeakBundleTests.ScrubTitleShapes("login token=abc123 failed", "login token=*** failed")
+  UI|case UI.UiLeakBundleTests.ScrubTitleShapes("plain title", "plain title")
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
@@ -721,7 +760,7 @@ interactive:
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
 interactive-methods: 49
 interactive-cases: 80
-interactive-case-hash: 2b9041c00b800e74
+interactive-case-hash: 31171fdc29cc904d
 interactive-case-rows:
   UI|UI.AcceleratorTests.ChordCtrlEOpensBingSearch
   UI|UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
@@ -803,3 +842,36 @@ interactive-case-rows:
   UI|UI.TabBarTests.NumberShortcutsCoverMiddlePositions(key: KEY_8, position: 7)
   UI|UI.TabBarTests.ThreeTabsSwitchAndClose
   UI|UI.TitleBarIconTests.AddButtonRealClickOpensTab
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+1", "Tabs.GotoNumber(1)", "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+2", "Tabs.GotoNumber(2)", "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+3", "Tabs.GotoNumber(3)", "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+4", "Tabs.GotoNumber(4)", "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+5", "Tabs.GotoNumber(5)", "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+6", "Tabs.GotoNumber(6)", "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+7", "Tabs.GotoNumber(7)", "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+8", "Tabs.GotoNumber(8)", "TabBarTests.NumberShortcutsCoverMiddlePositions")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+9", "Tabs.GotoNumber(9)", "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Alt+S", "MenuFileSaveAll", "MenuBarTests.FileSaveAllWalksDirtyTabs")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+E", "MenuEditSearchBing", "AcceleratorTests.ChordCtrlEOpensBingSearch")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+N", "MenuFileNewTab", "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+O", "MenuFileOpen", "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+S", "MenuFileSave", "MenuBarTests.FileSaveOnUntitledOpensSaveAs")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+E", "MenuToolsTemplates", "AcceleratorTests.ChordCtrlShiftEOpensTemplates")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+G", "MenuToolsStats", "AcceleratorTests.ChordCtrlShiftGOpensStats")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+H", "MenuToolsSnapshots", "AcceleratorTests.ChordCtrlShiftHOpensSnapshots")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+L", "MenuToolsLock", "AcceleratorTests.ChordCtrlShiftLOpensLock")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+N", "MenuFileNewWindow", "AcceleratorTests.ChordCtrlShiftNOpensSecondWindow")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+S", "MenuFileSaveAs", "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+T", "Tabs.ReopenLast", "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+Tab", "Tabs.CyclePrevious", "TabBarTests.NumberShortcutsAndReopenMatchNotepad")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+W", "MenuFileCloseWindow", "MenuBarTests.FileMenuLiveAcceleratorsWork")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Shift+X", "MenuToolsExport", "AcceleratorTests.ChordCtrlShiftXOpensExport")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+T", "Tabs.NewTab", "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+Tab", "Tabs.CycleNext", "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|case UI.BindingMutationTests.CoveringTestFailsWithItsCommandSwapped("Ctrl+W", "MenuFileCloseTab", "TabBarTests.ThreeTabsSwitchAndClose")
+  UI|case UI.TabBarTests.NumberShortcutsCoverMiddlePositions(enum:FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_2, int32:1)
+  UI|case UI.TabBarTests.NumberShortcutsCoverMiddlePositions(enum:FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_4, int32:3)
+  UI|case UI.TabBarTests.NumberShortcutsCoverMiddlePositions(enum:FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_5, int32:4)
+  UI|case UI.TabBarTests.NumberShortcutsCoverMiddlePositions(enum:FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_6, int32:5)
+  UI|case UI.TabBarTests.NumberShortcutsCoverMiddlePositions(enum:FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_7, int32:6)
+  UI|case UI.TabBarTests.NumberShortcutsCoverMiddlePositions(enum:FlaUI.Core.WindowsAPI.VirtualKeyShort.KEY_8, int32:7)

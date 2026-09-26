@@ -541,6 +541,8 @@ New-Item -ItemType Directory -Path $nightDir -Force | Out-Null
 # into) the first run's evidence. The morning report keeps its day-scoped
 # name: the guard plus the operator check one fixed path.
 $trxDir = Join-Path $nightDir $stamp
+# The UI trx reads bind to this run's own folder (section 52 R1-I3).
+$uiTrxExpect | Add-Member -NotePropertyName RunDir -NotePropertyValue $trxDir -Force
 New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
 # Crash-left capture staging is swept before this run captures anything
 # (D00 T02 section 38 item 1); the notes join the report's captures.
@@ -1383,7 +1385,7 @@ if ($debtQueryError -ne '') {
       continue
     }
     $split = Split-DebtSkips $sumI.Skipped
-    if ($capDebtError -eq '') { $debtEntries += @(Update-CapabilityDebt $capDebt $debt.Id @(@($sumI.Skipped) | Where-Object { $_ -match 'unavailable on this host|^CAPABILITY: ' }) (Get-HostKey) (Get-Date)) }
+    if ($capDebtError -eq '') { $debtEntries += @(Update-CapabilityDebt $capDebt $debt.Id @(@($sumI.Skipped) | Where-Object { $_ -match 'unavailable on this host|CAPABILITY: ' }) (Get-HostKey) (Get-Date)) }
     if (($split.Capability -gt 0) -or ($split.Other -gt 0)) {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: $($split.Capability) capability plus $($split.Other) other skips never executed: debt stays open"
       continue
@@ -1466,9 +1468,14 @@ $prevRead = Read-PreviousOwedCases $nightDir $stamp
 $stagedPath = Join-Path $nightDir 'staged-debt.jsonl'
 $stagedRead = Read-StagedDebt $stagedPath
 if (@($stagedRead.Bad).Count -gt 0) { $nightOwedRows += "- Staging journal lines unreadable: $(@($stagedRead.Bad) -join ', ') in $stagedPath (repair them; obligations they held are not dropped silently)" }
-$stagedOnly = @(@($stagedRead.Open.Values) | Where-Object { @($prevRead.Owed) -notcontains $_ })
-if ($stagedOnly.Count -gt 0) { $nightOwedRows += "- Staging journal carries $($stagedOnly.Count) owed case(s) no result recorded (a crash before the result, or untriaged)" }
-$prevRead = [pscustomobject]@{ Owed = @(Merge-OwedCases @($prevRead.Owed) $stagedOnly); Identities = $prevRead.Identities; From = $prevRead.From; Unreadable = $prevRead.Unreadable }
+$stagedOpen = Get-StagedOpenCases $stagedRead
+$stagedMerged = @(Merge-OwedCases @($prevRead.Owed) @($stagedOpen.Cases))
+$stagedExtra = $stagedMerged.Count - @($prevRead.Owed).Count
+if ($stagedExtra -gt 0) { $nightOwedRows += "- Staging journal carries $stagedExtra owed case occurrence(s) no result recorded (a crash before the result, or untriaged)" }
+# Journal-only cases carry their original identity tokens (R1-A3).
+$stagedIds = @{}; foreach ($k in @($prevRead.Identities.Keys)) { $stagedIds[$k] = $prevRead.Identities[$k] }
+foreach ($k in @($stagedOpen.Ids.Keys)) { if (-not $stagedIds.ContainsKey($k)) { $stagedIds[$k] = $stagedOpen.Ids[$k] } }
+$prevRead = [pscustomobject]@{ Owed = $stagedMerged; Identities = $stagedIds; From = $prevRead.From; Unreadable = $prevRead.Unreadable }
 if (@($prevRead.Unreadable).Count -gt 0) { $failed = $true; $nightOwedRows += "- Carried per-case debt: RED: unreadable result(s) $($prevRead.Unreadable -join '; '); owed cases carried from $(if ($prevRead.From -ne '') { $prevRead.From } else { 'no readable result' }) instead; repair the result" }
 $carryListed = @()
 try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
@@ -1481,7 +1488,9 @@ try { $owedIdsNow = Get-OwedCaseIdentities @($prevRead.Owed) (Get-CaseIdentityRu
 $migration = Resolve-OwedCaseMigration @($prevRead.Owed) $prevRead.Identities $owedIdsNow $(if ($carryListed.Count -gt 0) { $carryListed } else { $null }) (Read-OwedCaseRetirements (Join-Path $Root 'docs\owed-case-retirements.md'))
 $nightOwedRows += @($migration.Lines)
 if ($owedIdsError -ne '') { $nightOwedRows += "- Owed case identities unreadable tonight ($owedIdsError): cut owed cases hold, none close" ; $migration = [pscustomobject]@{ Closable = @(@($migration.Closable) | Where-Object { -not (Test-CutCaseName "$_") }); Held = @(@($migration.Held) + @(@($migration.Closable) | Where-Object { Test-CutCaseName "$_" })); Retired = $migration.Retired; Ids = $migration.Ids; Lines = $migration.Lines } }
-$carry = Resolve-CarriedCaseDebt @($migration.Closable) @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
+# An overridden run discharges no carried debt (section 52 R1-I1).
+if ($null -ne $script:ciOverride) { $nightOwedRows += "- Carried debt not closed: this run was admitted under -AllowUnverifiedCi ($($script:ciOverride.reason)) and is ineligible as closure evidence" }
+$carry = Resolve-CarriedCaseDebt @($migration.Closable) @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect) ([bool]$interactiveRan -and ($null -eq $script:ciOverride)) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
 $carry = [pscustomobject]@{ Still = @(@($carry.Still) + @($migration.Held)); Line = $carry.Line }
 if ($carry.Line -ne '') { $nightOwedRows += $carry.Line }
 # The debt a green collection closed never closes its failure (D00 T02
@@ -1494,7 +1503,7 @@ $owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))
 # Every obligation tonight is journaled (idempotent), and each case the
 # collection closed tonight closes its receipt (section 52 item 11).
 try {
-  $null = Add-StagedDebtLines $stagedPath @($owedCasesTonight) 'staged' $stamp 'owed at run end'
+  $null = Add-StagedDebtLines $stagedPath @($owedCasesTonight) 'staged' $stamp 'owed at run end' $owedIdentitiesTonight
   $null = Add-StagedDebtLines $stagedPath @(@($carryClosed) + @($migration.Retired)) 'collected' $stamp 'closed or retired tonight'
 } catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message)" }
 # Identity tokens for tonight's owed cases: carried cases keep their

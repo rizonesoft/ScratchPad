@@ -1173,8 +1173,10 @@ function Get-CanonicalCaseRows($Cases, [scriptblock]$Runner) {
   # comes from. $Runner takes the method names and returns the tool's
   # lines plus its exit code; a `REFUSE` line or a nonzero exit throws by
   # name, so an unencodable argument never reads as an identity.
-  $cut = ([string][char]0xB7) * 3
-  $methods = @(@($Cases) | Where-Object { ("$_".Contains($cut)) -or ("$_".Contains('"...')) } | ForEach-Object { ("$_" -split '\(', 2)[0].Trim() } | Sort-Object -Unique)
+  # Every parameterized case (section 52 R1-C2), cut or not: identity
+  # never depends on how xunit formats a display name, and an argument no
+  # rule covers refuses wherever it appears.
+  $methods = @(@($Cases) | Where-Object { "$_".Contains('(') } | ForEach-Object { ("$_" -split '\(', 2)[0].Trim() } | Sort-Object -Unique)
   if ($methods.Count -eq 0) { return @() }
   $res = & $Runner $methods
   $lines = @("$($res.Text)" -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
@@ -1183,7 +1185,7 @@ function Get-CanonicalCaseRows($Cases, [scriptblock]$Runner) {
   if ([int]$res.Code -ne 0) { throw "case identity failed (exit $($res.Code)): $($lines -join ' | ')" }
   $rows = @($lines | ForEach-Object { "case $_" })
   foreach ($m in $methods) {
-    if (-not (@($rows) | Where-Object { $_.StartsWith("case $m(", [StringComparison]::Ordinal) })) { throw "case identity refused: $m listed cut rows but the tool returned none" }
+    if (-not (@($rows) | Where-Object { $_.StartsWith("case $m(", [StringComparison]::Ordinal) })) { throw "case identity refused: $m listed parameterized rows but the tool returned none" }
   }
   return $rows
 }
@@ -1424,7 +1426,7 @@ function Invoke-WithForcedDiscovery([scriptblock]$Body) {
   }
 }
 
-function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [string]$What, [int]$TimeoutSeconds = 180) {
+function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [string]$What, [int]$TimeoutSeconds = 180, [scriptblock]$CaseRunner = $null) {
   # One --list-tests run against built binaries, parsed to sorted
   # unique method FQNs (theory case suffixes cut at the first paren)
   # with method plus case counts. Shared by population discovery
@@ -1457,7 +1459,7 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
   # R1-F1): each method with a truncated row adds its canonical case rows
   # (section 52 item 3), so changing an argument past the cut changes the
   # identity.
-  $identity = @($caseNames) + @(Get-CanonicalCaseRows $caseNames (Get-CaseIdentityRunner $Csproj))
+  $identity = @($caseNames) + @(Get-CanonicalCaseRows $caseNames $(if ($null -ne $CaseRunner) { $CaseRunner } else { Get-CaseIdentityRunner $Csproj }))
   return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $identity); CaseRows = @(Get-CaseIdentityRows $identity) }
 }
 
@@ -1471,7 +1473,7 @@ function Test-UiBuildFresh([datetime]$BinaryTimeUtc, [datetime]$NewestSourceTime
   return [pscustomobject]@{ Ok = $true; Error = '' }
 }
 
-function Get-UiBuildInputs([string]$Root) {
+function Get-UiBuildInputs([string]$Root, [string]$Start = '', [switch]$NoReferences) {
   # Every build input of the UI binaries (D00 T02 section 37 item 2):
   # tests/UI plus each project it references, transitively (sources,
   # XAML, project files), plus the shared build inputs at the root
@@ -1494,7 +1496,10 @@ function Get-UiBuildInputs([string]$Root) {
   $props = @{}
   $pending = New-Object System.Collections.Generic.List[object]
   $queue = New-Object System.Collections.Generic.Queue[string]
-  $queue.Enqueue((Join-Path $Root 'tests\UI\UI.csproj'))
+  # One project's own inputs (section 52 R1-A1): -Start names the
+  # project and -NoReferences stays inside it (its imports, linked items,
+  # and the shared root inputs still count).
+  $queue.Enqueue($(if ($Start -ne '') { $Start } else { (Join-Path $Root 'tests\UI\UI.csproj') }))
   $seen = @{}
   do {
   while ($queue.Count -gt 0) {
@@ -1516,7 +1521,7 @@ function Get-UiBuildInputs([string]$Root) {
     }
     if ($file -like '*proj') {
       $dirs += $here
-      foreach ($m in [regex]::Matches($text, '<ProjectReference\s+Include="([^"]+)"')) { $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'queue'; From = $file }) }
+      foreach ($m in [regex]::Matches($text, '<ProjectReference\s+Include="([^"]+)"')) { if ($NoReferences) { continue }; $pending.Add(@{ Dir = $here; Raw = $m.Groups[1].Value; Kind = 'queue'; From = $file }) }
       $d = $here
       while ($d.Length -ge $rootFull.Length) {
         foreach ($n in @('Directory.Build.props', 'Directory.Build.targets', 'Directory.Packages.props')) {
@@ -1643,19 +1648,30 @@ function Get-BuildInputsDigest([string]$Root, [string]$Sdk, $Inputs = $null) {
 }
 
 function Get-ProjectOwnInputsDigest([string]$Root, [string]$ProjectDir) {
-  # One project's own inputs (D00 T02 section 52 item 2): the files under
-  # its directory a compile reads (sources, XAML, resources, project and
-  # settings files; obj and bin excluded), one `<root-relative path>
-  # <sha256>` line each, ordinal-sorted, digest over the lines. Shared
-  # root inputs stay in the UI digest; this is what the project's own
-  # compile evidence answers for.
+  # One project's own compile inputs (D00 T02 section 52 item 2, R1-A1):
+  # the build-input walk from its project file without following project
+  # references (its sources, XAML, resources, project and settings files,
+  # every file it imports, its linked items outside its directory, and
+  # the shared root inputs), plus its restore result (obj/project.assets
+  # .json), one `<root-relative path> <sha256>` line each, ordinal-sorted,
+  # digest over the lines. An unresolved path is a line too, so its
+  # change is visible. The UI walk's own results are kept intact.
   $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $proj = @(Get-ChildItem -LiteralPath $ProjectDir -Filter '*.csproj' -File | Sort-Object Name)
+  $savedU = $script:UiBuildUnresolved; $savedP = $script:UiBuildProjects
+  try {
+    $files = @(if ($proj.Count -gt 0) { Get-UiBuildInputs $Root -Start $proj[0].FullName -NoReferences | ForEach-Object { $_.FullName } })
+    $unres = @($script:UiBuildUnresolved)
+  } finally { $script:UiBuildUnresolved = $savedU; $script:UiBuildProjects = $savedP }
+  $assets = Join-Path $ProjectDir 'obj\project.assets.json'
+  if (Test-Path -LiteralPath $assets) { $files += [System.IO.Path]::GetFullPath($assets) }
   $lines = New-Object 'System.Collections.Generic.List[string]'
-  foreach ($f in @(Get-ChildItem -Path $ProjectDir -Recurse -Include '*.cs', '*.csproj', '*.xaml', '*.props', '*.targets', '*.resw', '*.json', '*.manifest', '*.appxmanifest' -File | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' })) {
-    $full = $f.FullName
+  foreach ($full in @($files | Sort-Object -Unique)) {
     $rel = if ($full.StartsWith($rootFull + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $full.Substring($rootFull.Length + 1) } else { $full }
-    $lines.Add("$($rel.Replace('\', '/')) $(Get-FileSha256 $full)")
+    $hash = if (Test-Path -LiteralPath $full) { Get-FileSha256 $full } else { 'missing' }
+    $lines.Add("$($rel.Replace('\', '/')) $hash")
   }
+  foreach ($u in $unres) { $lines.Add("unresolved $u") }
   $lines.Sort([StringComparer]::Ordinal)
   $sha = [System.Security.Cryptography.SHA256]::Create()
   try { $digest = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
@@ -1695,7 +1711,7 @@ function Get-BuildBindingLines([string]$Root, [string]$OutDir, $Projects) {
   return $lines
 }
 
-function Test-BuildBinding([string]$Root, [string]$BindingFile) {
+function Test-BuildBinding([string]$Root, [string]$BindingFile, $ExpectedProjects = $null) {
   # Refuses a UI build whose recorded binaries no longer answer to their
   # sources (D00 T02 section 52 item 2): the UI assembly changed since the
   # binding, a reference has no readable evidence, a reference's own
@@ -1706,6 +1722,15 @@ function Test-BuildBinding([string]$Root, [string]$BindingFile) {
   if (-not (Test-Path -LiteralPath $BindingFile)) { return [pscustomobject]@{ Ok = $false; Error = "UI build has no binary binding ($BindingFile); $rebuild" } }
   $outDir = Split-Path -Parent $BindingFile
   $problems = @()
+  # Completeness (section 52 R1-A2): the UI row and one row per current
+  # reference must be present, so an empty or truncated binding refuses.
+  $all = @(Get-Content -LiteralPath $BindingFile | Where-Object { "$_".Trim() -ne '' })
+  if (@($all | Where-Object { $_ -match '^out UI\.dll ' }).Count -ne 1) { $problems += 'the binding has no single UI.dll row' }
+  foreach ($p in @($ExpectedProjects | Where-Object { $null -ne $_ })) {
+    $pn = [System.IO.Path]::GetFileNameWithoutExtension("$p")
+    if ($pn -eq 'UI') { continue }
+    if (@($all | Where-Object { $_ -match ('^ref ' + [regex]::Escape($pn) + ' ') }).Count -ne 1) { $problems += "the binding has no single row for reference $pn" }
+  }
   foreach ($ln in @(Get-Content -LiteralPath $BindingFile | Where-Object { "$_".Trim() -ne '' })) {
     if ($ln -match '^out UI\.dll (\S+)$') {
       $now = Get-FileSha256 (Join-Path $outDir 'UI.dll')
@@ -1771,7 +1796,7 @@ function Get-UiBuildFreshness([string]$Root) {
   # Binary binding (section 52 item 2): the digest answers for the
   # binaries only when each reference's own compile evidence still
   # matches its sources and the copies the UI output carries.
-  return (Test-BuildBinding $Root (Join-Path $Root 'Bin\UI\Debug\build-binding.txt'))
+  return (Test-BuildBinding $Root (Join-Path $Root 'Bin\UI\Debug\build-binding.txt') @($script:UiBuildProjects))
 }
 
 function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
@@ -1942,18 +1967,19 @@ function Resolve-OwedCaseMigration($PreviousOwed, [hashtable]$PreviousIds, [hash
   return [pscustomobject]@{ Closable = $closable; Held = $held; Retired = $retired; Ids = $ids; Lines = $lines }
 }
 
-function Get-StagedDebtReceipt([string]$Case) {
-  # One receipt per owed case (D00 T02 section 52 item 11), stable across
-  # nights, so staging the same case twice is idempotent.
-  return "rcpt-$((Get-CaseHash @($Case)).Substring(0, 16))"
+function Get-StagedDebtReceipt([string]$Case, [int]$Occurrence = 1) {
+  # One receipt per owed occurrence (D00 T02 section 52 item 11, R1-A3):
+  # a display name owed twice (indistinguishable twins) holds two
+  # receipts, and staging the same occurrence again is idempotent.
+  return "rcpt-$((Get-CaseHash @("$Case#$Occurrence")).Substring(0, 16))"
 }
 
 function Read-StagedDebt([string]$Path) {
   # The staging journal (section 52 item 11): JSON lines `{receipt, case,
-  # state (staged|collected), stamp, why}`, the last line per receipt
-  # governing. Returns Open (receipt -> case) and Bad (unreadable line
-  # numbers, named by the caller; an unreadable line never drops an
-  # obligation it cannot read, it is reported).
+  # occurrence, token, state (staged|collected), stamp, why}`, the last
+  # line per receipt governing. Returns Open (receipt -> {Case,
+  # Occurrence, Token}) and Bad (unreadable line numbers, named by the
+  # caller, never silently dropped).
   $open = [ordered]@{}
   $bad = @()
   if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Open = $open; Bad = $bad } }
@@ -1963,26 +1989,48 @@ function Read-StagedDebt([string]$Path) {
     if ("$ln".Trim() -eq '') { continue }
     try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $bad += $n; continue }
     if (("$($o.receipt)" -eq '') -or ("$($o.case)" -eq '')) { $bad += $n; continue }
-    if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = "$($o.case)" }
+    if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = [pscustomobject]@{ Case = "$($o.case)"; Occurrence = $(try { [int]$o.occurrence } catch { 1 }); Token = "$($o.token)" } }
     elseif ("$($o.state)" -eq 'collected') { $open.Remove("$($o.receipt)") }
     else { $bad += $n }
   }
   return [pscustomobject]@{ Open = $open; Bad = $bad }
 }
 
-function Add-StagedDebtLines([string]$Path, $Cases, [string]$State, [string]$Stamp, [string]$Why) {
-  # Appends one journal line per case not already in that state
-  # (idempotent by receipt), flushed before returning, so a crash right
-  # after staging keeps every obligation. Returns the receipts written.
+function Get-StagedOpenCases($Read) {
+  # The open journal obligations as a case list with multiplicity, plus
+  # their identity tokens (name -> token, when recorded).
+  $cases = @(); $ids = @{}
+  foreach ($r in @($Read.Open.Values)) { $cases += $r.Case; if (("$($r.Token)" -ne '') -and (-not $ids.ContainsKey($r.Case))) { $ids[$r.Case] = $r.Token } }
+  return [pscustomobject]@{ Cases = @($cases | Sort-Object); Ids = $ids }
+}
+
+function Add-StagedDebtLines([string]$Path, $Cases, [string]$State, [string]$Stamp, [string]$Why, [hashtable]$Identities = @{}) {
+  # Staged: one line per owed occurrence not already open (a case listed
+  # twice stages occurrences 1 and 2), with its identity token. Collected:
+  # each listed occurrence closes one open receipt of that case, lowest
+  # occurrence first. Flushed before returning, so a crash right after
+  # staging keeps every obligation. Returns the receipts written.
   $cur = Read-StagedDebt $Path
   $lines = @()
   $written = @()
-  foreach ($c in @(@($Cases) | Where-Object { "$_" -ne '' } | Sort-Object -Unique)) {
-    $r = Get-StagedDebtReceipt "$c"
-    $isOpen = $cur.Open.Contains($r)
-    if ((($State -eq 'staged') -and $isOpen) -or (($State -eq 'collected') -and (-not $isOpen))) { continue }
-    $lines += ([pscustomobject][ordered]@{ receipt = $r; case = "$c"; state = $State; stamp = $Stamp; why = $Why } | ConvertTo-Json -Compress)
-    $written += $r
+  $want = [ordered]@{}
+  foreach ($c in @(@($Cases) | Where-Object { "$_" -ne '' })) { $k = "$c"; $want[$k] = 1 + $(if ($want.Contains($k)) { $want[$k] } else { 0 }) }
+  foreach ($k in @($want.Keys)) {
+    if ($State -eq 'staged') {
+      for ($i = 1; $i -le $want[$k]; $i++) {
+        $r = Get-StagedDebtReceipt $k $i
+        if ($cur.Open.Contains($r)) { continue }
+        $tok = if ($Identities.ContainsKey($k)) { "$($Identities[$k])" } else { '' }
+        $lines += ([pscustomobject][ordered]@{ receipt = $r; case = $k; occurrence = $i; token = $tok; state = 'staged'; stamp = $Stamp; why = $Why } | ConvertTo-Json -Compress)
+        $written += $r
+      }
+    } else {
+      $openHere = @($cur.Open.GetEnumerator() | Where-Object { $_.Value.Case -ceq $k } | Sort-Object { $_.Value.Occurrence } | Select-Object -First $want[$k])
+      foreach ($e in $openHere) {
+        $lines += ([pscustomobject][ordered]@{ receipt = $e.Key; case = $k; occurrence = $e.Value.Occurrence; token = $e.Value.Token; state = 'collected'; stamp = $Stamp; why = $Why } | ConvertTo-Json -Compress)
+        $written += $e.Key
+      }
+    }
   }
   if ($lines.Count -gt 0) {
     $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
@@ -2164,6 +2212,14 @@ function Read-TrxCaseResults([string]$TrxPath, $Expect = $null) {
   }
   $defs = @{}
   foreach ($d in @($t.TestRun.TestDefinitions.UnitTest)) { if ($null -ne $d) { $defs["$($d.id)"] = "$($d.name)" } }
+  # Bound reads (section 52 R1-I3): a trx this run reads must carry its
+  # test definitions (so every result can match one) and live under the
+  # run's own results directory (a per-run folder, so a contemporaneous
+  # trx from another run is foreign).
+  if ($null -ne $Expect) {
+    if ($defs.Count -eq 0) { $refuse.Add("unmatched: $leaf carries no test definitions to match its results against") }
+    if (("$($Expect.RunDir)" -ne '') -and (-not ([System.IO.Path]::GetFullPath($TrxPath)).StartsWith(([System.IO.Path]::GetFullPath("$($Expect.RunDir)").TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase))) { $refuse.Add("foreign: $leaf is outside this run's results directory $($Expect.RunDir)") }
+  }
   $byCase = [ordered]@{}
   $n = 0
   foreach ($r in @($t.TestRun.Results.UnitTestResult)) {
@@ -2173,7 +2229,7 @@ function Read-TrxCaseResults([string]$TrxPath, $Expect = $null) {
     $name = "$($r.testName)"
     if (($id -eq '') -and ("$($r.executionId)" -eq '')) { $refuse.Add("ambiguous: result $n ($name) has neither testId nor executionId"); continue }
     if ($id -eq '') { $id = "exec-$($r.executionId)" }
-    elseif (($defs.Count -gt 0) -and (-not $defs.ContainsKey($id))) { $refuse.Add("unmatched: result $n ($name) names testId $id, which no test definition carries"); continue }
+    elseif ((($defs.Count -gt 0) -or ($null -ne $Expect)) -and (-not $defs.ContainsKey($id))) { $refuse.Add("unmatched: result $n ($name) names testId $id, which no test definition carries"); continue }
     $end = [datetime]::MinValue
     try { $end = ([datetimeoffset]::Parse("$($r.endTime)", [System.Globalization.CultureInfo]::InvariantCulture)).UtcDateTime } catch { }
     if (-not $byCase.Contains($id)) { $byCase[$id] = [pscustomobject]@{ Name = $name; Attempts = New-Object System.Collections.Generic.List[object] } }
