@@ -229,12 +229,16 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line, [s
     $existing = @([regex]::Matches($text, '\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b[^\r\n]*') | ForEach-Object { $_.Value })
     $newDigest = [regex]::Match($Line, '\bdigest\s+([0-9a-f]+)')
     if ($existing.Count -gt 0) {
-      # A same-digest record blocks only when it also names this line's
-      # candidate (D00 T02 section 50 R1-A2): a record the graph rejected for
-      # an older candidate never blocks the valid collection that follows.
-      $newCand = [regex]::Match($Line, '\bcandidate\s+([0-9a-f]+)')
-      $recorded = $newDigest.Success -and (@($existing | Where-Object { ($_ -match ('\bdigest\s+' + $newDigest.Groups[1].Value + '\b')) -and ((-not $newCand.Success) -or ($_ -match ('\bcandidate\s+' + $newCand.Groups[1].Value + '\b'))) }).Count -gt 0)
-      if ((-not $newDigest.Success) -or $recorded) { return "skip: $DebtId already carries a collected line" }
+      # A new line with an event identity is idempotent by that event
+      # (D00 T02 section 50 R1-A2, R2-A1): only a record of the same event
+      # blocks it, so a record the graph rejected (an older candidate, a
+      # contradiction) never blocks the valid collection that follows, and
+      # the graph decides which record governs. A line without one keeps
+      # the digest rule.
+      $newEvent = [regex]::Match($Line, '\bevent\s+([^;)\s]+)')
+      if ($newEvent.Success) { $recorded = @($existing | Where-Object { $_ -match ('\bevent\s+' + [regex]::Escape($newEvent.Groups[1].Value) + '(?=[;)\s])') }).Count -gt 0 }
+      else { $recorded = $newDigest.Success -and (@($existing | Where-Object { $_ -match ('\bdigest\s+' + $newDigest.Groups[1].Value + '\b') }).Count -gt 0) }
+      if (((-not $newDigest.Success) -and (-not $newEvent.Success)) -or $recorded) { return "skip: $DebtId already carries a collected line" }
     }
     $lines = @($text -split "`r?`n")
     $idx = Find-OwedLineIndex $lines $DebtId

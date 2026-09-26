@@ -140,33 +140,44 @@ try { $null = Format-NightDebtPostRun ([pscustomobject]@{ schema = 'night-debt/1
 $ug = @(Format-UnrecordedGreens @('D90-T01-S1-N1') "$qf")
 Assert (($null -ne $qf) -and ($pf -like '*returned no night-debt/1 document*') -and (@($ug | Where-Object { $_ -like '*D90-T01-S1-N1*' }).Count -ge 1)) 's50-post-run-query-failure-never-reads-collected' "$qf | $pf | $($ug -join ' / ')"
 
-# Section 50 R1-R1: the chain end to end. Night one: the collector's
-# write lands but its readback fails (unknown), the write is registered as
-# possibly landed, and the post-run query fails, so the green reads
-# unrecorded, never collected. Night two: a green collection of the same
-# tests on the same candidate reconciles to the landed record, writes
-# nothing new, and reads closed. R1-A2: a record for an older candidate
-# never blocks the valid one.
+# Section 50 R1-R1, R2-R1: the chain end to end against the real graph.
+# A temporary repository carries a copy of scripts/todo-graph.py, a
+# one-debt TODO tree, and a commit the owed candidate names. Night one:
+# the collector's write lands but its readback fails (unknown), the write
+# is registered as possibly landed, and the post-run query fails, so the
+# green reads unrecorded, never collected. Night two: the real query reads
+# the debt closed by the landed line, so the collector has nothing to
+# collect and the file keeps exactly one collected line. R1-A2, R2-A1: a
+# record of another event never blocks the valid one.
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 $e50 = Join-Path $env:TEMP "nd50e-$([guid]::NewGuid().ToString('N'))"
-$null = New-Item -ItemType Directory -Force -Path $e50
-$t50 = Join-Path $e50 'TODO-01-x.md'
-'# x', '', '**Night-owed:** D90-T01-S1-N1 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20, candidate bbbb, digest aaaa1111bbbb2222)', '' | Set-Content -Path $t50 -Encoding UTF8
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $e50 'scripts'), (Join-Path $e50 'todo\90-night')
+Copy-Item (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\*.py') (Join-Path $e50 'scripts')
+$eap50 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$null = & git -C $e50 init -q 2>&1
+'x' | Set-Content -Path (Join-Path $e50 'seed.txt')
+$null = & git -C $e50 add seed.txt 2>&1
+$null = & git -C $e50 -c user.name=t -c user.email=t@t commit -q -m seed 2>&1
+$c50 = ((& git -C $e50 rev-parse HEAD) | Out-String).Trim()
+$ErrorActionPreference = $eap50
+@('# 90 Night', '', '## TODOs', '', '| TODO | Title | Status |', '| ---- | ----- | :----: |', '| [TODO-01](./TODO-01-night.md) | Night | active |') | Set-Content -Path (Join-Path $e50 'todo\90-night\INDEX.md') -Encoding UTF8
+$t50 = Join-Path $e50 'todo\90-night\TODO-01-night.md'
+@('---', 'schema_version: 1', 'id: night', 'domain: 90-night', 'status: active', 'title: "TODO-01 -- Night"', 'track: Z9', '---', '', '# TODO-01 -- Night', '', '> **Goal:** Fixture.', '', '## Outcome', '', '- Fixture.', '', '**Adjacency:** all=not-applicable (fixture)', '', '## Implementation Order', '', '| Order | Section | Deliverable | Depends On | Status |', '| :---: | :-----: | ----------- | ---------- | :----: |', '|   1   |   §1    | Owned work | -- |  [ ]   |', '', '---', '', '## 1. Owned work', '', '- [ ] Did the thing', '- [ ] Commit: `"selftest: night"`', '', '**Test checkpoint:** `true`', '', "**Night-owed:** D90-T01-S1-N1 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20, candidate $c50, digest aaaa1111bbbb2222)", '', '## Verification', '', '- [ ] Fixture file validates') | Set-Content -Path $t50 -Encoding UTF8
+$docStart = Get-NightDebtDocument $e50
 $before50 = [System.IO.File]::ReadAllText($t50)
-$line1 = Format-CollectedLine '2026-09-21' 'D90-T01-S1-N1' 1 0 0 'build/nightly/s1/interactive.trx' 'aaaa1111bbbb2222' 'bbbb' 's1-pid1' '02:40' 'collect-s1-D90-T01-S1-N1'
+$line1 = Format-CollectedLine '2026-09-21' 'D90-T01-S1-N1' 1 0 0 'seed.txt' 'aaaa1111bbbb2222' $c50 's1-pid1' '02:40' 'collect-s1-D90-T01-S1-N1'
 $note1 = Add-CollectedLine $t50 'D90-T01-S1-N1' $line1 { param($stage) if ($stage -eq 'readback') { throw 'io error' } }
 $tw = @{}
 Register-TrackedWrite $tw $e50 $t50 $line1 $note1 $before50
 $qfail = $null
 try { $null = Get-NightDebtDocument $e50 'no-such-python-50' } catch { $qfail = "$_" }
 $night1 = @(Format-UnrecordedGreens @('D90-T01-S1-N1') $qfail)
-$g1 = Format-DebtGreenEntry 'D90-T01-S1-N1' 'D90 T01 §1' 1 0 0 'build/nightly/s1/interactive.trx' $note1
-$line2 = Format-CollectedLine '2026-09-22' 'D90-T01-S1-N1' 1 0 0 'build/nightly/s2/interactive.trx' 'aaaa1111bbbb2222' 'bbbb' 's2-pid1' '02:41' 'collect-s2-D90-T01-S1-N1'
-$note2 = Add-CollectedLine $t50 'D90-T01-S1-N1' $line2
-$g2 = Format-DebtGreenEntry 'D90-T01-S1-N1' 'D90 T01 §1' 1 0 0 'build/nightly/s2/interactive.trx' $note2
+$g1 = Format-DebtGreenEntry 'D90-T01-S1-N1' 'D90 T01 §1' 1 0 0 'seed.txt' $note1
+$docNext = Get-NightDebtDocument $e50
+$openNext = @(@($docNext.debts) | Where-Object { "$($_.id)" -eq 'D90-T01-S1-N1' })
 $copies = ([regex]::Matches([System.IO.File]::ReadAllText($t50), '\*\*Night-collected:\*\*')).Count
 $reg = @($tw.Values | ForEach-Object { @($_.Lines) }) -contains $line1
-Assert (($note1 -like 'unknown:*') -and $reg -and ($null -ne $qfail) -and (@($night1 | Where-Object { $_ -like '*D90-T01-S1-N1*' }).Count -ge 1) -and $g1[1] -and ($note2 -like 'skip:*already carries*') -and ($g2[0] -like '*already closed*') -and (-not $g2[1]) -and ($copies -eq 1) -and ($line1 -like '*; digest aaaa1111bbbb2222; candidate bbbb; run s1-pid1; at 02:40; event collect-s1-D90-T01-S1-N1)')) 's50-landed-write-failed-query-then-reconciled' "$note1 | reg $reg | $($night1 -join ' / ') | $note2 | copies $copies"
+Assert ((@($docStart.debts | Where-Object { "$($_.id)" -eq 'D90-T01-S1-N1' }).Count -eq 1) -and ($note1 -like 'unknown:*') -and $reg -and ($null -ne $qfail) -and (@($night1 | Where-Object { $_ -like '*D90-T01-S1-N1*' }).Count -ge 1) -and $g1[1] -and ($openNext.Count -eq 0) -and ($copies -eq 1)) 's50-landed-write-failed-query-then-reconciled' "start $(@($docStart.debts).Count) | $note1 | reg $reg | $($night1 -join ' / ') | next open $($openNext.Count) | copies $copies"
 $old50 = Format-CollectedLine '2026-09-23' 'D90-T01-S1-N2' 1 0 0 'l' 'aaaa1111bbbb2222' 'aaaa' 'r' '02:40' 'e1'
 '# x', '', '**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20, candidate bbbb, digest aaaa1111bbbb2222)', $old50, '' | Set-Content -Path $t50 -Encoding UTF8
 $new50 = Format-CollectedLine '2026-09-24' 'D90-T01-S1-N2' 1 0 0 'l' 'aaaa1111bbbb2222' 'bbbb' 'r2' '02:41' 'e2'

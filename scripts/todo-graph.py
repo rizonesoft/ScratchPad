@@ -4550,7 +4550,7 @@ def night_debts(todos: list["Todo"], today_d):
             _by_run.setdefault(_key, set()).add(_r.get("_raw", ""))
         for (_rd, _run) in sorted(_by_run, key=lambda k: (k[0] or "", k[1])):
             if len(_by_run[(_rd, _run)]) > 1:
-                warnings.append(f"CONTRADICTORY Night-red lines dated {_rd} for run {_run or '?'} ({len(_by_run[(_rd, _run)])} different records); the latest by record text reads")
+                warnings.append(f"CONTRADICTORY Night-red lines dated {_rd} for run {_run or '?'} ({len(_by_run[(_rd, _run)])} different records); none of them takes effect until resolved")
         for _kind, _recs in (("Night-collected", collected_lists), ("Night-ack", ack_lists), ("Night-accepted", accept_lists),
                              ("Night-owner", owners_re), ("Night-extend", extends), ("Night-revoked", revokes)):
             # One replay position (date and effective time) or one event
@@ -4617,7 +4617,7 @@ def night_debts(todos: list["Todo"], today_d):
         # cutover it names its candidate and its schedule identity, or no
         # collection can close it.
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", _owed_day) and _owed_day >= NIGHT_DEBT_GOVERNANCE_CUTOVER:
-            _miss = [k for k in ("candidate", "schedule", "tz") if not o.get(k)]
+            _miss = [k for k in ("candidate", "schedule", "tz", "tests") if not o.get(k)]
             if _miss:
                 warnings.append(f"owed on {_owed_day} without {', '.join(_miss)} (required from {NIGHT_DEBT_GOVERNANCE_CUTOVER}); no collection can close it")
                 c = None
@@ -4749,15 +4749,30 @@ def night_debts(todos: list["Todo"], today_d):
             # the escalation forever.
             rl = []
             _seen_attempts = set()
-            # One record per attempt, the latest by record text (R2-F1):
-            # of contradictory reds for one run, the one that reads is the
-            # one the contradiction warning names, finding included.
+            # One record per attempt (date and run), replayed like every
+            # other lifecycle record (§50 R2-C1): identical replays collapse,
+            # and differing records for one attempt, one replay position, or
+            # one event id are contradictory and none of them takes effect
+            # (the contradiction warning names them), so wording never picks
+            # the governing record or its finding.
             _attempt: dict = {}
+            _reds_raw: dict = {}
             for r in _captured(reds.get(did, []), "Night-red", ("run", "at", "event"), warnings):
-                _k = (r.get("date") or "", r.get("run") or r.get("log") or "")
-                if _k not in _attempt or r.get("_raw", "") > _attempt[_k].get("_raw", ""):
-                    _attempt[_k] = r
-            for r in sorted(_attempt.values(), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+                _reds_raw.setdefault(r.get("_raw", ""), r)
+            _reds = list(_reds_raw.values())
+            _ev_r: dict = {}
+            for r in _reds:
+                if r.get("event"):
+                    _ev_r.setdefault(r["event"], []).append(r)
+            _bad_r = {id(r) for g in _ev_r.values() if len(g) > 1 for r in g}
+            _reds = [r for r in _reds if id(r) not in _bad_r]
+            _by_att: dict = {}
+            for r in _reds:
+                _by_att.setdefault((r.get("date") or "", r.get("run") or r.get("log") or ""), []).append(r)
+            for _k, _rs in _by_att.items():
+                if len(_rs) == 1:
+                    _attempt[_k] = _rs[0]
+            for r in sorted(_attempt.values(), key=_eff_key):
                 rd = _strict_date(r["date"])
                 if rd is None or rd > today_d:
                     # A red that is not a real past day changes nothing and
@@ -26850,9 +26865,11 @@ track: Z1
             (True, True),
         )
         check(
-            "§42 R1-F2: contradictory reds for one run warn; identical extends record one extension",
+            "§42 R1-F2 (§50 R2-C1): contradictory reds for one run warn and take no effect; identical extends record one extension",
             (_n42w("D90-T01-S1-N17", "CONTRADICTORY Night-red lines dated 2026-09-14 for run q1")
-             and "finding D00-T02-S42-F7" in _n42.get("D90-T01-S1-N17", ""),
+             and _n42w("D90-T01-S1-N17", "none of them takes effect")
+             and "finding D00-T02-S42-F7" not in _n42.get("D90-T01-S1-N17", "")
+             and "state red" not in _n42.get("D90-T01-S1-N17", ""),
              _n42.get("D90-T01-S1-N18", "").count("by operator from"), _n42w("D90-T01-S1-N18", "CONTRADICTORY")),
             (True, 1, False),
         )
@@ -27029,7 +27046,7 @@ track: Z1
         finally:
             NIGHT_DEBT_GOVERNANCE_CUTOVER = _cut_saved
         check("§50 R1-I1: from the cutover an owed line without its capture cannot close, and a record without at and event takes no effect",
-              (any("WARN D90-T01-S1-N1: owed on 2026-09-12 without candidate, schedule, tz" in ln for ln in _l50c),
+              (any("WARN D90-T01-S1-N1: owed on 2026-09-12 without candidate, schedule, tz, tests" in ln for ln in _l50c),
                any("WARN D90-T01-S1-N1: Night-collected dated 2026-09-18 lacks candidate, run, at, event" in ln for ln in _l50c),
                any("WARN D90-T01-S1-N2: Night-ack dated 2026-09-19 lacks at, event" in ln for ln in _l50c),
                any(" D90-T01-S1-N2 " in ln and "state acknowledged" in ln for ln in _l50c)), (True, True, True, False))
