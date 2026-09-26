@@ -5532,6 +5532,22 @@ def cmd_query(args) -> int:
 
         tel_n = panel_n = gpt_n = opus_n = grok_n = 0
         tok_sum = tok_unknown = mismatch = 0
+        # Receipt tokens (D00 T04 §1 item 11): the run ledger records each
+        # run's reported usage, so a round whose Telemetry line reads
+        # `unknown` takes the tokens its run's receipt carries.
+        tok_receipt = 0
+        _rcpt_tokens: dict[str, int] = {}
+        try:
+            with open(REPO / "build" / "review-runs" / "ledger.jsonl", encoding="utf-8") as _lf:
+                for _lln in _lf:
+                    try:
+                        _lo = json.loads(_lln)
+                    except ValueError:
+                        continue
+                    if isinstance(_lo, dict) and isinstance(_lo.get("tokens"), int) and isinstance(_lo.get("run"), str):
+                        _rcpt_tokens[normalize_run_id(_lo["run"])] = _lo["tokens"]
+        except OSError:
+            pass
         outcomes: dict[str, int] = {}
         # Grok is the six-slot fallback family (D00 T04 §25, R2-F2).
         fam_tel = {"GPT": 0, "Opus": 0, "Grok": 0}
@@ -5555,7 +5571,12 @@ def cmd_query(args) -> int:
                 outcomes[t["outcome"]] = outcomes.get(t["outcome"], 0) + 1
                 fam_tel[r["family"]] += 1
                 if t["tokens"] is None:
-                    tok_unknown += 1
+                    _rt = [_rcpt_tokens[x] for x in d.get("round_runs", {}).get(r["n"], []) if x in _rcpt_tokens]
+                    if _rt:
+                        tok_sum += _rt[-1]
+                        tok_receipt += 1
+                    else:
+                        tok_unknown += 1
                 else:
                     tok_sum += t["tokens"]
                 if t["round"] != r["n"]:
@@ -5571,7 +5592,7 @@ def cmd_query(args) -> int:
         if not section_mode and not as_json:
             print("telemetry -- tree-wide panel rounds")
             print(f"rounds: {tel_n} with telemetry lines ({panel_n} panel sections total)")
-            print(f"tokens: {tok_sum} known ({tok_unknown} rounds unknown)")
+            print(f"tokens: {tok_sum} known ({tok_receipt} from run receipts; {tok_unknown} rounds unknown)")
             print(f"families (panel sections): GPT {gpt_n}, Claude {opus_n}, Grok {grok_n}")
             print(f"families (telemetry rounds): GPT {fam_tel['GPT']}, Claude {fam_tel['Opus']}, Grok {fam_tel['Grok']}")
             print("  (Claude buckets include legacy Opus-worded records; record words cut over 2026-09-22)")
@@ -5731,6 +5752,7 @@ def cmd_query(args) -> int:
                     "panel_sections": panel_n,
                     "tokens_known": tok_sum,
                     "tokens_unknown_rounds": tok_unknown,
+                    "tokens_from_receipts": tok_receipt,
                     "families_sections": {"GPT": gpt_n, "Opus": opus_n, "Grok": grok_n},
                     "families_telemetry": fam_tel,
                     "outcomes": outcomes,
@@ -23953,6 +23975,12 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         )
         rp = importlib.util.module_from_spec(rp_spec)
         rp_spec.loader.exec_module(rp)
+        # Receipt token capture (D00 T04 §1 item 11): the last reported
+        # count wins, commas strip, JSON usage counts, silence is None.
+        check("producer tokens read codex's tail report", rp.producer_tokens("hook: Stop\ntokens used\n28,509\n"), 28509)
+        check("producer tokens take the last report", rp.producer_tokens("tokens used 5\n...\ntokens used: 7,001"), 7001)
+        check("producer tokens read JSON usage", rp.producer_tokens('{"total_tokens": 99}'), 99)
+        check("producer tokens stay unknown when nothing is reported", rp.producer_tokens("model grok-4.7\n"), None)
         check(
             "prompt tags are unique per prompt",
             rp.unique_tag("SEC") != rp.unique_tag("SEC"),

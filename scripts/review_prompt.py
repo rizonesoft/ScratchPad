@@ -449,6 +449,22 @@ def _terminate_producer_job(bound) -> None:
     kernel.CloseHandle(job)
 
 
+def producer_tokens(stderr_text: str) -> int | None:
+    """Token usage a producer reported on stderr (D00 T04 §1 item 11).
+
+    Codex prints `tokens used` then the count (commas allowed) near the
+    end; JSON-event producers report `total_tokens`. The LAST report
+    wins (a retrying producer reports cumulatively). None when the
+    producer reported nothing, so a receipt never invents a number.
+    """
+    found = re.findall(r"tokens used\W{0,3}([0-9][0-9,]{0,14})", stderr_text, re.IGNORECASE)
+    found += re.findall(r'"total_tokens"\s*:\s*([0-9]{1,12})', stderr_text)
+    if not found:
+        return None
+    digits = found[-1].replace(",", "")
+    return int(digits) if digits.isdigit() and len(digits) <= 12 else None
+
+
 def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tuple[bool, str, dict]:
     """Run one reviewer producer under streaming bounds (D00 T01 §34
     items 3-4): the prompt bytes feed stdin while stdout streams
@@ -509,6 +525,10 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             chunks.put((_EXC, exc))
 
     errbuf: list[bytes] = []
+    # The stderr TAIL too (D00 T04 §1 item 11): producers print their
+    # usage last (codex's `tokens used`), after the head cap has filled,
+    # so a rolling last-8 KiB window rides beside the capped head.
+    errtail: list[bytes] = [b""]
 
     def _derr() -> None:
         # Drain to EOF while retaining only the cap (D00 T01 §34 R1
@@ -525,6 +545,7 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
                 if kept < STDERR_MAX_BYTES:
                     errbuf.append(data[: STDERR_MAX_BYTES - kept])
                     kept += len(errbuf[-1])
+                errtail[0] = (errtail[0] + data)[-8192:]
         except (OSError, ValueError):
             pass
 
@@ -702,7 +723,8 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             reason = f"producer exceeded {timeout_secs:g}s wall clock"
             rc = _reap()
     errout.join(timeout=5)
-    info = {"returncode": rc, "stderr_tail": _stderr_tail(), "bytes_read": total_bytes, "lines_read": total_lines, "raw": b"".join(raw_parts)}
+    _last = errtail[0].decode("utf-8", "replace")
+    info = {"returncode": rc, "stderr_tail": _stderr_tail(), "stderr_last": " ".join(_last.split())[-300:], "tokens": producer_tokens(_last), "bytes_read": total_bytes, "lines_read": total_lines, "raw": b"".join(raw_parts)}
     if reason:
         return False, reason, info
     if rc != 0:
@@ -1284,6 +1306,11 @@ if __name__ == "__main__":
                     "producer": _producer,
                     "checker": CHECKER_VERSION if kind != "arch" else "none",
                     "dirty": _dirty_state(),
+                    # Usage and the producer's own last words ride the
+                    # receipt (D00 T04 §1 item 11): telemetry reads the
+                    # tokens, and a failed run shows why without rerun.
+                    "tokens": info.get("tokens"),
+                    "stderr_last": info.get("stderr_last", ""),
                 },
             )
         except (OSError, ValueError) as exc:
