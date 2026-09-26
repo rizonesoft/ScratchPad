@@ -55,6 +55,14 @@ public sealed class LaunchDiagnosticsTests
             Assert.Equal("initial-missing", lone.Outcome);
             Assert.Equal(("conflict", "conflict"), ((string)mixed.Generation!, mixed.Outcome));
             Assert.Equal("truncated", cut.Outcome);
+            // R2-I1: a verdict cut mid-word or mid-list is truncated too; a
+            // whole fail list is not.
+            foreach (string v in new[] { "p", "fail(0x", "fail(0x10:ambiguous", "fail(0x10:ambiguous," })
+            {
+                Assert.Equal("truncated", UiLaunchDiagnostics.SweepSummary(["sweep main=0xA9 target=-32000,-32000 gen=4 pinned= skipped= verdict=pass", $"sweep-late main=0xA9 target=-32000,-32000 gen=4 pinned= skipped= verdict={v}"], 0xA9).Outcome);
+            }
+
+            Assert.Equal("complete", UiLaunchDiagnostics.SweepSummary(["sweep main=0xAA target=-32000,-32000 gen=4 pinned= skipped=0x10(ambiguous),0x11(overlap-unplaced) verdict=fail(0x10:ambiguous,0x11:overlap-unplaced)", "sweep-late main=0xAA target=-32000,-32000 gen=4 pinned= skipped= verdict=pass"], 0xAA).Outcome);
             Assert.Equal((3L, "complete"), ((long)other.Generation!, other.Outcome));
             Assert.Equal((7L, "complete"), ((long)a.Generation!, a.Outcome));
             Assert.Equal((8L, "late-missing"), ((long)b.Generation!, b.Outcome));

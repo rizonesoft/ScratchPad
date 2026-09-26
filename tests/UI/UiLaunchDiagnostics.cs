@@ -239,7 +239,8 @@ internal static class UiLaunchDiagnostics
     // when none, or "conflict" when they disagree); the outcome is complete
     // (one whole initial sweep and a whole delayed pass of one
     // generation), truncated (a line missing any field through its
-    // verdict), initial-missing (a delayed pass with no sweep), conflict
+    // verdict, or a verdict that is not `pass` or a whole `fail(...)` list,
+    // R2-I1), initial-missing (a delayed pass with no sweep), conflict
     // (lines of more than one generation), late-missing, log-missing (no
     // line for a background birth), or none (no background birth).
     internal static (object? Generation, string Outcome) SweepSummary(string[] lines, nint main)
@@ -266,7 +267,7 @@ internal static class UiLaunchDiagnostics
                 continue;
             }
 
-            var m = Regex.Match(l, @"^(sweep|sweep-late) main=0x[0-9A-F]+ target=-?\d+,-?\d+ gen=(\d+) pinned=\S* skipped=\S* verdict=\S+$");
+            var m = Regex.Match(l, @"^(sweep|sweep-late) main=0x[0-9A-F]+ target=-?\d+,-?\d+ gen=(\d+) pinned=\S* skipped=\S* verdict=(?:pass|fail\(0x[0-9A-F]+:[a-z-]+(?:,0x[0-9A-F]+:[a-z-]+)*\))$");
             if (!m.Success)
             {
                 return (null, "truncated");

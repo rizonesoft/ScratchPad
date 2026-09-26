@@ -1268,17 +1268,25 @@ public sealed class LaunchTests
     }
 
     // D00 T02 §48 item 5: the completeness check fails on a helper the sweep
-    // log never names, whatever the snapshot said, and (R1-A1) on a newly
-    // observed helper the sweep skipped as preexisting or another owner's
-    // instead of pinning it; the app's own worker-thread window passes.
+    // log never names, whatever the snapshot said, and (R1-A1, R2-A1) on a
+    // newly observed helper the sweep skipped for any reason, worker-thread
+    // included, instead of pinning it; only a hidden window owned by a
+    // pinned helper (both read by the test) is contained.
     [Fact]
     public void FirstBirthGapsNameAHelperAbsentFromTheSweepLog()
     {
         var birth = new SweepLine(0x100, -32000, -32000, [0x300], new() { [0x300] = (-32000, -32000) }, new() { [0x200] = "preexisting", [0x600] = "preexisting" }, "sweep");
         var late = new SweepLine(0x100, -32000, -32000, [0x410], new() { [0x410] = (-32000, -32000) }, new() { [0x400] = "other-owner", [0x700] = "worker-thread" }, "sweep-late") { Phase = "sweep-late" };
-        var gaps = FirstBirthGaps([0x100, 0x200, 0x300, 0x400, 0x410, 0x500, 0x600, 0x700], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late);
-        Assert.Equal(new List<nint> { 0x400, 0x500, 0x600 }, gaps);
-        Assert.Empty(FirstBirthGaps([0x100, 0x200, 0x300, 0x410, 0x700], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late));
+        // 0x800 is hidden and owned by the pinned 0x300 (contained); 0x900
+        // is hidden but owned by nothing this birth pinned; 0x400 is owned
+        // by 0x300 but visible.
+        var hiddenSet = new HashSet<nint> { 0x800, 0x900 };
+        var owners = new Dictionary<nint, nint> { [0x800] = 0x300, [0x900] = 0x200, [0x400] = 0x300 };
+        bool Hidden(nint h) => hiddenSet.Contains(h);
+        nint Owner(nint h) => owners.TryGetValue(h, out nint o) ? o : h;
+        var gaps = FirstBirthGaps([0x100, 0x200, 0x300, 0x400, 0x410, 0x500, 0x600, 0x700, 0x800, 0x900], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late, Hidden, Owner);
+        Assert.Equal(new List<nint> { 0x400, 0x500, 0x600, 0x700, 0x900 }, gaps);
+        Assert.Empty(FirstBirthGaps([0x100, 0x200, 0x300, 0x410, 0x800], new HashSet<nint> { 0x200 }, new HashSet<nint> { 0x100 }, birth, late, Hidden, Owner));
     }
 
     // D00 T02 §48 item 9 (R1-R2): the budget on the real native path.
@@ -1393,8 +1401,8 @@ public sealed class LaunchTests
                 SweepLine late = sweepLog.ReadLate(main);
                 var after = ProcessWindows(app.ProcessId).Where(h => HelperNative.IsWindow(h)).ToList();
                 var mains = after.Where(h => HelperClass(h) == "WinUIDesktopWin32WindowClass").ToHashSet();
-                var gaps = FirstBirthGaps(after, outside, mains, birth, late);
-                Assert.True(gaps.Count == 0, $"window(s) born during the first construction escaped both the snapshot and the sweep log: {string.Join(", ", gaps.Select(h => $"0x{h:X}"))}; {birth.Raw} | {late.Raw}");
+                var gaps = FirstBirthGaps(after, outside, mains, birth, late, h => !HelperNative.IsWindowVisible(h), h => HelperNative.GetAncestor(h, 3));
+                Assert.True(gaps.Count == 0, $"window(s) born during the first construction were not pinned by the sweep or its delayed pass: {string.Join(", ", gaps.Select(h => $"0x{h:X} ({HelperClass(h)}, root owner 0x{HelperNative.GetAncestor(h, 3):X} {HelperClass(HelperNative.GetAncestor(h, 3))}, {(HelperNative.IsWindowVisible(h) ? "visible" : "hidden")})"))}; {birth.Raw} | {late.Raw}");
                 foreach (nint hwnd in birth.Pinned.Concat(late.Pinned))
                 {
                     var at = birth.PinnedAt.TryGetValue(hwnd, out var b) ? b : late.PinnedAt.TryGetValue(hwnd, out var l) ? l : (X: int.MinValue, Y: int.MinValue);
@@ -1528,20 +1536,27 @@ public sealed class LaunchTests
     // observation before it never saw, and that is no main, must be pinned
     // by the birth's sweep or its delayed pass (the pin check then proves
     // it reached the target). A helper the sweep log never names escaped
-    // both the snapshot and the sweep; one it skipped as preexisting,
-    // another owner's, or anything but the app's own worker thread was
-    // misclassified. Returns the missed handles.
-    internal static List<nint> FirstBirthGaps(IEnumerable<nint> observedAfter, ISet<nint> observedBefore, ISet<nint> mains, SweepLine birth, SweepLine? late)
+    // both the snapshot and the sweep; one it skipped for any reason was
+    // misclassified. No skip reason is trusted here (R2-A1): the first
+    // birth runs before the app starts any worker thread, so the sweep's
+    // own worker-thread label is no exemption either. The one exception is
+    // read independently, never from the log: a window the test reads as
+    // hidden whose root owner (read by the test) is a helper this birth
+    // pinned is contained by that helper and cannot reach the screen (the
+    // default IME window, owned by the GDI+ hook helper, measured
+    // 2026-09-26), matching the placement verdict's hidden-window rule.
+    // Returns the missed handles.
+    internal static List<nint> FirstBirthGaps(IEnumerable<nint> observedAfter, ISet<nint> observedBefore, ISet<nint> mains, SweepLine birth, SweepLine? late, Func<nint, bool> hidden, Func<nint, nint> rootOwner)
     {
+        ArgumentNullException.ThrowIfNull(hidden);
+        ArgumentNullException.ThrowIfNull(rootOwner);
         var pinned = new HashSet<nint>(birth.Pinned);
-        var worker = new HashSet<nint>(birth.Skipped.Where(kv => kv.Value == "worker-thread").Select(kv => kv.Key));
         if (late is not null)
         {
             pinned.UnionWith(late.Pinned);
-            worker.UnionWith(late.Skipped.Where(kv => kv.Value == "worker-thread").Select(kv => kv.Key));
         }
 
-        return [.. observedAfter.Where(h => !observedBefore.Contains(h) && !mains.Contains(h) && !pinned.Contains(h) && !worker.Contains(h))];
+        return [.. observedAfter.Where(h => !observedBefore.Contains(h) && !mains.Contains(h) && !pinned.Contains(h) && !(hidden(h) && pinned.Contains(rootOwner(h))))];
     }
 
     // Arms the app's test-only sweep log (the run marker plus the log path,
