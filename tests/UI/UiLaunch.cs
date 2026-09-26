@@ -261,6 +261,45 @@ internal static class UiLaunch
         }
     }
 
+    // Captured tool runs (D00 T02 §49 Run A finding): a tool whose output
+    // the test reads (the gate's selftest). Both streams drain
+    // asynchronously and the run is bounded: a run past the timeout is
+    // killed with its tree and reads exit -1, never waited on. The start
+    // stays in this one home, so the launch guard sees no bypass.
+    internal static (int ExitCode, string Output) RunToolCaptured(
+        string exe,
+        string args,
+        TimeSpan timeout,
+        [CallerMemberName] string? member = null,
+        [CallerFilePath] string? file = null)
+    {
+        TakeSeed();
+        string testId = TestId(member, file);
+        using var process = Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true });
+        Assert.NotNull(process);
+        UiLaunchDiagnostics.Record(testId, args, process.Id, null, "tool", 0, 0, expectWindow: false);
+        var output = new System.Text.StringBuilder();
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) { lock (output) { output.AppendLine(e.Data); } } };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (output) { output.AppendLine(e.Data); } } };
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+        if (!process.WaitForExit(timeout))
+        {
+            process.Kill(entireProcessTree: true);
+            process.WaitForExit();
+            lock (output)
+            {
+                return (-1, $"killed after {timeout.TotalSeconds:0} s: {output}");
+            }
+        }
+
+        process.WaitForExit();
+        lock (output)
+        {
+            return (process.ExitCode, output.ToString());
+        }
+    }
+
     // Shell launch (D00 T02 §18 item 6): protocol and URL probes that
     // need shell execution. The caller owns the process (attach plus
     // dispose); the launch itself stays in the one home.
