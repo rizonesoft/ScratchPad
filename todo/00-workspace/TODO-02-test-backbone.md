@@ -95,7 +95,7 @@ track: W0
 |   52  |   §52   | Population gate third residuals | §44 |  [x]   |
 |   53  |   §53   | Nightly evidence fourth residuals | §45 |  [x]   |
 |   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [ ]   |
-|   55  |   §55   | Notify redesign residuals | §24 |  [ ]   |
+|   55  |   §55   | Notify redesign residuals | §24 |  [x]   |
 
 ---
 
@@ -1809,6 +1809,13 @@ Why this section exists: the §24 plan review (run after its redesign) returned 
 - [x] Commit: `"workspace: settle the notify redesign residuals"`
 
 **Test checkpoint:** Generations commit whole, late failures alert, starts are evidenced, no-start is accepted, nights have one identity, supersession corrects, routing combines, the SLA clock is defined, queues are durable and reconciled, delivery is evidenced, escalation is timed, host outage has a path, agreement tracks the schema, recovery is exact, links last and stay private, and the taxonomy is current. Cheaper substitute that fails: one more toast line.
+
+> **Verified:** 2026-09-26 | §55 | an alert links a report only through a committed generation and otherwise links the result; interrupted publications are rebuilt or committed on agreement and any settled result the ledger never recorded still notifies; a failure after the result alerts under its own identity; missed nights name their start state and paused or skipped nights read excused; canonical selection is a total order; supersession names the superseding verdict and keeps owed triage; routing combines every label; the SLA clock origin is the run's start; queues survive corruption, overlap, and retention; the digest reconciles against the lifecycle; delivery reads accepted, not seen; critical and high escalate at the first failed delivery with a fallback file; the host-outage limitation is recorded; unnamed result fields fail agreement; recovery reads comparable, flapping, or partial; links relocate without crossing runs and titles stay lock-screen safe; one derived taxonomy; the worsening contract and the confirm-time path have fixtures
+> **Review:** round 5 (Full), candidates `8ec944d` `9ed43ad` `95729d0` `9648516` `588a114` `cdd8323` -- GPT R1-R2 bulk needs-attention (R1-A1, A2, C1, C2, I1, I2, R1 and R2-A1, C1, I1, I2, R1 fixed), GPT R3 sign-off needs-attention (A1, C1, I1, R1 fixed in 588a114), R4 depth A1 fixed in cdd8323, R5 depth governing: `adversarial` needs-attention · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra); R5-A1 rejected at the cap (not reachable: per-machine retained store). Raw findings: docs/reviews/00-workspace/D00-T02-s55.md
+> **Plan review:** GPT medium, 14 rejected under the 2026-09-26 filing bar (8 already hold, 6 hardening or enhancement), none filed (run 20260926-D00-T02-S55-codex-c06751119-r6)
+> **CRUD:** not-applicable | nightly notification tooling; no user data
+> **Duration:** 2026-09-26T14:58:17Z to 2026-09-26T16:39:47Z
+> **Reviewed-tip:** cdd8323
 
 ## Verification
 
