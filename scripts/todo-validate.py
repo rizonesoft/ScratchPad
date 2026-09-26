@@ -487,20 +487,23 @@ def validate(graph, _args) -> int:
     # The early-round note is shaped, not bare words: the skill mandates
     # `<family> outage: <what failed>`, so the colon plus failure text is
     # required. Denials fail two ways: a "No <family> outage:" prefix
-    # (lookbehind) and a nothing-valued note (none, n/a, nothing,
-    # never, not applicable). Free-form failures stay admissible --
-    # honest prose ("CLI missing", "timed out") must never false-fire
-    # -- so a creative falsehood ("no failure") still passes; the
+    # (lookbehind) and a nothing-valued note whose WHOLE value is one of
+    # no, none, n/a, nothing, never, or not applicable (trailing
+    # punctuation allowed). The check anchors to the whole value (D00
+    # T04 §1 item 1), so honest failure prose that merely opens with a
+    # listed word ("never responded within 600s", "none of the CLIs
+    # resolved") passes. Free-form failures stay admissible, so a
+    # creative falsehood ("no failure") still passes; the
     # rule forces an accounting, not honesty, and reviewers read the
     # note. Case-insensitive like the signoff note; runs on stripped
     # text so fenced quotes never satisfy (D00 T01 §37, R1-F1).
     SOL_OUTAGE_RE = re.compile(
-        r"(?<!\bno\s)sol outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
-        re.IGNORECASE,
+        r"(?<!\bno\s)sol outage:[ \t]*(?!(?:no|none|n/a|nothing|never|not applicable)[ \t.;,!]*$)\S",
+        re.IGNORECASE | re.MULTILINE,
     )
     GPT_OUTAGE_NOTE_RE = re.compile(
-        r"(?<!\bno\s)gpt outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
-        re.IGNORECASE,
+        r"(?<!\bno\s)gpt outage:[ \t]*(?!(?:no|none|n/a|nothing|never|not applicable)[ \t.;,!]*$)\S",
+        re.IGNORECASE | re.MULTILINE,
     )
     # Verdicts are line-anchored, never substring: the mandated shape puts
     # each verdict on its own marker-led line, so unheaded prose after an
@@ -621,8 +624,8 @@ def validate(graph, _args) -> int:
                 if _p25_heads[-1].group(1).lower() == _w["fallback"].lower():
                     _note = re.compile(
                         r"(?<!\bno\s)" + re.escape(_w["primary"])
-                        + r" outage:[ \t]*(?!none\b|n/a\b|nothing\b|never\b|not applicable\b)\S",
-                        re.IGNORECASE,
+                        + r" outage:[ \t]*(?!(?:no|none|n/a|nothing|never|not applicable)[ \t.;,!]*$)\S",
+                        re.IGNORECASE | re.MULTILINE,
                     )
                     if not _note.search(text):
                         flag(

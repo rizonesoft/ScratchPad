@@ -2816,7 +2816,10 @@ TELEMETRY_SOL_RE = re.compile(r"(sol|gpt) outage:\s*(\S.*)$", re.IGNORECASE)
 TELEMETRY_OPUS_RE = re.compile(r"(Opus|Claude) outage\b\s*(.*)$", re.IGNORECASE)
 # Denial vocabulary mirror for outage counting (D00 T01 §37 R1: the
 # validator owns enforcement; telemetry counts honest lines only).
-TELEMETRY_SOL_DENY_RE = re.compile(r"^(no\b|none\b|n/a\b|nothing\b|never\b|not applicable\b)", re.IGNORECASE)
+# A `no ...` opener is a denial for counting; the other nothing words
+# deny only as the whole value, like the validator (D00 T04 §1 item 1),
+# so honest prose opening with one of them counts.
+TELEMETRY_SOL_DENY_RE = re.compile(r"^(?:no\b|(?:none|n/a|nothing|never|not applicable)[ \t.;,!]*$)", re.IGNORECASE)
 
 
 def ledger_block(sec: str) -> tuple[str | None, str | None]:
@@ -10914,6 +10917,9 @@ track: Z1
 |  71   |   §71   | Six-slot partial with retry-owed fires | - |  [x]   |
 |  72   |   §72   | Six-slot claude plan-review run fires quorum | - |  [x]   |
 |  73   |   §73   | Six-slot grok plan-review run stays independent | - |  [x]   |
+|  74   |   §74   | Honest never-opener Sol note stays silent | - |  [x]   |
+|  75   |   §75   | Honest none-opener Sol note stays silent | - |  [x]   |
+|  76   |   §76   | Whole-value never Sol note fires | - |  [x]   |
 
 ---
 
@@ -11720,6 +11726,39 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-gptonly.md
 > **Plan review:** Grok high, no findings (run 20260924-D90-T06-S73-grok-c0123abcd)
 
+## 74. Honest never-opener Sol note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §74 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solhonest1.md
+> **Plan review:** GPT high, no findings
+
+## 75. Honest none-opener Sol note stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §75 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solhonest2.md
+> **Plan review:** GPT high, no findings
+
+## 76. Whole-value never Sol note fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-20 | §76 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-solnever.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12132,6 +12171,19 @@ track: Z1
             "GPT outage: gpt-6-sol CLI missing; gpt-5.6-terra CLI missing (fixture note)\n",
             encoding="utf-8",
         )
+        # Whole-value nothing-check (D00 T04 §1 item 1): honest failure
+        # prose opening with a listed word stays silent; a note whose
+        # whole value is a nothing word (punctuation allowed) fires.
+        for _hn, _hv in (("90-panel-solhonest1.md", "never responded within 600s (fixture note)"),
+                         ("90-panel-solhonest2.md", "none of the CLIs resolved on this box (fixture note)"),
+                         ("90-panel-solnever.md", "never.")):
+            (rev_dir / _hn).write_text(
+                "# Review: fixture\n\n## Opus panel\n\n"
+                "**adversarial: approve**\n**consistency: approve**\n"
+                "**integration: approve**\n**record: approve**\n\n"
+                f"Sol outage: {_hv}\n",
+                encoding="utf-8",
+            )
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
         # findings carry provenance, so the panel fixtures carry it too.
         for _ppf in sorted(rev_dir.glob("90-panel-*.md")):
@@ -12564,6 +12616,21 @@ track: Z1
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "honest never-opener Sol note stays silent (whole-value check)",
+            any("TODO-06-panel.md" in ln and "§74 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "honest none-opener Sol note stays silent (whole-value check)",
+            any("TODO-06-panel.md" in ln and "§75 " in ln and "FATAL" in ln for ln in panel_out),
+            False,
+        )
+        check(
+            "whole-value never Sol note fires",
+            any("TODO-06-panel.md" in ln and "§76 " in ln and "lacks the Sol outage line" in ln for ln in panel_out),
+            True,
+        )
         check(
             "six-slot GPT-only record governs silently",
             any("TODO-06-panel.md" in ln and "§66 " in ln and "FATAL" in ln for ln in panel_out),
