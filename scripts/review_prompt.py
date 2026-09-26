@@ -986,6 +986,59 @@ if __name__ == "__main__":
             print(f"run-id: {exc}", file=sys.stderr)
             sys.exit(2)
         sys.exit(0)
+    if len(sys.argv) >= 9 and sys.argv[1] == "run" and "--fallback-on-fail" in sys.argv:
+        # The gate's outage rung, executed (D00 T04 §1 item 9): run the
+        # named primary slot; on any failure (nonzero exit: no CLI, auth,
+        # model error, timeout, or a FAIL output check) print the
+        # outage line the record carries and run the same prompt once on
+        # the `fallback` slot; when the fallback fails too, print the
+        # both-rungs stop record and exit 1 (no stamp). `--round N` names
+        # the round the record carries (`Arch-N` for the gate). The two
+        # runs are ordinary `run` invocations, so each mints its own run
+        # ID and receipt.
+        argv = [a for a in sys.argv if a != "--fallback-on-fail"]
+        round_label = ""
+        if "--round" in argv:
+            ri = argv.index("--round")
+            if ri + 1 >= len(argv) or re.fullmatch(r"[0-9]{1,4}", argv[ri + 1]) is None:
+                print("run: --round takes a round number", file=sys.stderr)
+                sys.exit(2)
+            round_label = argv[ri + 1]
+            del argv[ri:ri + 2]
+        if "--slot" not in argv:
+            print("run: --fallback-on-fail needs --slot <primary>", file=sys.stderr)
+            sys.exit(2)
+        si = argv.index("--slot")
+        primary = argv[si + 1] if si + 1 < len(argv) else ""
+        if primary in ("", "fallback"):
+            print("run: --fallback-on-fail needs a primary slot, not fallback", file=sys.stderr)
+            sys.exit(2)
+        kind = argv[2]
+        word = {"arch": "Arch", "panel": "GPT", "plan": "Plan"}.get(kind, kind)
+        where = (f"Arch-{round_label} " if kind == "arch" and round_label else (f"round {round_label} " if round_label else ""))
+
+        def _once(args):
+            proc = subprocess.run([sys.executable, os.path.abspath(__file__)] + args[1:], capture_output=True, text=True, encoding="utf-8", errors="replace")
+            sys.stdout.write(proc.stdout)
+            sys.stderr.write(proc.stderr)
+            why = next((ln[5:].strip() for ln in proc.stdout.splitlines() if ln.startswith("FAIL ")), "")
+            if not why:
+                why = (proc.stderr.strip().splitlines() or [f"exit {proc.returncode}"])[-1]
+            return proc.returncode, why.replace(";", ",")
+
+        rc, why1 = _once(argv)
+        if rc == 0:
+            sys.exit(0)
+        print(f"outage: {word} outage: {where}{primary} - {why1}")
+        fb = list(argv)
+        fb[si + 1] = "fallback"
+        rc2, why2 = _once(fb)
+        if rc2 == 0:
+            print(f"record: the fallback round records `{word} outage: {where}{primary} - {why1}` under its heading")
+            sys.exit(0)
+        print(f"stop: {word} outage: {where}both rungs - {primary}: {why1}; fallback: {why2}")
+        print("stop: no stamp; the operator owns the retry")
+        sys.exit(1)
     if len(sys.argv) >= 9 and sys.argv[1] == "run":
         # run <panel|plan|arch> <prompt-file> <todo-path> <section> <family>
         #   <YYYYMMDD> [--timeout S] [--store DIR] [--candidate SHA]
@@ -1085,6 +1138,12 @@ if __name__ == "__main__":
                 sys.exit(2)
             if not timeout_given:
                 timeout = float(slots[slot_name]["timeout"])
+            # Failure injection for the outage-rung proof (D00 T04 §1
+            # item 9): a slot named in REVIEW_PROMPT_FORCE_FAIL runs a
+            # producer that exits 7 without output, so the fallback and
+            # stop paths run for real. Unset in every normal run.
+            if slot_name in [x.strip() for x in os.environ.get("REVIEW_PROMPT_FORCE_FAIL", "").split(",") if x.strip()]:
+                producer = [sys.executable, "-c", "import sys; sys.exit(7)"]
         if family == "slot":
             print("run: family `slot` needs --slot", file=sys.stderr)
             sys.exit(2)
