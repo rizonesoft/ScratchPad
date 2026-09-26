@@ -3940,10 +3940,13 @@ function Read-AlertAcks([string]$Path, [string]$Root = '') {
   }
   foreach ($ln in $text) {
     $m = [regex]::Match($ln, '^\|\s*([0-9a-z]+\|[a-z-]+(?:\|INC-[0-9a-f]{8})?)\s*\|\s*([^|]+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]*?)\s*\|')
-    # An owner and a reason are both required (section 47 R2-C2): a
-    # placeholder owner or a blank or placeholder reason acknowledges
-    # nothing.
-    if ($m.Success -and ($m.Groups[2].Value -notmatch '^(TBD|TODO|none|n/a|unknown|\?)$') -and ($m.Groups[4].Value.Trim() -ne '') -and ($m.Groups[4].Value.Trim() -notmatch '^(TBD|TODO|none|n/a|unknown|\?|-+)$')) { $map[$m.Groups[1].Value] = "$($m.Groups[2].Value) on $($m.Groups[3].Value): $($m.Groups[4].Value)" }
+    # An owner and a reason are both required (section 47 R2-C2, R3-A1):
+    # each is trimmed, and a blank or placeholder owner or reason
+    # acknowledges nothing.
+    if (-not $m.Success) { continue }
+    $owner = $m.Groups[2].Value.Trim(); $why = $m.Groups[4].Value.Trim()
+    $real = { param($v) ($v -ne '') -and ($v -notmatch '^(TBD|TODO|none|n/a|unknown|\?|-+)$') }
+    if ((& $real $owner) -and (& $real $why)) { $map[$m.Groups[1].Value] = "$owner on $($m.Groups[3].Value): $why" }
   }
   return $map
 }

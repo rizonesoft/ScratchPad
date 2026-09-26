@@ -844,8 +844,9 @@ $null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs basel
 '| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|runa-duration | operator | 2026-09-25 | new UI suite is slower by design |' | Set-Content -Path (Join-Path $d47 'alert-acks.md') -Encoding UTF8
 $ev2 = [pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0001'; Identity = 'e2' }
 $null = Update-AlertLedger @('- ALERT runa-duration: 910s on 2026-09-25 vs baseline 600s') $alPath $ev2 @() (Read-AlertAcks (Join-Path $d47 'alert-acks.md'))
-# R2-C2: a row with a blank reason acknowledges nothing.
-'| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|pass-rate | operator | 2026-09-25 |  |', '| h0st0001|runa-shift | operator | 2026-09-25 | TBD |' | Set-Content -Path (Join-Path $d47 'alert-acks-blank.md') -Encoding UTF8
+# R2-C2, R3-A1: a row with a blank reason or a blank owner acknowledges
+# nothing.
+'| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|pass-rate | operator | 2026-09-25 |  |', '| h0st0001|runa-shift | operator | 2026-09-25 | TBD |', '| h0st0001|pass-rate|INC-abcd1234 |    | 2026-09-25 | owner left blank |' | Set-Content -Path (Join-Path $d47 'alert-acks-blank.md') -Encoding UTF8
 Assert ((Read-AlertAcks (Join-Path $d47 'alert-acks-blank.md')).Count -eq 0) 's47-alert-ack-needs-a-reason'
 $lg4 = Read-AlertLedger $alPath
 $pend4 = Get-PendingAlertNotifications $alPath
