@@ -203,7 +203,10 @@ function Invoke-NightlyNotify {
     if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @($q) -Depth 6) $qPath }
     $out.Status = 'queued'; $out.Notes += "queued for the morning digest ($Class, SLA $($route.SlaHours)h, owner $($route.Owner))"
   } else {
-    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @(@($ledger) + @([pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; at = $Now.ToString('o'); status = 'sending' })) -Depth 6) $ledgerPath }
+    # The intent carries its payload (R1-I1), so the morning reconciler
+    # can re-send an alert whose run crashed before or during the send,
+    # whatever stamp a later run carries.
+    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json @(@($ledger) + @([pscustomobject]@{ key = $key; run = $RunId; class = $Class; channel = $route.Channel; at = $Now.ToString('o'); status = 'sending'; title = $Title; lines = @($Lines) })) -Depth 6) $ledgerPath }
     $sendTitle = if ($possibleDup) { "$Title (possible duplicate)" } else { $Title }
     if ($possibleDup) { $out.Notes += 'a send intent was left by an interrupted run: re-sent, marked possible duplicate' }
     $ok = $false
@@ -235,17 +238,24 @@ function Invoke-NightlyNotify {
 }
 
 function Update-DeliveryRecord([string]$StateDir, [datetime]$Now, [bool]$Ok) {
-  # Toast delivery outcomes by night (D00 T02 section 33 item 4): the
-  # nights a toast send failed and the last night one succeeded, in
-  # build/nightly/delivery-record.json, so consecutive failing nights are
-  # countable after the undelivered files are re-sent and removed.
-  $p = Join-Path $StateDir 'delivery-record.json'
-  $rec = Read-JsonState $p ([pscustomobject]@{ failedNights = @(); lastSuccess = ''; escalated = '' })
-  $night = Get-NightKey $Now
-  $failed = @(@($rec.failedNights) | Where-Object { "$_" -ne '' })
-  if ($Ok) { $last = $night } else { $last = "$($rec.lastSuccess)"; if ($failed -notcontains $night) { $failed += $night } }
-  $o = [pscustomobject]@{ failedNights = @($failed | Sort-Object -Unique | Select-Object -Last 30); lastSuccess = $last; escalated = "$($rec.escalated)" }
-  Write-AtomicReport @(ConvertTo-Json $o -Depth 4) $p
+  # Toast delivery outcomes as events (D00 T02 section 33 item 4, R1-C1):
+  # each failed send's timestamp and the last successful send's
+  # timestamp, in build/nightly/delivery-record.json, under the notify
+  # lock (R1-A2; the mutex is re-entrant, so callers already holding it
+  # nest safely). Consecutive failing nights are counted from the
+  # failures after the last success, so a success early on a night never
+  # hides that night's later failures, and the record survives the
+  # undelivered files being re-sent and removed.
+  $null = Invoke-WithNotifyLock -Body {
+    $p = Join-Path $StateDir 'delivery-record.json'
+    $rec = Read-JsonState $p ([pscustomobject]@{ failures = @(); lastSuccessAt = ''; escalated = '' })
+    $fails = @(@($(try { $rec.failures } catch { @() })) | Where-Object { "$_" -ne '' })
+    $last = "$(try { $rec.lastSuccessAt } catch { '' })"
+    $stamp = $Now.ToString('yyyy-MM-ddTHH:mm:ss.fffzzz', [System.Globalization.CultureInfo]::InvariantCulture)
+    if ($Ok) { $last = $stamp } else { $fails += $stamp }
+    $o = [pscustomobject]@{ failures = @($fails | Select-Object -Last 60); lastSuccessAt = $last; escalated = "$(try { $rec.escalated } catch { '' })" }
+    Write-AtomicReport @(ConvertTo-Json $o -Depth 4) $p
+  }
 }
 
 function Invoke-DeliveryEscalation {
@@ -257,27 +267,41 @@ function Invoke-DeliveryEscalation {
   # writes a file on the operator's desktop). Recorded default
   # 2026-09-26: a desktop file, because every other local channel either
   # shares the toast stack or needs a credential; the cost of changing is
-  # one sender scriptblock. Returns Lines.
+  # one sender scriptblock. The read, the send, and the record run under
+  # the notify lock, so two reconcilers never escalate one episode twice
+  # (R1-A2), and a dry run (-NoPersist) plans only: it never calls the
+  # channel (R1-A1). Returns Lines.
   param([string]$StateDir, [datetime]$Now = (Get-Date), [scriptblock]$Escalate = { param($t, $l) Send-NightlyEscalation $t $l }, [switch]$NoPersist)
-  $p = Join-Path $StateDir 'delivery-record.json'
-  if (-not (Test-Path -LiteralPath $p)) { return @() }
-  $rec = Read-JsonState $p ([pscustomobject]@{ failedNights = @(); lastSuccess = ''; escalated = '' })
-  $since = "$($rec.lastSuccess)"
-  $fails = @(@($rec.failedNights) | Where-Object { ("$_" -ne '') -and ([string]::CompareOrdinal("$_", $since) -gt 0) } | Sort-Object -Unique)
-  $pair = ''
-  for ($i = 1; $i -lt $fails.Count; $i++) {
-    $a = [datetime]::ParseExact($fails[$i - 1], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    if ($a.AddDays(1).ToString('yyyy-MM-dd') -eq $fails[$i]) { $pair = "$($fails[$i - 1])..$($fails[$i])"; break }
-  }
-  if ($pair -eq '') { return @() }
-  $episode = $fails[0]
-  if ("$($rec.escalated)" -eq $episode) { return @("- Delivery escalation: already sent for the episode from $episode (toasts failing since; consecutive nights $pair)") }
-  $title = "ScratchPad nightly: notifications failing since $episode"
-  $body = @("Toast notifications failed on consecutive nights ($pair) and none has been delivered since $(if ($since -ne '') { $since } else { 'the record began' }).", "Undelivered notifications wait in build/nightly/undelivered and the morning reconciler keeps re-sending them.", "Read build/nightly/morning-reconcile.log and the latest build/nightly/morning-*.md.")
-  $ok = $false
-  try { $ok = [bool](& $Escalate $title $body) } catch { $ok = $false }
-  if ($ok -and (-not $NoPersist)) { $rec | Add-Member -NotePropertyName escalated -NotePropertyValue $episode -Force; Write-AtomicReport @(ConvertTo-Json $rec -Depth 4) $p }
-  return @("- Delivery escalation: $(if ($ok) { 'sent' } else { 'FAILED' }) through the independent channel for the episode from $episode (consecutive failing nights $pair)")
+  return @(Invoke-WithNotifyLock -Body {
+    $p = Join-Path $StateDir 'delivery-record.json'
+    if (-not (Test-Path -LiteralPath $p)) { return @() }
+    $rec = Read-JsonState $p ([pscustomobject]@{ failures = @(); lastSuccessAt = ''; escalated = '' })
+    $lastAt = [datetimeoffset]::MinValue
+    $ls = "$(try { $rec.lastSuccessAt } catch { '' })"
+    if ($ls -ne '') { $null = [datetimeoffset]::TryParse($ls, [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$lastAt) }
+    $nights = @()
+    foreach ($f in @($(try { $rec.failures } catch { @() }))) {
+      $fa = [datetimeoffset]::MinValue
+      if (-not [datetimeoffset]::TryParse("$f", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$fa)) { continue }
+      if ($fa -gt $lastAt) { $nights += (Get-NightKey $fa.DateTime) }
+    }
+    $nights = @($nights | Sort-Object -Unique)
+    $pair = ''
+    for ($i = 1; $i -lt $nights.Count; $i++) {
+      $d = [datetime]::ParseExact($nights[$i - 1], 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+      if ($d.AddDays(1).ToString('yyyy-MM-dd') -eq $nights[$i]) { $pair = "$($nights[$i - 1])..$($nights[$i])"; break }
+    }
+    if ($pair -eq '') { return @() }
+    $episode = $nights[0]
+    if ("$(try { $rec.escalated } catch { '' })" -eq $episode) { return @("- Delivery escalation: already sent for the episode from $episode (toasts failing since; consecutive nights $pair)") }
+    if ($NoPersist) { return @("- Delivery escalation: would escalate the episode from $episode through the independent channel (dry run: not sent; consecutive failing nights $pair)") }
+    $title = "ScratchPad nightly: notifications failing since $episode"
+    $body = @("Toast notifications failed on consecutive nights ($pair) with no delivered toast since $(if ($ls -ne '') { $ls } else { 'the record began' }).", "Undelivered notifications wait in build/nightly/undelivered and the morning reconciler keeps re-sending them.", "Read build/nightly/morning-reconcile.log and the latest build/nightly/morning-*.md.")
+    $ok = $false
+    try { $ok = [bool](& $Escalate $title $body) } catch { $ok = $false }
+    if ($ok) { $rec | Add-Member -NotePropertyName escalated -NotePropertyValue $episode -Force; Write-AtomicReport @(ConvertTo-Json $rec -Depth 4) $p }
+    return @("- Delivery escalation: $(if ($ok) { 'sent' } else { 'FAILED' }) through the independent channel for the episode from $episode (consecutive failing nights $pair)")
+  })
 }
 
 function Send-NightlyEscalation([string]$Title, [string[]]$Lines) {
@@ -422,6 +446,7 @@ function Invoke-DigestFlush {
       $out.Attempts++
       try { $ok = [bool](& $Sender $dg.Title $lines) } catch { $ok = $false; $out.Notes += "attempt $($out.Attempts) threw: $($_.Exception.Message)" }
     }
+    if (-not $NoPersist) { Update-DeliveryRecord $StateDir $Now $ok }
     if ($ok) { $out.Status = 'sent'; $out.Notes += "sent $($queue.Count) queued notification(s) after $($out.Attempts) attempt(s)" }
     else {
       $out.Status = 'fallback'
@@ -456,6 +481,31 @@ function Invoke-UndeliveredResend {
         } else { $lines += "undelivered $($u.Name): still failing" }
       } catch { $lines += "undelivered $($u.Name): unreadable or failed: $($_.Exception.Message)" }
     }
+    # A send intent left in the ledger (D00 T02 section 33 R1-I1) is a run
+    # that crashed before or during its send: every send holds this lock,
+    # so an intent seen here is never in flight. It is re-sent marked as
+    # a possible duplicate and recorded sent, or it joins the undelivered
+    # set as a fallback.
+    $lp = Join-Path $StateDir 'notify-ledger.json'
+    $ledger = @(@(Read-JsonState $lp @()) | Where-Object { $null -ne $_ })
+    $changed = $false
+    foreach ($e in @($ledger | Where-Object { "$($_.status)" -eq 'sending' })) {
+      if ("$($e.title)" -eq '') { $lines += "intent $($e.key): no payload recorded (written before intents carried one); cannot re-send, escalate operator"; continue }
+      $ok = $false
+      try { $ok = [bool](& $Sender "$($e.title) (possible duplicate)" @($e.lines)) } catch { $ok = $false }
+      if ($NoPersist) { $lines += "intent $($e.key): $(if ($ok) { 're-sent' } else { 'still failing' }) (dry run: kept)"; continue }
+      Update-DeliveryRecord $StateDir (Get-Date) $ok
+      if ($ok) { $e.status = 'sent'; $lines += "intent $($e.key): re-sent, marked possible duplicate" }
+      else {
+        $uDir = Join-Path $StateDir 'undelivered'
+        $null = New-Item -ItemType Directory -Force -Path $uDir
+        $safe = ("$($e.run)" -replace '[^A-Za-z0-9-]', '-') + '-' + (Get-StringHash "$($e.key)")
+        Write-AtomicReport @(ConvertTo-Json ([pscustomobject]@{ key = "$($e.key)"; run = "$($e.run)"; class = "$($e.class)"; title = "$($e.title) (possible duplicate)"; lines = @($e.lines); failedAt = (Get-Date).ToString('o'); attempts = 1 }) -Depth 6) (Join-Path $uDir "$safe.json")
+        $e.status = 'fallback'; $lines += "intent $($e.key): still failing; fallback undelivered/$safe.json"
+      }
+      $changed = $true
+    }
+    if ($changed) { Write-AtomicReport @(ConvertTo-Json @($ledger) -Depth 6) $lp }
     return $lines
   })
 }

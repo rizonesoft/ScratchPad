@@ -399,6 +399,36 @@ $gate33 = [pscustomobject]@{ Unacked = @('2026-09-24-023000-pid1'); Corrective =
 $rn33 = @(Get-RecoveryNotices (Select-CanonicalRuns $hist) $hist $hist[1] @() $gate33)
 Assert (($rn33[0] -like 'Service recovered: night 2026-09-24 was RED*') -and ($rn33 -contains 'Pending acknowledgement: 1 RED run(s) still unacknowledged (2026-09-24-023000-pid1)') -and ($rn33 -contains 'Open corrective actions: 1 (ack-x.md (D00 T02 §9))')) 's33-recovery-names-pending-ack-and-open-actions' ($rn33 -join ' | ')
 
+# Section 33 R1-A1: a dry run plans the escalation and never calls the
+# channel. R1-C1: a success early on night D does not hide D's later
+# failures. R1-I2: a successful digest send ends the episode.
+$st33c = Join-Path $dir 'state33c'
+$null = New-Item -ItemType Directory -Force -Path $st33c
+Update-DeliveryRecord $st33c (Get-Date '2026-09-24 01:00') $true
+Update-DeliveryRecord $st33c (Get-Date '2026-09-24 03:00') $false
+Update-DeliveryRecord $st33c (Get-Date '2026-09-25 03:00') $false
+$script:called33 = 0
+$dry33 = @(Invoke-DeliveryEscalation -StateDir $st33c -Now (Get-Date '2026-09-25 07:05') -Escalate { param($t, $l) $script:called33++; $true } -NoPersist)
+$real33 = @(Invoke-DeliveryEscalation -StateDir $st33c -Now (Get-Date '2026-09-25 07:05') -Escalate { param($t, $l) $script:called33++; $true })
+$st33d = Join-Path $dir 'state33d'
+$null = New-Item -ItemType Directory -Force -Path $st33d
+Update-DeliveryRecord $st33d (Get-Date '2026-09-24 03:00') $false
+@([pscustomobject]@{ key = 'g1'; run = 'r'; class = 'green'; title = 't'; lines = @('x'); at = '2026-09-25T03:00:00+02:00' }) | ConvertTo-Json -Depth 4 | Set-Content -Path (Join-Path $st33d 'digest-queue.json') -Encoding UTF8
+$null = Invoke-DigestFlush -StateDir $st33d -Day '2026-09-25' -Sender { param($t, $l) $true } -Now (Get-Date '2026-09-25 07:05')
+Update-DeliveryRecord $st33d (Get-Date '2026-09-26 03:00') $false
+$dg33 = @(Invoke-DeliveryEscalation -StateDir $st33d -Now (Get-Date '2026-09-26 07:05') -Escalate { param($t, $l) $script:called33++; $true })
+Assert (($dry33[0] -like '*would escalate the episode from 2026-09-24*dry run: not sent*') -and ($real33[0] -like '- Delivery escalation: sent*episode from 2026-09-24*') -and ($script:called33 -eq 1) -and ($dg33.Count -eq 0)) 's33-escalation-dry-run-event-order-and-digest-success' "$($dry33 -join '|') / $($real33 -join '|') / called $script:called33 / $($dg33 -join '|')"
+
+# R1-I1: an intent a crashed run left behind carries its payload, and the
+# morning reconciler re-sends it marked as a possible duplicate.
+$st33e = Join-Path $dir 'state33e'
+$null = New-Item -ItemType Directory -Force -Path $st33e
+ConvertTo-Json @([pscustomobject]@{ key = 'crash|noresult|v1'; run = 'crashed-run'; class = 'infrastructure'; channel = 'immediate'; at = '2026-09-25T03:00:00+02:00'; status = 'sending'; title = 'Nightly 2026-09-25 : RED (infrastructure)'; lines = @('boom') }) -Depth 4 | Set-Content -Path (Join-Path $st33e 'notify-ledger.json') -Encoding UTF8
+$script:sent33e = @()
+$ri33 = @(Invoke-UndeliveredResend -StateDir $st33e -Sender { param($t, $l) $script:sent33e += $t; $true })
+$led33e = @(Get-Content (Join-Path $st33e 'notify-ledger.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
+Assert (($script:sent33e -contains 'Nightly 2026-09-25 : RED (infrastructure) (possible duplicate)') -and ($led33e[0].status -eq 'sent') -and (@($ri33 | Where-Object { $_ -like 'intent crash|noresult|v1: re-sent*' }).Count -eq 1)) 's33-reconciler-resends-a-crashed-intent' "$($script:sent33e -join '|') / $($led33e[0].status) / $($ri33 -join '|')"
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyNotify.Tests: all green'
