@@ -1,0 +1,229 @@
+{
+  "_comment": "run/2 and error/1 contracts for `todo-graph.py query run --json` (D00 T04 \u00a71 item 25). Checked by the self-test with schema_errors.",
+  "run": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema",
+      "run",
+      "verdict",
+      "verdict_unavailable",
+      "corrections",
+      "confidence",
+      "lineage",
+      "freshness",
+      "candidates",
+      "scope",
+      "findings",
+      "markers",
+      "outages",
+      "artifacts"
+    ],
+    "properties": {
+      "schema": {
+        "type": "string",
+        "enum": [
+          "run/2"
+        ]
+      },
+      "run": {
+        "type": "string"
+      },
+      "verdict": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "complete",
+          "partial",
+          "retry-owed",
+          "outage",
+          "unknown",
+          null
+        ]
+      },
+      "verdict_unavailable": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "corrections": {
+        "type": "array"
+      },
+      "confidence": {
+        "type": "object",
+        "required": [
+          "level",
+          "reasons"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "lineage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "partial_sections",
+          "skipped_checks"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "partial"
+            ]
+          },
+          "partial_sections": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "skipped_checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "genesis",
+                "follows"
+              ]
+            }
+          }
+        }
+      },
+      "freshness": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "candidate",
+            "target",
+            "at_candidate",
+            "at_head",
+            "timestamp",
+            "status"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "candidate": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "at_candidate": {
+              "type": "string",
+              "enum": [
+                "bound",
+                "broken",
+                "unverifiable"
+              ]
+            },
+            "at_head": {
+              "type": "string",
+              "enum": [
+                "current",
+                "stale",
+                "unverifiable"
+              ]
+            },
+            "timestamp": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "fresh",
+                "stale",
+                "expired",
+                "broken",
+                "unverifiable"
+              ]
+            }
+          }
+        }
+      },
+      "candidates": {
+        "type": "array"
+      },
+      "scope": {
+        "type": "array"
+      },
+      "findings": {
+        "type": "array"
+      },
+      "markers": {
+        "type": "array"
+      },
+      "outages": {
+        "type": "array"
+      },
+      "artifacts": {
+        "type": "array"
+      }
+    }
+  },
+  "error": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "schema",
+      "query",
+      "exit",
+      "error",
+      "target"
+    ],
+    "properties": {
+      "schema": {
+        "type": "string",
+        "enum": [
+          "error/1"
+        ]
+      },
+      "query": {
+        "type": "string"
+      },
+      "exit": {
+        "type": "integer",
+        "enum": [
+          1,
+          2
+        ]
+      },
+      "error": {
+        "type": "string"
+      },
+      "target": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  }
+}

@@ -36,6 +36,7 @@ import re
 import shutil
 import tempfile
 import sys
+import time
 import panel_slots
 from dataclasses import dataclass, field, asdict
 from datetime import date, datetime, timedelta, timezone
@@ -1545,6 +1546,10 @@ def panel_wiring_problems(root: Path) -> list[tuple[str, str]]:
 # week is long enough to file or defer, short enough to notice; changing
 # it is one constant.
 PLAN_REVIEW_OVERDUE_DAYS = 7
+# A fixed age line for the self-test only (D00 T04 §1): fixture stamps
+# carry fixed dates, so a relative line ages them as the clock moves.
+# None in every real run.
+AGE_LINE_OVERRIDE: str | None = None
 # Notify lookahead and minute durations (D00 T01 §55 item 23).
 # A 9-digit horizon is grammatical and still overflows
 # date arithmetic (year 9999). Ten years is past any real
@@ -1665,7 +1670,13 @@ BARE_PARTIAL_RUNG_THRESHOLD = 3
 # legacy-included legend. Cutover: LABEL_CUTOVER.
 TELEMETRY_SCHEMA = "telemetry/1"
 RISK_REGISTER_SCHEMA = "risk-register/1"
-RUN_SCHEMA = "run/1"
+RUN_SCHEMA = "run/2"
+# run/2 (D00 T04 §1 items 22, 24, 25) adds `lineage` and `freshness` to
+# every run/1 leg; scripts/schemas/run-2.schema.json is the checked
+# contract, and `--json` failures print an `error/1` envelope instead.
+RUN_SCHEMA_V1_KEYS = frozenset({"schema", "run", "verdict", "verdict_unavailable", "corrections", "confidence", "candidates", "scope", "findings", "markers", "outages", "artifacts"})
+ERROR_SCHEMA = "error/1"
+EVIDENCE_EXPIRY_DAYS = 90
 RISK_REGISTER_PATH = "docs/risk-register.md"
 
 
@@ -2545,22 +2556,77 @@ def marker_verdict(body: str) -> str:
     return "unknown"
 
 
-def confidence_for(bound: bool, resolutions: list[bool | None]) -> tuple[str, list[str]]:
+def schema_errors(obj, schema: dict, where: str = "$") -> list[str]:
+    """A small JSON-Schema subset checker, stdlib only (D00 T04 §1 item 25).
+
+    Supports `type` (a name or a list, including "null"), `enum`,
+    `properties`, `required`, `additionalProperties: false`, and
+    `items`. Returns every violation with its path, so a contract
+    test names what drifted instead of failing on the first key.
+    """
+    errs: list[str] = []
+    names = {"object": dict, "array": list, "string": str, "integer": int, "boolean": bool, "null": type(None)}
+    want = schema.get("type")
+    if want is not None:
+        kinds = want if isinstance(want, list) else [want]
+        ok = False
+        for k in kinds:
+            py = names.get(k)
+            if py is int and isinstance(obj, bool):
+                continue
+            if py is not None and isinstance(obj, py):
+                ok = True
+        if not ok:
+            return [f"{where}: want {'/'.join(kinds)}, got {type(obj).__name__}"]
+    if "enum" in schema and obj not in schema["enum"]:
+        errs.append(f"{where}: {obj!r} not in {schema['enum']}")
+    if isinstance(obj, dict):
+        props = schema.get("properties", {})
+        for k in schema.get("required", []):
+            if k not in obj:
+                errs.append(f"{where}: missing required key {k!r}")
+        if schema.get("additionalProperties") is False:
+            for k in obj:
+                if k not in props:
+                    errs.append(f"{where}: unexpected key {k!r}")
+        for k, sub in props.items():
+            if k in obj:
+                errs.extend(schema_errors(obj[k], sub, f"{where}.{k}"))
+    if isinstance(obj, list) and "items" in schema:
+        for i, it in enumerate(obj):
+            errs.extend(schema_errors(it, schema["items"], f"{where}[{i}]"))
+    return errs
+
+
+def confidence_for(bound: bool, resolutions: list[bool | None], names: list[str] | None = None) -> tuple[str, list[str]]:
     """Evidence-confidence level plus reasons (D00 T01 §45 item 1).
 
     High needs every bound candidate resolving: one verified quote
     beside a bogus sibling is medium (partially verified), because
     a resolving-to-nothing candidate attests nothing (review R1).
-    Unverifiable git degrades to medium, never high or low.
+    With no resolving candidate, any candidate that resolves to
+    nothing makes it low even beside unverifiable ones (D00 T04 §1
+    item 23: [False, None] used to read medium, above [False]'s low);
+    only an all-unverifiable set degrades to medium. Reasons name the
+    offending candidates when `names` pairs with `resolutions`.
     """
+    def _named(want) -> str:
+        if not names or len(names) != len(resolutions):
+            return ""
+        hit = [n for n, r in zip(names, resolutions) if r is want]
+        return f" ({', '.join(hit)})" if hit else ""
+
     if not bound:
         return "low", ["no provenance bound to this run"]
     if all(_r is True for _r in resolutions):
         return "high", ["provenance bound; every candidate resolves"]
     if any(_r is True for _r in resolutions):
-        return "medium", ["provenance partially verified; some candidate unverified"]
+        _bad = _named(False) or _named(None)
+        return "medium", [f"provenance partially verified; some candidate unverified{_bad}"]
+    if any(_r is False for _r in resolutions):
+        return "low", [f"provenance bound; a candidate resolves to nothing{_named(False)}"]
     if any(_r is None for _r in resolutions):
-        return "medium", ["provenance bound; candidate unverifiable here"]
+        return "medium", [f"provenance bound; candidate unverifiable here{_named(None)}"]
     return "low", ["provenance bound; no candidate resolves"]
 
 
@@ -5243,6 +5309,9 @@ def cmd_query(args) -> int:
         # subject); an unmatched ID exits 1 (nothing to show).
         target = (getattr(args, "target", None) or "").strip()
         if not target:
+            if getattr(args, "json", False):
+                print(json.dumps({"schema": ERROR_SCHEMA, "query": "run", "exit": 2, "error": "no run id given", "target": None}, indent=2, sort_keys=True))
+                return 2
             print("usage: todo-graph.py query run <run-id>")
             return 2
         want = normalize_run_id(target)
@@ -5377,7 +5446,51 @@ def cmd_query(args) -> int:
         _conf, _conf_reasons = confidence_for(
             bool(artifacts),
             [git_resolves(_c) for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts],
+            [_c for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts],
         )
+        # Lineage completeness (D00 T04 §1 item 22): a carrying chain whose
+        # own span holds no marker lines is the range fallback (it reads
+        # the range stamp's last marker only), so the view labels the
+        # lineage partial and names the checks the validator skips for it.
+        _by_path = {t.path: t for t in todos}
+        _partial = sorted(
+            f"{_p} §{_n}" for (_p, _n) in carrying
+            if _p in _by_path and not (span_marker_bodies(_chain_lines, _by_path[_p], _n) or [])
+        )
+        _lineage = {
+            "status": "partial" if _partial else "complete",
+            "partial_sections": _partial,
+            "skipped_checks": ["genesis", "follows"] if _partial else [],
+        }
+        # Evidence freshness (D00 T04 §1 item 24): each bound artifact is
+        # re-verified against its candidate (bound, broken, or
+        # unverifiable), against HEAD (current or stale: the file changed
+        # since the evidence), and by age (expired past the horizon).
+        _fresh = []
+        _now_ts = time.time()
+        for _p, _c, _cm, _ex, _t, _dg, _pp in artifacts:
+            _at = git_blob_sha256(_c, _pp)
+            _head = git_blob_sha256("HEAD", _pp)
+            _ts = git_commit_ts(_c)
+            _bound = "unverifiable" if _at is None else ("bound" if _at == _dg else "broken")
+            _cur = "unverifiable" if _head is None else ("current" if _head == _dg else "stale")
+            _expired = _ts is not None and (_now_ts - _ts) > EVIDENCE_EXPIRY_DAYS * 86400
+            _state = (
+                "broken" if _bound == "broken"
+                else "expired" if _expired
+                else "stale" if _cur == "stale"
+                else "fresh" if (_bound == "bound" and _cur == "current")
+                else "unverifiable"
+            )
+            _fresh.append({
+                "path": _p,
+                "candidate": _c,
+                "target": _pp,
+                "at_candidate": _bound,
+                "at_head": _cur,
+                "timestamp": (datetime.fromtimestamp(_ts, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ") if _ts is not None else None),
+                "status": _state,
+            })
         # Structured marker rows serve prose and JSON alike, so the
         # two can never drift apart.
         _marker_rows = []
@@ -5399,6 +5512,9 @@ def cmd_query(args) -> int:
             if is_outage_marker(_b)
         ]
         if not carrying and not manifests and not artifacts:
+            if getattr(args, "json", False):
+                print(json.dumps({"schema": ERROR_SCHEMA, "query": "run", "exit": 1, "error": "unknown run", "target": target}, indent=2, sort_keys=True))
+                return 1
             print(f"unknown run: {target}")
             return 1
         if getattr(args, "json", False):
@@ -5409,6 +5525,8 @@ def cmd_query(args) -> int:
                 "verdict_unavailable": _verdict_unavailable,
                 "corrections": _corrections,
                 "confidence": {"level": _conf, "reasons": _conf_reasons},
+                "lineage": _lineage,
+                "freshness": _fresh,
                 "candidates": [{"path": _p, "text": _s} for _p, _s in candidates],
                 "scope": [{"path": _p, "sections": _s, "dependents": _d} for _p, _s, _d in manifests],
                 "findings": [
@@ -5449,7 +5567,10 @@ def cmd_query(args) -> int:
             print("    (none)")
         for _fr in rows:
             print(f"    {_fr['path']} {_fr['prose']}")
-        print("marker lineage -- full chains carrying this run")
+        print(
+            "marker lineage -- full chains carrying this run"
+            + (f" (partial: {', '.join(_lineage['partial_sections'])} read their range stamp's last marker only; genesis and follows checks skipped)" if _lineage["partial_sections"] else " (complete)")
+        )
         if not _marker_rows:
             print("    (none)")
         for _path, _num, _i, _of, _run2, _edges, _text in _marker_rows:
@@ -5460,9 +5581,11 @@ def cmd_query(args) -> int:
             print("    clean (no outage markers)")
         for _path, _num, _b in _outage_rows:
             print(f"    {_path} §{_num} {_one_line(_b, 160)}")
-        print("verified artifacts -- provenance bound to this run")
+        print("verified artifacts -- provenance bound to this run (freshness: at candidate, at HEAD, age)")
         if not artifacts:
             print("    (none)")
+        for _fr2 in _fresh:
+            print(f"    freshness {_fr2['path']} {_fr2['target']}: {_fr2['status']} (candidate {_fr2['at_candidate']}, HEAD {_fr2['at_head']}, recorded {_fr2['timestamp'] or 'unknown'})")
         for _path, _cand, _cmd, _exit, _tool, _digest, _ppath in artifacts:
             print(
                 f"    {_path} candidate {_cand} exit {_exit} digest {_digest} "
@@ -5507,6 +5630,7 @@ def cmd_query(args) -> int:
 
         section_ref = None
         section_mode = False
+        section_lineage = None
         files: dict[str, str] = {}
         if target:
             if Path(target).is_file():
@@ -5541,6 +5665,13 @@ def cmd_query(args) -> int:
                 files[fm.group(1)] = txt
                 section_ref = target
                 section_mode = True
+                # Lineage completeness for the section (D00 T04 §1 item 22):
+                # its own span's markers (complete), only the range stamp's
+                # parsed last marker (partial: genesis and follows checks
+                # skipped), or no marker at all (skipped-check).
+                _lspan = span_marker_bodies({}, tobj, snum) or []
+                _lchain = section_markers({}, tobj, snum) or []
+                section_lineage = "complete" if _lspan else ("partial" if _lchain else "skipped-check")
         else:
             for t in todos:
                 for _num, _s in t.sections.items():
@@ -5767,11 +5898,16 @@ def cmd_query(args) -> int:
             for _p, _d in sorted(parsed.items()):
                 for _ln in _one_section(_p, _d)[0]:
                     print(_ln)
+            if section_lineage is not None:
+                print(f"marker lineage: {section_lineage}" + (" (genesis and follows checks skipped)" if section_lineage == "partial" else ""))
             return 0
 
         if section_mode:
             secs = [_one_section(_p, _d)[1] for _p, _d in sorted(parsed.items())]
-            print(json.dumps({"schema": TELEMETRY_SCHEMA, "scope": "section", "sections": secs}, indent=2, sort_keys=True))
+            _sj = {"schema": TELEMETRY_SCHEMA, "scope": "section", "sections": secs}
+            if section_lineage is not None:
+                _sj["marker_lineage"] = section_lineage
+            print(json.dumps(_sj, indent=2, sort_keys=True))
             return 0
         print(
             json.dumps(
@@ -6274,7 +6410,7 @@ def cmd_query(args) -> int:
         owners: dict[str, list] = {}
         unshaped: set[str] = set()
         target_texts: dict[str, str] = {}
-        old_line = (_today_d - timedelta(days=PLAN_REVIEW_OVERDUE_DAYS)).isoformat()
+        old_line = AGE_LINE_OVERRIDE or (_today_d - timedelta(days=PLAN_REVIEW_OVERDUE_DAYS)).isoformat()
         for t in todos:
             for num in sorted(t.verified_sections):
                 s = t.sections.get(num)
@@ -9663,6 +9799,16 @@ def cmd_self_test(args) -> int:
     import tempfile
 
     _require_git = args is not None and bool(getattr(args, "require_git", False))
+    # Fixture stamps carry fixed dates, so the major-age rule (overdue
+    # PLAN_REVIEW_OVERDUE_DAYS after its review's stamp) turned incidental
+    # fixture majors overdue as the wall clock passed them (surfaced
+    # 2026-09-27, D00 T04 §1). The run widens the horizon so no fixed stamp
+    # ever ages; the rule itself is proven once below with a frozen
+    # `--today` and the real threshold.
+    # The age line is pinned at 2026-09-12: fixtures stamped on or after
+    # it (the 2026-09-19 and 2026-09-20 sets) never age, and the
+    # deliberately old fixtures (2026-01-01) always do.
+    globals()["AGE_LINE_OVERRIDE"] = "2026-09-12"
 
     cases: list[tuple[str, object, object]] = []
 
@@ -18664,6 +18810,18 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             ),
             0,
         )
+        # Telemetry carries lineage status (D00 T04 §1 item 22): a range
+        # member reading the stamp's fallback is partial, the stamp holder
+        # with its own markers is complete.
+        _tl = {}
+        for _ts in ("D90 T07 §155", "D90 T07 §156"):
+            _tbuf = _mio.StringIO()
+            with _mctx.redirect_stdout(_tbuf), _mctx.redirect_stderr(_mio.StringIO()):
+                cmd_query(argparse.Namespace(what="telemetry", target=_ts, json=False))
+            _tl[_ts] = [ln for ln in _tbuf.getvalue().splitlines() if ln.startswith("marker lineage:")]
+        check("telemetry lineage reads partial for a range member on the fallback and complete for the stamp holder",
+              (_tl["D90 T07 §155"], _tl["D90 T07 §156"]),
+              (["marker lineage: partial (genesis and follows checks skipped)"], ["marker lineage: complete"]))
         for _lbl, _grp in (
             ("three-member range (middle and final members)", ("§154 ", "§155 ", "§156 ")),
             ("mixed outage-then-rerun range", ("§157 ", "§158 ")),
@@ -18856,7 +19014,7 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         _jtext = _jbuf.getvalue()
         check("query run --json exits 0 on a known run", _jcode, 0)
         _jdata = json.loads(_jtext)
-        check("query run --json carries schema run/1", _jdata.get("schema"), "run/1")
+        check("query run --json carries schema run/2", _jdata.get("schema"), "run/2")
         check("query run --json carries the verdict", _jdata.get("verdict"), "complete")
         check(
             "query run --json carries confidence",
@@ -18864,23 +19022,31 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "high",
         )
         check(
-            "query run --json names exactly the run/1 legs",
+            "query run --json names exactly the run/2 legs (run/1 plus lineage and freshness)",
             set(_jdata),
-            {
-                "schema",
-                "run",
-                "verdict",
-                "verdict_unavailable",
-                "corrections",
-                "confidence",
-                "candidates",
-                "scope",
-                "findings",
-                "markers",
-                "outages",
-                "artifacts",
-            },
+            set(RUN_SCHEMA_V1_KEYS) | {"lineage", "freshness"},
         )
+        # The checked contract (D00 T04 §1 item 25): the output meets the
+        # schema artifact (types, enums, nullability), and run/2 stays a
+        # superset of run/1 (compatibility).
+        _rs = json.loads((Path(__file__).with_name("schemas") / "run-2.schema.json").read_text(encoding="utf-8"))
+        check("query run --json meets scripts/schemas/run-2.schema.json", schema_errors(_jdata, _rs["run"]), [])
+        check("run/2 keeps every run/1 leg (compatibility)", sorted(RUN_SCHEMA_V1_KEYS - set(_rs["run"]["properties"])), [])
+        check("the schema checker names a type, enum, and missing-key violation",
+              len(schema_errors({"schema": 3, "verdict": "bogus"}, _rs["run"])) >= 3, True)
+        _ebuf = _mio.StringIO()
+        with _mctx.redirect_stdout(_ebuf), _mctx.redirect_stderr(_mio.StringIO()):
+            _ecode = cmd_query(argparse.Namespace(what="run", target="20990101-D90-T07-S1-gpt", json=True))
+        _edata = json.loads(_ebuf.getvalue())
+        check("query run --json on an unknown run prints the error/1 envelope and exits 1",
+              (_ecode, _edata.get("schema"), schema_errors(_edata, _rs["error"])), (1, "error/1", []))
+        _ebuf2 = _mio.StringIO()
+        with _mctx.redirect_stdout(_ebuf2), _mctx.redirect_stderr(_mio.StringIO()):
+            _ecode2 = cmd_query(argparse.Namespace(what="run", target="", json=True))
+        check("query run --json with no target prints the error/1 envelope and exits 2",
+              (_ecode2, json.loads(_ebuf2.getvalue()).get("exit")), (2, 2))
+        check("query run --json carries a lineage status", (_jdata.get("lineage") or {}).get("status") in ("complete", "partial"), True)
+        check("query run --json carries one freshness entry per artifact", len(_jdata.get("freshness") or []), len(_jdata.get("artifacts") or []))
         _jbuf2 = _mio.StringIO()
         with _mctx.redirect_stdout(_jbuf2), _mctx.redirect_stderr(_mio.StringIO()):
             cmd_query(argparse.Namespace(what="run", target="20260920-D90-T07-S60-gpt-r3", json=True))
@@ -18967,8 +19133,14 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
                 confidence_for(True, [True, False])[0],
                 confidence_for(True, [None])[0],
                 confidence_for(True, [False])[0],
+                confidence_for(True, [False, None])[0],
             ],
-            ["low", "high", "high", "medium", "medium", "low"],
+            ["low", "high", "high", "medium", "medium", "low", "low"],
+        )
+        check(
+            "confidence_for names the offending candidates (D00 T04 §1 item 23)",
+            confidence_for(True, [False, None], ["bad1234", "odd5678"])[1],
+            ["provenance bound; a candidate resolves to nothing (bad1234)"],
         )
         _trail_block = (
             "- [D90-T07-S1-PR2] [minor] New thing -> filed §2 supersedes d90-t07-s1-pr1\n"
@@ -18998,7 +19170,7 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         check("query run exits 0 on the mixed-evidence run", _scode2, 0)
         check(
             "query run confidence is medium on partially verified evidence",
-            any("medium (provenance partially verified; some candidate unverified)" in ln for ln in _slines2),
+            any("medium (provenance partially verified; some candidate unverified (" in ln for ln in _slines2),
             True,
         )
         check(
@@ -21930,6 +22102,13 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         _r60 = (date.today() - timedelta(days=60)).isoformat()
         _r0 = date.today().isoformat()
         _rvw_over = (date.today() - timedelta(days=1)).isoformat()
+        # §16's same-day waiver fixture stamps yesterday (D00 T04 §1, found
+        # when the suite crossed 2026-09-27): a fixed 2026-09-19 stamp aged
+        # its open major past PLAN_REVIEW_OVERDUE_DAYS and changed the
+        # overdue tallies the fixture never meant to test. The stamp, its
+        # plan-review run, and the same-day waiver move together.
+        _acc16_day = (date.today() - timedelta(days=1)).isoformat()
+        _acc16_run = _acc16_day.replace("-", "") + "-D90-T01-S16-gpt"
         _rvw_due = (date.today() + timedelta(days=3)).isoformat()
         _rvw_far = (date.today() + timedelta(days=300)).isoformat()
         _exp_far = (date.today() + timedelta(days=365)).isoformat()
@@ -22030,9 +22209,9 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc17.md\n"
             "> **Plan review:** outage: cron rung (owner ann, due 2020-01-01) class infra attempts 1 event 2026-09-18\n\n"
             "## 16. Same-day finding waiver attesting pre-target bytes\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
-            "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §16 | fixture\n"
+            f"**Test checkpoint:** `true`\n\n> **Verified:** {_acc16_day} | §16 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc18.md\n"
-            "> **Plan review:** GPT high, filed §6 (run 20260919-D90-T01-S16-gpt)\n\n"
+            f"> **Plan review:** GPT high, filed §6 (run {_acc16_run})\n\n"
             "## 17. Same-day run waiver attesting pre-target bytes\n\n- [x] Did the thing\n- [x] Commit: `\"selftest: clean\"`\n\n"
             "**Test checkpoint:** `true`\n\n> **Verified:** 2026-09-19 | §17 | fixture\n"
             "> **Review:** round 1 -- Raw findings: docs/reviews/90-acc19.md\n"
@@ -22186,9 +22365,9 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         )
         (clean / "docs" / "reviews" / "90-acc18.md").write_text(
             _acc_head
-            + "Manifest: sections [D90 T01 §16]; dependents [none]; bytes 100; run 20260919-D90-T01-S16-gpt\n\n"
+            + f"Manifest: sections [D90 T01 §16]; dependents [none]; bytes 100; run {_acc16_run}\n\n"
             "Ledger:\n- [D90-T01-S16-PR1] [major] watched row -> accepted owner bob due 2099-01-01\nEnd of ledger\n"
-            f"Risk accepted: D90-T01-S16-PR1; id A1; approver bob; owner bob; date 2026-09-19; expires {_exp_far}; review {_rvw_far}; evidence beef16e000000000000000000000000000000000; rationale same-day waiver over pre-target bytes, never covers\n",
+            f"Risk accepted: D90-T01-S16-PR1; id A1; approver bob; owner bob; date {_acc16_day}; expires {_exp_far}; review {_rvw_far}; evidence beef16e000000000000000000000000000000000; rationale same-day waiver over pre-target bytes, never covers\n",
             encoding="utf-8",
         )
         (clean / "docs" / "reviews" / "90-acc19.md").write_text(
@@ -22975,6 +23154,23 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
                 and any(ln.startswith("Migration: 0 leftovers") for ln in _dash)
                 and any(ln == "Open findings: 1 criticals, 3 majors (0 overdue)" for ln in _dash)
             ),
+            True,
+        )
+        # The age rule itself (D00 T04 §1): with the real threshold and a
+        # frozen clock eight days past the fixture stamps, the incidental
+        # majors the widened horizon keeps quiet read overdue.
+        globals()["AGE_LINE_OVERRIDE"] = None
+        _age_buf = _mio.StringIO()
+        with _mctx.redirect_stdout(_age_buf), _mctx.redirect_stderr(_mio.StringIO()):
+            cmd_query(argparse.Namespace(what="plan-health", json=True, today="2026-09-28", check=False, fail_on=None))
+        globals()["AGE_LINE_OVERRIDE"] = "2026-09-12"
+        try:
+            _age_js = json.loads(_age_buf.getvalue())
+        except ValueError:
+            _age_js = {}
+        check(
+            "an open major past PLAN_REVIEW_OVERDUE_DAYS from its review's stamp reads overdue (frozen clock)",
+            any(_m.get("id") == "D90-T07-S87-PR1" and _m.get("since") == "2026-09-20" and _m.get("overdue") for _m in _age_js.get("majors", [])),
             True,
         )
         # Five-section contract (D00 T01 §53 item 15): the rendered
