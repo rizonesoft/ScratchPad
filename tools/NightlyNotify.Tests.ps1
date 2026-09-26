@@ -479,10 +479,24 @@ Confirm-AlertNotifications $al33h @($snap.Keys)
 $eh = @((Read-AlertLedger $al33h).alerts)[0]
 $null = Update-AlertLedger @('- ALERT runa-duration: 1200s on 2026-09-26 vs baseline 600s (+100%, median of 5 night(s))') $al33h ([pscustomobject]@{ Night = '2026-09-26'; Host = 'h0st0001'; Identity = 'h3' })
 $ph = Get-PendingAlertNotifications $al33h
-Assert (("$($eh.notifiedMagnitude)" -eq '50') -and ($ph.Lines[0] -like 'WORSENING (from 50 to 100)*')) 's33-confirm-records-the-sent-magnitude' "notified $($eh.notifiedMagnitude); $($ph.Lines -join '|')"
+$pc = Get-PendingAlertNotifications $al33h
+Assert (("$($eh.notifiedMagnitude)" -eq '50') -and ($pc.Lines[0] -like 'WORSENING (from 50 to 100)*') -and ($ph.Lines[0] -like 'WORSENING (from 50 to 100)*')) 's33-confirm-records-the-sent-magnitude' "notified $($eh.notifiedMagnitude); at confirm $($pc.Lines -join '|'); later $($ph.Lines -join '|')"
 $recN = @('Recovered: INC-00000001 UI.A (closed on verified recovery)', 'Recovered: INC-00000002 UI.B (closed on verified recovery)', 'Recovered: INC-00000003 UI.C (closed on verified recovery)', 'Recovered: INC-00000004 UI.D (closed on verified recovery)', 'Service recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN', 'Pending acknowledgement: none', 'Open corrective actions: 1 (ack-x.md (D00 T02 §9))')
-$toast33 = @(Format-ToastLines (@(New-ToastItem 2 'top incident') + @(Get-RecoveryToastItems $recN) + @(New-ToastItem 5 'counts')) 'build/nightly/morning-x.md')
-Assert ((@($toast33 | Where-Object { $_ -like 'Service recovered:*' }).Count -eq 1) -and (@($toast33 | Where-Object { $_ -like 'Pending acknowledgement:*' }).Count -eq 1) -and (@($toast33 | Where-Object { $_ -like 'Open corrective actions: 1*' }).Count -eq 1)) 's33-recovery-status-survives-the-toast-cap' ($toast33 -join ' | ')
+$toast33 = @(Format-ToastLines (@(New-ToastItem 1 'Delivery RED: 1 undelivered') + @(New-ToastItem 1 'Unacked REDs: 1 run(s)') + @(New-ToastItem 2 'top incident') + @(Get-RecoveryToastItems $recN) + @(New-ToastItem 5 'counts')) 'build/nightly/morning-x.md')
+$st33l = @($toast33 | Where-Object { $_ -like 'Service recovered:*' })
+Assert (($st33l.Count -eq 1) -and ($st33l[0] -like '*; Pending acknowledgement: none; Open corrective actions: 1*')) 's33-recovery-status-survives-the-toast-cap' ($toast33 -join ' | ')
+# R4-A1: an interrupted digest flush and an interrupted fallback re-send
+# each send again marked as a possible duplicate.
+$st33i = Join-Path $dir 'state33i'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $st33i 'undelivered')
+$qi = @([pscustomobject]@{ key = 'q1'; run = 'r'; class = 'green'; title = 't'; lines = @('x'); at = '2026-09-25T03:00:00+02:00' })
+ConvertTo-Json $qi -Depth 4 | Set-Content -Path (Join-Path $st33i 'digest-queue.json') -Encoding UTF8
+ConvertTo-Json ([pscustomobject]@{ keys = 'q1'; at = '2026-09-25T07:05:00+02:00' }) | Set-Content -Path (Join-Path $st33i 'digest-inflight.json') -Encoding UTF8
+ConvertTo-Json ([pscustomobject]@{ key = 'u1'; run = 'r'; class = 'infrastructure'; title = 'u'; lines = @('x'); failedAt = '2026-09-25T03:00:00+02:00'; attempts = 1; resendingAt = '2026-09-25T07:05:00+02:00' }) | Set-Content -Path (Join-Path $st33i 'undelivered\u1.json') -Encoding UTF8
+$script:sent33i = @()
+$null = Invoke-DigestFlush -StateDir $st33i -Day '2026-09-25' -Sender { param($t, $l) $script:sent33i += $t; $true } -Now (Get-Date '2026-09-25 07:10')
+$null = Invoke-UndeliveredResend -StateDir $st33i -Sender { param($t, $l) $script:sent33i += $t; $true }
+Assert ((@($script:sent33i | Where-Object { $_ -like '*(possible duplicate)' }).Count -eq 1) -and ($script:sent33i -contains 'u (re-sent, possible duplicate)') -and (-not (Test-Path (Join-Path $st33i 'digest-inflight.json')))) 's33-interrupted-digest-and-resend-mark-possible-duplicates' ($script:sent33i -join ' | ')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }

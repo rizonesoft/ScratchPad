@@ -2821,7 +2821,9 @@ function Register-TrackedWrite([hashtable]$Writes, [string]$Root, [string]$Path,
   # whose note says it appended registers a line.
   $rel = ($Path.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'
   if (-not $Writes.ContainsKey($rel)) { $Writes[$rel] = [pscustomobject]@{ File = $rel; Before = $BeforeText; Lines = @() } }
-  if ("$Note" -like 'appended*') { $Writes[$rel].Lines = @($Writes[$rel].Lines) + @($Line) }
+  # An unknown outcome may have landed (D00 T02 section 50 item 8), so its
+  # line is expected in the tree too.
+  if (("$Note" -like 'appended*') -or ("$Note" -like 'unknown*')) { $Writes[$rel].Lines = @($Writes[$rel].Lines) + @($Line) }
 }
 
 function Test-TrackedWriteOnly([string]$Before, [string]$After, [string[]]$Lines) {
@@ -4104,6 +4106,15 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
         if ($mk.Success) { $sentMag = [double]::Parse($mk.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture) }
         $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $sentMag -Force
         $e | Add-Member -NotePropertyName worsening -NotePropertyValue $false -Force
+        # The entry already grew past the sent magnitude by its step (R4-C1):
+        # that worsening was never delivered, so it stays pending now.
+        $curMag = $null
+        try { if ("$($e.magnitude)" -ne '') { $curMag = [double]$e.magnitude } } catch { }
+        if (("$($e.state)" -eq 'open') -and ($null -ne $sentMag) -and ($null -ne $curMag) -and ($curMag -ge ($sentMag + (Get-AlertWorsenStep "$($e.id)")))) {
+          $e | Add-Member -NotePropertyName occurrence -NotePropertyValue ([guid]::NewGuid().ToString('N').Substring(0, 16)) -Force
+          $e.notifiedOpen = $false
+          $e | Add-Member -NotePropertyName worsening -NotePropertyValue $true -Force
+        }
       }
       if (@($Keys) -contains "close|$($e.id)|$occ") { $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $true -Force }
     }

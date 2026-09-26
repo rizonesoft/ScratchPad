@@ -114,12 +114,14 @@ function Get-RecoveryToastItems([string[]]$Notices) {
   # corrective actions) rides at priority 2 right after the top incident,
   # so the cap drops individual incident recoveries (priority 3) first and
   # never a GREEN's triage status.
+  # The three status statements travel as ONE toast line (R4-I1), so the
+  # cap keeps or drops them together and a GREEN never shows without its
+  # triage status; the report keeps them as separate lines.
   $items = @()
-  $o2 = 1; $o3 = 0
-  foreach ($n in @($Notices)) {
-    if ("$n" -match '^(Service recovered|Pending acknowledgement|Open corrective actions):') { $items += New-ToastItem 2 "$n" $o2; $o2++ }
-    else { $items += New-ToastItem 3 "$n" $o3; $o3++ }
-  }
+  $status = @(@($Notices) | Where-Object { "$_" -match '^(Service recovered|Pending acknowledgement|Open corrective actions):' })
+  if ($status.Count -gt 0) { $items += New-ToastItem 2 ($status -join '; ') 1 }
+  $o3 = 0
+  foreach ($n in @(@($Notices) | Where-Object { "$_" -notmatch '^(Service recovered|Pending acknowledgement|Open corrective actions):' })) { $items += New-ToastItem 3 "$n" $o3; $o3++ }
   return $items
 }
 
@@ -468,10 +470,20 @@ function Invoke-DigestFlush {
     $dg = Format-Digest $queue $Day
     $lines = @($dg.Lines) + @("Digest: build/nightly/digest-$flushId.md")
     if (-not $NoPersist) { Write-AtomicReport $md $dPath }
+    # The digest's crash window (D00 T02 section 33 R4-A1): an in-flight
+    # record naming the queued keys is written before the send and removed
+    # after the queue clears. A flush that finds one for these same keys
+    # follows a crash after a send, so it sends marked possible duplicate.
+    $inflight = Join-Path $StateDir 'digest-inflight.json'
+    $qkeys = (@($queue | ForEach-Object { "$($_.key)" } | Sort-Object) -join "`n")
+    $prior = Read-JsonState $inflight $null
+    $dupTitle = $dg.Title
+    if (($null -ne $prior) -and ("$($prior.keys)" -eq $qkeys)) { $dupTitle = "$($dg.Title) (possible duplicate)"; $out.Notes += 'an earlier flush of this queue was interrupted after its send: sent marked possible duplicate' }
+    if (-not $NoPersist) { Write-AtomicReport @(ConvertTo-Json ([pscustomobject]@{ keys = $qkeys; at = $Now.ToString('o') })) $inflight }
     $ok = $false
     for ($i = 0; ($i -le $Retries) -and (-not $ok); $i++) {
       $out.Attempts++
-      try { $ok = [bool](& $Sender $dg.Title $lines) } catch { $ok = $false; $out.Notes += "attempt $($out.Attempts) threw: $($_.Exception.Message)" }
+      try { $ok = [bool](& $Sender $dupTitle $lines) } catch { $ok = $false; $out.Notes += "attempt $($out.Attempts) threw: $($_.Exception.Message)" }
     }
     if (-not $NoPersist) { Update-DeliveryRecord $StateDir $Now $ok }
     if ($ok) { $out.Status = 'sent'; $out.Notes += "sent $($queue.Count) queued notification(s) after $($out.Attempts) attempt(s)" }
@@ -482,7 +494,7 @@ function Invoke-DigestFlush {
       if (-not $NoPersist) { $null = New-Item -ItemType Directory -Force -Path $uDir; Write-AtomicReport @(ConvertTo-Json $payload -Depth 6) (Join-Path $uDir "digest-$flushId.json") }
       $out.Notes += "digest delivery failed after $($out.Attempts) attempt(s); fallback undelivered/digest-$flushId.json, the full digest stays in digest-$flushId.md"
     }
-    if (-not $NoPersist) { Write-AtomicReport @('[]') $qPath } else { $out.Notes += 'dry run: no state written' }
+    if (-not $NoPersist) { Write-AtomicReport @('[]') $qPath; Remove-Item -LiteralPath $inflight -Force -ErrorAction SilentlyContinue } else { $out.Notes += 'dry run: no state written' }
     return $out
   })
 }
@@ -500,7 +512,12 @@ function Invoke-UndeliveredResend {
       try {
         $raw = [System.IO.File]::ReadAllText($u.FullName)
         $p = $raw | ConvertFrom-Json
-        $ok = [bool](& $Sender "$($p.title) (re-sent)" @($p.lines))
+        # The re-send's crash window (section 33 R4-A1): the payload is
+        # stamped before the send, so a crash after the send and before the
+        # delete makes the next re-send say it may be a duplicate.
+        $wasResending = "$(try { $p.resendingAt } catch { '' })" -ne ''
+        if (-not $NoPersist) { $p | Add-Member -NotePropertyName resendingAt -NotePropertyValue ((Get-Date).ToString('o')) -Force; Write-AtomicReport @(ConvertTo-Json $p -Depth 6) $u.FullName }
+        $ok = [bool](& $Sender "$($p.title) (re-sent$(if ($wasResending) { ', possible duplicate' }))" @($p.lines))
         if (-not $NoPersist) { Update-DeliveryRecord $StateDir (Get-Date) $ok }
         if ($ok) {
           if (-not $NoPersist) { Remove-Item -LiteralPath $u.FullName -Force }
