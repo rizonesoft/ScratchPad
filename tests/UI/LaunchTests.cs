@@ -1403,10 +1403,16 @@ public sealed class LaunchTests
                 var mains = after.Where(h => HelperClass(h) == "WinUIDesktopWin32WindowClass").ToHashSet();
                 var gaps = FirstBirthGaps(after, outside, mains, birth, late, h => !HelperNative.IsWindowVisible(h), h => HelperNative.GetAncestor(h, 3));
                 Assert.True(gaps.Count == 0, $"window(s) born during the first construction were not pinned by the sweep or its delayed pass: {string.Join(", ", gaps.Select(h => $"0x{h:X} ({HelperClass(h)}, root owner 0x{HelperNative.GetAncestor(h, 3):X} {HelperClass(HelperNative.GetAncestor(h, 3))}, {(HelperNative.IsWindowVisible(h) ? "visible" : "hidden")})"))}; {birth.Raw} | {late.Raw}");
-                foreach (nint hwnd in birth.Pinned.Concat(late.Pinned))
+                // Each readback is checked against the target of the pass
+                // that pinned it (R3-I1): the delayed pass revalidates its
+                // target against the topology and may have recomputed it.
+                foreach (SweepLine pass in new[] { birth, late })
                 {
-                    var at = birth.PinnedAt.TryGetValue(hwnd, out var b) ? b : late.PinnedAt.TryGetValue(hwnd, out var l) ? l : (X: int.MinValue, Y: int.MinValue);
-                    Assert.True(at.X == birth.TargetX && at.Y == birth.TargetY, $"first-birth helper 0x{hwnd:X} read back at ({at.X},{at.Y}), not the target ({birth.TargetX},{birth.TargetY})");
+                    foreach (nint hwnd in pass.Pinned)
+                    {
+                        var at = pass.PinnedAt.TryGetValue(hwnd, out var p) ? p : (X: int.MinValue, Y: int.MinValue);
+                        Assert.True(at.X == pass.TargetX && at.Y == pass.TargetY, $"first-birth helper 0x{hwnd:X} ({pass.Phase}) read back at ({at.X},{at.Y}), not that pass's target ({pass.TargetX},{pass.TargetY})");
+                    }
                 }
 
                 Assert.True(birth.Verdict == "pass" && late.Verdict == "pass", $"the first birth's placement verdict did not pass: {birth.Raw} | {late.Raw}");
