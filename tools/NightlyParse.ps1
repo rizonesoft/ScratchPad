@@ -4725,7 +4725,7 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
   if (-not (Test-Path -LiteralPath $p)) { return [pscustomobject]@{ Known = $false; Lost = @() } }
   # An inventory that missed an append, or holds a torn line, cannot prove
   # a restore complete (section 54 R1-A1).
-  if (Test-Path -LiteralPath "$StorePath.writes.incomplete") { return [pscustomobject]@{ Known = $false; Lost = @() } }
+  if ((Test-Path -LiteralPath "$StorePath.writes.incomplete") -or (Test-Path -LiteralPath "$StorePath.writes.pending")) { return [pscustomobject]@{ Known = $false; Lost = @() } }
   $newest = @{}
   foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
     if ("$ln".Trim() -eq '') { continue }
@@ -4744,6 +4744,7 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
 
 # Free-space seam for fixtures (section 54 item 13); $null reads the disk.
 $script:MetricsFreeBytes = $null
+$script:MetricsRestoreHold = ''
 
 function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
   # One trend health summary (D00 T02 section 54 item 17): each degraded
@@ -4755,7 +4756,7 @@ function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
   $states = @(
     @('missing evidence', '(\| missing \||\| degraded \||partial \(missing )', 'run the missed night or record its pause in docs/nightly-pauses.md; repair an unreadable result'),
     @('unresolved identity', '(UNRESOLVED:|host alias refused|legacy assignment refused|SCHEDULE CONFLICT)', 'assign the run in docs/nightly-host-aliases.md (with evidence) or fix the refused alias row'),
-    @('storage pressure', '(metrics store at \d+( ?%| percent)|over capacity|append refused|UNKNOWN LOSS|could not sanitize)', 'compact: tools/NightlyTrend.ps1 -Compact; free disk space; retry the disclosure migration'),
+    @('storage pressure', '(metrics store at \d+( ?%| percent)|over capacity|append refused|UNKNOWN LOSS|could not sanitize|restore hold active)', 'compact: tools/NightlyTrend.ps1 -Compact; free disk space; retry the disclosure migration'),
     @('suppressed detection', '(Insufficient data:|PROLONGED INSUFFICIENCY|not comparable with derivation)', 'find what keeps the series from measuring (harness churn, missing timings); acknowledge only with a reason')
   )
   $out = @()
@@ -4765,6 +4766,19 @@ function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
   }
   if ($out.Count -eq 0) { return @('## Trend health', '', '- healthy: no missing evidence, unresolved identity, storage pressure, or suppressed detection', '') }
   return @('## Trend health', '', "- DEGRADED: $($out.Count) state(s)") + $out + @('')
+}
+
+function Remove-TombstonedFields($Row, [string]$Key, [hashtable]$LedgerTombs) {
+  # Every rendered row, merged or not, drops each field the ledger
+  # tombstoned, `env.<name>` fields included (section 54 R2-A1). The row
+  # is copied before any change, so the store's own object stays intact.
+  if (($null -eq $LedgerTombs) -or (-not $LedgerTombs.ContainsKey($Key))) { return $Row }
+  $strip = @(Expand-MetricsTombstones @($LedgerTombs[$Key]))
+  $has = { param($r, $f) if ($f -like 'env.*') { ($null -ne $r.PSObject.Properties['env']) -and ($null -ne $r.env) -and ($null -ne $r.env.PSObject.Properties[$f.Substring(4)]) } else { $null -ne $r.PSObject.Properties[$f] } }
+  if (@($strip | Where-Object { & $has $Row $_ }).Count -eq 0) { return $Row }
+  $copy = $Row | ConvertTo-Json -Depth 8 | ConvertFrom-Json
+  foreach ($f in $strip) { if ($f -like 'env.*') { if (& $has $copy $f) { $copy.env.PSObject.Properties.Remove($f.Substring(4)) } } else { $copy.PSObject.Properties.Remove($f) } }
+  return $copy
 }
 
 function Expand-MetricsTombstones($Names) {
@@ -4864,6 +4878,15 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
       }
     }
     $script:MetricsSupersessions = @($sups)
+    # Reconstruction after a restore (section 54 R2-I1): once the store holds
+    # every write the inventory acknowledged at its revision, the restore
+    # hold ends; with no complete inventory it stays and says so.
+    $rmark = Join-Path (Split-Path -Parent $Path) 'metrics-restored.json'
+    if (Test-Path -LiteralPath $rmark) {
+      $rl = Get-MetricsRestoreLoss $Path $store.Rows
+      if ($rl.Known -and (@($rl.Lost).Count -eq 0)) { Remove-Item -LiteralPath $rmark -Force -ErrorAction SilentlyContinue }
+      else { $script:MetricsRestoreHold = "restore hold active: $(if ($rl.Known) { "$(@($rl.Lost).Count) acknowledged write(s) not yet re-derived" } else { 'no complete write inventory proves the restore reconstructed; remove metrics-restored.json once the history is re-derived' }); alerts do not recover or correct meanwhile" }
+    }
     $script:MetricsWriteError = ''
     $script:MetricsCapacityWarning = ''
     # A no-op run still reports a store already past 90 percent (section
@@ -4898,12 +4921,18 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
         # rule on the next append (section 40 item 10).
         # A write that fails part-way (R1-F1) is cut back to the prior
         # length, so the store's bytes are exactly what they were.
-        try {
+        # Write-ahead for the inventory (section 54 R2-A2): a pending marker
+        # lands before the store append and leaves only after the inventory
+        # append, so a crash or a full disk between them reads unknown loss;
+        # a marker that cannot be written skips the append.
+        $pendingOk = $true
+        try { Set-Content -LiteralPath "$Path.writes.pending" -Value (Get-Date).ToUniversalTime().ToString('o') -Encoding UTF8 -ErrorAction Stop } catch { $pendingOk = $false; $script:MetricsWriteError = "metrics append skipped: the write-inventory pending marker could not be written ($($_.Exception.Message))" }
+        if ($pendingOk) { try {
           if ($null -ne $Append) { & $Append $Path $payload } else { [System.IO.File]::AppendAllText($Path, $payload, (New-Object System.Text.UTF8Encoding($false))) }
           # The acknowledged-write inventory (section 54 item 10): once the
           # append landed, each row key and revision it wrote is recorded in
           # a file of its own, so a restore can name exactly what it lost.
-          try { Add-MetricsWriteInventory $Path @($add) } catch {
+          try { Add-MetricsWriteInventory $Path @($add); Remove-Item -LiteralPath "$Path.writes.pending" -Force -ErrorAction Stop } catch {
             # A lost inventory line makes every later loss count unknown
             # (section 54 R1-A1): the incomplete marker says so durably.
             try { Set-Content -LiteralPath "$Path.writes.incomplete" -Value "$((Get-Date).ToUniversalTime().ToString('o')) $($_.Exception.Message)" -Encoding UTF8 } catch { }
@@ -4914,7 +4943,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           $script:MetricsWriteError = "metrics append failed: $($_.Exception.Message); the store keeps its prior rows"
           try { if (Test-Path $Path) { $fsx = [System.IO.File]::Open($Path, 'Open', 'ReadWrite'); try { if ($fsx.Length -gt $size) { $fsx.SetLength($size) } } finally { $fsx.Dispose() } } }
           catch { $script:MetricsWriteError += "; truncation back to $size bytes failed ($($_.Exception.Message)), run tools/NightlyTrend.ps1 -Restore" }
-        }
+        } }
       }
     }
     # A native row keeps the backfill's fields it lacks (section 40 item
@@ -4965,19 +4994,12 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
             if ($nEmpty -and $bSet) { $merged | Add-Member -NotePropertyName $k -NotePropertyValue $bv -Force; $filled += $k }
           }
           foreach ($ek in @($script:EnvFields)) { if ($tomb -contains "env.$ek") { continue }; $nv = "$(try { $merged.env.$ek } catch { '' })"; $bv = "$(try { $bf.env.$ek } catch { '' })"; if ((($nv -eq '') -or ($nv -like 'unknown*')) -and ($bv -ne '') -and ($bv -notlike 'unknown*') -and ($null -ne $merged.env)) { $merged.env | Add-Member -NotePropertyName $ek -NotePropertyValue $bv -Force; $filled += "env.$ek" } }
-          if ($filled.Count -gt 0) { $merged | Add-Member -NotePropertyName 'mergedFrom' -NotePropertyValue "$($bf.identity) ($($filled -join ', '))" -Force; $merged | Add-Member -NotePropertyName 'mergedFields' -NotePropertyValue @($filled) -Force; $out += $merged; continue }
+          if ($filled.Count -gt 0) { $merged | Add-Member -NotePropertyName 'mergedFrom' -NotePropertyValue "$($bf.identity) ($($filled -join ', '))" -Force; $merged | Add-Member -NotePropertyName 'mergedFields' -NotePropertyValue @($filled) -Force; $out += (Remove-TombstonedFields $merged $rk $ledgerTombs); continue }
         }
       }
       # A tombstoned field never renders, however the row came back (a
       # restore, a re-ingestion): the ledger strips it (section 54 R1-A2).
-      if ($ledgerTombs.ContainsKey($rk)) {
-        $strip = @(Expand-MetricsTombstones @($ledgerTombs[$rk]))
-        if (@($strip | Where-Object { $null -ne $row.PSObject.Properties[$_] }).Count -gt 0) {
-          $row = $row | ConvertTo-Json -Depth 8 | ConvertFrom-Json
-          foreach ($f in $strip) { if ($f -like 'env.*') { try { $row.env.PSObject.Properties.Remove($f.Substring(4)) } catch { } } else { $row.PSObject.Properties.Remove($f) } }
-        }
-      }
-      $out += $row
+      $out += (Remove-TombstonedFields $row $rk $ledgerTombs)
     }
     return $out
   })
@@ -5114,7 +5136,9 @@ function Read-AlertAcks([string]$Path, [string]$Root = '') {
       $aid = $m.Groups[1].Value; $adate = $m.Groups[3].Value
       if ($script:AlertAckMeta.ContainsKey($aid) -and ([string]::CompareOrdinal($adate, $script:AlertAckMeta[$aid].Date) -lt 0)) { continue }
       $map[$aid] = "$owner on ${adate}: $why"
-      $script:AlertAckMeta[$aid] = [pscustomobject]@{ Date = $adate; Until = $m.Groups[5].Value; Owner = $owner }
+      # A revision's identity is its whole row (section 54 R2-C1), so a
+      # same-date revision is a new revision.
+      $script:AlertAckMeta[$aid] = [pscustomobject]@{ Date = $adate; Until = $m.Groups[5].Value; Owner = $owner; RevisionId = "$adate#$((Get-CaseHash @("$owner|$why|$($m.Groups[5].Value)")).Substring(0, 8))" }
     }
   }
   return $map
@@ -5136,7 +5160,7 @@ function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night, $Entr
   # One ack revision covers one occurrence (section 54 R1-A4): an ack
   # revision already bound to an earlier occurrence of this alert covers no
   # later one, and a new revision rebinds the magnitude it is given at.
-  $rev = if ($null -ne $Meta) { "$($Meta.Date)" } else { '' }
+  $rev = if ($null -ne $Meta) { $(if ("$($Meta.RevisionId)" -ne '') { "$($Meta.RevisionId)" } else { "$($Meta.Date)" }) } else { '' }
   $boundElsewhere = @(@($Entries) | Where-Object { ($null -ne $_) -and ("$($_.id)" -eq "$($Entry.id)") -and ("$($_.ackRevision)" -eq $rev) -and ("$($_.ackedOccurrence)" -ne '') -and ("$($_.ackedOccurrence)" -ne "$($Entry.occurrence)") })
   if (($rev -ne '') -and ($boundElsewhere.Count -gt 0) -and ("$($Entry.ackRevision)" -ne $rev)) { return (& $none "ack of $rev already covered an earlier occurrence: unowned") }
   $acked = $null
@@ -5153,14 +5177,16 @@ function Test-RecentMetricsRestore([string]$AlertLedgerPath, [string]$Night) {
   # (the night directory); it counts as recent for seven nights from the
   # night it names (section 54 item 11, R1-I1), long enough for the next
   # evaluations to re-derive the restored rows.
+  # The hold lasts until reconstruction is proven (section 54 R2-I1): the
+  # marker stays until Sync-MetricsStore finds every acknowledged write of
+  # the inventory back in the store and removes it; while it exists, no
+  # alert recovers or corrects. Nights before the restore are unaffected.
   $m = Join-Path (Split-Path -Parent $AlertLedgerPath) 'metrics-restored.json'
   if (-not (Test-Path -LiteralPath $m)) { return $false }
   try {
     $o = Get-Content -LiteralPath $m -Raw | ConvertFrom-Json
-    $rn = [datetime]::ParseExact("$($o.night)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    $en = [datetime]::ParseExact($Night, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
-    return (($en -ge $rn) -and (($en - $rn).TotalDays -le 7))
-  } catch { return $false }
+    return ([string]::CompareOrdinal($Night, "$($o.night)") -ge 0)
+  } catch { return $true }
 }
 
 function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [string[]]$SupersededIds = @(), [hashtable]$Acks = @{}) {
@@ -5227,7 +5253,7 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
       # No comparable baseline is no recovery evidence (section 54 R1-I3):
       # an alert whose series reads insufficient tonight stays open.
       $eSeries = ("$($e.id)" -split '\|')[1]
-      if (($state -eq 'recovered') -and (@(@($Alerts) | Where-Object { "$_" -match ('Insufficient data: ' + [regex]::Escape($eSeries) + ' \(') }).Count -gt 0)) { $e | Add-Member -NotePropertyName insufficientHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
+      if ((@('recovered', 'corrected') -contains $state) -and (@(@($Alerts) | Where-Object { "$_" -match ('Insufficient data: ' + [regex]::Escape($eSeries) + ' \(') }).Count -gt 0)) { $e | Add-Member -NotePropertyName insufficientHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
       if ((@('recovered', 'corrected') -contains $state) -and (Test-RecentMetricsRestore $Path $night)) { $e | Add-Member -NotePropertyName restoreHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
       $e.state = $state; $e.closedNight = $night
       $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $false -Force
@@ -5244,7 +5270,7 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
       $e | Add-Member -NotePropertyName ackNote -NotePropertyValue $r.Note -Force
       if ($r.Acknowledged -ne '') {
         if ($null -ne $r.AckedMagnitude) { $e | Add-Member -NotePropertyName ackedMagnitude -NotePropertyValue $r.AckedMagnitude -Force }
-        $e | Add-Member -NotePropertyName ackRevision -NotePropertyValue "$($meta.Date)" -Force
+        $e | Add-Member -NotePropertyName ackRevision -NotePropertyValue $(if ("$($meta.RevisionId)" -ne '') { "$($meta.RevisionId)" } else { "$($meta.Date)" }) -Force
         $e | Add-Member -NotePropertyName ackedOccurrence -NotePropertyValue "$($e.occurrence)" -Force
       }
     }
@@ -5871,7 +5897,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   # A cohort still short of samples after many nights says so plainly
   # (section 47 item 5): frequent harness or environment changes must not
   # disable detection silently.
-  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t += "`n- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence" } }; $t }
+  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t = @($t, "- ALERT insufficient-${series}: PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st evaluated calendar night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes; one canonical run per night); owner $script:TriageOwner; check what keeps it from measuring (harness churn, missing timings) before trusting silence") } }; $t }
   if ($pa.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'runa-duration' $pa.Count) }
   elseif (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50

@@ -879,13 +879,15 @@ Assert ((@($g5c | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-durati
 $churn20 = @()
 foreach ($i in 1..20) { $n = New-Night ('2026-08-{0:d2}' -f $i) ('2026-08-{0:d2}-023000' -f $i) 600; $n.harness = ('{0:x8}-churn{1:d3}' -f $i, $i); $churn20 += $n }
 $g54 = @(Get-TrendAlerts $churn20)
-$g54Line = @($g54 | ForEach-Object { "$_" -split "`n" } | Where-Object { $_ -like '- ALERT insufficient-runa-duration:*' })
+$g54Line = @($g54 | Where-Object { "$_" -like '- ALERT insufficient-runa-duration:*' })
 $g54Id = if ($g54Line.Count -gt 0) { Get-AlertIdentity $g54Line[0] 'abcd1234' } else { '' }
 $g54Dir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-insufficient'
 if (Test-Path $g54Dir) { Remove-Item $g54Dir -Recurse -Force }
 $null = New-Item -ItemType Directory -Force -Path $g54Dir
-$g54Life = Update-AlertLedger @($g54Line) (Join-Path $g54Dir 'alerts.json') ([pscustomobject]@{ Night = '2026-08-20'; Host = 'abcd1234'; Identity = 'eval-1' })
-Assert (($g54Line.Count -eq 1) -and ($g54Line[0] -like '*owner operator*') -and ($g54Id -eq 'abcd1234|insufficient-runa-duration') -and (@($g54Life.NewIds) -contains 'abcd1234|insufficient-runa-duration')) 's54-prolonged-insufficiency-is-an-owned-alert' (($g54Line -join ' | ') + " id=$g54Id new=$(@($g54Life.NewIds) -join ',')")
+# Production input: the trend's own output, unsplit (section 54 R2-R1).
+$g54Life = Update-AlertLedger @($g54) (Join-Path $g54Dir 'alerts.json') ([pscustomobject]@{ Night = '2026-08-20'; Host = 'abcd1234'; Identity = 'eval-1' })
+$g54Pending = @((Get-Content -LiteralPath (Join-Path $g54Dir 'alerts.json') -Raw | ConvertFrom-Json).alerts | Where-Object { ($_.id -eq 'abcd1234|insufficient-runa-duration') -and ($_.notifiedOpen -eq $false) })
+Assert (($g54Line.Count -eq 1) -and ($g54Line[0] -like '*owner operator*') -and ($g54Id -eq 'abcd1234|insufficient-runa-duration') -and (@($g54Life.NewIds) -contains 'abcd1234|insufficient-runa-duration') -and ($g54Pending.Count -eq 1)) 's54-prolonged-insufficiency-is-an-owned-alert' (($g54Line -join ' | ') + " id=$g54Id new=$(@($g54Life.NewIds) -join ',')")
 Remove-Item $g54Dir -Recurse -Force -ErrorAction SilentlyContinue
 # D00 T02 §54 item 6: every field the merge can fill belongs to a named
 # unit, and fields outside the units never merge.
@@ -1044,6 +1046,26 @@ $null = Update-AlertLedger @($r1Alert) $r1Ledger ([pscustomobject]@{ Night = '20
 $r1Ins = Update-AlertLedger @('- Insufficient data: runa-duration (0 measured baseline night(s) of 5 needed)') $r1Ledger ([pscustomobject]@{ Night = '2026-09-21'; Host = 'abcd1234'; Identity = 'e2' })
 Assert ((-not $r1Inc.Known) -and (-not $r1Torn.Known) -and (@($r1Sum | Where-Object { $_ -like '- storage pressure: 1*' }).Count -eq 1) -and (@($r1Ins.Closed).Count -eq 0)) 's54-round1-inventory-summary-and-insufficient-hold' "sum=$($r1Sum -join ' / ') closed=$(@($r1Ins.Closed).Count)"
 Remove-Item $r1Dir -Recurse -Force
+# D00 T02 §54 R2: a pending write marker reads unknown loss; the restore
+# hold ends once every acknowledged write is back; an env tombstone strips
+# a restored env value.
+$r2Dir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-r2'
+if (Test-Path $r2Dir) { Remove-Item $r2Dir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $r2Dir
+$r2Store = Join-Path $r2Dir 'metrics.jsonl'
+$null = Sync-MetricsStore $r2Store @((New-Night '2026-09-10' '2026-09-10-023000'))
+$r2NoPending = -not (Test-Path "$r2Store.writes.pending")
+'x' | Set-Content -LiteralPath "$r2Store.writes.pending" -Encoding UTF8
+$r2Pend = Get-MetricsRestoreLoss $r2Store ([ordered]@{})
+Remove-Item "$r2Store.writes.pending"
+'{"night":"2026-09-10","store":"metrics.jsonl"}' | Set-Content -LiteralPath (Join-Path $r2Dir 'metrics-restored.json') -Encoding UTF8
+$null = Sync-MetricsStore $r2Store @()
+$r2HoldGone = -not (Test-Path (Join-Path $r2Dir 'metrics-restored.json'))
+$r2Tomb = @{ 'k1' = @('env.os') }
+$r2Row = [pscustomobject]@{ identity = 'k1'; env = [pscustomobject]@{ os = 'Windows 11'; dpi = '96' } }
+$r2Out = Remove-TombstonedFields $r2Row 'k1' $r2Tomb
+Assert ($r2NoPending -and (-not $r2Pend.Known) -and $r2HoldGone -and ($null -eq $r2Out.env.PSObject.Properties['os']) -and ($r2Out.env.dpi -eq '96') -and ($r2Row.env.os -eq 'Windows 11')) 's54-round2-pending-reconstruction-and-env-tombstone' "pending=$($r2Pend.Known) holdGone=$r2HoldGone"
+Remove-Item $r2Dir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
