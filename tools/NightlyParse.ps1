@@ -5060,6 +5060,20 @@ function Resolve-AlertAck($Entry, [string]$AckText, $Meta, [string]$Night) {
   return [pscustomobject]@{ Acknowledged = $AckText; Note = ''; AckedMagnitude = $acked }
 }
 
+function Test-RecentMetricsRestore([string]$AlertLedgerPath, [string]$Night) {
+  # A metrics restore leaves restored.json beside the alert ledger (the
+  # night directory); it counts as recent for the night it names and the
+  # next one (section 54 item 11).
+  $m = Join-Path (Split-Path -Parent $AlertLedgerPath) 'metrics-restored.json'
+  if (-not (Test-Path -LiteralPath $m)) { return $false }
+  try {
+    $o = Get-Content -LiteralPath $m -Raw | ConvertFrom-Json
+    $rn = [datetime]::ParseExact("$($o.night)", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    $en = [datetime]::ParseExact($Night, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    return (($en -ge $rn) -and (($en - $rn).TotalDays -le 1))
+  } catch { return $false }
+}
+
 function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [string[]]$SupersededIds = @(), [hashtable]$Acks = @{}) {
   # The alert lifecycle (section 40 item 15) in build/nightly/alerts.json:
   # a new id opens; an open id seen again persists; an open id of this
@@ -5107,6 +5121,12 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
     foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
       $state = if (@(@($SupersededIds) | ForEach-Object { "$_".Split('@')[0] }) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
       if ($state -eq '') { continue }
+      # A restore gap never recovers an alert (section 54 item 11): while a
+      # metrics restore is recent (two nights), an open alert its evaluation
+      # did not raise stays open instead of closing, so a restored store
+      # never closes and re-opens it (a duplicate notification) or strands
+      # its effective acknowledgement on a new occurrence.
+      if (($state -eq 'recovered') -and (Test-RecentMetricsRestore $Path $night)) { $e | Add-Member -NotePropertyName restoreHeld -NotePropertyValue $night -Force; $persist += "$($e.id)"; continue }
       $e.state = $state; $e.closedNight = $night
       $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $false -Force
       $closed += [pscustomobject]@{ Id = "$($e.id)"; State = $state; Line = "$($e.line)" }
@@ -5321,6 +5341,9 @@ function Restore-MetricsStore([string]$Path) {
     # rule now withholds.
     $lines = @($b.Rows.Keys | ForEach-Object { $clean = ConvertTo-Json (Protect-DisclosedObject $b.Rows[$_]) -Depth 6 -Compress; if ($clean -ne (ConvertTo-Json $b.Rows[$_] -Depth 6 -Compress)) { $clean } else { $b.Raw[$_] } }) + @($b.Supersessions | ForEach-Object { ConvertTo-Json (Protect-DisclosedObject $_) -Compress })
     Write-AtomicReport $lines $Path
+    # The restore marker (section 54 item 11): the alert ledger holds open
+    # alerts through the restore gap instead of closing and re-opening them.
+    try { Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ night = (Get-Date).ToString('yyyy-MM-dd'); at = (Get-Date).ToUniversalTime().ToString('o'); store = (Split-Path -Leaf $Path) }) -Compress)) (Join-Path (Split-Path -Parent $Path) 'metrics-restored.json') } catch { }
     # Loss from the inventory when there is one (section 54 item 10);
     # without it the restore says the loss is unknown.
     $invLoss = Get-MetricsRestoreLoss $Path $b.Rows

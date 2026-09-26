@@ -934,6 +934,23 @@ $ilNone = Get-MetricsRestoreLoss $ilStore $ilBack
 $ilSome = Get-MetricsRestoreLoss $ilStore $ilBack
 Assert ((-not $ilNone.Known) -and $ilSome.Known -and (@($ilSome.Lost).Count -eq 2) -and ((@($ilSome.Lost) -join '|') -like '*b@h1 (acknowledged revision 3; the backup holds 2)*c@h1 (acknowledged revision 1; not in the backup)*')) 's54-restore-loss-is-exact-or-unknown' (@($ilSome.Lost) -join ' | ')
 Remove-Item $ilDir -Recurse -Force
+# D00 T02 §54 item 11: a metrics restore sends no duplicate alert: an
+# open, delivered alert missing from the first evaluation after a restore
+# stays open (not recovered), so its return is persisting, not new.
+$rgDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-restoregap'
+if (Test-Path $rgDir) { Remove-Item $rgDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $rgDir
+$rgLedger = Join-Path $rgDir 'alerts.json'
+$rgAlert = '- ALERT runa-duration: 900s on 2026-09-20 vs baseline 600s (+50%, median of 7 night(s))'
+$rg1 = Update-AlertLedger @($rgAlert) $rgLedger ([pscustomobject]@{ Night = '2026-09-20'; Host = 'abcd1234'; Identity = 'e1' })
+$rgDoc = Get-Content -LiteralPath $rgLedger -Raw | ConvertFrom-Json
+foreach ($a in @($rgDoc.alerts)) { $a.notifiedOpen = $true }
+$rgDoc | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $rgLedger -Encoding UTF8
+'{"night":"2026-09-21","store":"metrics.jsonl"}' | Set-Content -LiteralPath (Join-Path $rgDir 'metrics-restored.json') -Encoding UTF8
+$rg2 = Update-AlertLedger @() $rgLedger ([pscustomobject]@{ Night = '2026-09-21'; Host = 'abcd1234'; Identity = 'e2' })
+$rg3 = Update-AlertLedger @($rgAlert) $rgLedger ([pscustomobject]@{ Night = '2026-09-22'; Host = 'abcd1234'; Identity = 'e3' })
+Assert ((@($rg1.NewIds).Count -eq 1) -and (@($rg2.Closed).Count -eq 0) -and (@($rg3.NewIds).Count -eq 0) -and (@($rg3.Persisting) -contains 'abcd1234|runa-duration')) 's54-metrics-restore-sends-no-duplicate-alert' "closed=$(@($rg2.Closed).Count) new=$(@($rg3.NewIds) -join ',')"
+Remove-Item $rgDir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
