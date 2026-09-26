@@ -6219,7 +6219,9 @@ function Select-CanonicalRuns($Results) {
         continue
       }
     }
-    $pick = @($slot.Pool | Sort-Object @{ Expression = 'Rank'; Descending = $true }, @{ Expression = 'Stamp'; Descending = $true }) | Select-Object -First 1
+    # A total order (D00 T02 section 55 item 5): rank, then stamp, then
+    # identity, so equal stamps never pick by input order.
+    $pick = @($slot.Pool | Sort-Object @{ Expression = 'Rank'; Descending = $true }, @{ Expression = 'Stamp'; Descending = $true }, @{ Expression = 'Id'; Descending = $true }) | Select-Object -First 1
     if ($null -ne $pick) {
       $slot.Canonical = $pick.Id
       # Two timer launches serving one night are a repeated trigger (a DST

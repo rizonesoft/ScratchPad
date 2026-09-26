@@ -39,15 +39,44 @@ foreach ($f in $resultFiles) {
   try { $results += (Get-Content $f.FullName -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { $log += "unreadable result $($f.Name)" }
 }
 
-# (1) No-start: independent of any governed run firing.
-$ns = Get-NoStartVerdict $results $now $ExpectBy $LookbackDays (Read-NightlyEnrollment (Join-Path $Root 'docs/nightly-schedule-history.md'))
+# (0) Interrupted publications (D00 T02 section 55 item 1): a result
+# whose report never landed gets a report rebuilt from it, a report
+# without a result moves to orphans/, and a recovered run the ledger
+# never saw still notifies, linking what exists.
+try {
+  $gen = Repair-NightlyGenerations $NightDir $now -NoPersist:$DryRun
+  $log += @($gen.Lines | ForEach-Object { "$_" })
+  foreach ($gs in @($gen.Recovered)) {
+    $gr = @($results | Where-Object { "$($_.stamp)" -eq $gs }) | Select-Object -First 1
+    if ($null -eq $gr) { continue }
+    $gid = "$($gr.identity)"; if ($gid -eq '') { $gid = $gs }
+    if (Test-RunNotified $NightDir $gid) { continue }
+    $gcls = 'infrastructure'
+    try { $gcls = (Classify-NightlyOutcome $gr).Class } catch { }
+    $gl = Resolve-NotifyReportLink $NightDir $gs
+    $gn = Invoke-NightlyNotify -Phase 'final' -RunId $gid -ResultPath (Join-Path $NightDir "morning-$gs.result.json") -Class $gcls -Labels @(Get-OutcomeLabels $gr) -Slot (Get-NightSlotKey $gr) -Title "Nightly $(Get-ResultNight $gr) : $("$($gr.verdict)".ToUpper()) ($gcls, recovered publication)" -Lines @("The run's report did not land; rebuilt from its result.", "Report: $($gl.Link)") -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
+    $log += "generation $gs notify: $($gn.Status)"
+  }
+} catch { $log += "generation: failed: $($_.Exception.Message)" }
+
+# (1) No-start: independent of any governed run firing. The recorded
+# schedule excuses paused and skipped nights, and start evidence names
+# each missed night's state (section 55 items 3 and 4).
+$sched = Read-NightlySchedule (Join-Path $Root 'docs/nightly-schedule-history.md')
+$starts = Read-StartEvidence $NightDir
+if ($starts.Unreadable -gt 0) { $log += "start evidence: $($starts.Unreadable) unreadable line(s) in starts.jsonl" }
+$ns = Get-NoStartVerdict $results $now $ExpectBy $LookbackDays $sched.Enrolled $sched @($starts.Rows)
 $log += "no-start: $($ns.Line)"
 if ($ns.NoStart) {
   # One alert per missed date: the ledger key names the date, so a
-  # later reconcile never repeats it.
+  # later reconcile never repeats it. A night that never started is the
+  # scheduler's; one that started without a result is infrastructure.
   foreach ($md in $ns.Missed) {
-    $r = Invoke-NightlyNotify -Phase 'final' -RunId "no-start-$md" -ResultPath '' -Class 'scheduler-no-start' -Title "Nightly $md : NO START (scheduler-no-start)" -Lines @("No governed nightly result for $md.", 'Check the task is enabled and fires; run the manual backup.', 'Report: build/nightly/morning-reconcile.log') -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
-    $log += "no-start notify ${md}: $($r.Status) ($($r.Notes -join '; '))"
+    $nst = "$($ns.States[$md])"
+    $ncls = if ($nst -eq 'never-started') { 'scheduler-no-start' } else { 'infrastructure' }
+    $nword = switch ($nst) { 'never-started' { 'NO START' } 'still-running' { 'STILL RUNNING past the window' } 'hung' { 'HUNG' } default { 'STARTED, NO RESULT' } }
+    $r = Invoke-NightlyNotify -Phase 'final' -RunId "no-start-$md" -ResultPath '' -Class $ncls -Title "Nightly $md : $nword ($ncls)" -Lines @("No governed nightly result for $md (start state: $nst).", $(if ($nst -eq 'never-started') { 'Check the task is enabled and fires; run the manual backup.' } else { 'A run started for this night; read build/nightly/starts.jsonl and the run journal.' }), 'Report: build/nightly/morning-reconcile.log') -StateDir $NightDir -Sender $sender -Now $now -NoPersist:$DryRun
+    $log += "no-start notify ${md} (${nst}): $($r.Status) ($($r.Notes -join '; '))"
   }
 }
 
@@ -123,7 +152,13 @@ try {
 # build/nightly/digest-<day>.md plus one summary toast; a failed send
 # falls back to the undelivered set.
 try {
-  $df = Invoke-DigestFlush -StateDir $NightDir -Day $day -Sender $sender -NoPersist:$DryRun -Now $now
+  # The queue reconciles against the current lifecycle (section 55
+  # item 10): the canonical runs of every result read this morning.
+  $canonNow = $null
+  try { $canonNow = Select-CanonicalRuns $results } catch { }
+  $latestStamp = "$(@($results | Where-Object { "$($_.stamp)" -match '^\d{4}-\d{2}-\d{2}-\d{6}$' } | ForEach-Object { "$($_.stamp)" } | Sort-Object) | Select-Object -Last 1)"
+  $tri = if ($latestStamp -ne '') { (Resolve-NotifyReportLink $NightDir $latestStamp).Link } else { '' }
+  $df = Invoke-DigestFlush -StateDir $NightDir -Day $day -Sender $sender -NoPersist:$DryRun -Now $now -Canonical $canonNow -Results $results -TriageLink $tri
   $log += "digest: $($df.Status) ($($df.Notes -join '; '))"
 } catch { $log += "digest: failed: $($_.Exception.Message)" }
 
@@ -135,6 +170,9 @@ try { $log += @(Invoke-UndeliveredResend -StateDir $NightDir -Sender $sender -No
 # to this log, and consecutive failing nights escalate outside the toast
 # API, so a persistently failing toast surfaces without any toast.
 try { $log += @(Get-MorningDeliveryLines -StateDir $NightDir -Now $now -NoPersist:$DryRun | ForEach-Object { "$_".TrimStart('-', ' ') }) } catch { $log += "delivery: failed: $($_.Exception.Message)" }
+
+# (5) Notify-state retention and capacity (section 55 item 9).
+try { $log += @(Invoke-NotifyStateRetention -StateDir $NightDir -Now $now -NoPersist:$DryRun) } catch { $log += "retention: failed: $($_.Exception.Message)" }
 
 $stampLine = "$($now.ToString('yyyy-MM-dd HH:mm:ss'))$(if ($DryRun) { ' (dry run)' })"
 $log | ForEach-Object { Write-Output "morning: $_" }

@@ -435,7 +435,7 @@ trap {
     try { Write-RunJournal $nightDir $stamp $PID $runStart 'failed-after-result' } catch { }
     # A simulated run never alerts (the normal simulation guard, §24
     # redesign review), including one failing through the fault seam.
-    if (-not $simMode) { try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $disp.ResultPath -Class 'cancelled' -Title "Nightly $day : FAILED after its result landed" -Lines @("Run failed after its result landed: $msg", "Record: build/nightly/morning-$stamp-failure.md", "Result: build/nightly/morning-$stamp.result.json (untouched)") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { } }
+    if (-not $simMode) { try { $null = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $disp.ResultPath -Class 'cancelled' -Kind 'failed-after-result' -Title "Nightly $day : FAILED after its result landed" -Lines @("Run failed after its result landed: $msg", "Record: build/nightly/morning-$stamp-failure.md", "Result: build/nightly/morning-$stamp.result.json (untouched)") -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l } } catch { } }
     Write-Output "nightly: failure after the result landed (record stands; $($disp.Reason)): $msg$(if ($note -ne '') { "; note $note" })"
     if ($lockHeld -and ($null -ne $mutex)) { $mutex.ReleaseMutex() }
     exit 1
@@ -567,6 +567,9 @@ if ($dj.Dead) {
   Write-Output "nightly: recovered dead run $($dj.Stamp) at phase $($dj.Phase)"
 }
 if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'started' }
+# Durable start evidence (D00 T02 section 55 item 3): the no-start check
+# tells never-started from started-and-died, hung, or still running.
+if (-not $Smoke) { try { Add-StartEvidence $nightDir $stamp $PID $runStart $schedulerParented $simMode } catch { Write-Output "nightly: start evidence not recorded: $($_.Exception.Message)" } }
 # Pre-flight: reap orphaned test apps from a dead run. Path-scoped to this
 # checkout's Bin, so a released ScratchPad anywhere else is never touched;
 # age-scoped to before this run's start, so a concurrent run's children
@@ -1823,6 +1826,9 @@ $report += ''
 # Rendered from the record the result carries (section 53 item 12).
 $report += @(Format-EvidenceSummary $report $stamp $evidenceRecord)
 Publish-NightlyReport $report ''
+# One committed generation (D00 T02 section 55 item 1): the manifest
+# names the result and report pair once both landed.
+if (-not $Smoke) { try { $null = Write-NightlyGeneration $nightDir $stamp } catch { Write-Output "nightly: generation manifest not written: $($_.Exception.Message)" } }
 # The landed result already protects the record (the trap reads it from
 # disk: D00 T02 §24 redesign), so no flag is needed here.
 if (-not $Smoke) { Write-RunJournal $nightDir $stamp $PID $runStart 'final' }
@@ -1855,6 +1861,7 @@ if ((-not $Smoke) -and (-not $simMode)) {
       $items += New-ToastItem 2 "$(@($incidentLines)[0])$ev"
     } else { $items += New-ToastItem 5 'No failures' 1 }
     $recNotices = @()
+    $corr = @()
     try {
       # The trend's own input set (section 33 R2-I1): validated results,
       # authoritative metrics rows, superseded backfills removed, and the
@@ -1872,6 +1879,10 @@ if ((-not $Smoke) -and (-not $simMode)) {
       $voice = Get-NightVoice $canonMap $result
       if ((-not $voice.IsVoice) -and ($voice.Canonical -ne '')) { $items += New-ToastItem 1 "Not the night's verdict: $($voice.Canonical) speaks for $($voice.Slot.Split('|')[0]) (the trend reads the same run)" }
       $recNotices = @(Get-RecoveryNotices $canonMap $allResults $result @($ledgerUpd.Lines) $ackCheck)
+      # Supersession (section 55 item 6): this run replaces an already
+      # notified run of the same night and the notice names the verdict.
+      $corr = @(Get-SupersessionCorrection $canonMap $allResults $result @(Read-JsonState (Join-Path $nightDir 'notify-ledger.json') @()))
+      if ($corr.Count -gt 0) { $items += New-ToastItem 1 ($corr -join '; ') }
     } catch { }
     $items += @(Get-RecoveryToastItems $recNotices)
     $odLines = @()
@@ -1883,17 +1894,22 @@ if ((-not $Smoke) -and (-not $simMode)) {
     $items += New-ToastItem 7 "Trigger: $trigger"
     # The stamp-scoped archive, not morning-<day>.md: a later same-day run
     # replaces the day file before a digest or fallback is delivered.
-    $tLines = @(Format-ToastLines $items "build/nightly/morning-$stamp.md")
+    # The link an alert may carry (section 55 item 1): the report only
+    # when its generation is committed, else the result itself.
+    $rLink = Resolve-NotifyReportLink $nightDir $stamp
+    $tLines = @(Format-ToastLines $items $rLink.Link)
     $ww = if ($exitCode -eq 0) { 'GREEN' } else { 'RED' }
-    $route = Get-AlertRoute $clsOut
-    $nt = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $resultPath -Class $clsOut -Title "Nightly $day : $ww ($clsOut)" -Lines $tLines -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l }
+    # One route over every label (section 55 item 7).
+    $route = Get-CombinedRoute $clsOut $labels
+    $nt = Invoke-NightlyNotify -Phase 'final' -RunId "$stamp-pid$PID" -ResultPath $resultPath -Class $clsOut -Labels $labels -Slot (Get-NightSlotKey $result) -Title "Nightly $day : $ww ($clsOut)" -Lines $tLines -StateDir $nightDir -Sender { param($t, $l) Send-NightlyToast $t $l }
     Write-Output "nightly: notification $($nt.Status) ($clsOut via $($route.Channel), owner $($route.Owner), SLA $($route.SlaHours)h): $($nt.Notes -join '; ')"
     # The delivery outcome is only known after the final publication, so
     # the report republishes atomically (fixed path plus stamp archive)
     # with its Notification section; latest.txt already names this stamp.
-    $report += @('', '## Notification', '', "- Class: $clsOut (owner $($route.Owner), channel $($route.Channel), severity $($route.Severity), SLA $($route.SlaHours)h)", "- Labels: $(if ($labels.Count -gt 0) { $labels -join ', ' } else { 'none beyond the class' })", "- Recovery: $(if ($recNotices.Count -gt 0) { $recNotices -join '; ' } else { 'none' })", "- Delivery: $($nt.Status) ($($nt.Notes -join '; '))", "- Key: $($nt.Key)")
+    $report += @('', '## Notification', '', "- Class: $clsOut (accountable owner $($route.Owner) via $($route.Lead), channel $($route.Channel), severity $($route.Severity), SLA $($route.SlaHours)h)", "- Owners: $(@($route.Owners) -join '; ') ($($route.Ack))", "- Supersession: $(if ($corr.Count -gt 0) { $corr -join '; ' } else { 'none' })", "- Labels: $(if ($labels.Count -gt 0) { $labels -join ', ' } else { 'none beyond the class' })", "- Recovery: $(if ($recNotices.Count -gt 0) { $recNotices -join '; ' } else { 'none' })", "- Delivery: $($nt.Status) ($($nt.Notes -join '; '))", "- Key: $($nt.Key)")
     Write-AtomicReport $report $reportPath
     Write-AtomicReport $report (Join-Path $nightDir "morning-$stamp.md")
+    $null = Write-NightlyGeneration $nightDir $stamp
   } catch { Write-Output "nightly: notification failed after publication (record stands): $($_.Exception.Message)" }
 }
 try { & (Join-Path $PSScriptRoot 'NightlyTrend.ps1') -NightDir $nightDir -OutFile (Join-Path $nightDir 'trend.md') -LedgerPath (Join-Path $Root 'docs/soak-and-quarantine.md') | Out-Null; Write-Output 'nightly: trend rendered' } catch { Write-Output "nightly: trend render failed (best-effort): $_" }

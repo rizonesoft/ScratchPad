@@ -92,13 +92,17 @@ Assert ($lockErr -like 'notify state lock not acquired within 1s*') 'notify-held
 # R1-F5, R1-F6: the digest keeps every payload whole and fails over.
 $dgState = Join-Path $dir 'digest'
 $null = New-Item -ItemType Directory -Force -Path $dgState
-@([pscustomobject]@{ key = 'k1'; run = 'r10'; class = 'test'; title = 'Nightly 2026-09-24 : RED (test)'; lines = @('INC-1 top incident [evidence: bundle x]', 'Also: degraded-soak', 'Report: build/nightly/morning-2026-09-24.md'); at = (Get-Date).AddHours(-2).ToString('o') },
+# A real evidence file: flush-time link resolution (section 55 item 16)
+# keeps a present link as it is.
+$dgBundle = Join-Path $dgState 'bundle.json'
+'x' | Set-Content -LiteralPath $dgBundle -Encoding UTF8
+@([pscustomobject]@{ key = 'k1'; run = 'r10'; class = 'test'; title = 'Nightly 2026-09-24 : RED (test)'; lines = @("INC-1 top incident [evidence: bundle $dgBundle]", 'Also: degraded-soak', 'Report: build/nightly/morning-2026-09-24.md'); at = (Get-Date).AddHours(-2).ToString('o') },
   [pscustomobject]@{ key = 'k2'; run = 'r11'; class = 'green'; title = 'Nightly 2026-09-25 : GREEN (green)'; lines = @('Recovered: night 2026-09-24 was RED', 'Report: build/nightly/morning-2026-09-25.md'); at = (Get-Date).AddHours(-1).ToString('o') }) | ForEach-Object { $_ } | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $dgState 'digest-queue.json') -Encoding UTF8
 $script:sent = 0
 $f1Now = Get-Date
 $f1 = Invoke-DigestFlush -StateDir $dgState -Day '2026-09-25' -Sender $okSender -Now $f1Now
 $dmd = Get-Content $f1.DigestPath -Raw
-Assert (($f1.Status -eq 'sent') -and ($f1.Count -eq 2) -and ($dmd -like '*INC-1 top incident `[evidence: bundle x`]*') -and ($dmd -like '*Report: build/nightly/morning-2026-09-24.md*') -and ($dmd -like '*Recovered: night 2026-09-24 was RED*')) 'digest-keeps-every-payload-whole' $f1.Status
+Assert (($f1.Status -eq 'sent') -and ($f1.Count -eq 2) -and ($dmd -like "*INC-1 top incident ``[evidence: bundle $dgBundle``]*") -and ($dmd -like '*Report: build/nightly/morning-2026-09-24.md*') -and ($dmd -like '*Recovered: night 2026-09-24 was RED*')) 'digest-keeps-every-payload-whole' $f1.Status
 Assert ((@(Read-JsonState (Join-Path $dgState 'digest-queue.json') @()).Count -eq 0) -and ((Get-Content (Join-Path $dgState 'digest-queue.json') -Raw).Trim() -eq '[]')) 'digest-flush-clears-the-queue'
 @([pscustomobject]@{ key = 'k3'; run = 'r12'; class = 'test'; title = 't'; lines = @('x'); at = (Get-Date).ToString('o') }) | ForEach-Object { $_ } | ConvertTo-Json -Depth 5 | ForEach-Object { "[$_]" } | Set-Content -Path (Join-Path $dgState 'digest-queue.json') -Encoding UTF8
 $script:sent = 0
@@ -497,6 +501,270 @@ $script:sent33i = @()
 $null = Invoke-DigestFlush -StateDir $st33i -Day '2026-09-25' -Sender { param($t, $l) $script:sent33i += $t; $true } -Now (Get-Date '2026-09-25 07:10')
 $null = Invoke-UndeliveredResend -StateDir $st33i -Sender { param($t, $l) $script:sent33i += $t; $true }
 Assert ((@($script:sent33i | Where-Object { $_ -like '*(possible duplicate)' }).Count -eq 1) -and ($script:sent33i -contains 'u (re-sent, possible duplicate)') -and (-not (Test-Path (Join-Path $st33i 'digest-inflight.json')))) 's33-interrupted-digest-and-resend-mark-possible-duplicates' ($script:sent33i -join ' | ')
+
+# ---- D00 T02 section 55: notify redesign residuals ----
+$d55 = Join-Path $dir 's55'
+$null = New-Item -ItemType Directory -Force -Path $d55
+$okSend55 = { param($t, $l) $script:sent55 += $t; $true }
+
+# Item 1: a crash after the result and before the report never links a
+# broken report; the reconciler rebuilds it, commits the generation,
+# moves an orphaned report aside, and a stale result links itself.
+$g1 = Join-Path $d55 'gen'
+$null = New-Item -ItemType Directory -Force -Path $g1
+$g1Res = New-Result '2026-09-27' '2026-09-27-023000' 'red' 'timer'
+$g1Res.legs.'run-a'.failed = 2
+Write-AtomicReport @(ConvertTo-Json $g1Res -Depth 6) (Join-Path $g1 'morning-2026-09-27-023000.result.json')
+(Get-Item (Join-Path $g1 'morning-2026-09-27-023000.result.json')).LastWriteTime = (Get-Date).AddHours(-2)
+$g1Before = Resolve-NotifyReportLink $g1 '2026-09-27-023000'
+Write-AtomicReport @('# orphan') (Join-Path $g1 'morning-2026-09-27-040000.md')
+(Get-Item (Join-Path $g1 'morning-2026-09-27-040000.md')).LastWriteTime = (Get-Date).AddHours(-2)
+$g1Rep = Repair-NightlyGenerations $g1 (Get-Date)
+$g1After = Resolve-NotifyReportLink $g1 '2026-09-27-023000'
+$g1Md = Get-Content (Join-Path $g1 'morning-2026-09-27-023000.md') -Raw
+$script:sent55 = @()
+$g1N = Invoke-NightlyNotify -Phase 'final' -RunId '2026-09-27-023000-pid1' -ResultPath (Join-Path $g1 'morning-2026-09-27-023000.result.json') -Class 'infrastructure' -Title 'Nightly 2026-09-27 : RED (infrastructure, recovered publication)' -Lines @("Report: $($g1After.Link)") -StateDir $g1 -Sender $okSend55
+Assert (($g1Before.Link -eq 'build/nightly/morning-2026-09-27-023000.result.json') -and ($g1Before.State -eq 'missing-report') -and (@($g1Rep.Recovered) -contains '2026-09-27-023000') -and ($g1Md -like '*recovered-from-result*') -and ($g1After.State -eq 'committed') -and ($g1After.Link -eq 'build/nightly/morning-2026-09-27-023000.md') -and (Test-Path (Join-Path $g1 'orphans/morning-2026-09-27-040000.md')) -and ($g1N.Status -eq 'sent')) 's55-generation-crash-window-recovers-and-still-notifies' "$($g1Before.State) -> $($g1After.State); $($g1Rep.Lines -join ' | ')"
+# The result revised after its generation links the result, never the
+# report built before it; a republished report keeps its link; a run
+# before manifests keeps its report link.
+$g1Res | Add-Member -NotePropertyName revision -NotePropertyValue 2 -Force
+Write-AtomicReport @(ConvertTo-Json $g1Res -Depth 6) (Join-Path $g1 'morning-2026-09-27-023000.result.json')
+$g1Stale = Resolve-NotifyReportLink $g1 '2026-09-27-023000'
+$null = Write-NightlyGeneration $g1 '2026-09-27-023000'
+Write-AtomicReport @('# republished') (Join-Path $g1 'morning-2026-09-27-023000.md')
+$g1Repub = Resolve-NotifyReportLink $g1 '2026-09-27-023000'
+Write-AtomicReport @('{}') (Join-Path $g1 'morning-2026-09-20-023000.result.json'); Write-AtomicReport @('# old') (Join-Path $g1 'morning-2026-09-20-023000.md')
+$g1Legacy = Resolve-NotifyReportLink $g1 '2026-09-20-023000'
+Assert (($g1Stale.State -eq 'stale') -and ($g1Stale.Link -like '*.result.json') -and ($g1Repub.State -eq 'republished') -and ($g1Repub.Link -like '*023000.md') -and ($g1Legacy.State -eq 'legacy')) 's55-generation-stale-republished-and-legacy-links' "$($g1Stale.State) $($g1Repub.State) $($g1Legacy.State)"
+
+# Item 2: a GREEN result followed by a failure after it landed alerts
+# once, under its own identity.
+$g2 = Join-Path $d55 'far'
+$null = New-Item -ItemType Directory -Force -Path $g2
+$g2Res = Join-Path $g2 'r.json'
+Write-AtomicReport @(ConvertTo-Json (New-Result '2026-09-27' '2026-09-27-023000' 'green' 'timer') -Depth 6) $g2Res
+$script:sent55 = @()
+$g2a = Invoke-NightlyNotify -Phase 'final' -RunId 'run2' -ResultPath $g2Res -Class 'green' -Title 'Nightly 2026-09-27 : GREEN (green)' -Lines @('x') -StateDir $g2 -Sender $okSend55
+$g2b = Invoke-NightlyNotify -Phase 'final' -RunId 'run2' -ResultPath $g2Res -Class 'cancelled' -Kind 'failed-after-result' -Title 'Nightly 2026-09-27 : FAILED after its result landed' -Lines @('y') -StateDir $g2 -Sender $okSend55
+$g2c = Invoke-NightlyNotify -Phase 'final' -RunId 'run2' -ResultPath $g2Res -Class 'cancelled' -Kind 'failed-after-result' -Title 'Nightly 2026-09-27 : FAILED after its result landed' -Lines @('y') -StateDir $g2 -Sender $okSend55
+Assert (($g2a.Status -eq 'queued') -and ($g2b.Status -eq 'sent') -and ($g2c.Status -eq 'duplicate') -and (@($script:sent55).Count -eq 1)) 's55-failed-after-result-alerts-once-after-green' "$($g2a.Status) $($g2b.Status) $($g2c.Status)"
+
+# Items 3 and 19: each start state reads its own name (the matrix's
+# no-start branches, one case each).
+$now55 = [datetime]'2026-09-25 07:05'
+$st55 = @(
+  [pscustomobject]@{ stamp = 'a'; pid = 111; started = '2026-09-20T02:30:00'; night = '2026-09-20'; simulated = $false },
+  [pscustomobject]@{ stamp = 'b'; pid = 222; started = $now55.AddHours(-1).ToString('s'); night = '2026-09-21'; simulated = $false },
+  [pscustomobject]@{ stamp = 'c'; pid = 333; started = $now55.AddHours(-10).ToString('s'); night = '2026-09-22'; simulated = $false },
+  [pscustomobject]@{ stamp = 'd'; pid = 444; started = '2026-09-23T02:30:00'; night = '2026-09-23'; simulated = $true })
+$alive55 = { param($p, $s) $p -ne 111 }
+$ss = @{}
+foreach ($n in @('2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24')) { $ss[$n] = Get-NightStartState $n @('2026-09-24') $st55 $now55 -IsAlive $alive55 }
+Assert ($ss['2026-09-20'] -eq 'started-without-result') 's55-matrix-no-start-started-without-result' $ss['2026-09-20']
+Assert ($ss['2026-09-21'] -eq 'still-running') 's55-matrix-no-start-still-running' $ss['2026-09-21']
+Assert ($ss['2026-09-22'] -eq 'hung') 's55-matrix-no-start-hung' $ss['2026-09-22']
+Assert ($ss['2026-09-23'] -eq 'never-started') 's55-matrix-no-start-never-started (a simulated start is no evidence)' $ss['2026-09-23']
+Assert ($ss['2026-09-24'] -eq 'completed') 's55-matrix-no-start-completed' $ss['2026-09-24']
+$nsv = Get-NoStartVerdict @() $now55 '06:50' 5 '2026-09-20' $null $st55 $alive55
+Assert (($nsv.Line -like '*2026-09-20 (started-without-result)*') -and ($nsv.Line -like '*2026-09-23 (never-started)*') -and ($nsv.States['2026-09-22'] -eq 'hung')) 's55-no-start-verdict-names-each-state' $nsv.Line
+
+# Item 4: a pause and a skip each read without a no-start; enrollment
+# after the window invents nothing.
+$sch55 = Join-Path $d55 'schedule.md'
+@('# Nightly schedule history', '', 'Enrolled: 2026-09-18', 'Paused: 2026-09-20..2026-09-21 laptop away', 'Skipped: 2026-09-23 operator skip') | Set-Content -LiteralPath $sch55 -Encoding UTF8
+$sch = Read-NightlySchedule $sch55
+$r55 = @((New-Result '2026-09-18' '2026-09-18-023000' 'green' 'timer'), (New-Result '2026-09-19' '2026-09-19-023000' 'green' 'timer'), (New-Result '2026-09-22' '2026-09-22-023000' 'green' 'timer'), (New-Result '2026-09-24' '2026-09-24-023000' 'green' 'timer'), (New-Result '2026-09-25' '2026-09-25-023000' 'green' 'timer'))
+$nsp = Get-NoStartVerdict $r55 $now55 '06:50' 7 $sch.Enrolled $sch
+$nsNew = Get-NoStartVerdict @() $now55 '06:50' 7 '2026-09-26' $sch
+Assert ((-not $nsp.NoStart) -and ($nsp.Line -like '*2026-09-20 paused (laptop away)*') -and ($nsp.Line -like '*2026-09-23 skipped (operator skip)*') -and (-not $nsNew.NoStart)) 's55-pause-and-skip-read-excused' $nsp.Line
+
+# Item 5: one night identity: equal stamps pick one canonical run
+# whatever the input order, and a run whose zone moved its start across
+# midnight is the same night to the no-start check and the trend.
+$e1 = New-Result '2026-09-20' '2026-09-20-023000' 'green' 'timer'; $e1.identity = 'id-a'
+$e2 = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $e2.identity = 'id-b'
+$ca = (Select-CanonicalRuns @($e1, $e2))['2026-09-20|legacy'].Canonical
+$cb = (Select-CanonicalRuns @($e2, $e1))['2026-09-20|legacy'].Canonical
+$tzr = New-Result '2026-09-19' '2026-09-20-023000' 'green' 'timer'
+$tzr | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-09-19T12:30:00Z' -Force
+$tzr | Add-Member -NotePropertyName tz -NotePropertyValue '+14:00' -Force
+$tzc = Select-CanonicalRuns @($tzr)
+$tzns = Get-NoStartVerdict @($tzr) ([datetime]'2026-09-20 07:05') '06:50' 0 '2026-09-20'
+Assert (($ca -eq $cb) -and ($ca -eq 'id-b') -and ($tzc.ContainsKey('2026-09-20|legacy')) -and (-not $tzns.NoStart)) 's55-one-night-identity-total-order-and-zone' "ca=$ca cb=$cb slots=$(@($tzc.Keys) -join ',') ns=$($tzns.Line)"
+
+# Item 6: a late scheduled result superseding a notified manual RED
+# names the superseding verdict and keeps the earlier triage owed.
+$m6 = New-Result '2026-09-20' '2026-09-20-013000' 'red' 'manual'
+$t6 = New-Result '2026-09-20' '2026-09-20-023000' 'green' 'timer'
+$c6 = Select-CanonicalRuns @($m6, $t6)
+$l6 = @([pscustomobject]@{ key = 'k'; run = '2026-09-20-013000-pid1'; status = 'sent'; slot = '2026-09-20|legacy' })
+$corr6 = @(Get-SupersessionCorrection $c6 @($m6, $t6) $t6 $l6)
+$corrNone = @(Get-SupersessionCorrection $c6 @($m6, $t6) $m6 $l6)
+Assert (($corr6[0] -eq 'Correction: 2026-09-20-023000-pid1 (GREEN) supersedes 2026-09-20-013000-pid1 (RED) as the verdict for night 2026-09-20') -and ($corr6 -contains 'Earlier 2026-09-20-013000-pid1 stays owed: its acknowledgement, deadline, and incidents stand (a correction never erases triage)') -and ($corr6 -contains 'The correction itself demands no acknowledgement') -and ($corrNone.Count -eq 0)) 's55-supersession-names-the-superseding-verdict' ($corr6 -join ' | ')
+
+# Item 7: a secondary critical label routes immediately with one
+# accountable owner.
+$cr7 = Get-CombinedRoute 'test' @('degraded-soak', 'scheduler-no-start')
+$g7 = Join-Path $d55 'route'
+$script:sent55 = @()
+$n7 = Invoke-NightlyNotify -Phase 'final' -RunId 'r7' -ResultPath '' -Class 'test' -Labels @('scheduler-no-start') -Title 'Nightly 2026-09-27 : RED (test)' -Lines @('x') -StateDir $g7 -Sender $okSend55
+$n7b = Invoke-NightlyNotify -Phase 'final' -RunId 'r7b' -ResultPath '' -Class 'test' -Title 'Nightly 2026-09-27 : RED (test)' -Lines @('x') -StateDir $g7 -Sender $okSend55
+Assert (($cr7.Channel -eq 'immediate') -and ($cr7.Severity -eq 'critical') -and ($cr7.SlaHours -eq 4) -and ($cr7.Lead -eq 'scheduler-no-start') -and ($cr7.Owner -eq 'operator') -and (@($cr7.Owners).Count -eq 3) -and ($n7.Status -eq 'sent') -and ($n7b.Status -eq 'queued')) 's55-secondary-critical-label-routes-immediately' "$($cr7.Channel) $($cr7.Severity) $($cr7.Lead) $(@($cr7.Owners) -join ';') $($n7.Status)/$($n7b.Status)"
+
+# Item 8: the deadline's origin is the run's start, the strictest SLA
+# applies, a delayed delivery never resets it, the earliest survives a
+# rewrite, and a downtime past it reads overdue at once.
+$r8 = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'
+$r8 | Add-Member -NotePropertyName startUtc -NotePropertyValue '2026-09-20T00:30:00Z' -Force
+$r8 | Add-Member -NotePropertyName tz -NotePropertyValue '+02:00' -Force
+$r8.scheduler = [pscustomobject]@{ voted = $true; faults = @('missing start') }
+$dm8 = [pscustomobject]@{ Day = '2026-09-20'; Result = $r8 }
+$due8 = Get-AckDue $dm8 (Get-AckSlaHours $r8)
+$due8b = Get-AckDue $dm8 (Get-AckSlaHours $r8)
+$dp8 = Join-Path $d55 'dues.json'
+$null = Update-DueRecord $dp8 @{ 'x' = $due8 }
+$null = Update-DueRecord $dp8 @{ 'x' = $due8.AddDays(3) }
+$kept8 = (Read-DueRecord $dp8)['x']
+Assert (($due8.UtcDateTime -eq [datetime]'2026-09-20 04:30') -and ($due8 -eq $due8b) -and ($kept8 -eq $due8) -and ([DateTimeOffset]::new(([datetime]'2026-09-25 07:05'), [TimeSpan]::FromHours(2)) -gt $kept8)) 's55-sla-clock-origin-strictest-and-persisted' "due=$($due8.ToString('o')) kept=$($kept8.ToString('o'))"
+
+# Items 9 and 19: queue corruption is moved aside and named; a flush
+# overlapping an interrupted one marks only the overlap; retention keeps
+# intents and linked digests.
+$g9 = Join-Path $d55 'queue'
+$null = New-Item -ItemType Directory -Force -Path $g9
+'{not json' | Set-Content -LiteralPath (Join-Path $g9 'digest-queue.json') -Encoding UTF8
+$q9 = Invoke-NightlyNotify -Phase 'final' -RunId 'r9' -ResultPath '' -Class 'test' -Title 't' -Lines @('x') -StateDir $g9 -Sender $okSend55
+$h9 = Get-DeliveryHealth $g9
+Assert (($q9.Status -eq 'queued') -and (@(Get-ChildItem $g9 -Filter 'digest-queue.json.corrupt-*').Count -eq 1) -and (-not $h9.Ok) -and (@($h9.Lines | Where-Object { $_ -like '*corrupt digest queue kept as digest-queue.json.corrupt-*' }).Count -eq 1)) 's55-matrix-queue-corruption-moved-aside-and-named' ($h9.Lines -join ' | ')
+Get-ChildItem $g9 -Filter 'digest-queue.json.corrupt-*' | Remove-Item -Force
+@([pscustomobject]@{ key = 'k1'; run = 'r'; class = 'test'; title = 'a'; lines = @('x'); at = '2026-09-25T03:00:00' }, [pscustomobject]@{ key = 'k2'; run = 's'; class = 'test'; title = 'b'; lines = @('x'); at = '2026-09-25T03:00:00' }) | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $g9 'digest-queue.json') -Encoding UTF8
+ConvertTo-Json ([pscustomobject]@{ keys = "k1`nk9"; at = '2026-09-25T07:05:00' }) | Set-Content -LiteralPath (Join-Path $g9 'digest-inflight.json') -Encoding UTF8
+$script:sent55 = @()
+$f9 = Invoke-DigestFlush -StateDir $g9 -Day '2026-09-25' -Sender $okSend55 -Now ([datetime]'2026-09-25 07:10')
+$f9md = Get-Content $f9.DigestPath -Raw
+Assert (((@($f9.Duplicates) -join ',') -eq 'k1') -and ($script:sent55[0] -like '*(possible duplicate: 1 of 2)') -and ($f9md -like '*## a (possible duplicate)*') -and ($f9md -notlike '*## b (possible duplicate)*')) 's55-overlapping-flush-marks-only-the-overlap' "$(@($f9.Duplicates) -join ',') | $($script:sent55[0])"
+$old9 = (Get-Date).AddDays(-200).ToString('o')
+ConvertTo-Json @([pscustomobject]@{ key = 'old'; run = 'o'; status = 'sent'; at = $old9 }, [pscustomobject]@{ key = 'oldi'; run = 'oi'; status = 'sending'; at = $old9 }, [pscustomobject]@{ key = 'new'; run = 'n'; status = 'sent'; at = (Get-Date).ToString('o') }) -Depth 4 | Set-Content -LiteralPath (Join-Path $g9 'notify-ledger.json') -Encoding UTF8
+'x' | Set-Content -LiteralPath (Join-Path $g9 'digest-2026-01-01-070500.md'); (Get-Item (Join-Path $g9 'digest-2026-01-01-070500.md')).LastWriteTime = (Get-Date).AddDays(-100)
+'x' | Set-Content -LiteralPath (Join-Path $g9 'digest-2026-01-02-070500.md'); (Get-Item (Join-Path $g9 'digest-2026-01-02-070500.md')).LastWriteTime = (Get-Date).AddDays(-100)
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $g9 'undelivered')
+ConvertTo-Json ([pscustomobject]@{ key = 'u'; run = 'u'; class = 'digest'; title = 'd'; lines = @('Digest: build/nightly/digest-2026-01-02-070500.md'); failedAt = (Get-Date).ToString('o'); attempts = 1 }) | Set-Content -LiteralPath (Join-Path $g9 'undelivered/u.json') -Encoding UTF8
+$ret9 = @(Invoke-NotifyStateRetention -StateDir $g9 -Now (Get-Date))
+$led9 = @(Read-JsonState (Join-Path $g9 'notify-ledger.json') @())
+Assert (((@($led9 | ForEach-Object { $_.key }) -join ',') -eq 'oldi,new') -and (-not (Test-Path (Join-Path $g9 'digest-2026-01-01-070500.md'))) -and (Test-Path (Join-Path $g9 'digest-2026-01-02-070500.md')) -and (Test-Path (Join-Path $g9 'undelivered/u.json'))) 's55-retention-keeps-intents-linked-digests-and-undelivered' ($ret9 -join ' | ')
+
+# Item 10: a failure that recovered before the flush reads recovered, a
+# superseded entry reads stale, and the digest opens with the summary.
+$a10 = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'
+$b10 = New-Result '2026-09-21' '2026-09-21-023000' 'green' 'timer'
+$c10 = Select-CanonicalRuns @($a10, $b10)
+$g10 = Join-Path $d55 'lifecycle'
+$null = New-Item -ItemType Directory -Force -Path $g10
+@([pscustomobject]@{ key = 'q1'; run = '2026-09-20-023000-pid1'; class = 'test'; title = 'RED night 20'; lines = @('x'); at = '2026-09-20T03:00:00'; slot = '2026-09-20|legacy' }, [pscustomobject]@{ key = 'q2'; run = '2026-09-21-013000-pid1'; class = 'test'; title = 'manual RED night 21'; lines = @('x'); at = '2026-09-21T02:00:00'; slot = '2026-09-21|legacy' }) | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $g10 'digest-queue.json') -Encoding UTF8
+$script:sent55 = @()
+$f10 = Invoke-DigestFlush -StateDir $g10 -Day '2026-09-21' -Sender { param($t, $l) $script:l10 = $l; $true } -Now ([datetime]'2026-09-21 07:10') -Canonical $c10 -Results @($a10, $b10) -TriageLink 'build/nightly/morning-2026-09-21-023000.md'
+$f10md = Get-Content $f10.DigestPath -Raw
+Assert (($f10.States['q1'].State -eq 'recovered') -and ($f10.States['q2'].State -eq 'stale') -and ($script:l10[0] -eq 'Current state: 0 failing now, 1 recovered since, 1 stale; triage: build/nightly/morning-2026-09-21-023000.md') -and ($f10md -like '*## RED night 20 `[recovered: night 2026-09-21 is GREEN*')) 's55-digest-reconciles-against-the-lifecycle' "$($f10.States['q1'].State)/$($f10.States['q2'].State) | $($script:l10[0])"
+
+# Item 11: an accepted but unseen toast reads accepted, not delivered.
+$g11 = Join-Path $d55 'accept'
+$n11 = Invoke-NightlyNotify -Phase 'final' -RunId 'r11' -ResultPath '' -Class 'infrastructure' -Title 't' -Lines @('x') -StateDir $g11 -Sender { param($t, $l) $true }
+$l11 = @(Read-JsonState (Join-Path $g11 'notify-ledger.json') @())
+$h11 = Get-DeliveryHealth $g11
+Assert (($n11.Notes[0] -like 'accepted by the toast API*visibility unconfirmed*') -and ($l11[0].visibility -eq 'unconfirmed') -and ($h11.Lines[0] -like '*accepted by the toast API, operator visibility unconfirmed*') -and ($h11.Lines[0] -notmatch '(?<!un)delivered')) 's55-accepted-toast-reads-accepted-not-seen' ($h11.Lines[0])
+
+# Items 12 and 19: a critical undelivered alert escalates at once, a
+# high one only past 4 h, and a failed escalation channel lands the
+# fallback file every report names.
+$g12 = Join-Path $d55 'escalate'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $g12 'undelivered')
+$now12 = [datetime]'2026-09-25 07:05'
+ConvertTo-Json ([pscustomobject]@{ key = 'c'; run = 'c'; class = 'scheduler-no-start'; title = 'NO START'; lines = @('x'); failedAt = $now12.ToString('o'); attempts = 3 }) | Set-Content -LiteralPath (Join-Path $g12 'undelivered/c.json') -Encoding UTF8
+ConvertTo-Json ([pscustomobject]@{ key = 'h'; run = 'h'; class = 'infrastructure'; title = 'INFRA'; lines = @('x'); failedAt = $now12.AddHours(-1).ToString('o'); attempts = 3 }) | Set-Content -LiteralPath (Join-Path $g12 'undelivered/h.json') -Encoding UTF8
+$script:esc12 = @()
+$e12 = @(Invoke-UrgentEscalation -StateDir $g12 -Now $now12 -Escalate { param($t, $l) $script:esc12 += $t; $true })
+$e12b = @(Invoke-UrgentEscalation -StateDir $g12 -Now $now12.AddHours(4) -Escalate { param($t, $l) $script:esc12 += $t; $true })
+Assert ((@($e12).Count -eq 1) -and ($e12[0] -like '*sent for c.json (critical*') -and (@($e12b).Count -eq 1) -and ($e12b[0] -like '*sent for h.json (high*') -and ($script:esc12.Count -eq 2)) 's55-critical-escalates-within-its-bound' (($e12 + $e12b) -join ' | ')
+ConvertTo-Json ([pscustomobject]@{ key = 'c2'; run = 'c2'; class = 'scheduler-no-start'; title = 'NO START 2'; lines = @('x'); failedAt = $now12.ToString('o'); attempts = 3 }) | Set-Content -LiteralPath (Join-Path $g12 'undelivered/c2.json') -Encoding UTF8
+$e12c = @(Invoke-UrgentEscalation -StateDir $g12 -Now $now12 -Escalate { param($t, $l) throw 'channel down' })
+$h12 = Get-DeliveryHealth $g12 $now12
+Assert (($e12c[0] -like '*FAILED for c2.json*fallback build/nightly/ESCALATION-UNSENT.md') -and (Test-Path (Join-Path $g12 'ESCALATION-UNSENT.md')) -and (@($h12.Lines | Where-Object { $_ -like '*ESCALATION-UNSENT.md*' }).Count -eq 1)) 's55-matrix-escalation-channel-failure-lands-fallback' (($e12c + $h12.Lines) -join ' | ')
+
+# Item 13: host outage is a recorded accepted limitation with its owner.
+$tdoc = Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'docs/testing.md') -Raw -Encoding UTF8
+Assert ($tdoc -like '*Host outage and scheduler-wide failure (D00 T02 section 55 item 13): an accepted limitation*owner operator*') 's55-host-outage-limitation-named-with-owner'
+
+# Items 14 and 19: schema growth without coverage fails the agreement.
+$r14 = New-Result '2026-09-20' '2026-09-20-023000' 'green' 'timer'
+$b14 = @(Test-AgreementCoverage $r14)
+$r14 | Add-Member -NotePropertyName newThing -NotePropertyValue 1 -Force
+$b14b = @(Test-AgreementCoverage $r14)
+$real14 = [pscustomobject]@{}
+foreach ($fn in @('discovery', 'buildError', 'ciOverride', 'commit', 'consumed', 'day', 'eligible', 'env', 'evidenceCompleteness', 'executedUnique', 'exit', 'harness', 'hostKey', 'identity', 'incidentEvidence', 'incidentLifecycle', 'incidentLifecycleSource', 'incidentLifecycleVersion', 'incidents', 'launch', 'legs', 'night', 'note', 'omissionOk', 'owedCases', 'owedIdentities', 'population', 'populationHash', 'populationIdentity', 'populationState', 'previousStamp', 'proof', 'proofBinding', 'proofSource', 'quarantine', 'recovered', 'report', 'reserve', 'revision', 'scheduler', 'simulated', 'soak', 'stamp', 'startUtc', 'timings', 'tree', 'trigger', 'tz', 'verdict', 'version')) { $real14 | Add-Member -NotePropertyName $fn -NotePropertyValue 1 }
+Assert (($b14.Count -eq 0) -and ($b14b.Count -eq 1) -and ($b14b[0] -like "coverage: result field 'newThing'*") -and (@(Test-AgreementCoverage $real14).Count -eq 0)) 's55-matrix-schema-evolution-without-coverage-fails' ($b14b -join ' | ')
+
+# Items 15 and 19: flapping reads flapping, a partial recovery names what
+# recovered, and a GREEN on another population is no recovery.
+$fl = @()
+$vs15 = @('red', 'green', 'red', 'green', 'red', 'green')
+for ($i = 0; $i -lt 6; $i++) { $fl += New-Result ('2026-09-{0:d2}' -f (20 + $i)) ('2026-09-{0:d2}-023000' -f (20 + $i)) $vs15[$i] 'timer' }
+$fc = Select-CanonicalRuns $fl
+$fn15 = @(Get-RecoveryNotices $fc $fl $fl[5] @())
+Assert ((@($fn15 | Where-Object { $_ -like 'Service flapping: 2026-09-25 is GREEN*5 verdict changes in the last 6 nights (not recovered)' }).Count -eq 1) -and (@($fn15 | Where-Object { $_ -like 'Service recovered*' }).Count -eq 0)) 's55-flapping-reads-flapping-not-recovered' ($fn15 -join ' | ')
+$p1 = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $p1.incidents = @('- INC-aaaaaaa1 x', '- INC-bbbbbbb2 y')
+$p2 = New-Result '2026-09-21' '2026-09-21-023000' 'red' 'timer'; $p2.incidents = @('- INC-bbbbbbb2 y')
+$pn = @(Get-RecoveryNotices (Select-CanonicalRuns @($p1, $p2)) @($p1, $p2) $p2 @())
+Assert ($pn -contains 'Partial recovery: 1 of 2 incident(s) from night 2026-09-20 no longer fail (INC-aaaaaaa1); still failing: INC-bbbbbbb2') 's55-matrix-partial-recovery-names-what-recovered' ($pn -join ' | ')
+$q1 = New-Result '2026-09-20' '2026-09-20-023000' 'red' 'timer'; $q1 | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p1'
+$q2 = New-Result '2026-09-21' '2026-09-21-023000' 'green' 'timer'; $q2 | Add-Member -NotePropertyName populationIdentity -NotePropertyValue 'p2'
+$qn = @(Get-RecoveryNotices (Select-CanonicalRuns @($q1, $q2)) @($q1, $q2) $q2 @())
+Assert ((@($qn | Where-Object { $_ -like 'Service GREEN on a different test population:*not a recovery)' }).Count -eq 1) -and (@(Get-RecoveryToastItems $qn | Where-Object { $_.Priority -eq 2 }).Count -eq 1)) 's55-green-on-another-population-is-no-recovery' ($qn -join ' | ')
+
+# Item 16: a relocated bundle's link still opens, a gone one reads
+# expired, and a title naming test content is lock-screen safe.
+$g16 = Join-Path $d55 'links'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $g16 'retained/run1/bundles/MenuBarTests-cs-Open-023000')
+'x' | Set-Content -LiteralPath (Join-Path $g16 'retained/run1/bundles/MenuBarTests-cs-Open-023000/bundle.json')
+$lk1 = Resolve-EvidenceLink 'bundle C:\gone\bundles\MenuBarTests-cs-Open-023000\bundle.json' $g16
+$lk2 = Resolve-EvidenceLink 'screenshot C:\gone\bundles\Other-cs-X-010101\leak.png' $g16
+$ls1 = Protect-LockScreenTitle 'Nightly 2026-09-25 : RED MenuBarTests.OpenFile failed'
+$ls2 = Protect-LockScreenTitle 'Nightly 2026-09-25 : RED (test)'
+Assert (($lk1.State -eq 'relocated') -and (Test-Path ($lk1.Link.Substring(7))) -and ($lk2.State -eq 'expired') -and ($ls1 -eq 'Nightly 2026-09-25 : details on unlock') -and ($ls2 -eq 'Nightly 2026-09-25 : RED (test)') -and (Test-LockScreenSafe 'Incident INC-0123abcd overdue (owner operator, due 2026-09-30)')) 's55-links-relocate-and-lock-screen-stays-private' "$($lk1.Link) | $($lk2.Link) | $ls1"
+
+# Item 17: one taxonomy: every class routes in docs/testing.md, and §24
+# and §33 name the code-derived taxonomy.
+$tax = Get-AlertTaxonomy
+$missing17 = @($tax.Classes | Where-Object { -not $tdoc.Contains("``$_``") })
+$todo17 = Get-Content (Join-Path (Split-Path -Parent $PSScriptRoot) 'todo/00-workspace/TODO-02-test-backbone.md') -Raw -Encoding UTF8
+Assert (($missing17.Count -eq 0) -and (([regex]::Matches($todo17, 'Correction \(2026-09-26, D00 T02 .{1,2}55 item 17\)')).Count -eq 2)) 's55-one-taxonomy-in-code-docs-and-plan' "missing: $($missing17 -join ', ')"
+
+# Item 18: a version bump re-notifies nothing unchanged, and two
+# simultaneous worsenings each read worsening in one pending set.
+$g18 = Join-Path $d55 'version'
+$r18 = Join-Path $d55 'r18.json'
+'{"a":1}' | Set-Content -LiteralPath $r18 -Encoding UTF8
+$v18a = Invoke-NightlyNotify -Phase 'final' -RunId 'r18' -ResultPath $r18 -Class 'infrastructure' -Title 't' -Lines @('x') -StateDir $g18 -Sender { param($t, $l) $true }
+$was18 = $script:NotifyVersion
+$script:NotifyVersion = $was18 + 1
+$v18b = Invoke-NightlyNotify -Phase 'final' -RunId 'r18' -ResultPath $r18 -Class 'infrastructure' -Title 't' -Lines @('x') -StateDir $g18 -Sender { param($t, $l) $true }
+$script:NotifyVersion = $was18
+$al18 = Join-Path $d55 'alerts18.json'
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs baseline 600s (+50%, median of 5 night(s))', '- ALERT pass-rate: 95.0% on 2026-09-24 vs baseline 99.0% (-4.0 points, median of 5 night(s))') $al18 ([pscustomobject]@{ Night = '2026-09-24'; Host = 'h0st0018'; Identity = 'a1' })
+$pp18 = Get-PendingAlertNotifications $al18; Confirm-AlertNotifications $al18 @($pp18.Keys)
+$w18 = Update-AlertLedger @('- ALERT runa-duration: 1200s on 2026-09-25 vs baseline 600s (+100%, median of 5 night(s))', '- ALERT pass-rate: 92.0% on 2026-09-25 vs baseline 99.0% (-7.0 points, median of 5 night(s))') $al18 ([pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0018'; Identity = 'a2' })
+$pw18 = Get-PendingAlertNotifications $al18
+Assert (($v18a.Status -eq 'sent') -and ($v18b.Status -eq 'duplicate') -and (@($w18.Worsened).Count -eq 2) -and (@($pw18.Lines | Where-Object { $_ -like 'WORSENING (from 50 to 100)*' }).Count -eq 1) -and (@($pw18.Lines | Where-Object { $_ -like 'WORSENING (from 4 to 7)*' }).Count -eq 1)) 's55-worsening-contract-version-bump-and-simultaneous' "$($v18a.Status)/$($v18b.Status) | $($pw18.Lines -join ' | ')"
+
+# Item 20: the confirm-time worsening path: a confirmation that finds
+# the entry already worse leaves it pending, read at once.
+$al20 = Join-Path $d55 'alerts20.json'
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs baseline 600s (+50%, median of 5 night(s))') $al20 ([pscustomobject]@{ Night = '2026-09-24'; Host = 'h0st0020'; Identity = 'a1' })
+$snap20 = Get-PendingAlertNotifications $al20
+$null = Update-AlertLedger @('- ALERT runa-duration: 1170s on 2026-09-25 vs baseline 600s (+95%, median of 5 night(s))') $al20 ([pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0020'; Identity = 'a2' })
+Confirm-AlertNotifications $al20 @($snap20.Keys)
+$after20 = Get-PendingAlertNotifications $al20
+Assert ((@($after20.Lines).Count -eq 1) -and ($after20.Lines[0] -like 'WORSENING (from 50 to 95): ALERT runa-duration*')) 's55-confirm-time-worsening-reads-pending-at-once' (@($after20.Lines) -join ' | ')
 
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }

@@ -85,11 +85,13 @@ Assert (($noCover.Code -eq 1) -and ($noCover.Text -like '*uncovered*')) 'draft-t
 $withAll = Invoke-Helper @('-Draft', '-Run', $run2, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', "D00 T02 ${S}9", '-CoversAll', '-Today', '2026-09-22', '-WorkspaceRoot', $ws)
 Assert (($withAll.Code -eq 0) -and ((Get-Content (Join-Path $ws "docs\nightly-acks\ack-$run2.md") -Raw) -like '*covers-all: yes*')) 'draft-covers-all-passes' $withAll.Text
 Remove-Item (Join-Path $ws "docs\nightly-acks\ack-$run2.md")
+# (D00 T02 section 55: the 24 h test SLA from the run's start, read the
+# day after; the expectation once leaned on a phantom quarantine label.)
 # R1-I1: filing uses the nightly's SLA: a test-failure RED is overdue a
 # day after its run although the three-day default has not passed.
 $run3 = '2026-09-27-023001-pid9'
 [pscustomobject]@{ version = 1; revision = 1; stamp = '2026-09-27-023001'; day = '2026-09-27'; identity = $run3; verdict = 'red'; exit = 1; startUtc = '2026-09-27T00:30:01.0000000Z'; tz = '+02:00'; incidents = @(); legs = [pscustomobject]@{ 'run-a' = [pscustomobject]@{ ran = $true; failed = 1; gate = 0 }; 'run-b' = [pscustomobject]@{ ran = $true; failed = 0; gate = 0 }; interactive = [pscustomobject]@{ ran = $false } } } | ConvertTo-Json -Depth 6 | Set-Content -Path (Join-Path $nd 'morning-2026-09-27-023001.result.json') -Encoding UTF8
-$fs = Invoke-Helper @('-FileOverdue', '-Today', '2026-09-28', '-WorkspaceRoot', $ws)
+$fs = Invoke-Helper @('-FileOverdue', '-Today', '2026-09-29', '-WorkspaceRoot', $ws)
 Assert (($fs.Code -eq 0) -and (@(Get-Content $table | Where-Object { $_ -like "| $run3 |*" }).Count -eq 1)) 'file-overdue-uses-the-nightly-sla' $fs.Text
 # R2 parity: the helper refuses a cover the gate would refuse.
 $badCover = Invoke-Helper @('-Draft', '-Run', $run2, '-Disposition', 'filed', '-Owner', 'operator', '-Finding', "D00 T02 ${S}9", '-Cover', "INC-aaaa1111 filed D99 T99 ${S}999; INC-bbbb2222 filed D00 T02 ${S}9", '-Today', '2026-09-22', '-WorkspaceRoot', $ws)
@@ -456,7 +458,7 @@ $g9b = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-10')
 $closed9 = @($g9b.Lines | Where-Object { $_ -like "*CORRECTIVE ack-b.md ($shaC): closed (commit $shaC, verified by a later pass)*" }).Count
 $item9 = (Test-SectionMentions $ws $fnd9 @('INC-cccc3333')) -and (-not (Test-SectionMentions $ws "D00 T02 ${S}10" @('INC-eeee5555')))
 Assert (($open9 -eq 1) -and ($closed9 -eq 1) -and $item9) 's46-fix-needs-a-later-pass-and-filed-needs-an-item' "open=$open9 closed=$closed9 item=$item9 || $($g9.Lines -join ' | ')"
-Assert (($st13.Text -like "*governing: ack-b.md*") -and ($st13.Text -like '*deadline: 2026-10-03T08:00:00*') -and ($st13.Text -notlike '*blocking: ack-b.md: acknowledges*') -and ($st13.Text -like '*owners: owner operator, corrective-owner operator*') -and ($st13.Text -like '*incident INC-dddd4444: pending*') -and ($st13.Text -like "*blocking: CORRECTIVE ack-b.md ($shaC): open*")) 's46-status-explains-a-run' $st13.Text
+Assert (($st13.Text -like "*governing: ack-b.md*") -and ($st13.Text -like '*deadline: 2026-10-06T23:59:59*') -and ($st13.Text -notlike '*blocking: ack-b.md: acknowledges*') -and ($st13.Text -like '*owners: owner operator, corrective-owner operator*') -and ($st13.Text -like '*incident INC-dddd4444: pending*') -and ($st13.Text -like "*blocking: CORRECTIVE ack-b.md ($shaC): open*")) 's46-status-explains-a-run' $st13.Text
 Remove-Item (Join-Path $nd 'incidents.json')
 # Item 3: a revised result keeps its original due.
 $runC = '2026-10-04-023001-pid42'
