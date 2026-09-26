@@ -10936,6 +10936,8 @@ track: Z1
 |  79   |   §79   | Duplicate and unknown dispositions fire | - |  [x]   |
 |  80   |   §80   | Stamp over a live row fires | - |  [x]   |
 |  81   |   §81   | Stamp over an escalated row fires | - |  [x]   |
+|  82   |   §82   | Stamp after an unresumed panel stop fires | - |  [x]   |
+|  83   |   §83   | Stamp after a resumed panel stop stays silent | - |  [x]   |
 
 ---
 
@@ -11830,6 +11832,28 @@ track: Z1
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-esc.md
 > **Plan review:** GPT high, no findings
 
+## 82. Stamp after an unresumed panel stop fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §82 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-stop-open.md
+> **Plan review:** GPT high, no findings
+
+## 83. Stamp after a resumed panel stop stays silent
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §83 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-stop-resumed.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12273,6 +12297,9 @@ track: Z1
                 "| ID | Disposition | Evidence |\n| --- | --- | --- |\n" + _drows,
                 encoding="utf-8",
             )
+        # Interrupted reviews resume before they stamp (D00 T04 §1 item 6).
+        (rev_dir / "90-panel-stop-open.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n", encoding="utf-8")
+        (rev_dir / "90-panel-stop-resumed.md").write_text("# Review: fixture\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nPanel stop: round 2 2026-09-27; bulk - timeout; fallback - no CLI; resume: rerun round 2 on candidate abc1234\n\n## GPT panel Round 2\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n", encoding="utf-8")
         # Rule 23 is global (D00 T01 §20 item 2): verified post-cutoff
         # findings carry provenance, so the panel fixtures carry it too.
         for _ppf in sorted(rev_dir.glob("90-panel-*.md")):
@@ -12705,6 +12732,16 @@ track: Z1
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "stamp after an unresumed panel stop fires",
+            any("TODO-06-panel.md" in ln and "§82 " in ln and "with no resumed panel round 2" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "stamp after a resumed panel stop stays silent",
+            any("TODO-06-panel.md" in ln and "§83 " in ln and "Panel stop" in ln for ln in panel_out),
+            False,
+        )
         check(
             "complete disposition table stays silent",
             any("TODO-06-panel.md" in ln and "§77 " in ln and "disposition" in ln for ln in panel_out),

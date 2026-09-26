@@ -574,6 +574,15 @@ def validate(graph, _args) -> int:
                     for _j in range(1, _cnt + 1):
                         _k += 1
                         _expected.append(f"R{_rn}-F{_k}" if _legacy_f else f"R{_rn}-{_disp_lens[_vm.group(1).lower()]}{_j}")
+            # An interrupted review resumes before it stamps (D00 T04 §1
+            # item 6): the last `Panel stop: round N` line needs a panel
+            # round numbered N or later after it.
+            _stops = list(re.finditer(r"^Panel stop: round ([0-9]{1,4})\b", _dtext, re.MULTILINE))
+            if _stops:
+                _sn = graph.parse_bounded_int(_stops[-1].group(1), 9999) or 0
+                _after = [m for m in _rounds if m.start() > _stops[-1].start() and (graph.parse_bounded_int(m.group(1), 9999) or 0) >= _sn]
+                if not _after:
+                    flag("panel-disposition-table", f"{_dwhere} is stamped after `Panel stop: round {_sn}` with no resumed panel round {_sn} or later after it")
             _heads = list(_disp_head_re.finditer(_dtext))
             if not _heads:
                 if _expected:
