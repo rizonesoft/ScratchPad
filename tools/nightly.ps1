@@ -1366,7 +1366,9 @@ if ($debtQueryError -ne '') {
       $redPath = Join-Path $Root $debt.File
       $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
       $redLine = Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp (Get-Date).ToString('HH:mm') "red-$stamp-$($debt.Id)"
+      try { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
       $redNote = Add-RedLine $redPath $debt.Id $day $redLine
+      try { if ([System.IO.File]::ReadAllText($redPath).Contains($redLine)) { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine -Written } } catch { }
       Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
       Write-Output "nightly: night-debt $($debt.Id): $redNote"
       continue
@@ -1386,7 +1388,9 @@ if ($debtQueryError -ne '') {
         $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
         $colPath = Join-Path $Root $debt.File
         $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
+        try { Add-TrackedWriteIntent $trxDir $Root $colPath $line } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
         $note = Invoke-CollectedLine $colPath $debt.Id $line
+        try { if ([System.IO.File]::ReadAllText($colPath).Contains($line)) { Add-TrackedWriteIntent $trxDir $Root $colPath $line -Written } } catch { }
         Register-TrackedWrite $trackedWrites $Root $colPath $line $note $colBefore
         Write-Output "nightly: night-debt $($debt.Id): $note (subset)"
         $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sub.Passed $sub.Failed $sub.Skipped $logRel $note
@@ -1397,7 +1401,9 @@ if ($debtQueryError -ne '') {
         $redPath = Join-Path $Root $debt.File
         $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
         $redLine = Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp (Get-Date).ToString('HH:mm') "red-$stamp-$($debt.Id)"
+        try { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
         $redNote = Add-RedLine $redPath $debt.Id $day $redLine
+        try { if ([System.IO.File]::ReadAllText($redPath).Contains($redLine)) { Add-TrackedWriteIntent $trxDir $Root $redPath $redLine -Written } } catch { }
         Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
         Write-Output "nightly: night-debt $($debt.Id): $redNote"
       } elseif ($decision -eq 'skipped-stage') {
@@ -1440,7 +1446,9 @@ if ($debtQueryError -ne '') {
     $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
     $colPath = Join-Path $Root $debt.File
     $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
+    try { Add-TrackedWriteIntent $trxDir $Root $colPath $line } catch { $debtEntries += "- $($debt.Id): write-ahead intent failed ($($_.Exception.Message))" }
     $note = Invoke-CollectedLine $colPath $debt.Id $line
+    try { if ([System.IO.File]::ReadAllText($colPath).Contains($line)) { Add-TrackedWriteIntent $trxDir $Root $colPath $line -Written } } catch { }
     Register-TrackedWrite $trackedWrites $Root $colPath $line $note $colBefore
     Write-Output "nightly: night-debt $($debt.Id): $note"
     $pair = Format-DebtGreenEntry $debt.Id $debt.Section $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $note

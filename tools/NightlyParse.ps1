@@ -3649,6 +3649,42 @@ function Compare-TreeWithTrackedWrites([string]$Root, $Start, $End, [hashtable]$
   return [pscustomobject]@{ Ok = $true; Expected = $expected; Line = "$base$exp" }
 }
 
+function Add-TrackedWriteIntent([string]$RunDir, [string]$Root, [string]$Path, [string]$Line, [switch]$Written) {
+  # Write-ahead order (D00 T02 section 53 item 9): the run records each
+  # collector line in <stamp>\tracked-writes.intent.jsonl, flushed,
+  # BEFORE writing it into the TODO file, so a crash between the TODO
+  # write and the end-of-run manifest leaves the line attributable
+  # (triage reads the intents of a run that has no manifest).
+  $rel = ([System.IO.Path]::GetFullPath($Path).Substring([System.IO.Path]::GetFullPath($Root).TrimEnd('\').Length + 1)) -replace '\\', '/'
+  # -Written follows a write the file now carries (a completion record),
+  # so triage can tell a line never written from one edited later.
+  $rec = ([pscustomobject][ordered]@{ file = $rel; line = $Line; written = [bool]$Written } | ConvertTo-Json -Compress) + "`n"
+  $fs = [System.IO.File]::Open((Join-Path $RunDir 'tracked-writes.intent.jsonl'), [System.IO.FileMode]::Append, [System.IO.FileAccess]::Write, [System.IO.FileShare]::Read)
+  try { $b = [System.Text.Encoding]::UTF8.GetBytes($rec); $fs.Write($b, 0, $b.Length); $fs.Flush($true) } finally { $fs.Dispose() }
+}
+
+function Read-TrackedWriteIntents([string]$RunDir) {
+  # The intents of one run as manifest-shaped writes (file, lines); an
+  # unreadable line is returned in Bad so triage refuses rather than
+  # guess. Returns Writes and Bad.
+  $p = Join-Path $RunDir 'tracked-writes.intent.jsonl'
+  $by = [ordered]@{}
+  $bad = @()
+  $done = @{}
+  if (-not (Test-Path -LiteralPath $p)) { return [pscustomobject]@{ Writes = @(); Written = $done; Bad = @() } }
+  $n = 0
+  foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
+    $n++
+    if ("$ln".Trim() -eq '') { continue }
+    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $bad += $n; continue }
+    $f = "$($o.file)"
+    if ([bool]$o.written) { $done["$f|$($o.line)"] = $true; continue }
+    if (-not $by.Contains($f)) { $by[$f] = @() }
+    $by[$f] = @($by[$f]) + @("$($o.line)")
+  }
+  return [pscustomobject]@{ Writes = @($by.Keys | ForEach-Object { [pscustomobject]@{ file = $_; lines = @($by[$_]) } }); Written = $done; Bad = $bad }
+}
+
 function Write-TrackedWriteManifest([hashtable]$Writes, [string]$Path) {
   # The triage step's input (section 45 item 7): one entry per file with
   # its registered lines, written atomically beside the run.

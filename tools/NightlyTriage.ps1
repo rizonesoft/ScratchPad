@@ -32,12 +32,25 @@ $nightDir = Join-Path $Root 'build\nightly'
 # nights waiting for triage may both have written the same TODO file, and
 # a newer run that wrote nothing must not hide an older run's lines. Each
 # file must differ from HEAD by exactly the pending lines of all runs.
-$manifests = @(Get-ChildItem -LiteralPath $nightDir -Directory -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (Test-Path (Join-Path $_.FullName 'tracked-writes.json')) } | Sort-Object Name)
+# A run that crashed after a collector write but before its manifest
+# (D00 T02 section 53 item 9) is read from its write-ahead intents.
+$manifests = @(Get-ChildItem -LiteralPath $nightDir -Directory -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and ((Test-Path (Join-Path $_.FullName 'tracked-writes.json')) -or (Test-Path (Join-Path $_.FullName 'tracked-writes.intent.jsonl'))) } | Sort-Object Name)
 if ($manifests.Count -eq 0) { Write-Output 'triage: no run recorded tracked writes; nothing to commit'; exit 0 }
 $byFile = [ordered]@{}
+$intentOnly = @()
+$writtenIntent = @{}
 $refused = 0
 foreach ($m in $manifests) {
-  try { $doc = Get-Content -LiteralPath (Join-Path $m.FullName 'tracked-writes.json') -Raw | ConvertFrom-Json } catch { Write-Output "triage: REFUSED: $($m.Name) manifest unreadable ($($_.Exception.Message))"; $refused++; continue }
+  if (-not (Test-Path (Join-Path $m.FullName 'tracked-writes.json'))) {
+    $int = Read-TrackedWriteIntents $m.FullName
+    if (@($int.Bad).Count -gt 0) { Write-Output "triage: REFUSED: $($m.Name) write-ahead intents unreadable (line(s) $(@($int.Bad) -join ', '))"; $refused++; continue }
+    Write-Output "triage: $($m.Name) has no manifest (the run stopped before it); its lines are attributed from the write-ahead intents"
+    $doc = [pscustomobject]@{ version = 1; writes = @($int.Writes) }
+    $intentOnly += $m.Name
+    foreach ($wk in @($int.Written.Keys)) { $writtenIntent["$($m.Name)|$wk"] = $true }
+  } else {
+    try { $doc = Get-Content -LiteralPath (Join-Path $m.FullName 'tracked-writes.json') -Raw | ConvertFrom-Json } catch { Write-Output "triage: REFUSED: $($m.Name) manifest unreadable ($($_.Exception.Message))"; $refused++; continue }
+  }
   foreach ($w in @($doc.writes)) {
     $file = "$($w.file)"
     if (($file -eq '') -or ($file -match '\.\.') -or ([System.IO.Path]::IsPathRooted($file)) -or ($file -notlike 'todo/*')) { Write-Output "triage: REFUSED: $file is not a TODO file the collector writes"; $refused++; continue }
@@ -53,6 +66,18 @@ foreach ($file in @($byFile.Keys)) {
   if ($LASTEXITCODE -ne 0) { Write-Output "triage: REFUSED: $file is not tracked at HEAD"; $refused++; continue }
   $work = [System.IO.File]::ReadAllText($full)
   $pendingRows = @(@($byFile[$file]) | Where-Object { -not $head.Contains($_.Line) })
+  # A recorded line the working file no longer carries verbatim was
+  # edited or removed after the run (section 53 item 9), unless it came
+  # from an intent never written (a crash before the TODO write).
+  $edited = @($pendingRows | Where-Object { -not $work.Contains($_.Line) })
+  $pendingRows = @($pendingRows | Where-Object { $work.Contains($_.Line) })
+  # An intent-only run's line with no completion record was never written
+  # (the run stopped between the intent and the write); with one, its
+  # absence is an edit.
+  $neverWritten = @($edited | Where-Object { ($intentOnly -contains $_.Stamp) -and (-not $writtenIntent.ContainsKey("$($_.Stamp)|$file|$($_.Line)")) })
+  foreach ($e in $neverWritten) { Write-Output "triage: $file never received a line intended by $($e.Stamp) (the run stopped before the write); nothing to commit for it" }
+  $edited = @($edited | Where-Object { $neverWritten -notcontains $_ })
+  if ($edited.Count -gt 0) { Write-Output "triage: REFUSED: $file no longer carries $($edited.Count) line(s) recorded by $(@($edited | ForEach-Object { $_.Stamp } | Sort-Object -Unique) -join ', ') (edited or removed after the run; restore the recorded text or re-run the collection)"; $refused++; continue }
   if ($pendingRows.Count -eq 0) { Write-Output "triage: $file already carries every recorded line"; continue }
   $pending = @($pendingRows | ForEach-Object { $_.Line })
   $from = @($pendingRows | ForEach-Object { $_.Stamp } | Sort-Object -Unique)

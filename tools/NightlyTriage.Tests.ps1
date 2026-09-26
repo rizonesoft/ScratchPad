@@ -89,6 +89,27 @@ Assert (($again.Code -eq 0) -and ($again.Text -like '*already carries*nothing to
 $esc = Invoke-Triage @('-WorkspaceRoot', $ws)
 Assert (($esc.Code -eq 1) -and ($esc.Text -like '*REFUSED: ../x.md is not a TODO file*')) 'triage-refuses-paths-outside-todo' $esc.Text
 
+# D00 T02 section 53 item 9: a crash between the TODO write and the
+# manifest write is attributed from the write-ahead intents; an intended
+# line never written reads as nothing to commit; a recorded line edited
+# after the run refuses by name.
+$ws2 = Join-Path ([System.IO.Path]::GetTempPath()) 'nightly-triage-fixtures-s53'
+if (Test-Path $ws2) { Remove-Item $ws2 -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $ws2 'todo')
+$todo2 = Join-Path $ws2 'todo\T.md'
+[System.IO.File]::WriteAllText($todo2, "# T`n- Night-owed: a`nend`n")
+foreach ($gargs in @(@('init', '-q'), @('config', 'user.name', 'fx'), @('config', 'user.email', 'fx@example.invalid'), @('config', 'commit.gpgsign', 'false'), @('config', 'core.autocrlf', 'false'), @('add', '-A'), @('commit', '-q', '-m', 'base'))) { $null = git -C $ws2 @gargs 2>&1 }
+$run2 = Join-Path $ws2 'build\nightly\2026-09-26-023001'
+$null = New-Item -ItemType Directory -Force -Path $run2
+$line2 = '**Night-collected:** 2026-09-26 a (1 passed, 0 failed, 0 skipped; log l)'
+$never = '**Night-collected:** 2026-09-26 b (1 passed, 0 failed, 0 skipped; log l)'
+@(([pscustomobject]@{ file = 'todo/T.md'; line = $line2; written = $false } | ConvertTo-Json -Compress), ([pscustomobject]@{ file = 'todo/T.md'; line = $line2; written = $true } | ConvertTo-Json -Compress), ([pscustomobject]@{ file = 'todo/T.md'; line = $never; written = $false } | ConvertTo-Json -Compress)) | Set-Content -LiteralPath (Join-Path $run2 'tracked-writes.intent.jsonl') -Encoding UTF8
+[System.IO.File]::WriteAllText($todo2, "# T`n- Night-owed: a`n$line2`nend`n")
+$crash = Invoke-Triage @('-WorkspaceRoot', $ws2)
+[System.IO.File]::WriteAllText($todo2, "# T`n- Night-owed: a`n$($line2 -replace '1 passed', '2 passed')`nend`n")
+$edited = Invoke-Triage @('-WorkspaceRoot', $ws2)
+Assert (($crash.Code -eq 0) -and ($crash.Text -like '*2026-09-26-023001 has no manifest*attributed from the write-ahead intents*') -and ($crash.Text -like '*never received a line intended by 2026-09-26-023001*') -and ($crash.Text -like '*todo/T.md ready (1 line(s) from 2026-09-26-023001)*') -and ($edited.Code -eq 1) -and ($edited.Text -like '*REFUSED: todo/T.md no longer carries 1 line(s) recorded by 2026-09-26-023001 (edited or removed after the run*')) 's53-crash-before-the-manifest-is-attributed-and-edits-refuse' "$($crash.Text) || $($edited.Text)"
+Remove-Item $ws2 -Recurse -Force
 $env:CLAUDE_CODE_SESSION_ID = $savedSession
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyTriage.Tests: $failures FAILURE(S)"; exit 1 }
