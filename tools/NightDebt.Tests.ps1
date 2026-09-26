@@ -60,11 +60,11 @@ Assert (@(Format-NightDebtStatus ([pscustomobject]@{ schema = 'night-debt/1'; re
 # The post-run block (D00 T02 §35 item 9): a debt open at run start and
 # collected green tonight reads collected; one still open reads its
 # post-run line verbatim.
-$startDoc = [pscustomobject]@{ debts = @([pscustomobject]@{ id = 'D90-T01-S1-N1'; state = 'open' }, [pscustomobject]@{ id = 'D90-T01-S1-N2'; state = 'red' }); report_block = @('    a', '    b') }
-$endDoc = [pscustomobject]@{ debts = @([pscustomobject]@{ id = 'D90-T01-S1-N2'; state = 'red-repeat' }); report_block = @('    todo/x.md D90-T01-S1-N2 state red-repeat') }
+$startDoc = [pscustomobject]@{ schema = 'night-debt/1'; debts = @([pscustomobject]@{ id = 'D90-T01-S1-N1'; state = 'open' }, [pscustomobject]@{ id = 'D90-T01-S1-N2'; state = 'red' }); report_block = @('    a', '    b') }
+$endDoc = [pscustomobject]@{ schema = 'night-debt/1'; debts = @([pscustomobject]@{ id = 'D90-T01-S1-N2'; state = 'red-repeat' }); report_block = @('    todo/x.md D90-T01-S1-N2 state red-repeat') }
 $post = @(Format-NightDebtPostRun $startDoc $endDoc)
 Assert (($post[0] -like 'Debt status after the run*') -and ($post -contains '    todo/x.md D90-T01-S1-N2 state red-repeat') -and ($post -contains '    D90-T01-S1-N1 state collected tonight (was open)')) 'post-run-reads-collected-tonight' ($post -join ' | ')
-Assert (@(Format-NightDebtPostRun ([pscustomobject]@{ debts = @(); report_block = @() }) ([pscustomobject]@{ debts = @(); report_block = @() })).Count -eq 0) 'post-run-empty-when-no-debt'
+Assert (@(Format-NightDebtPostRun ([pscustomobject]@{ schema = 'night-debt/1'; debts = @(); report_block = @() }) ([pscustomobject]@{ schema = 'night-debt/1'; debts = @(); report_block = @() })).Count -eq 0) 'post-run-empty-when-no-debt'
 # D00 T02 §42 item 7: a green collection whose write or re-query failed
 # reads collected-unrecorded.
 $postU = @(Format-NightDebtPostRun $startDoc $endDoc @('D90-T01-S1-N2'))
@@ -117,6 +117,29 @@ try { $null = Get-OpenNightDebts $Root $fake } catch { $threw = "$_" }
 Assert ($threw -like 'night-debt: query output is not JSON*') 'reader-fails-loud-on-non-json' $threw
 
 Remove-Item $dir -Recurse -Force
+# D00 T02 section 50 item 8: a failed write and an unknown readback are
+# distinct, and a landed write reconciles to collected once.
+$w50 = Join-Path $env:TEMP "nd50-$([guid]::NewGuid().ToString('N')).md"
+'# x', '', '**Night-owed:** D90-T01-S1-N1 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20)', '' | Set-Content -Path $w50 -Encoding UTF8
+$l50 = '**Night-collected:** 2026-09-21 D90-T01-S1-N1 (1 passed, 0 failed, 0 skipped; log b.trx; digest aaaa1111bbbb2222)'
+$f50 = Add-CollectedLine $w50 'D90-T01-S1-N1' $l50 { param($stage) if ($stage -eq 'move') { throw 'disk full' } }
+$afterFail = ([regex]::Matches((Get-Content $w50 -Raw), [regex]::Escape($l50))).Count
+$u50 = Add-CollectedLine $w50 'D90-T01-S1-N1' $l50 { param($stage) if ($stage -eq 'readback') { throw 'io error' } }
+$r50 = Add-CollectedLine $w50 'D90-T01-S1-N1' $l50
+$n50 = ([regex]::Matches((Get-Content $w50 -Raw), [regex]::Escape($l50))).Count
+$g50 = Format-DebtGreenEntry 'D90-T01-S1-N1' 'D90 T01 §1' 1 0 0 'b.trx' $r50
+Assert (($f50 -like 'failed: D90-T01-S1-N1 not written (disk full)*') -and ($afterFail -eq 0) -and ($u50 -like 'unknown:*') -and ($r50 -like 'reconciled:*') -and ($n50 -eq 1) -and ($g50[0] -like '*collected 1 passed*reconciled*') -and (-not $g50[1])) 's50-write-outcomes-and-once-reconciliation' "$f50 | $u50 | $r50 | copies $n50"
+Remove-Item $w50 -Force
+
+# Section 50 item 10: a failed post-run query reads as a failure, never as
+# every debt collected tonight.
+$qf = $null
+try { $null = Get-NightDebtDocument (Split-Path -Parent $PSScriptRoot) 'no-such-python-50' } catch { $qf = "$_" }
+$pf = $null
+try { $null = Format-NightDebtPostRun ([pscustomobject]@{ schema = 'night-debt/1'; debts = @([pscustomobject]@{ id = 'D90-T01-S1-N1'; state = 'open' }); report_block = @() }) $null @() } catch { $pf = "$_" }
+$ug = @(Format-UnrecordedGreens @('D90-T01-S1-N1') "$qf")
+Assert (($null -ne $qf) -and ($pf -like '*returned no night-debt/1 document*') -and (@($ug | Where-Object { $_ -like '*D90-T01-S1-N1*' }).Count -ge 1)) 's50-post-run-query-failure-never-reads-collected' "$qf | $pf | $($ug -join ' / ')"
+
 if ($failures -gt 0) { Write-Output "NightDebt.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightDebt.Tests: all green'
 exit 0

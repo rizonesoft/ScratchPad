@@ -35,6 +35,10 @@ function Format-NightDebtPostRun($StartDoc, $EndDoc, [string[]]$Greens = @()) {
   # line per debt open at run start that the post-run query no longer lists,
   # so a debt collected green tonight reads collected and never carries the
   # run-start escalation into the morning.
+  # A missing or foreign post-run document is a failed re-run, never an
+  # empty one (D00 T02 section 50 item 10): reading it as empty would call
+  # every run-start debt collected tonight.
+  if (($null -eq $EndDoc) -or ("$($EndDoc.schema)" -ne 'night-debt/1')) { throw 'night-debt: the post-run query returned no night-debt/1 document' }
   $endIds = @{}
   foreach ($d in @($EndDoc.debts)) { if ($null -ne $d) { $endIds["$($d.id)"] = $true } }
   $closed = @()
@@ -192,7 +196,7 @@ function Find-OwedLineIndex([string[]]$Lines, [string]$DebtId) {
   return -1
 }
 
-function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
+function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line, [scriptblock]$Fault = $null) {
   # Atomic append after the Night-owed line naming this id, with
   # readback verifying exactly one copy. An existing collected line
   # for the id, or a missing owed line: skip with a report line --
@@ -202,8 +206,17 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
   # a microsecond check-act window no user-space scheme closes
   # (repo precedent: plan --sync); single-writer plus the run mutex
   # bound it, and the readback still guards the copy count.
+  # Distinct outcomes with idempotent reconciliation (D00 T02 section 50
+  # item 8): `appended` (written and read back once), `reconciled` (this
+  # exact line is already on disk: an earlier write landed, so nothing is
+  # written again), `failed` (the replace did not land; the line is
+  # absent), and `unknown` (the replace ran but the readback could not
+  # confirm it; the caller treats the line as possibly written and the
+  # next run reconciles it). $Fault is a test seam called with the stage
+  # name ('move' or 'readback').
   for ($attempt = 0; $attempt -lt 2; $attempt++) {
     $text = Get-Content $TodoPath -Raw -Encoding UTF8
+    if (([regex]::Matches($text, [regex]::Escape($Line))).Count -ge 1) { return "reconciled: $DebtId has this exact collected line on disk (an earlier write landed); nothing written" }
     # An existing record blocks a new one unless the new one carries a
     # digest no existing record for the id carries (D00 T02 §42 R1-F5):
     # a record the graph rejects for the wrong tests never blocks the
@@ -227,8 +240,18 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line) {
       $nl = "`n"
       if ($text.Contains("`r`n")) { $nl = "`r`n" }
       $new -join $nl | Set-Content -Path $tmp -Encoding UTF8 -NoNewline
-      Move-Item -Path $tmp -Destination $TodoPath -Force
-      $back = Get-Content $TodoPath -Raw -Encoding UTF8
+      try {
+        if ($null -ne $Fault) { & $Fault 'move' }
+        Move-Item -Path $tmp -Destination $TodoPath -Force
+      } catch {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        return "failed: $DebtId not written ($($_.Exception.Message)); the line is absent"
+      }
+      $back = $null
+      for ($r = 0; ($r -lt 2) -and ($null -eq $back); $r++) {
+        try { if ($null -ne $Fault) { & $Fault 'readback' }; $back = [System.IO.File]::ReadAllText($TodoPath) } catch { $back = $null }
+      }
+      if ($null -eq $back) { return "unknown: $DebtId written but the readback failed twice; the line may be on disk and the next run reconciles it" }
       $hits = ([regex]::Matches($back, [regex]::Escape($Line))).Count
       if ($hits -ne 1) { throw "night-debt: readback found $hits copies, want exactly 1" }
       return "appended: $DebtId"
@@ -319,6 +342,15 @@ function Format-DebtGreenEntry([string]$Id, [string]$Section, [int]$P, [int]$F, 
   }
   if ($Note -like '*already carries*') {
     return @("- $Id ($Section): collection green ($counts); already closed (Night-collected present)", $false)
+  }
+  # A write that landed earlier reconciles to collected once (D00 T02
+  # section 50 item 8); an unknown outcome is its own line and reds so
+  # triage looks, while the next run reconciles it.
+  if ($Note -like 'reconciled*') {
+    return @("- $Id ($Section): collected $P passed, $F failed, $S skipped; log $LogRel (reconciled: the line had landed)", $false)
+  }
+  if ($Note -like 'unknown*') {
+    return @("- $Id ($Section): collection green ($counts); Night-collected write outcome unknown ($Note)", $true)
   }
   # A green collection whose Night-collected write failed is closed in
   # fact and unrecorded on disk (D00 T02 §42 item 7): the run reds.

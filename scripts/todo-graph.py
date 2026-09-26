@@ -4243,9 +4243,84 @@ def night_debt_line(d: dict) -> str:
         line += f" finding {d.get('finding') or 'none'}"
         if d.get("state") == "accepted":
             line += f" next {d.get('action') or '?'}"
+            if d.get("remediation_overdue"):
+                # §50 item 7: acceptance never hides an overdue remediation.
+                line += f" remediation overdue since {d['remediation_overdue']} (follow-up passed)"
+    if d.get("acknowledged_by"):
+        line += f" acknowledged-by {d['acknowledged_by']} on {d.get('acknowledged_on') or '?'}"
+    for a in d.get("assignments") or []:
+        # §50 item 10: who reassigned, when, to whom.
+        line += f" reassigned to {a['owner']} by {a['by']} on {a['date']}"
+    if d.get("tz") or d.get("schedule"):
+        # §50 item 6: the schedule identity the due rests on.
+        line += f" schedule {d.get('schedule') or '?'} tz {d.get('tz') or '?'}"
+    if d.get("candidate"):
+        line += f" owed-candidate {d['candidate']}"
     if d["overdue"]:
         line += f" OVERDUE escalate {d['owner']} by {d['respond_by'] or '?'}: {d['action']}"
     return line
+
+
+def _eff_key(r: dict) -> tuple:
+    """A lifecycle record's replay position (D00 T02 §50 item 1): its date,
+    then its effective time (an `at HH:MM` chunk, the local wall clock of
+    the event), never its wording."""
+    at = r.get("at") or ""
+    if not re.fullmatch(r"\d{2}:\d{2}", at):
+        at = ""
+    return (r.get("date") or "", at)
+
+
+def _uncontradicted(recs: list) -> list:
+    """The records that may take effect (D00 T02 §50 items 1-2). Identical
+    replays are one record. Records of one kind that tie on date and
+    effective time but differ, or that share an event identity (an
+    `event <id>` chunk) but differ, are contradictory: none of them takes
+    effect until resolved, so ambiguous evidence never closes a debt,
+    accepts risk, moves a deadline, or reassigns an owner."""
+    uniq: dict = {}
+    for r in recs:
+        uniq.setdefault(r.get("_raw", ""), r)
+    rs = list(uniq.values())
+    bad: set = set()
+    groups: dict = {}
+    for r in rs:
+        groups.setdefault(_eff_key(r), []).append(r)
+        if r.get("event"):
+            groups.setdefault(("event", r["event"]), []).append(r)
+    for g in groups.values():
+        if len(g) > 1:
+            bad.update(id(r) for r in g)
+    return [r for r in rs if id(r) not in bad]
+
+
+def _names_digest(names: list) -> str:
+    """The test-identity digest tools/NightDebt.ps1 Get-TestNamesDigest
+    computes (D00 T02 §42 item 6, §50 item 3): the first 16 hex of SHA-256
+    over the distinct names as `--list-tests` prints them (a parameterized
+    case is its own listed identity), ordinal-sorted, newline-joined."""
+    import hashlib
+    uniq = sorted({n for n in names if n})
+    return hashlib.sha256("\n".join(uniq).encode("utf-8")).hexdigest()[:16]
+
+
+_ANCESTRY_CACHE: dict = {}
+
+
+def _descends(ancestor: str, commit: str):
+    """True when `commit` is `ancestor` or descends from it (D00 T02 §50
+    item 4), None when git cannot resolve either."""
+    key = (ancestor, commit)
+    if key in _ANCESTRY_CACHE:
+        return _ANCESTRY_CACHE[key]
+    import subprocess
+    try:
+        r = subprocess.run(["git", "-C", str(TODO_DIR.parent), "merge-base", "--is-ancestor", ancestor, commit], capture_output=True, text=True, timeout=30)
+        res = True if r.returncode == 0 else (False if r.returncode == 1 else None)
+    except (OSError, subprocess.SubprocessError):
+        res = None
+    _ANCESTRY_CACHE[key] = res
+    return res
 
 
 def _parse_collected_paren(paren: str):
@@ -4330,6 +4405,13 @@ def night_debts(todos: list["Todo"], today_d):
                 # `digest <hex>` chunk names the digest of the owed test
                 # names, and only a collection with the same digest closes.
                 dgm = re.search(r"(?:^|,)\s*digest\s+([0-9a-f]{8,64})\s*(?:,|$)", om.group(2))
+                # §50 items 3, 4, 6, 7: the owed inventory file, the owed
+                # candidate, the inline extension's approver, and the
+                # schedule identity (zone and version) the due rests on.
+                _oc = {k: v for k, v in (re.match(r"(tests|candidate|by|tz|schedule)\s+(\S+)\Z", c.strip()).groups() for c in om.group(2).split(",") if re.match(r"(tests|candidate|by|tz|schedule)\s+(\S+)\Z", c.strip()))}
+                _otz = _oc.get("tz")
+                if not _otz and owed_on and re.search(r"(Z|[+-]\d{2}:\d{2})\Z", owed_on):
+                    _otz = owed_on[-6:] if not owed_on.endswith("Z") else "+00:00"
                 sec = t.sections.get(num)
                 owed[om.group(1)] = {
                     "file": t.path,
@@ -4345,31 +4427,36 @@ def night_debts(todos: list["Todo"], today_d):
                     "trigger": _trigger_time(om.group(2)),
                     "stamp": sec.stamped_on if sec is not None else None,
                     "digest": dgm.group(1) if dgm else None,
+                    "tests": _oc.get("tests"),
+                    "candidate": _oc.get("candidate"),
+                    "due_by": _oc.get("by"),
+                    "tz": _otz,
+                    "schedule": _oc.get("schedule"),
                 }
                 continue
             wm = NIGHT_OWNER_RE.search(ln)
             if wm and DEBT_ID_RE.match(wm.group(1)):
-                owners_re.setdefault(wm.group(1), []).append(dict(_kv_paren(wm.group(2), ("date", "owner", "by")), _raw=wm.group(2).strip()))
+                owners_re.setdefault(wm.group(1), []).append(dict(_kv_paren(wm.group(2), ("date", "owner", "by", "at", "event")), _raw=wm.group(2).strip()))
                 continue
             em = NIGHT_EXTEND_RE.search(ln)
             if em and DEBT_ID_RE.match(em.group(1)):
-                extends.setdefault(em.group(1), []).append(dict(_kv_paren(em.group(2), ("date", "by", "due", "reason")), _raw=em.group(2).strip()))
+                extends.setdefault(em.group(1), []).append(dict(_kv_paren(em.group(2), ("date", "by", "due", "reason", "at", "event")), _raw=em.group(2).strip()))
                 continue
             vm = NIGHT_REVOKED_RE.search(ln)
             if vm and DEBT_ID_RE.match(vm.group(1)):
-                revokes.setdefault(vm.group(1), []).append(dict(_kv_paren(vm.group(2), ("date", "by", "reason")), _raw=vm.group(2).strip()))
+                revokes.setdefault(vm.group(1), []).append(dict(_kv_paren(vm.group(2), ("date", "by", "reason", "at", "event")), _raw=vm.group(2).strip()))
                 continue
             cm = NIGHT_COLLECTED_RE.search(ln)
             if cm and DEBT_ID_RE.match(cm.group(2)):
                 counts, log = _parse_collected_paren(cm.group(3))
                 cdg = re.search(r"\bdigest\s+([0-9a-f]{8,64})\b", cm.group(3))
-                rec = {"date": cm.group(1), "log": log, "counts": counts, "digest": cdg.group(1) if cdg else None, "_raw": cm.group(3).strip()}
+                # The collection's candidate, run, effective time, and event
+                # identity (§50 items 1, 4).
+                _cx = {k: v for k, v in re.findall(r"\b(candidate|run|at|event)\s+([^;)\s]+)", cm.group(3))}
+                rec = {"date": cm.group(1), "log": log, "counts": counts, "digest": cdg.group(1) if cdg else None, "_raw": cm.group(3).strip(),
+                       "candidate": _cx.get("candidate"), "run": _cx.get("run"), "at": _cx.get("at"), "event": _cx.get("event")}
                 collected_lists.setdefault(cm.group(2), []).append(rec)
-                # Replay order (§42 item 1): record date, then the record's
-                # own text, so the result never depends on line order.
-                prev = collected.get(cm.group(2))
-                if prev is None or (rec["date"], rec["_raw"]) >= (prev["date"], prev["_raw"]):
-                    collected[cm.group(2)] = rec
+                collected.setdefault(cm.group(2), rec)
                 continue
             rm = NIGHT_RED_RE.search(ln)
             if rm and DEBT_ID_RE.match(rm.group(2)):
@@ -4380,21 +4467,21 @@ def night_debts(todos: list["Todo"], today_d):
                 continue
             am = NIGHT_ACK_RE.search(ln)
             if am and DEBT_ID_RE.match(am.group(1)):
-                rec = dict(_kv_paren(am.group(2), ("date", "owner", "action", "finding")), _raw=am.group(2).strip())
+                rec = dict(_kv_paren(am.group(2), ("date", "owner", "action", "finding", "by", "at", "event")), _raw=am.group(2).strip())
                 ack_lists.setdefault(am.group(1), []).append(rec)
-                prev = acks.get(am.group(1))
-                if prev is None or (rec.get("date") or "", rec["_raw"]) >= (prev.get("date") or "", prev["_raw"]):
-                    acks[am.group(1)] = rec
+                acks.setdefault(am.group(1), rec)
                 continue
             xm = NIGHT_ACCEPTED_RE.search(ln)
             if xm and DEBT_ID_RE.match(xm.group(1)):
-                rec = dict(_kv_paren(xm.group(2), ("approver", "owner", "date", "expires", "rationale")), _raw=xm.group(2).strip())
+                rec = dict(_kv_paren(xm.group(2), ("approver", "owner", "date", "expires", "rationale", "at", "event")), _raw=xm.group(2).strip())
                 accepts[xm.group(1)] = rec
                 accept_lists.setdefault(xm.group(1), []).append(rec)
     # Orphans and duplicates (§35 item 11): a lifecycle line whose id
     # has no Night-owed line, and two acceptances on one day, warn.
-    global NIGHT_DEBT_ORPHANS
+    global NIGHT_DEBT_ORPHANS, NIGHT_DEBT_EVIDENCE_GAPS, NIGHT_DEBT_RETAINED
     NIGHT_DEBT_ORPHANS = []
+    NIGHT_DEBT_EVIDENCE_GAPS = []
+    NIGHT_DEBT_RETAINED = []
     for kind, table in (("Night-collected", collected), ("Night-red", reds), ("Night-ack", acks), ("Night-accepted", accepts), ("Night-owner", owners_re), ("Night-extend", extends), ("Night-revoked", revokes)):
         for oid in sorted(table):
             if oid not in owed:
@@ -4416,24 +4503,65 @@ def night_debts(todos: list["Todo"], today_d):
                 warnings.append(f"CONTRADICTORY Night-red lines dated {_rd} for run {_run or '?'} ({len(_by_run[(_rd, _run)])} different records); the latest by record text reads")
         for _kind, _recs in (("Night-collected", collected_lists), ("Night-ack", ack_lists), ("Night-accepted", accept_lists),
                              ("Night-owner", owners_re), ("Night-extend", extends), ("Night-revoked", revokes)):
+            # One replay position (date and effective time) or one event
+            # identity with different records is a contradiction, and none
+            # of those records takes effect until resolved (§50 items 1-2).
             _by_day: dict = {}
             for _r in _recs.get(did, []):
-                _by_day.setdefault(_r.get("date") or "?", set()).add(_r.get("_raw", ""))
-            for _dd in sorted(_by_day):
-                if len(_by_day[_dd]) > 1:
-                    warnings.append(f"CONTRADICTORY {_kind} lines dated {_dd} ({len(_by_day[_dd])} different records); the latest by record text reads")
+                _dd, _at = _eff_key(_r)
+                _by_day.setdefault((_dd or "?", _at), set()).add(_r.get("_raw", ""))
+                if _r.get("event"):
+                    _by_day.setdefault(("event", _r["event"]), set()).add(_r.get("_raw", ""))
+            for _dk in sorted(_by_day):
+                if len(_by_day[_dk]) > 1:
+                    _where = f"for event {_dk[1]}" if _dk[0] == "event" else f"dated {_dk[0]}" + (f" at {_dk[1]}" if _dk[1] else "")
+                    warnings.append(f"CONTRADICTORY {_kind} lines {_where} ({len(_by_day[_dk])} different records); none of them takes effect until resolved")
         # Closure binds to the owed tests (§42 item 6): when the owed line
         # names its tests' digest, only a collection with the same digest
         # closes; an equally sized but different set keeps the debt open.
         # Several collected records: the latest whose digest matches the
         # owed one closes (R1-F5); a rejected record never masks it.
-        if o.get("digest"):
-            _match = [r for r in collected_lists.get(did, []) if r.get("digest") == o["digest"]]
-            if _match:
-                c = max(_match, key=lambda r: (r["date"], r["_raw"]))
-        if c is not None and o.get("digest") and c.get("digest") != o["digest"]:
+        # §50 items 1-2 and 4: only uncontradicted collections count; the
+        # latest by replay position that matches the owed digest and whose
+        # candidate descends from the owed candidate closes.
+        _pool = _uncontradicted(collected_lists.get(did, []))
+
+        def _dg_ok(r):
+            return not o.get("digest") or r.get("digest") == o["digest"]
+
+        def _cand_ok(r):
+            return not o.get("candidate") or bool(r.get("candidate") and _descends(o["candidate"], r["candidate"]))
+
+        _good = [r for r in _pool if _dg_ok(r) and _cand_ok(r)]
+        c = max(_good, key=_eff_key) if _good else (max(_pool, key=_eff_key) if _pool else None)
+        if c is not None and not _dg_ok(c):
             warnings.append(f"Night-collected {c['date']} digest {c.get('digest') or 'missing'} differs from the owed tests' digest {o['digest']}; the debt stays open")
             c = None
+        elif c is not None and not _cand_ok(c):
+            _why = "names no candidate" if not c.get("candidate") else (f"candidate {c['candidate']} does not descend from the owed candidate" if _descends(o["candidate"], c["candidate"]) is False else f"candidate {c['candidate']} cannot be resolved against the owed candidate")
+            warnings.append(f"Night-collected {c['date']} {_why} {o['candidate']}; a green run on an older implementation never closes the debt")
+            c = None
+        # The owed inventory is fixed at owing (§50 item 3): an inventory
+        # file that now hashes differently changed after the debt was owed,
+        # and closure still requires the originally owed set.
+        if o.get("tests"):
+            _inv = TODO_DIR.parent / o["tests"]
+            if not _inv.is_file():
+                warnings.append(f"owed inventory {o['tests']} is missing; closure still requires the owed digest {o.get('digest') or '(none recorded)'}")
+            else:
+                _names = [ln.strip() for ln in _inv.read_text(encoding="utf-8").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+                _idg = _names_digest(_names)
+                if o.get("digest") and _idg != o["digest"]:
+                    warnings.append(f"owed inventory {o['tests']} now hashes to {_idg}, not the owed digest {o['digest']} (it changed after owing); closure still requires the originally owed set")
+        # Closure evidence retention (§50 item 12): a collected line whose
+        # log was pruned reads its durable evidence (the counts and digest
+        # the line itself carries), or names the gap.
+        if c is not None and c.get("log") and not (TODO_DIR.parent / c["log"]).exists():
+            if c.get("digest"):
+                c = dict(c, evidence=f"log {c['log']} pruned; durable evidence {c['counts'].get('passed', 0)} passed, {c['counts'].get('failed', 0)} failed, {c['counts'].get('skipped', 0)} skipped, digest {c['digest']}")
+                NIGHT_DEBT_RETAINED.append(f"{did}: collected {c['date']}: {c['evidence']}")
+            else:
+                NIGHT_DEBT_EVIDENCE_GAPS.append(f"{did}: collected {c['date']} names log {c['log']}, which is gone, and the line carries no digest; evidence gap")
         _owed_day = (o.get("owed") or "")[:10]
         if not o.get("digest") and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _owed_day) and _owed_day >= NIGHT_DEBT_DIGEST_CUTOVER:
             warnings.append(f"owed on {_owed_day} without a tests digest (required from {NIGHT_DEBT_DIGEST_CUTOVER}; tools/Get-DebtDigest.ps1 prints it); no collection can close it")
@@ -4474,6 +4602,12 @@ def night_debts(todos: list["Todo"], today_d):
                 # An extension past the default window needs a `reason`
                 # chunk, or it would quietly postpone accountability.
                 warnings.append(f"due {od.isoformat()} extends past the default {default_due} without a reason; default kept")
+            elif default_due and od.isoformat() > default_due and o.get("due_by") not in NIGHT_DEBT_APPROVERS:
+                # One extension authority (§50 item 5): an inline override
+                # obeys Night-extend's approver rule.
+                warnings.append(f"due {od.isoformat()} extends past the default {default_due} without an approver (by {', '.join(NIGHT_DEBT_APPROVERS)}); default kept")
+            elif default_due and (od - _strict_date(default_due)).days > NIGHT_DEBT_MAX_EXTEND_DAYS:
+                warnings.append(f"due {od.isoformat()} is {(od - _strict_date(default_due)).days} days past the default {default_due}, over {NIGHT_DEBT_MAX_EXTEND_DAYS}; default kept")
             else:
                 due = od.isoformat()
         # Append-only extension history (§35 item 8): each Night-extend line
@@ -4482,7 +4616,7 @@ def night_debts(todos: list["Todo"], today_d):
         # valid one is quoted.
         extensions = []
         _ext_seen: set = set()
-        for x in sorted(extends.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+        for x in sorted(_uncontradicted(extends.get(did, [])), key=_eff_key):
             # An identical replay is one record (R1-F2).
             if x.get("_raw", "") in _ext_seen:
                 continue
@@ -4514,16 +4648,24 @@ def night_debts(todos: list["Todo"], today_d):
         # default; a reassignment is how an owed-line owner changes.
         reassigned = None
         reassigned_on = None
-        for w in sorted(owners_re.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+        # Assignment history (§50 item 10): each valid reassignment with
+        # who made it, quoted on the debt line.
+        assignments = []
+        for w in sorted(_uncontradicted(owners_re.get(did, [])), key=_eff_key):
             wd = _strict_date(w.get("date"))
             if wd and wd <= today_d and w.get("owner"):
                 reassigned = w["owner"]
                 reassigned_on = wd
+                if not w.get("by"):
+                    warnings.append(f"Night-owner line of {wd.isoformat()} names no reassigner (by); the reassignment stands, its provenance is unknown")
+                assignments.append({"date": wd.isoformat(), "owner": w["owner"], "by": w.get("by") or "?"})
             else:
                 warnings.append("Night-owner line needs a real date on or before today and an owner; ignored")
         owner = reassigned or o["owner"] or o["section_owner"]() or o["file_owner"] or NIGHT_DEBT_DEFAULT_OWNER
         finding = None
         red_repeat = False
+        remediation_overdue = None
+        ack = None
         accepted_by, accepted_expires = None, None
         state = "collected" if c is not None else "open"
         action = NIGHT_DEBT_ESCALATION
@@ -4599,8 +4741,11 @@ def night_debts(todos: list["Todo"], today_d):
             # Only a complete line dated on or before today renews (R1-F1):
             # a malformed or future-dated later line never displaces a
             # valid earlier acceptance; it warns and the earlier one stands.
+            # The remediation follow-up a red-repeat set, kept visible
+            # through an acceptance (§50 item 7).
+            followup = respond_by if red_repeat else None
             valid_acc, bad_acc = None, None
-            for a in sorted(accept_lists.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+            for a in sorted(_uncontradicted(accept_lists.get(did, [])), key=_eff_key):
                 ad, ae = _strict_date(a.get("date")), _strict_date(a.get("expires"))
                 if a.get("approver") and a["approver"] not in NIGHT_DEBT_APPROVERS:
                     warnings.append(f"Night-accepted approver '{a['approver']}' lacks authority ({', '.join(NIGHT_DEBT_APPROVERS)}); ignored")
@@ -4619,7 +4764,7 @@ def night_debts(todos: list["Todo"], today_d):
                 acc = {}
             revoked_on = None
             acc_date = _strict_date(acc.get("date")) if acc else None
-            for v in sorted(revokes.get(did, []), key=lambda r: (r.get("date") or "", r.get("_raw", ""))):
+            for v in sorted(_uncontradicted(revokes.get(did, [])), key=_eff_key):
                 vd = _strict_date(v.get("date"))
                 if not (vd and vd <= today_d and v.get("by") and v.get("reason")):
                     # Every field is required (§35 R2-F1): an incomplete or
@@ -4644,6 +4789,8 @@ def night_debts(todos: list["Todo"], today_d):
                     overdue = False
                     respond_by = None
                     owner = acc["owner"]
+                    if followup and today_d.isoformat() > followup and not (finding and section_done.get(finding)):
+                        remediation_overdue = followup
                 else:
                     state = "acceptance-expired"
                     overdue = True
@@ -4656,7 +4803,10 @@ def night_debts(todos: list["Todo"], today_d):
                 warnings.append("Night-accepted line needs approver, owner, a canonical YYYY-MM-DD date on or before today, a canonical expires, and rationale; ignored")
             # Acknowledgement (§27 item 1): drops the escalation until the
             # response deadline; still open past it escalates again.
-            ack = acks.get(did)
+            # The governing acknowledgement: the latest uncontradicted one by
+            # replay position (§50 items 1-2).
+            _acks = _uncontradicted(ack_lists.get(did, []))
+            ack = max(_acks, key=_eff_key) if _acks else None
             ack_d = _strict_date(ack.get("date")) if ack else None
             if ack and not (ack.get("owner") and ack.get("action") and ack_d and ack_d <= today_d):
                 warnings.append("Night-ack line needs a canonical YYYY-MM-DD date on or before today, an owner, and an action; ignored")
@@ -4710,6 +4860,15 @@ def night_debts(todos: list["Todo"], today_d):
                 "digest": o.get("digest"),
                 "last_log": c["log"] if c else None,
                 "open": c is None,
+                "remediation_overdue": remediation_overdue,
+                "assignments": assignments,
+                "acknowledged_by": (ack.get("owner") if ack else None) if state in ("acknowledged",) else None,
+                "acknowledged_on": (ack.get("date") if ack else None) if state in ("acknowledged",) else None,
+                "tz": o.get("tz"),
+                "schedule": o.get("schedule"),
+                "candidate": o.get("candidate"),
+                "collected_candidate": c.get("candidate") if c else None,
+                "evidence": c.get("evidence") if c else None,
             }
         )
         # A remediation finding's completion never closes the debt (§42
@@ -4721,6 +4880,12 @@ def night_debts(todos: list["Todo"], today_d):
 
 
 NIGHT_DEBT_ORPHANS: list = []
+# Collected debts whose named log is gone and whose line carries no
+# durable digest (D00 T02 §50 item 12), listed in the block.
+NIGHT_DEBT_EVIDENCE_GAPS: list = []
+# Collected debts whose log was pruned, read from the durable evidence the
+# collected line carries (§50 item 12); in the JSON as retained_evidence.
+NIGHT_DEBT_RETAINED: list = []
 
 
 def night_debt_block(debts: list) -> list:
@@ -4734,6 +4899,8 @@ def night_debt_block(debts: list) -> list:
         for w in d["warnings"]:
             out.append(f"    WARN {d['id']}: {w}")
     for w in NIGHT_DEBT_ORPHANS:
+        out.append(f"    WARN {w}")
+    for w in NIGHT_DEBT_EVIDENCE_GAPS:
         out.append(f"    WARN {w}")
     return out
 
@@ -4837,6 +5004,9 @@ def cmd_query(args) -> int:
                 "debts": [dict(d, line=night_debt_line(d)) for d in _debts],
                 # Lifecycle lines naming no owed debt (§35 item 11).
                 "orphans": list(NIGHT_DEBT_ORPHANS),
+                # Closed debts whose collection log was pruned, read from the
+                # line's durable evidence (§50 item 12).
+                "retained_evidence": list(NIGHT_DEBT_RETAINED),
                 "report_block": night_debt_block(_debts),
             }, ensure_ascii=False, sort_keys=True))
             return 0
@@ -25915,7 +26085,7 @@ track: Z1
             "**Test checkpoint:** `true`\n\n"
             "**Night-owed:** D90-T01-S1-N1 (3 Interactive, collector Nightly UI 02:30, owed 2026-09-15)\n"
             "**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19)\n"
-            "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30, reason host rebuilt)\n"
+            "**Night-owed:** D90-T01-S1-N3 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-10, due 2026-09-30, by operator, reason host rebuilt)\n"
             "**Night-owed:** D90-T01-S1-N4 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-17)\n"
             "**Night-owed:** D90-T01-S1-N5 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-19, due 2026-02-30)\n"
             "**Night-owed:** D90-T01-S1-N6 (1 Interactive, collector Nightly UI 02:30, owed 2026-13-01)\n"
@@ -25993,8 +26163,8 @@ track: Z1
             True,
         )
         check(
-            "query night-debt omits the collected debt",
-            any("D90-T01-S2-N1" in ln for ln in _ndlines),
+            "query night-debt omits the collected debt (its evidence-gap WARN aside, §50 item 12)",
+            any("D90-T01-S2-N1" in ln and not ln.lstrip().startswith("WARN") for ln in _ndlines),
             False,
         )
         check(
@@ -26630,6 +26800,134 @@ track: Z1
             (_n42w("D90-T01-S1-N13", "CONTRADICTORY"), _n42w("D90-T01-S1-N14", "CONTRADICTORY Night-ack lines dated 2026-09-19")),
             (False, True),
         )
+        # --- night-debt governance second residuals (D00 T02 §50) ----------
+        nd50 = root / "nd50"
+        (nd50 / "todo" / "90-night").mkdir(parents=True)
+        (nd50 / "todo" / "90-night" / "INDEX.md").write_text(
+            "# 90 Night\n\n## TODOs\n\n| TODO | Title | Status |\n"
+            "| ---- | ----- | :----: |\n"
+            "| [TODO-01](./TODO-01-night.md) | Night | active |\n",
+            encoding="utf-8",
+        )
+        import subprocess as _sp50
+        _genv = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@t")
+        try:
+            _git_ok = bool(shutil.which("git")) and _sp50.run(["git", "-C", str(nd50), "init", "-q"], capture_output=True, env=_genv).returncode == 0
+        except OSError:
+            _git_ok = False
+        _c1 = _c2 = ""
+        if _git_ok:
+            (nd50 / "a.txt").write_text("1", encoding="utf-8")
+            _sp50.run(["git", "-C", str(nd50), "add", "a.txt"], capture_output=True, env=_genv)
+            _sp50.run(["git", "-C", str(nd50), "commit", "-q", "-m", "one"], capture_output=True, env=_genv)
+            _c1 = _sp50.run(["git", "-C", str(nd50), "rev-parse", "HEAD"], capture_output=True, text=True, env=_genv).stdout.strip()
+            (nd50 / "a.txt").write_text("2", encoding="utf-8")
+            _sp50.run(["git", "-C", str(nd50), "commit", "-q", "-am", "two"], capture_output=True, env=_genv)
+            _c2 = _sp50.run(["git", "-C", str(nd50), "rev-parse", "HEAD"], capture_output=True, text=True, env=_genv).stdout.strip()
+        _ANCESTRY_CACHE.clear()
+        (nd50 / "inv.txt").write_text("UI.A.One\nUI.A.Two\n", encoding="utf-8")
+        _dg50 = _names_digest(["UI.A.One"])
+        _dg50b = _names_digest(["UI.A.One", "UI.A.Two"])
+        _o50 = "1 Interactive, collector Nightly UI 02:30, owed "
+        _r50 = " (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run "
+        _life50 = [
+            # Item 1: precedence by effective time, not wording.
+            f"**Night-owed:** D90-T01-S1-N1 ({_o50}2026-09-10)",
+            "**Night-accepted:** D90-T01-S1-N1 (approver operator, owner zed, date 2026-09-15, at 08:00, expires 2026-10-01, rationale early)",
+            "**Night-accepted:** D90-T01-S1-N1 (approver operator, owner amy, date 2026-09-15, at 09:00, expires 2026-10-01, rationale late)",
+            # Item 2: a contradicted acceptance takes no effect.
+            f"**Night-owed:** D90-T01-S1-N2 ({_o50}2026-09-10)",
+            "**Night-accepted:** D90-T01-S1-N2 (approver operator, owner operator, date 2026-09-15, expires 2026-10-01, rationale one)",
+            "**Night-accepted:** D90-T01-S1-N2 (approver operator, owner operator, date 2026-09-15, expires 2026-10-01, rationale two)",
+            # Item 3: the inventory gained a test after owing.
+            f"**Night-owed:** D90-T01-S1-N3 ({_o50}2026-09-12, digest {_dg50}, tests inv.txt)",
+            f"**Night-collected:** 2026-09-18 D90-T01-S1-N3 (1 passed, 0 failed, 0 skipped; log a.txt; digest {_dg50})",
+            f"**Night-owed:** D90-T01-S1-N4 ({_o50}2026-09-12, digest {_dg50}, tests inv.txt)",
+            f"**Night-collected:** 2026-09-18 D90-T01-S1-N4 (2 passed, 0 failed, 0 skipped; log a.txt; digest {_dg50b})",
+            # Item 4: closure binds to the owed candidate.
+            f"**Night-owed:** D90-T01-S1-N5 ({_o50}2026-09-12, candidate {_c2 or 'none'})",
+            f"**Night-collected:** 2026-09-18 D90-T01-S1-N5 (1 passed, 0 failed, 0 skipped; log a.txt; candidate {_c1 or 'none'})",
+            f"**Night-owed:** D90-T01-S1-N6 ({_o50}2026-09-12, candidate {_c1 or 'none'})",
+            f"**Night-collected:** 2026-09-18 D90-T01-S1-N6 (1 passed, 0 failed, 0 skipped; log a.txt; candidate {_c2 or 'none'})",
+            # Item 5: one extension authority for the inline override.
+            f"**Night-owed:** D90-T01-S1-N7 ({_o50}2026-09-10, due 2026-10-15, by operator, reason long)",
+            f"**Night-owed:** D90-T01-S1-N8 ({_o50}2026-09-10, due 2026-09-20, reason unapproved)",
+            # Item 6: schedule identity across a DST gap.
+            f"**Night-owed:** D90-T01-S1-N9 ({_o50}2026-03-29T02:40+02:00, tz Europe/Amsterdam, schedule v2)",
+            # Item 7: an accepted red-repeat past its follow-up.
+            f"**Night-owed:** D90-T01-S1-N10 ({_o50}2026-09-12)",
+            f"**Night-red:** 2026-09-14 D90-T01-S1-N10{_r50}k1)",
+            "**Night-red:** 2026-09-16 D90-T01-S1-N10 (0 passed, 1 failed, 0 skipped; log build/nightly/r.trx; run k2; finding D00-T02-S50-F1)",
+            "**Night-accepted:** D90-T01-S1-N10 (approver operator, owner operator, date 2026-09-17, expires 2026-10-01, rationale known red)",
+            # Item 9: reassignment provenance.
+            f"**Night-owed:** D90-T01-S1-N11 ({_o50}2026-09-15)",
+            "**Night-ack:** D90-T01-S1-N11 (2026-09-19, owner alice, action rerun)",
+            "**Night-owner:** D90-T01-S1-N11 (2026-09-19, owner bob, by operator)",
+            # Item 10: extension boundaries (exactly 21 days, 22, cumulative).
+            f"**Night-owed:** D90-T01-S1-N12 ({_o50}2026-09-10)",
+            "**Night-extend:** D90-T01-S1-N12 (2026-09-12, by operator, due 2026-10-04, reason exactly twenty-one)",
+            f"**Night-owed:** D90-T01-S1-N13 ({_o50}2026-09-10)",
+            "**Night-extend:** D90-T01-S1-N13 (2026-09-12, by operator, due 2026-10-05, reason twenty-two)",
+            f"**Night-owed:** D90-T01-S1-N14 ({_o50}2026-09-10)",
+            "**Night-extend:** D90-T01-S1-N14 (2026-09-12, by operator, due 2026-09-23, reason first)",
+            "**Night-extend:** D90-T01-S1-N14 (2026-09-13, by operator, due 2026-10-04, reason renewed to the limit)",
+            "**Night-extend:** D90-T01-S1-N14 (2026-09-13, at 10:00, by operator, due 2026-10-05, reason past the limit)",
+            # Item 11: a pruned log reads its durable evidence or a gap.
+            f"**Night-owed:** D90-T01-S1-N15 ({_o50}2026-09-12, digest {_dg50})",
+            f"**Night-collected:** 2026-09-18 D90-T01-S1-N15 (1 passed, 0 failed, 0 skipped; log build/nightly/gone.trx; digest {_dg50})",
+            f"**Night-owed:** D90-T01-S1-N16 ({_o50}2026-09-12)",
+            "**Night-collected:** 2026-09-18 D90-T01-S1-N16 (1 passed, 0 failed, 0 skipped; log build/nightly/gone.trx)",
+        ]
+
+        def _nd50_run(lines):
+            global TODO_DIR
+            (nd50 / "todo" / "90-night" / "TODO-01-night.md").write_text(_nd42_file(lines), encoding="utf-8")
+            saved = TODO_DIR
+            TODO_DIR = nd50 / "todo"
+            try:
+                _b = _tio.StringIO()
+                with _tctx.redirect_stdout(_b), _tctx.redirect_stderr(_tio.StringIO()):
+                    cmd_query(argparse.Namespace(what="night-debt", today="2026-09-20"))
+                _j = _tio.StringIO()
+                with _tctx.redirect_stdout(_j), _tctx.redirect_stderr(_tio.StringIO()):
+                    cmd_query(argparse.Namespace(what="night-debt", today="2026-09-20", json=True))
+            finally:
+                TODO_DIR = saved
+            return _b.getvalue().splitlines(), json.loads(_j.getvalue())
+
+        _l50, _j50 = _nd50_run(_life50)
+        _n50 = {re.search(r"D90-T01-S\d+-N\d+", ln).group(0): ln for ln in _l50 if re.search(r" D90-T01-S\d+-N\d+ ", ln) and not ln.lstrip().startswith("WARN")}
+
+        def _n50w(did, text):
+            return any(ln.lstrip().startswith(f"WARN {did}:") and text in ln for ln in _l50)
+
+        check("§50 item 1: the later effective time governs, not the later wording",
+              ("state accepted" in _n50.get("D90-T01-S1-N1", ""), "owner amy " in _n50.get("D90-T01-S1-N1", "")), (True, True))
+        check("§50 item 2: a contradicted acceptance takes no effect and the debt stays escalated",
+              ("state accepted" in _n50.get("D90-T01-S1-N2", ""), "OVERDUE" in _n50.get("D90-T01-S1-N2", ""),
+               _n50w("D90-T01-S1-N2", "none of them takes effect until resolved")), (False, True, True))
+        check("§50 item 3: an inventory that gained a test closes only on the originally owed set",
+              ("D90-T01-S1-N3" in _n50, "D90-T01-S1-N4" in _n50, _n50w("D90-T01-S1-N4", "changed after owing")), (False, True, True))
+        if _git_ok:
+            check("§50 item 4: a green run on a commit before the owed candidate keeps the debt open",
+                  ("D90-T01-S1-N5" in _n50, _n50w("D90-T01-S1-N5", "does not descend from the owed candidate"), "D90-T01-S1-N6" in _n50), (True, True, False))
+        else:
+            print("todo-graph self-test: SKIP §50 item 4 candidate ancestry (no git)")
+        check("§50 item 5: an inline due override past the limit or without an approver warns and changes nothing",
+              ("due 2026-09-13" in _n50.get("D90-T01-S1-N7", ""), _n50w("D90-T01-S1-N7", "over 21; default kept"),
+               "due 2026-09-13" in _n50.get("D90-T01-S1-N8", ""), _n50w("D90-T01-S1-N8", "without an approver")), (True, True, True, True))
+        check("§50 item 6: a debt owed in a DST gap records its schedule identity and reads a fixed due",
+              ("due 2026-04-01" in _n50.get("D90-T01-S1-N9", ""), "schedule v2 tz Europe/Amsterdam" in _n50.get("D90-T01-S1-N9", "")), (True, True))
+        check("§50 item 7: an accepted red-repeat past its follow-up names the overdue remediation",
+              ("state accepted" in _n50.get("D90-T01-S1-N10", ""), "remediation overdue since 2026-09-18" in _n50.get("D90-T01-S1-N10", "")), (True, True))
+        check("§50 item 9: a reassigned ack names the original acknowledger and the reassigner",
+              ("acknowledged-by alice on 2026-09-19" in _n50.get("D90-T01-S1-N11", ""), "reassigned to bob by operator on 2026-09-19" in _n50.get("D90-T01-S1-N11", "")), (True, True))
+        check("§50 item 10: an extension of exactly 21 days holds, 22 is refused, and cumulative renewals obey the cap",
+              ("due 2026-10-04" in _n50.get("D90-T01-S1-N12", ""), "due 2026-09-13" in _n50.get("D90-T01-S1-N13", ""), _n50w("D90-T01-S1-N13", "over 21"),
+               "due 2026-10-04" in _n50.get("D90-T01-S1-N14", ""), _n50w("D90-T01-S1-N14", "22 days past the default")), (True, True, True, True, True))
+        check("§50 item 11: a pruned log reads its durable evidence, or names the gap",
+              (any(e.startswith("D90-T01-S1-N15: collected 2026-09-18: log build/nightly/gone.trx pruned; durable evidence 1 passed") for e in _j50["retained_evidence"]),
+               any("WARN D90-T01-S1-N16: collected 2026-09-18 names log build/nightly/gone.trx, which is gone" in ln for ln in _l50)), (True, True))
         # Poster path proof (D00 T01 §53 items 1-2): the extracted
         # tools/notify_poster.py against a fake gh with an issue
         # database, so per-obligation create, quiet-unchanged,
