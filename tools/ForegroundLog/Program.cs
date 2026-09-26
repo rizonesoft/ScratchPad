@@ -495,14 +495,17 @@ static (string Name, long Start, string Exe)? Probe(uint pid)
         string exe = p.ProcessName + ".exe";
         try
         {
-            exe = Path.GetFileName(p.MainModule?.FileName ?? exe);
+            exe = p.MainModule?.FileName ?? exe;
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or NotSupportedException)
         {
-            // The name stands in for the module path.
+            // The name stands in for the module path when the process's
+            // modules cannot be read.
         }
 
-        return (p.ProcessName, start, exe.Replace(' ', '_'));
+        // The full path, percent-encoded so the log stays one token per
+        // field (D00 T02 §49 R1-F2): '%' and ' ' only.
+        return (p.ProcessName, start, exe.Replace("%", "%25", StringComparison.Ordinal).Replace(" ", "%20", StringComparison.Ordinal));
     }
     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
     {
@@ -519,6 +522,13 @@ static ProcIdentity? Attribute(uint pid, Func<uint, (string Name, long Start, st
     if (now is null)
     {
         return null;
+    }
+
+    // An unknown start time proves nothing about reuse (R1-F1): it is
+    // never cached, so each event reads the process that holds the pid now.
+    if (now.Value.Start == 0)
+    {
+        return new ProcIdentity(now.Value.Name, now.Value.Exe, "unknown");
     }
 
     var key = (pid, now.Value.Start);
@@ -542,11 +552,14 @@ static int SelfTest()
     long t2 = t1 + TimeSpan.FromHours(1).Ticks;
     ProcIdentity? before = Attribute(100, _ => ("ScratchPad", t1, "ScratchPad.exe"), cache);
     ProcIdentity? after = Attribute(100, _ => ("Photos", t2, "Photos.exe"), cache);
-    bool reuse = before?.Name == "ScratchPad" && after?.Name == "Photos" && !string.Equals(after.Name, "ScratchPad", StringComparison.OrdinalIgnoreCase);
+    // Unknown start times never share a cache entry (R1-F1).
+    ProcIdentity? u1 = Attribute(200, _ => ("ScratchPad", 0, "ScratchPad.exe"), cache);
+    ProcIdentity? u2 = Attribute(200, _ => ("Photos", 0, "Photos.exe"), cache);
+    bool reuse = before?.Name == "ScratchPad" && after?.Name == "Photos" && !string.Equals(after.Name, "ScratchPad", StringComparison.OrdinalIgnoreCase) && u1?.Name == "ScratchPad" && u2?.Name == "Photos";
     Console.WriteLine($"selftest: reused pid attributed to {after?.Name ?? "nothing"} (not flagged): {(reuse ? "ok" : "FAIL")}");
     ProcIdentity? self = Attribute((uint)Environment.ProcessId, Probe, cache);
     string line = EventLine(0x1234, new EventEntry(0, Environment.ProcessId, "primary", "1,2,3x4", "SHOW", "planted foreign window", "Foreign", self?.Exe ?? "?", self?.StartText ?? "?"));
-    bool names = line.Contains($"exe={self?.Exe}", StringComparison.Ordinal) && (self?.Exe ?? string.Empty).StartsWith("ForegroundLog", StringComparison.OrdinalIgnoreCase) && !line.Contains("started=unknown", StringComparison.Ordinal);
+    bool names = line.Contains($"exe={self?.Exe}", StringComparison.Ordinal) && (self?.Exe ?? string.Empty).EndsWith("ForegroundLog.exe", StringComparison.OrdinalIgnoreCase) && (self?.Exe ?? string.Empty).Contains('\\', StringComparison.Ordinal) && !(self?.Exe ?? string.Empty).Contains(' ', StringComparison.Ordinal) && !line.Contains("started=unknown", StringComparison.Ordinal);
     Console.WriteLine($"selftest: event line names its executable ({line}): {(names ? "ok" : "FAIL")}");
     return reuse && names ? 0 : 1;
 }
