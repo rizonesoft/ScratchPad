@@ -4612,6 +4612,28 @@ $script:DisclosureRuleVersion = 2
 $script:DerivationSeries = @{ 2 = @('coverage') }
 $script:MetricsCapacityWarning = ''
 
+# The merge schema (D00 T02 section 54 item 6): every field a native row
+# can take from its superseded backfill belongs to exactly one named unit,
+# and nothing outside these units ever merges. Conflict rule: the native
+# row wins wherever it carries a value (a set, non-unknown value), a
+# tombstone naming a field or unit blocks it, and the backfill fills only
+# what the native row lacks: `execution` moves whole or not at all (only
+# when the native row carries none of it); `run budget`, `provenance`,
+# and `environment` fill per field. This supersedes section 40's
+# retained-field default (the dated correction in section 40 records it).
+$script:MetricsMergeUnits = [ordered]@{
+  'execution' = @('legs', 'population', 'populationHash', 'timings')
+  'run budget' = @('reserve', 'consumed')
+  'provenance' = @('commit', 'harness')
+  'environment' = @($script:EnvFields | ForEach-Object { "env.$_" })
+}
+
+function Get-MetricsMergeUnitOf([string]$Field) {
+  # The unit a merged field belongs to, or '' when it never merges.
+  foreach ($u in @($script:MetricsMergeUnits.Keys)) { if (@($script:MetricsMergeUnits[$u]) -contains $Field) { return $u } }
+  return ''
+}
+
 function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null, [long]$MaxBytes = $script:MetricsMaxBytes) {
   # Keeps one current row per result identity (D00 T02 §25 item 7). The
   # store is append-only JSON lines in ignored scratch beside the runs:
@@ -4745,7 +4767,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           $tomb = @(@($(try { $merged.tombstone } catch { @() })) | ForEach-Object { "$_" })
           $hasCounts = { param($x) @(@($(try { $x.legs.PSObject.Properties } catch { @() })) | Where-Object { ($null -ne $_.Value.passed) -or ($null -ne $_.Value.failed) }).Count -gt 0 }
           $isSet = { param($v) ($null -ne $v) -and ("$v" -ne '') -and ("$v" -notlike 'unknown*') }
-          $unit = @('population', 'populationHash', 'timings')
+          $unit = @($script:MetricsMergeUnits['execution'] | Where-Object { $_ -ne 'legs' })
           # The unit is the legs' counts plus population, its hash, and
           # timings (section 47 R2-C1): it moves from the backfill whole,
           # counts included, only when the native row carries none of it
@@ -4757,7 +4779,7 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
             $merged | Add-Member -NotePropertyName legs -NotePropertyValue ($bf.legs | ConvertTo-Json -Depth 6 | ConvertFrom-Json) -Force; $filled += 'legs'
             foreach ($k in $unit) { $bv = $(try { $bf.$k } catch { $null }); if (& $isSet $bv) { $merged | Add-Member -NotePropertyName $k -NotePropertyValue $bv -Force; $filled += $k } }
           }
-          $fillable = @('reserve', 'consumed', 'commit', 'harness')
+          $fillable = @(@($script:MetricsMergeUnits['run budget']) + @($script:MetricsMergeUnits['provenance']))
           foreach ($k in @($fillable | Where-Object { $tomb -notcontains $_ })) {
             $nv = $(try { $merged.$k } catch { $null }); $bv = $(try { $bf.$k } catch { $null })
             $nEmpty = ($null -eq $nv) -or ("$nv" -eq '') -or ("$nv" -like 'unknown*')

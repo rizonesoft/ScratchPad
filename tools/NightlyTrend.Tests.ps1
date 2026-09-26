@@ -887,6 +887,13 @@ $null = New-Item -ItemType Directory -Force -Path $g54Dir
 $g54Life = Update-AlertLedger @($g54Line | ForEach-Object { "abcd1234|$_" }) (Join-Path $g54Dir 'alerts.json') ([pscustomobject]@{ Night = '2026-08-20'; Id = 'eval-1' })
 Assert (($g54Line.Count -eq 1) -and ($g54Line[0] -like '*owner operator*') -and ($g54Id -eq 'abcd1234|insufficient-runa-duration')) 's54-prolonged-insufficiency-is-an-owned-alert' (($g54Line -join ' | ') + " id=$g54Id new=$(@($g54Life.NewIds) -join ',')")
 Remove-Item $g54Dir -Recurse -Force -ErrorAction SilentlyContinue
+# D00 T02 §54 item 6: every field the merge can fill belongs to a named
+# unit, and fields outside the units never merge.
+$muFields = @('legs', 'population', 'populationHash', 'timings', 'reserve', 'consumed', 'commit', 'harness') + @($script:EnvFields | ForEach-Object { "env.$_" })
+$muOrphans = @($muFields | Where-Object { (Get-MetricsMergeUnitOf $_) -eq '' })
+$muNever = @(@('identity', 'stamp', 'verdict', 'night', 'hostKey') | Where-Object { (Get-MetricsMergeUnitOf $_) -ne '' })
+$muDup = @($muFields | Where-Object { $f = $_; @(@($script:MetricsMergeUnits.Keys) | Where-Object { @($script:MetricsMergeUnits[$_]) -contains $f }).Count -ne 1 })
+Assert (($muOrphans.Count -eq 0) -and ($muNever.Count -eq 0) -and ($muDup.Count -eq 0) -and ((Get-MetricsMergeUnitOf 'timings') -eq 'execution') -and ((Get-MetricsMergeUnitOf 'commit') -eq 'provenance')) 's54-every-merged-field-belongs-to-a-named-unit' "orphans=$($muOrphans -join ',') never=$($muNever -join ',') dup=$($muDup -join ',')"
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
