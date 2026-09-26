@@ -140,6 +140,40 @@ try { $null = Format-NightDebtPostRun ([pscustomobject]@{ schema = 'night-debt/1
 $ug = @(Format-UnrecordedGreens @('D90-T01-S1-N1') "$qf")
 Assert (($null -ne $qf) -and ($pf -like '*returned no night-debt/1 document*') -and (@($ug | Where-Object { $_ -like '*D90-T01-S1-N1*' }).Count -ge 1)) 's50-post-run-query-failure-never-reads-collected' "$qf | $pf | $($ug -join ' / ')"
 
+# Section 50 R1-R1: the chain end to end. Night one: the collector's
+# write lands but its readback fails (unknown), the write is registered as
+# possibly landed, and the post-run query fails, so the green reads
+# unrecorded, never collected. Night two: a green collection of the same
+# tests on the same candidate reconciles to the landed record, writes
+# nothing new, and reads closed. R1-A2: a record for an older candidate
+# never blocks the valid one.
+. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+$e50 = Join-Path $env:TEMP "nd50e-$([guid]::NewGuid().ToString('N'))"
+$null = New-Item -ItemType Directory -Force -Path $e50
+$t50 = Join-Path $e50 'TODO-01-x.md'
+'# x', '', '**Night-owed:** D90-T01-S1-N1 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20, candidate bbbb, digest aaaa1111bbbb2222)', '' | Set-Content -Path $t50 -Encoding UTF8
+$before50 = [System.IO.File]::ReadAllText($t50)
+$line1 = Format-CollectedLine '2026-09-21' 'D90-T01-S1-N1' 1 0 0 'build/nightly/s1/interactive.trx' 'aaaa1111bbbb2222' 'bbbb' 's1-pid1' '02:40' 'collect-s1-D90-T01-S1-N1'
+$note1 = Add-CollectedLine $t50 'D90-T01-S1-N1' $line1 { param($stage) if ($stage -eq 'readback') { throw 'io error' } }
+$tw = @{}
+Register-TrackedWrite $tw $e50 $t50 $line1 $note1 $before50
+$qfail = $null
+try { $null = Get-NightDebtDocument $e50 'no-such-python-50' } catch { $qfail = "$_" }
+$night1 = @(Format-UnrecordedGreens @('D90-T01-S1-N1') $qfail)
+$g1 = Format-DebtGreenEntry 'D90-T01-S1-N1' 'D90 T01 §1' 1 0 0 'build/nightly/s1/interactive.trx' $note1
+$line2 = Format-CollectedLine '2026-09-22' 'D90-T01-S1-N1' 1 0 0 'build/nightly/s2/interactive.trx' 'aaaa1111bbbb2222' 'bbbb' 's2-pid1' '02:41' 'collect-s2-D90-T01-S1-N1'
+$note2 = Add-CollectedLine $t50 'D90-T01-S1-N1' $line2
+$g2 = Format-DebtGreenEntry 'D90-T01-S1-N1' 'D90 T01 §1' 1 0 0 'build/nightly/s2/interactive.trx' $note2
+$copies = ([regex]::Matches([System.IO.File]::ReadAllText($t50), '\*\*Night-collected:\*\*')).Count
+$reg = @($tw.Values | ForEach-Object { @($_.Lines) }) -contains $line1
+Assert (($note1 -like 'unknown:*') -and $reg -and ($null -ne $qfail) -and (@($night1 | Where-Object { $_ -like '*D90-T01-S1-N1*' }).Count -ge 1) -and $g1[1] -and ($note2 -like 'skip:*already carries*') -and ($g2[0] -like '*already closed*') -and (-not $g2[1]) -and ($copies -eq 1) -and ($line1 -like '*; digest aaaa1111bbbb2222; candidate bbbb; run s1-pid1; at 02:40; event collect-s1-D90-T01-S1-N1)')) 's50-landed-write-failed-query-then-reconciled' "$note1 | reg $reg | $($night1 -join ' / ') | $note2 | copies $copies"
+$old50 = Format-CollectedLine '2026-09-23' 'D90-T01-S1-N2' 1 0 0 'l' 'aaaa1111bbbb2222' 'aaaa' 'r' '02:40' 'e1'
+'# x', '', '**Night-owed:** D90-T01-S1-N2 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20, candidate bbbb, digest aaaa1111bbbb2222)', $old50, '' | Set-Content -Path $t50 -Encoding UTF8
+$new50 = Format-CollectedLine '2026-09-24' 'D90-T01-S1-N2' 1 0 0 'l' 'aaaa1111bbbb2222' 'bbbb' 'r2' '02:41' 'e2'
+$n50b = Add-CollectedLine $t50 'D90-T01-S1-N2' $new50
+Assert ($n50b -like 'appended*') 's50-older-candidate-record-never-blocks-the-valid-one' $n50b
+Remove-Item $e50 -Recurse -Force
+
 if ($failures -gt 0) { Write-Output "NightDebt.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightDebt.Tests: all green'
 exit 0

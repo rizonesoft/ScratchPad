@@ -1316,7 +1316,7 @@ if ($debtQueryError -ne '') {
       # due window once, a second escalates as red-repeat.
       $redPath = Join-Path $Root $debt.File
       $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
-      $redLine = Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp
+      $redLine = Format-RedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count "build/nightly/$stamp/interactive.trx" $stamp (Get-Date).ToString('HH:mm') "red-$stamp-$($debt.Id)"
       $redNote = Add-RedLine $redPath $debt.Id $day $redLine
       Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
       Write-Output "nightly: night-debt $($debt.Id): $redNote"
@@ -1332,7 +1332,7 @@ if ($debtQueryError -ne '') {
         $failed = $true
       } elseif ($decision -eq 'close') {
         $greenIds += $debt.Id
-        $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest
+        $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
         $colPath = Join-Path $Root $debt.File
         $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
         $note = Invoke-CollectedLine $colPath $debt.Id $line
@@ -1345,7 +1345,7 @@ if ($debtQueryError -ne '') {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): subset red ($($sub.Passed)/$($sub.Failed)/$($sub.Skipped)); findings staged; debt stays open; $(Format-RedTriageNote $debt.Owner $day)"
         $redPath = Join-Path $Root $debt.File
         $redBefore = if ($trackedWrites.ContainsKey((($redPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($redPath) }
-        $redLine = Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp
+        $redLine = Format-RedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $stamp (Get-Date).ToString('HH:mm') "red-$stamp-$($debt.Id)"
         $redNote = Add-RedLine $redPath $debt.Id $day $redLine
         Register-TrackedWrite $trackedWrites $Root $redPath $redLine $redNote $redBefore
         Write-Output "nightly: night-debt $($debt.Id): $redNote"
@@ -1379,7 +1379,7 @@ if ($debtQueryError -ne '') {
       continue
     }
     $greenIds += $debt.Id
-    $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest
+    $line = Format-CollectedLine $day $debt.Id $sumI.Passed $sumI.FailedCount $sumI.Skipped.Count $logRel $fullId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
     $colPath = Join-Path $Root $debt.File
     $colBefore = if ($trackedWrites.ContainsKey((($colPath.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/'))) { '' } else { [System.IO.File]::ReadAllText($colPath) }
     $note = Invoke-CollectedLine $colPath $debt.Id $line

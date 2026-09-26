@@ -88,11 +88,14 @@ function Get-DebtDotnetFilter([string]$Filter) {
   return "Category=$Filter"
 }
 
-function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Digest = '') {
+function Format-CollectedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Digest = '', [string]$Candidate = '', [string]$Run = '', [string]$At = '', [string]$Event = '') {
   # The executed tests' digest rides the line (D00 T02 §42 item 6), so the
-  # graph can bind the closure to the owed test identities.
-  $dg = if ($Digest -ne '') { "; digest $Digest" } else { '' }
-  return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log$dg)"
+  # graph can bind the closure to the owed test identities; the candidate
+  # HEAD, run identity, effective time, and event identity ride it too
+  # (§50 items 1, 4), each only when known.
+  $parts = ''
+  foreach ($kv in @(@('digest', $Digest), @('candidate', $Candidate), @('run', $Run), @('at', $At), @('event', $Event))) { if ("$($kv[1])" -ne '') { $parts += "; $($kv[0]) $($kv[1])" } }
+  return "**Night-collected:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log$parts)"
 }
 
 function Get-TestNamesDigest([string[]]$Names) {
@@ -112,12 +115,14 @@ function Test-DebtIdentity([string]$OwedDigest, [string[]]$ExecutedNames) {
   return [pscustomobject]@{ Ok = (($OwedDigest -eq '') -or ($OwedDigest -eq $dg)); Digest = $dg }
 }
 
-function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Run = '') {
+function Format-RedLine([string]$Date, [string]$Id, [int]$Passed, [int]$Failed, [int]$Skipped, [string]$Log, [string]$Run = '', [string]$At = '', [string]$Event = '') {
   # A red collection's record (D00 T02 §27 item 3): the first resets the
   # due window once, a second escalates the debt as red-repeat. The run
   # identity (D00 T02 §35 item 3) makes two red runs on one day two
   # attempts.
   $runPart = if ([string]::IsNullOrWhiteSpace($Run)) { '' } else { "; run $Run" }
+  if ("$At" -ne '') { $runPart += "; at $At" }
+  if ("$Event" -ne '') { $runPart += "; event $Event" }
   return "**Night-red:** $Date $Id ($Passed passed, $Failed failed, $Skipped skipped; log $Log$runPart)"
 }
 
@@ -224,7 +229,11 @@ function Add-CollectedLine([string]$TodoPath, [string]$DebtId, [string]$Line, [s
     $existing = @([regex]::Matches($text, '\*\*Night-collected:\*\*\s+\S+\s+' + [regex]::Escape($DebtId) + '\b[^\r\n]*') | ForEach-Object { $_.Value })
     $newDigest = [regex]::Match($Line, '\bdigest\s+([0-9a-f]+)')
     if ($existing.Count -gt 0) {
-      $recorded = $newDigest.Success -and (@($existing | Where-Object { $_ -match ('\bdigest\s+' + $newDigest.Groups[1].Value + '\b') }).Count -gt 0)
+      # A same-digest record blocks only when it also names this line's
+      # candidate (D00 T02 section 50 R1-A2): a record the graph rejected for
+      # an older candidate never blocks the valid collection that follows.
+      $newCand = [regex]::Match($Line, '\bcandidate\s+([0-9a-f]+)')
+      $recorded = $newDigest.Success -and (@($existing | Where-Object { ($_ -match ('\bdigest\s+' + $newDigest.Groups[1].Value + '\b')) -and ((-not $newCand.Success) -or ($_ -match ('\bcandidate\s+' + $newCand.Groups[1].Value + '\b'))) }).Count -gt 0)
       if ((-not $newDigest.Success) -or $recorded) { return "skip: $DebtId already carries a collected line" }
     }
     $lines = @($text -split "`r?`n")

@@ -4104,6 +4104,16 @@ NIGHT_DEBT_MAX_EXTEND_DAYS = 21
 # counts as before. `tools/Get-DebtDigest.ps1 -Filter <filter>` prints it.
 NIGHT_DEBT_DIGEST_CUTOVER = "2026-09-26"
 NIGHT_DEBT_DEFAULT_TRIGGER = "02:30"
+# From this day on (D00 T02 §50 R1-I1) the capture the §50 contract names
+# is required, not optional: an owed line carries its `candidate`, its
+# schedule identity (`schedule`, and `tz` or an offset on its timestamp);
+# a collection carries `candidate`, `run`, `at`, and `event`; every other
+# lifecycle record carries `at` and `event`. A record missing them warns
+# and takes no effect; an owed line missing them cannot close.
+NIGHT_DEBT_GOVERNANCE_CUTOVER = "2026-09-27"
+# The governed task's schedule history (D00 T02 §40): each row's From date
+# is the schedule version in force from that day, with its trigger time.
+NIGHT_DEBT_SCHEDULE_HISTORY = "docs/nightly-schedule-history.md"
 NIGHT_DEBT_RED_ESCALATION = "fix the failing tests or record risk acceptance"
 
 
@@ -4294,6 +4304,43 @@ def _uncontradicted(recs: list) -> list:
     return [r for r in rs if id(r) not in bad]
 
 
+def _captured(recs: list, kind: str, need: tuple, warnings: list) -> list:
+    """The records that carry the capture §50 requires from its cutover
+    (R1-I1): a record dated on or after NIGHT_DEBT_GOVERNANCE_CUTOVER
+    without every field in `need` warns and takes no effect; earlier
+    records are legacy and stand as written."""
+    out = []
+    for r in recs:
+        d = r.get("date") or ""
+        missing = [k for k in need if not r.get(k)]
+        if d >= NIGHT_DEBT_GOVERNANCE_CUTOVER and missing:
+            warnings.append(f"{kind} dated {d} lacks {', '.join(missing)} (required from {NIGHT_DEBT_GOVERNANCE_CUTOVER}); it takes no effect")
+            continue
+        out.append(r)
+    return out
+
+
+def _schedule_in_force(day):
+    """The schedule version in force on `day` (D00 T02 §50 R1-I2): the
+    latest row of the schedule history whose From date is on or before it,
+    as (version, trigger time), or (None, None) without a history. The
+    version is that row's From date."""
+    try:
+        text = (TODO_DIR.parent / NIGHT_DEBT_SCHEDULE_HISTORY).read_text(encoding="utf-8")
+    except OSError:
+        return None, None
+    best = None
+    for m in re.finditer(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*(\d{2}):(\d{2})\s*\|", text, re.M):
+        if day is not None and m.group(1) <= day.isoformat() and (best is None or m.group(1) > best[0]):
+            best = (m.group(1), m.group(2), m.group(3))
+    if best is None:
+        return None, None
+    try:
+        return best[0], datetime.strptime(f"{best[1]}:{best[2]}", "%H:%M").time()
+    except ValueError:
+        return None, None
+
+
 def _names_digest(names: list) -> str:
     """The test-identity digest tools/NightDebt.ps1 Get-TestNamesDigest
     computes (D00 T02 §42 item 6, §50 item 3): the first 16 hex of SHA-256
@@ -4453,7 +4500,9 @@ def night_debts(todos: list["Todo"], today_d):
                 # The collection's candidate, run, effective time, and event
                 # identity (§50 items 1, 4).
                 _cx = {k: v for k, v in re.findall(r"\b(candidate|run|at|event)\s+([^;)\s]+)", cm.group(3))}
-                rec = {"date": cm.group(1), "log": log, "counts": counts, "digest": cdg.group(1) if cdg else None, "_raw": cm.group(3).strip(),
+                # The date is part of the record (R1-A1): two collections on
+                # different dates with identical parentheses are two records.
+                rec = {"date": cm.group(1), "log": log, "counts": counts, "digest": cdg.group(1) if cdg else None, "_raw": f"{cm.group(1)} {cm.group(3).strip()}",
                        "candidate": _cx.get("candidate"), "run": _cx.get("run"), "at": _cx.get("at"), "event": _cx.get("event")}
                 collected_lists.setdefault(cm.group(2), []).append(rec)
                 collected.setdefault(cm.group(2), rec)
@@ -4463,7 +4512,8 @@ def night_debts(todos: list["Todo"], today_d):
                 counts, log = _parse_collected_paren(rm.group(3))
                 runm = re.search(r"\brun\s+(\S+?)[;)]?(?:\s|$)", rm.group(3))
                 fm = re.search(r"\bfinding\s+([^;)\s]+)", rm.group(3))
-                reds.setdefault(rm.group(2), []).append({"date": rm.group(1), "log": log, "run": runm.group(1) if runm else None, "finding": fm.group(1) if fm else None, "_raw": rm.group(3).strip()})
+                _rx = {k: v for k, v in re.findall(r"\b(at|event)\s+([^;)\s]+)", rm.group(3))}
+                reds.setdefault(rm.group(2), []).append({"date": rm.group(1), "log": log, "run": runm.group(1) if runm else None, "finding": fm.group(1) if fm else None, "_raw": rm.group(3).strip(), "at": _rx.get("at"), "event": _rx.get("event")})
                 continue
             am = NIGHT_ACK_RE.search(ln)
             if am and DEBT_ID_RE.match(am.group(1)):
@@ -4524,7 +4574,7 @@ def night_debts(todos: list["Todo"], today_d):
         # §50 items 1-2 and 4: only uncontradicted collections count; the
         # latest by replay position that matches the owed digest and whose
         # candidate descends from the owed candidate closes.
-        _pool = _uncontradicted(collected_lists.get(did, []))
+        _pool = _uncontradicted(_captured(collected_lists.get(did, []), "Night-collected", ("candidate", "run", "at", "event"), warnings))
 
         def _dg_ok(r):
             return not o.get("digest") or r.get("digest") == o["digest"]
@@ -4563,6 +4613,14 @@ def night_debts(todos: list["Todo"], today_d):
             else:
                 NIGHT_DEBT_EVIDENCE_GAPS.append(f"{did}: collected {c['date']} names log {c['log']}, which is gone, and the line carries no digest; evidence gap")
         _owed_day = (o.get("owed") or "")[:10]
+        # The owed line's required capture (§50 R1-I1): from the governance
+        # cutover it names its candidate and its schedule identity, or no
+        # collection can close it.
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", _owed_day) and _owed_day >= NIGHT_DEBT_GOVERNANCE_CUTOVER:
+            _miss = [k for k in ("candidate", "schedule", "tz") if not o.get(k)]
+            if _miss:
+                warnings.append(f"owed on {_owed_day} without {', '.join(_miss)} (required from {NIGHT_DEBT_GOVERNANCE_CUTOVER}); no collection can close it")
+                c = None
         if not o.get("digest") and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _owed_day) and _owed_day >= NIGHT_DEBT_DIGEST_CUTOVER:
             warnings.append(f"owed on {_owed_day} without a tests digest (required from {NIGHT_DEBT_DIGEST_CUTOVER}; tools/Get-DebtDigest.ps1 prints it); no collection can close it")
             c = None
@@ -4582,8 +4640,21 @@ def night_debts(todos: list["Todo"], today_d):
                 # The first collector night (§35 item 7): owed before the
                 # trigger time on day D is collectable that same night, so
                 # the window closes a day earlier; a date-only owed line
-                # assumes after the trigger (first night D+1).
-                first = owed_d if (owed_t is not None and owed_t < o["trigger"]) else owed_d + timedelta(days=1)
+                # assumes after the trigger (first night D+1). The trigger is
+                # the schedule version in force on the owed day, from the
+                # schedule history (§50 R1-I2), else the one the owed line
+                # names. DST policy: times compare on the recorded wall
+                # clock; a trigger time a spring-forward gap skips fires at
+                # the first valid instant after it and a fall-back repeat
+                # fires once, both on the same night, so neither moves the
+                # first collector night and the due is host-independent.
+                _sv, _st = _schedule_in_force(owed_d)
+                _trig = _st or o["trigger"]
+                if _st is not None and _st != o["trigger"]:
+                    warnings.append(f"the owed line names trigger {o['trigger'].strftime('%H:%M')}, but schedule {_sv} in force on {owed_d.isoformat()} triggers at {_st.strftime('%H:%M')}; the schedule history governs")
+                if _sv is not None and o.get("schedule") and o["schedule"] != _sv:
+                    warnings.append(f"the owed line records schedule {o['schedule']}, but the version in force on {owed_d.isoformat()} is {_sv}")
+                first = owed_d if (owed_t is not None and owed_t < _trig) else owed_d + timedelta(days=1)
                 # 9999-12-31 parses but overflows the window: undatable.
                 due = (first + timedelta(days=NIGHT_DEBT_DUE_NIGHTS - 1)).isoformat()
             except (ValueError, OverflowError):
@@ -4616,7 +4687,7 @@ def night_debts(todos: list["Todo"], today_d):
         # valid one is quoted.
         extensions = []
         _ext_seen: set = set()
-        for x in sorted(_uncontradicted(extends.get(did, [])), key=_eff_key):
+        for x in sorted(_uncontradicted(_captured(extends.get(did, []), "Night-extend", ("at", "event"), warnings)), key=_eff_key):
             # An identical replay is one record (R1-F2).
             if x.get("_raw", "") in _ext_seen:
                 continue
@@ -4651,7 +4722,7 @@ def night_debts(todos: list["Todo"], today_d):
         # Assignment history (§50 item 10): each valid reassignment with
         # who made it, quoted on the debt line.
         assignments = []
-        for w in sorted(_uncontradicted(owners_re.get(did, [])), key=_eff_key):
+        for w in sorted(_uncontradicted(_captured(owners_re.get(did, []), "Night-owner", ("at", "event"), warnings)), key=_eff_key):
             wd = _strict_date(w.get("date"))
             if wd and wd <= today_d and w.get("owner"):
                 reassigned = w["owner"]
@@ -4682,7 +4753,7 @@ def night_debts(todos: list["Todo"], today_d):
             # of contradictory reds for one run, the one that reads is the
             # one the contradiction warning names, finding included.
             _attempt: dict = {}
-            for r in reds.get(did, []):
+            for r in _captured(reds.get(did, []), "Night-red", ("run", "at", "event"), warnings):
                 _k = (r.get("date") or "", r.get("run") or r.get("log") or "")
                 if _k not in _attempt or r.get("_raw", "") > _attempt[_k].get("_raw", ""):
                     _attempt[_k] = r
@@ -4745,7 +4816,7 @@ def night_debts(todos: list["Todo"], today_d):
             # through an acceptance (§50 item 7).
             followup = respond_by if red_repeat else None
             valid_acc, bad_acc = None, None
-            for a in sorted(_uncontradicted(accept_lists.get(did, [])), key=_eff_key):
+            for a in sorted(_uncontradicted(_captured(accept_lists.get(did, []), "Night-accepted", ("at", "event"), warnings)), key=_eff_key):
                 ad, ae = _strict_date(a.get("date")), _strict_date(a.get("expires"))
                 if a.get("approver") and a["approver"] not in NIGHT_DEBT_APPROVERS:
                     warnings.append(f"Night-accepted approver '{a['approver']}' lacks authority ({', '.join(NIGHT_DEBT_APPROVERS)}); ignored")
@@ -4764,7 +4835,7 @@ def night_debts(todos: list["Todo"], today_d):
                 acc = {}
             revoked_on = None
             acc_date = _strict_date(acc.get("date")) if acc else None
-            for v in sorted(_uncontradicted(revokes.get(did, [])), key=_eff_key):
+            for v in sorted(_uncontradicted(_captured(revokes.get(did, []), "Night-revoked", ("at", "event"), warnings)), key=_eff_key):
                 vd = _strict_date(v.get("date"))
                 if not (vd and vd <= today_d and v.get("by") and v.get("reason")):
                     # Every field is required (§35 R2-F1): an incomplete or
@@ -4805,7 +4876,7 @@ def night_debts(todos: list["Todo"], today_d):
             # response deadline; still open past it escalates again.
             # The governing acknowledgement: the latest uncontradicted one by
             # replay position (§50 items 1-2).
-            _acks = _uncontradicted(ack_lists.get(did, []))
+            _acks = _uncontradicted(_captured(ack_lists.get(did, []), "Night-ack", ("at", "event"), warnings))
             ack = max(_acks, key=_eff_key) if _acks else None
             ack_d = _strict_date(ack.get("date")) if ack else None
             if ack and not (ack.get("owner") and ack.get("action") and ack_d and ack_d <= today_d):
@@ -26895,8 +26966,22 @@ track: Z1
                 TODO_DIR = saved
             return _b.getvalue().splitlines(), json.loads(_j.getvalue())
 
+        # R1-A1: the date is part of a collection's identity; R1-I1: from
+        # the cutover the capture is required; R1-I2: the schedule history
+        # governs the trigger, and a repeated fall-back time is one night.
+        (nd50 / "docs").mkdir(exist_ok=True)
+        (nd50 / "docs" / "nightly-schedule-history.md").write_text(
+            "# history\n\n| From | Trigger | Interval days |\n| --- | --- | --- |\n| 2026-01-01 | 02:30 | 1 |\n| 2026-09-15 | 03:30 | 1 |\n", encoding="utf-8")
+        _life50 += [
+            f"**Night-owed:** D90-T01-S1-N17 ({_o50}2026-09-12, digest {_dg50})",
+            f"**Night-collected:** 2026-09-18 D90-T01-S1-N17 (1 passed, 0 failed, 0 skipped; log a.txt; digest cccc3333dddd4444)",
+            f"**Night-collected:** 2026-09-19 D90-T01-S1-N17 (1 passed, 0 failed, 0 skipped; log a.txt; digest cccc3333dddd4444)",
+            f"**Night-owed:** D90-T01-S1-N18 ({_o50}2026-09-16T03:00+02:00, schedule 2026-09-15, tz +02:00)",
+            f"**Night-owed:** D90-T01-S1-N19 ({_o50}2026-10-25T02:40+01:00, schedule 2026-09-15)",
+        ]
         _l50, _j50 = _nd50_run(_life50)
         _n50 = {re.search(r"D90-T01-S\d+-N\d+", ln).group(0): ln for ln in _l50 if re.search(r" D90-T01-S\d+-N\d+ ", ln) and not ln.lstrip().startswith("WARN")}
+        _jd50 = {d["id"]: d for d in _j50["debts"]}
 
         def _n50w(did, text):
             return any(ln.lstrip().startswith(f"WARN {did}:") and text in ln for ln in _l50)
@@ -26925,6 +27010,29 @@ track: Z1
         check("§50 item 10: an extension of exactly 21 days holds, 22 is refused, and cumulative renewals obey the cap",
               ("due 2026-10-04" in _n50.get("D90-T01-S1-N12", ""), "due 2026-09-13" in _n50.get("D90-T01-S1-N13", ""), _n50w("D90-T01-S1-N13", "over 21"),
                "due 2026-10-04" in _n50.get("D90-T01-S1-N14", ""), _n50w("D90-T01-S1-N14", "22 days past the default")), (True, True, True, True, True))
+        check("§50 R1-A1: two collections on different dates with one parenthesis are two records",
+              _jd50.get("D90-T01-S1-N17", {}).get("warnings", []).count("Night-collected 2026-09-19 digest cccc3333dddd4444 differs from the owed tests' digest " + _dg50 + "; the debt stays open") == 1
+              and not _n50w("D90-T01-S1-N17", "CONTRADICTORY"), True)
+        check("§50 R1-I2: the schedule in force governs the trigger, and a repeated fall-back time reads one night",
+              ("due 2026-09-18" in _n50.get("D90-T01-S1-N18", ""), _n50w("D90-T01-S1-N18", "the schedule history governs"),
+               "due 2026-10-27" in _n50.get("D90-T01-S1-N19", "")), (True, True, True))
+        global NIGHT_DEBT_GOVERNANCE_CUTOVER
+        _cut_saved = NIGHT_DEBT_GOVERNANCE_CUTOVER
+        NIGHT_DEBT_GOVERNANCE_CUTOVER = "2026-09-11"
+        try:
+            _l50c, _ = _nd50_run([
+                f"**Night-owed:** D90-T01-S1-N1 ({_o50}2026-09-12, digest {_dg50})",
+                f"**Night-collected:** 2026-09-18 D90-T01-S1-N1 (1 passed, 0 failed, 0 skipped; log a.txt; digest {_dg50})",
+                f"**Night-owed:** D90-T01-S1-N2 ({_o50}2026-09-10)",
+                "**Night-ack:** D90-T01-S1-N2 (2026-09-19, owner operator, action rerun)",
+            ])
+        finally:
+            NIGHT_DEBT_GOVERNANCE_CUTOVER = _cut_saved
+        check("§50 R1-I1: from the cutover an owed line without its capture cannot close, and a record without at and event takes no effect",
+              (any("WARN D90-T01-S1-N1: owed on 2026-09-12 without candidate, schedule, tz" in ln for ln in _l50c),
+               any("WARN D90-T01-S1-N1: Night-collected dated 2026-09-18 lacks candidate, run, at, event" in ln for ln in _l50c),
+               any("WARN D90-T01-S1-N2: Night-ack dated 2026-09-19 lacks at, event" in ln for ln in _l50c),
+               any(" D90-T01-S1-N2 " in ln and "state acknowledged" in ln for ln in _l50c)), (True, True, True, False))
         check("§50 item 11: a pruned log reads its durable evidence, or names the gap",
               (any(e.startswith("D90-T01-S1-N15: collected 2026-09-18: log build/nightly/gone.trx pruned; durable evidence 1 passed") for e in _j50["retained_evidence"]),
                any("WARN D90-T01-S1-N16: collected 2026-09-18 names log build/nightly/gone.trx, which is gone" in ln for ln in _l50)), (True, True))
