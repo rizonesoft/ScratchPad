@@ -623,6 +623,21 @@ Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1
 $legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
 $legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
 Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §52 item 9: the CI override needs a reason, is recorded for
+# audit, and makes its run's result ineligible for recovery and stamps;
+# a red check is never overridden.
+$o9Pending = [pscustomobject]@{ State = 'pending'; Line = 'CI pending on abc1234' }
+$o9NoWhy = Resolve-CiAdmission $o9Pending $true 'clean' ''
+$o9Ok = Resolve-CiAdmission $o9Pending $true 'clean' 'CI outage 2026-09-26, fingerprint checked locally'
+$o9Red = Resolve-CiAdmission ([pscustomobject]@{ State = 'red'; Line = 'CI red on abc1234' }) $true 'clean' 'anything'
+$o9Rec = Get-CiOverrideRecord $o9Ok 'CI outage 2026-09-26, fingerprint checked locally' 'operator' 'abc1234' ([datetime]::new(2026, 9, 26, 2, 30, 0, [DateTimeKind]::Utc))
+$o9None = Get-CiOverrideRecord (Resolve-CiAdmission ([pscustomobject]@{ State = 'green'; Line = 'green' }) $false) '' 'operator' 'abc1234' (Get-Date)
+$o9Elig = Test-ResultProofEligible ([pscustomobject]@{ stamp = 's'; ciOverride = $o9Rec })
+$o9Plain = Test-ResultProofEligible ([pscustomobject]@{ stamp = 's'; ciOverride = $null })
+$o9Legacy = Test-ResultProofEligible ([pscustomobject]@{ stamp = 's' })
+$o9Led = @{ 'INC-5209a001' = [pscustomobject]@{ id = 'INC-5209a001'; test = 'UI.O.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
+$o9Upd = Update-IncidentLedger $o9Led @() 's10' @{ 'run-a' = @('UI.O.T') } @{} 3 @{} '' 'CI unverified (-AllowUnverifiedCi override)'
+Assert ((-not $o9NoWhy.Admitted) -and ($o9NoWhy.Line -like '*needs -UnverifiedCiReason*') -and $o9Ok.Admitted -and $o9Ok.Overridden -and ($o9Ok.Line -like '*ineligible as recovery or closure evidence*') -and (-not $o9Red.Admitted) -and ($o9Rec.reason -eq 'CI outage 2026-09-26, fingerprint checked locally') -and ($o9Rec.at -eq '2026-09-26T02:30:00Z') -and ($null -eq $o9None) -and (-not $o9Elig.Ok) -and ($o9Elig.Why -like 'admitted under -AllowUnverifiedCi (pending; CI outage*') -and $o9Plain.Ok -and $o9Legacy.Ok -and ($o9Upd.Incidents['INC-5209a001'].state -eq 'open') -and ([int]$o9Upd.Incidents['INC-5209a001'].passStreak -eq 2) -and ((@($o9Upd.Lines) -join '') -like '*streak held at 2 of 3 (run not qualifying: CI unverified*')) 's52-overridden-run-never-proves' ((@($o9NoWhy.Line, $o9Ok.Line, $o9Elig.Why) + @($o9Upd.Lines)) -join ' | ')
 # D00 T02 §52 item 8: owed cases migrate by identity. A regen that swaps
 # an owed cut case for a same-prefix case keeps the original owed (its
 # identity token changed), an unlisted case holds until retired with
@@ -1004,12 +1019,12 @@ $gNone = Get-CandidateCiGate @() $null 'abc1234'
 $aGreen = Resolve-CiAdmission $gGreen $false
 $aPending = Resolve-CiAdmission $gPending $false
 $aNone = Resolve-CiAdmission $gNone $false
-$aOverride = Resolve-CiAdmission $gNone $true
+$aOverride = Resolve-CiAdmission $gNone $true 'clean' 'fixture: CI unreachable'
 $aRedOverride = Resolve-CiAdmission $gRed $true
 # R3-F1: a green HEAD does not admit a dirty tree.
 $aDirty = Resolve-CiAdmission $gGreen $false 'dirty'
 Assert (($aDirty.Admitted -eq $false) -and ($aDirty.Line -like '*the built tree is dirty, so CI did not check this candidate*')) 's37-green-head-does-not-admit-a-dirty-tree' $aDirty.Line
-Assert (($aGreen.Admitted -eq $true) -and ($aPending.Admitted -eq $false) -and ($aNone.Admitted -eq $false) -and ($aNone.Line -like '*only a green CI population check admits it*') -and ($aOverride.Admitted -eq $true) -and ($aOverride.Line -like '*admitted without CI verification (-AllowUnverifiedCi)') -and ($aRedOverride.Admitted -eq $false)) 's37-only-green-admits' "$($aNone.Line) | $($aOverride.Line)"
+Assert (($aGreen.Admitted -eq $true) -and ($aPending.Admitted -eq $false) -and ($aNone.Admitted -eq $false) -and ($aNone.Line -like '*only a green CI population check admits it*') -and ($aOverride.Admitted -eq $true) -and ($aOverride.Line -like '*admitted without CI verification (-AllowUnverifiedCi: fixture: CI unreachable)*') -and ($aRedOverride.Admitted -eq $false)) 's37-only-green-admits' "$($aNone.Line) | $($aOverride.Line)"
 Assert (($gRed.State -eq 'red') -and ($gRed.Line -eq 'CI population check failure on abc1234 (run 42): the population is refused') -and ($gGreen.State -eq 'green') -and ($gPending.State -eq 'pending') -and ($gNone.State -eq 'none') -and ($gNone.Line -like '*no build.yml run for abc1234*')) 's37-red-ci-check-refuses-the-population' "$($gRed.Line) | $($gGreen.Line) | $($gPending.Line) | $($gNone.Line)"
 
 # Nightly evidence second residuals (D00 T02 section 38).

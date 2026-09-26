@@ -32,6 +32,9 @@ param(
   # Admit the population without a green CI population check (D00 T02
   # section 37 R1-F1): an explicit operator override, quoted in the report.
   [switch]$AllowUnverifiedCi,
+  # Why the override is needed (D00 T02 section 52 item 9): required with
+  # -AllowUnverifiedCi, recorded in the result's audit block.
+  [string]$UnverifiedCiReason = '',
   [switch]$Force,
   [switch]$SkipDefault,
   [switch]$SkipPrimary,
@@ -365,6 +368,7 @@ if ($CheckOnly) { Write-Output 'nightly: environment OK'; exit 0 }
 # holder owns the proof. The OS releases the mutex at process exit; an
 # abandoned hold from a dead run reads as acquired.
 $runStart = Get-Date
+$script:ciOverride = $null
 # The UI trx files this run reads must be this run's and this build's
 # (D00 T02 section 52 item 5): a leftover or another build's trx refuses.
 $uiTrxExpect = [pscustomobject]@{ RunStartUtc = $runStart.ToUniversalTime(); Assembly = (Join-Path $Root 'Bin\UI\Debug\UI.dll') }
@@ -789,7 +793,8 @@ try {
       # the population; red, pending, or unverifiable CI refuses it unless
       # the operator passes -AllowUnverifiedCi, which the report quotes.
       $ciGate = Get-CandidateCiState $Root $script:buildHead
-      $ciGate = Resolve-CiAdmission $ciGate ([bool]$AllowUnverifiedCi) $treeStart.State
+      $ciGate = Resolve-CiAdmission $ciGate ([bool]$AllowUnverifiedCi) $treeStart.State $UnverifiedCiReason
+      $script:ciOverride = Get-CiOverrideRecord $ciGate $UnverifiedCiReason "$env:USERNAME" "$script:buildHead" (Get-Date).ToUniversalTime()
       Write-Output "nightly: $($ciGate.Line)"
       if (-not $ciGate.Admitted) { throw $ciGate.Line }
       $disc = Get-UiTestDiscovery $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $fpRead.RunAFilter $fpRead.RunBFilter $fpRead.InteractiveFilter
@@ -1248,6 +1253,7 @@ if (-not $ledgerRead.Ok) {
   if (($null -ne $gateB) -and ($gateB.GateCode -ne 0)) { $notQual += 'run-b foreground gate red' }
   if (@($soakKilled).Count -gt 0) { $notQual += "soak killed ($(@($soakKilled) -join ', '))" }
   if (@($conservationNotes).Count -gt 0) { $notQual += 'count conservation broken' }
+  if ($null -ne $script:ciOverride) { $notQual += 'CI unverified (-AllowUnverifiedCi override)' }
   if ("$buildError" -ne '') { $notQual += 'build failed' }
   if ("$placementError" -ne '') { $notQual += 'Primary placement invalid' }
   # The proof binding (D00 T02 section 52 item 1): a streak survives a
@@ -1341,6 +1347,8 @@ if ($debtQueryError -ne '') {
       if (($decision -eq 'close') -and -not $subId.Ok) {
         $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: identity mismatch (owed digest $($debt.Digest), executed $($subId.Digest)): debt stays open"
         $failed = $true
+      } elseif (($decision -eq 'close') -and ($null -ne $script:ciOverride)) {
+        $debtEntries += "- $($debt.Id) ($($debt.Section)): collected under -AllowUnverifiedCi ($($script:ciOverride.reason)); ineligible as closure evidence, debt stays open"
       } elseif ($decision -eq 'close') {
         $greenIds += $debt.Id
         $line = Format-CollectedLine $day $debt.Id $sub.Passed $sub.Failed $sub.Skipped $logRel $subId.Digest "$script:buildHead" "$stamp-pid$PID" (Get-Date).ToString('HH:mm') "collect-$stamp-$($debt.Id)"
@@ -1388,6 +1396,11 @@ if ($debtQueryError -ne '') {
     if (-not $fullId.Ok) {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: identity mismatch (owed digest $($debt.Digest), executed $($fullId.Digest)): debt stays open"
       $failed = $true
+      continue
+    }
+    if ($null -ne $script:ciOverride) {
+      # An overridden run never closes debt (section 52 item 9).
+      $debtEntries += "- $($debt.Id) ($($debt.Section)): collected under -AllowUnverifiedCi ($($script:ciOverride.reason)); ineligible as closure evidence, debt stays open"
       continue
     }
     $greenIds += $debt.Id
@@ -1612,7 +1625,7 @@ $previousStamp = ''
 $prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $stamp) } | Sort-Object Name | Select-Object -Last 1)
 if ($prevRes.Count -gt 0) { $previousStamp = ($prevRes[0].Name -replace '^morning-', '' -replace '\.result\.json$', '') }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); ciOverride = $script:ciOverride; eligible = ($null -eq $script:ciOverride); owedIdentities = $owedIdentitiesTonight; populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

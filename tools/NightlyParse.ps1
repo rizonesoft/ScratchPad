@@ -2165,7 +2165,7 @@ function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check 
   return [pscustomobject]@{ State = 'pending'; Line = "CI population check not verified: step '$Step' in run $($run.databaseId) reads '$c'" }
 }
 
-function Resolve-CiAdmission($Gate, [bool]$AllowUnverified, [string]$TreeState = 'clean') {
+function Resolve-CiAdmission($Gate, [bool]$AllowUnverified, [string]$TreeState = 'clean', [string]$Reason = '') {
   # Admission (D00 T02 section 37 R1-F1): only green admits. Red, pending,
   # or unverifiable CI refuses the population, naming the state; the
   # operator override admits a non-red state and the line says so. A red
@@ -2176,12 +2176,32 @@ function Resolve-CiAdmission($Gate, [bool]$AllowUnverified, [string]$TreeState =
   if (($Gate.State -eq 'green') -and ($TreeState -ne 'clean')) {
     $Gate = [pscustomobject]@{ State = 'none'; Line = "$($Gate.Line), but the built tree is $TreeState, so CI did not check this candidate" }
   }
-  if ($Gate.State -eq 'green') { return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Line = $Gate.Line } }
+  if ($Gate.State -eq 'green') { return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Overridden = $false; Line = $Gate.Line } }
+  # The override's scope (D00 T02 section 52 item 9): one run, a non-red
+  # state only, and a stated reason; the run it admits is never proof
+  # (Get-CiOverrideRecord marks its result ineligible).
   if (($Gate.State -ne 'red') -and $AllowUnverified) {
-    return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Line = "$($Gate.Line); admitted without CI verification (-AllowUnverifiedCi)" }
+    if ("$Reason".Trim() -eq '') { return [pscustomobject]@{ State = $Gate.State; Admitted = $false; Overridden = $false; Line = "$($Gate.Line); -AllowUnverifiedCi refused: it needs -UnverifiedCiReason <why> for the audit record" } }
+    return [pscustomobject]@{ State = $Gate.State; Admitted = $true; Overridden = $true; Line = "$($Gate.Line); admitted without CI verification (-AllowUnverifiedCi: $("$Reason".Trim())); this run is ineligible as recovery or closure evidence" }
   }
   $why = if ($Gate.State -eq 'red') { $Gate.Line } else { "$($Gate.Line); the population is refused (only a green CI population check admits it; -AllowUnverifiedCi overrides a non-red state)" }
-  return [pscustomobject]@{ State = $Gate.State; Admitted = $false; Line = $why }
+  return [pscustomobject]@{ State = $Gate.State; Admitted = $false; Overridden = $false; Line = $why }
+}
+
+function Get-CiOverrideRecord($Admission, [string]$Reason, [string]$By, [string]$Head, [datetime]$AtUtc) {
+  # The override's audit evidence (section 52 item 9): who admitted what
+  # state, why, when, on which head. $null when the run was not
+  # overridden.
+  if (-not [bool]$Admission.Overridden) { return $null }
+  return [pscustomobject][ordered]@{ state = "$($Admission.State)"; reason = "$Reason".Trim(); by = $By; head = $Head; at = $AtUtc.ToString('yyyy-MM-ddTHH:mm:ssZ') }
+}
+
+function Test-ResultProofEligible($Result) {
+  # A result is recovery and stamp evidence only when no CI override
+  # admitted its population (section 52 item 9); returns Ok plus Why.
+  $p = $Result.PSObject.Properties['ciOverride']
+  if (($null -ne $p) -and ($null -ne $p.Value)) { return [pscustomobject]@{ Ok = $false; Why = "admitted under -AllowUnverifiedCi ($($p.Value.state); $($p.Value.reason); by $($p.Value.by) at $($p.Value.at))" } }
+  return [pscustomobject]@{ Ok = $true; Why = '' }
 }
 
 function Get-CandidateCiState([string]$Root, [string]$Sha) {
