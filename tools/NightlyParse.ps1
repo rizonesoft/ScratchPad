@@ -3043,8 +3043,9 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
   # Verified recovery counts only qualifying runs (D00 T02 section 45
   # item 6): a run named not qualifying ($NotQualifying: aborted, killed
   # or budget-cut, a stub or simulation, or evidence that failed its own
-  # checks) records its failures as occurrences but neither advances
-  # nor resets any streak. Per test, a run that skipped or quarantined
+  # checks) records its failures as occurrences and never advances a
+  # streak; it resets a streak only through a failure in a phase whose own
+  # evidence stayed trustworthy ($TrustedPhases, section 53 item 8). Per test, a run that skipped or quarantined
   # the test never executed it, which already neither counts nor resets.
   # Incident lifecycle (D00 T02 §22 item 6, D00-T02-S17-PR27): an
   # incident is created once; later sightings append an occurrence to
@@ -3212,6 +3213,14 @@ function Get-ReplayOrder([string[]]$ResultFiles) {
   }
   foreach ($g in @($kept | Where-Object { $_.Snapshot -ne '' } | Group-Object Stamp | Where-Object { $_.Count -gt 1 })) {
     if (@($g.Group | ForEach-Object { $_.Snapshot } | Sort-Object -Unique).Count -gt 1) { $refusals += "conflicting snapshots at $($g.Name): $(@($g.Group | ForEach-Object { $_.Identity }) -join ' and ') publish different ledger states" }
+  }
+  # The rebuild restores the snapshot and replays only results stamped
+  # after it (section 53 R3-I1): another run stamped the same instant as a
+  # snapshot would be skipped, silently losing its failures, so a
+  # snapshot sharing its stamp with a different run refuses by name.
+  foreach ($g in @($kept | Group-Object Stamp | Where-Object { ($_.Count -gt 1) -and (@($_.Group | Where-Object { $_.Snapshot -ne '' }).Count -gt 0) })) {
+    $others = @($g.Group | Where-Object { $_.Snapshot -eq '' })
+    if ($others.Count -gt 0) { $refusals += "ambiguous replay cutoff at $($g.Name): the ledger snapshot of $(@($g.Group | Where-Object { $_.Snapshot -ne '' } | ForEach-Object { $_.Identity }) -join ', ') shares its stamp with $(@($others | ForEach-Object { $_.Identity }) -join ', '), whose results the rebuild would skip" }
   }
   return [pscustomobject]@{ Files = @($kept | Sort-Object Stamp, Identity | ForEach-Object { $_.File }); Refusals = $refusals }
 }
