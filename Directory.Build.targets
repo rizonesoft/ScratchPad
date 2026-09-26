@@ -1,0 +1,19 @@
+<Project>
+
+  <!--
+    Compile evidence (D00 T02 §52 item 2): each src project that actually
+    compiled records its own inputs' digest and its assembly's hash beside
+    the assembly, so the UI build's digest never vouches for a reference
+    that did not recompile. Skipped when nothing compiled, like the UI
+    digest.
+  -->
+  <PropertyGroup Condition="$(MSBuildProjectDirectory.Contains('\src\'))">
+    <!-- The compile timestamps the condition below reads run only in this mode (no src project has a post-build event it would change). -->
+    <RunPostBuildEvent>OnOutputUpdated</RunPostBuildEvent>
+  </PropertyGroup>
+
+  <Target Name="WriteCompileEvidence" AfterTargets="Build" Condition="'$(OS)' == 'Windows_NT' and $(MSBuildProjectDirectory.Contains('\src\')) and '$(_AssemblyTimestampBeforeCompile)' != '$(_AssemblyTimestampAfterCompile)'">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)tools\Write-CompileEvidence.ps1&quot; -Root &quot;$(MSBuildThisFileDirectory).&quot; -ProjectDir &quot;$(MSBuildProjectDirectory)&quot; -Assembly &quot;$(TargetPath)&quot; -Out &quot;$(TargetDir)compile-evidence.txt&quot;" StandardOutputImportance="low" />
+  </Target>
+
+</Project>

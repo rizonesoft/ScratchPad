@@ -365,6 +365,9 @@ if ($CheckOnly) { Write-Output 'nightly: environment OK'; exit 0 }
 # holder owns the proof. The OS releases the mutex at process exit; an
 # abandoned hold from a dead run reads as acquired.
 $runStart = Get-Date
+# The UI trx files this run reads must be this run's and this build's
+# (D00 T02 section 52 item 5): a leftover or another build's trx refuses.
+$uiTrxExpect = [pscustomobject]@{ RunStartUtc = $runStart.ToUniversalTime(); Assembly = (Join-Path $Root 'Bin\UI\Debug\UI.dll') }
 # Monotonic run clock starts with the run itself (D00 T02 §14 PR18), so
 # elapsed budgets never see time-sync or timezone jumps.
 $runClock = [System.Diagnostics.Stopwatch]::StartNew()
@@ -972,7 +975,7 @@ try {
   if ($interactiveRan -and $interactiveKilled) {
     try {
       $listedI = Get-ListTestsCases $Dotnet (Join-Path $Root 'tests\UI\UI.csproj') $collectFilter 'killed-interactive'
-      $executedI = Get-TrxExecutedNames (Join-Path $trxDir 'interactive.trx')
+      $executedI = Get-TrxExecutedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect
       $nightOwedRows += @(Get-UnexecutedCaseRows $listedI.Cases $executedI "interactive killed $stamp")
     } catch {
       $nightOwedRows += "- Night-owed: collection unverifiable after the kill ($_) | collector filter: $collectFilter (full collection re-owed)"
@@ -1247,7 +1250,10 @@ if (-not $ledgerRead.Ok) {
   if (@($conservationNotes).Count -gt 0) { $notQual += 'count conservation broken' }
   if ("$buildError" -ne '') { $notQual += 'build failed' }
   if ("$placementError" -ne '') { $notQual += 'Primary placement invalid' }
-  $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint')) ($notQual -join '; ')
+  # The proof binding (D00 T02 section 52 item 1): a streak survives a
+  # later candidate only when it descends from the recorded one.
+  $descends = { param($old, $new) $null = git -C $Root merge-base --is-ancestor $old $new 2>$null; return ($LASTEXITCODE -eq 0) }.GetNewClosure()
+  $ledgerUpd = Update-IncidentLedger $moved.Incidents $incidentGroups $stamp $passedByPhase (Get-QuarantineOwners (Join-Path $Root 'docs/soak-and-quarantine.md')) 3 $moved.Links (Get-ProofBinding $Root "$script:buildHead") ($notQual -join '; ') $descends
   if (@($moved.Lines).Count -gt 0) { $ledgerUpd.Lines = @($moved.Lines) + @($ledgerUpd.Lines) }
   $ledgerErr = ''
   # The run's checkpoint (D00 T02 section 45 item 4) lands first, in this
@@ -1433,8 +1439,10 @@ $prevRead = Read-PreviousOwedCases $nightDir $stamp
 if (@($prevRead.Unreadable).Count -gt 0) { $failed = $true; $nightOwedRows += "- Carried per-case debt: RED: unreadable result(s) $($prevRead.Unreadable -join '; '); owed cases carried from $(if ($prevRead.From -ne '') { $prevRead.From } else { 'no readable result' }) instead; repair the result" }
 $carryListed = @()
 try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
-$carry = Resolve-CarriedCaseDebt $prevRead.Owed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx')) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
+$carry = Resolve-CarriedCaseDebt $prevRead.Owed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
 if ($carry.Line -ne '') { $nightOwedRows += $carry.Line }
+# A refused trx closes nothing and says why (D00 T02 section 52 item 5).
+foreach ($tr in @($script:TrxRefusals | Sort-Object -Unique)) { $nightOwedRows += "- Trx refused (counted nothing): $tr" }
 $owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))
 if ($nightOwedRows.Count -gt 0) {
   $report += '### Night-owed (staged; triage files via add-todo)'
@@ -1576,7 +1584,7 @@ $previousStamp = ''
 $prevRes = @(Get-ChildItem -LiteralPath $nightDir -Filter 'morning-*.result.json' -File -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') -and ($Matches[1] -lt $stamp) } | Sort-Object Name | Select-Object -Last 1)
 if ($prevRes.Count -gt 0) { $previousStamp = ($prevRes[0].Name -replace '^morning-', '' -replace '\.result\.json$', '') }
 $result = [pscustomobject]@{
-  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
+  version = 1; revision = 1; proof = $proofRun; proofSource = $(if ($proofRun) { 'switches' } elseif ($simMode) { 'simulator' } else { '' }); population = "$populationCohort"; hostKey = (Get-HostKey); previousStamp = $previousStamp; owedCases = @($owedCasesTonight); populationIdentity = $(try { Get-PopulationIdentity (Join-Path $Root 'tests/UI/TestPopulation.fingerprint') } catch { 'unknown' }); proofBinding = $(try { Get-ProofBinding $Root "$script:buildHead" } catch { 'unknown' }); executedUnique = $executedUnique; populationState = $(if ("$populationCohort" -eq '') { 'unknown' } else { 'discovered' }); populationHash = "$populationHash"; harness = $harnessId; stamp = $stamp; day = $day; identity = "$stamp-pid$PID"
   verdict = if ($failed) { 'red' } else { 'green' }; exit = if ($failed) { 1 } else { 0 }
   simulated = [bool]$simMode; trigger = $trigger; launch = $launch.Verdict; commit = $buildHead
   buildError = $buildError

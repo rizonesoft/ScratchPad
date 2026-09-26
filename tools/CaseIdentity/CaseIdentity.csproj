@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- CA1303 (localizable strings): a dev tool; its console output is never localized. -->
+    <NoWarn>$(NoWarn);CA1303</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The Unit suite drives the encoder directly against fixture theories. -->
+    <InternalsVisibleTo Include="Unit" />
+  </ItemGroup>
+
+</Project>

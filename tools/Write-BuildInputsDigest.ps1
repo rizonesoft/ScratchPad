@@ -17,7 +17,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'NightlyParse.ps1')
-$d = Get-BuildInputsDigest ([System.IO.Path]::GetFullPath($Root)) $Sdk
+$rootFull = [System.IO.Path]::GetFullPath($Root)
+$d = Get-BuildInputsDigest $rootFull $Sdk
+# The binaries this digest describes (D00 T02 section 52 item 2), taken in
+# the same run: UI.dll plus each reference's compile evidence and copy.
+$bindingOut = Join-Path (Split-Path -Parent $Out) 'build-binding.txt'
+$binding = @(Get-BuildBindingLines $rootFull (Split-Path -Parent ([System.IO.Path]::GetFullPath($Out))) $script:UiBuildProjects)
+$tmpB = "$bindingOut.tmp"
+[System.IO.File]::WriteAllText($tmpB, (($binding) -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
+Move-Item -Path $tmpB -Destination $bindingOut -Force
 $tmp = "$Out.tmp"
 [System.IO.File]::WriteAllText($tmp, $d.Digest + "`n" + (($d.Lines) -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))
 Move-Item -Path $tmp -Destination $Out -Force

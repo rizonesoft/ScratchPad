@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Notepad.Core\Notepad.Core.csproj" />
+    <ProjectReference Include="..\..\tools\CaseIdentity\CaseIdentity.csproj" />
   </ItemGroup>
 
   <ItemGroup>

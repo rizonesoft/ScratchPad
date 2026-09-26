@@ -383,6 +383,20 @@ $lits = Get-NightlyFilterLiterals $fakeNightly
 Assert ((($lits.Literals -join '|') -eq 'Category!=Interactive&Category!=Primary|Category=Primary') -and ($lits.CollectDefault -eq 'Category=Interactive')) 'fingerprint-literals' (($lits.Literals -join '|') + ' / ' + $lits.CollectDefault)
 $popClean = Compare-TestPopulation $fpFile $fakeNightly $fpDisc
 Assert ($popClean.Ok -eq $true) 'fingerprint-clean' ($popClean.Drifts -join '|')
+# D00 T02 §52 item 4: the comparison carries the exclusion ledger when the
+# discovery carries its all-cases listing.
+$exPopDir = Join-Path $dir 's52-pop-exclusions'
+$null = New-Item -ItemType Directory -Force -Path $exPopDir
+$exPopLedger = Join-Path $exPopDir 'test-exclusions.md'
+Set-Content -LiteralPath $exPopLedger -Encoding UTF8 -Value @('| Case | Reason | Owner | Review by |', '| ---- | ------ | ----- | --------- |', '| UI.Z.Out | r |  | 2026-10-31 |')
+$exPopDisc = $fpDisc.PSObject.Copy()
+$exPopDisc | Add-Member -NotePropertyName Excluded -NotePropertyValue @('UI.Z.Out') -Force
+$exPopRed = Compare-TestPopulation $fpFile $fakeNightly $exPopDisc $exPopLedger ([datetime]::new(2026, 9, 26))
+$exPopNone = $fpDisc.PSObject.Copy()
+$exPopNone | Add-Member -NotePropertyName Excluded -NotePropertyValue @() -Force
+Set-Content -LiteralPath $exPopLedger -Encoding UTF8 -Value @('| Case | Reason | Owner | Review by |', '| ---- | ------ | ----- | --------- |')
+$exPopGreen = Compare-TestPopulation $fpFile $fakeNightly $exPopNone $exPopLedger ([datetime]::new(2026, 9, 26))
+Assert (($exPopRed.Ok -eq $false) -and ((@($exPopRed.Drifts) -join '|') -like '*UI.Z.Out has no owner*') -and $exPopGreen.Ok) 's52-population-reds-on-an-unowned-exclusion' ((@($exPopRed.Drifts) + @($exPopGreen.Drifts)) -join ' | ')
 $driftDisc = [pscustomobject]@{ RunA = @('UI.A.T1'); RunB = @('UI.B.P1', 'UI.B.P2'); Interactive = @(); RunAMethods = 1; RunACases = 1; RunBMethods = 2; RunBCases = 2; InteractiveMethods = 0; InteractiveCases = 0 }
 $popDrift = Compare-TestPopulation $fpFile $fakeNightly $driftDisc
 Assert (($popDrift.Ok -eq $false) -and (($popDrift.Drifts -join '') -like '*run-b added: UI.B.P2*') -and (($popDrift.Drifts -join '') -like '*interactive removed: UI.C.I1*') -and (($popDrift.Drifts -join '') -like '*run-a-methods: fingerprinted 2 vs discovered 1*')) 'fingerprint-drift' ($popDrift.Drifts -join '|')
@@ -609,25 +623,186 @@ Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1
 $legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
 $legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
 Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §52 item 5: trx reconciliation fails closed. A leftover trx
+# from another run, another assembly, an unmatched result, and an
+# ambiguous result each refuse by name and count nothing; precedence is
+# the latest attempt by endTime, and a timeout reads as a failure.
+$trDir = Join-Path $dir 's52-trx'
+$null = New-Item -ItemType Directory -Force -Path $trDir
+$trAsm = Join-Path $trDir 'UI.dll'
+[System.IO.File]::WriteAllBytes($trAsm, [byte[]](1))
+(Get-Item $trAsm).LastWriteTimeUtc = [datetime]::new(2026, 9, 26, 1, 0, 0, [DateTimeKind]::Utc)
+$trMake = {
+  param($name, $created, $storage, $results, $defs)
+  $f = Join-Path $trDir $name
+  $body = '<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Times creation="' + $created + '" /><TestDefinitions>' + (($defs | ForEach-Object { '<UnitTest name="' + $_[1] + '" storage="' + $storage + '" id="' + $_[0] + '" />' }) -join '') + '</TestDefinitions><Results>' + ($results -join '') + '</Results></TestRun>'
+  Set-Content -LiteralPath $f -Value $body -Encoding UTF8
+  return $f
+}
+$trExpect = [pscustomobject]@{ RunStartUtc = [datetime]::new(2026, 9, 26, 2, 30, 0, [DateTimeKind]::Utc); Assembly = $trAsm }
+$trDefs = @(, @('t1', 'UI.T.A')) + @(, @('t2', 'UI.T.B'))
+$trGood = & $trMake 'good.trx' '2026-09-26T02:40:00Z' $trAsm @(
+  '<UnitTestResult testId="t1" executionId="e1" testName="UI.T.A" outcome="Passed" endTime="2026-09-26T02:41:00Z" />',
+  '<UnitTestResult testId="t1" executionId="e2" testName="UI.T.A" outcome="Failed" endTime="2026-09-26T02:40:30Z" />',
+  '<UnitTestResult testId="t2" executionId="e3" testName="UI.T.B" outcome="Timeout" endTime="2026-09-26T02:41:10Z" />') $trDefs
+$trOld = & $trMake 'old.trx' '2026-09-25T02:40:00Z' $trAsm @('<UnitTestResult testId="t1" executionId="e1" testName="UI.T.A" outcome="Passed" />') $trDefs
+$trOther = & $trMake 'other.trx' '2026-09-26T02:40:00Z' 'c:\elsewhere\ui.dll' @('<UnitTestResult testId="t1" executionId="e1" testName="UI.T.A" outcome="Passed" />') $trDefs
+$trUnmatched = & $trMake 'unmatched.trx' '2026-09-26T02:40:00Z' $trAsm @('<UnitTestResult testId="t9" executionId="e1" testName="UI.T.Z" outcome="Passed" />') $trDefs
+$trTie = & $trMake 'tie.trx' '2026-09-26T02:40:00Z' $trAsm @(
+  '<UnitTestResult testId="t1" executionId="e1" testName="UI.T.A" outcome="Passed" endTime="2026-09-26T02:41:00Z" />',
+  '<UnitTestResult testId="t1" executionId="e2" testName="UI.T.A" outcome="Failed" endTime="2026-09-26T02:41:00Z" />') $trDefs
+$trRenamed = & $trMake 'renamed.trx' '2026-09-26T02:40:00Z' $trAsm @(
+  '<UnitTestResult testId="t1" executionId="e1" testName="UI.T.A" outcome="Passed" />',
+  '<UnitTestResult testId="t1" executionId="e2" testName="UI.T.A2" outcome="Passed" />') $trDefs
+$trG = Read-TrxCaseResults $trGood $trExpect
+$trA = @($trG.Cases | Where-Object { $_.Name -eq 'UI.T.A' })[0]
+$trB = @($trG.Cases | Where-Object { $_.Name -eq 'UI.T.B' })[0]
+$trR = @{}
+foreach ($k in @('old', 'other', 'unmatched', 'tie', 'renamed')) { $trR[$k] = Read-TrxCaseResults (Get-Variable -Name ('tr' + $k.Substring(0, 1).ToUpper() + $k.Substring(1)) -ValueOnly) $trExpect }
+$script:TrxRefusals = @()
+$trPassed = @(Get-TrxPassedNames $trOld $trExpect)
+Assert ($trG.Ok -and ($trA.Last -eq 'Passed') -and $trA.Executed -and ($trB.Last -eq 'Failed') -and $trB.Executed -and (-not $trR['old'].Ok) -and ($trR['old'].Refusals[0] -like 'foreign: old.trx was created * before this run started *') -and (-not $trR['other'].Ok) -and ($trR['other'].Refusals[0] -like 'foreign: other.trx holds results from c:\elsewhere\ui.dll*') -and (-not $trR['unmatched'].Ok) -and ($trR['unmatched'].Refusals[0] -like 'unmatched: result 1 (UI.T.Z) names testId t9*') -and (-not $trR['tie'].Ok) -and ($trR['tie'].Refusals[0] -like 'ambiguous: UI.T.A has latest attempts tied at *') -and (-not $trR['renamed'].Ok) -and ($trR['renamed'].Refusals[0] -like 'ambiguous: testId t1 is named both UI.T.A and UI.T.A2') -and ($trPassed.Count -eq 0) -and (@($script:TrxRefusals).Count -eq 2) -and (@($script:TrxRefusals | Where-Object { $_ -notlike '*old.trx -- foreign:*' }).Count -eq 0)) 's52-trx-reconciliation-fails-closed' ((@($trR.Values | ForEach-Object { $_.Refusals }) + @($script:TrxRefusals)) -join ' | ')
+# D00 T02 §52 item 4: an excluded case (listed, selected by no leg)
+# needs a ledger row with a reason, an owner, and a live review date; a
+# missing owner, an expired review, a missing row, a duplicate, and a
+# stale row each red, and the population comparison carries them.
+$exAll = @('UI.E.Kept', 'UI.E.Out(n: 1)', 'UI.E.Out(n: 1)', 'UI.E.Gone')
+$exSel = @('UI.E.Kept', 'UI.E.Out(n: 1)', 'UI.E.Gone')
+$exCases = @(Get-ExcludedCases $exAll $exSel)
+$exDir = Join-Path $dir 's52-exclusions'
+$null = New-Item -ItemType Directory -Force -Path $exDir
+$exLedger = Join-Path $exDir 'test-exclusions.md'
+$exToday = [datetime]::new(2026, 9, 26)
+$exWrite = { param($rows) Set-Content -LiteralPath $exLedger -Encoding UTF8 -Value (@('# Test exclusions', '', '| Case | Reason | Owner | Review by |', '| ---- | ------ | ----- | --------- |') + @($rows)) }
+& $exWrite @('| UI.E.Out(n: 1) | needs a printer the CI host lacks | operator | 2026-10-31 |')
+$exOk = @(Test-ExclusionLedger $exCases (Read-ExclusionLedger $exLedger) $exToday)
+& $exWrite @('| UI.E.Out(n: 1) | needs a printer the CI host lacks |  | 2026-10-31 |')
+$exNoOwner = @(Test-ExclusionLedger $exCases (Read-ExclusionLedger $exLedger) $exToday)
+& $exWrite @('| UI.E.Out(n: 1) | needs a printer the CI host lacks | operator | 2026-09-25 |')
+$exExpired = @(Test-ExclusionLedger $exCases (Read-ExclusionLedger $exLedger) $exToday)
+& $exWrite @()
+$exMissing = @(Test-ExclusionLedger $exCases (Read-ExclusionLedger $exLedger) $exToday)
+& $exWrite @('| UI.E.Out(n: 1) | r | operator | 2026-10-31 |', '| UI.E.Out(n: 1) | r | operator | 2026-10-31 |', '| UI.E.Kept | r | operator | 2026-10-31 |', '| UI.E.Bad | r | operator | soon |')
+$exMixed = @(Test-ExclusionLedger @($exCases + 'UI.E.Bad') (Read-ExclusionLedger $exLedger) $exToday)
+Assert (($exCases.Count -eq 1) -and ($exCases[0] -eq 'UI.E.Out(n: 1)') -and ($exOk.Count -eq 0) -and ($exNoOwner.Count -eq 1) -and ($exNoOwner[0] -like '*UI.E.Out(n: 1) has no owner') -and ($exExpired.Count -eq 1) -and ($exExpired[0] -like '*UI.E.Out(n: 1) review expired 2026-09-25*') -and ($exMissing.Count -eq 1) -and ($exMissing[0] -like 'excluded case without a ledger row: UI.E.Out(n: 1)*') -and (@($exMixed | Where-Object { $_ -like '*duplicate row for UI.E.Out(n: 1)' }).Count -eq 1) -and (@($exMixed | Where-Object { $_ -like '*stale row, UI.E.Kept is not excluded*' }).Count -eq 1) -and (@($exMixed | Where-Object { $_ -like "*UI.E.Bad review date 'soon' is not YYYY-MM-DD" }).Count -eq 1)) 's52-exclusions-need-an-owner-and-a-live-review' ("cases=$($exCases -join ',') | ok=$($exOk -join ';') | noOwner=$($exNoOwner -join ';') | expired=$($exExpired -join ';') | missing=$($exMissing -join ';') | mixed=$($exMixed -join ';')")
+# D00 T02 §52 item 2: the UI digest binds to the binaries: a reference
+# whose sources moved past its compile evidence (a timestamp-restored edit
+# that never recompiled) reads stale even after an ordinary UI rebuild
+# rewrites the binding; a copy that is not the reference's assembly, a
+# missing evidence file, and a UI.dll changed since the binding each refuse.
+$bbRoot = Join-Path $dir 's52-bind'
+$bbRef = Join-Path $bbRoot 'src\Ref'
+$bbOut = Join-Path $bbRoot 'Bin\UI\Debug'
+$bbEv = Join-Path $bbRoot 'Bin\Ref\Debug'
+$null = New-Item -ItemType Directory -Force -Path $bbRef, $bbOut, $bbEv
+Set-Content -LiteralPath (Join-Path $bbRef 'Ref.csproj') -Value '<Project />' -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $bbRef 'A.cs') -Value 'class A { }' -Encoding UTF8
+[System.IO.File]::WriteAllBytes((Join-Path $bbEv 'Ref.dll'), [byte[]](1, 2, 3))
+Copy-Item -LiteralPath (Join-Path $bbEv 'Ref.dll') -Destination (Join-Path $bbOut 'Ref.dll')
+[System.IO.File]::WriteAllBytes((Join-Path $bbOut 'UI.dll'), [byte[]](9, 9))
+$bbWriteEvidence = {
+  $d = Get-ProjectOwnInputsDigest $bbRoot $bbRef
+  Set-Content -LiteralPath (Join-Path $bbEv 'compile-evidence.txt') -Value @("inputs $($d.Digest)", "assembly $(Get-FileSha256 (Join-Path $bbEv 'Ref.dll'))") -Encoding UTF8
+}
+$bbBind = { Set-Content -LiteralPath (Join-Path $bbOut 'build-binding.txt') -Value @(Get-BuildBindingLines $bbRoot $bbOut @((Join-Path $bbRef 'Ref.csproj'))) -Encoding UTF8 }
+& $bbWriteEvidence
+& $bbBind
+$bbFresh = Test-BuildBinding $bbRoot (Join-Path $bbOut 'build-binding.txt')
+# The reference edit keeps its old timestamp and never recompiles; an
+# ordinary UI edit then recompiles UI and rewrites the binding.
+$bbA = Join-Path $bbRef 'A.cs'
+$bbStamp = (Get-Item $bbA).LastWriteTimeUtc
+Set-Content -LiteralPath $bbA -Value 'class A { int x; }' -Encoding UTF8
+(Get-Item $bbA).LastWriteTimeUtc = $bbStamp
+[System.IO.File]::WriteAllBytes((Join-Path $bbOut 'UI.dll'), [byte[]](9, 9, 9))
+& $bbBind
+$bbStale = Test-BuildBinding $bbRoot (Join-Path $bbOut 'build-binding.txt')
+# The reference recompiles (new evidence) but the UI output keeps the old copy.
+[System.IO.File]::WriteAllBytes((Join-Path $bbEv 'Ref.dll'), [byte[]](1, 2, 3, 4))
+& $bbWriteEvidence
+& $bbBind
+$bbCopy = Test-BuildBinding $bbRoot (Join-Path $bbOut 'build-binding.txt')
+Copy-Item -LiteralPath (Join-Path $bbEv 'Ref.dll') -Destination (Join-Path $bbOut 'Ref.dll') -Force
+& $bbBind
+$bbHealed = Test-BuildBinding $bbRoot (Join-Path $bbOut 'build-binding.txt')
+[System.IO.File]::WriteAllBytes((Join-Path $bbOut 'UI.dll'), [byte[]](7))
+$bbUi = Test-BuildBinding $bbRoot (Join-Path $bbOut 'build-binding.txt')
+Remove-Item -LiteralPath (Join-Path $bbEv 'compile-evidence.txt')
+& $bbBind
+$bbMissing = Test-BuildBinding $bbRoot (Join-Path $bbOut 'build-binding.txt')
+$bbNone = Test-BuildBinding $bbRoot (Join-Path $bbOut 'no-binding.txt')
+Assert ($bbFresh.Ok -and (-not $bbStale.Ok) -and ($bbStale.Error -like '*reference Ref did not recompile after its sources changed*--no-incremental') -and (-not $bbCopy.Ok) -and ($bbCopy.Error -like "*the UI output's Ref.dll is not the assembly Ref's compile produced*") -and $bbHealed.Ok -and (-not $bbUi.Ok) -and ($bbUi.Error -like '*UI.dll changed since its binding was recorded*') -and (-not $bbMissing.Ok) -and ($bbMissing.Error -like '*reference Ref has no usable compile evidence (missing)*') -and (-not $bbNone.Ok) -and ($bbNone.Error -like '*has no binary binding*')) 's52-binding-refuses-a-reference-that-never-recompiled' "fresh=$($bbFresh.Error) | stale=$($bbStale.Error) | copy=$($bbCopy.Error) | healed=$($bbHealed.Error) | ui=$($bbUi.Error) | missing=$($bbMissing.Error) | none=$($bbNone.Error)"
+# D00 T02 §52 item 1: a proof binds to the build inputs, the leg filters,
+# the configuration, and the candidate lineage beside the population: a
+# source edit with identical cases reads stale, a descendant candidate
+# keeps the streak, and a non-descendant one resets it.
+$pbRoot = Join-Path $dir 's52-binding'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $pbRoot 'tests\UI'), (Join-Path $pbRoot 'Bin\UI\Debug')
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'tests\UI\TestPopulation.fingerprint') -Destination (Join-Path $pbRoot 'tests\UI\TestPopulation.fingerprint')
+Set-Content -LiteralPath (Join-Path $pbRoot 'Bin\UI\Debug\build-inputs.digest') -Value @('aaaaaaaaaaaaaaaa', 'src/x.cs 1') -Encoding UTF8
+$pb1 = Get-ProofBinding $pbRoot 'c0ffee1'
+Set-Content -LiteralPath (Join-Path $pbRoot 'Bin\UI\Debug\build-inputs.digest') -Value @('bbbbbbbbbbbbbbbb', 'src/x.cs 2') -Encoding UTF8
+$pb2 = Get-ProofBinding $pbRoot 'c0ffee1'
+$pb3 = Get-ProofBinding $pbRoot 'c0ffee2'
+$pb4 = Get-ProofBinding $pbRoot 'badbad3'
+$pbDesc = { param($old, $new) return (($old -eq 'c0ffee1') -and ($new -eq 'c0ffee2')) }
+$pbLed = @{ 'INC-5200a001' = [pscustomobject]@{ id = 'INC-5200a001'; test = 'UI.PB.T'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 0; lastPassStamp = '' } }
+$pbPass = @{ 'run-a' = @('UI.PB.T') }
+$pbU1 = Update-IncidentLedger $pbLed @() 's1' $pbPass @{} 5 @{} $pb1 '' $pbDesc
+$pbU2 = Update-IncidentLedger $pbU1.Incidents @() 's2' $pbPass @{} 5 @{} $pb2 '' $pbDesc
+$pbE2 = $pbU2.Incidents['INC-5200a001'].passStreak
+$pbU3 = Update-IncidentLedger $pbU2.Incidents @() 's3' $pbPass @{} 5 @{} $pb2 '' $pbDesc
+$pbU4 = Update-IncidentLedger $pbU3.Incidents @() 's4' $pbPass @{} 5 @{} $pb3 '' $pbDesc
+$pbE4 = $pbU4.Incidents['INC-5200a001'].passStreak
+$pbU5 = Update-IncidentLedger $pbU4.Incidents @() 's5' $pbPass @{} 5 @{} $pb4 '' $pbDesc
+$pbE5 = $pbU5.Incidents['INC-5200a001'].passStreak
+$pbAll = @($pbU2.Lines) + @($pbU4.Lines) + @($pbU5.Lines)
+Assert (($pb1 -like 'population=* build=aaaaaaaaaaaaaaaa filters=* config=Debug candidate=c0ffee1') -and ($pb1 -notlike '*population=unknown*') -and ($pb1 -notlike '*filters=unknown*') -and ([int]$pbE2 -eq 1) -and ((@($pbU2.Lines | Where-Object { $_ -like '*streak reset (build aaaaaaaaaaaaaaaa -> bbbbbbbbbbbbbbbb: the earlier passes stand stale)*' }).Count) -eq 1) -and ([int]$pbE4 -eq 3) -and ((@($pbU4.Lines) -join '') -notlike '*streak reset*') -and ([int]$pbE5 -eq 1) -and ((@($pbU5.Lines | Where-Object { $_ -like '*streak reset (candidate c0ffee2 -> badbad3: not a descendant: *' }).Count) -eq 1)) 's52-proof-reads-stale-after-a-source-edit-with-identical-cases' ("pb1=$pb1 e2=$pbE2 e4=$pbE4 e5=$pbE5 | " + ($pbAll -join ' | '))
+$pbF = Get-ProofBindingChange 'population=p build=b filters=f1 config=Debug candidate=c0ffee1' 'population=p build=b filters=f2 config=Release candidate=c0ffee1' $pbDesc
+$pbLegacy = Get-ProofBindingChange 'p' 'population=p build=b filters=f config=Debug candidate=c0ffee1' $pbDesc
+$pbUnknown = Get-ProofBindingChange 'population=p build=b candidate=c0ffee1' 'population=p build=b candidate=unknown' $pbDesc
+$pbSame = Get-ProofBindingChange 'population=p build=b' 'population=p build=b' $pbDesc
+Assert (($pbF -eq 'filters f1 -> f2; config Debug -> Release') -and ($pbLegacy -like 'build unrecorded -> b; filters unrecorded -> f; config unrecorded -> Debug; candidate unrecorded -> c0ffee1: not a descendant') -and ($pbUnknown -eq 'candidate c0ffee1 -> unknown: not a descendant') -and ($pbSame -eq '')) 's52-every-binding-part-counts' "f=$pbF | legacy=$pbLegacy | unknown=$pbUnknown | same=$pbSame"
 # D00 T02 §44 R1-F2: a retried case counts once per attempt set, so it
 # never discharges its unexecuted twin.
 $att = @(Merge-AttemptNames @(@('UI.D.Dup'), @('UI.D.Dup')))
 $twin = @(Get-UnexecutedCaseRows @('UI.D.Dup', 'UI.D.Dup') $att 'fixture')
 $twinClose = @(Close-OwedCases @('UI.D.Dup', 'UI.D.Dup') (Merge-AttemptNames @(@('UI.D.Dup'), @('UI.D.Dup'))))
 Assert (($att.Count -eq 1) -and ($twin.Count -eq 1) -and ($twin[0] -like '*UI.D.Dup | 1 of 2 cases unexecuted*') -and ($twinClose.Count -eq 1)) 's44-retry-never-discharges-a-twin' (($twin + $twinClose) -join ' || ')
-# D00 T02 §44 R1-F1: a truncated display name adds its method's
-# test-data source digest, so an argument changed past the cut changes the
-# identity; an untruncated listing adds nothing.
-$srcDir = Join-Path $dir 'trunc-src'
-$null = New-Item -ItemType Directory -Force -Path $srcDir
-$srcA = @('public sealed class TruncTests', '{', '    [Theory]', '    [InlineData("a very long argument that runs well past the fifty character cut AAA")]', '    public void Long(string s) { }', '}')
-$srcA | Set-Content -Path (Join-Path $srcDir 'TruncTests.cs') -Encoding UTF8
+# D00 T02 §52 item 3 (replacing §44 R1-F1's args-source digest): a
+# truncated display name adds its method's canonical case rows from the
+# CaseIdentity tool, so an argument changed past the cut changes the
+# identity; an untruncated listing asks nothing; a refusal, a nonzero
+# exit, or a cut method with no rows throws by name.
 $cutName = 'UI.TruncTests.Long(s: "a very long argument that runs well past the fifty c"' + ([string][char]0xB7 * 3) + ')'
-$rowA = @(Get-TruncatedCaseSourceRows $srcDir @($cutName))
-($srcA -replace 'AAA', 'BBB') | Set-Content -Path (Join-Path $srcDir 'TruncTests.cs') -Encoding UTF8
-$rowB = @(Get-TruncatedCaseSourceRows $srcDir @($cutName))
-$rowNone = @(Get-TruncatedCaseSourceRows $srcDir @('UI.TruncTests.Short(s: "x")'))
-Assert (($rowA.Count -eq 1) -and ($rowA[0] -like 'UI.TruncTests.Long#args-source *') -and ($rowA[0] -ne $rowB[0]) -and ($rowNone.Count -eq 0) -and ((Get-CaseHash (@($cutName) + $rowA)) -ne (Get-CaseHash (@($cutName) + $rowB)))) 's44-argument-past-the-cut-changes-identity' (($rowA + $rowB) -join ' | ')
+$asked = @()
+$fakeA = { param($m) $script:asked += @($m); [pscustomobject]@{ Text = "UI.TruncTests.Long(`"a very long argument that runs well past the fifty character cut AAA`")`n"; Code = 0 } }
+$fakeB = { param($m) [pscustomobject]@{ Text = "UI.TruncTests.Long(`"a very long argument that runs well past the fifty character cut BBB`")`n"; Code = 0 } }
+$rowA = @(Get-CanonicalCaseRows @($cutName) $fakeA)
+$rowB = @(Get-CanonicalCaseRows @($cutName) $fakeB)
+$script:asked = @()
+$rowNone = @(Get-CanonicalCaseRows @('UI.TruncTests.Short(s: "x")') $fakeA)
+Assert (($rowA.Count -eq 1) -and ($rowA[0] -like 'case UI.TruncTests.Long("*AAA")') -and ($rowA[0] -ne $rowB[0]) -and ($rowNone.Count -eq 0) -and ($script:asked.Count -eq 0) -and ((Get-CaseHash (@($cutName) + $rowA)) -ne (Get-CaseHash (@($cutName) + $rowB)))) 's52-argument-past-the-cut-changes-identity' (($rowA + $rowB) -join ' | ')
+$refusals = @()
+foreach ($bad in @(
+    @{ n = 'refuse'; r = { param($m) [pscustomobject]@{ Text = "REFUSE UI.TruncTests.Long: unsupported argument type X`n"; Code = 1 } } },
+    @{ n = 'exit'; r = { param($m) [pscustomobject]@{ Text = "boom`n"; Code = 3 } } },
+    @{ n = 'none'; r = { param($m) [pscustomobject]@{ Text = "UI.Other.M(1)`n"; Code = 0 } } })) {
+  try { $null = Get-CanonicalCaseRows @($cutName) $bad.r; $refusals += "$($bad.n)=accepted" } catch { $refusals += "$($bad.n)=$($_.Exception.Message)" }
+}
+Assert (($refusals[0] -like 'refuse=case identity refused: REFUSE UI.TruncTests.Long: unsupported argument type X') -and ($refusals[1] -like 'exit=case identity failed (exit 3)*') -and ($refusals[2] -like 'none=*UI.TruncTests.Long listed cut rows but the tool returned none')) 's52-case-identity-refuses-by-name' ($refusals -join ' || ')
+# The real tool over the Unit fixtures, when the solution is built: a
+# constant past the cut encodes whole.
+$repo = Split-Path -Parent $PSScriptRoot
+$realTool = Join-Path $repo 'Bin\CaseIdentity\Debug\CaseIdentity.exe'
+$realAsm = Join-Path $repo 'Bin\Unit\Debug\Unit.dll'
+if ((Test-Path $realTool) -and (Test-Path $realAsm)) {
+  $realCut = 'Unit.CaseIdentityTests.Constant(s: "01234567890123456789012345678901234567890123456789"' + ([string][char]0xB7 * 3) + ')'
+  $realRows = @(try { Get-CanonicalCaseRows @($realCut) (Get-CaseIdentityRunner (Join-Path $repo 'tests\Unit\Unit.csproj')) } catch { "threw: $($_.Exception.Message)" })
+  Assert (($realRows.Count -eq 1) -and ($realRows[0] -eq 'case Unit.CaseIdentityTests.Constant("0123456789012345678901234567890123456789012345678901234567890A")')) 's52-real-tool-encodes-a-constant-past-the-cut' ($realRows -join ' | ')
+} else {
+  Write-Output "SKIP s52-real-tool-encodes-a-constant-past-the-cut (not built: $realTool, $realAsm; run dotnet build src/ScratchPad.slnx)"
+}
 # D00 T02 §44 R1-F4: the carried debt closes each case only on its own
 # green row tonight, and stays whole when the leg did not run.
 $carried = Resolve-CarriedCaseDebt @('UI.T.M(x: 1)', 'UI.T.M(x: 2)', 'UI.T.M(x: 3)') @('UI.T.M(x: 1)', 'UI.T.M(x: 3)') $true
@@ -661,19 +836,6 @@ $null = New-Item -ItemType Directory -Force -Path $poDir
 '{ not json' | Set-Content -Path (Join-Path $poDir 'morning-2026-09-21-023001.result.json') -Encoding UTF8
 $po = Read-PreviousOwedCases $poDir '2026-09-22-023001'
 Assert (($mo.Count -eq 2) -and (@($mo | Where-Object { $_ -eq 'UI.M.A' }).Count -eq 1) -and (@($po.Owed).Count -eq 1) -and ($po.Owed[0] -eq 'UI.P.X(a: 1)') -and ($po.From -eq 'morning-2026-09-20-023001.result.json') -and (@($po.Unreadable).Count -eq 1) -and ($po.Unreadable[0] -like 'morning-2026-09-21-023001.result.json*')) 's44-carried-debt-merges-and-survives-a-corrupt-result' "mo=$($mo -join ',') from=$($po.From) bad=$($po.Unreadable -join ',')"
-# D00 T02 §44 R2-F1: the args-source digest covers a multiline attribute
-# and a data member's transitive static helpers.
-$msDir = Join-Path $dir 'trunc-multi'
-$null = New-Item -ItemType Directory -Force -Path $msDir
-$msA = @('public sealed class MultiTests', '{', '    static string Tail() => "AAA";', '    public static IEnumerable<object[]> Rows()', '    {', '        yield return new object[] { "a long argument well beyond the fifty character cut " + Tail() };', '    }', '', '    [Theory]', '    [InlineData("first",', '        "second line CCC")]', '    [MemberData(nameof(Rows))]', '    public void Long(string s, string t = "") { }', '}')
-$msA | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
-$msName = 'UI.MultiTests.Long(s: "a long argument well beyond the fifty character c"' + ([string][char]0xB7 * 3) + ')'
-$msRow1 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
-($msA -replace 'AAA', 'BBB') | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
-$msRow2 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
-($msA -replace 'CCC', 'DDD') | Set-Content -Path (Join-Path $msDir 'MultiTests.cs') -Encoding UTF8
-$msRow3 = @(Get-TruncatedCaseSourceRows $msDir @($msName))
-Assert (($msRow1.Count -eq 1) -and ($msRow1[0] -notlike '*unresolved') -and ($msRow1[0] -ne $msRow2[0]) -and ($msRow1[0] -ne $msRow3[0])) 's44-args-source-covers-multiline-and-helpers' (($msRow1 + $msRow2 + $msRow3) -join ' | ')
 # D00 T02 §44 R3-R1: a newer result that parses but is no result (`{}`)
 # is refused like corrupt JSON, and the older result's debt carries.
 '{}' | Set-Content -Path (Join-Path $poDir 'morning-2026-09-21-120000.result.json') -Encoding UTF8
@@ -730,6 +892,13 @@ foreach ($f in @('tests\UI\UI.csproj', 'src\App\App.csproj', 'src\App\A.cs', 'Di
 # target would, so the fresh fixture is fresh by content too.
 $bDigest = Get-BuildInputsDigest $bRoot (Get-UiSdkVersion $bRoot)
 [System.IO.File]::WriteAllText((Join-Path $bRoot 'Bin\UI\Debug\build-inputs.digest'), $bDigest.Digest + "`n" + ($bDigest.Lines -join "`n") + "`n")
+# The reference's compile evidence and the binary binding (section 52
+# item 2), as the build targets write them.
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $bRoot 'Bin\App\Debug')
+[System.IO.File]::WriteAllBytes((Join-Path $bRoot 'Bin\App\Debug\App.dll'), [byte[]](4, 2))
+Copy-Item -LiteralPath (Join-Path $bRoot 'Bin\App\Debug\App.dll') -Destination (Join-Path $bRoot 'Bin\UI\Debug\App.dll')
+Set-Content -LiteralPath (Join-Path $bRoot 'Bin\App\Debug\compile-evidence.txt') -Value @("inputs $((Get-ProjectOwnInputsDigest $bRoot (Join-Path $bRoot 'src\App')).Digest)", "assembly $(Get-FileSha256 (Join-Path $bRoot 'Bin\App\Debug\App.dll'))") -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $bRoot 'Bin\UI\Debug\build-binding.txt') -Value @(Get-BuildBindingLines $bRoot (Join-Path $bRoot 'Bin\UI\Debug') @($script:UiBuildProjects)) -Encoding UTF8
 $freshB = Get-UiBuildFreshness $bRoot
 (Get-Item (Join-Path $bRoot 'Directory.Build.props')).LastWriteTimeUtc = $tOld.AddMinutes(20)
 $staleShared = Get-UiBuildFreshness $bRoot
@@ -794,7 +963,7 @@ Assert (($freshB.Ok -eq $true) -and ($staleShared.Ok -eq $false) -and ($staleSha
 $owedRows = @(Get-UnexecutedCaseRows @('UI.X.Theory(n: 1)', 'UI.X.Theory(n: 2)', 'UI.X.Theory(n: 3)', 'UI.X.Fact') @('UI.X.Theory(n: 2)', 'UI.X.Fact') 'fixture kill')
 Assert (($owedRows.Count -eq 1) -and ($owedRows[0] -eq '- Night-owed: UI.X.Theory | 2 of 3 cases unexecuted (fixture kill) | collector filter: FullyQualifiedName=UI.X.Theory | cases: UI.X.Theory(n: 1) ;; UI.X.Theory(n: 3)')) 's37-partial-theory-keeps-two-owed' ($owedRows -join '|')
 $trxPart = Join-Path $dir 'partial.trx'
-'<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results><UnitTestResult testName="UI.X.Theory(n: 2)" outcome="Passed" /><UnitTestResult testName="UI.X.Skip" outcome="NotExecuted" /></Results></TestRun>' | Set-Content -Path $trxPart -Encoding UTF8
+'<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results><UnitTestResult testId="p1" testName="UI.X.Theory(n: 2)" outcome="Passed" /><UnitTestResult testId="p2" testName="UI.X.Skip" outcome="NotExecuted" /></Results></TestRun>' | Set-Content -Path $trxPart -Encoding UTF8
 $exec = @(Get-TrxExecutedNames $trxPart)
 Assert (($exec.Count -eq 1) -and ($exec[0] -eq 'UI.X.Theory(n: 2)') -and (@(Get-TrxExecutedNames (Join-Path $dir 'no.trx')).Count -eq 0)) 's37-trx-executed-names' ($exec -join '|')
 # Item 1: a red CI population check refuses; green passes; pending and

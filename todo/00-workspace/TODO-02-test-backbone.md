@@ -1675,6 +1675,8 @@ Why this section exists: the §43 plan review returned 13 findings; 12 file here
 
 ## 52. Population Gate Third Residuals
 
+> **Started:** 2026-09-26T06:38:00Z
+
 Why this section exists: the §44 plan review returned 12 findings; 11 file here and 1 is rejected with its reason in the §44 findings file, and three of the filed items absorb the §44 sign-off leftovers (R3-F1, R3-F2, R3-F4) that sat below the blocking bar. §44 made freshness content-based, gave case rows an identity, accounted capability skips, reconciled per-case debt across retries and nights, bound proofs to the population, versioned the fingerprint, and named drift; these carry that through proof binding beyond the population, binary-bound provenance, a canonical identity encoding, exclusion accountability, fail-closed trx reconciliation, failure-apart closure, capability debt escalation, debt migration, override scope, schema compatibility, and a durable handoff. -> SOURCE: plan-review-D00-T02-s44-2026-09-25-s52 D00-T02-S44-PR1 D00-T02-S44-PR2 D00-T02-S44-PR3 D00-T02-S44-PR4 D00-T02-S44-PR5 D00-T02-S44-PR6 D00-T02-S44-PR7 D00-T02-S44-PR8 D00-T02-S44-PR9 D00-T02-S44-PR10 D00-T02-S44-PR11
 
 - -> XREF: D00 T02 §44 -- filed from its plan review; carries the gate it settled.

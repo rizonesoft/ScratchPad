@@ -8,4 +8,5 @@
   <Project Path="Notepad.Acp/Notepad.Acp.csproj" />
   <Project Path="Notepad.Agents/Notepad.Agents.csproj" />
   <Project Path="Notepad.Core/Notepad.Core.csproj" />
+  <Project Path="../tools/CaseIdentity/CaseIdentity.csproj" />
 </Solution>

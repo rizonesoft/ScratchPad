@@ -280,7 +280,7 @@ run-a:
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
 run-a-methods: 271
 run-a-cases: 335
-run-a-case-hash: d7dc47822ccbbbad
+run-a-case-hash: 3d58fa593586f40e
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -378,11 +378,9 @@ run-a-case-rows:
   UI|UI.LaunchDropsTests.OptInLaunchDrainsBeforeActivation
   UI|UI.LaunchDropsTests.OptInSeedDrainsExactlyOnce
   UI|UI.LaunchGuardTests.CrossFileGlobalAliasIsCaught
-  UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath#args-source 8a0da50494064267
   UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/MyUiLaunch.cs", clean: False)
   UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/Sub/Helper.cs", clean: False)
   UI|UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath(snippet: "class Q { void M() { System.Diagnostics.Process.St"···, fileName: "tests/UI/UiLaunch.cs", clean: True)
-  UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard#args-source 544a87f6ebdf891e
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { [Xunit.Fact] public void LaunchAppendsTa"···)
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var a = FlaUI.Core.Applicatio"···)
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M() { var ps = System.Diagnostics.P"···)
@@ -390,7 +388,6 @@ run-a-case-rows:
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "class Q { void M(FlaUI.Core.AutomationElements.But"···)
   UI|UI.LaunchGuardTests.LegitimateShapesPassTheGuard(snippet: "using System.Reflection; class Q { void M() { fore"···)
   UI|UI.LaunchGuardTests.LiveTreeScansClean
-  UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard#args-source 4eeb3c4066a8784b
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class P { void M() { System.Diagnostics.Process.St"···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "class Q { [global::System.Runtime.InteropServices."···)
@@ -418,7 +415,6 @@ run-a-case-rows:
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; class Q { [D"···)#3
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using System.Runtime.InteropServices; partial clas"···)
   UI|UI.LaunchGuardTests.PlantedBypassFailsTheGuard(snippet: "using static System.Diagnostics.Process; class Q {"···)
-  UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed#args-source 2234cb912e1e692b
   UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "class Q { void M() { var t = Microsoft.CodeAnalysi"···)
   UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; class Q { de"···)
   UI|UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed(snippet: "using System.Runtime.InteropServices; unsafe class"···)
@@ -621,6 +617,45 @@ run-a-case-rows:
   UI|UI.UiLeakBundleTests.ScrubTitleTruncates
   UI|UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI|UI.UntitledTitleTests.TypingFirstLineRenamesTab
+  UI|case UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/MyUiLaunch.cs", false)
+  UI|case UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/Sub/Helper.cs", false)
+  UI|case UI.LaunchGuardTests.ExemptionAppliesOnlyToTheSanctionedPath("class Q { void M() { System.Diagnostics.Process.Start(\"x\"); } }", "tests/UI/UiLaunch.cs", true)
+  UI|case UI.LaunchGuardTests.LegitimateShapesPassTheGuard("class Q { [Xunit.Fact] public void LaunchAppendsTab() { UiLaunch.LaunchAppWithArgs(\"\"); } }")
+  UI|case UI.LaunchGuardTests.LegitimateShapesPassTheGuard("class Q { void M() { var a = FlaUI.Core.Application.Attach(5); } }")
+  UI|case UI.LaunchGuardTests.LegitimateShapesPassTheGuard("class Q { void M() { var ps = System.Diagnostics.Process.GetProcessesByName(\"x\"); } }")
+  UI|case UI.LaunchGuardTests.LegitimateShapesPassTheGuard("class Q { void M() { var x = new System.Collections.Generic.List<int>(); x.Add(1); } }")
+  UI|case UI.LaunchGuardTests.LegitimateShapesPassTheGuard("class Q { void M(FlaUI.Core.AutomationElements.Button b) { b.Invoke(); } }")
+  UI|case UI.LaunchGuardTests.LegitimateShapesPassTheGuard("using System.Reflection; class Q { void M() { foreach (Type t in typeof(Q).Assembly.GetTypes()) { foreach (MethodInfo m in t.GetMethods()) { } } } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class P { void M() { System.Diagnostics.Process.Start(\"x\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { [System.Runtime.InteropServices.DllImportAttribute(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { [global::System.Runtime.InteropServices.DllImport(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void LaunchApp() {} }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M() { dynamic p = null; p.Start(); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M() { new System.Diagnostics.Process().Start(); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M() { object? r = typeof(Q).Assembly.CreateInstance(\"Q\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M() { var m = typeof(System.Diagnostics.Process).GetMethod(\"Start\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M() { var p = new System.Diagnostics.Process(); p.Start(); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M() { var p = new System.Diagnostics.Process(); var alias = p; alias.Start(); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void M(System.Reflection.MethodInfo m, object o) { m.Invoke(o, null); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void MyLauncher() { FlaUI.Core.Application.Launch(\"e\", \"a\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("class Q { void SeedSettings() {} }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using A = FlaUI.Core.Application; class Q { void M() { A.Launch(\"e\", \"a\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using DI = System.Runtime.InteropServices.DllImportAttribute; class Q { [DI(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using DIAttribute = System.Runtime.InteropServices.DllImportAttribute; class Q { [DI(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using FlaUI.Core; class P { void M() { Application.Launch(\"e\", \"a\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using I = System.Runtime.InteropServices; class Q { [I::DllImport(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using P = System.Diagnostics.Process; class Q { void M() { P p = new(); p.Start(); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using P = System.Diagnostics.Process; class Q { void M() { P.Start(\"x\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using P = System.Diagnostics.Process; class Q { void M() { var q = new P(); q.Start(); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using System.Diagnostics; class P { void M() { Process.Start(\"x\"); } }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using System.Runtime.InteropServices; class Q { [DllImport(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using System.Runtime.InteropServices; class Q { [DllImport(\"shell32.dll\", EntryPoint = \"ShellExecuteW\")] static extern int OpenIt(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using System.Runtime.InteropServices; class Q { [DllImportAttribute(\"kernel32.dll\")] static extern bool CreateProcessW(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using System.Runtime.InteropServices; partial class Q { [LibraryImport(\"kernel32.dll\", EntryPoint = \"CreateProcessW\")] static partial bool Spawn(); }")
+  UI|case UI.LaunchGuardTests.PlantedBypassFailsTheGuard("using static System.Diagnostics.Process; class Q { void M() { Start(\"x\"); } }")
+  UI|case UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed("class Q { void M() { var t = Microsoft.CodeAnalysis.CSharp.Scripting.CSharpScript.EvaluateAsync(\"1\"); } }")
+  UI|case UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed("using System.Runtime.InteropServices; class Q { delegate int D(); void M(nint p) { var d = Marshal.GetDelegateForFunctionPointer<D>(p); d(); } }")
+  UI|case UI.LaunchGuardTests.ShapesOutsideTheStatedBoundaryAreNotClaimed("using System.Runtime.InteropServices; unsafe class Q { void M() { var f = (delegate* unmanaged<int>)NativeLibrary.GetExport(NativeLibrary.Load(\"kernel32.dll\"), \"Create\" + \"ProcessW\"); } }")
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches

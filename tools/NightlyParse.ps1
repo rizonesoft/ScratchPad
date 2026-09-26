@@ -1156,101 +1156,51 @@ function Get-CaseIdentityRows($Cases, [string]$Assembly = 'UI') {
   return $rows
 }
 
-function Get-SourceMemberBlock([string[]]$Lines, [int]$Start) {
-  # One C# member's full text from its declaration line (D00 T02 section
-  # 44 R2-F1): braces are balanced across lines (string and char literals
-  # aside), and an expression-bodied or field member ends at the `;` that
-  # closes it at depth zero. Bounded at 4000 lines.
-  $out = New-Object System.Collections.Generic.List[string]
-  $depth = 0
-  $opened = $false
-  for ($i = $Start; ($i -lt $Lines.Count) -and ($i -lt ($Start + 4000)); $i++) {
-    $ln = $Lines[$i]
-    $out.Add($ln)
-    $bare = [regex]::Replace($ln, '"(?:[^"\\]|\\.)*"|''(?:[^''\\]|\\.)*''', '""')
-    $bare = [regex]::Replace($bare, '//.*$', '')
-    foreach ($ch in $bare.ToCharArray()) {
-      if ($ch -eq '{') { $depth++; $opened = $true }
-      elseif ($ch -eq '}') { $depth-- }
-    }
-    if ($opened -and ($depth -le 0)) { break }
-    if ((-not $opened) -and ($depth -le 0) -and $bare.TrimEnd().EndsWith(';')) { break }
-  }
-  return ($out -join "`n")
-}
-
-function Get-TruncatedCaseSourceRows([string]$TestDir, $Cases) {
-  # Identity for argument text a display name leaves out (D00 T02 section
-  # 44 R1-F1, R2-F1). xunit cuts a long argument at 50 characters and
-  # marks the cut with an ellipsis (U+00B7 x3 or '...'); for each method
-  # with such a row, the rows return `<Class.Method>#args-source <hash>`
-  # over the method's whole attribute block (every line back to the
-  # previous member, so multiline attributes count), the full text of
-  # every data member the attributes name (MemberData, ClassData, and any
-  # typeof(T) source, whose declaring file counts whole), and, followed
-  # transitively, the full text of every static member of the class those
-  # blocks reference. A method whose source cannot be found reads
-  # `unresolved`.
+function Get-CanonicalCaseRows($Cases, [scriptblock]$Runner) {
+  # Canonical identity for argument text a display name leaves out (D00
+  # T02 section 52 item 3, replacing section 44's args-source digest).
+  # xunit cuts a long argument at 50 characters and marks the cut with an
+  # ellipsis (U+00B7 x3 or '...'); each method with such a row adds one
+  # `case <Type.Method>(<args>)` row per case, read by tools/CaseIdentity
+  # from the built assembly's data values (compile-time constants and
+  # data-source values, encoded by rule; identical rows numbered), so an
+  # argument changed past the cut changes the identity wherever its value
+  # comes from. $Runner takes the method names and returns the tool's
+  # lines plus its exit code; a `REFUSE` line or a nonzero exit throws by
+  # name, so an unencodable argument never reads as an identity.
   $cut = ([string][char]0xB7) * 3
   $methods = @(@($Cases) | Where-Object { ("$_".Contains($cut)) -or ("$_".Contains('"...')) } | ForEach-Object { ("$_" -split '\(', 2)[0].Trim() } | Sort-Object -Unique)
   if ($methods.Count -eq 0) { return @() }
-  $sources = @{}
-  foreach ($f in @(Get-ChildItem -Path $TestDir -Filter '*.cs' -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.FullName -notmatch '\\(bin|obj)\\' } | Sort-Object FullName)) { $sources[$f.FullName] = @(Get-Content -LiteralPath $f.FullName -Encoding UTF8) }
-  $rows = @()
+  $res = & $Runner $methods
+  $lines = @("$($res.Text)" -split "`r?`n" | Where-Object { $_.Trim() -ne '' })
+  $refused = @($lines | Where-Object { $_ -like 'REFUSE *' })
+  if ($refused.Count -gt 0) { throw "case identity refused: $($refused -join '; ')" }
+  if ([int]$res.Code -ne 0) { throw "case identity failed (exit $($res.Code)): $($lines -join ' | ')" }
+  $rows = @($lines | ForEach-Object { "case $_" })
   foreach ($m in $methods) {
-    $name = ($m -split '\.')[-1]
-    $cls = ($m -split '\.')[-2]
-    $block = $null
-    foreach ($key in @($sources.Keys | Sort-Object)) {
-      $lines = $sources[$key]
-      if (-not (@($lines) -match "\bclass $cls\b")) { continue }
-      for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -notmatch "\b(void|Task)\s+$name\s*\(") { continue }
-        # The attribute block: every line back to the previous member's
-        # end (a line ending in `}` or `;`, an opening brace, or a blank).
-        $j = $i - 1
-        while (($j -ge 0) -and ($lines[$j].Trim() -ne '') -and (-not ($lines[$j].TrimEnd() -match '[;{}]$'))) { $j-- }
-        $attrs = if (($j + 1) -le ($i - 1)) { @($lines[($j + 1)..($i - 1)]) } else { @() }
-        $parts = New-Object System.Collections.Generic.List[string]
-        $parts.Add(($attrs -join "`n"))
-        $attrText = $attrs -join "`n"
-        # Static members of the class file, by name.
-        $statics = @{}
-        for ($k = 0; $k -lt $lines.Count; $k++) {
-          $sm = [regex]::Match($lines[$k], '\bstatic\b[^=(;{]*?\b([A-Za-z_]\w*)\s*(?:\(|=>|=|\{|;)')
-          if ($sm.Success -and (-not $statics.ContainsKey($sm.Groups[1].Value))) { $statics[$sm.Groups[1].Value] = $k }
-        }
-        $queue = New-Object System.Collections.Generic.Queue[string]
-        foreach ($mm in [regex]::Matches($attrText, '(?:MemberData|ClassData)\(\s*(?:nameof\(\s*(\w+)\s*\)|"(\w+)"|typeof\(\s*(\w+)\s*\))')) {
-          foreach ($g in 1..3) { if ($mm.Groups[$g].Success) { $queue.Enqueue($mm.Groups[$g].Value) } }
-        }
-        # A data source on another type (MemberType = typeof(T), ClassData)
-        # counts its declaring file whole.
-        foreach ($tm in [regex]::Matches($attrText, 'typeof\(\s*(\w+)\s*\)')) {
-          $t = $tm.Groups[1].Value
-          foreach ($k2 in @($sources.Keys | Sort-Object)) { if (@($sources[$k2]) -match "\b(class|record|struct) $t\b") { $parts.Add("file " + (Split-Path -Leaf $k2) + "`n" + ($sources[$k2] -join "`n")) } }
-        }
-        $seen = @{}
-        while ($queue.Count -gt 0) {
-          $mem = $queue.Dequeue()
-          if ($seen.ContainsKey($mem) -or (-not $statics.ContainsKey($mem))) { continue }
-          $seen[$mem] = $true
-          $body = Get-SourceMemberBlock $lines $statics[$mem]
-          $parts.Add($body)
-          # Transitive: static members the body names are data too.
-          foreach ($idm in [regex]::Matches($body, '\b([A-Za-z_]\w*)\b')) { $id = $idm.Groups[1].Value; if ($statics.ContainsKey($id) -and (-not $seen.ContainsKey($id))) { $queue.Enqueue($id) } }
-        }
-        $block = $parts -join "`n----`n"
-        break
-      }
-      if ($null -ne $block) { break }
-    }
-    if ($null -eq $block) { $rows += "$m#args-source unresolved"; continue }
-    $sha = [System.Security.Cryptography.SHA256]::Create()
-    try { $h = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($block))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
-    $rows += "$m#args-source $h"
+    if (-not (@($rows) | Where-Object { $_.StartsWith("case $m(", [StringComparison]::Ordinal) })) { throw "case identity refused: $m listed cut rows but the tool returned none" }
   }
   return $rows
+}
+
+function Get-CaseIdentityRunner([string]$Csproj, [int]$TimeoutSeconds = 120) {
+  # The real runner: tools/CaseIdentity (built with the solution into
+  # Bin/CaseIdentity/Debug) over the project's built Debug assembly,
+  # bounded like every toolchain call. A missing tool or assembly throws
+  # with the build instruction.
+  $root = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $Csproj))
+  $name = [System.IO.Path]::GetFileNameWithoutExtension($Csproj)
+  $tool = Join-Path $root 'Bin\CaseIdentity\Debug\CaseIdentity.exe'
+  $asm = Join-Path $root "Bin\$name\Debug\$name.dll"
+  $cap = $TimeoutSeconds
+  return {
+    param($methods)
+    if (-not (Test-Path -LiteralPath $tool)) { throw "case identity tool missing: $tool; run: dotnet build src/ScratchPad.slnx, then retry" }
+    if (-not (Test-Path -LiteralPath $asm)) { throw "case identity assembly missing: $asm; run: dotnet build src/ScratchPad.slnx, then retry" }
+    $r = Invoke-BoundedCapture $tool (@($asm) + @($methods)) $root $cap
+    if ($r.Killed) { throw "case identity timed out after ${cap}s" }
+    return $r
+  }.GetNewClosure()
 }
 
 function Merge-AttemptNames($Attempts) {
@@ -1343,7 +1293,7 @@ function Write-TestPopulationFile([string]$Path, [string]$RunAFilter, [string]$R
   Move-Item -Path $tmp -Destination $Path -Force
 }
 
-function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, $Discovery) {
+function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, $Discovery, [string]$ExclusionLedger = '', $Today = $null) {
   # Fingerprint comparison (D00 T02 §15, D00-T02-S13-PR13): the file's
   # Run A plus Run B filters must each appear exactly once among the
   # governed script's literals (a filter edit stales the acceptance),
@@ -1395,6 +1345,14 @@ function Compare-TestPopulation([string]$FingerprintPath, [string]$NightlyPath, 
   if ($Discovery.RunAMethods -ne @($Discovery.RunA).Count) { $drifts += 'discovery run-a method list disagrees with its count (internal error)' }
   if ($Discovery.RunBMethods -ne @($Discovery.RunB).Count) { $drifts += 'discovery run-b method list disagrees with its count (internal error)' }
   if ($Discovery.InteractiveMethods -ne @($Discovery.Interactive).Count) { $drifts += 'discovery interactive method list disagrees with its count (internal error)' }
+  # Exclusions (D00 T02 section 52 item 4): a discovery that carries the
+  # all-cases listing checks every excluded case against the ledger
+  # beside the fingerprint's repo (docs/test-exclusions.md).
+  if ($null -ne $Discovery.PSObject.Properties['Excluded']) {
+    if ($ExclusionLedger -eq '') { $ExclusionLedger = Join-Path (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent ([System.IO.Path]::GetFullPath($FingerprintPath))))) 'docs\test-exclusions.md' }
+    $when = if ($null -ne $Today) { [datetime]$Today } else { Get-Date }
+    $drifts += @(Test-ExclusionLedger @($Discovery.Excluded) (Read-ExclusionLedger $ExclusionLedger) $when)
+  }
   return [pscustomobject]@{ Ok = ($drifts.Count -eq 0); Drifts = $drifts }
 }
 
@@ -1479,10 +1437,11 @@ function Get-ListTestsCases([string]$Dotnet, [string]$Csproj, [string]$Filter, [
     if ($methods -notcontains $fq) { $methods += $fq }
   }
   $methods = @($methods | Sort-Object -Unique)
-  # A display name cut short hides the rest of its arguments (R1-F1): each
-  # method with a truncated row adds a row for the digest of its test-data
-  # source, so changing an argument past the cut changes the identity.
-  $identity = @($caseNames) + @(Get-TruncatedCaseSourceRows (Split-Path -Parent $Csproj) $caseNames)
+  # A display name cut short hides the rest of its arguments (section 44
+  # R1-F1): each method with a truncated row adds its canonical case rows
+  # (section 52 item 3), so changing an argument past the cut changes the
+  # identity.
+  $identity = @($caseNames) + @(Get-CanonicalCaseRows $caseNames (Get-CaseIdentityRunner $Csproj))
   return [pscustomobject]@{ Methods = $methods; MethodCount = $methods.Count; CaseCount = $cases; Cases = $caseNames; CaseHash = (Get-CaseHash $identity); CaseRows = @(Get-CaseIdentityRows $identity) }
 }
 
@@ -1579,6 +1538,9 @@ function Get-UiBuildInputs([string]$Root) {
   $pending = $later
   } while ($queue.Count -gt 0)
   $script:UiBuildUnresolved = @($pending | ForEach-Object { "$($_.Raw) in $($_.From.Substring($rootFull.Length).TrimStart('\\'))" })
+  # The projects visited (section 52 item 2): the UI project and each
+  # reference, transitively, for the compile-evidence binding.
+  $script:UiBuildProjects = @($seen.Keys | Where-Object { $_ -like '*.csproj' } | Sort-Object)
   $files = @()
   foreach ($d in ($dirs | Sort-Object -Unique)) {
     $files += @(Get-ChildItem -Path $d -Recurse -Include '*.cs', '*.csproj', '*.xaml', '*.props', '*.targets', '*.resw', '*.json' -File |
@@ -1664,6 +1626,93 @@ function Get-BuildInputsDigest([string]$Root, [string]$Sdk, $Inputs = $null) {
   return [pscustomobject]@{ Digest = $digest; Lines = @($lines) }
 }
 
+function Get-ProjectOwnInputsDigest([string]$Root, [string]$ProjectDir) {
+  # One project's own inputs (D00 T02 section 52 item 2): the files under
+  # its directory a compile reads (sources, XAML, resources, project and
+  # settings files; obj and bin excluded), one `<root-relative path>
+  # <sha256>` line each, ordinal-sorted, digest over the lines. Shared
+  # root inputs stay in the UI digest; this is what the project's own
+  # compile evidence answers for.
+  $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $lines = New-Object 'System.Collections.Generic.List[string]'
+  foreach ($f in @(Get-ChildItem -Path $ProjectDir -Recurse -Include '*.cs', '*.csproj', '*.xaml', '*.props', '*.targets', '*.resw', '*.json', '*.manifest', '*.appxmanifest' -File | Where-Object { $_.FullName -notmatch '\\(obj|bin)\\' })) {
+    $full = $f.FullName
+    $rel = if ($full.StartsWith($rootFull + '\', [System.StringComparison]::OrdinalIgnoreCase)) { $full.Substring($rootFull.Length + 1) } else { $full }
+    $lines.Add("$($rel.Replace('\', '/')) $(Get-FileSha256 $full)")
+  }
+  $lines.Sort([StringComparer]::Ordinal)
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { $digest = ([System.BitConverter]::ToString($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes(($lines -join "`n")))) -replace '-', '').Substring(0, 16).ToLowerInvariant() } finally { $sha.Dispose() }
+  return [pscustomobject]@{ Digest = $digest; Lines = @($lines) }
+}
+
+function Find-CompileEvidence([string]$Root, [string]$Name) {
+  # A reference's compile-evidence file under Bin/<Name>/Debug (any RID
+  # folder). Two or more read as ambiguous rather than picking one.
+  $base = Join-Path $Root "Bin\$Name\Debug"
+  $hits = @(if (Test-Path -LiteralPath $base) { Get-ChildItem -Path $base -Recurse -Filter 'compile-evidence.txt' -File })
+  if ($hits.Count -eq 1) { return $hits[0].FullName }
+  if ($hits.Count -gt 1) { return "ambiguous: $(@($hits | ForEach-Object { $_.FullName.Substring($Root.TrimEnd('\').Length + 1) }) -join ', ')" }
+  return ''
+}
+
+function Get-BuildBindingLines([string]$Root, [string]$OutDir, $Projects) {
+  # The binaries the UI digest describes (D00 T02 section 52 item 2),
+  # from one snapshot: the UI assembly's hash, and for each referenced
+  # project its compile evidence (inputs digest and assembly hash) plus
+  # the hash of the copy the UI output carries. A reference with no
+  # evidence, or ambiguous evidence, records so, and the check refuses.
+  $lines = @("out UI.dll $(Get-FileSha256 (Join-Path $OutDir 'UI.dll'))")
+  foreach ($p in @($Projects | Sort-Object)) {
+    $name = [System.IO.Path]::GetFileNameWithoutExtension("$p")
+    if ($name -eq 'UI') { continue }
+    $ev = Find-CompileEvidence $Root $name
+    $copy = Join-Path $OutDir "$name.dll"
+    $copyHash = if (Test-Path -LiteralPath $copy) { Get-FileSha256 $copy } else { 'missing' }
+    if (($ev -eq '') -or $ev.StartsWith('ambiguous')) { $lines += "ref $name evidence $(if ($ev -eq '') { 'missing' } else { $ev.Replace(' ', '_') }) copy $copyHash"; continue }
+    $evLines = @(Get-Content -LiteralPath $ev -TotalCount 2)
+    $inputs = if (($evLines.Count -gt 0) -and ($evLines[0] -match '^inputs ([0-9a-f]{16})$')) { $Matches[1] } else { 'unreadable' }
+    $asm = if (($evLines.Count -gt 1) -and ($evLines[1] -match '^assembly ([0-9a-f]{64})$')) { $Matches[1] } else { 'unreadable' }
+    $rel = [System.IO.Path]::GetFullPath("$p").Substring([System.IO.Path]::GetFullPath($Root).TrimEnd('\').Length + 1).Replace('\', '/')
+    $lines += "ref $name project $rel inputs $inputs assembly $asm copy $copyHash"
+  }
+  return $lines
+}
+
+function Test-BuildBinding([string]$Root, [string]$BindingFile) {
+  # Refuses a UI build whose recorded binaries no longer answer to their
+  # sources (D00 T02 section 52 item 2): the UI assembly changed since the
+  # binding, a reference has no readable evidence, a reference's own
+  # inputs moved past its evidence (its project never recompiled, as a
+  # timestamp-restored edit leaves it), or the copy the UI output carries
+  # is not the assembly the evidence names. Names the first problem.
+  $rebuild = 'rebuild without incremental skips: dotnet build src/ScratchPad.slnx --no-incremental'
+  if (-not (Test-Path -LiteralPath $BindingFile)) { return [pscustomobject]@{ Ok = $false; Error = "UI build has no binary binding ($BindingFile); $rebuild" } }
+  $outDir = Split-Path -Parent $BindingFile
+  $problems = @()
+  foreach ($ln in @(Get-Content -LiteralPath $BindingFile | Where-Object { "$_".Trim() -ne '' })) {
+    if ($ln -match '^out UI\.dll (\S+)$') {
+      $now = Get-FileSha256 (Join-Path $outDir 'UI.dll')
+      if ($now -ne $Matches[1]) { $problems += "UI.dll changed since its binding was recorded" }
+      continue
+    }
+    if ($ln -match '^ref (\S+) evidence (\S+) copy (\S+)$') { $problems += "reference $($Matches[1]) has no usable compile evidence ($($Matches[2]))"; continue }
+    if ($ln -match '^ref (\S+) project (\S+) inputs (\S+) assembly (\S+) copy (\S+)$') {
+      $name = $Matches[1]; $proj = $Matches[2]; $inputs = $Matches[3]; $asm = $Matches[4]; $copy = $Matches[5]
+      $now = Get-ProjectOwnInputsDigest $Root (Split-Path -Parent (Join-Path $Root $proj))
+      if ($inputs -ne $now.Digest) { $problems += "reference $name did not recompile after its sources changed (evidence inputs $inputs, now $($now.Digest))"; continue }
+      if ($asm -ne $copy) { $problems += "the UI output's $name.dll is not the assembly $name's compile produced"; continue }
+      $copyNow = Join-Path $outDir "$name.dll"
+      $copyNowHash = if (Test-Path -LiteralPath $copyNow) { Get-FileSha256 $copyNow } else { 'missing' }
+      if ($copyNowHash -ne $copy) { $problems += "the UI output's $name.dll changed since its binding was recorded" }
+      continue
+    }
+    $problems += "unreadable binding line: $ln"
+  }
+  if ($problems.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Error = "UI build binding is stale: $($problems[0])$(if ($problems.Count -gt 1) { " (+$($problems.Count - 1) more)" }); $rebuild" } }
+  return [pscustomobject]@{ Ok = $true; Error = '' }
+}
+
 function Test-BuildInputsDigest([string]$Root, [string]$DigestFile, [string]$Sdk, $Inputs = $null) {
   # The content freshness check: the digest recorded beside the binary at
   # build time must equal the inputs' digest now. Names the first
@@ -1701,7 +1750,12 @@ function Get-UiBuildFreshness([string]$Root) {
   # recorded beside the binary must equal the inputs' digest now, so an
   # edit whose timestamp was restored, a deletion, or a property or SDK
   # change is caught where timestamps say fresh.
-  return (Test-BuildInputsDigest $Root (Join-Path $Root 'Bin\UI\Debug\build-inputs.digest') (Get-UiSdkVersion $Root))
+  $content = Test-BuildInputsDigest $Root (Join-Path $Root 'Bin\UI\Debug\build-inputs.digest') (Get-UiSdkVersion $Root)
+  if (-not $content.Ok) { return $content }
+  # Binary binding (section 52 item 2): the digest answers for the
+  # binaries only when each reference's own compile evidence still
+  # matches its sources and the copies the UI output carries.
+  return (Test-BuildBinding $Root (Join-Path $Root 'Bin\UI\Debug\build-binding.txt'))
 }
 
 function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
@@ -1778,12 +1832,12 @@ function Get-OwedCaseNames([string[]]$Rows) {
   return $names
 }
 
-function Get-TrxPassedNames([string]$TrxPath) {
+function Get-TrxPassedNames([string]$TrxPath, $Expect = $null) {
   # The cases a trx records green, once per test case (R3-I1): a case
   # counts when its last result passed, so a retry that passed after a
-  # failure is one green case and never two. Missing or unreadable reads
-  # as none.
-  return @(Get-TrxCaseResults $TrxPath | Where-Object { $_.Last -eq 'Passed' } | ForEach-Object { $_.Name })
+  # failure is one green case and never two. Missing, unreadable, or
+  # refused (section 52 item 5) reads as none.
+  return @(Get-TrxCaseResults $TrxPath $Expect | Where-Object { $_.Last -eq 'Passed' } | ForEach-Object { $_.Name })
 }
 
 function Resolve-CarriedCaseDebt($PreviousOwed, [string[]]$PassedTonight, [bool]$InteractiveRan, $ListedCases = $null) {
@@ -1841,34 +1895,162 @@ function Get-PopulationIdentity([string]$FingerprintPath) {
   return (Get-CaseHash @("run-a=$($fp.RunACaseHash)", "run-b=$($fp.RunBCaseHash)", "interactive=$($fp.InteractiveCaseHash)"))
 }
 
-function Get-TrxCaseResults([string]$TrxPath) {
-  # One entry per test case the trx records (D00 T02 section 44 R3-I1):
-  # results group by the case's testId (executionId when a row has none),
-  # so repeated results of one case (a retry) count once while two cases
-  # sharing a display name stay two. Each entry carries the name, whether
-  # any result executed (Passed or Failed), and the last result's outcome.
-  # Missing or truncated trx reads as none.
-  if (-not (Test-Path $TrxPath)) { return @() }
-  try { $t = [xml](Get-Content $TrxPath -Raw) } catch { return @() }
+function Get-ProofBinding([string]$Root, [string]$Candidate) {
+  # What a recovery proof stands on beyond its cases (D00 T02 section 52
+  # item 1): the population identity, the build-input digest the UI
+  # build recorded (Bin/UI/Debug/build-inputs.digest, so any source edit
+  # moves it even when the cases stay identical), a hash of the three
+  # leg filters, the configuration discovery reads (Debug), and the
+  # candidate commit. One `key=value` token per part; an unreadable part
+  # reads `unknown`, which never equals a later readable one.
+  $fpPath = Join-Path $Root 'tests/UI/TestPopulation.fingerprint'
+  $pop = Get-PopulationIdentity $fpPath
+  $build = 'unknown'
+  $digestFile = Join-Path $Root 'Bin\UI\Debug\build-inputs.digest'
+  if (Test-Path -LiteralPath $digestFile) {
+    $first = @(Get-Content -LiteralPath $digestFile -TotalCount 1)
+    if (($first.Count -gt 0) -and ("$($first[0])".Trim() -match '^[0-9a-f]{16}$')) { $build = "$($first[0])".Trim() }
+  }
+  $filters = 'unknown'
+  $fp = Read-TestPopulationFile $fpPath
+  if ($fp.Ok) { $filters = Get-CaseHash @("run-a=$($fp.RunAFilter)", "run-b=$($fp.RunBFilter)", "interactive=$($fp.InteractiveFilter)") }
+  $cand = if ("$Candidate".Trim() -match '^[0-9a-f]{7,40}$') { "$Candidate".Trim() } else { 'unknown' }
+  return "population=$pop build=$build filters=$filters config=Debug candidate=$cand"
+}
+
+function ConvertFrom-ProofBinding([string]$Binding) {
+  # A binding's parts by key. A value recorded before section 52 (a bare
+  # population identity, no `=`) reads as its population alone.
+  $parts = [ordered]@{}
+  if ("$Binding".Trim() -eq '') { return $parts }
+  if (-not "$Binding".Contains('=')) { $parts['population'] = "$Binding".Trim(); return $parts }
+  foreach ($tok in ("$Binding".Trim() -split '\s+')) {
+    $kv = $tok -split '=', 2
+    if ($kv.Count -eq 2) { $parts[$kv[0]] = $kv[1] }
+  }
+  return $parts
+}
+
+function Get-ProofBindingChange([string]$Was, [string]$Now, [scriptblock]$Descends = $null) {
+  # Why a streak recorded under $Was stands stale under $Now (section 52
+  # item 1), or '' when it still stands. Every part $Now carries counts:
+  # a part $Was never recorded reads `unrecorded` and resets, so older
+  # evidence has no provenance. The candidate is the one exception, a
+  # recorded default: a later commit that descends from the recorded one
+  # keeps the streak (its binaries already answer to the build digest, so
+  # a docs-only commit never erases recovery evidence), while a candidate
+  # that does not descend (a rewrite, another branch) or whose ancestry
+  # cannot be read resets it.
+  $w = ConvertFrom-ProofBinding $Was
+  $n = ConvertFrom-ProofBinding $Now
+  $changes = @()
+  foreach ($k in @($n.Keys)) {
+    $wv = if ($w.Contains($k)) { "$($w[$k])" } else { 'unrecorded' }
+    $nv = "$($n[$k])"
+    if ($wv -ceq $nv) { continue }
+    if ($k -eq 'candidate') {
+      if (($wv -ne 'unrecorded') -and ($wv -ne 'unknown') -and ($nv -ne 'unknown') -and ($null -ne $Descends)) {
+        $ok = $false
+        try { $ok = [bool](& $Descends $wv $nv) } catch { $ok = $false }
+        if ($ok) { continue }
+      }
+      $changes += "candidate $wv -> ${nv}: not a descendant"
+      continue
+    }
+    $changes += "$k $wv -> $nv"
+  }
+  return ($changes -join '; ')
+}
+
+function Read-TrxCaseResults([string]$TrxPath, $Expect = $null) {
+  # Fail-closed trx reconciliation (D00 T02 section 52 item 5). Returns
+  # Ok, Refusals (one named reason each), and Cases (one per test case,
+  # grouped by testId). Outcome precedence: a case's attempts order by
+  # endTime (then startTime, then document order) and the latest attempt
+  # is its outcome; Passed and Failed executed, NotExecuted did not, and
+  # any other outcome (Timeout, Aborted, Error, Inconclusive, ...) reads
+  # as an executed failure, never a pass. Refused, never counted:
+  #   unreadable   - missing, truncated, or not a trx
+  #   foreign      - created before this run started ($Expect.RunStartUtc,
+  #                  a leftover of another run), from another assembly
+  #                  than $Expect.Assembly, or older than that assembly's
+  #                  build (another build's)
+  #   unmatched    - a result whose testId has no test definition
+  #   ambiguous    - a result with neither testId nor executionId, one
+  #                  testId under two names, or two latest attempts of one
+  #                  case tied on time with different outcomes
+  $refuse = New-Object System.Collections.Generic.List[string]
+  $leaf = Split-Path -Leaf $TrxPath
+  if (-not (Test-Path -LiteralPath $TrxPath)) { return [pscustomobject]@{ Ok = $false; Refusals = @("unreadable: $leaf is missing"); Cases = @() } }
+  try { $t = [xml](Get-Content -LiteralPath $TrxPath -Raw) } catch { return [pscustomobject]@{ Ok = $false; Refusals = @("unreadable: $leaf is not well-formed XML"); Cases = @() } }
+  if ($null -eq $t.TestRun) { return [pscustomobject]@{ Ok = $false; Refusals = @("unreadable: $leaf has no TestRun"); Cases = @() } }
+  $created = [datetime]::MinValue
+  $createdOk = $false
+  try { $created = ([datetimeoffset]::Parse("$($t.TestRun.Times.creation)", [System.Globalization.CultureInfo]::InvariantCulture)).UtcDateTime; $createdOk = $true } catch { }
+  if ($null -ne $Expect) {
+    if (($null -ne $Expect.RunStartUtc) -and ([datetime]$Expect.RunStartUtc -ne [datetime]::MinValue)) {
+      if (-not $createdOk) { $refuse.Add("foreign: $leaf has no readable creation time to bind it to this run") }
+      elseif ($created -lt ([datetime]$Expect.RunStartUtc).AddSeconds(-5)) { $refuse.Add("foreign: $leaf was created $($created.ToString('u')), before this run started $(([datetime]$Expect.RunStartUtc).ToString('u')) (another run's leftover)") }
+    }
+    if ("$($Expect.Assembly)" -ne '') {
+      $want = [System.IO.Path]::GetFullPath("$($Expect.Assembly)")
+      $stores = @(@($t.TestRun.TestDefinitions.UnitTest) | Where-Object { $null -ne $_ } | ForEach-Object { "$($_.storage)" } | Sort-Object -Unique)
+      foreach ($st in $stores) { if (-not [string]::Equals($st, $want, [StringComparison]::OrdinalIgnoreCase)) { $refuse.Add("foreign: $leaf holds results from $st, not $want"); break } }
+      if ((Test-Path -LiteralPath $want) -and $createdOk -and ((Get-Item -LiteralPath $want).LastWriteTimeUtc -gt $created.AddSeconds(5))) { $refuse.Add("foreign: $leaf predates the current build of $(Split-Path -Leaf $want) (another build's results)") }
+    }
+  }
+  $defs = @{}
+  foreach ($d in @($t.TestRun.TestDefinitions.UnitTest)) { if ($null -ne $d) { $defs["$($d.id)"] = "$($d.name)" } }
   $byCase = [ordered]@{}
   $n = 0
   foreach ($r in @($t.TestRun.Results.UnitTestResult)) {
     if ($null -eq $r) { continue }
     $n++
     $id = "$($r.testId)"
-    if ($id -eq '') { $id = "$($r.executionId)" }
-    if ($id -eq '') { $id = "row-$n" }
-    if (-not $byCase.Contains($id)) { $byCase[$id] = [pscustomobject]@{ Name = "$($r.testName)"; Executed = $false; Last = '' } }
-    if (@('Passed', 'Failed') -contains "$($r.outcome)") { $byCase[$id].Executed = $true }
-    $byCase[$id].Last = "$($r.outcome)"
+    $name = "$($r.testName)"
+    if (($id -eq '') -and ("$($r.executionId)" -eq '')) { $refuse.Add("ambiguous: result $n ($name) has neither testId nor executionId"); continue }
+    if ($id -eq '') { $id = "exec-$($r.executionId)" }
+    elseif (($defs.Count -gt 0) -and (-not $defs.ContainsKey($id))) { $refuse.Add("unmatched: result $n ($name) names testId $id, which no test definition carries"); continue }
+    $end = [datetime]::MinValue
+    try { $end = ([datetimeoffset]::Parse("$($r.endTime)", [System.Globalization.CultureInfo]::InvariantCulture)).UtcDateTime } catch { }
+    if (-not $byCase.Contains($id)) { $byCase[$id] = [pscustomobject]@{ Name = $name; Attempts = New-Object System.Collections.Generic.List[object] } }
+    elseif ($byCase[$id].Name -cne $name) { $refuse.Add("ambiguous: testId $id is named both $($byCase[$id].Name) and $name"); continue }
+    $byCase[$id].Attempts.Add([pscustomobject]@{ End = $end; Order = $n; Outcome = "$($r.outcome)" })
   }
-  return @($byCase.Values)
+  $cases = @()
+  foreach ($k in @($byCase.Keys)) {
+    $c = $byCase[$k]
+    $ordered = @($c.Attempts | Sort-Object End, Order)
+    $last = $ordered[-1]
+    $tied = @($ordered | Where-Object { ($_.End -eq $last.End) -and ($last.End -ne [datetime]::MinValue) -and ($_.Outcome -ne $last.Outcome) })
+    if ($tied.Count -gt 0) { $refuse.Add("ambiguous: $($c.Name) has latest attempts tied at $($last.End.ToString('o')) with outcomes $((@($tied | ForEach-Object { $_.Outcome }) + $last.Outcome | Sort-Object -Unique) -join ' and ')"); continue }
+    $outcomes = @($ordered | ForEach-Object { $_.Outcome })
+    $final = if (@('Passed', 'Failed', 'NotExecuted') -contains $last.Outcome) { $last.Outcome } else { 'Failed' }
+    $cases += [pscustomobject]@{ Name = $c.Name; Executed = (@($outcomes | Where-Object { $_ -ne 'NotExecuted' }).Count -gt 0); Last = $final }
+  }
+  if ($refuse.Count -gt 0) { return [pscustomobject]@{ Ok = $false; Refusals = @($refuse); Cases = @() } }
+  return [pscustomobject]@{ Ok = $true; Refusals = @(); Cases = $cases }
 }
 
-function Get-TrxExecutedNames([string]$TrxPath) {
+function Get-TrxCaseResults([string]$TrxPath, $Expect = $null) {
+  # One entry per test case the trx records (D00 T02 section 44 R3-I1),
+  # read through Read-TrxCaseResults (section 52 item 5): a refused trx
+  # counts nothing, and each refusal lands in $script:TrxRefusals with
+  # its file so the report names it. A missing trx reads as none without
+  # a refusal (a leg that did not run writes none).
+  $r = Read-TrxCaseResults $TrxPath $Expect
+  if ($r.Ok) { return @($r.Cases) }
+  if (Test-Path -LiteralPath $TrxPath) { foreach ($why in @($r.Refusals)) { $script:TrxRefusals += "$TrxPath -- $why" } }
+  return @()
+}
+
+# Trx refusals collected this run (section 52 item 5).
+$script:TrxRefusals = @()
+
+function Get-TrxExecutedNames([string]$TrxPath, $Expect = $null) {
   # Test names the trx records as run (Passed or Failed), once per test
-  # case (R3-I1); skipped rows never executed.
-  return @(Get-TrxCaseResults $TrxPath | Where-Object { $_.Executed } | ForEach-Object { $_.Name })
+  # case (R3-I1); skipped rows never executed; a refused trx names none.
+  return @(Get-TrxCaseResults $TrxPath $Expect | Where-Object { $_.Executed } | ForEach-Object { $_.Name })
 }
 
 function Get-CandidateCiGate($Runs, $Jobs, [string]$Sha, [string]$Step = 'Check test population fingerprint') {
@@ -1942,8 +2124,86 @@ function Get-UiTestDiscovery([string]$Dotnet, [string]$UiCsproj, [string]$RunAFi
     $out.($leg[0] + 'Cases') = $one.CaseCount
     $out | Add-Member -NotePropertyName ($leg[0] + 'CaseHash') -NotePropertyValue $one.CaseHash -Force
     $out | Add-Member -NotePropertyName ($leg[0] + 'CaseRows') -NotePropertyValue @($one.CaseRows) -Force
+    $out | Add-Member -NotePropertyName ($leg[0] + 'CaseNames') -NotePropertyValue @($one.Cases) -Force
   }
+  # Every case the binaries list, whatever its traits (D00 T02 section 52
+  # item 4): a case no governed leg selects is an exclusion, and the
+  # exclusion ledger must account for it.
+  $all = Get-ListTestsCases $Dotnet $UiCsproj $script:AllCasesFilter 'AllCases'
+  $out | Add-Member -NotePropertyName Excluded -NotePropertyValue @(Get-ExcludedCases @($all.Cases) @(@($out.RunACaseNames) + @($out.RunBCaseNames) + @($out.InteractiveCaseNames))) -Force
   return $out
+}
+
+# A filter every test matches (no test is named `__none__`), for the
+# all-cases listing: vstest refuses an empty filter.
+$script:AllCasesFilter = 'FullyQualifiedName!=__none__'
+
+function Get-ExcludedCases($All, $Selected) {
+  # The cases the binaries list that no governed leg selects (D00 T02
+  # section 52 item 4), by display name with multiplicity: a name listed
+  # twice and selected once leaves one excluded copy.
+  $left = @{}
+  foreach ($c in @($Selected)) { $k = "$c"; $left[$k] = 1 + $(if ($left.ContainsKey($k)) { $left[$k] } else { 0 }) }
+  $out = @()
+  foreach ($c in @($All)) {
+    $k = "$c"
+    if ($left.ContainsKey($k) -and ($left[$k] -gt 0)) { $left[$k]--; continue }
+    $out += $k
+  }
+  return @($out | Sort-Object)
+}
+
+function Read-ExclusionLedger([string]$Path) {
+  # docs/test-exclusions.md (D00 T02 section 52 item 4): one table row per
+  # excluded case, `| <case> | <reason> | <owner> | <review-by
+  # YYYY-MM-DD> |`. The header and separator rows are skipped; a missing
+  # file reads as no rows (every exclusion then refuses).
+  if (-not (Test-Path -LiteralPath $Path)) { return @() }
+  $rows = @()
+  $n = 0
+  foreach ($ln in @(Get-Content -LiteralPath $Path -Encoding UTF8)) {
+    $n++
+    $t = "$ln".Trim()
+    if (-not ($t.StartsWith('|') -and $t.EndsWith('|'))) { continue }
+    $cells = @($t.Substring(1, $t.Length - 2) -split '\|' | ForEach-Object { $_.Trim() })
+    if (($cells.Count -ge 1) -and (($cells[0] -eq 'Case') -or ($cells[0] -match '^:?-{3,}'))) { continue }
+    $rows += [pscustomobject]@{ Line = $n; Case = $cells[0].Trim('`'); Reason = $(if ($cells.Count -gt 1) { $cells[1] } else { '' }); Owner = $(if ($cells.Count -gt 2) { $cells[2] } else { '' }); ReviewBy = $(if ($cells.Count -gt 3) { $cells[3] } else { '' }); Cells = $cells.Count }
+  }
+  return $rows
+}
+
+function Test-ExclusionLedger($Excluded, $Rows, [datetime]$Today) {
+  # Exclusion accountability (D00 T02 section 52 item 4): every excluded
+  # case needs its own ledger row with a reason, an owner, and a review
+  # date not yet past; a row for a case that is no longer excluded is
+  # stale. Returns the problems, one line each (empty is green).
+  $problems = @()
+  # A function returning no rows hands back $null, which @() wraps as one
+  # null element; neither list counts nulls.
+  $Rows = @(@($Rows) | Where-Object { $null -ne $_ })
+  $Excluded = @(@($Excluded) | Where-Object { $null -ne $_ })
+  $byCase = @{}
+  foreach ($r in @($Rows)) {
+    if ($byCase.ContainsKey($r.Case)) { $problems += "exclusion ledger line $($r.Line): duplicate row for $($r.Case)"; continue }
+    $byCase[$r.Case] = $r
+  }
+  $today = $Today.Date
+  foreach ($c in @($Excluded | Sort-Object -Unique)) {
+    if (-not $byCase.ContainsKey($c)) { $problems += "excluded case without a ledger row: $c (add it to docs/test-exclusions.md with a reason, an owner, and a review date, or select it in a governed leg)"; continue }
+    $r = $byCase[$c]
+    if ($r.Cells -ne 4) { $problems += "exclusion ledger line $($r.Line): $c needs exactly 4 cells (case, reason, owner, review-by)"; continue }
+    if ($r.Reason -eq '') { $problems += "exclusion ledger line $($r.Line): $c has no reason" }
+    if ($r.Owner -eq '') { $problems += "exclusion ledger line $($r.Line): $c has no owner" }
+    $due = [datetime]::MinValue
+    if (-not [datetime]::TryParseExact($r.ReviewBy, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$due)) { $problems += "exclusion ledger line $($r.Line): $c review date '$($r.ReviewBy)' is not YYYY-MM-DD" }
+    elseif ($due.Date -lt $today) { $problems += "exclusion ledger line $($r.Line): $c review expired $($r.ReviewBy) (re-review it and move the date, or select the case)" }
+  }
+  $excludedSet = @{}
+  foreach ($c in @($Excluded)) { $excludedSet["$c"] = $true }
+  foreach ($r in @($Rows)) {
+    if (-not $excludedSet.ContainsKey($r.Case)) { $problems += "exclusion ledger line $($r.Line): stale row, $($r.Case) is not excluded (remove the row)" }
+  }
+  return $problems
 }
 
 function Test-FilterPartition([string]$RunAFilter, [string]$RunBFilter, $Members) {
@@ -2262,7 +2522,7 @@ function ConvertTo-IncidentLifecycle([hashtable]$Incidents) {
   })
 }
 
-function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '', [string]$NotQualifying = '') {
+function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [hashtable]$PassedByPhase, [hashtable]$Owners, [int]$RecoveryRuns = 3, [hashtable]$Links = @{}, [string]$Population = '', [string]$NotQualifying = '', [scriptblock]$Descends = $null) {
   # Verified recovery counts only qualifying runs (D00 T02 section 45
   # item 6): a run named not qualifying ($NotQualifying: aborted, killed
   # or budget-cut, a stub or simulation, or evidence that failed its own
@@ -2343,17 +2603,22 @@ function Update-IncidentLedger([hashtable]$Ledger, $Groups, [string]$Stamp, [has
     $passed = @()
     if ($PassedByPhase -and $PassedByPhase.ContainsKey($e.phase)) { $passed = @($PassedByPhase[$e.phase]) }
     if ($passed -notcontains $e.test) { continue }
-    # A streak stands on one test population (D00 T02 §44 item 6): passes
-    # recorded against another case population read stale, so updating
-    # the fingerprint never revives old evidence toward a closure.
+    # A streak stands on one test population (D00 T02 §44 item 6) and,
+    # since section 52 item 1, on one proof binding (population, build
+    # inputs, leg filters, configuration, candidate lineage;
+    # Get-ProofBinding): passes recorded against another binding read
+    # stale, so neither a fingerprint update nor a source edit with
+    # identical cases revives old evidence toward a closure.
     if ($Population -ne '') {
       if (@($e.PSObject.Properties.Name) -notcontains 'streakPopulation') { $e | Add-Member -NotePropertyName streakPopulation -NotePropertyValue '' }
       # A streak recorded before populations were (an empty population)
       # has no provenance either (R1-F5): it resets like a changed one.
-      if (([int]$e.passStreak -gt 0) -and ("$($e.streakPopulation)" -ne $Population)) {
-        $was = if ("$($e.streakPopulation)" -eq '') { 'unrecorded' } else { "$($e.streakPopulation)" }
-        $lines += "- $id ``$($e.test)``: streak reset (population $was -> ${Population}: the earlier passes stand stale)"
-        $e.passStreak = 0
+      if ([int]$e.passStreak -gt 0) {
+        $change = if ("$($e.streakPopulation)" -eq '') { "population unrecorded -> $Population" } else { Get-ProofBindingChange "$($e.streakPopulation)" $Population $Descends }
+        if ($change -ne '') {
+          $lines += "- $id ``$($e.test)``: streak reset (${change}: the earlier passes stand stale)"
+          $e.passStreak = 0
+        }
       }
       $e.streakPopulation = $Population
     }
