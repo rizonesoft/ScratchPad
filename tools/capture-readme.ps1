@@ -43,8 +43,15 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -Namespace ReadmeShots -Name Win -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdcBlt, uint nFlags);
 [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rc);
+[DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
+[DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT rc, int size);
 [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 '@
+
+# Per-monitor DPI awareness (V2) for this thread: without it Windows
+# PowerShell reads window rectangles scaled to 96 DPI, and PrintWindow's
+# full-size render lands cropped in a too-small bitmap.
+$null = [ReadmeShots.Win]::SetThreadDpiAwarenessContext([IntPtr](-4))
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ("readme-capture-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 $clone = Join-Path $work 'repo'
@@ -124,8 +131,9 @@ try {
       $deadline = (Get-Date).AddSeconds(30)
       while (((Get-Date) -lt $deadline) -and ($proc.MainWindowHandle -eq [IntPtr]::Zero)) { Start-Sleep -Milliseconds 250; $proc.Refresh() }
       if ($proc.MainWindowHandle -eq [IntPtr]::Zero) { throw "capture: no main window within 30 s ($theme)" }
-      Start-Sleep -Milliseconds 3000
       $hwnd = $proc.MainWindowHandle
+      # The seeded Width and Height are DIPs; the layout settles first.
+      Start-Sleep -Milliseconds 3000
       $rc = New-Object ReadmeShots.Win+RECT
       $null = [ReadmeShots.Win]::GetWindowRect($hwnd, [ref]$rc)
       $w = $rc.Right - $rc.Left; $h = $rc.Bottom - $rc.Top
@@ -133,6 +141,16 @@ try {
       try {
         $g = [System.Drawing.Graphics]::FromImage($bmp)
         try { $hdc = $g.GetHdc(); try { $null = [ReadmeShots.Win]::PrintWindow($hwnd, $hdc, 2) } finally { $g.ReleaseHdc($hdc) } } finally { $g.Dispose() }
+        # Crop to the visible frame (DWMWA_EXTENDED_FRAME_BOUNDS): the
+        # window rectangle includes invisible resize borders that
+        # PrintWindow paints black.
+        $fr = New-Object ReadmeShots.Win+RECT
+        if ([ReadmeShots.Win]::DwmGetWindowAttribute($hwnd, 9, [ref]$fr, 16) -eq 0) {
+          $crop = New-Object System.Drawing.Rectangle(($fr.Left - $rc.Left), ($fr.Top - $rc.Top), ($fr.Right - $fr.Left), ($fr.Bottom - $fr.Top))
+          if (($crop.Width -gt 0) -and ($crop.Height -gt 0) -and ($crop.Right -le $w) -and ($crop.Bottom -le $h)) {
+            $cut = $bmp.Clone($crop, $bmp.PixelFormat); $bmp.Dispose(); $bmp = $cut; $w = $crop.Width; $h = $crop.Height
+          }
+        }
         $spread = Test-FrameVaries $bmp
         if ($w -lt $MinWidth) { throw "capture: $theme shot is $w px wide (< $MinWidth)" }
         if ($spread -lt 8) { throw "capture: $theme shot does not vary (luminance spread $([math]::Round($spread, 1))): a black or blank frame" }
