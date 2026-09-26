@@ -188,7 +188,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T12 §1`  | Binding guard fourth residuals                            |  15   |
 | [x] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
-| [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
+| [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   7   |
 | [ ] | `D00 T03 §4`  | Premium README presentation                               |   9   |
 | [ ] | `D00 T03 §5`  | Agent showcase media                                      |   4   |
 | [x] | `D00 T01 §42` | Requires operator vocabulary                              |   5   |

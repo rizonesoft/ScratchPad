@@ -10,7 +10,7 @@
 
 - [ ] `dotnet build src/ScratchPad.slnx` passes with no warnings
 - [ ] `dotnet test src/ScratchPad.slnx` passes (or the neutral filter, with the reason)
-- [ ] `py scripts/todo-graph.py validate` shows 0 fatal
+- [ ] `py scripts/todo-graph.py validate` shows 0 fatal and no new warning (fixed, or accepted in the baseline)
 - [ ] `py scripts/todo-graph.py plan --check` is current
 
 <!-- Paste the relevant output lines. For Notepad behavior, cite the baseline capture it matches; for protocol behavior, cite the ACP text. -->

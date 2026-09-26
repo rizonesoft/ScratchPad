@@ -33,10 +33,13 @@ cd ScratchPad
 powershell -ExecutionPolicy Bypass -File tools\provision.ps1
 $env:DOTNET_ROOT = "$PWD\.tools\dotnet-win-x64"; $env:PATH = "$PWD\.tools\dotnet-win-x64;" + $env:PATH; $env:DOTNET_MULTILEVEL_LOOKUP = "0"
 dotnet build src/ScratchPad.slnx
+# Once per machine: the app needs the Windows App Runtime 2.x. If this prints nothing, install it:
+Get-AppxPackage -Name 'Microsoft.WindowsAppRuntime.2*' | Select-Object -First 1 Name, Version
+Invoke-WebRequest https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe -OutFile "$env:TEMP\windowsappruntimeinstall-x64.exe"; & "$env:TEMP\windowsappruntimeinstall-x64.exe"
 py tools/launch.py
 ```
 
-The provisioner installs the pinned .NET SDK into `.tools/` inside the checkout (never machine-wide) and wires the git hooks. The build puts the app at `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe`, and `tools/launch.py` starts it. Launching needs the Windows App Runtime 2.x (see Troubleshooting). For a fast test pass without the UI suites, run `dotnet test src/Notepad.Neutral.slnf`; `dotnet test src/ScratchPad.slnx` runs everything, including UI automation that drives real windows. [docs/bootstrap.md](docs/bootstrap.md) walks through each step.
+The provisioner installs the pinned .NET SDK into `.tools/` inside the checkout (never machine-wide) and wires the git hooks. The build puts the app at `Bin\ScratchPad\Debug\win-x64\ScratchPad.exe`, and `tools/launch.py` starts it. The runtime check runs once per machine; skip the install line when the check prints a package. For a fast test pass without the UI suites, run `dotnet test src/Notepad.Neutral.slnf`; `dotnet test src/ScratchPad.slnx` runs everything, including UI automation that drives real windows. [docs/bootstrap.md](docs/bootstrap.md) walks through each step.
 
 ## Configuration
 
