@@ -237,7 +237,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                                  |   5   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                                  |   9   |
 | [ ] | `D00 T08 §1`  | Poster and delivery hardening                             |  12   |
-| [ ] | `D00 T08 §2`  | Notification governance and premium views                 |  12   |
+| [ ] | `D00 T08 §2`  | Notification governance and premium views                 |  13   |
 | [ ] | `D00 T09 §1`  | Hotkey-conflict preflight and environment-blocked outcome |  22   |
 | [ ] | `D00 T09 §2`  | Control channel and nightly-ctl CLI                       |   8   |
 | [ ] | `D00 T09 §3`  | Operator-presence yield                                   |   7   |
