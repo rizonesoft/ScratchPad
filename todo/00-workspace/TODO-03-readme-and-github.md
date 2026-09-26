@@ -83,6 +83,8 @@ Why this section exists: the README needs visible proof, and proof means real pi
 
 ## 2. README Rewrite Plus Repo-Face Files
 
+> **Started:** 2026-09-26T17:18:43Z
+
 Why this section exists: the current README has voice but no structure a stranger can act on. This section rewrites it to the full shape (name and purpose, badges, screenshot, audience and capabilities, quick start, configuration, usage, troubleshooting, docs and contributing, status and license), then lands the surrounding repo-face files so every link resolves. -> SOURCE: operator-readme-brief-2026-09-18-t03-s2.
 
 - [ ] `README.md` opens with the one-sentence purpose, the audience and key capabilities, and the hero screenshot (`docs/assets/readme-hero.png`) above the fold. Done when: the first screen answers what it does and who it helps.
