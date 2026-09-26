@@ -53,6 +53,8 @@ track: W0
 
 ## 1. Visual Proof Capture
 
+> **Started:** 2026-09-26T16:49:56Z
+
 Why this section exists: the README needs visible proof, and proof means real pixels from the shipped app, not mockups. The capture store (D00 T02 §3) owns the how; this section owns the two README shots plus their provenance. -> SOURCE: operator-readme-brief-2026-09-18-t03-s1.
 
 **Needs:** Windows host (build/test)
