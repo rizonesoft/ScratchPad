@@ -185,6 +185,60 @@ $n50b = Add-CollectedLine $t50 'D90-T01-S1-N2' $new50
 Assert ($n50b -like 'appended*') 's50-older-candidate-record-never-blocks-the-valid-one' $n50b
 Remove-Item $e50 -Recurse -Force
 
+# D00 T02 section 53 item 11: the collection, post-run debt query, and
+# triage commit contracts (sections 42, 45) walked as one chain against
+# the real graph: the collector writes its line with a write-ahead
+# intent and a manifest, the re-run query reads the debt closed, triage
+# refuses a stray edit, the retry after reverting it is ready, and the
+# commit lands the line at HEAD.
+$e53 = Join-Path $env:TEMP "nd53e-$([guid]::NewGuid().ToString('N'))"
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $e53 'scripts'), (Join-Path $e53 'todo\90-night')
+Copy-Item (Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\*.py') (Join-Path $e53 'scripts')
+$eap53 = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$null = & git -C $e53 init -q 2>&1
+'x' | Set-Content -Path (Join-Path $e53 'seed.txt')
+$null = & git -C $e53 add seed.txt 2>&1
+$null = & git -C $e53 -c user.name=t -c user.email=t@t commit -q -m seed 2>&1
+$c53 = ((& git -C $e53 rev-parse HEAD) | Out-String).Trim()
+$ErrorActionPreference = $eap53
+@('# 90 Night', '', '## TODOs', '', '| TODO | Title | Status |', '| ---- | ----- | :----: |', '| [TODO-01](./TODO-01-night.md) | Night | active |') | Set-Content -Path (Join-Path $e53 'todo\90-night\INDEX.md') -Encoding UTF8
+$t53 = Join-Path $e53 'todo\90-night\TODO-01-night.md'
+@('---', 'schema_version: 1', 'id: night', 'domain: 90-night', 'status: active', 'title: "TODO-01 -- Night"', 'track: Z9', '---', '', '# TODO-01 -- Night', '', '> **Goal:** Fixture.', '', '## Outcome', '', '- Fixture.', '', '**Adjacency:** all=not-applicable (fixture)', '', '## Implementation Order', '', '| Order | Section | Deliverable | Depends On | Status |', '| :---: | :-----: | ----------- | ---------- | :----: |', '|   1   |   §1    | Owned work | -- |  [ ]   |', '', '---', '', '## 1. Owned work', '', '- [ ] Did the thing', '- [ ] Commit: `"selftest: night"`', '', '**Test checkpoint:** `true`', '', "**Night-owed:** D90-T01-S1-N1 (1 Interactive, collector Nightly UI 02:30, owed 2026-09-20, candidate $c53, digest aaaa1111bbbb2222)", '', '## Verification', '', '- [ ] Fixture file validates') | Set-Content -Path $t53 -Encoding UTF8
+$eap53b = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$null = & git -C $e53 add -A 2>&1
+$null = & git -C $e53 -c user.name=t -c user.email=t@t commit -q -m tree 2>&1
+$ErrorActionPreference = $eap53b
+$doc53a = Get-NightDebtDocument $e53
+$run53 = Join-Path $e53 'build\nightly\2026-09-26-023001'
+$null = New-Item -ItemType Directory -Force -Path $run53
+$before53 = [System.IO.File]::ReadAllText($t53)
+$line53 = Format-CollectedLine '2026-09-26' 'D90-T01-S1-N1' 1 0 0 'seed.txt' 'aaaa1111bbbb2222' $c53 's53-pid1' '02:40' 'collect-s53-D90-T01-S1-N1'
+Add-TrackedWriteIntent $run53 $e53 $t53 $line53
+$note53 = Add-CollectedLine $t53 'D90-T01-S1-N1' $line53
+if ([System.IO.File]::ReadAllText($t53).Contains($line53)) { Add-TrackedWriteIntent $run53 $e53 $t53 $line53 -Written }
+$tw53 = @{}
+Register-TrackedWrite $tw53 $e53 $t53 $line53 $note53 $before53
+Write-TrackedWriteManifest $tw53 (Join-Path $run53 'tracked-writes.json')
+$doc53b = Get-NightDebtDocument $e53
+$triage53 = Join-Path $PSScriptRoot 'NightlyTriage.ps1'
+$stray = [System.IO.File]::ReadAllText($t53) + "stray edit`n"
+[System.IO.File]::WriteAllText($t53, $stray)
+$tr1 = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $triage53 -WorkspaceRoot $e53 2>&1 | ForEach-Object { "$_" }); $tr1Code = $LASTEXITCODE
+[System.IO.File]::WriteAllText($t53, $stray.Substring(0, $stray.Length - "stray edit`n".Length))
+$tr2 = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $triage53 -WorkspaceRoot $e53 2>&1 | ForEach-Object { "$_" }); $tr2Code = $LASTEXITCODE
+$savedSid53 = $env:CLAUDE_CODE_SESSION_ID; $env:CLAUDE_CODE_SESSION_ID = 'fixture-s53'
+$gcfg53 = @('-c', 'user.name=t', '-c', 'user.email=t@t')
+$null = & git -C $e53 config user.name t 2>&1; $null = & git -C $e53 config user.email t@t 2>&1; $null = & git -C $e53 config commit.gpgsign false 2>&1
+$tr3 = @(& powershell -NoProfile -ExecutionPolicy Bypass -File $triage53 -WorkspaceRoot $e53 -Commit 2>&1 | ForEach-Object { "$_" }); $tr3Code = $LASTEXITCODE
+$env:CLAUDE_CODE_SESSION_ID = $savedSid53
+$eap53c = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+$head53 = ((& git -C $e53 show HEAD:todo/90-night/TODO-01-night.md 2>$null) | Out-String)
+$ErrorActionPreference = $eap53c
+$open53a = @(@($doc53a.debts) | Where-Object { "$($_.id)" -eq 'D90-T01-S1-N1' }).Count
+$open53b = @(@($doc53b.debts) | Where-Object { "$($_.id)" -eq 'D90-T01-S1-N1' }).Count
+Assert (($open53a -eq 1) -and ($note53 -like 'appended*') -and ($open53b -eq 0) -and ($tr1Code -eq 1) -and (($tr1 -join ' ') -like '*REFUSED: todo/90-night/TODO-01-night.md differs from HEAD beyond*') -and ($tr2Code -eq 0) -and (($tr2 -join ' ') -like '*ready (1 line(s) from 2026-09-26-023001)*') -and ($tr3Code -eq 0) -and (($tr3 -join ' ') -like '*committed 1 file(s)*') -and $head53.Contains($line53)) 's53-collection-query-triage-commit-chain' ("open=$open53a/$open53b note=$note53 | " + ($tr1 -join ' ') + ' || ' + ($tr2 -join ' ') + ' || ' + ($tr3 -join ' '))
+Remove-Item $e53 -Recurse -Force
+
 # D00 T02 section 52 item 7: capability debt starts a clock, records each
 # host that lacked the capability, escalates past its due date, clears
 # on a collection without a capability skip, and survives a write.
