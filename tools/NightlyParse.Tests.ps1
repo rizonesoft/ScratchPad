@@ -2143,6 +2143,25 @@ Write-RunOwner (Join-Path $j2 '2026-09-26-023001') $PID (Get-Process -Id $PID).S
 Write-RunOwner (Join-Path $j2 '2026-09-25-023001') 999999 (Get-Date).AddDays(-1)
 $j2Notes = @(Invoke-WithSweepLock { Clear-StaleCaptureStaging $j2 '2026-09-26-030000' @('2026-09-26-030000') })
 Assert ((Test-Path (Join-Path $j2 '2026-09-26-023001\captures-run-a\.staging')) -and (Test-Path (Join-Path $j2 '2026-09-26-030000\captures-run-a\.staging')) -and (-not (Test-Path (Join-Path $j2 '2026-09-25-023001\captures-run-a\.staging'))) -and (Test-RunOwnerAlive (Join-Path $j2 '2026-09-26-023001')) -and (-not (Test-RunOwnerAlive (Join-Path $j2 '2026-09-25-023001')))) 's53-overlapping-runs-keep-their-own-staging' ($j2Notes -join ' | ')
+# D00 T02 §53 item 4: expired dumps and temporaries are swept or, when a
+# delete fails, reported by name; fresh ones and live runs are kept.
+$lvDir = Join-Path $dir 's53-leftovers'
+$lvTmp = Join-Path $dir 's53-leftovers-tmp'
+foreach ($p in @($lvDir, $lvTmp)) { if (Test-Path $p) { Remove-Item $p -Recurse -Force } }
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $lvDir '2026-09-10-023001\captures-run-a'), (Join-Path $lvDir '2026-09-25-023001\captures-run-a'), (Join-Path $lvDir '2026-09-11-023001\captures-run-a'), $lvTmp
+$lvOld = Join-Path $lvDir '2026-09-10-023001\captures-run-a\old.dmp'
+$lvNew = Join-Path $lvDir '2026-09-25-023001\captures-run-a\new.dmp'
+$lvLive = Join-Path $lvDir '2026-09-11-023001\captures-run-a\live.dmp'
+$lvLocked = Join-Path $lvDir '2026-09-10-023001\captures-run-a\locked.dmp'
+$lvTemp = Join-Path $lvTmp 'bounded-x.code'
+foreach ($f in @($lvOld, $lvNew, $lvLive, $lvLocked, $lvTemp)) { 'x' | Set-Content -LiteralPath $f -Encoding UTF8 }
+$lvNow = [datetime]::new(2026, 9, 26, 3, 0, 0)
+foreach ($f in @($lvOld, $lvLive, $lvLocked)) { (Get-Item $f).LastWriteTime = $lvNow.AddDays(-10) }
+(Get-Item $lvNew).LastWriteTime = $lvNow.AddDays(-1)
+(Get-Item $lvTemp).LastWriteTime = $lvNow.AddDays(-2)
+$lvHold = [System.IO.File]::Open($lvLocked, 'Open', 'Read', 'None')
+try { $lvNotes = @(Clear-CaptureLeftovers $lvDir $lvTmp $lvNow @('2026-09-11-023001')) } finally { $lvHold.Dispose() }
+Assert ((-not (Test-Path $lvOld)) -and (Test-Path $lvNew) -and (Test-Path $lvLive) -and (-not (Test-Path $lvTemp)) -and (Test-Path $lvLocked) -and (@($lvNotes | Where-Object { $_ -like '*locked.dmp expired but could not be deleted*' }).Count -eq 1) -and (@($lvNotes | Where-Object { $_ -like '*old.dmp expired (7 days), deleted' }).Count -eq 1) -and (@($lvNotes | Where-Object { $_ -like '*temporary bounded-x.code expired*' }).Count -eq 1)) 's53-binary-leftovers-expire-or-are-named' ($lvNotes -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'
@@ -2153,6 +2172,12 @@ $null = New-Item -ItemType Directory -Force -Path $polDir
 $pOff = Read-IncidentPolicy (Join-Path $polDir 'off.json')
 $pBad = Read-IncidentPolicy (Join-Path $polDir 'bad.json')
 $pAbs = Read-IncidentPolicy (Join-Path $polDir 'absent.json')
+# D00 T02 §53 item 3: an absent key reads as a named compatibility default,
+# an explicit one as explicit, an invalid one as the fail-closed refusal.
+$cpAbs = Get-CapturePolicyLine $pAbs
+$cpOff = Get-CapturePolicyLine $pOff
+$cpBad = Get-CapturePolicyLine $pBad
+Assert (($cpAbs -like 'binary captures: on (compatibility default: binaryCaptures is absent*') -and ($cpOff -eq 'binary captures: OFF (explicit binaryCaptures in tools/incident-policy.json)') -and ($cpBad -like 'binary captures: OFF (fail closed: incident policy invalid*')) 's53-absent-capture-policy-is-named' "$cpAbs | $cpOff | $cpBad"
 $wasBin = $script:BinaryCapturesAllowed
 $script:BinaryCapturesAllowed = $false
 $capOff = Join-Path $dir 's45-captures-off'

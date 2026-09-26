@@ -550,7 +550,7 @@ try { Write-RunOwner $trxDir $PID $runStart } catch { Write-Output "nightly: run
 # Crash-left capture staging is swept before this run captures anything
 # (D00 T02 section 38 item 1), one sweep at a time (section 53 item 2);
 # the notes join the report's captures.
-$script:stagingSweepNotes = @(Invoke-WithSweepLock { Clear-StaleCaptureStaging $nightDir $stamp })
+$script:stagingSweepNotes = @(Invoke-WithSweepLock { Clear-StaleCaptureStaging $nightDir $stamp; Clear-CaptureLeftovers $nightDir ([System.IO.Path]::GetTempPath()) (Get-Date) @(Get-LiveRunStamps $nightDir $stamp) })
 # Next-start recovery (D00 T02 §16 items 4, 12): probe BEFORE writing
 # this run's journal, so a dead previous run lands its RED record
 # exactly once (the probe reads the old journal; the write below
@@ -1140,6 +1140,7 @@ $report += "- Build: $buildLine"
 $report += "- Placement: $placementLine"
 $report += "- Population: $populationLine"
 $report += "- Pre-flight reaped: $reapLine"
+$report += "- Capture policy: $script:BinaryCapturesPolicyLine"
 $report += ''
 $report += '| Leg | Counts | Gate | Infra | Log |'
 $report += '| --- | ------ | ---- | ----- | --- |'

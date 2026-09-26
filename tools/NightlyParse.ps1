@@ -551,18 +551,32 @@ function Read-IncidentPolicy([string]$Path) {
     # decides whether screenshots and dumps are taken at all. Absent reads
     # true (the recorded default); anything but a JSON boolean is invalid.
     $bin = $true
+    $explicit = $false
     if ($null -ne $j.PSObject.Properties['binaryCaptures']) {
-      if ($j.binaryCaptures -isnot [bool]) { return [pscustomobject]@{ Ok = $false; Error = "incident policy invalid: binaryCaptures must be true or false ($Path)"; Owner = ''; Days = 0; BinaryCaptures = $false } }
+      if ($j.binaryCaptures -isnot [bool]) { return [pscustomobject]@{ Ok = $false; Error = "incident policy invalid: binaryCaptures must be true or false ($Path)"; Owner = ''; Days = 0; BinaryCaptures = $false; BinaryCapturesExplicit = $false } }
       $bin = [bool]$j.binaryCaptures
+      $explicit = $true
     }
-    return [pscustomobject]@{ Ok = $true; Error = ''; Owner = "$($j.triageOwner)"; Days = [int]$j.triageDays; BinaryCaptures = $bin }
+    return [pscustomobject]@{ Ok = $true; Error = ''; Owner = "$($j.triageOwner)"; Days = [int]$j.triageDays; BinaryCaptures = $bin; BinaryCapturesExplicit = $explicit }
   } catch { return [pscustomobject]@{ Ok = $false; Error = "incident policy unreadable: $($_.Exception.Message)"; Owner = ''; Days = 0 } }
+}
+function Get-CapturePolicyLine($Policy) {
+  # Capture consent as the report states it (D00 T02 section 53 item 3):
+  # an explicit policy, the compatibility default an absent key takes
+  # (captures on, the pre-section-45 behavior a first run or an upgrade
+  # keeps until the operator writes the key), or the fail-closed refusal
+  # an unreadable or invalid policy takes. Never silent.
+  if (-not $Policy.Ok) { return "binary captures: OFF (fail closed: $($Policy.Error))" }
+  $state = if ($Policy.BinaryCaptures) { 'on' } else { 'OFF' }
+  if ($Policy.BinaryCapturesExplicit) { return "binary captures: $state (explicit binaryCaptures in tools/incident-policy.json)" }
+  return "binary captures: $state (compatibility default: binaryCaptures is absent from tools/incident-policy.json, so captures stay on as before section 45; write the key to decide)"
 }
 $policy = Read-IncidentPolicy (Join-Path $PSScriptRoot 'incident-policy.json')
 # Binary captures fail closed: an unreadable or invalid policy takes no
 # screenshot and no dump (section 45 item 2).
 $script:BinaryCapturesAllowed = $false
 if ($policy.Ok) { $script:TriageOwner = $policy.Owner; $script:TriageDays = $policy.Days; $script:BinaryCapturesAllowed = $policy.BinaryCaptures } else { $script:IncidentPolicyError = $policy.Error }
+$script:BinaryCapturesPolicyLine = Get-CapturePolicyLine $policy
 $script:IncidentContractV2Since = '2026-09-25-000000'
 $script:CaptureOwnedProcesses = @('ScratchPad', 'testhost', 'ForegroundLog', 'JobControl')
 $script:CaptureMaxBytes = 25MB
@@ -843,6 +857,44 @@ function Invoke-WithSweepLock([scriptblock]$Body, [int]$WaitMs = 30000) {
     if (-not $held) { return @('- capture staging: sweep skipped (another run holds the sweep lock)') }
     return (& $Body)
   } finally { if ($held) { $m.ReleaseMutex() }; $m.Dispose() }
+}
+
+# Binary copy lifetimes (D00 T02 section 53 item 4), one expiry per
+# capture location:
+#   <stamp>\captures-*\.staging  interrupted captures: the next run's start
+#                                  sweep (Clear-StaleCaptureStaging)
+#   <stamp>\captures-*\*.dmp     process dumps: 7 days (Clear-CaptureLeftovers)
+#   <stamp>\captures-*            screenshots and text: the run folder's
+#                                  retention (NightlyRetention, 30 days)
+#   %TEMP%\bounded-*.code         diagnostic temporaries: 1 day
+#                                  (Clear-CaptureLeftovers)
+#   refused retention              a run refused retention keeps no retained
+#                                  copy; its captures follow the run folder
+$script:DumpExpiryDays = 7
+$script:TempExpiryDays = 1
+
+function Clear-CaptureLeftovers([string]$NightDir, [string]$TempDir, [datetime]$Now, [string[]]$LiveStamps = @()) {
+  # Sweeps binary leftovers past their expiry (section 53 item 4): dumps
+  # under non-live run folders older than $script:DumpExpiryDays, and this
+  # tool's diagnostic temporaries older than $script:TempExpiryDays. A
+  # delete that fails is reported by name, never dropped silently; a
+  # reparse point is never followed. Returns report notes.
+  $notes = @()
+  $dumpCut = $Now.AddDays(-$script:DumpExpiryDays)
+  foreach ($s in @(Get-ChildItem -LiteralPath $NightDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$') -and (-not (Test-ReparsePoint $_)) -and ($LiveStamps -notcontains $_.Name) })) {
+    foreach ($cd in @(Get-ChildItem -LiteralPath $s.FullName -Directory -Force -ErrorAction SilentlyContinue | Where-Object { ($_.Name -like 'captures-*') -and (-not (Test-ReparsePoint $_)) })) {
+      foreach ($f in @(Get-ChildItem -LiteralPath $cd.FullName -Filter '*.dmp' -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $dumpCut })) {
+        try { [System.IO.File]::Delete($f.FullName); $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired ($($script:DumpExpiryDays) days), deleted" }
+        catch { $notes += "- capture leftovers: dump $($s.Name)\$($cd.Name)\$($f.Name) expired but could not be deleted ($($_.Exception.Message))" }
+      }
+    }
+  }
+  $tempCut = $Now.AddDays(-$script:TempExpiryDays)
+  foreach ($f in @(Get-ChildItem -LiteralPath $TempDir -Filter 'bounded-*.code' -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -lt $tempCut })) {
+    try { [System.IO.File]::Delete($f.FullName); $notes += "- capture leftovers: temporary $($f.Name) expired ($($script:TempExpiryDays) day), deleted" }
+    catch { $notes += "- capture leftovers: temporary $($f.Name) expired but could not be deleted ($($_.Exception.Message))" }
+  }
+  return $notes
 }
 
 function Get-LiveRunStamps([string]$NightDir, [string]$CurrentStamp) {
