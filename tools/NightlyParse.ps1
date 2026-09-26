@@ -6180,6 +6180,37 @@ function Format-TailLine([double[]]$Window) {
   return "n=$n, p50 $(Get-Percentile $Window 50), p90 $(Get-Percentile $Window 90), $p95Text, max $max"
 }
 
+function Get-SlotAnnotations($Result, $Schedule) {
+  # One slot, one status (D00 T02 section 54 item 9). Precedence per
+  # scheduled night: a result's own verdict, else a live overrun, else
+  # pending, paused, disabled, degraded, and finally missing. A result
+  # never erases what the slot went through, so its row carries:
+  #   completed late   the run finished past its grace (trigger + 4 h +
+  #                    30 min): the overrun stays on record
+  #   disabled during  the schedule was disabled on that night while the
+  #                    run executed
+  #   cancelled        a cancelled or stood-down run executed nothing, so
+  #                    the slot's run is still missed
+  # Returns the notes (empty when none).
+  $notes = @()
+  $night = Get-ResultNight $Result
+  $trig = [TimeSpan]::FromHours(2.5)
+  try { $te = Get-ScheduleEntry $Schedule $night; if (($null -ne $te) -and (@($te.PSObject.Properties.Name) -contains 'Trigger')) { $trig = [TimeSpan]::Parse("$($te.Trigger)") } } catch { }
+  try {
+    $start = [datetimeoffset]::Parse("$($Result.startUtc)", [System.Globalization.CultureInfo]::InvariantCulture)
+    $consumed = [double]$Result.consumed
+    $nightDate = [datetime]::ParseExact($night, 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
+    $offset = [TimeSpan]::Zero
+    if ("$($Result.tz)" -match '^([+-])(\d{2}):(\d{2})$') { $offset = New-Object TimeSpan ([int]$Matches[2]), ([int]$Matches[3]), 0; if ($Matches[1] -eq '-') { $offset = $offset.Negate() } }
+    $deadline = (New-Object DateTimeOffset ($nightDate + $trig), $offset).AddHours(4.5)
+    $finish = $start.AddSeconds($consumed)
+    if ($finish -gt $deadline) { $notes += "completed late: overran its grace by $([int][math]::Ceiling(($finish - $deadline).TotalMinutes)) min" }
+  } catch { }
+  try { $se = Get-ScheduleEntry $Schedule $night; if (($null -ne $se) -and ([int]$se.IntervalDays -eq 0)) { $notes += "schedule disabled from $($se.First) during the run" } } catch { }
+  if (@('cancelled', 'stood-down') -contains "$($Result.verdict)") { $notes += "$($Result.verdict): the slot's run is still missed" }
+  return $notes
+}
+
 function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = (Get-Date), [hashtable]$Pauses = @{}, $Degraded = @(), $Supersessions = @(), $Schedule = $null, $Running = $null) {
   # Renders nights as a Markdown trend (D00 T02 §17 items 2, 4, 9):
   # one row per run plus pass-rate, duration, quarantine-age, flake,
@@ -6292,6 +6323,9 @@ function Format-TrendTable($Results, [hashtable]$Quarantine, [datetime]$Today = 
     $envShort = 'unknown'
     try { $envShort = "$($r.env.dpi) $($r.env.os)" } catch { }
     $nightCell = if (& $isCanon $r) { $day } else { "$day (retry)" }
+    # What the slot went through stays on its row (section 54 item 9).
+    $slotNotes = @(Get-SlotAnnotations $r $Schedule)
+    if ($slotNotes.Count -gt 0) { $nightCell += " ($($slotNotes -join '; '))" }
     # Intentional exclusion (section 40 item 8): an operator-excluded
     # result renders marked and joins no series; it never reads degraded.
     $exReason = "$(try { $r.excluded } catch { '' })"

@@ -915,6 +915,13 @@ $shB = Get-ShardCoverage ([pscustomobject]@{ inventoryVersion = 1; expected = @(
 $shC = Get-ShardCoverage ([pscustomobject]@{ shards = 3; manifests = 2 })
 $shD = Get-ShardCoverage $null
 Assert (($shA.State -eq 'partial') -and (($shA.Missing -join ',') -eq 'interactive') -and ($shA.Line -like 'partial (missing interactive; 2 of 3 shard(s) read, inventory v1)') -and ($shB.State -eq 'complete') -and ($shC.Line -like 'partial (2 of 3*names not recorded)') -and ($shD.State -eq 'unknown')) 's54-missing-shard-reads-missing' "$($shA.Line) | $($shC.Line) | $($shD.Line)"
+# D00 T02 §54 item 9: a late completion after an overrun keeps the
+# overrun on record; a cancelled run keeps its slot missed.
+$slLate = [pscustomobject]@{ night = '2026-09-20'; startUtc = '2026-09-20T00:30:00Z'; tz = '+02:00'; consumed = 7 * 3600; verdict = 'green' }
+$slOk = [pscustomobject]@{ night = '2026-09-21'; startUtc = '2026-09-21T00:30:00Z'; tz = '+02:00'; consumed = 3600; verdict = 'green' }
+$slCan = [pscustomobject]@{ night = '2026-09-22'; startUtc = '2026-09-22T00:30:00Z'; tz = '+02:00'; consumed = 60; verdict = 'cancelled' }
+$slA = @(Get-SlotAnnotations $slLate $null); $slB = @(Get-SlotAnnotations $slOk $null); $slC = @(Get-SlotAnnotations $slCan $null)
+Assert (($slA.Count -eq 1) -and ($slA[0] -like 'completed late: overran its grace by 150 min') -and ($slB.Count -eq 0) -and (@($slC | Where-Object { $_ -eq "cancelled: the slot's run is still missed" }).Count -eq 1)) 's54-late-completion-keeps-the-overrun' (($slA + $slC) -join ' | ')
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
