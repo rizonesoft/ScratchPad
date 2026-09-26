@@ -5364,14 +5364,30 @@ function Update-DisclosureMigration([string]$Path) {
   if (Test-Path -LiteralPath $marker) { try { $have = [int]((Get-Content -LiteralPath $marker -Raw).Trim()) } catch { $have = 0 } }
   if ($have -ge $script:DisclosureRuleVersion) { return @() }
   $out = @()
+  $failed = 0
+  $progress = "$marker.progress"
+  $doneFiles = @(if (Test-Path -LiteralPath $progress) { Get-Content -LiteralPath $progress -Encoding UTF8 | Where-Object { "$_" -ne '' } })
   # Kept damaged stores (section 47 R2-A1) are retained copies too.
   foreach ($f in @(@("$Path.bak") + @(Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter "$(Split-Path -Leaf $Path).rejected*" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) + @(Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter "$(Split-Path -Leaf $Path).damaged-*" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }))) {
     if (-not (Test-Path -LiteralPath $f)) { continue }
-    $n = 0
-    $new = @(foreach ($ln in [System.IO.File]::ReadAllLines($f)) { if ("$ln".Trim() -eq '') { continue }; try { $o = $ln | ConvertFrom-Json -ErrorAction Stop; $c = ConvertTo-Json (Protect-DisclosedObject $o) -Depth 6 -Compress; if ($c -ne (ConvertTo-Json $o -Depth 6 -Compress)) { $n++; $c } else { $ln } } catch { if ($f -like '*.damaged-*') { $t2 = Protect-DisclosedText $ln; if ($t2 -ne $ln) { $n++ }; $t2 } else { $n++; '{"schema":"rejected/1","note":"unparsable line dropped at disclosure migration"}' } } })
-    if ($n -gt 0) { Write-AtomicReport $new $f; $out += "- disclosure migration: $n line(s) sanitized in $(Split-Path -Leaf $f)" }
+    # Resumable (section 54 item 12): a file this rule version already
+    # sanitized is skipped after an interruption.
+    if ($doneFiles -contains "$($script:DisclosureRuleVersion)|$(Split-Path -Leaf $f)") { continue }
+    try {
+      $n = 0
+      $new = @(foreach ($ln in [System.IO.File]::ReadAllLines($f)) { if ("$ln".Trim() -eq '') { continue }; try { $o = $ln | ConvertFrom-Json -ErrorAction Stop; $c = ConvertTo-Json (Protect-DisclosedObject $o) -Depth 6 -Compress; if ($c -ne (ConvertTo-Json $o -Depth 6 -Compress)) { $n++; $c } else { $ln } } catch { if ($f -like '*.damaged-*') { $t2 = Protect-DisclosedText $ln; if ($t2 -ne $ln) { $n++ }; $t2 } else { $n++; '{"schema":"rejected/1","note":"unparsable line dropped at disclosure migration"}' } } })
+      if ($n -gt 0) { Write-AtomicReport $new $f; $out += "- disclosure migration: $n line(s) sanitized in $(Split-Path -Leaf $f)" }
+      Add-Content -LiteralPath $progress -Value "$($script:DisclosureRuleVersion)|$(Split-Path -Leaf $f)" -Encoding UTF8
+    } catch {
+      # A copy that cannot be sanitized is named, and the marker stays
+      # unwritten so the next run retries it.
+      $failed++
+      $out += "- disclosure migration: could not sanitize $(Split-Path -Leaf $f) ($($_.Exception.Message)); it keeps values the rule withholds until a later run retries"
+    }
   }
+  if ($failed -gt 0) { return $out }
   Write-AtomicReport @("$($script:DisclosureRuleVersion)") $marker
+  if (Test-Path -LiteralPath $progress) { Remove-Item -LiteralPath $progress -Force -ErrorAction SilentlyContinue }
   return $out
 }
 

@@ -951,6 +951,21 @@ $rg2 = Update-AlertLedger @() $rgLedger ([pscustomobject]@{ Night = '2026-09-21'
 $rg3 = Update-AlertLedger @($rgAlert) $rgLedger ([pscustomobject]@{ Night = '2026-09-22'; Host = 'abcd1234'; Identity = 'e3' })
 Assert ((@($rg1.NewIds).Count -eq 1) -and (@($rg2.Closed).Count -eq 0) -and (@($rg3.NewIds).Count -eq 0) -and (@($rg3.Persisting) -contains 'abcd1234|runa-duration')) 's54-metrics-restore-sends-no-duplicate-alert' "closed=$(@($rg2.Closed).Count) new=$(@($rg3.NewIds) -join ',')"
 Remove-Item $rgDir -Recurse -Force
+# D00 T02 §54 item 12: an interrupted disclosure migration resumes and an
+# unsanitizable copy is named: a locked backup is reported and the marker
+# stays unwritten; the next run sanitizes it and completes.
+$dmDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-disclosure'
+if (Test-Path $dmDir) { Remove-Item $dmDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $dmDir
+$dmStore = Join-Path $dmDir 'metrics.jsonl'
+'{"schema":"metrics/1","identity":"x","note":"plain"}' | Set-Content -LiteralPath "$dmStore.bak" -Encoding UTF8
+$dmHold = [System.IO.File]::Open("$dmStore.bak", 'Open', 'Read', 'None')
+try { $dm1 = @(Update-DisclosureMigration $dmStore) } finally { $dmHold.Dispose() }
+$dmMarker1 = Test-Path "$dmStore.disclosure"
+$dm2 = @(Update-DisclosureMigration $dmStore)
+$dmMarker2 = Test-Path "$dmStore.disclosure"
+Assert ((@($dm1 | Where-Object { $_ -like '*could not sanitize metrics.jsonl.bak*' }).Count -eq 1) -and (-not $dmMarker1) -and $dmMarker2 -and (-not (Test-Path "$dmStore.disclosure.progress"))) 's54-disclosure-migration-resumes-and-names-failures' (($dm1 + $dm2) -join ' | ')
+Remove-Item $dmDir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
