@@ -5937,17 +5937,32 @@ function Update-DueRecord([string]$Path, [hashtable]$Dues) {
   # a result rewritten in place with a later day or a laxer severity loses
   # its earlier copy from disk, but never the deadline it already set.
   # Atomic write. Returns '' or the error.
-  $rec = Read-DueRecord $Path
-  $changed = $false
-  foreach ($k in @($Dues.Keys)) {
-    $d = $Dues[$k]
-    if ($null -eq $d) { continue }
-    if ((-not $rec.ContainsKey($k)) -or ($d -lt $rec[$k])) { $rec[$k] = $d; $changed = $true }
+  # The read, the minimum, and the write run under one exclusive lock
+  # (section 46 R4-I1): the nightly and the filing both update the record,
+  # and the minimum holds only if neither reads what the other is about
+  # to replace. The lock is a file opened without sharing, retried within
+  # a bound; a record that cannot be locked is reported, never written
+  # blind.
+  $lockPath = "$Path.lock"
+  $lock = $null
+  $until = (Get-Date).AddSeconds(15)
+  while ($null -eq $lock) {
+    try { $lock = [System.IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None') }
+    catch { if ((Get-Date) -ge $until) { return "due record locked by another writer for 15 s ($lockPath); deadlines not recorded this run" }; Start-Sleep -Milliseconds 100 }
   }
-  if (-not $changed) { return '' }
-  $o = [ordered]@{}
-  foreach ($k in @($rec.Keys | Sort-Object)) { $o[$k] = $rec[$k].ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) }
-  try { Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ version = 1; dues = [pscustomobject]$o }) -Depth 4)) $Path; return '' } catch { return "due record write failed: $($_.Exception.Message)" }
+  try {
+    $rec = Read-DueRecord $Path
+    $changed = $false
+    foreach ($k in @($Dues.Keys)) {
+      $d = $Dues[$k]
+      if ($null -eq $d) { continue }
+      if ((-not $rec.ContainsKey($k)) -or ($d -lt $rec[$k])) { $rec[$k] = $d; $changed = $true }
+    }
+    if (-not $changed) { return '' }
+    $o = [ordered]@{}
+    foreach ($k in @($rec.Keys | Sort-Object)) { $o[$k] = $rec[$k].ToString('yyyy-MM-ddTHH:mm:sszzz', [System.Globalization.CultureInfo]::InvariantCulture) }
+    try { Write-AtomicReport @((ConvertTo-Json ([pscustomobject]@{ version = 1; dues = [pscustomobject]$o }) -Depth 4)) $Path; return '' } catch { return "due record write failed: $($_.Exception.Message)" }
+  } finally { $lock.Dispose() }
 }
 
 function Get-AckHistoricalRuns([string]$Root, [string]$RelPath) {
@@ -6019,13 +6034,21 @@ function Get-AckHistoricalTargets([string]$Root, [string]$RelPath) {
       # R1-C1), so a later edit that drops them never empties what a
       # historical action must verify.
       $verInc = @("$($fm.Fields['incidents'])" -split '[,\s]+' | Where-Object { ($_ -ne '') -and ($_ -ne 'none') })
-      # A label named again in a later version adds that version's
-      # incidents (section 46 R2-C1).
-      if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and $targets.Contains($top)) { foreach ($vi in $verInc) { if (@($targets[$top].Incidents) -notcontains $vi) { $targets[$top].Incidents = @(@($targets[$top].Incidents) + @($vi)) } } }
-      if (($top -ne '') -and ("$($fm.Fields['disposition'])" -ne 'withdrawn') -and (-not $targets.Contains($top))) { $targets[$top] = [pscustomobject]@{ Label = $top; Finding = $top; Disposition = "$($fm.Fields['disposition'])"; Evidence = "$($fm.Fields['evidence'])"; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = $verInc } }
+      # Each distinct action any version opened is kept (section 46
+      # R4-C1): the key is the label plus its disposition and evidence, so
+      # a transition such as expected -> duplicate -> expected keeps the
+      # duplicate obligation, and a changed duplicate target keeps the
+      # earlier dependency. The same action named again adds its incidents.
+      $topDisp = "$($fm.Fields['disposition'])"
+      $topEv = "$($fm.Fields['evidence'])"
+      $tk = "$top|$topDisp|$topEv"
+      if (($top -ne '') -and ($topDisp -ne 'withdrawn')) {
+        if ($targets.Contains($tk)) { foreach ($vi in $verInc) { if (@($targets[$tk].Incidents) -notcontains $vi) { $targets[$tk].Incidents = @(@($targets[$tk].Incidents) + @($vi)) } } }
+        else { $targets[$tk] = [pscustomobject]@{ Label = $top; Finding = $top; Disposition = $topDisp; Evidence = $topEv; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = $verInc } }
+      }
       foreach ($cv in @($fm.Covers)) {
         $cm = [regex]::Match("$cv", $script:AckCoverRe)
-        if ($cm.Success) { $k = "$($cm.Groups[1].Value) $($cm.Groups[3].Value)"; if (-not $targets.Contains($k)) { $targets[$k] = [pscustomobject]@{ Label = $k; Finding = $cm.Groups[3].Value; Disposition = $cm.Groups[2].Value; Evidence = $cm.Groups[4].Value; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = @($cm.Groups[1].Value) } } }
+        if ($cm.Success) { $k = "$($cm.Groups[1].Value) $($cm.Groups[3].Value)"; $ck = "$k|$($cm.Groups[2].Value)|$($cm.Groups[4].Value)"; if (-not $targets.Contains($ck)) { $targets[$ck] = [pscustomobject]@{ Label = $k; Finding = $cm.Groups[3].Value; Disposition = $cm.Groups[2].Value; Evidence = $cm.Groups[4].Value; Since = $parts[1]; Due = "$($fm.Fields['due'])"; Owner = "$($fm.Fields['corrective-owner'])"; Incidents = @($cm.Groups[1].Value) } } }
       }
     }
   } catch { } finally { $ErrorActionPreference = $eap; try { [Console]::OutputEncoding = $enc } catch { } }
@@ -6266,26 +6289,27 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
     # their actions (R2-F2), with the due they were opened under.
     $relAck = (($AckDir.Substring($Root.Length).TrimStart('\', '/')) -replace '\\', '/') + "/$file"
     $hist = Get-AckHistoricalTargets $Root $relAck
-    foreach ($k in $hist.Keys) {
-      # A label still current keeps every incident any version listed for
-      # it (section 46 R2-C1), so narrowing A+B to A under the same fix
-      # never drops B's verification.
+    foreach ($hk in @($hist.Keys)) {
+      $h = $hist[$hk]
+      $k = "$($h.Label)"
+      # The same action (label, disposition, and evidence) still current
+      # keeps every incident any version listed (section 46 R2-C1, R4-C1);
+      # a label now carrying another disposition or evidence keeps the
+      # earlier action as its own target with its own closure rule
+      # (R3-C1, R4-C1); a label no longer named is a dropped action.
       $cur = @($targets | Where-Object { $_.Label -eq $k })
-      # A label kept under another disposition is a different action
-      # (section 46 R3-C1): the earlier disposition's remediation stays
-      # its own target with its own closure rule.
-      if (($cur.Count -gt 0) -and (@($cur | Where-Object { "$($_.Disposition)" -eq "$($hist[$k].Disposition)" }).Count -eq 0)) {
-        $h = $hist[$k]
-        $targets += [pscustomobject]@{ Label = "$k (as $($h.Disposition) in an earlier version, opened $($h.Since.Substring(0, 10)))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = @($h.Incidents) }
+      $same = @($cur | Where-Object { ("$($_.Disposition)" -eq "$($h.Disposition)") -and ("$($_.Evidence)" -eq "$($h.Evidence)") })
+      if ($same.Count -gt 0) {
+        foreach ($ct in $same) { foreach ($hi in @($h.Incidents)) { if (("$hi" -ne '') -and (@($ct.Incidents) -notcontains $hi)) { $ct.Incidents = @(@($ct.Incidents) + @($hi)) } } }
         continue
       }
-      if ($cur.Count -gt 0) {
-        foreach ($ct in $cur) { foreach ($hi in @($hist[$k].Incidents)) { if (("$hi" -ne '') -and (@($ct.Incidents) -notcontains $hi)) { $ct.Incidents = @(@($ct.Incidents) + @($hi)) } } }
-        continue
-      }
-      $h = $hist[$k]
       $hInc = if (($null -ne $h.PSObject.Properties['Incidents']) -and (@($h.Incidents).Count -gt 0)) { @($h.Incidents) } elseif ($k -match '^(INC-[0-9a-f]{8}) ') { @($Matches[1]) } else { @() }
-      $targets += [pscustomobject]@{ Label = "$k (dropped from the ack, opened $($h.Since.Substring(0, 10)))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = $hInc }
+      $asText = "$($h.Disposition)$(if ("$($h.Evidence)" -ne '') { " $($h.Evidence)" })"
+      if ($cur.Count -gt 0) {
+        $targets += [pscustomobject]@{ Label = "$k (as $asText in an earlier version, opened $($h.Since.Substring(0, 10)))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = $hInc }
+        continue
+      }
+      $targets += [pscustomobject]@{ Label = "$k (dropped from the ack, opened $($h.Since.Substring(0, 10))$(if (@($hist.Values | Where-Object { "$($_.Label)" -eq $k }).Count -gt 1) { ", as $asText" }))"; Finding = $h.Finding; Disposition = $h.Disposition; Evidence = $h.Evidence; Due = $h.Due; Incidents = $hInc }
     }
     $dueDate = [datetime]::MinValue
     $hasDue = [datetime]::TryParseExact("$($f['due'])", 'yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture, 'None', [ref]$dueDate)
@@ -6301,6 +6325,16 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       # duplicate on the acknowledgement of the run it repeats; only
       # remediation still owed stays open.
       $fixWait = ''
+      # A duplicate is decided by its linkage first (section 46 R4-F1): a
+      # `closed:` reference never closes it while the repeated run's
+      # matching actions are open.
+      if ($tg.Disposition -eq 'duplicate') {
+        $pendingDup += [pscustomobject]@{ File = $file; Target = $tg; Of = $ev; DueOk = $tgHasDue; Due = $tgDue; DueText = $tgDueText; Owner = "$($f['corrective-owner'])"; Stale = $isStale }
+        if (-not $targetsByFile.ContainsKey($file)) { $targetsByFile[$file] = @() }
+        $targetsByFile[$file] += $tg
+        $targetState["$file|$($tg.Label)"] = ''
+        continue
+      }
       if ($allClosed -and ($tg.Disposition -eq 'fixed')) {
         # A `closed:` reference never skips a fix's verification (section
         # 46 R3-F2): the fix commit (its finding or evidence, else the

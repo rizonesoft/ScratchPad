@@ -677,7 +677,7 @@ Save-All 'ack z2 duplicate'
 Write-Ack 'ack-z2.md' @("run: $runZ2 sha256:$($dZ2[$runZ2].Current)", 'incidents: none', 'owner: operator', 'disposition: expected', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd11", 'signed: 2026-10-26')
 Save-All 'ack z2 now expected'
 $gz2 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-26')
-Assert ((@($gz2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-z2.md ($fnd11): closed*" }).Count -eq 1) -and (@($gz2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-z2.md ($fnd11 (as duplicate in an earlier version*): open (duplicate of $runOpen, which is not acknowledged*" }).Count -eq 1)) 's46-disposition-change-keeps-the-earlier-action' ($gz2.Lines -join ' | ')
+Assert ((@($gz2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-z2.md ($fnd11): closed*" }).Count -eq 1) -and (@($gz2.Lines | Where-Object { $_ -like "*CORRECTIVE ack-z2.md ($fnd11 (as duplicate $runOpen in an earlier version*): open (duplicate of $runOpen, which is not acknowledged*" }).Count -eq 1)) 's46-disposition-change-keeps-the-earlier-action' ($gz2.Lines -join ' | ')
 # Section 46 R3-I1: an ack reassigned to another run still answers, in
 # duplicate linkage, for the action it opened for the first run.
 $runA1 = '2026-10-27-023001-pid64'; $runB1 = '2026-10-27-120001-pid65'; $runD1 = '2026-10-27-180001-pid66'
@@ -692,6 +692,43 @@ Write-Ack 'ack-d1.md' @("run: $runD1 sha256:$($dA1[$runD1].Current)", 'incidents
 Save-All 'hr moves to b1; ga closes a1; d1 duplicates a1'
 $gA1 = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-28')
 Assert (@($gA1.Lines | Where-Object { $_ -like "*CORRECTIVE ack-d1.md ($fnd9): open (duplicate of $runA1; open while its action ack-hr.md ($fnd9) is open*" }).Count -eq 1) 's46-reassigned-ack-still-links-its-first-run' ($gA1.Lines -join ' | ')
+
+# Section 46 R4-F1: a closed: reference never closes a duplicate while the
+# repeated run's action is open.
+$runCd = '2026-10-28-023001-pid67'; $runCo = '2026-10-28-120001-pid68'
+New-Red $runCd '2026-10-28' @(); New-Red $runCo '2026-10-28' @()
+$dCd = Get-Dem
+Write-Ack 'ack-co.md' @("run: $runCo sha256:$($dCd[$runCo].Current)", 'incidents: none', 'owner: operator', 'disposition: filed', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", 'signed: 2026-10-28')
+Save-All 'ack co'
+$eap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'; $headCd = ((& git -C $ws rev-parse HEAD) | Out-String).Trim().Substring(0, 12); $ErrorActionPreference = $eap
+Write-Ack 'ack-cd.md' @("run: $runCd sha256:$($dCd[$runCd].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runCo", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd9", "closed: $headCd", 'signed: 2026-10-28')
+Save-All 'ack cd duplicate with closed'
+$gCd = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-28')
+Assert (@($gCd.Lines | Where-Object { $_ -like "*CORRECTIVE ack-cd.md ($fnd9): open (duplicate of $runCo; open while its action ack-co.md ($fnd9) is open*" }).Count -eq 1) 's46-closed-never-short-circuits-a-duplicate' ($gCd.Lines -join ' | ')
+# Section 46 R4-C1: expected -> duplicate -> expected under one label keeps
+# the duplicate obligation.
+$runTr = '2026-10-29-023001-pid69'; $runTo = '2026-10-29-120001-pid70'
+New-Red $runTr '2026-10-29' @(); New-Red $runTo '2026-10-29' @()
+$dTr = Get-Dem
+Write-Ack 'ack-tr.md' @("run: $runTr sha256:$($dTr[$runTr].Current)", 'incidents: none', 'owner: operator', 'disposition: expected', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd11", 'signed: 2026-10-29')
+Save-All 'tr expected'
+Write-Ack 'ack-tr.md' @("run: $runTr sha256:$($dTr[$runTr].Current)", 'incidents: none', 'owner: operator', 'disposition: duplicate', "evidence: $runTo", 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd11", 'signed: 2026-10-29')
+Save-All 'tr duplicate'
+Write-Ack 'ack-tr.md' @("run: $runTr sha256:$($dTr[$runTr].Current)", 'incidents: none', 'owner: operator', 'disposition: expected', 'corrective-owner: operator', 'due: 2026-12-01', "finding: $fnd11", 'signed: 2026-10-29')
+Save-All 'tr expected again'
+$gTr = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-10-29')
+Assert (@($gTr.Lines | Where-Object { $_ -like "*CORRECTIVE ack-tr.md ($fnd11 (as duplicate $runTo in an earlier version*): open (duplicate of $runTo, which is not acknowledged*" }).Count -eq 1) 's46-intermediate-duplicate-survives-a-return' ($gTr.Lines -join ' | ')
+# Section 46 R4-I1: concurrent due-record writers keep the minimum.
+$dueP = Join-Path $nd 'ack-dues-concurrent.json'
+$early = [DateTimeOffset]::Parse('2026-10-01T23:59:59+02:00'); $late = [DateTimeOffset]::Parse('2026-10-20T23:59:59+02:00')
+$held = [System.IO.File]::Open("$dueP.lock", 'OpenOrCreate', 'ReadWrite', 'None')
+$job = Start-Job -ScriptBlock { param($lib, $p, $d) . $lib; Update-DueRecord $p @{ 'run-x' = [DateTimeOffset]::Parse($d) } } -ArgumentList (Join-Path $PSScriptRoot 'NightlyParse.ps1'), $dueP, '2026-10-20T23:59:59+02:00'
+Start-Sleep -Milliseconds 500
+$null = [System.IO.File]::WriteAllText($dueP, '{"version":1,"dues":{"run-x":"2026-10-01T23:59:59+02:00"}}')
+$held.Dispose()
+$jr = Receive-Job (Wait-Job $job -Timeout 30); Remove-Job $job -Force
+$after = Read-DueRecord $dueP
+Assert (("$jr" -eq '') -and ($after['run-x'] -eq $early)) 's46-due-record-lock-keeps-the-minimum' "job=[$jr] now=$($after['run-x'])"
 
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
