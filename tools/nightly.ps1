@@ -1482,6 +1482,12 @@ $prevRead = Read-PreviousOwedCases $nightDir $stamp
 $stagedPath = Join-Path $nightDir 'staged-debt.jsonl'
 $stagedRead = Read-StagedDebt $stagedPath
 if (@($stagedRead.Bad).Count -gt 0) { $nightOwedRows += "- Staging journal lines unreadable: $(@($stagedRead.Bad) -join ', ') in $stagedPath (repair them; obligations they held are not dropped silently)" }
+# Collections journaled after the result the owed list came from close
+# their obligation (section 53, from 52 R5-I1).
+$prevResultStamp = if ("$($prevRead.From)" -match '^morning-(\d{4}-\d{2}-\d{2}-\d{6})\.result\.json$') { $Matches[1] } else { '' }
+$sinceResult = Remove-CollectedSinceResult @($prevRead.Owed) @($stagedRead.Collected) $prevResultStamp
+if (@($sinceResult.Dropped).Count -gt 0) { $nightOwedRows += "- Staging journal closed $(@($sinceResult.Dropped).Count) owed case(s) collected after $($prevRead.From) (a run that crashed before its result)" }
+$prevRead = [pscustomobject]@{ Owed = @($sinceResult.Owed); Identities = $prevRead.Identities; IdentitiesRecorded = $prevRead.IdentitiesRecorded; From = $prevRead.From; Unreadable = $prevRead.Unreadable }
 $stagedOpen = Get-StagedOpenCases $stagedRead
 $stagedMerged = @(Merge-OwedCases @($prevRead.Owed) @($stagedOpen.Cases))
 $stagedExtra = $stagedMerged.Count - @($prevRead.Owed).Count

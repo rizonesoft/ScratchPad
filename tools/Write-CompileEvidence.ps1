@@ -38,11 +38,9 @@ if ($Phase -eq 'before') {
   Write-Output "compile inputs snapshot $($d.Digest) -> $Snapshot"
   exit 0
 }
-$inputsLine = "inputs $($d.Digest)"
-if (($Snapshot -ne '') -and (Test-Path -LiteralPath $Snapshot)) {
-  $before = ([System.IO.File]::ReadAllText($Snapshot)).Trim()
-  if ($before -ne $d.Digest) { $inputsLine = "inputs changed-during-build (before $before, after $($d.Digest))" }
-}
+# A missing or different snapshot fails closed (section 53, from 52 R5-A1).
+$snap = Test-CompileSnapshot $Snapshot $d.Digest
+$inputsLine = if ($snap.Ok) { "inputs $($d.Digest)" } else { "inputs refused: $($snap.Reason)" }
 $asm = Get-FileSha256 ([System.IO.Path]::GetFullPath($Assembly))
 $tmp = "$Out.tmp"
 [System.IO.File]::WriteAllText($tmp, "$inputsLine`nassembly $asm`n" + (($d.Lines) -join "`n") + "`n", (New-Object System.Text.UTF8Encoding($false)))

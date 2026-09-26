@@ -31,9 +31,11 @@ if ($Phase -eq 'before') {
   Write-Output "build-inputs snapshot $($d.Digest) -> $Snapshot"
   exit 0
 }
-if (($Snapshot -ne '') -and (Test-Path -LiteralPath $Snapshot) -and (([System.IO.File]::ReadAllText($Snapshot)).Trim() -ne $d.Digest)) {
+# A missing or different snapshot fails closed (section 53, from 52 R5-A1).
+$snap = Test-CompileSnapshot $Snapshot $d.Digest
+if (-not $snap.Ok) {
   foreach ($f in @($Out, (Join-Path (Split-Path -Parent $Out) 'build-binding.txt'))) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force } }
-  Write-Output "build-inputs changed during the build; no digest written (rebuild): dotnet build src/ScratchPad.slnx --no-incremental"
+  Write-Output "build-inputs digest not written: $($snap.Reason) (rebuild): dotnet build src/ScratchPad.slnx --no-incremental"
   exit 0
 }
 # The binaries this digest describes (D00 T02 section 52 item 2), taken in

@@ -663,6 +663,21 @@ $sjT6 = @(Add-StagedDebtLines $sj2 @('UI.S.D', 'UI.S.D') 'staged' 's5' 'tokens' 
 $sjTIds = (Get-StagedOpenCases (Read-StagedDebt $sj2)).Ids
 $sjIds = (Get-StagedOpenCases $sjR1).Ids
 Assert (($sjW1.Count -eq 2) -and (@($sjPrev.Owed).Count -eq 0) -and ($sjR1.Open.Count -eq 2) -and (@(@($sjR1.Open.Values) | ForEach-Object { $_.Case }) -contains 'UI.S.B') -and ($sjW2.Count -eq 0) -and ($sjW3.Count -eq 1) -and ($sjR2.Open.Count -eq 1) -and (@($sjR2.Open.Values)[0].Case -eq 'UI.S.B') -and (@($sjR2.Bad).Count -eq 1) -and ($sjT1.Count -eq 2) -and ($sjT2.Count -eq 0) -and ($sjT3.Count -eq 1) -and (@($sjTOpen.Cases).Count -eq 1) -and ($sjIds['UI.S.A(n: 1)'] -eq 'rows:aaaa') -and ($sjT4.Count -eq 0) -and ($sjT5.Count -eq 1) -and (($sjTOcc -join ',') -eq '2,3') -and ($sjT6.Count -eq 2) -and ($sjTIds['UI.S.D'] -eq 'rows:dddd') -and ($sjT7.Count -eq 1) -and ($sjR3.Open.Count -eq 1) -and (@($sjR3.Bad).Count -eq 1)) 's52-staging-survives-a-crash' "w1=$($sjW1.Count) open1=$($sjR1.Open.Count) w2=$($sjW2.Count) w3=$($sjW3.Count) open2=$(@(@($sjR2.Open.Values) | ForEach-Object { $_.Case }) -join ',') twins=$($sjT1.Count)/$($sjT2.Count)/$($sjT3.Count) bad=$(@($sjR2.Bad) -join ',')"
+# D00 T02 §53 (from §52 R5-A1, R5-I1): a missing pre-compile snapshot
+# refuses; a collection journaled after the owed list's result closes it.
+$snDir = Join-Path $dir 's53-snapshot'
+$null = New-Item -ItemType Directory -Force -Path $snDir
+$snPath = Join-Path $snDir 'compile-inputs.before'
+if (Test-Path $snPath) { Remove-Item $snPath -Force }
+$snMissing = Test-CompileSnapshot $snPath 'aaaaaaaaaaaaaaaa'
+[System.IO.File]::WriteAllText($snPath, 'aaaaaaaaaaaaaaaa')
+$snSame = Test-CompileSnapshot $snPath 'aaaaaaaaaaaaaaaa'
+$snDiff = Test-CompileSnapshot $snPath 'bbbbbbbbbbbbbbbb'
+$snNone = Test-CompileSnapshot '' 'aaaaaaaaaaaaaaaa'
+$csOwed = @('UI.C.A', 'UI.C.B', 'UI.C.A')
+$csCol = @([pscustomobject]@{ Case = 'UI.C.A'; Stamp = '2026-09-26-023001' }, [pscustomobject]@{ Case = 'UI.C.B'; Stamp = '2026-09-25-023001' })
+$csR = Remove-CollectedSinceResult $csOwed $csCol '2026-09-25-120000'
+Assert ((-not $snMissing.Ok) -and ($snMissing.Reason -like '*snapshot*is missing') -and $snSame.Ok -and (-not $snDiff.Ok) -and ($snDiff.Reason -like 'inputs changed during the build*') -and (-not $snNone.Ok) -and (@($csR.Owed).Count -eq 2) -and (@($csR.Owed | Where-Object { $_ -eq 'UI.C.A' }).Count -eq 1) -and (@($csR.Owed) -contains 'UI.C.B') -and (@($csR.Dropped) -join ',') -eq 'UI.C.A') 's53-snapshot-missing-refuses-and-journaled-collection-closes' "missing=$($snMissing.Reason) | owed=$(@($csR.Owed) -join ',') dropped=$(@($csR.Dropped) -join ',')"
 # D00 T02 §52 item 10: mixed versions. A population/2 fingerprint is
 # refused by the checker (regen named) but read by a historical proof
 # reader; a streak bound under /2 reads stale by schema name under /3,

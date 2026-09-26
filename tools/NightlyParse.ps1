@@ -1711,6 +1711,18 @@ function Get-BuildBindingLines([string]$Root, [string]$OutDir, $Projects) {
   return $lines
 }
 
+function Test-CompileSnapshot([string]$Snapshot, [string]$Digest) {
+  # The pre-compile snapshot check (D00 T02 section 53, from section 52
+  # R5-A1): provenance publishes only when the snapshot the
+  # before-CoreCompile target owes exists and equals the inputs now. A
+  # missing snapshot fails closed, never falls back to post-compile inputs.
+  if ("$Snapshot" -eq '') { return [pscustomobject]@{ Ok = $false; Reason = 'no pre-compile snapshot path was given' } }
+  if (-not (Test-Path -LiteralPath $Snapshot)) { return [pscustomobject]@{ Ok = $false; Reason = "the pre-compile snapshot $Snapshot is missing" } }
+  $before = ([System.IO.File]::ReadAllText($Snapshot)).Trim()
+  if ($before -ne $Digest) { return [pscustomobject]@{ Ok = $false; Reason = "inputs changed during the build (before $before, after $Digest)" } }
+  return [pscustomobject]@{ Ok = $true; Reason = '' }
+}
+
 function Test-BuildBinding([string]$Root, [string]$BindingFile, $ExpectedProjects = $null) {
   # Refuses a UI build whose recorded binaries no longer answer to their
   # sources (D00 T02 section 52 item 2): the UI assembly changed since the
@@ -1990,7 +2002,8 @@ function Read-StagedDebt([string]$Path) {
   $open = [ordered]@{}
   $bad = @()
   $maxOcc = @{}
-  if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc } }
+  $collected = @()
+  if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc; Collected = $collected } }
   $n = 0
   foreach ($ln in [System.IO.File]::ReadAllLines($Path)) {
     $n++
@@ -2000,10 +2013,26 @@ function Read-StagedDebt([string]$Path) {
     $occ = $(try { [int]$o.occurrence } catch { 1 })
     $maxOcc["$($o.case)"] = [Math]::Max($occ, $(if ($maxOcc.ContainsKey("$($o.case)")) { $maxOcc["$($o.case)"] } else { 0 }))
     if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = [pscustomobject]@{ Case = "$($o.case)"; Occurrence = $occ; Token = "$($o.token)" } }
-    elseif ("$($o.state)" -eq 'collected') { $open.Remove("$($o.receipt)") }
+    elseif ("$($o.state)" -eq 'collected') { $open.Remove("$($o.receipt)"); $collected += [pscustomobject]@{ Case = "$($o.case)"; Stamp = "$($o.stamp)" } }
     else { $bad += $n }
   }
-  return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc }
+  return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc; Collected = $collected }
+}
+
+function Remove-CollectedSinceResult($Owed, $Collected, [string]$ResultStamp) {
+  # A collection journaled after the result the owed list came from
+  # (D00 T02 section 53, from section 52 R5-I1): a run that crashed after
+  # journaling its collection but before its own result leaves the older
+  # result still owing the case; each such collected line removes one
+  # matching occurrence, so discharged debt is never re-owed. Stamps
+  # compare as yyyy-MM-dd-HHmmss text. Returns Owed and Dropped.
+  $left = New-Object System.Collections.Generic.List[string]
+  foreach ($c in @($Owed)) { if ("$c" -ne '') { $left.Add("$c") } }
+  $dropped = @()
+  foreach ($e in @($Collected | Where-Object { ($null -ne $_) -and ("$ResultStamp" -ne '') -and ([string]::CompareOrdinal("$($_.Stamp)", "$ResultStamp") -gt 0) })) {
+    if ($left.Remove("$($e.Case)")) { $dropped += "$($e.Case)" }
+  }
+  return [pscustomobject]@{ Owed = @($left); Dropped = $dropped }
 }
 
 function Get-StagedOpenCases($Read) {

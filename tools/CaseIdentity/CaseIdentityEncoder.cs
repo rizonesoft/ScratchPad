@@ -78,7 +78,10 @@ internal static class CaseIdentityEncoder
             case Guid g:
                 return "guid:" + g.ToString("D");
             case Array a:
-                return "[" + string.Join(",", a.Cast<object?>().Select(Encode)) + "]";
+                // Element type, rank, and each dimension's length count
+                // (D00 T02 §53, from §52 R5-C1): an int[], an object[] of
+                // the same integers, and an int[,] never share a row.
+                return ArrayPrefix(a.GetType(), Enumerable.Range(0, a.Rank).Select(a.GetLength)) + "[" + string.Join(",", a.Cast<object?>().Select(Encode)) + "]";
             default:
                 throw new UnsupportedArgumentException($"unsupported argument type {value.GetType().FullName} (no encoding rule; give the case a supported value or a stable display override)");
         }
@@ -91,7 +94,8 @@ internal static class CaseIdentityEncoder
     {
         if (arg.Value is IReadOnlyCollection<CustomAttributeTypedArgument> items)
         {
-            return "[" + string.Join(",", items.Select(EncodeTyped)) + "]";
+            // Attribute arrays are single-dimensional.
+            return ArrayPrefix(arg.ArgumentType, [items.Count]) + "[" + string.Join(",", items.Select(EncodeTyped)) + "]";
         }
 
         if (arg.Value is not null && arg.ArgumentType.IsEnum)
@@ -186,6 +190,12 @@ internal static class CaseIdentityEncoder
         long => "int64",
         _ => "uint64",
     };
+
+    static string ArrayPrefix(Type arrayType, IEnumerable<int> lengths)
+    {
+        Type element = arrayType.GetElementType() ?? typeof(object);
+        return $"array:{element.FullName}[{string.Join(",", lengths.Select(n => n.ToString(CultureInfo.InvariantCulture)))}]:";
+    }
 
     static bool IsA(Type? t, string fullName)
     {

@@ -33,6 +33,14 @@ public class CaseIdentityTests
 
     static readonly object?[][] OpaqueRows = [[new Opaque()]];
 
+    static readonly int[] IntPair = [1, 2];
+
+    static readonly object[] ObjectPair = [1, 2];
+
+#pragma warning disable CA1814 // a multidimensional array is the shape under test
+    static readonly int[,] Square = { { 1 }, { 2 } };
+#pragma warning restore CA1814
+
     public static IEnumerable<object?[]> RowsSource => Rows;
 
     public static IEnumerable<object?[]> OpaqueSource => OpaqueRows;
@@ -88,7 +96,7 @@ public class CaseIdentityTests
         Assert.Equal([Row("Floats", "single:1.25, double:2.5")], CaseIdentityEncoder.RowsFor(Fixture("Floats")));
         Assert.Equal([Row("Null", "null")], CaseIdentityEncoder.RowsFor(Fixture("Null")));
         Assert.Equal([Row("Types", "type:Unit.CaseIdentityTests+Opaque")], CaseIdentityEncoder.RowsFor(Fixture("Types")));
-        Assert.Equal([Row("Arrays", "[int32:1,int32:2]")], CaseIdentityEncoder.RowsFor(Fixture("Arrays")));
+        Assert.Equal([Row("Arrays", "array:System.Int32[2]:[int32:1,int32:2]")], CaseIdentityEncoder.RowsFor(Fixture("Arrays")));
     }
 
     [Fact]
@@ -108,6 +116,20 @@ public class CaseIdentityTests
         {
             System.Globalization.CultureInfo.CurrentCulture = prior;
         }
+    }
+
+    // D00 T02 §53 (from §52 R5-C1): arrays that differ only in element type
+    // or shape encode differently.
+    [Fact]
+    public void ArraysKeepElementTypeAndShape()
+    {
+        string ints = CaseIdentityEncoder.Encode(IntPair);
+        string objects = CaseIdentityEncoder.Encode(ObjectPair);
+        string square = CaseIdentityEncoder.Encode(Square);
+        Assert.Equal("array:System.Int32[2]:[int32:1,int32:2]", ints);
+        Assert.Equal("array:System.Object[2]:[int32:1,int32:2]", objects);
+        Assert.Equal("array:System.Int32[2,1]:[int32:1,int32:2]", square);
+        Assert.Equal(3, new HashSet<string> { ints, objects, square }.Count);
     }
 
     [Fact]
