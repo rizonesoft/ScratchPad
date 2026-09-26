@@ -1792,6 +1792,23 @@ function Get-UnexecutedCaseRows($ListedCases, $ExecutedNames, [string]$Why) {
   return $rows
 }
 
+function Get-ExecutionClosureNotes($ClosedCases, $Incidents) {
+  # Execution debt closes apart from failure resolution (D00 T02 section
+  # 52 item 6): a green re-execution closes the owed run (Close-OwedCases)
+  # and nothing else. An incident on the same test stays open until its
+  # own recovery streak (Update-IncidentLedger), and a flake or triage
+  # finding until its own verification; this names each such pair so
+  # the report never reads the closed debt as a resolved failure.
+  $notes = @()
+  foreach ($c in @($ClosedCases | Where-Object { $null -ne $_ } | Sort-Object -Unique)) {
+    $method = ("$c" -split '\(', 2)[0].Trim()
+    foreach ($e in @(@($Incidents.Values) | Where-Object { ($null -ne $_) -and ("$($_.state)" -eq 'open') -and (("$($_.test)" -ceq "$c") -or ("$($_.test)" -ceq $method)) } | Sort-Object id)) {
+      $notes += "- Execution closed for ``$c``; incident $($e.id) stays open (recovery streak $([int]$e.passStreak)): a green re-execution closes the owed run, never the failure"
+    }
+  }
+  return $notes
+}
+
 function Close-OwedCases([string[]]$OwedCases, [string[]]$PassedNames, $ListedCases = $null) {
   # Per-case closure (D00 T02 §44 item 5): the collector reruns the
   # method, and each owed case closes only when its own row executed

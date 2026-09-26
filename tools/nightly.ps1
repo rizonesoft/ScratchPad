@@ -1282,6 +1282,11 @@ $report += ''
 # runs never commit. A zero-executed collection never closes debt
 # (vacuous proof); it reds as a collector bug.
 $debtEntries = @()
+# Capability debt clocks (D00 T02 section 52 item 7).
+$capDebtPath = Join-Path $nightDir 'capability-debt.json'
+$capDebt = @{}
+$capDebtError = ''
+try { $capDebt = Read-CapabilityDebt $capDebtPath } catch { $capDebtError = "capability debt state unreadable: $($_.Exception.Message) (due dates not advanced tonight)" }
 $stagedStubs = @()
 # The collector's tracked writes (D00 T02 section 45 item 7): recorded
 # per file with its pre-write text, so the tree check expects exactly
@@ -1367,6 +1372,7 @@ if ($debtQueryError -ne '') {
       continue
     }
     $split = Split-DebtSkips $sumI.Skipped
+    if ($capDebtError -eq '') { $debtEntries += @(Update-CapabilityDebt $capDebt $debt.Id @(@($sumI.Skipped) | Where-Object { $_ -match 'unavailable on this host|^CAPABILITY: ' }) (Get-HostKey) (Get-Date)) }
     if (($split.Capability -gt 0) -or ($split.Other -gt 0)) {
       $debtEntries += "- $($debt.Id) ($($debt.Section)): uncollected: $($split.Capability) capability plus $($split.Other) other skips never executed: debt stays open"
       continue
@@ -1399,6 +1405,8 @@ if ($debtQueryError -ne '') {
 if ($interactiveRan -and ($null -ne $sumI) -and ($sumI.FailedCount -gt 0)) {
   $stagedStubs = @(Format-FindingStubs $sumI.Failed $Root)
 }
+if ($capDebtError -ne '') { $debtEntries += "- $capDebtError" }
+else { $capWrite = Write-CapabilityDebt $capDebt $capDebtPath; if ($capWrite -ne '') { $debtEntries += "- $capWrite" } }
 $report += '## Night debt'
 $report += ''
 if ($debtEntries.Count -eq 0) { $report += '(no open debt at run start)'; $report += '' }
@@ -1441,6 +1449,10 @@ $carryListed = @()
 try { $fpNow = Read-TestPopulationFile (Join-Path $Root 'tests/UI/TestPopulation.fingerprint'); if ($fpNow.Ok) { $carryListed = @(@($fpNow.RunACaseRows) + @($fpNow.RunBCaseRows) + @($fpNow.InteractiveCaseRows) | ForEach-Object { ("$_" -replace '^[^|]*\|', '') -replace '#\d+$', '' }) } } catch { $carryListed = @() }
 $carry = Resolve-CarriedCaseDebt $prevRead.Owed @(Get-TrxPassedNames (Join-Path $trxDir 'interactive.trx') $uiTrxExpect) ([bool]$interactiveRan) $(if ($carryListed.Count -gt 0) { $carryListed } else { $null })
 if ($carry.Line -ne '') { $nightOwedRows += $carry.Line }
+# The debt a green collection closed never closes its failure (D00 T02
+# section 52 item 6): each closed case with an open incident says so.
+$carryClosed = @(@($prevRead.Owed) | Where-Object { @($carry.Still) -notcontains $_ })
+$nightOwedRows += @(Get-ExecutionClosureNotes $carryClosed $ledgerUpd.Incidents)
 # A refused trx closes nothing and says why (D00 T02 section 52 item 5).
 foreach ($tr in @($script:TrxRefusals | Sort-Object -Unique)) { $nightOwedRows += "- Trx refused (counted nothing): $tr" }
 $owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))

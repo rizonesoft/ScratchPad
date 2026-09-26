@@ -185,6 +185,23 @@ $n50b = Add-CollectedLine $t50 'D90-T01-S1-N2' $new50
 Assert ($n50b -like 'appended*') 's50-older-candidate-record-never-blocks-the-valid-one' $n50b
 Remove-Item $e50 -Recurse -Force
 
+# D00 T02 section 52 item 7: capability debt starts a clock, records each
+# host that lacked the capability, escalates past its due date, clears
+# on a collection without a capability skip, and survives a write.
+$cdState = @{}
+$cdSkip = @('UI.P.Print: CAPABILITY: no printers enumerated; owner D01 T09 section 2; owed on HOST-A.')
+$cd1 = @(Update-CapabilityDebt $cdState 'D01-T09-S2-N1' $cdSkip 'HOST-A' ([datetime]::new(2026, 9, 1)) 14)
+$cd2 = @(Update-CapabilityDebt $cdState 'D01-T09-S2-N1' $cdSkip 'HOST-B' ([datetime]::new(2026, 9, 16)) 14)
+$cdDir = Join-Path ([System.IO.Path]::GetTempPath()) 'nightdebt-s52-cap'
+$null = New-Item -ItemType Directory -Force -Path $cdDir
+$cdPath = Join-Path $cdDir 'capability-debt.json'
+$cdWrite = Write-CapabilityDebt $cdState $cdPath
+$cdRead = Read-CapabilityDebt $cdPath
+$cdDue = $cdRead['D01-T09-S2-N1'].due
+$cd3 = @(Update-CapabilityDebt $cdRead 'D01-T09-S2-N1' @() 'HOST-A' ([datetime]::new(2026, 9, 17)) 14)
+$cdOk = ($cd1[0] -like '- D01-T09-S2-N1 capability debt owed since 2026-09-01, due 2026-09-15 (checked on HOST-A)*') -and ($cd2[0] -like '- ESCALATED D01-T09-S2-N1 capability debt past its due 2026-09-15 (owed since 2026-09-01; hosts still lacking it: HOST-A, HOST-B)*') -and ($cdWrite -eq '') -and ($cdDue -eq '2026-09-15') -and ($cd3[0] -like '- D01-T09-S2-N1 capability debt cleared on 2026-09-17*') -and (-not $cdRead.ContainsKey('D01-T09-S2-N1'))
+if ($cdOk) { Write-Output 'PASS s52-capability-debt-escalates-past-its-due' } else { Write-Output ("FAIL s52-capability-debt-escalates-past-its-due " + (($cd1 + $cd2 + $cd3 + $cdWrite) -join ' | ')); $failures++ }
+
 if ($failures -gt 0) { Write-Output "NightDebt.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightDebt.Tests: all green'
 exit 0

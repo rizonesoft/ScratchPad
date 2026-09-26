@@ -623,6 +623,14 @@ Assert (($idA -ne $idB) -and ($idA -ne 'unknown') -and ($u3.Incidents['INC-aaaa1
 $legLed = @{ 'INC-bbbb2222' = [pscustomobject]@{ id = 'INC-bbbb2222'; test = 'UI.A.T1'; phase = 'run-a'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @(); passStreak = 2; lastPassStamp = 's9' } }
 $legU = Update-IncidentLedger $legLed @() 's10' @{ 'run-a' = @('UI.A.T1') } @{} 3 @{} $idA
 Assert (($legU.Incidents['INC-bbbb2222'].state -eq 'open') -and ([int]$legU.Incidents['INC-bbbb2222'].passStreak -eq 1) -and ((@($legU.Lines | Where-Object { $_ -like '*streak reset (population unrecorded ->*' }).Count) -eq 1)) 's44-unrecorded-population-streak-resets' ($legU.Lines -join ' | ')
+# D00 T02 §52 item 6: a case that failed and later passed closes its
+# owed execution while its incident stays open on its own streak.
+$e6Led = @{ 'INC-5206a001' = [pscustomobject]@{ id = 'INC-5206a001'; test = 'UI.F.Case'; phase = 'interactive'; key = 'k'; owner = 'operator'; state = 'open'; firstSeen = 's0'; lastSeen = 's0'; closedAt = ''; closedBy = ''; occurrences = @([pscustomobject]@{ stamp = 's0'; wheres = @('interactive') }); passStreak = 0; lastPassStamp = '' } }
+$e6Still = @(Close-OwedCases @('UI.F.Case(n: 1)') @('UI.F.Case(n: 1)'))
+$e6Upd = Update-IncidentLedger $e6Led @() 's1' @{ 'interactive' = @('UI.F.Case') } @{} 3 @{} 'population=p'
+$e6Notes = @(Get-ExecutionClosureNotes @('UI.F.Case(n: 1)') $e6Upd.Incidents)
+$e6None = @(Get-ExecutionClosureNotes @('UI.G.Other') $e6Upd.Incidents)
+Assert (($e6Still.Count -eq 0) -and ($e6Upd.Incidents['INC-5206a001'].state -eq 'open') -and ([int]$e6Upd.Incidents['INC-5206a001'].passStreak -eq 1) -and ($e6Notes.Count -eq 1) -and ($e6Notes[0] -like '*Execution closed for ?UI.F.Case(n: 1)?; incident INC-5206a001 stays open (recovery streak 1)*') -and ($e6None.Count -eq 0)) 's52-debt-closes-apart-from-the-incident' (($e6Notes + $e6Upd.Lines) -join ' | ')
 # D00 T02 §52 item 5: trx reconciliation fails closed. A leftover trx
 # from another run, another assembly, an unmatched result, and an
 # ambiguous result each refuse by name and count nothing; precedence is

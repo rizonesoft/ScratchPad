@@ -370,6 +370,61 @@ function Format-DebtGreenEntry([string]$Id, [string]$Section, [int]$P, [int]$F, 
   return @("- $Id ($Section): collected-unrecorded: collection green ($counts) but the Night-collected write failed ($Note); closure unrecorded", $true)
 }
 
+function Read-CapabilityDebt([string]$Path) {
+  # Capability debt state (D00 T02 section 52 item 7): debt id -> since,
+  # due, lastSeen (yyyy-MM-dd), the hosts that lacked the capability, and
+  # the capability reasons. Missing reads as empty; unreadable throws, so
+  # a corrupt state never resets a due date silently.
+  $state = @{}
+  if (-not (Test-Path -LiteralPath $Path)) { return $state }
+  $doc = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+  foreach ($e in @($doc.debts)) {
+    if ($null -eq $e) { continue }
+    $state["$($e.id)"] = [pscustomobject]@{ id = "$($e.id)"; since = "$($e.since)"; due = "$($e.due)"; lastSeen = "$($e.lastSeen)"; hosts = @($e.hosts | ForEach-Object { "$_" }); capabilities = @($e.capabilities | ForEach-Object { "$_" }) }
+  }
+  return $state
+}
+
+function Write-CapabilityDebt([hashtable]$State, [string]$Path) {
+  # Atomic write plus read-back; returns '' or the error.
+  try {
+    $doc = [ordered]@{ version = 1; debts = @($State.Keys | Sort-Object | ForEach-Object { $State[$_] }) }
+    $tmp = "$Path.tmp"
+    [System.IO.File]::WriteAllText($tmp, ($doc | ConvertTo-Json -Depth 5), (New-Object System.Text.UTF8Encoding($false)))
+    Move-Item -LiteralPath $tmp -Destination $Path -Force
+    $null = Read-CapabilityDebt $Path
+    return ''
+  } catch { return "capability debt write failed: $($_.Exception.Message)" }
+}
+
+function Update-CapabilityDebt([hashtable]$State, [string]$DebtId, [string[]]$CapabilitySkips, [string]$HostKey, [datetime]$Today, [int]$DueDays = 14) {
+  # Capability debt escalates (D00 T02 section 52 item 7): the first night
+  # a debt's cases skip for a missing capability starts its clock (due
+  # $DueDays later); each night records the host that ran the check
+  # (the skip is the capability check on that host) and the reasons; a
+  # night past the due date escalates in the morning report, naming every
+  # host that lacked it. A night that collects the debt without a
+  # capability skip clears the entry. Returns the report lines.
+  $day = $Today.ToString('yyyy-MM-dd')
+  $skips = @(@($CapabilitySkips) | Where-Object { "$_".Trim() -ne '' } | ForEach-Object { "$_".Trim() } | Sort-Object -Unique)
+  if ($skips.Count -eq 0) {
+    if ($State.ContainsKey($DebtId)) { $State.Remove($DebtId); return @("- $DebtId capability debt cleared on $day (collected without a capability skip)") }
+    return @()
+  }
+  if (-not $State.ContainsKey($DebtId)) {
+    $State[$DebtId] = [pscustomobject]@{ id = $DebtId; since = $day; due = $Today.AddDays($DueDays).ToString('yyyy-MM-dd'); lastSeen = $day; hosts = @(); capabilities = @() }
+  }
+  $e = $State[$DebtId]
+  $e.lastSeen = $day
+  $e.hosts = @(@($e.hosts) + @($HostKey) | Where-Object { "$_" -ne '' } | Sort-Object -Unique)
+  $e.capabilities = @(@($e.capabilities) + $skips | Sort-Object -Unique)
+  $what = ($e.capabilities -join '; ')
+  if ([string]::CompareOrdinal($day, "$($e.due)") -gt 0) {
+    return @("- ESCALATED $DebtId capability debt past its due $($e.due) (owed since $($e.since); hosts still lacking it: $($e.hosts -join ', ')): $what; collect on a capable host or reassign the debt")
+  }
+  return @("- $DebtId capability debt owed since $($e.since), due $($e.due) (checked on $HostKey): $what")
+}
+
 function Split-DebtSkips([string[]]$SkipLines) {
   # Closure-safe split (plan PR4): quarantine-declared skips
   # transfer their proof to the quarantine window and may close
