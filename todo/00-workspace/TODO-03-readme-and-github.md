@@ -63,14 +63,16 @@ Why this section exists: the README needs visible proof, and proof means real pi
 
 **Groomed 2026-09-23:** Requires corrected: the black-frame evidence was WSL-era; this dev box captures WinUI pixels locally (UiCapture.cs `PrintCapture`) and `resolve` reports D01 T02 §15's display-session requirement met here. The agent-panel shot (item 3) cannot be taken until D05 T01 §3 renders a panel, so §5 owns it with its light and dark pair, and §1 closes on the hero shots; item 3 stays as written until §5 ships it.
 
-- [ ] The app builds on the display host from a clean checkout (`Bin/` empty first) and launches to the main window. Done when: the main window renders with tab bar and status bar visible to the eyeball probe.
-- [ ] `docs/assets/readme-hero.png` captures the main window (tabs, editor with text, status bar) at no less than 1280 px wide. Done when: the file exists, opens as PNG, and shows app pixels rather than a black frame. Cheaper substitute that fails the checkpoint: a crop of the Notepad baseline capture.
-- [ ] `docs/assets/readme-agent-panel.png` captures the agent panel beside the editor. Done when: the file exists and both surfaces read in one frame.
-- [ ] `docs/assets/captures.md` records provenance for both shots: capture date, host, app commit, build configuration, and capture command. Done when: a second operator can reproduce either shot from the note alone.
-- [ ] The hero is captured as a light and dark pair (`docs/assets/readme-hero-light.png`, `readme-hero-dark.png`) from the same document and window size, with realistic sample content rather than lorem ipsum. Done when: both files exist at the same pixel size and each shows its theme (Groomed 2026-09-23.)
-- [ ] Commit: `"workspace: capture README screenshots with provenance (D00 T03 §1)"`
+- [x] The app builds on the display host from a clean checkout (`Bin/` empty first) and launches to the main window. Done when: the main window renders with tab bar and status bar visible to the eyeball probe.
+- [x] `docs/assets/readme-hero.png` captures the main window (tabs, editor with text, status bar) at no less than 1280 px wide. Done when: the file exists, opens as PNG, and shows app pixels rather than a black frame. Cheaper substitute that fails the checkpoint: a crop of the Notepad baseline capture.
+- [x] `docs/assets/readme-agent-panel.png` captures the agent panel beside the editor. Done when: the file exists and both surfaces read in one frame. Handed to §5 per the 2026-09-23 groom (see the Deferred line below).
+- [x] `docs/assets/captures.md` records provenance for both shots: capture date, host, app commit, build configuration, and capture command. Done when: a second operator can reproduce either shot from the note alone.
+- [x] The hero is captured as a light and dark pair (`docs/assets/readme-hero-light.png`, `readme-hero-dark.png`) from the same document and window size, with realistic sample content rather than lorem ipsum. Done when: both files exist at the same pixel size and each shows its theme (Groomed 2026-09-23.)
+- [x] Commit: `"workspace: capture README screenshots with provenance (D00 T03 §1)"`
 
 **Test checkpoint:** both PNGs exist under `docs/assets/`, each at least 1280 px wide with pixel variance proving non-black content, and `captures.md` names the app commit they were taken from. Cheaper substitute that fails: screenshots whose provenance nobody recorded.
+
+> **Deferred:** the agent-panel shot (item 3) -> XREF: D00 T03 §5 (item: "The agent panel is captured beside the editor as a light and dark pair") -- the panel renders only once D05 T01 §3 ships; §1 closes on the hero shots.
 
 ## 2. README Rewrite Plus Repo-Face Files
 
