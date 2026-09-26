@@ -39,58 +39,16 @@ if ($Restore) {
   exit 0
 }
 
-$results = @()
-$skipped = @()
-$degraded = @()
-$paths = @()
-$paths += @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$paths += @(Get-ChildItem $NightDir -Filter 'loser-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-$paths += @(Get-ChildItem (Join-Path $NightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
-foreach ($p in ($paths | Sort-Object -Unique)) {
-  $chk = Test-ResultFile $p
-  if ($chk.Ok) { $results += Read-ResultFile $p }
-  else {
-    # Named relative to the night directory, never by an absolute path
-    # (the disclosure contract, D00 T02 section 32 item 14).
-    $rel = $p
-    try { $nd = (Resolve-Path $NightDir).Path; if ($p.StartsWith($nd, [System.StringComparison]::OrdinalIgnoreCase)) { $rel = $p.Substring($nd.Length).TrimStart('\', '/') } } catch { }
-    $skipped += "$rel ($($chk.Error))"
-    # The night a broken result belongs to: its own recorded night when
-    # the JSON still parses, else the date in its file name.
-    $night = ''
-    try { $night = Get-ResultNight (Get-Content -LiteralPath $p -Raw | ConvertFrom-Json) } catch { }
-    # A retained copy is named result.json, so the date comes from the
-    # nearest path segment that carries one (section 32 R3-I3).
-    if ($night -notmatch '^\d{4}-\d{2}-\d{2}$') { $m = [regex]::Matches($p, '(\d{4}-\d{2}-\d{2})'); if ($m.Count -gt 0) { $night = $m[$m.Count - 1].Groups[1].Value } }
-    if ($night -ne '') { $degraded += [pscustomobject]@{ Night = $night; Reason = "$(Split-Path -Leaf $p): $($chk.Error)" } }
-  }
-}
-# Long-term metrics (D00 T02 §25 item 7): every valid result lands one
-# compact row in build/nightly/metrics.jsonl (append-only, never pruned),
-# and a night whose raw result retention pruned renders from its row.
-$metricsNote = ''
-$supersessions = @()
-# Retained copies migrate once per disclosure rule version (section 47
-# item 11).
-$migNotes = @()
-try { $migNotes = @(Update-DisclosureMigration $storePath) } catch { $migNotes = @("- disclosure migration failed: $($_.Exception.Message)") }
-try {
-  $mrows = @(Sync-MetricsStore $storePath $results)
-  $auth = Select-AuthoritativeResults $results $mrows @($script:MetricsStaleSkipped)
-  $results = @($auth.Results)
-  $fromMetrics = @($auth.FromMetrics)
-  $null = Add-MergedEvidence $results $mrows
-  $results += $fromMetrics
-  # A backfill a native night superseded leaves the render (item 11).
-  $supersessions = @($script:MetricsSupersessions | ForEach-Object { [pscustomobject]@{ Night = "$($_.night)"; Native = "$($_.native)"; Backfill = "$($_.backfill)" } })
-  $superseded = @($supersessions | ForEach-Object { $_.Backfill })
-  $results = @($results | Where-Object { $superseded -notcontains (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) })
-  $metricsNote = "- Metrics store: $($mrows.Count) row(s), $($fromMetrics.Count) night(s) rendered from metrics after pruning"
-  if ("$script:MetricsWriteError" -ne '') { $metricsNote += "; $script:MetricsWriteError" }
-  if ("$script:MetricsCapacityWarning" -ne '') { $metricsNote += "; WARNING: $script:MetricsCapacityWarning" }
-  if (@($script:MetricsStaleSkipped).Count -gt 0) { $metricsNote += "; $(@($script:MetricsStaleSkipped).Count) stale result(s) older than their stored revision left unchanged" }
-  if (@($script:MetricsLastMalformed).Count -gt 0) { $metricsNote += "; $(@($script:MetricsLastMalformed).Count) malformed line(s) skipped (lines $(@($script:MetricsLastMalformed) -join ', '); run tools/NightlyTrend.ps1 -Compact)" }
-} catch { $metricsNote = "- Metrics store: unavailable ($($_.Exception.Message))" }
+# The trend's inputs (validated results, the metrics store's
+# authoritative rows, superseded backfills removed) come from one shared
+# loader the nightly's notification also reads (D00 T02 section 33 R2-I1).
+$inputs = Get-TrendInputResults $NightDir $storePath
+$results = @($inputs.Results)
+$skipped = @($inputs.Skipped)
+$degraded = @($inputs.Degraded)
+$supersessions = @($inputs.Supersessions)
+$migNotes = @($inputs.MigNotes)
+$metricsNote = $inputs.MetricsNote
 $quar = Test-QuarantineWindows $LedgerPath (Get-Date)
 $dueSoon = Get-DueSoonTests $quar.OpenRows (Get-Date) 3
 # The governed task's own calendar decides which nights were due (R1-C1).

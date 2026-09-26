@@ -1710,8 +1710,11 @@ if ((-not $Smoke) -and (-not $simMode)) {
     } else { $items += New-ToastItem 5 'No failures' 1 }
     $recNotices = @()
     try {
-      $allResults = @()
-      foreach ($rp in $ackResultFiles) { try { $allResults += (Get-Content $rp -Raw -Encoding UTF8 | ConvertFrom-Json) } catch { } }
+      # The trend's own input set (section 33 R2-I1): validated results,
+      # authoritative metrics rows, superseded backfills removed, and the
+      # host aliases resolved, so the two surfaces select from the same runs.
+      $script:HostAliases = Read-HostAliases (Join-Path $Root 'docs/nightly-host-aliases.md')
+      $allResults = @((Get-TrendInputResults $nightDir (Join-Path $nightDir 'metrics.jsonl')).Results)
       # One canonical map for the night (D00 T02 section 33 item 1): the
       # recovery check and the night's voice read the selection the trend
       # renders, and a run that does not speak for its night says which

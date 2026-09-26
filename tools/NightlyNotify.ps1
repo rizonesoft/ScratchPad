@@ -249,11 +249,22 @@ function Update-DeliveryRecord([string]$StateDir, [datetime]$Now, [bool]$Ok) {
   $null = Invoke-WithNotifyLock -Body {
     $p = Join-Path $StateDir 'delivery-record.json'
     $rec = Read-JsonState $p ([pscustomobject]@{ failures = @(); lastSuccessAt = ''; escalated = '' })
-    $fails = @(@($(try { $rec.failures } catch { @() })) | Where-Object { "$_" -ne '' })
+    # One entry per night holding that night's LATEST failure (R2-A1):
+    # any number of failed re-sends on one night can never push an
+    # earlier night out of the record, and comparing each night's latest
+    # failure with the last success still orders the events.
+    $byNight = [ordered]@{}
+    foreach ($f in @($(try { $rec.failures } catch { @() }))) {
+      $fa = [datetimeoffset]::MinValue
+      if (-not [datetimeoffset]::TryParse("$f", [System.Globalization.CultureInfo]::InvariantCulture, [System.Globalization.DateTimeStyles]::None, [ref]$fa)) { continue }
+      $nk = Get-NightKey $fa.DateTime
+      if ((-not $byNight.Contains($nk)) -or ($fa -gt [datetimeoffset]::Parse($byNight[$nk], [System.Globalization.CultureInfo]::InvariantCulture))) { $byNight[$nk] = "$f" }
+    }
     $last = "$(try { $rec.lastSuccessAt } catch { '' })"
     $stamp = $Now.ToString('yyyy-MM-ddTHH:mm:ss.fffzzz', [System.Globalization.CultureInfo]::InvariantCulture)
-    if ($Ok) { $last = $stamp } else { $fails += $stamp }
-    $o = [pscustomobject]@{ failures = @($fails | Select-Object -Last 60); lastSuccessAt = $last; escalated = "$(try { $rec.escalated } catch { '' })" }
+    if ($Ok) { $last = $stamp } else { $byNight[(Get-NightKey $Now)] = $stamp }
+    $kept = @($byNight.Keys | Sort-Object | Select-Object -Last 60 | ForEach-Object { $byNight[$_] })
+    $o = [pscustomobject]@{ failures = $kept; lastSuccessAt = $last; escalated = "$(try { $rec.escalated } catch { '' })" }
     Write-AtomicReport @(ConvertTo-Json $o -Depth 4) $p
   }
 }

@@ -429,6 +429,46 @@ $ri33 = @(Invoke-UndeliveredResend -StateDir $st33e -Sender { param($t, $l) $scr
 $led33e = @(Get-Content (Join-Path $st33e 'notify-ledger.json') -Raw -Encoding UTF8 | ConvertFrom-Json)
 Assert (($script:sent33e -contains 'Nightly 2026-09-25 : RED (infrastructure) (possible duplicate)') -and ($led33e[0].status -eq 'sent') -and (@($ri33 | Where-Object { $_ -like 'intent crash|noresult|v1: re-sent*' }).Count -eq 1)) 's33-reconciler-resends-a-crashed-intent' "$($script:sent33e -join '|') / $($led33e[0].status) / $($ri33 -join '|')"
 
+# Section 33 R2-A1: sixty failures on D+1 never push D's failure out, so
+# the consecutive nights still escalate.
+$st33f = Join-Path $dir 'state33f'
+$null = New-Item -ItemType Directory -Force -Path $st33f
+Update-DeliveryRecord $st33f (Get-Date '2026-09-24 03:00') $false
+for ($i = 0; $i -lt 60; $i++) { Update-DeliveryRecord $st33f ((Get-Date '2026-09-25 03:00').AddSeconds($i)) $false }
+$esc33f = @(Invoke-DeliveryEscalation -StateDir $st33f -Now (Get-Date '2026-09-25 07:05') -Escalate { param($t, $l) $true })
+Assert ($esc33f[0] -like '- Delivery escalation: sent*episode from 2026-09-24*') 's33-many-failures-never-erase-the-earlier-night' ($esc33f -join '|')
+
+# R2-C1: worsening compares to the magnitude actually delivered. +50 opens,
+# +70 arrives before delivery, the delivery confirms +70; then +80 is
+# not worsening (under 95) and +95 is, from 70.
+$al33g = Join-Path $dir 'alerts33g.json'
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs baseline 600s (+50%, median of 5 night(s))') $al33g ([pscustomobject]@{ Night = '2026-09-24'; Host = 'h0st0001'; Identity = 'g1' })
+$null = Update-AlertLedger @('- ALERT runa-duration: 1020s on 2026-09-25 vs baseline 600s (+70%, median of 5 night(s))') $al33g ([pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0001'; Identity = 'g2' })
+$pg = Get-PendingAlertNotifications $al33g; Confirm-AlertNotifications $al33g @($pg.Keys)
+$null = Update-AlertLedger @('- ALERT runa-duration: 1080s on 2026-09-26 vs baseline 600s (+80%, median of 5 night(s))') $al33g ([pscustomobject]@{ Night = '2026-09-26'; Host = 'h0st0001'; Identity = 'g3' })
+$pg2 = Get-PendingAlertNotifications $al33g
+$null = Update-AlertLedger @('- ALERT runa-duration: 1170s on 2026-09-27 vs baseline 600s (+95%, median of 5 night(s))') $al33g ([pscustomobject]@{ Night = '2026-09-27'; Host = 'h0st0001'; Identity = 'g4' })
+$pg3 = Get-PendingAlertNotifications $al33g
+Assert (($pg.Lines[0] -like 'ALERT runa-duration: 1020s*') -and (@($pg2.Lines).Count -eq 0) -and ($pg3.Lines[0] -like 'WORSENING (from 70 to 95): ALERT runa-duration: 1170s*')) 's33-worsening-compares-to-the-delivered-magnitude' "$($pg.Lines -join '|') / $($pg2.Lines -join '|') / $($pg3.Lines -join '|')"
+
+# R2-I1: the notification selects from the trend's validated inputs. An
+# invalid later timer result (GREEN with exit 1) derails the raw-JSON
+# selection (it never names the valid run); the shared loader skips it, so the notification and the trend both
+# speak for the valid run.
+$nd33 = Join-Path $dir 'night33'
+$null = New-Item -ItemType Directory -Force -Path $nd33
+$v33 = New-Result '2026-09-26' '2026-09-26-023000' 'red' 'timer'
+$v33 | Add-Member -NotePropertyName timings -NotePropertyValue ([pscustomobject]@{ build = 1 }) -Force
+$v33.env.topology = '\\.\DISPLAY1 1920x1080+0+0 primary'; $v33.env.settings = 'BACKGROUND=1 WINDOW=x SPEC=y'
+$bad33 = New-Result '2026-09-26' '2026-09-26-030000' 'green' 'timer'; $bad33.exit = 1
+ConvertTo-Json $v33 -Depth 8 | Set-Content -Path (Join-Path $nd33 'morning-2026-09-26-023000.result.json') -Encoding UTF8
+ConvertTo-Json $bad33 -Depth 8 | Set-Content -Path (Join-Path $nd33 'morning-2026-09-26-030000.result.json') -Encoding UTF8
+$raw33 = @(Get-ChildItem $nd33 -Filter 'morning-*.result.json' | ForEach-Object { Get-Content $_.FullName -Raw | ConvertFrom-Json })
+$in33 = Get-TrendInputResults $nd33 (Join-Path $nd33 'metrics.jsonl')
+$rawPick = (Select-CanonicalRuns $raw33)[(Get-NightSlotKey $v33)].Canonical
+$vo33 = Get-NightVoice (Select-CanonicalRuns @($in33.Results)) $v33
+Assert (($rawPick -ne '2026-09-26-023000-pid1') -and ($vo33.Canonical -eq '2026-09-26-023000-pid1') -and $vo33.IsVoice -and (@($in33.Skipped).Count -eq 1)) 's33-notify-selects-from-the-trend-inputs' "raw $rawPick; shared $($vo33.Canonical); skipped $(@($in33.Skipped) -join ',')"
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyNotify.Tests: all green'

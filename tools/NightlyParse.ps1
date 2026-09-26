@@ -3982,23 +3982,25 @@ function Update-AlertLedger([string[]]$Alerts, [string]$Path, $Evaluation, [stri
       $mag = Get-AlertMagnitude $current[$id]
       if ($null -ne $e) {
         $e.lastNight = $night; $e.evaluated = $evalId; $e.line = $current[$id]; $persist += $id
-        # A persisting alert that grew by its series' step since it was
-        # last notified is worsening (D00 T02 section 33 item 2): it takes
-        # a new occurrence and notifies again; an unchanged or improving
-        # one stays quiet. An entry from before magnitudes starts its
-        # baseline here.
+        $e | Add-Member -NotePropertyName magnitude -NotePropertyValue $mag -Force
+        # A persisting alert that grew by its series' step past the
+        # magnitude last DELIVERED is worsening (D00 T02 section 33 item 2,
+        # R2-C1): it takes a new occurrence and notifies again; an unchanged
+        # or improving one stays quiet, and a pending (undelivered) one just
+        # carries its newest line. The delivered magnitude is recorded only
+        # when the sender confirms (Confirm-AlertNotifications); an entry
+        # delivered before magnitudes existed starts its baseline here.
         $base = $null
         try { if ("$($e.notifiedMagnitude)" -ne '') { $base = [double]$e.notifiedMagnitude } } catch { }
-        if (($null -ne $mag) -and ($null -ne $base) -and ($mag -ge ($base + (Get-AlertWorsenStep $id)))) {
+        if (($e.notifiedOpen -ne $false) -and ($null -ne $mag) -and ($null -ne $base) -and ($mag -ge ($base + (Get-AlertWorsenStep $id)))) {
           $e | Add-Member -NotePropertyName occurrence -NotePropertyValue ([guid]::NewGuid().ToString('N').Substring(0, 16)) -Force; $e | Add-Member -NotePropertyName notifiedOpen -NotePropertyValue $false -Force
-          $e | Add-Member -NotePropertyName worsening -NotePropertyValue "from $base to $mag" -Force
-          $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $mag -Force
+          $e | Add-Member -NotePropertyName worsening -NotePropertyValue $true -Force
           $worse += $id
-        } elseif (($null -ne $mag) -and ($null -eq $base)) { $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $mag -Force }
+        } elseif (($e.notifiedOpen -ne $false) -and ($null -ne $mag) -and ($null -eq $base)) { $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $mag -Force }
       }
       # Each opening is its own occurrence (R3-F2), so a reopening on the
       # same night never shares a delivery key with the earlier one.
-      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true; notifiedMagnitude = $mag }; $new += $id }
+      else { $entries += [pscustomobject]@{ id = $id; occurrence = [guid]::NewGuid().ToString('N').Substring(0, 16); state = 'open'; firstNight = $night; lastNight = $night; evaluated = $evalId; line = $current[$id]; closedNight = ''; notifiedOpen = $false; notifiedClose = $true; magnitude = $mag; notifiedMagnitude = $null }; $new += $id }
     }
     foreach ($e in @($entries | Where-Object { ("$($_.state)" -eq 'open') -and ("$($_.id)".StartsWith("$hk|")) -and (-not $current.Contains("$($_.id)")) })) {
       $state = if (@(@($SupersededIds) | ForEach-Object { "$_".Split('@')[0] }) -contains "$($e.evaluated)".Split('#')[0]) { 'superseded' } elseif (("$($e.lastNight)" -eq $night) -and ("$($e.evaluated)" -ne $evalId)) { 'corrected' } elseif ([string]::CompareOrdinal("$($e.lastNight)", $night) -lt 0) { 'recovered' } else { '' }
@@ -4072,7 +4074,7 @@ function Get-PendingAlertNotifications([string]$Path) {
   foreach ($e in @($lg.alerts)) {
     if ($null -eq $e) { continue }
     $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
-    if ($e.notifiedOpen -eq $false) { $lines += "$(if ("$($e.state)" -eq 'open' -and "$($e.worsening)" -ne '') { "WORSENING ($($e.worsening)): " })$($e.line)"; $keys += "open|$($e.id)|$occ" }
+    if ($e.notifiedOpen -eq $false) { $lines += "$(if (("$($e.state)" -eq 'open') -and ("$($e.worsening)" -eq 'True')) { "WORSENING (from $($e.notifiedMagnitude) to $($e.magnitude)): " })$($e.line)"; $keys += "open|$($e.id)|$occ" }
     elseif (("$($e.state)" -eq 'open') -and ("$($e.acknowledged)" -eq '')) { $persisting++ }
     elseif ("$($e.state)" -eq 'open') { $acked++ }
     if (("$($e.state)" -ne 'open') -and ($e.notifiedClose -eq $false)) { $lines += "closed ($($e.state) on $($e.closedNight)): $($e.id)"; $keys += "close|$($e.id)|$occ" }
@@ -4089,7 +4091,9 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
     foreach ($e in @($lg.alerts)) {
       if ($null -eq $e) { continue }
       $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
-      if (@($Keys) -contains "open|$($e.id)|$occ") { $e.notifiedOpen = $true }
+      # The delivered magnitude is what the next worsening compares to
+      # (section 33 R2-C1).
+      if (@($Keys) -contains "open|$($e.id)|$occ") { $e.notifiedOpen = $true; $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $(try { $e.magnitude } catch { $null }) -Force; $e | Add-Member -NotePropertyName worsening -NotePropertyValue $false -Force }
       if (@($Keys) -contains "close|$($e.id)|$occ") { $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $true -Force }
     }
     Write-AtomicReport @((ConvertTo-Json $lg -Depth 6)) $Path
@@ -4404,6 +4408,69 @@ function Protect-DisclosedText([string]$Text) {
   $t = [regex]::Replace($t, '(?i)\b[A-Za-z]:\\Users\\.*?(?=( [A-Z][A-Z0-9_]*=)|[;|,)]|$)', '[path]')
   $t = [regex]::Replace($t, '\\\\(?!\.\\)[^\\;|,)]+\\.*?(?=( [A-Z][A-Z0-9_]*=)|[;|,)]|$)', '[path]')
   return $t
+}
+
+function Get-TrendInputResults([string]$NightDir, [string]$StorePath) {
+  # The trend's input set (D00 T02 section 33 R2-I1), shared by
+  # tools/NightlyTrend.ps1 and the nightly's notification: every result
+  # file validated (invalid ones skipped and their nights degraded), the
+  # metrics store synced and its authoritative rows merged, and superseded
+  # backfills removed, so both surfaces select a night's canonical run from
+  # identical inputs. Returns Results, Skipped, Degraded, Supersessions,
+  # MigNotes, and MetricsNote.
+  $results = @()
+  $skipped = @()
+  $degraded = @()
+  $paths = @()
+  $paths += @(Get-ChildItem $NightDir -Filter 'morning-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  $paths += @(Get-ChildItem $NightDir -Filter 'loser-*.result.json' -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  $paths += @(Get-ChildItem (Join-Path $NightDir 'retained') -Filter 'result.json' -Recurse -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })
+  foreach ($p in ($paths | Sort-Object -Unique)) {
+    $chk = Test-ResultFile $p
+    if ($chk.Ok) { $results += Read-ResultFile $p }
+    else {
+      # Named relative to the night directory, never by an absolute path
+      # (the disclosure contract, D00 T02 section 32 item 14).
+      $rel = $p
+      try { $nd = (Resolve-Path $NightDir).Path; if ($p.StartsWith($nd, [System.StringComparison]::OrdinalIgnoreCase)) { $rel = $p.Substring($nd.Length).TrimStart('\', '/') } } catch { }
+      $skipped += "$rel ($($chk.Error))"
+      # The night a broken result belongs to: its own recorded night when
+      # the JSON still parses, else the date in its file name.
+      $night = ''
+      try { $night = Get-ResultNight (Get-Content -LiteralPath $p -Raw | ConvertFrom-Json) } catch { }
+      # A retained copy is named result.json, so the date comes from the
+      # nearest path segment that carries one (section 32 R3-I3).
+      if ($night -notmatch '^\d{4}-\d{2}-\d{2}$') { $m = [regex]::Matches($p, '(\d{4}-\d{2}-\d{2})'); if ($m.Count -gt 0) { $night = $m[$m.Count - 1].Groups[1].Value } }
+      if ($night -ne '') { $degraded += [pscustomobject]@{ Night = $night; Reason = "$(Split-Path -Leaf $p): $($chk.Error)" } }
+    }
+  }
+  # Long-term metrics (D00 T02 §25 item 7): every valid result lands one
+  # compact row in build/nightly/metrics.jsonl (append-only, never pruned),
+  # and a night whose raw result retention pruned renders from its row.
+  $metricsNote = ''
+  $supersessions = @()
+  # Retained copies migrate once per disclosure rule version (section 47
+  # item 11).
+  $migNotes = @()
+  try { $migNotes = @(Update-DisclosureMigration $StorePath) } catch { $migNotes = @("- disclosure migration failed: $($_.Exception.Message)") }
+  try {
+    $mrows = @(Sync-MetricsStore $StorePath $results)
+    $auth = Select-AuthoritativeResults $results $mrows @($script:MetricsStaleSkipped)
+    $results = @($auth.Results)
+    $fromMetrics = @($auth.FromMetrics)
+    $null = Add-MergedEvidence $results $mrows
+    $results += $fromMetrics
+    # A backfill a native night superseded leaves the render (item 11).
+    $supersessions = @($script:MetricsSupersessions | ForEach-Object { [pscustomobject]@{ Night = "$($_.night)"; Native = "$($_.native)"; Backfill = "$($_.backfill)" } })
+    $superseded = @($supersessions | ForEach-Object { $_.Backfill })
+    $results = @($results | Where-Object { $superseded -notcontains (Get-MetricsKey ([pscustomobject]@{ identity = "$($_.identity)"; hostKey = (Get-ResultHostKey $_) })) })
+    $metricsNote = "- Metrics store: $($mrows.Count) row(s), $($fromMetrics.Count) night(s) rendered from metrics after pruning"
+    if ("$script:MetricsWriteError" -ne '') { $metricsNote += "; $script:MetricsWriteError" }
+    if ("$script:MetricsCapacityWarning" -ne '') { $metricsNote += "; WARNING: $script:MetricsCapacityWarning" }
+    if (@($script:MetricsStaleSkipped).Count -gt 0) { $metricsNote += "; $(@($script:MetricsStaleSkipped).Count) stale result(s) older than their stored revision left unchanged" }
+    if (@($script:MetricsLastMalformed).Count -gt 0) { $metricsNote += "; $(@($script:MetricsLastMalformed).Count) malformed line(s) skipped (lines $(@($script:MetricsLastMalformed) -join ', '); run tools/NightlyTrend.ps1 -Compact)" }
+  } catch { $metricsNote = "- Metrics store: unavailable ($($_.Exception.Message))" }
+  return [pscustomobject]@{ Results = @($results); Skipped = @($skipped); Degraded = @($degraded); Supersessions = @($supersessions); MigNotes = @($migNotes); MetricsNote = $metricsNote }
 }
 
 function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
