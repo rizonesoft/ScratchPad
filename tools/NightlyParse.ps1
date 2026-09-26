@@ -3794,10 +3794,21 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           # (the native result's `tombstone` field list) is an explicit
           # deletion: a field it names never refills from the backfill.
           $tomb = @(@($(try { $merged.tombstone } catch { @() })) | ForEach-Object { "$_" })
-          $nativeCounts = @(@($(try { $merged.legs.PSObject.Properties } catch { @() })) | Where-Object { ($null -ne $_.Value.passed) -or ($null -ne $_.Value.failed) }).Count -gt 0
+          $hasCounts = { param($x) @(@($(try { $x.legs.PSObject.Properties } catch { @() })) | Where-Object { ($null -ne $_.Value.passed) -or ($null -ne $_.Value.failed) }).Count -gt 0 }
+          $isSet = { param($v) ($null -ne $v) -and ("$v" -ne '') -and ("$v" -notlike 'unknown*') }
           $unit = @('population', 'populationHash', 'timings')
+          # The unit is the legs' counts plus population, its hash, and
+          # timings (section 47 R2-C1): it moves from the backfill whole,
+          # counts included, only when the native row carries none of it
+          # and no tombstone names a part of it; otherwise the native row
+          # keeps its own unit, however partial, and nothing mixes.
+          $nativeUnit = (& $hasCounts $merged) -or (@($unit | Where-Object { & $isSet $(try { $merged.$_ } catch { $null }) }).Count -gt 0)
+          $unitTomb = @($tomb | Where-Object { (@($unit) + @('legs')) -contains $_ }).Count -gt 0
+          if ((-not $nativeUnit) -and (-not $unitTomb) -and (& $hasCounts $bf)) {
+            $merged | Add-Member -NotePropertyName legs -NotePropertyValue ($bf.legs | ConvertTo-Json -Depth 6 | ConvertFrom-Json) -Force; $filled += 'legs'
+            foreach ($k in $unit) { $bv = $(try { $bf.$k } catch { $null }); if (& $isSet $bv) { $merged | Add-Member -NotePropertyName $k -NotePropertyValue $bv -Force; $filled += $k } }
+          }
           $fillable = @('reserve', 'consumed', 'commit', 'harness')
-          if (-not $nativeCounts) { $fillable += $unit }
           foreach ($k in @($fillable | Where-Object { $tomb -notcontains $_ })) {
             $nv = $(try { $merged.$k } catch { $null }); $bv = $(try { $bf.$k } catch { $null })
             $nEmpty = ($null -eq $nv) -or ("$nv" -eq '') -or ("$nv" -like 'unknown*')
@@ -3929,7 +3940,10 @@ function Read-AlertAcks([string]$Path, [string]$Root = '') {
   }
   foreach ($ln in $text) {
     $m = [regex]::Match($ln, '^\|\s*([0-9a-z]+\|[a-z-]+(?:\|INC-[0-9a-f]{8})?)\s*\|\s*([^|]+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]*?)\s*\|')
-    if ($m.Success -and ($m.Groups[2].Value -notmatch '^(TBD|TODO|none|n/a|unknown|\?)$')) { $map[$m.Groups[1].Value] = "$($m.Groups[2].Value) on $($m.Groups[3].Value): $($m.Groups[4].Value)" }
+    # An owner and a reason are both required (section 47 R2-C2): a
+    # placeholder owner or a blank or placeholder reason acknowledges
+    # nothing.
+    if ($m.Success -and ($m.Groups[2].Value -notmatch '^(TBD|TODO|none|n/a|unknown|\?)$') -and ($m.Groups[4].Value.Trim() -ne '') -and ($m.Groups[4].Value.Trim() -notmatch '^(TBD|TODO|none|n/a|unknown|\?|-+)$')) { $map[$m.Groups[1].Value] = "$($m.Groups[2].Value) on $($m.Groups[3].Value): $($m.Groups[4].Value)" }
   }
   return $map
 }
@@ -4116,7 +4130,12 @@ function Restore-MetricsStore([string]$Path) {
     $kept = ''
     if ((Test-Path -LiteralPath $Path) -and (($null -eq $cur) -or (@($cur.Malformed).Count -gt 0))) {
       $kept = "$Path.damaged-$((Get-Date).ToString('yyyyMMdd-HHmmss'))"
-      Copy-Item -LiteralPath $Path -Destination $kept -Force
+      # The kept copy passes the disclosure contract line by line (section
+      # 47 R2-A1): a readable row through the object contract, an
+      # unreadable line through the text contract, so no retained copy
+      # keeps a value the rule withholds.
+      $keptLines = @(foreach ($ln in [System.IO.File]::ReadAllLines($Path)) { if ("$ln".Trim() -eq '') { continue }; try { $o = $ln | ConvertFrom-Json -ErrorAction Stop; ConvertTo-Json (Protect-DisclosedObject $o) -Depth 6 -Compress } catch { Protect-DisclosedText $ln } })
+      Write-AtomicReport $keptLines $kept
     }
     # The disclosure contract re-applies on restore (section 47 item 11): a
     # backup written before a rule existed never reintroduces a value the
@@ -4140,10 +4159,11 @@ function Update-DisclosureMigration([string]$Path) {
   if (Test-Path -LiteralPath $marker) { try { $have = [int]((Get-Content -LiteralPath $marker -Raw).Trim()) } catch { $have = 0 } }
   if ($have -ge $script:DisclosureRuleVersion) { return @() }
   $out = @()
-  foreach ($f in @(@("$Path.bak") + @(Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter "$(Split-Path -Leaf $Path).rejected*" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }))) {
+  # Kept damaged stores (section 47 R2-A1) are retained copies too.
+  foreach ($f in @(@("$Path.bak") + @(Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter "$(Split-Path -Leaf $Path).rejected*" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }) + @(Get-ChildItem -LiteralPath (Split-Path -Parent $Path) -Filter "$(Split-Path -Leaf $Path).damaged-*" -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }))) {
     if (-not (Test-Path -LiteralPath $f)) { continue }
     $n = 0
-    $new = @(foreach ($ln in [System.IO.File]::ReadAllLines($f)) { if ("$ln".Trim() -eq '') { continue }; try { $o = $ln | ConvertFrom-Json -ErrorAction Stop; $c = ConvertTo-Json (Protect-DisclosedObject $o) -Depth 6 -Compress; if ($c -ne (ConvertTo-Json $o -Depth 6 -Compress)) { $n++; $c } else { $ln } } catch { $n++; '{"schema":"rejected/1","note":"unparsable line dropped at disclosure migration"}' } })
+    $new = @(foreach ($ln in [System.IO.File]::ReadAllLines($f)) { if ("$ln".Trim() -eq '') { continue }; try { $o = $ln | ConvertFrom-Json -ErrorAction Stop; $c = ConvertTo-Json (Protect-DisclosedObject $o) -Depth 6 -Compress; if ($c -ne (ConvertTo-Json $o -Depth 6 -Compress)) { $n++; $c } else { $ln } } catch { if ($f -like '*.damaged-*') { $t2 = Protect-DisclosedText $ln; if ($t2 -ne $ln) { $n++ }; $t2 } else { $n++; '{"schema":"rejected/1","note":"unparsable line dropped at disclosure migration"}' } } })
     if ($n -gt 0) { Write-AtomicReport $new $f; $out += "- disclosure migration: $n line(s) sanitized in $(Split-Path -Leaf $f)" }
   }
   Write-AtomicReport @("$($script:DisclosureRuleVersion)") $marker

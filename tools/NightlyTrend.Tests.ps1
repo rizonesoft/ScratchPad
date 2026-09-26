@@ -844,6 +844,9 @@ $null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs basel
 '| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|runa-duration | operator | 2026-09-25 | new UI suite is slower by design |' | Set-Content -Path (Join-Path $d47 'alert-acks.md') -Encoding UTF8
 $ev2 = [pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0001'; Identity = 'e2' }
 $null = Update-AlertLedger @('- ALERT runa-duration: 910s on 2026-09-25 vs baseline 600s') $alPath $ev2 @() (Read-AlertAcks (Join-Path $d47 'alert-acks.md'))
+# R2-C2: a row with a blank reason acknowledges nothing.
+'| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|pass-rate | operator | 2026-09-25 |  |', '| h0st0001|runa-shift | operator | 2026-09-25 | TBD |' | Set-Content -Path (Join-Path $d47 'alert-acks-blank.md') -Encoding UTF8
+Assert ((Read-AlertAcks (Join-Path $d47 'alert-acks-blank.md')).Count -eq 0) 's47-alert-ack-needs-a-reason'
 $lg4 = Read-AlertLedger $alPath
 $pend4 = Get-PendingAlertNotifications $alPath
 $e4 = @($lg4.alerts | Where-Object { $_.id -eq 'h0st0001|runa-duration' })[0]
@@ -877,6 +880,20 @@ $nat6 = New-Night '2026-09-26' '2026-09-26-023000'; $nat6.populationHash = ''; $
 $null = Sync-MetricsStore $mgS @($bf6)
 $r6 = @(Sync-MetricsStore $mgS @($nat6)) | Where-Object { "$($_.identity)" -eq $nat6.identity } | Select-Object -First 1
 Assert (("$($r6.populationHash)" -ne 'popBF006') -and ("$($r6.commit)" -ne 'abc1234')) 's47-merge-keeps-units-and-tombstones' (($r6 | ConvertTo-Json -Depth 4 -Compress))
+# R2-C1: a native row with its own population but no counts keeps its
+# unit (no backfill hash joins it); a native row with none of the unit
+# takes the backfill's counts, hash, and timings together.
+$mgU = Join-Path $d47 'merge-unit.jsonl'
+$noCounts = { param($x) foreach ($lg in @('run-a', 'run-b', 'interactive')) { $x.legs.$lg.passed = $null; $x.legs.$lg.failed = $null } }
+$bfA = New-Night '2026-09-28' '2026-09-28-023000'; $bfA.identity = 'bf-2026-09-28-pid1'; $bfA | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ passed = [pscustomobject]@{ confidence = 'high'; source = 'trx' } }) -Force; $bfA.populationHash = 'popBFA01'
+$natA = New-Night '2026-09-28' '2026-09-28-023000'; & $noCounts $natA; $natA.populationHash = 'popNATA1'
+$bfB = New-Night '2026-09-29' '2026-09-29-023000'; $bfB.identity = 'bf-2026-09-29-pid1'; $bfB | Add-Member -NotePropertyName provenance -NotePropertyValue ([pscustomobject]@{ passed = [pscustomobject]@{ confidence = 'high'; source = 'trx' } }) -Force; $bfB.populationHash = 'popBFB01'
+$natB = New-Night '2026-09-29' '2026-09-29-023000'; & $noCounts $natB; $natB.populationHash = ''; $natB.timings = $null
+$null = Sync-MetricsStore $mgU @($bfA, $bfB)
+$rowsU = @(Sync-MetricsStore $mgU @($natA, $natB))
+$rA = $rowsU | Where-Object { "$($_.identity)" -eq $natA.identity } | Select-Object -First 1
+$rB = $rowsU | Where-Object { "$($_.identity)" -eq $natB.identity } | Select-Object -First 1
+Assert (("$($rA.populationHash)" -eq 'popNATA1') -and ($null -eq $rA.legs.'run-a'.passed) -and ("$($rB.populationHash)" -eq 'popBFB01') -and ("$($rB.legs.'run-a'.passed)" -eq '100') -and (@($rB.mergedFields) -contains 'legs') -and (@($rB.mergedFields) -contains 'timings')) 's47-merge-moves-the-unit-whole-or-not-at-all' (($rA, $rB | ConvertTo-Json -Depth 5 -Compress))
 # Item 7: an all-excluded run reads excluded with zero executions; a green
 # run that executed nothing reads unproven.
 $ex7 = New-Night '2026-09-27' '2026-09-27-023000'; $ex7 | Add-Member -NotePropertyName excluded -NotePropertyValue 'harness experiment' -Force
@@ -907,6 +924,15 @@ $rsOut = Restore-MetricsStore $rs
 # R1-A2: the torn line is loss the comparison cannot see; it is counted
 # and the damaged store is kept aside.
 Assert (($rsOut -like '*LOST since the backup: 2026-09-11-023000-pid1@h0st0001 (not in the backup), 1 unreadable line(s) (line *) whose rows cannot be compared*') -and ($rsOut -like '*the damaged store is kept as restore.jsonl.damaged-*') -and ($rsOut -notlike '*nothing lost*') -and (@(Get-ChildItem -LiteralPath $d47 -Filter 'restore.jsonl.damaged-*').Count -eq 1)) 's47-stale-restore-lists-lost-rows' $rsOut
+# R2-A1: the kept damaged store passes the disclosure contract, readable
+# rows and unreadable lines alike.
+$rsd = Join-Path $d47 'restore-disc.jsonl'
+$null = Sync-MetricsStore $rsd @((New-Night '2026-09-10' '2026-09-10-023000'))
+$null = Compress-MetricsStore $rsd
+[System.IO.File]::AppendAllText($rsd, "{torn token=ghp_$('a' * 36)`n")
+$null = Restore-MetricsStore $rsd
+$keptD = @(Get-ChildItem -LiteralPath $d47 -Filter 'restore-disc.jsonl.damaged-*')
+Assert (($keptD.Count -eq 1) -and ((Get-Content -LiteralPath $keptD[0].FullName -Raw) -notlike '*ghp_*') -and ((Get-Content -LiteralPath $keptD[0].FullName -Raw) -like '*{torn*')) 's47-kept-damaged-store-is-sanitized' "$(if ($keptD.Count -gt 0) { Get-Content -LiteralPath $keptD[0].FullName -Raw })"
 # Item 11: a restore from a pre-rule backup yields sanitized rows, and the
 # migration rewrites the retained copy once.
 $ds = Join-Path $d47 'disc.jsonl'
