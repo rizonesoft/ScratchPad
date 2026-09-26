@@ -4684,6 +4684,40 @@ function Get-ShardCoverage($Discovery) {
   return [pscustomobject]@{ State = 'unknown'; Missing = @(); Line = 'unknown (no shard inventory recorded)' }
 }
 
+function Add-MetricsWriteInventory([string]$StorePath, [string[]]$JsonLines) {
+  # One inventory line per row the store acknowledged (key, revision).
+  $inv = @()
+  foreach ($j in @($JsonLines)) {
+    try { $o = $j | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    if ("$($o.schema)" -ne 'metrics/1') { continue }
+    $inv += ([pscustomobject][ordered]@{ key = (Get-MetricsKey $o); revision = $(try { [int]$o.revision } catch { 0 }); at = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress)
+  }
+  if ($inv.Count -gt 0) { [System.IO.File]::AppendAllText("$StorePath.writes.jsonl", (($inv -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false))) }
+}
+
+function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
+  # Exact loss from the independent inventory (section 54 item 10): every
+  # key whose newest acknowledged revision the backup lacks, or holds
+  # older. Without an inventory the loss is unknown, never "nothing".
+  # Returns Known (bool) and Lost (lines).
+  $p = "$StorePath.writes.jsonl"
+  if (-not (Test-Path -LiteralPath $p)) { return [pscustomobject]@{ Known = $false; Lost = @() } }
+  $newest = @{}
+  foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
+    if ("$ln".Trim() -eq '') { continue }
+    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    $k = "$($o.key)"; $r = [int]$o.revision
+    if ((-not $newest.ContainsKey($k)) -or ($r -gt $newest[$k])) { $newest[$k] = $r }
+  }
+  $lost = @()
+  foreach ($k in @($newest.Keys | Sort-Object)) {
+    if (-not $BackupRows.Contains($k)) { $lost += "$k (acknowledged revision $($newest[$k]); not in the backup)"; continue }
+    $br = 0; try { $br = [int]$BackupRows[$k].revision } catch { }
+    if ($newest[$k] -gt $br) { $lost += "$k (acknowledged revision $($newest[$k]); the backup holds $br)" }
+  }
+  return [pscustomobject]@{ Known = $true; Lost = $lost }
+}
+
 function Get-MetricsMergeUnitOf([string]$Field) {
   # The unit a merged field belongs to, or '' when it never merges.
   foreach ($u in @($script:MetricsMergeUnits.Keys)) { if (@($script:MetricsMergeUnits[$u]) -contains $Field) { return $u } }
@@ -4798,7 +4832,13 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
         # rule on the next append (section 40 item 10).
         # A write that fails part-way (R1-F1) is cut back to the prior
         # length, so the store's bytes are exactly what they were.
-        try { if ($null -ne $Append) { & $Append $Path $payload } else { [System.IO.File]::AppendAllText($Path, $payload, (New-Object System.Text.UTF8Encoding($false))) } }
+        try {
+          if ($null -ne $Append) { & $Append $Path $payload } else { [System.IO.File]::AppendAllText($Path, $payload, (New-Object System.Text.UTF8Encoding($false))) }
+          # The acknowledged-write inventory (section 54 item 10): once the
+          # append landed, each row key and revision it wrote is recorded in
+          # a file of its own, so a restore can name exactly what it lost.
+          try { Add-MetricsWriteInventory $Path @($add) } catch { $script:MetricsWriteError = "metrics write inventory append failed: $($_.Exception.Message); a later restore reads unknown loss" }
+        }
         catch {
           $script:MetricsWriteError = "metrics append failed: $($_.Exception.Message); the store keeps its prior rows"
           try { if (Test-Path $Path) { $fsx = [System.IO.File]::Open($Path, 'Open', 'ReadWrite'); try { if ($fsx.Length -gt $size) { $fsx.SetLength($size) } } finally { $fsx.Dispose() } } }
@@ -5281,7 +5321,10 @@ function Restore-MetricsStore([string]$Path) {
     # rule now withholds.
     $lines = @($b.Rows.Keys | ForEach-Object { $clean = ConvertTo-Json (Protect-DisclosedObject $b.Rows[$_]) -Depth 6 -Compress; if ($clean -ne (ConvertTo-Json $b.Rows[$_] -Depth 6 -Compress)) { $clean } else { $b.Raw[$_] } }) + @($b.Supersessions | ForEach-Object { ConvertTo-Json (Protect-DisclosedObject $_) -Compress })
     Write-AtomicReport $lines $Path
-    $lossText = if ($null -eq $cur) { '; rows written since the backup cannot be listed (the store is unreadable): rerun the trend to re-derive them from any result still on disk' } elseif ($lost.Count -gt 0) { "; LOST since the backup: $($lost -join ', ') (re-derived on the next trend run only while their results remain on disk)" } else { '; nothing lost since the backup' }
+    # Loss from the inventory when there is one (section 54 item 10);
+    # without it the restore says the loss is unknown.
+    $invLoss = Get-MetricsRestoreLoss $Path $b.Rows
+    $lossText = if (-not $invLoss.Known) { '; UNKNOWN LOSS: no write inventory records what the store acknowledged since the backup, so nothing proves the restore complete' + $(if ($lost.Count -gt 0) { "; the damaged store shows at least: $($lost -join ', ')" } else { '' }) } elseif (@($invLoss.Lost).Count -gt 0) { "; LOST since the backup (from the write inventory): $(@($invLoss.Lost) -join ', ') (re-derived on the next trend run only while their results remain on disk)$(if (@($lost | Where-Object { $_ -like '*unreadable line(s)*' }).Count -gt 0) { '; the damaged store also had ' + (@($lost | Where-Object { $_ -like '*unreadable line(s)*' }) -join ', ') })" } elseif (@($lost | Where-Object { $_ -like '*unreadable line(s)*' }).Count -gt 0) { "; the damaged store had $(@($lost | Where-Object { $_ -like '*unreadable line(s)*' }) -join ', '), none of them an acknowledged write the inventory records" } else { '; nothing lost since the backup (every acknowledged write is in it)' }
     if ($kept -ne '') { $lossText += "; the damaged store is kept as $(Split-Path -Leaf $kept)" }
     return "metrics: restored $($b.Rows.Count) row(s) from $bak$(if ($b.Rejected -gt 0) { "; $($b.Rejected) line(s) the compaction had already rejected stay dropped" })$lossText"
   })

@@ -922,6 +922,18 @@ $slOk = [pscustomobject]@{ night = '2026-09-21'; startUtc = '2026-09-21T00:30:00
 $slCan = [pscustomobject]@{ night = '2026-09-22'; startUtc = '2026-09-22T00:30:00Z'; tz = '+02:00'; consumed = 60; verdict = 'cancelled' }
 $slA = @(Get-SlotAnnotations $slLate $null); $slB = @(Get-SlotAnnotations $slOk $null); $slC = @(Get-SlotAnnotations $slCan $null)
 Assert (($slA.Count -eq 1) -and ($slA[0] -like 'completed late: overran its grace by 150 min') -and ($slB.Count -eq 0) -and (@($slC | Where-Object { $_ -eq "cancelled: the slot's run is still missed" }).Count -eq 1)) 's54-late-completion-keeps-the-overrun' (($slA + $slC) -join ' | ')
+# D00 T02 §54 item 10: a restore with no inventory reads unknown loss;
+# with one it names exactly the acknowledged rows the backup lacks.
+$ilDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-loss'
+if (Test-Path $ilDir) { Remove-Item $ilDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $ilDir
+$ilStore = Join-Path $ilDir 'metrics.jsonl'
+$ilBack = [ordered]@{ 'a@h1' = [pscustomobject]@{ revision = 1 }; 'b@h1' = [pscustomobject]@{ revision = 2 } }
+$ilNone = Get-MetricsRestoreLoss $ilStore $ilBack
+@('{"key":"a@h1","revision":1}', '{"key":"b@h1","revision":3}', '{"key":"c@h1","revision":1}') | Set-Content -LiteralPath "$ilStore.writes.jsonl" -Encoding UTF8
+$ilSome = Get-MetricsRestoreLoss $ilStore $ilBack
+Assert ((-not $ilNone.Known) -and $ilSome.Known -and (@($ilSome.Lost).Count -eq 2) -and ((@($ilSome.Lost) -join '|') -like '*b@h1 (acknowledged revision 3; the backup holds 2)*c@h1 (acknowledged revision 1; not in the backup)*')) 's54-restore-loss-is-exact-or-unknown' (@($ilSome.Lost) -join ' | ')
+Remove-Item $ilDir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
@@ -980,7 +992,7 @@ $null = Sync-MetricsStore $rs @((New-Night '2026-09-11' '2026-09-11-023000'))
 $rsOut = Restore-MetricsStore $rs
 # R1-A2: the torn line is loss the comparison cannot see; it is counted
 # and the damaged store is kept aside.
-Assert (($rsOut -like '*LOST since the backup: 2026-09-11-023000-pid1@h0st0001 (not in the backup), 1 unreadable line(s) (line *) whose rows cannot be compared*') -and ($rsOut -like '*the damaged store is kept as restore.jsonl.damaged-*') -and ($rsOut -notlike '*nothing lost*') -and (@(Get-ChildItem -LiteralPath $d47 -Filter 'restore.jsonl.damaged-*').Count -eq 1)) 's47-stale-restore-lists-lost-rows' $rsOut
+Assert (($rsOut -like '*LOST since the backup (from the write inventory): 2026-09-11-023000-pid1@h0st0001 (acknowledged revision 0; not in the backup)*the damaged store also had 1 unreadable line(s) (line *) whose rows cannot be compared*') -and ($rsOut -like '*the damaged store is kept as restore.jsonl.damaged-*') -and ($rsOut -notlike '*nothing lost*') -and (@(Get-ChildItem -LiteralPath $d47 -Filter 'restore.jsonl.damaged-*').Count -eq 1)) 's47-stale-restore-lists-lost-rows' $rsOut
 # R2-A1: the kept damaged store passes the disclosure contract, readable
 # rows and unreadable lines alike.
 $rsd = Join-Path $d47 'restore-disc.jsonl'
