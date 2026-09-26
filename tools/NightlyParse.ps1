@@ -773,17 +773,76 @@ function Test-ReparsePoint([System.IO.FileSystemInfo]$Item) {
   return (($Item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0)
 }
 
-function Remove-TreeNoFollow([string]$Path) {
+function Test-PathChainNoReparse([string]$Root, [string]$Path) {
+  # Every component from $Root down to $Path, $Root included, must exist
+  # and be no reparse point (D00 T02 section 53 item 1). Returns '' or
+  # the first offending component.
+  $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd('\')
+  $full = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+  if (-not ($full -eq $rootFull -or $full.StartsWith($rootFull + '\', [StringComparison]::OrdinalIgnoreCase))) { return "$full is outside $rootFull" }
+  $cur = $rootFull
+  $parts = @(if ($full.Length -gt $rootFull.Length) { $full.Substring($rootFull.Length + 1) -split '\\' })
+  foreach ($seg in @('') + $parts) {
+    if ($seg -ne '') { $cur = Join-Path $cur $seg }
+    $it = Get-Item -LiteralPath $cur -Force -ErrorAction SilentlyContinue
+    if ($null -eq $it) { return "$cur no longer exists" }
+    if (Test-ReparsePoint $it) { return "$cur is a reparse point" }
+  }
+  return ''
+}
+
+function Remove-TreeNoFollow([string]$Path, [string]$Root = '', [scriptblock]$BeforeDelete = $null) {
   # Deletes a directory tree without ever entering a reparse point (D00
   # T02 section 45 item 1): a junction or symlink inside is removed as a
-  # link, so its target's content survives.
+  # link, so its target's content survives. With $Root (section 53 item
+  # 1), the chain from $Root down to each item's parent is re-checked
+  # immediately before every delete, so a component swapped for a
+  # junction mid-sweep refuses by name instead of redirecting the delete.
+  # $BeforeDelete is a fault seam for fixtures.
+  $guard = {
+    param($p)
+    if ($null -ne $BeforeDelete) { & $BeforeDelete $p }
+    if ($Root -ne '') { $why = Test-PathChainNoReparse $Root (Split-Path -Parent $p); if ($why -ne '') { throw "sweep refused: $why (the path changed during the sweep)" } }
+  }
   foreach ($c in @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)) {
     if (Test-ReparsePoint $c) {
+      & $guard $c.FullName
       if ($c.PSIsContainer) { [System.IO.Directory]::Delete($c.FullName, $false) } else { [System.IO.File]::Delete($c.FullName) }
-    } elseif ($c.PSIsContainer) { Remove-TreeNoFollow $c.FullName }
-    else { $c.Attributes = 'Normal'; [System.IO.File]::Delete($c.FullName) }
+    } elseif ($c.PSIsContainer) { Remove-TreeNoFollow $c.FullName $Root $BeforeDelete }
+    else { & $guard $c.FullName; $c.Attributes = 'Normal'; [System.IO.File]::Delete($c.FullName) }
   }
+  & $guard $Path
   [System.IO.Directory]::Delete($Path, $false)
+}
+
+function Write-RunOwner([string]$RunDir, [int]$ProcId, [datetime]$Started) {
+  # Run ownership (section 53 item 2): each run marks its own folder, so
+  # a sweep spares every run whose process still lives, not only the one
+  # the journal names.
+  $o = [ordered]@{ pid = $ProcId; started = $Started.ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress
+  [System.IO.File]::WriteAllText((Join-Path $RunDir 'owner.json'), $o, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+function Test-RunOwnerAlive([string]$RunDir) {
+  # A folder whose owner record names a live process (the same PID-reuse
+  # guard as the journal) is live. No record or a dead owner is stale
+  # (the stale-journal recovery rule: a dead owner's staging is swept).
+  $f = Join-Path $RunDir 'owner.json'
+  if (-not (Test-Path -LiteralPath $f)) { return $false }
+  try { $o = Get-Content -LiteralPath $f -Raw | ConvertFrom-Json; return (Test-JournalProcessAlive ([int]$o.pid) ([datetimeoffset]::Parse("$($o.started)", [System.Globalization.CultureInfo]::InvariantCulture).LocalDateTime)) } catch { return $false }
+}
+
+function Invoke-WithSweepLock([scriptblock]$Body, [int]$WaitMs = 30000) {
+  # One sweep at a time (section 53 item 2): overlapping runs take a named
+  # mutex, so their sweeps never interleave; a sweep that cannot take it
+  # in time skips, reporting that, rather than racing.
+  $m = New-Object System.Threading.Mutex($false, 'Local\ScratchPadNightlySweep')
+  $held = $false
+  try {
+    try { $held = $m.WaitOne($WaitMs) } catch [System.Threading.AbandonedMutexException] { $held = $true }
+    if (-not $held) { return @('- capture staging: sweep skipped (another run holds the sweep lock)') }
+    return (& $Body)
+  } finally { if ($held) { $m.ReleaseMutex() }; $m.Dispose() }
 }
 
 function Get-LiveRunStamps([string]$NightDir, [string]$CurrentStamp) {
@@ -798,7 +857,7 @@ function Get-LiveRunStamps([string]$NightDir, [string]$CurrentStamp) {
   return @($live | Sort-Object -Unique)
 }
 
-function Clear-StaleCaptureStaging([string]$NightDir, [string]$CurrentStamp = '', [string[]]$LiveStamps = $null) {
+function Clear-StaleCaptureStaging([string]$NightDir, [string]$CurrentStamp = '', [string[]]$LiveStamps = $null, [scriptblock]$BeforeDelete = $null) {
   # A run that crashed mid-capture leaves .staging directories whose
   # bytes were never scanned; the next run sweeps them at its start
   # (section 38 item 1). The sweep is bounded (section 45 item 1): it
@@ -809,16 +868,22 @@ function Clear-StaleCaptureStaging([string]$NightDir, [string]$CurrentStamp = ''
   # following links inside it. Returns report notes.
   $notes = @()
   $live = if ($null -ne $LiveStamps) { @($LiveStamps) } else { @(Get-LiveRunStamps $NightDir $CurrentStamp) }
+  # The night directory itself and its ancestors are never followed
+  # through a link (section 53 item 1).
+  $nightItem = Get-Item -LiteralPath $NightDir -Force -ErrorAction SilentlyContinue
+  if (($null -ne $nightItem) -and (Test-ReparsePoint $nightItem)) { return @("- capture staging: sweep refused ($NightDir is a reparse point)") }
   foreach ($s in @(Get-ChildItem -LiteralPath $NightDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '^\d{4}-\d{2}-\d{2}-\d{6}$' })) {
     if (Test-ReparsePoint $s) { $notes += "- capture staging: skipped stamp $($s.Name) (a reparse point; never followed)"; continue }
     if ($live -contains $s.Name) { continue }
+    # A run whose owner process still lives keeps its staging (item 2).
+    if (Test-RunOwnerAlive $s.FullName) { continue }
     foreach ($c in @(Get-ChildItem -LiteralPath $s.FullName -Directory -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'captures-*' })) {
       if (Test-ReparsePoint $c) { $notes += "- capture staging: skipped $($s.Name)\$($c.Name) (a reparse point; never followed)"; continue }
       $st = Get-Item -LiteralPath (Join-Path $c.FullName $script:CaptureStagingDir) -Force -ErrorAction SilentlyContinue
       if ($null -eq $st) { continue }
       $rel = "$($s.Name)\$($c.Name)\$($script:CaptureStagingDir)"
       if (Test-ReparsePoint $st) { $notes += "- capture staging: left $rel (a reparse point, not a staging directory; do not retain that run)"; continue }
-      try { Remove-TreeNoFollow $st.FullName; $notes += "- capture staging: swept crash-left $rel" }
+      try { Remove-TreeNoFollow $st.FullName $NightDir $BeforeDelete; $notes += "- capture staging: swept crash-left $rel" }
       catch { $notes += "- capture staging: could not sweep $rel ($($_.Exception.Message)); do not retain that run" }
     }
   }

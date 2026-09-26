@@ -2108,6 +2108,41 @@ $null = New-Item -ItemType Junction -Path $planted -Target $swTarget
 $swNotes = @(Clear-StaleCaptureStaging $sw '' @('2026-09-21-023001'))
 Assert ((-not (Test-Path $deadStage)) -and (Test-Path (Join-Path $liveStage 'now.txt')) -and (Test-Path $planted) -and (Test-Path (Join-Path $swTarget 'keep.txt')) -and (($swNotes -join '|') -like '*swept crash-left 2026-09-20-023001\captures-run-a\.staging*') -and (($swNotes -join '|') -like '*left 2026-09-22-023001\captures-run-a\.staging (a reparse point*')) 's45-sweep-spares-live-and-junctions' ($swNotes -join ' | ')
 [System.IO.Directory]::Delete($planted, $false)
+# D00 T02 §53 item 1: a junction swapped in above a stale staging
+# directory mid-sweep refuses by name and deletes nothing through it.
+$j1 = Join-Path $dir 's53-sweep'
+if (Test-Path $j1) { Remove-Item $j1 -Recurse -Force }
+$j1Target = Join-Path $dir 's53-sweep-target'
+$null = New-Item -ItemType Directory -Force -Path (Join-Path $j1Target 'captures-run-a\.staging')
+'precious' | Set-Content -Path (Join-Path $j1Target 'captures-run-a\.staging\keep.txt') -Encoding UTF8
+$j1Stage = Join-Path $j1 '2026-09-20-023001\captures-run-a\.staging'
+$null = New-Item -ItemType Directory -Force -Path $j1Stage
+'left' | Set-Content -Path (Join-Path $j1Stage 'a.txt') -Encoding UTF8
+'left' | Set-Content -Path (Join-Path $j1Stage 'b.txt') -Encoding UTF8
+$j1Swapped = $false
+$j1Swap = {
+  param($p)
+  if (-not $script:j1Swapped) {
+    $script:j1Swapped = $true
+    $stampDir = Join-Path $j1 '2026-09-20-023001'
+    Rename-Item -LiteralPath $stampDir -NewName '2026-09-20-023001-moved'
+    $null = New-Item -ItemType Junction -Path $stampDir -Target $j1Target
+  }
+}
+$j1Notes = @(Clear-StaleCaptureStaging $j1 '' @() $j1Swap)
+$j1Chain = Test-PathChainNoReparse $j1 (Join-Path $j1 '2026-09-20-023001\captures-run-a')
+Assert ((Test-Path (Join-Path $j1Target 'captures-run-a\.staging\keep.txt')) -and (($j1Notes -join '|') -like '*could not sweep 2026-09-20-023001\captures-run-a\.staging (sweep refused: *2026-09-20-023001 is a reparse point (the path changed during the sweep))*') -and ($j1Chain -like '*2026-09-20-023001 is a reparse point')) 's53-sweep-refuses-a-junction-swapped-in-mid-sweep' ($j1Notes -join ' | ')
+[System.IO.Directory]::Delete((Join-Path $j1 '2026-09-20-023001'), $false)
+# D00 T02 §53 item 2: two overlapping runs each keep their own staging:
+# a folder whose owner process lives is spared though the journal names
+# the other run; a dead owner's staging is swept; the lock serializes.
+$j2 = Join-Path $dir 's53-overlap'
+if (Test-Path $j2) { Remove-Item $j2 -Recurse -Force }
+foreach ($st in @('2026-09-26-023001', '2026-09-26-030000', '2026-09-25-023001')) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $j2 "$st\captures-run-a\.staging") }
+Write-RunOwner (Join-Path $j2 '2026-09-26-023001') $PID (Get-Process -Id $PID).StartTime
+Write-RunOwner (Join-Path $j2 '2026-09-25-023001') 999999 (Get-Date).AddDays(-1)
+$j2Notes = @(Invoke-WithSweepLock { Clear-StaleCaptureStaging $j2 '2026-09-26-030000' @('2026-09-26-030000') })
+Assert ((Test-Path (Join-Path $j2 '2026-09-26-023001\captures-run-a\.staging')) -and (Test-Path (Join-Path $j2 '2026-09-26-030000\captures-run-a\.staging')) -and (-not (Test-Path (Join-Path $j2 '2026-09-25-023001\captures-run-a\.staging'))) -and (Test-RunOwnerAlive (Join-Path $j2 '2026-09-26-023001')) -and (-not (Test-RunOwnerAlive (Join-Path $j2 '2026-09-25-023001')))) 's53-overlapping-runs-keep-their-own-staging' ($j2Notes -join ' | ')
 # D00 T02 §45 item 2: with binary captures off, a failing leg records the
 # refusal and writes no PNG or dump; the policy switch parses strictly.
 $polDir = Join-Path $dir 's45-policy'

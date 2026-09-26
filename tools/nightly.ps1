@@ -544,9 +544,13 @@ $trxDir = Join-Path $nightDir $stamp
 # The UI trx reads bind to this run's own folder (section 52 R1-I3).
 $uiTrxExpect | Add-Member -NotePropertyName RunDir -NotePropertyValue $trxDir -Force
 New-Item -ItemType Directory -Path $trxDir -Force | Out-Null
+# This run owns its folder (section 53 item 2): a concurrent run's sweep
+# spares it while this process lives.
+try { Write-RunOwner $trxDir $PID $runStart } catch { Write-Output "nightly: run owner record not written: $($_.Exception.Message)" }
 # Crash-left capture staging is swept before this run captures anything
-# (D00 T02 section 38 item 1); the notes join the report's captures.
-$script:stagingSweepNotes = @(Clear-StaleCaptureStaging $nightDir $stamp)
+# (D00 T02 section 38 item 1), one sweep at a time (section 53 item 2);
+# the notes join the report's captures.
+$script:stagingSweepNotes = @(Invoke-WithSweepLock { Clear-StaleCaptureStaging $nightDir $stamp })
 # Next-start recovery (D00 T02 §16 items 4, 12): probe BEFORE writing
 # this run's journal, so a dead previous run lands its RED record
 # exactly once (the probe reads the old journal; the write below
