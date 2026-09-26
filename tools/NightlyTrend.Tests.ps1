@@ -894,6 +894,19 @@ $muOrphans = @($muFields | Where-Object { (Get-MetricsMergeUnitOf $_) -eq '' })
 $muNever = @(@('identity', 'stamp', 'verdict', 'night', 'hostKey') | Where-Object { (Get-MetricsMergeUnitOf $_) -ne '' })
 $muDup = @($muFields | Where-Object { $f = $_; @(@($script:MetricsMergeUnits.Keys) | Where-Object { @($script:MetricsMergeUnits[$_]) -contains $f }).Count -ne 1 })
 Assert (($muOrphans.Count -eq 0) -and ($muNever.Count -eq 0) -and ($muDup.Count -eq 0) -and ((Get-MetricsMergeUnitOf 'timings') -eq 'execution') -and ((Get-MetricsMergeUnitOf 'commit') -eq 'provenance')) 's54-every-merged-field-belongs-to-a-named-unit' "orphans=$($muOrphans -join ',') never=$($muNever -join ',') dup=$($muDup -join ',')"
+# D00 T02 §54 item 7: a tombstone survives a restore: once recorded in
+# the ledger, a native row restored without its tombstone still never
+# refills the deleted field from the backfill.
+$tbDir = Join-Path ([System.IO.Path]::GetTempPath()) 'trend-s54-tomb'
+if (Test-Path $tbDir) { Remove-Item $tbDir -Recurse -Force }
+$null = New-Item -ItemType Directory -Force -Path $tbDir
+$tbStore = Join-Path $tbDir 'metrics.jsonl'
+Add-MetricsTombstones $tbStore 'id-native@abcd1234' @('commit') 2
+Add-MetricsTombstones $tbStore 'id-native@abcd1234' @('commit') 3
+$tbMap = Get-MetricsTombstones $tbStore
+$tbLines = @([System.IO.File]::ReadAllLines("$tbStore.tombstones.jsonl") | Where-Object { $_ -ne '' })
+Assert (($tbMap['id-native@abcd1234'] -contains 'commit') -and ($tbLines.Count -eq 1)) 's54-tombstone-ledger-records-once' ($tbLines -join ' | ')
+Remove-Item $tbDir -Recurse -Force
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
@@ -902,6 +915,13 @@ $nat6 = New-Night '2026-09-26' '2026-09-26-023000'; $nat6.populationHash = ''; $
 $null = Sync-MetricsStore $mgS @($bf6)
 $r6 = @(Sync-MetricsStore $mgS @($nat6)) | Where-Object { "$($_.identity)" -eq $nat6.identity } | Select-Object -First 1
 Assert (("$($r6.populationHash)" -ne 'popBF006') -and ("$($r6.commit)" -ne 'abc1234')) 's47-merge-keeps-units-and-tombstones' (($r6 | ConvertTo-Json -Depth 4 -Compress))
+# D00 T02 §54 item 7: after a restore to a row revision without its
+# tombstone (the store rewritten, the row's own tombstone gone), the
+# ledger still keeps the field deleted.
+$rsLines = @([System.IO.File]::ReadAllLines($mgS) | ForEach-Object { $o7 = $_ | ConvertFrom-Json; if ("$($o7.identity)" -eq $nat6.identity) { $o7.PSObject.Properties.Remove('tombstone'); $o7 | ConvertTo-Json -Depth 8 -Compress } else { $_ } })
+[System.IO.File]::WriteAllLines($mgS, [string[]]$rsLines)
+$r7 = @(Sync-MetricsStore $mgS @()) | Where-Object { "$($_.identity)" -eq $nat6.identity } | Select-Object -First 1
+Assert (("$($r7.commit)" -ne 'abc1234') -and (Test-Path "$mgS.tombstones.jsonl")) 's54-restore-after-tombstone-keeps-the-field-deleted' (($r7 | ConvertTo-Json -Depth 4 -Compress))
 # R2-C1: a native row with its own population but no counts keeps its
 # unit (no backfill hash joins it); a native row with none of the unit
 # takes the backfill's counts, hash, and timings together.

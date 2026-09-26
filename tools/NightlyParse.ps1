@@ -4628,6 +4628,39 @@ $script:MetricsMergeUnits = [ordered]@{
   'environment' = @($script:EnvFields | ForEach-Object { "env.$_" })
 }
 
+function Get-MetricsTombstones([string]$StorePath) {
+  # The durable tombstone ledger (D00 T02 section 54 item 7): JSON lines
+  # `{key, field, revision}` in <store>.tombstones.jsonl. A tombstone is
+  # scoped to one row key and one field (or a unit name); every revision
+  # of the row from the one that recorded it on keeps it (a restore to an
+  # older revision, a backfill, or a late ingestion never resurrects the
+  # field). Returns key -> field list.
+  $map = @{}
+  $p = "$StorePath.tombstones.jsonl"
+  if (-not (Test-Path -LiteralPath $p)) { return $map }
+  foreach ($ln in [System.IO.File]::ReadAllLines($p)) {
+    if ("$ln".Trim() -eq '') { continue }
+    try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+    $k = "$($o.key)"; $f = "$($o.field)"
+    if (($k -eq '') -or ($f -eq '')) { continue }
+    if (-not $map.ContainsKey($k)) { $map[$k] = @() }
+    if ($map[$k] -notcontains $f) { $map[$k] = @($map[$k]) + @($f) }
+  }
+  return $map
+}
+
+function Add-MetricsTombstones([string]$StorePath, [string]$Key, [string[]]$Fields, $Revision) {
+  # Records each field of a row's tombstone not yet in the ledger, before
+  # the merge reads it, so the deletion outlives the row's own copy.
+  $have = Get-MetricsTombstones $StorePath
+  $lines = @()
+  foreach ($f in @($Fields | Where-Object { "$_" -ne '' } | Sort-Object -Unique)) {
+    if ($have.ContainsKey($Key) -and (@($have[$Key]) -contains $f)) { continue }
+    $lines += ([pscustomobject][ordered]@{ key = $Key; field = $f; revision = $Revision; recorded = (Get-Date).ToUniversalTime().ToString('o') } | ConvertTo-Json -Compress)
+  }
+  if ($lines.Count -gt 0) { [System.IO.File]::AppendAllText("$StorePath.tombstones.jsonl", (($lines -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false))) }
+}
+
 function Get-MetricsMergeUnitOf([string]$Field) {
   # The unit a merged field belongs to, or '' when it never merges.
   foreach ($u in @($script:MetricsMergeUnits.Keys)) { if (@($script:MetricsMergeUnits[$u]) -contains $Field) { return $u } }
@@ -4671,6 +4704,12 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
       $store.Rows[$id] = ($json | ConvertFrom-Json)
       $add += $json
     }
+    # Every row's tombstone reaches the durable ledger (section 54 item 7).
+    foreach ($tk in @($store.Rows.Keys)) {
+      $tf = @(@($(try { $store.Rows[$tk].tombstone } catch { @() })) | Where-Object { "$_" -ne '' } | ForEach-Object { "$_" })
+      if ($tf.Count -gt 0) { try { Add-MetricsTombstones $Path $tk $tf $(try { $store.Rows[$tk].revision } catch { $null }) } catch { } }
+    }
+    $ledgerTombs = Get-MetricsTombstones $Path
     # Native supersedes backfill for the same night (item 11).
     $byNight = @{}
     foreach ($row in @($store.Rows.Values)) {
@@ -4765,6 +4804,9 @@ function Sync-MetricsStore([string]$Path, $Results, [scriptblock]$Append = $null
           # (the native result's `tombstone` field list) is an explicit
           # deletion: a field it names never refills from the backfill.
           $tomb = @(@($(try { $merged.tombstone } catch { @() })) | ForEach-Object { "$_" })
+          # The ledger's tombstones join the row's own (section 54 item 7), so a
+          # row restored or re-ingested without its tombstone stays deleted.
+          if ($ledgerTombs.ContainsKey($rk)) { $tomb = @(@($tomb) + @($ledgerTombs[$rk]) | Sort-Object -Unique) }
           $hasCounts = { param($x) @(@($(try { $x.legs.PSObject.Properties } catch { @() })) | Where-Object { ($null -ne $_.Value.passed) -or ($null -ne $_.Value.failed) }).Count -gt 0 }
           $isSet = { param($v) ($null -ne $v) -and ("$v" -ne '') -and ("$v" -notlike 'unknown*') }
           $unit = @($script:MetricsMergeUnits['execution'] | Where-Object { $_ -ne 'legs' })
