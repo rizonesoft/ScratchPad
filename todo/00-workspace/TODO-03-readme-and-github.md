@@ -43,7 +43,7 @@ track: W0
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | App screenshots captured for the README | D00 T02 §3 |  [ ]   |
+|   1   |   §1    | App screenshots captured for the README | D00 T02 §3 |  [x]   |
 |   2   |   §2    | README rewritten plus repo-face files | §1 |  [ ]   |
 |   3   |   §3    | Setup-path CI plus reproducibility record | §2 |  [ ]   |
 
@@ -71,6 +71,13 @@ Why this section exists: the README needs visible proof, and proof means real pi
 - [x] Commit: `"workspace: capture README screenshots with provenance (D00 T03 §1)"`
 
 **Test checkpoint:** both PNGs exist under `docs/assets/`, each at least 1280 px wide with pixel variance proving non-black content, and `captures.md` names the app commit they were taken from. Cheaper substitute that fails: screenshots whose provenance nobody recorded.
+
+> **Verified:** 2026-09-26 | §1 | a clean clone at the commit builds and launches the main window; the hero and its light and dark pair show tabs, menu, editor text, and status bar at 1382 x 851 (over 1280) with real pixels; captures.md records date, host key, OS, app commit, configuration, and command, and three captures reproduced byte-identically; the agent-panel shot is deferred to §5 by the groom
+> **Review:** round 3 (Full), candidates `1f88dab` `444aa41` `4098b02` `d47393c` `4adc4c4` `cbe82a9` `eeacf7b` -- GPT R1 bulk needs-attention (R1-A1 fixed in d47393c), GPT R2 bulk needs-attention (R2-A1 fixed in cbe82a9: a private capture profile), GPT R3 sign-off governing: `adversarial` approve · `consistency` approve · `integration` approve · `record` approve (gpt-6-astra). Raw findings: docs/reviews/00-workspace/D00-T03-s1.md
+> **Plan review:** GPT medium, 15 rejected under the 2026-09-26 filing bar (5 already hold, 10 wording, enhancement, or §2 and §5 scope), none filed (run 20260926-D00-T03-S1-codex-c06751119-r4)
+> **CRUD:** not-applicable | README image assets and a capture script; no user data (the capture runs in a private profile)
+> **Duration:** 2026-09-26T16:49:56Z to 2026-09-26T17:11:57Z
+> **Reviewed-tip:** eeacf7b
 
 > **Deferred:** the agent-panel shot (item 3) -> XREF: D00 T03 §5 (item: "The agent panel is captured beside the editor as a light and dark pair") -- the panel renders only once D05 T01 §3 ships; §1 closes on the hero shots.
 

@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **146 of 334 sections complete (44%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **147 of 334 sections complete (44%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -186,7 +186,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T11 §1`  | Unresolvable reference refusal                            |   4   |
 | [ ] | `D00 T11 §2`  | Night-debt governance third residuals                     |  16   |
 | [ ] | `D00 T12 §1`  | Binding guard fourth residuals                            |  15   |
-| [ ] | `D00 T03 §1`  | App screenshots for README                                |   6   |
+| [x] | `D00 T03 §1`  | App screenshots for README                                |   6   |
 | [ ] | `D00 T03 §2`  | README rewrite plus repo-face files                       |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record                 |   6   |
 | [ ] | `D00 T03 §4`  | Premium README presentation                               |   9   |
