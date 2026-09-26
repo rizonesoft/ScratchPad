@@ -117,6 +117,7 @@ run-a:
   UI.LaunchTests.PrintToBogusPrinterExits2
   UI.LaunchTests.SecondLaunchRedirectsFileIntoFirst
   UI.LaunchTests.SingleFileLaunchOpensTab
+  UI.LaunchTests.TwentyBirthsAndTeardownsStayWithinBudget
   UI.LaunchTests.WindowBirthLeavesOtherWindowsHelpersInPlace
   UI.LockedResidueTests.DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost
   UI.LockedResidueTests.LockedTabRefusesTakesWithInlineNote
@@ -269,9 +270,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 262
-run-a-cases: 326
-run-a-case-hash: b951968d810f2a42
+run-a-methods: 263
+run-a-cases: 327
+run-a-case-hash: 58e385559c2d76f6
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -430,6 +431,7 @@ run-a-case-rows:
   UI|UI.LaunchTests.PrintToBogusPrinterExits2
   UI|UI.LaunchTests.SecondLaunchRedirectsFileIntoFirst
   UI|UI.LaunchTests.SingleFileLaunchOpensTab
+  UI|UI.LaunchTests.TwentyBirthsAndTeardownsStayWithinBudget
   UI|UI.LaunchTests.WindowBirthLeavesOtherWindowsHelpersInPlace
   UI|UI.LockedResidueTests.DirtyLockedBufferStaysOutOfSessionAndRestoresAsGhost
   UI|UI.LockedResidueTests.LockedTabRefusesTakesWithInlineNote
