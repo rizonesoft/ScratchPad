@@ -4742,6 +4742,28 @@ function Get-MetricsRestoreLoss([string]$StorePath, $BackupRows) {
 # Free-space seam for fixtures (section 54 item 13); $null reads the disk.
 $script:MetricsFreeBytes = $null
 
+function Get-TrendHealthSummary([string[]]$Lines, [string[]]$Extra = @()) {
+  # One trend health summary (D00 T02 section 54 item 17): each degraded
+  # state the trend's own lines show, with its count and the next step
+  # that fixes it, so an operator drills from one block to the action.
+  # States: missing evidence, unresolved identity, storage pressure,
+  # suppressed detection. A healthy trend reads one line.
+  $all = @(@($Lines) + @($Extra))
+  $states = @(
+    @('missing evidence', '(\| missing \||\| degraded \||partial \(missing )', 'run the missed night or record its pause in docs/nightly-pauses.md; repair an unreadable result'),
+    @('unresolved identity', '(UNRESOLVED:|host alias refused|legacy assignment refused|SCHEDULE CONFLICT)', 'assign the run in docs/nightly-host-aliases.md (with evidence) or fix the refused alias row'),
+    @('storage pressure', '(metrics store at \d+ percent|over capacity|append refused|UNKNOWN LOSS|could not sanitize)', 'compact: tools/NightlyTrend.ps1 -Compact; free disk space; retry the disclosure migration'),
+    @('suppressed detection', '(Insufficient data:|PROLONGED INSUFFICIENCY|not comparable with derivation)', 'find what keeps the series from measuring (harness churn, missing timings); acknowledge only with a reason')
+  )
+  $out = @()
+  foreach ($st in $states) {
+    $n = @($all | Where-Object { "$_" -match $st[1] }).Count
+    if ($n -gt 0) { $out += "- $($st[0]): $n line(s) (next: $($st[2]))" }
+  }
+  if ($out.Count -eq 0) { return @('## Trend health', '', '- healthy: no missing evidence, unresolved identity, storage pressure, or suppressed detection', '') }
+  return @('## Trend health', '', "- DEGRADED: $($out.Count) state(s)") + $out + @('')
+}
+
 function Get-MetricsMergeUnitOf([string]$Field) {
   # The unit a merged field belongs to, or '' when it never merges.
   foreach ($u in @($script:MetricsMergeUnits.Keys)) { if (@($script:MetricsMergeUnits[$u]) -contains $Field) { return $u } }

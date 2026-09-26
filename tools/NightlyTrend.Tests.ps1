@@ -1010,6 +1010,12 @@ $icEntry = @((Get-Content -LiteralPath $icLedger -Raw | ConvertFrom-Json).alerts
 $icCtx = Format-AlertContext (New-Night '2026-09-20' '2026-09-20-023000' 900) @((New-Night '2026-09-16' '2026-09-16-023000' 600), (New-Night '2026-09-18' '2026-09-18-023000' 600)) 'runa-duration' @(600, 600)
 Assert (($icEntry.calculation -like 'runa-duration context: runs a; *r1') -and ($icEntry.line -like '*950s*') -and ($icCtx -like '*excluded nights: 2026-09-17 (no result); 2026-09-19 (no result)*') -and ($icCtx -like '*row revisions*detector min samples*')) 's54-alert-calculation-is-immutable' "$($icEntry.calculation) | $icCtx"
 Remove-Item $icDir -Recurse -Force
+# D00 T02 §54 item 17: the health summary names each degraded state with
+# its next step; a healthy trend reads one line.
+$thLines = @('| 2026-09-20 | missing | - | no result |', '- UNRESOLVED: night 2026-09-01 on host legacy has pre-host results', '- Insufficient data: runa-duration (2 measured baseline night(s) of 5 needed)')
+$thSum = @(Get-TrendHealthSummary $thLines @('metrics store at 93 percent of its cap'))
+$thOk = @(Get-TrendHealthSummary @('| 2026-09-20 | green | ...'))
+Assert (($thSum[2] -eq '- DEGRADED: 4 state(s)') -and (@($thSum | Where-Object { $_ -like '- missing evidence: 1 line(s) (next: *' }).Count -eq 1) -and (@($thSum | Where-Object { $_ -like '- unresolved identity: 1*' }).Count -eq 1) -and (@($thSum | Where-Object { $_ -like '- storage pressure: 1*compact*' }).Count -eq 1) -and (@($thSum | Where-Object { $_ -like '- suppressed detection: 1*' }).Count -eq 1) -and ($thOk[2] -like '- healthy:*')) 's54-one-trend-health-summary-routes-to-action' ($thSum -join ' | ')
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
