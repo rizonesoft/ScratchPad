@@ -469,6 +469,21 @@ $rawPick = (Select-CanonicalRuns $raw33)[(Get-NightSlotKey $v33)].Canonical
 $vo33 = Get-NightVoice (Select-CanonicalRuns @($in33.Results)) $v33
 Assert (($rawPick -ne '2026-09-26-023000-pid1') -and ($vo33.Canonical -eq '2026-09-26-023000-pid1') -and $vo33.IsVoice -and (@($in33.Skipped).Count -eq 1)) 's33-notify-selects-from-the-trend-inputs' "raw $rawPick; shared $($vo33.Canonical); skipped $(@($in33.Skipped) -join ',')"
 
+# Section 33 R3-C1: a confirmation records the magnitude that was sent,
+# not a later one; R3-I1: the recovery status survives the toast cap.
+$al33h = Join-Path $dir 'alerts33h.json'
+$null = Update-AlertLedger @('- ALERT runa-duration: 900s on 2026-09-24 vs baseline 600s (+50%, median of 5 night(s))') $al33h ([pscustomobject]@{ Night = '2026-09-24'; Host = 'h0st0001'; Identity = 'h1' })
+$snap = Get-PendingAlertNotifications $al33h
+$null = Update-AlertLedger @('- ALERT runa-duration: 1200s on 2026-09-25 vs baseline 600s (+100%, median of 5 night(s))') $al33h ([pscustomobject]@{ Night = '2026-09-25'; Host = 'h0st0001'; Identity = 'h2' })
+Confirm-AlertNotifications $al33h @($snap.Keys)
+$eh = @((Read-AlertLedger $al33h).alerts)[0]
+$null = Update-AlertLedger @('- ALERT runa-duration: 1200s on 2026-09-26 vs baseline 600s (+100%, median of 5 night(s))') $al33h ([pscustomobject]@{ Night = '2026-09-26'; Host = 'h0st0001'; Identity = 'h3' })
+$ph = Get-PendingAlertNotifications $al33h
+Assert (("$($eh.notifiedMagnitude)" -eq '50') -and ($ph.Lines[0] -like 'WORSENING (from 50 to 100)*')) 's33-confirm-records-the-sent-magnitude' "notified $($eh.notifiedMagnitude); $($ph.Lines -join '|')"
+$recN = @('Recovered: INC-00000001 UI.A (closed on verified recovery)', 'Recovered: INC-00000002 UI.B (closed on verified recovery)', 'Recovered: INC-00000003 UI.C (closed on verified recovery)', 'Recovered: INC-00000004 UI.D (closed on verified recovery)', 'Service recovered: night 2026-09-24 was RED, 2026-09-25 is GREEN', 'Pending acknowledgement: none', 'Open corrective actions: 1 (ack-x.md (D00 T02 §9))')
+$toast33 = @(Format-ToastLines (@(New-ToastItem 2 'top incident') + @(Get-RecoveryToastItems $recN) + @(New-ToastItem 5 'counts')) 'build/nightly/morning-x.md')
+Assert ((@($toast33 | Where-Object { $_ -like 'Service recovered:*' }).Count -eq 1) -and (@($toast33 | Where-Object { $_ -like 'Pending acknowledgement:*' }).Count -eq 1) -and (@($toast33 | Where-Object { $_ -like 'Open corrective actions: 1*' }).Count -eq 1)) 's33-recovery-status-survives-the-toast-cap' ($toast33 -join ' | ')
+
 Remove-Item $dir -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyNotify.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyNotify.Tests: all green'

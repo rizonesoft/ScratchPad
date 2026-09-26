@@ -92,8 +92,9 @@ function Format-ToastLines($Items, [string]$ReportPath, [int]$Cap = 7) {
   # is more urgent) plus Text; the report link always rides last, and a
   # truncated body says how many lines it dropped, so a critical line
   # never falls off behind a routine one. Priority order (docs/testing.md
-  # "Alert routing"): 0 fail-closed, 1 escalation, 2 top incident, 3
-  # recovery, 4 overdue quarantine, 5 counts, 6 labels, 7 trigger.
+  # "Alert routing"): 0 fail-closed, 1 escalation, 2 top incident then the
+  # recovery status, 3 incident recoveries, 4 overdue quarantine, 5 counts,
+  # 6 labels, 7 trigger.
   $sorted = @(@($Items) | Where-Object { $null -ne $_ } | Sort-Object @{ Expression = { [int]$_.Priority } }, @{ Expression = { [int]$_.Order } })
   $room = $Cap - 1
   $body = @()
@@ -105,6 +106,21 @@ function Format-ToastLines($Items, [string]$ReportPath, [int]$Cap = 7) {
   $body += "Report: $ReportPath"
   # One disclosure contract on every channel (D00 T02 section 32 item 14).
   return @($body | ForEach-Object { Protect-DisclosedText $_ })
+}
+
+function Get-RecoveryToastItems([string[]]$Notices) {
+  # Recovery lines under the toast cap (D00 T02 section 33 R3-I1): the
+  # recovery status (service recovery, pending acknowledgements, open
+  # corrective actions) rides at priority 2 right after the top incident,
+  # so the cap drops individual incident recoveries (priority 3) first and
+  # never a GREEN's triage status.
+  $items = @()
+  $o2 = 1; $o3 = 0
+  foreach ($n in @($Notices)) {
+    if ("$n" -match '^(Service recovered|Pending acknowledgement|Open corrective actions):') { $items += New-ToastItem 2 "$n" $o2; $o2++ }
+    else { $items += New-ToastItem 3 "$n" $o3; $o3++ }
+  }
+  return $items
 }
 
 function New-ToastItem([int]$Priority, [string]$Text, [int]$Order = 0) {

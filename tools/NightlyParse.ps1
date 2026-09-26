@@ -4074,7 +4074,10 @@ function Get-PendingAlertNotifications([string]$Path) {
   foreach ($e in @($lg.alerts)) {
     if ($null -eq $e) { continue }
     $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
-    if ($e.notifiedOpen -eq $false) { $lines += "$(if (("$($e.state)" -eq 'open') -and ("$($e.worsening)" -eq 'True')) { "WORSENING (from $($e.notifiedMagnitude) to $($e.magnitude)): " })$($e.line)"; $keys += "open|$($e.id)|$occ" }
+    # The key carries the magnitude in the line being sent (section 33
+    # R3-C1), so a confirmation records what was delivered even when the
+    # trend updated the entry between this snapshot and the confirmation.
+    if ($e.notifiedOpen -eq $false) { $lines += "$(if (("$($e.state)" -eq 'open') -and ("$($e.worsening)" -eq 'True')) { "WORSENING (from $($e.notifiedMagnitude) to $($e.magnitude)): " })$($e.line)"; $keys += "open|$($e.id)|$occ|m=$($e.magnitude)" }
     elseif (("$($e.state)" -eq 'open') -and ("$($e.acknowledged)" -eq '')) { $persisting++ }
     elseif ("$($e.state)" -eq 'open') { $acked++ }
     if (("$($e.state)" -ne 'open') -and ($e.notifiedClose -eq $false)) { $lines += "closed ($($e.state) on $($e.closedNight)): $($e.id)"; $keys += "close|$($e.id)|$occ" }
@@ -4093,7 +4096,15 @@ function Confirm-AlertNotifications([string]$Path, [string[]]$Keys) {
       $occ = if ("$($e.occurrence)" -ne '') { "$($e.occurrence)" } else { "$($e.firstNight)" }
       # The delivered magnitude is what the next worsening compares to
       # (section 33 R2-C1).
-      if (@($Keys) -contains "open|$($e.id)|$occ") { $e.notifiedOpen = $true; $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $(try { $e.magnitude } catch { $null }) -Force; $e | Add-Member -NotePropertyName worsening -NotePropertyValue $false -Force }
+      $sentKey = @(@($Keys) | Where-Object { ("$_" -eq "open|$($e.id)|$occ") -or ("$_".StartsWith("open|$($e.id)|$occ|m=")) }) | Select-Object -First 1
+      if ($null -ne $sentKey) {
+        $e.notifiedOpen = $true
+        $sentMag = $null
+        $mk = [regex]::Match("$sentKey", '\|m=(-?[\d.]+)$')
+        if ($mk.Success) { $sentMag = [double]::Parse($mk.Groups[1].Value, [System.Globalization.CultureInfo]::InvariantCulture) }
+        $e | Add-Member -NotePropertyName notifiedMagnitude -NotePropertyValue $sentMag -Force
+        $e | Add-Member -NotePropertyName worsening -NotePropertyValue $false -Force
+      }
       if (@($Keys) -contains "close|$($e.id)|$occ") { $e | Add-Member -NotePropertyName notifiedClose -NotePropertyValue $true -Force }
     }
     Write-AtomicReport @((ConvertTo-Json $lg -Depth 6)) $Path

@@ -1724,8 +1724,7 @@ if ((-not $Smoke) -and (-not $simMode)) {
       if ((-not $voice.IsVoice) -and ($voice.Canonical -ne '')) { $items += New-ToastItem 1 "Not the night's verdict: $($voice.Canonical) speaks for $($voice.Slot.Split('|')[0]) (the trend reads the same run)" }
       $recNotices = @(Get-RecoveryNotices $canonMap $allResults $result @($ledgerUpd.Lines) $ackCheck)
     } catch { }
-    $ord = 0
-    foreach ($rn in $recNotices) { $items += New-ToastItem 3 $rn $ord; $ord++ }
+    $items += @(Get-RecoveryToastItems $recNotices)
     $odLines = @()
     try { $odLines = @($quar.Overdue | ForEach-Object { "$($_.Test) (due $($_.Due), $($_.Owner))" }) } catch { }
     if ($odLines.Count -eq 0) { try { $odLines = @($odNames) } catch { } }
