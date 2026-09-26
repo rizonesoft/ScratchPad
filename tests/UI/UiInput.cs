@@ -222,7 +222,53 @@ internal static class UiInput
             ForegroundProbe,
             () => ReadFocus(target),
             () => ChordDown(chord, k => { Keyboard.Press(k); everInjected.Add(k); }, injected),
-            () => ChordUp(injected, Keyboard.Release),
+            () => ChordUp(injected, Keyboard.Release, isDown: KeyIsDown, containment: Containment),
+            () => ModifiersReleased(AllModifiers),
+            () => ModifiersReleased(mods.Where(everInjected.Contains)),
+            () => ReleaseModifiers(mods.Where(everInjected.Contains)),
+            () => Native.IsWindow(ExpectedRoot(target)));
+    }
+
+    // A physical hold through the funnel (D00 T02 §51 items 6 and 10): the
+    // chord goes down, the key's key-down is injected `repeats` more times
+    // while it is held (Windows reports each as an auto-repeat, the key
+    // already being down), then the chord comes up; the same checks and
+    // cleanup as a press. Fenced like Press: it sends physical keys.
+    internal static void HoldChord(AutomationElement target, VirtualKeyShort key, bool withControl, int repeats, bool withShift = false, Action? midHold = null)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        var mods = new List<VirtualKeyShort>();
+        if (withControl)
+        {
+            mods.Add(VirtualKeyShort.CONTROL);
+        }
+
+        if (withShift)
+        {
+            mods.Add(VirtualKeyShort.SHIFT);
+        }
+
+        var chord = new List<VirtualKeyShort>(mods) { key };
+        var injected = new List<VirtualKeyShort>();
+        var everInjected = new HashSet<VirtualKeyShort>();
+        SendChecked(
+            target.Properties.ProcessId.Value,
+            ExpectedRoot(target),
+            ForegroundProbe,
+            () => ReadFocus(target),
+            () =>
+            {
+                ChordDown(chord, k => { Keyboard.Press(k); everInjected.Add(k); }, injected);
+                // An action while the chord is held (a menu opening
+                // mid-chord, §51 item 12) runs after the first key-down.
+                midHold?.Invoke();
+                for (int i = 0; i < repeats; i++)
+                {
+                    Thread.Sleep(60);
+                    Keyboard.Press(key);
+                }
+            },
+            () => ChordUp(injected, Keyboard.Release, isDown: KeyIsDown, containment: Containment),
             () => ModifiersReleased(AllModifiers),
             () => ModifiersReleased(mods.Where(everInjected.Contains)),
             () => ReleaseModifiers(mods.Where(everInjected.Contains)),
@@ -252,7 +298,47 @@ internal static class UiInput
     // recovery changes nothing.
     internal static readonly TimeSpan ReleaseBound = TimeSpan.FromSeconds(2);
 
-    internal static void ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release, TimeSpan? bound = null, Func<TimeSpan>? elapsed = null, Func<Action, Task>? start = null)
+    // Containment for the run (D00 T02 §51 item 5): once a key is confirmed
+    // stuck, further physical input stops with the reason named, so a key
+    // held down by the suite never drives the next test (or the operator's
+    // next keystroke) into a different command.
+    internal sealed class InputContainment
+    {
+        internal string? Reason { get; private set; }
+
+        internal void Block(string reason) => Reason ??= reason;
+
+        internal void ThrowIfBlocked()
+        {
+            if (Reason is not null)
+            {
+                throw new InvalidOperationException($"physical input blocked for this run: {Reason}");
+            }
+        }
+    }
+
+    internal static readonly InputContainment Containment = new();
+
+    // The observed key state (D00 T02 §51 item 4): true down, false up.
+    internal static bool? KeyIsDown(VirtualKeyShort key)
+    {
+        try
+        {
+            return (Native.GetAsyncKeyState((int)key) & 0x8000) != 0;
+        }
+        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)
+        {
+            return null;
+        }
+    }
+
+    // A failed release is reconciled with the observed key state (§51
+    // item 4): a key that reads up after its release threw was released
+    // and is reported so (the return value), a key that reads down is
+    // confirmed stuck (it fails the pass and, with a containment, blocks
+    // further physical input), and a key whose state cannot be read is
+    // unknown (it fails the pass, but blocks nothing on a guess).
+    internal static string ChordUp(List<VirtualKeyShort> injected, Action<VirtualKeyShort> release, TimeSpan? bound = null, Func<TimeSpan>? elapsed = null, Func<Action, Task>? start = null, Func<VirtualKeyShort, bool?>? isDown = null, InputContainment? containment = null)
     {
         ArgumentNullException.ThrowIfNull(injected);
         ArgumentNullException.ThrowIfNull(release);
@@ -262,11 +348,39 @@ internal static class UiInput
         var clock = System.Diagnostics.Stopwatch.StartNew();
         Func<TimeSpan> now = elapsed ?? (() => clock.Elapsed);
         var stuck = new List<string>();
+        var released = new List<string>();
+        var confirmed = new List<string>();
+        void Failed(VirtualKeyShort k, string why)
+        {
+            bool? down = null;
+            try
+            {
+                down = isDown?.Invoke(k);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                down = null;
+            }
+
+            if (down == false)
+            {
+                released.Add($"{k} (the release failed, {why}, but the key reads up: released)");
+            }
+            else if (down == true)
+            {
+                confirmed.Add($"{k} ({why}; the key reads down)");
+            }
+            else
+            {
+                stuck.Add($"{k} ({why})");
+            }
+        }
+
         for (int i = injected.Count - 1; i >= 0; i--)
         {
             if (now() > limit)
             {
-                stuck.Add($"{injected[i]} (not attempted: the release pass passed its {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound)");
+                Failed(injected[i], $"not attempted: the release pass passed its {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound");
                 continue;
             }
 
@@ -296,22 +410,30 @@ internal static class UiInput
             }
             catch (AggregateException agg) when (agg.InnerException is not null and not OutOfMemoryException)
             {
-                stuck.Add($"{key} ({agg.InnerException.GetType().Name}: {agg.InnerException.Message})");
+                Failed(key, $"{agg.InnerException.GetType().Name}: {agg.InnerException.Message}");
                 continue;
             }
 
             if (!returned)
             {
                 Volatile.Write(ref abandoned.Value, true);
-                stuck.Add($"{key} (release did not return within the {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound)");
+                Failed(key, $"release did not return within the {limit.TotalSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)} s bound");
             }
         }
 
         injected.Clear();
-        if (stuck.Count > 0)
+        if (confirmed.Count > 0)
         {
-            throw new InvalidOperationException($"input cleanup failed: key(s) left down after their release threw: {string.Join(", ", stuck)}");
+            containment?.Block($"confirmed stuck key(s): {string.Join(", ", confirmed)}");
         }
+
+        if (confirmed.Count > 0 || stuck.Count > 0)
+        {
+            string parts = string.Join("; ", new[] { confirmed.Count > 0 ? "confirmed stuck: " + string.Join(", ", confirmed) : null, stuck.Count > 0 ? "state unknown: " + string.Join(", ", stuck) : null, released.Count > 0 ? "released: " + string.Join(", ", released) : null }.Where(p => p is not null));
+            throw new InvalidOperationException($"input cleanup failed: key(s) left down after their release threw: {parts}");
+        }
+
+        return released.Count > 0 ? "released: " + string.Join(", ", released) : string.Empty;
     }
 
     // What the UIA focus probe read: the focused element's pid (null when
@@ -334,7 +456,8 @@ internal static class UiInput
         Func<bool> noModifierHeld,
         Func<bool> modifiersReleased,
         Action releaseModifiers,
-        Func<bool>? targetAlive = null)
+        Func<bool>? targetAlive = null,
+        InputContainment? containment = null)
     {
         ArgumentNullException.ThrowIfNull(foreground);
         ArgumentNullException.ThrowIfNull(focus);
@@ -343,6 +466,9 @@ internal static class UiInput
         ArgumentNullException.ThrowIfNull(noModifierHeld);
         ArgumentNullException.ThrowIfNull(modifiersReleased);
         ArgumentNullException.ThrowIfNull(releaseModifiers);
+        // A confirmed stuck key blocks every later physical press (§51
+        // item 5).
+        (containment ?? Containment).ThrowIfBlocked();
         if (expectedRoot == 0)
         {
             throw new InvalidOperationException("input precondition failed, key not sent: the target's window identity did not resolve");
@@ -383,39 +509,55 @@ internal static class UiInput
         // check is input ownership leaving the app process, not the
         // pre-press focus target (§28 R1-F4).
         string? interrupted = null;
+        // Both failures are kept (D00 T02 §51 item 5): a key-down that
+        // fails and a key-up cleanup that fails too propagate together, so
+        // the cleanup diagnostic never hides the original failure.
+        Exception? original = null;
+        Exception? cleanup = null;
         try
         {
-            try
+            keyDown();
+            var fg = foreground();
+            var f = focus();
+            // A press that closes the target window (Ctrl+W on the
+            // last tab, Ctrl+Shift+W) hands input to another process
+            // by design; only a departure while the window lives is
+            // an interruption (§28 R3-F2).
+            if ((fg.Pid != expectedPid || f.Pid != expectedPid) && (targetAlive?.Invoke() ?? true))
             {
-                keyDown();
-                var fg = foreground();
-                var f = focus();
-                // A press that closes the target window (Ctrl+W on the
-                // last tab, Ctrl+Shift+W) hands input to another process
-                // by design; only a departure while the window lives is
-                // an interruption (§28 R3-F2).
-                if ((fg.Pid != expectedPid || f.Pid != expectedPid) && (targetAlive?.Invoke() ?? true))
-                {
-                    interrupted = Describe(fg, f, expectedPid, expectedRoot);
-                }
-            }
-            finally
-            {
-                // Always: a key left down outlives the test.
-                keyUp();
+                interrupted = Describe(fg, f, expectedPid, expectedRoot);
             }
         }
-        catch
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            original = ex;
+        }
+
+        try
+        {
+            // Always: a key left down outlives the test.
+            keyUp();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            cleanup = ex;
+        }
+
+        if (original is not null || cleanup is not null)
         {
             // A sender that dies mid-chord must not leave a modifier down
-            // for whatever the operator types next; the original failure
-            // still propagates.
+            // for whatever the operator types next.
             if (!modifiersReleased())
             {
                 releaseModifiers();
             }
 
-            throw;
+            if (original is not null && cleanup is not null)
+            {
+                throw new AggregateException($"input press failed ({original.Message}) and its cleanup failed too ({cleanup.Message})", original, cleanup);
+            }
+
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(original ?? cleanup!).Throw();
         }
 
         if (!modifiersReleased())

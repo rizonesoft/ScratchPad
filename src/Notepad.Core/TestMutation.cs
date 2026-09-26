@@ -93,6 +93,40 @@ public static class TestMutation
         _ = Record(SwapLine(command), environment);
     }
 
+    // Swap completion (D00 T02 §51 item 1): the substitute appends
+    // `swap-done:<command>` after it returns, so a swap logged but whose
+    // substitute threw before running reads inconclusive, never a kill.
+    public static string SwapDoneLine(string command) => "swap-done:" + command;
+
+    public static void RecordSwapDone(string command, Func<string, string?> environment)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        if (string.IsNullOrWhiteSpace(environment(DispatchLogVariable)))
+        {
+            return;
+        }
+
+        _ = Record(SwapDoneLine(command), environment);
+    }
+
+    // Arming (D00 T02 §51 item 11): when a bound command registers and it is
+    // the active swap target, the app appends `armed:<target>`, so the
+    // mutation run proves the child resolved its exact target before any
+    // press; a target that names no bound command never arms.
+    public static string ArmedLine(string target) => "armed:" + target;
+
+    public static void RecordArmed(string command, Func<string, string?> environment)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        string? target = Active(environment);
+        if (target is null || !string.Equals(target, command, StringComparison.Ordinal) || string.IsNullOrWhiteSpace(environment(DispatchLogVariable)))
+        {
+            return;
+        }
+
+        _ = Record(ArmedLine(command), environment);
+    }
+
     // The target naming a programmatic accelerator by its key and modifiers.
     public static string Key(int virtualKey, int modifiers) =>
         FormattableString.Invariant($"vk:{virtualKey}:{modifiers}");

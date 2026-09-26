@@ -24,7 +24,77 @@ namespace UI;
 // (§36 R2-F1).
 internal static class BindingMutation
 {
-    internal sealed record Case(string Chord, string Command, string TestClass, string TestMethod, string Target, int PressLine);
+    // CleanupLines: the covering method's lines inside `finally` blocks
+    // (D00 T02 §51 item 2), where a failure is cleanup, not the outcome.
+    internal sealed record Case(string Chord, string Command, string TestClass, string TestMethod, string Target, int PressLine, IReadOnlySet<int>? CleanupLines = null);
+
+    // What the child's dispatch log proves about the swap (§51 item 1):
+    // nothing, a started swap whose substitute never returned, or a
+    // completed one.
+    internal enum SwapEvidence
+    {
+        None,
+        Started,
+        Completed,
+    }
+
+    internal static SwapEvidence EvidenceOf(IEnumerable<string> logLines, string target)
+    {
+        var lines = logLines.ToHashSet(StringComparer.Ordinal);
+        return lines.Contains(TestMutation.SwapDoneLine(target)) ? SwapEvidence.Completed
+            : lines.Contains(TestMutation.SwapLine(target)) ? SwapEvidence.Started
+            : SwapEvidence.None;
+    }
+
+    // Whether the child armed its exact target (§51 item 11).
+    internal static bool ArmedIn(IEnumerable<string> logLines, string target) => logLines.Contains(TestMutation.ArmedLine(target), StringComparer.Ordinal);
+
+    // An infrastructure failure (§51 item 2): a timeout, a focus or
+    // foreground fault, an input cleanup fault, or a stuck or blocked key
+    // is not the command's outcome, wherever it is raised.
+    internal static bool InfraFailure(string? message) =>
+        message is not null && Regex.IsMatch(message, @"(?i)(timeout|timed out|did not [^.]* within|foreground|\bfocus|input cleanup failed|stuck|physical input blocked|input precondition failed)");
+
+    // The covering method's lines inside `finally` blocks (§51 item 2).
+    internal static IReadOnlySet<int> CleanupLinesOf(string source, string method)
+    {
+        var lines = new HashSet<int>();
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
+        foreach (MethodDeclarationSyntax m in tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().Where(m => m.Identifier.Text == method))
+        {
+            foreach (FinallyClauseSyntax f in m.DescendantNodes().OfType<FinallyClauseSyntax>())
+            {
+                var span = tree.GetLineSpan(f.Span);
+                for (int l = span.StartLinePosition.Line + 1; l <= span.EndLinePosition.Line + 1; l++)
+                {
+                    lines.Add(l);
+                }
+            }
+        }
+
+        return lines;
+    }
+
+    // Negative routing (§51 item 3): a suppress cell requires zero dispatch
+    // of ANY bound command and unchanged relevant state (the window count),
+    // never a swap; an execute cell requires the command reached. Returns
+    // the mismatch, or null.
+    internal static string? RoutingProblem(string chord, string command, string surface, string want, IReadOnlyCollection<string> fresh, int windowsBefore, int windowsAfter)
+    {
+        string at = $"{chord} -> {command} on {surface}";
+        bool reached = fresh.Contains(Target(chord, command), StringComparer.Ordinal);
+        if (want == "execute")
+        {
+            return reached ? null : $"{at}: oracle says execute, the press did not reach the command (logged: {string.Join(", ", fresh)})";
+        }
+
+        if (fresh.Count > 0)
+        {
+            return $"{at}: oracle says suppress, the press dispatched {string.Join(", ", fresh)}";
+        }
+
+        return windowsAfter != windowsBefore ? $"{at}: oracle says suppress, but the window count changed from {windowsBefore} to {windowsAfter}" : null;
+    }
 
     internal sealed record ChildOutcome(int Passed, int Failed, int Skipped, string? FailureMessage, int? FailureLine, string Tail);
 
@@ -41,7 +111,7 @@ internal static class BindingMutation
                 string method = t.Groups[2].Value;
                 string? src = testSource(cls);
                 int line = src is null ? 0 : PressLine(src, method, row.Chord);
-                cases.Add(new Case(row.Chord, row.Command, cls, method, Target(row.Chord, row.Command), line));
+                cases.Add(new Case(row.Chord, row.Command, cls, method, Target(row.Chord, row.Command), line, src is null ? null : CleanupLinesOf(src, method)));
             }
         }
 
@@ -143,7 +213,12 @@ internal static class BindingMutation
     // dispatch log carries `swap:<target>`. Without it a failure or a pass
     // proves nothing about the command (the target may name no bound
     // command), so the case reads inconclusive, never killed or survived.
-    internal static string? Problem(Case c, ChildOutcome baseline, ChildOutcome o, bool activated)
+    // `swap` is the child's swap evidence (§43 item 1, §51 item 1): a kill
+    // or a survival needs a completed swap. `armed` is the child's arming
+    // record (§51 item 11) and `killedAtBound` whether the child outlived
+    // its bound and was killed: an unarmed or killed child is
+    // inconclusive.
+    internal static string? Problem(Case c, ChildOutcome baseline, ChildOutcome o, SwapEvidence swap, bool armed = true, bool killedAtBound = false)
     {
         string at = $"{c.Chord} -> {c.Command}: {c.TestClass}.{c.TestMethod}";
         if (baseline.Passed < 1 || baseline.Failed > 0)
@@ -151,9 +226,24 @@ internal static class BindingMutation
             return $"{at} did not pass unmutated (passed {baseline.Passed}, failed {baseline.Failed}, skipped {baseline.Skipped}: {baseline.FailureMessage ?? baseline.Tail}), so a failure under mutation proves nothing about the command";
         }
 
-        if ((o.Failed > 0 || o.Passed > 0) && !activated)
+        if (killedAtBound)
+        {
+            return $"{at} is inconclusive: the child outlived its bound and was killed, so its outcome proves nothing";
+        }
+
+        if ((o.Failed > 0 || o.Passed > 0) && !armed)
+        {
+            return $"{at} is inconclusive: the child never armed its target (no {TestMutation.ArmedLine(c.Target)} in its dispatch log), so the mutation configuration is unverified";
+        }
+
+        if ((o.Failed > 0 || o.Passed > 0) && swap == SwapEvidence.None)
         {
             return $"{at} is inconclusive: the swap never activated (no {TestMutation.SwapLine(c.Target)} in the child's dispatch log), so the target names no bound command or the press never reached it";
+        }
+
+        if ((o.Failed > 0 || o.Passed > 0) && swap == SwapEvidence.Started)
+        {
+            return $"{at} is inconclusive: the swap started but its substitute never completed (no {TestMutation.SwapDoneLine(c.Target)}), so the outcome is not the substitute's";
         }
 
         if (o.Failed > 0)
@@ -161,6 +251,16 @@ internal static class BindingMutation
             if (o.FailureMessage is null || !o.FailureMessage.StartsWith("Assert.", StringComparison.Ordinal))
             {
                 return $"{at} failed under mutation, but not on an assertion ({o.FailureMessage ?? "no message"}), so the failure proves nothing about the command";
+            }
+
+            if (InfraFailure(o.FailureMessage))
+            {
+                return $"{at} is inconclusive: it failed on infrastructure ({o.FailureMessage}), not on the command's outcome";
+            }
+
+            if (o.FailureLine is not null && c.CleanupLines is not null && c.CleanupLines.Contains(o.FailureLine.Value))
+            {
+                return $"{at} is inconclusive: it failed in the covering method's cleanup (line {o.FailureLine.Value.ToString(CultureInfo.InvariantCulture)}, a finally block), not on the command's outcome";
             }
 
             if (c.PressLine <= 0 || o.FailureLine is null || o.FailureLine <= c.PressLine)

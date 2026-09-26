@@ -319,7 +319,7 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
         Assert.Empty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D {\n        scope.PreviewKeyDown += (_, e) => HeldChord.NotePress(e.KeyStatus.WasKeyDown, a => scope.DispatcherQueue.TryEnqueue(() => a()));\n        scope.PreviewKeyUp += (_, _) => HeldChord.NoteRelease();\n}"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/ExportDialog.cs", "class D {\n        scope.PreviewKeyDown += (_, e) => Save();\n}"));
         Assert.NotEmpty(BindingManifest.UndeclaredKeyHandling("src/ScratchPad/MainWindow.xaml.cs", "class W { void Other() { root.KeyboardAccelerators.Add(a); } }"));
-        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; accel.Invoked += (_, args) => { if (!HeldChord.Suppress(TestMutation.Key((int)key, (int)modifiers)) && !MutationHandled(key, modifiers)) { action(); } args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
+        const string Helper = "static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action) { var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers }; TestMutation.RecordArmed(TestMutation.Key((int)key, (int)modifiers), Environment.GetEnvironmentVariable); accel.Invoked += (_, args) => { if (!HeldChord.ShouldSkip(TestMutation.Key((int)key, (int)modifiers)) && !MutationHandled(key, modifiers)) { action(); } args.Handled = true; }; scope.KeyboardAccelerators.Add(accel); }";
         const string Tab = BindingManifest.TabSourcePath;
         Assert.Empty(BindingManifest.UndeclaredKeyHandling(Tab,
             "class W { static void AddTabAccelerators(UIElement scope) { AddAccel(scope, VirtualKey.T, VirtualKeyModifiers.Control, N); } " + Helper + " }"));
@@ -457,6 +457,59 @@ public sealed class BindingManifestTests(ITestOutputHelper output)
 
     // D00 T02 §36 item 4: the routing oracle needs a row per declaration,
     // valid outcomes, and n/a exactly for disabled commands.
+    static readonly string[] ProofDirectories = ["UI", "Unit"];
+
+    // D00 T02 §51 items 7 and 9: every bound command names its held-key
+    // repeat class beside its capture, the class agrees with the rule the
+    // app runs (Notepad.Core.HeldChord), and every enablement transition
+    // names a proof that exists (a test method in tests/UI).
+    [Fact]
+    public void EveryBoundCommandNamesItsRepeatClassAndEveryTransitionItsProof()
+    {
+        string audit = File.ReadAllText(Path.Combine(RepoRoot(), "docs", "ui-input-audit.md"));
+        var rows = BindingManifest.ParseAudit(audit, out var parse);
+        Assert.Empty(parse);
+        var classes = BindingManifest.SubTable(audit, "Held-key repeat classes", 4, out var cparse);
+        Assert.Empty(cparse);
+        var problems = new List<string>();
+        foreach (var r in rows.GroupBy(r => (r.Chord, r.Command)).Select(g => g.First()))
+        {
+            string[]? row = classes.FirstOrDefault(c => c[0] == r.Chord && c[1].Contains($"`{r.Command}`", StringComparison.Ordinal));
+            string want = Notepad.Core.HeldChord.Repeatable.Contains(BindingMutation.Target(r.Chord, r.Command)) ? "repeatable" : "one-shot";
+            if (row is null)
+            {
+                problems.Add($"{r.Chord} -> {r.Command} names no repeat class");
+            }
+            else if (row[2] != want)
+            {
+                problems.Add($"{r.Chord} -> {r.Command} reads {row[2]}, but HeldChord runs it {want}");
+            }
+            else if (!row[3].Contains("D00-T02-S51-N2", StringComparison.Ordinal))
+            {
+                problems.Add($"{r.Chord} -> {r.Command} names no capture (the owed stock capture D00-T02-S51-N2)");
+            }
+        }
+
+        foreach (string[] c in classes.Where(c => !rows.Any(r => r.Chord == c[0] && c[1].Contains($"`{r.Command}`", StringComparison.Ordinal))))
+        {
+            problems.Add($"repeat class row {c[0]} {c[1]} names no binding");
+        }
+
+        var transitions = BindingManifest.SubTable(audit, "Enablement transitions", 4, out var tparse);
+        Assert.Empty(tparse);
+        string tests = string.Join("\n", ProofDirectories.SelectMany(d => Directory.GetFiles(Path.Combine(RepoRoot(), "tests", d), "*.cs")).Select(File.ReadAllText));
+        foreach (string[] t in transitions)
+        {
+            var proof = System.Text.RegularExpressions.Regex.Match(t[3], "`(\\w+)\\.(\\w+)`");
+            if (!proof.Success || !tests.Contains($"class {proof.Groups[1].Value}", StringComparison.Ordinal) || !tests.Contains($"void {proof.Groups[2].Value}(", StringComparison.Ordinal))
+            {
+                problems.Add($"enablement transition {t[0]} names no existing proof ({t[3]})");
+            }
+        }
+
+        Assert.Empty(problems);
+    }
+
     [Fact]
     public void RoutingOraclePlantsFail()
     {

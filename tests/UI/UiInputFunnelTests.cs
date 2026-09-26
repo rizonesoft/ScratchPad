@@ -1,3 +1,4 @@
+using FlaUI.Core.WindowsAPI;
 using System.Text.RegularExpressions;
 using Xunit;
 
@@ -539,5 +540,48 @@ public sealed class UiInputFunnelTests
         var log = new List<string>();
         UiInput.WheelChecked(App, Target, () => (Target, App), Focus(App), true, k => log.Add($"down {k}"), k => log.Add($"up {k}"), () => log.Add("scroll"), () => true);
         Assert.Equal(["down CONTROL", "scroll", "up CONTROL"], log);
+    }
+
+    // D00 T02 §51 item 4: a release that threw but whose key reads up is
+    // reported released, not stuck; one that reads down is confirmed stuck
+    // and fails; one whose state cannot be read is unknown and fails.
+    [Fact]
+    public void FailedReleaseReconcilesWithTheObservedKeyState()
+    {
+        void Throws(VirtualKeyShort k) => throw new InvalidOperationException("SendInput failed");
+        var up = new List<VirtualKeyShort> { VirtualKeyShort.SHIFT };
+        string report = UiInput.ChordUp(up, Throws, isDown: _ => false);
+        Assert.Contains("SHIFT (the release failed, InvalidOperationException: SendInput failed, but the key reads up: released)", report, StringComparison.Ordinal);
+        var down = new List<VirtualKeyShort> { VirtualKeyShort.SHIFT };
+        var confirmed = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(down, Throws, isDown: _ => true));
+        Assert.Contains("confirmed stuck: SHIFT", confirmed.Message, StringComparison.Ordinal);
+        var unknown = new List<VirtualKeyShort> { VirtualKeyShort.SHIFT };
+        var unk = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(unknown, Throws, isDown: _ => null));
+        Assert.Contains("state unknown: SHIFT", unk.Message, StringComparison.Ordinal);
+    }
+
+    // §51 item 5: a confirmed stuck key blocks the next physical press with
+    // a named reason (an unknown state blocks nothing), and a press whose
+    // key-down and cleanup both fail keeps both failures.
+    [Fact]
+    public void ConfirmedStuckKeyContainsInputAndBothFailuresAreKept()
+    {
+        void Throws(VirtualKeyShort k) => throw new InvalidOperationException("SendInput failed");
+        var unknownBox = new UiInput.InputContainment();
+        _ = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(new List<VirtualKeyShort> { VirtualKeyShort.CONTROL }, Throws, isDown: _ => null, containment: unknownBox));
+        Assert.Null(unknownBox.Reason);
+        var box = new UiInput.InputContainment();
+        _ = Assert.Throws<InvalidOperationException>(() => UiInput.ChordUp(new List<VirtualKeyShort> { VirtualKeyShort.CONTROL }, Throws, isDown: _ => true, containment: box));
+        Assert.Contains("confirmed stuck key(s): CONTROL", box.Reason, StringComparison.Ordinal);
+        int sent = 0;
+        var blocked = Assert.Throws<InvalidOperationException>(() =>
+            UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => sent++, () => sent++, () => true, () => true, () => { }, containment: box));
+        Assert.Contains("physical input blocked for this run: confirmed stuck key(s): CONTROL", blocked.Message, StringComparison.Ordinal);
+        Assert.Equal(0, sent);
+        var both = Assert.Throws<AggregateException>(() =>
+            UiInput.SendChecked(App, Target, () => (Target, App), Focus(App), () => throw new InvalidOperationException("key-down failed"), () => throw new InvalidOperationException("input cleanup failed: CONTROL"), () => true, () => true, () => { }, containment: new UiInput.InputContainment()));
+        Assert.Equal(2, both.InnerExceptions.Count);
+        Assert.Contains("key-down failed", both.InnerExceptions[0].Message, StringComparison.Ordinal);
+        Assert.Contains("input cleanup failed", both.InnerExceptions[1].Message, StringComparison.Ordinal);
     }
 }

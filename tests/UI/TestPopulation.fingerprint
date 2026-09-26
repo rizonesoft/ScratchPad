@@ -22,6 +22,7 @@ run-a:
   UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
   UI.BindingManifestTests.DuplicateWithAnUnresolvedOwnerFails
   UI.BindingManifestTests.EnablementStatePlantsFail
+  UI.BindingManifestTests.EveryBoundCommandNamesItsRepeatClassAndEveryTransitionItsProof
   UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
   UI.BindingManifestTests.KeyHandlingOutsideTheTwoHomesFails
   UI.BindingManifestTests.LayoutMatrixPlantsFail
@@ -47,6 +48,7 @@ run-a:
   UI.BindingManifestTests.WrongKeyMutationFailsTheGate
   UI.BindingMutationTests.ChildRunReadsAPassingPureTest
   UI.BindingMutationTests.EveryCoveredRowHasAMutationCaseWithItsPressLine
+  UI.BindingMutationTests.ExecutionAcknowledgmentAttributionAndNegativeRouting
   UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey
   UI.BindingMutationTests.VerdictsSeparateKilledSurvivedAndInconclusive
   UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser
@@ -144,6 +146,7 @@ run-a:
   UI.MenuBarTests.ToolsMenuInvokesTemplates
   UI.MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates
   UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
+  UI.MenuLabelTests.EnablementTransitionsReadTheirDocumentedStates
   UI.MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement
   UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI.MultiWindowTests.WindowsKeepIndependentTabs
@@ -242,6 +245,8 @@ run-a:
   UI.UiInputFunnelTests.CancelledReleaseAndTheBoundReportEveryStuckKey
   UI.UiInputFunnelTests.ClosingTheTargetWindowIsNotAnInterruption
   UI.UiInputFunnelTests.CommandMovingFocusInsideTheAppIsNotAnInterruption
+  UI.UiInputFunnelTests.ConfirmedStuckKeyContainsInputAndBothFailuresAreKept
+  UI.UiInputFunnelTests.FailedReleaseReconcilesWithTheObservedKeyState
   UI.UiInputFunnelTests.FocusChangeBetweenKeyDownAndKeyUpAbortsCleanly
   UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
   UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
@@ -270,9 +275,9 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 263
-run-a-cases: 327
-run-a-case-hash: 58e385559c2d76f6
+run-a-methods: 268
+run-a-cases: 332
+run-a-case-hash: 0481f20617fe97bf
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -289,6 +294,7 @@ run-a-case-rows:
   UI|UI.BindingManifestTests.CtrlEDuplicateSurfacesInTheMatrix
   UI|UI.BindingManifestTests.DuplicateWithAnUnresolvedOwnerFails
   UI|UI.BindingManifestTests.EnablementStatePlantsFail
+  UI|UI.BindingManifestTests.EveryBoundCommandNamesItsRepeatClassAndEveryTransitionItsProof
   UI|UI.BindingManifestTests.ExemptionWithoutApproverOrKnownClassFails
   UI|UI.BindingManifestTests.KeyHandlingOutsideTheTwoHomesFails
   UI|UI.BindingManifestTests.LayoutMatrixPlantsFail
@@ -314,6 +320,7 @@ run-a-case-rows:
   UI|UI.BindingManifestTests.WrongKeyMutationFailsTheGate
   UI|UI.BindingMutationTests.ChildRunReadsAPassingPureTest
   UI|UI.BindingMutationTests.EveryCoveredRowHasAMutationCaseWithItsPressLine
+  UI|UI.BindingMutationTests.ExecutionAcknowledgmentAttributionAndNegativeRouting
   UI|UI.BindingMutationTests.TargetsNameTheMenuItemOrTheAcceleratorKey
   UI|UI.BindingMutationTests.VerdictsSeparateKilledSurvivedAndInconclusive
   UI|UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser(itemId: "MenuEditDefineBing", define: True)
@@ -460,6 +467,7 @@ run-a-case-rows:
   UI|UI.MenuBarTests.ToolsMenuInvokesTemplates
   UI|UI.MenuLabelTests.DisabledExemptionsHoldAcrossEnablementStates
   UI|UI.MenuLabelTests.DisplayedShortcutTextMatchesTheManifest
+  UI|UI.MenuLabelTests.EnablementTransitionsReadTheirDocumentedStates
   UI|UI.MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement
   UI|UI.MultiWindowTests.SecondWindowClosePreservesNewerExternalState
   UI|UI.MultiWindowTests.WindowsKeepIndependentTabs
@@ -573,6 +581,8 @@ run-a-case-rows:
   UI|UI.UiInputFunnelTests.CancelledReleaseAndTheBoundReportEveryStuckKey
   UI|UI.UiInputFunnelTests.ClosingTheTargetWindowIsNotAnInterruption
   UI|UI.UiInputFunnelTests.CommandMovingFocusInsideTheAppIsNotAnInterruption
+  UI|UI.UiInputFunnelTests.ConfirmedStuckKeyContainsInputAndBothFailuresAreKept
+  UI|UI.UiInputFunnelTests.FailedReleaseReconcilesWithTheObservedKeyState
   UI|UI.UiInputFunnelTests.FocusChangeBetweenKeyDownAndKeyUpAbortsCleanly
   UI|UI.UiInputFunnelTests.FocusElsewhereOrUnresolvedIdentityFailsLoudAndSendsNothing
   UI|UI.UiInputFunnelTests.FocusLossMidStringStopsTypingAtThatCharacter
@@ -632,6 +642,12 @@ interactive:
   UI.ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity
   UI.ChordRoutingTests.WindowGlobalChordRoutesPerSurface
   UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
+  UI.HeldKeyParityTests.StockNotepadHeldKeyClassesMatchTheTable
+  UI.HeldKeyTests.ClipboardChangeReadsTheDocumentedEnablement
+  UI.HeldKeyTests.HeldCtrlTOpensOneTab
+  UI.HeldKeyTests.MenuOpeningMidChordStopsTheHold
+  UI.HeldKeyTests.ReleaseAndRepressOpensSecondTab
+  UI.HeldKeyTests.ShiftDependentPlusDuringAHoldReachesNothingWhileZoomIsDisabled
   UI.LaunchTests.ForegroundDefaultsLandOnScreen
   UI.LaunchTests.MissingFileOfferEnterAcceptsAsYes
   UI.LaunchTests.WindowBirthLeavesAnOwnedDialogInPlace
@@ -662,9 +678,9 @@ interactive:
   UI.TabBarTests.NumberShortcutsCoverMiddlePositions
   UI.TabBarTests.ThreeTabsSwitchAndClose
   UI.TitleBarIconTests.AddButtonRealClickOpensTab
-interactive-methods: 43
-interactive-cases: 74
-interactive-case-hash: db52692cc3510410
+interactive-methods: 49
+interactive-cases: 80
+interactive-case-hash: 2b9041c00b800e74
 interactive-case-rows:
   UI|UI.AcceleratorTests.ChordCtrlEOpensBingSearch
   UI|UI.AcceleratorTests.ChordCtrlShiftEOpensTemplates
@@ -705,6 +721,12 @@ interactive-case-rows:
   UI|UI.ChordRoutingTests.LayoutAltGrAndNumpadKeepTheirIdentity
   UI|UI.ChordRoutingTests.WindowGlobalChordRoutesPerSurface
   UI|UI.DirtyPromptTests.UntitledSaveKeepsTabDirtyWithNothingWritten
+  UI|UI.HeldKeyParityTests.StockNotepadHeldKeyClassesMatchTheTable
+  UI|UI.HeldKeyTests.ClipboardChangeReadsTheDocumentedEnablement
+  UI|UI.HeldKeyTests.HeldCtrlTOpensOneTab
+  UI|UI.HeldKeyTests.MenuOpeningMidChordStopsTheHold
+  UI|UI.HeldKeyTests.ReleaseAndRepressOpensSecondTab
+  UI|UI.HeldKeyTests.ShiftDependentPlusDuringAHoldReachesNothingWhileZoomIsDisabled
   UI|UI.LaunchTests.ForegroundDefaultsLandOnScreen
   UI|UI.LaunchTests.MissingFileOfferEnterAcceptsAsYes
   UI|UI.LaunchTests.WindowBirthLeavesAnOwnedDialogInPlace

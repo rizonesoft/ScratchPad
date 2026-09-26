@@ -33,6 +33,7 @@ var element = Value(args, "--element");
 return args[0] switch
 {
     "notepad" => CaptureNotepad(args[1], width, height),
+    "held-keys" => CaptureHeldKeys(args[1]),
     "stub" when args.Length >= 3 => CaptureStub(args[1], args[2], element, width, height),
     _ => 2,
 };
@@ -106,6 +107,85 @@ static int CaptureNotepad(string outdir, int width, int height)
     Shoot(window, Path.Combine(outdir, "notepad-settings.png"), width, height);
     window.Close();
     Console.WriteLine("captured main, tabs, menu-file, settings");
+    return 0;
+}
+
+// Stock Notepad's held-key behavior per command class (D00 T02 §51 item
+// 7): a held one-shot chord (Ctrl+T, 7 key-downs), a held tab cycle
+// (Ctrl+Tab, 4 key-downs over at least 10 tabs), and a held zoom
+// (Ctrl+Plus, 4 key-downs, read from the status bar's percentage), written
+// as JSON to <outfile>. Foreground: it presses real keys into stock
+// Notepad, so it runs in the quiet window (HeldKeyParityTests).
+static int CaptureHeldKeys(string outFile)
+{
+    using var automation = new UIA3Automation();
+    var before = NotepadWindows(automation);
+    using (Process.Start("notepad.exe"))
+    {
+    }
+
+    var hwnd = WaitForNewWindow(automation, before, TimeSpan.FromSeconds(15));
+    if (hwnd == IntPtr.Zero)
+    {
+        Console.WriteLine("no new Notepad window appeared (the launch may have joined an existing window as a tab)");
+        return 1;
+    }
+
+    var window = automation.FromHandle(hwnd).AsWindow();
+    window.SetForeground();
+    Thread.Sleep(800);
+    AutomationElement[] TabItems() => window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.TabItem));
+    int SelectedTab() => Array.FindIndex(TabItems(), t => t.Patterns.SelectionItem.PatternOrDefault?.IsSelected.ValueOrDefault == true);
+    string Zoom() => window.FindAllDescendants().Select(e => e.Name ?? string.Empty).FirstOrDefault(n => System.Text.RegularExpressions.Regex.IsMatch(n, "^\\d+%$")) ?? string.Empty;
+    void Hold(VirtualKeyShort key, int keyDowns, bool shift = false)
+    {
+        Keyboard.Press(VirtualKeyShort.CONTROL);
+        if (shift)
+        {
+            Keyboard.Press(VirtualKeyShort.SHIFT);
+        }
+
+        for (int i = 0; i < keyDowns; i++)
+        {
+            Keyboard.Press(key);
+            Thread.Sleep(60);
+        }
+
+        Keyboard.Release(key);
+        if (shift)
+        {
+            Keyboard.Release(VirtualKeyShort.SHIFT);
+        }
+
+        Keyboard.Release(VirtualKeyShort.CONTROL);
+        Thread.Sleep(800);
+    }
+
+    int tabs0 = TabItems().Length;
+    Hold(VirtualKeyShort.KEY_T, 7);
+    int oneShot = TabItems().Length - tabs0;
+    while (TabItems().Length < 10)
+    {
+        Hold(VirtualKeyShort.KEY_T, 1);
+    }
+
+    int n = TabItems().Length;
+    int sel0 = SelectedTab();
+    Hold(VirtualKeyShort.TAB, 4);
+    int steps = ((SelectedTab() - sel0) % n + n) % n;
+    string zoom0 = Zoom();
+    Hold(VirtualKeyShort.OEM_PLUS, 4);
+    string zoom1 = Zoom();
+    var capture = new System.Text.Json.Nodes.JsonObject
+    {
+        ["schema"] = "held-keys/1",
+        ["oneShot"] = new System.Text.Json.Nodes.JsonObject { ["chord"] = "Ctrl+T", ["keyDowns"] = 7, ["dispatches"] = oneShot },
+        ["tabCycle"] = new System.Text.Json.Nodes.JsonObject { ["chord"] = "Ctrl+Tab", ["keyDowns"] = 4, ["steps"] = steps, ["tabs"] = n },
+        ["zoom"] = new System.Text.Json.Nodes.JsonObject { ["chord"] = "Ctrl+Plus", ["keyDowns"] = 4, ["before"] = zoom0, ["after"] = zoom1 },
+    };
+    File.WriteAllText(outFile, capture.ToJsonString());
+    window.Close();
+    Console.WriteLine($"captured held keys: one-shot {oneShot}, tab cycle {steps} of {n}, zoom {zoom0} -> {zoom1}");
     return 0;
 }
 

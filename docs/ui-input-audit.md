@@ -400,3 +400,76 @@ Pressed by tests but not declared by the app: the framework or a control owns th
 - Cleanup failures: `UiInput.ChordUp` attempts every release even when one throws and names every key left down (`input cleanup failed: key(s) left down ...`); the pass is bounded (`UiInput.ReleaseBound`, 2 s: keys not attempted by then are reported, never waited on), a cancelled release is owned like any other failure, and the pass needs no window, so a target closing during recovery still releases (`ThrowingReleaseNamesTheStuckKeyAndReleasesTheRest`, `CancelledReleaseAndTheBoundReportEveryStuckKey`, `WindowClosingDuringRecoveryStillReleases`).
 - Held keys: repeatable commands (zoom in and out, Ctrl+Tab and Ctrl+Shift+Tab cycling) run on every auto-repeat, and every other command runs once per physical press (`Notepad.Core.HeldChord`, noted at the root's PreviewKeyDown before accelerators run; `HeldChordTests` reads the count per class). The repeat flag lives for one input message (its reset is queued behind the key event), so a mouse click or a focus change during a hold always dispatches. A recorded default: stock Notepad's held-key behavior is not captured yet, and changing a command's class is one entry in `HeldChord.Repeatable`.
 - Transitions: enablement is read across leaving a state, over every bound menu item: the read-only document reads its documented enablement on entry (every `disabled` row disabled) and, closed back to the writable tab, reads every item as the writable baseline does; a selection made and cleared in one window reads as before (`MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement`). Nothing in the app changes enablement for read-only today, so the read-only entry read is the documented rows, and the exit read is the restoration proof.
+
+### Held-key repeat classes (D00 T02 §51 item 7)
+
+Each bound command's held-key class, beside the stock capture that establishes it. `repeatable` runs on every auto-repeat, `one-shot` once per physical press (`Notepad.Core.HeldChord.Repeatable` is the rule the app runs, and `BindingManifestTests.EveryBoundCommandNamesItsRepeatClassAndEveryTransitionItsProof` requires this table to agree with it). The one-shot default is a recorded decision owed a parity capture: `HeldKeyParityTests.StockNotepadHeldKeyClassesMatchTheTable` holds Ctrl+T, Ctrl+Tab, and Ctrl+Plus in stock Notepad through `tools/CaptureBaseline held-keys` (foreground, so it is night debt D00-T02-S51-N2) and fails if stock disagrees with a class here. A new bound command is classified by its owner in the same change that binds it.
+
+| Binding | Command | Class | Capture |
+| ------- | ------- | ----- | ------- |
+| Ctrl+N | `MenuFileNewTab` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+N | `MenuFileNewWindow` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+O | `MenuFileOpen` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+S | `MenuFileSave` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+S | `MenuFileSaveAs` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Alt+S | `MenuFileSaveAll` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+P | `MenuFilePrint` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+W | `MenuFileCloseTab` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+W | `MenuFileCloseWindow` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Z | `MenuEditUndo` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+X | `MenuEditCut` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+C | `MenuEditCopy` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+V | `MenuEditPaste` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Delete | `MenuEditDelete` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+E | `MenuEditSearchBing` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+E | `MenuEditDefineBing` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+F | `MenuEditFind` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| F3 | `MenuEditFindNext` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Shift+F3 | `MenuEditFindPrevious` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+H | `MenuEditReplace` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+G | `MenuEditGoTo` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+A | `MenuEditSelectAll` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| F5 | `MenuEditTimeDate` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Plus | `MenuViewZoomIn` | repeatable | owed D00-T02-S51-N2 (stock Ctrl+Plus held) |
+| Ctrl+Minus | `MenuViewZoomOut` | repeatable | owed D00-T02-S51-N2 (stock Ctrl+Plus held (zoom out is its mirror)) |
+| Ctrl+0 | `MenuViewZoomRestore` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+G | `MenuToolsStats` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+H | `MenuToolsSnapshots` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+E | `MenuToolsTemplates` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+X | `MenuToolsExport` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Shift+L | `MenuToolsLock` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+T | `Tabs.NewTab` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+Tab | `Tabs.CycleNext` | repeatable | owed D00-T02-S51-N2 (stock Ctrl+Tab held) |
+| Ctrl+Shift+Tab | `Tabs.CyclePrevious` | repeatable | owed D00-T02-S51-N2 (stock Ctrl+Tab held (cycling back is its mirror)) |
+| Ctrl+Shift+T | `Tabs.ReopenLast` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+1 | `Tabs.GotoNumber(1)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+2 | `Tabs.GotoNumber(2)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+3 | `Tabs.GotoNumber(3)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+4 | `Tabs.GotoNumber(4)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+5 | `Tabs.GotoNumber(5)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+6 | `Tabs.GotoNumber(6)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+7 | `Tabs.GotoNumber(7)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+8 | `Tabs.GotoNumber(8)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+| Ctrl+9 | `Tabs.GotoNumber(9)` | one-shot | owed D00-T02-S51-N2 (stock Ctrl+T held: the one-shot class) |
+
+### Enablement transitions (D00 T02 §51 item 9)
+
+Each transition is read on entry and exit over every bound menu item. `unchanged` means every item reads as before the transition; `restored` that leaving reads as the baseline. The proof names the test that reads it (`BindingManifestTests.EveryBoundCommandNamesItsRepeatClassAndEveryTransitionItsProof` requires it to exist).
+
+| Transition | Setup | Expected | Proof |
+| ---------- | ----- | -------- | ----- |
+| tab switch between two documents | tab-switch | unchanged | `MenuLabelTests.EnablementTransitionsReadTheirDocumentedStates` |
+| undo history changed (text edited twice) | undo-history | unchanged | `MenuLabelTests.EnablementTransitionsReadTheirDocumentedStates` |
+| selection made and cleared | select-text | restored | `MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement` |
+| read-only document entered and left | open-read-only | disabled rows disabled on entry, restored on exit | `MenuLabelTests.LeavingAStateRestoresEveryItemsEnablement` |
+| clipboard gains text | clipboard | Paste disabled (its owner has not landed) | `HeldKeyTests.ClipboardChangeReadsTheDocumentedEnablement` (night debt D00-T02-S51-N1) |
+| disablement during a held chord | held-disable | the hold's repeats dispatch nothing and the next deliberate press dispatches | `HeldChordTests.ReleaseAndRepressAndInterruptedHoldsReset` (the rule); `HeldKeyTests.MenuOpeningMidChordStopsTheHold` (physical, night debt D00-T02-S51-N1) |
+
+### Binding guard third residuals (D00 T02 §51)
+
+- Execution acknowledgment: a swapped command appends `swap:<target>` before its substitute and `swap-done:<target>` after it returns (`TestMutation.RecordSwapDone`); a registration that matches the active target appends `armed:<target>` (`TestMutation.RecordArmed`). A kill or a survival needs a completed swap in an armed child; a started-only swap, an unarmed child, and a child killed at its bound read inconclusive.
+- Failure attribution: an assertion after the press counts only when it is not an infrastructure failure (a timeout, a focus or foreground fault, an input cleanup fault, a stuck or blocked key) and not raised inside the covering method's `finally` cleanup (`BindingMutation.InfraFailure`, `BindingMutation.CleanupLinesOf`).
+- Negative routing: a `suppress` cell of the routing oracle needs zero dispatch of any bound command and an unchanged window count (`BindingMutation.RoutingProblem`), never a swap.
+- Key state: a failed release is reconciled with the observed key state (`UiInput.KeyIsDown`): a key that reads up is reported released, one that reads down is confirmed stuck and blocks every later physical press for the run with its reason (`UiInput.InputContainment`), and one whose state cannot be read is unknown (it fails, but blocks nothing on a guess). A press whose key-down and cleanup both fail keeps both failures (an `AggregateException`).
+- Holds: a key-up, focus loss, or window deactivation ends a hold (`HeldChord.Reset`), so a release and re-press dispatches again and nothing stays suppressed or repeating. One counting rule: each key event (a first press or one auto-repeat) dispatches at most one bound command (`HeldChord.ShouldSkip`), so a chord registered twice runs once per event, once per hold for one-shot and once per accepted repeat for repeatable; a mouse invocation opens no key event and always dispatches.
+- Night debt: the physical held-key, combined-matrix, and clipboard cases (`HeldKeyTests`) are D00-T02-S51-N1, and the stock parity capture (`HeldKeyParityTests`) is D00-T02-S51-N2, each collected on its own.

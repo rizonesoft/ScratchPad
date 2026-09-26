@@ -30,41 +30,131 @@ public static class HeldChord
     [ThreadStatic]
     static bool repeating;
 
-    // The flag lives for one input message (R1-F1): `defer` queues its
+    // One counting definition (D00 T02 §51 item 8): every key event (a
+    // first press or one auto-repeat) dispatches at most one bound command,
+    // so a chord registered twice (two scopes, or two commands declaring
+    // it) runs once per event. The event opens at the root's key-down and
+    // closes behind it; a mouse invocation opens no event and always
+    // dispatches.
+    [ThreadStatic]
+    static int eventSerial;
+
+    [ThreadStatic]
+    static int claimedSerial;
+
+    [ThreadStatic]
+    static bool eventOpen;
+
+    // The flags live for one input message (R1-F1): `defer` queues their
     // reset behind the key event, so the accelerators that run for this
-    // press read it and a later mouse click or a focus change never does.
+    // press read them and a later mouse click or a focus change never does.
     public static void NotePress(bool isRepeat, Action<Action> defer)
     {
         ArgumentNullException.ThrowIfNull(defer);
         repeating = isRepeat;
-        if (isRepeat)
+        eventSerial++;
+        eventOpen = true;
+        int serial = eventSerial;
+        defer(() =>
         {
-            defer(NoteRelease);
-        }
+            if (eventSerial == serial)
+            {
+                eventOpen = false;
+                repeating = false;
+            }
+        });
     }
 
     public static void NoteRelease() => repeating = false;
+
+    // Focus loss, window deactivation, or a cancelled hold (D00 T02 §51
+    // item 6): the hold ends, so the next key-down is a first press and
+    // nothing stays suppressed or repeating.
+    public static void Reset()
+    {
+        repeating = false;
+        eventOpen = false;
+    }
 
     // True when this dispatch is an auto-repeat of a one-shot command, so
     // the caller handles the key and runs nothing.
     public static bool Suppress(string command) => repeating && !Repeatable.Contains(command);
 
-    // The documented count for a hold of `keyDowns` key-downs (the first
-    // press plus its repeats): the fixture reads each class through the
-    // same rule the app runs.
-    public static int Dispatches(string command, int keyDowns)
+    // The guard every bound handler calls (§51 item 8): a one-shot
+    // auto-repeat, or a second bound command in the same key event, runs
+    // nothing; the first bound command of an event claims it.
+    public static bool ShouldSkip(string command)
     {
-        int count = 0;
-        for (int i = 0; i < keyDowns; i++)
+        if (Suppress(command))
         {
-            NotePress(i > 0, _ => { });
-            if (!Suppress(command))
+            return true;
+        }
+
+        if (eventOpen)
+        {
+            if (claimedSerial == eventSerial)
             {
-                count++;
+                return true;
+            }
+
+            claimedSerial = eventSerial;
+        }
+
+        return false;
+    }
+
+    // The documented count for an input sequence (§51 items 6 and 8), read
+    // through the same rule the app runs: 'd' a key-down (a repeat when the
+    // key is already held), 'u' a key-up, 'f' focus loss; each key-down
+    // reaches `registrations` bound handlers.
+    public static int Count(string command, string sequence, int registrations = 1)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        int count = 0;
+        bool held = false;
+        var pending = new List<Action>();
+        Reset();
+        foreach (char c in sequence)
+        {
+            switch (c)
+            {
+                case 'd':
+                    NotePress(held, pending.Add);
+                    held = true;
+                    for (int r = 0; r < registrations; r++)
+                    {
+                        if (!ShouldSkip(command))
+                        {
+                            count++;
+                        }
+                    }
+
+                    foreach (Action a in pending)
+                    {
+                        a();
+                    }
+
+                    pending.Clear();
+                    break;
+                case 'u':
+                    NoteRelease();
+                    held = false;
+                    break;
+                case 'f':
+                    Reset();
+                    held = false;
+                    break;
+                default:
+                    throw new ArgumentException($"unknown step '{c}' in {sequence}", nameof(sequence));
             }
         }
 
-        NoteRelease();
+        Reset();
         return count;
     }
+
+    // The documented count for a hold of `keyDowns` key-downs (the first
+    // press plus its repeats): the fixture reads each class through the
+    // same rule the app runs.
+    public static int Dispatches(string command, int keyDowns) => Count(command, new string('d', keyDowns) + "u");
 }

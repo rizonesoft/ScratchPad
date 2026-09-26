@@ -409,10 +409,11 @@ internal static class BindingManifest
         return found;
     }
 
-    // The held-key check (D00 T02 §43 item 4) is part of the sanctioned
-    // shape: it can only suppress, never re-key or add an accelerator.
+    // The held-key check (D00 T02 §43 item 4, §51 item 8) and the arming
+    // record (§51 item 11) are part of the sanctioned shape: they can only
+    // suppress or log, never re-key or add an accelerator.
     internal const string SanctionedHelperBody =
-        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};accel.Invoked+=(_,args)=>{if(!HeldChord.Suppress(TestMutation.Key((int)key,(int)modifiers))&&!MutationHandled(key,modifiers)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
+        "{varaccel=newKeyboardAccelerator{Key=key,Modifiers=modifiers};TestMutation.RecordArmed(TestMutation.Key((int)key,(int)modifiers),Environment.GetEnvironmentVariable);accel.Invoked+=(_,args)=>{if(!HeldChord.ShouldSkip(TestMutation.Key((int)key,(int)modifiers))&&!MutationHandled(key,modifiers)){action();}args.Handled=true;};scope.KeyboardAccelerators.Add(accel);}";
 
     static List<string> TabHomeProblems(string source)
     {

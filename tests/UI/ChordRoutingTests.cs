@@ -200,17 +200,27 @@ public sealed class ChordRoutingTests
     static void Observe(FlaUI.Core.Application app, DispatchLogScope log, List<string[]> oracle, string chord, string command, string surface, Action press, List<string> mismatches)
     {
         _ = log.Next(TimeSpan.Zero);
+        int windowsBefore = WindowCount(app);
         press();
         string[] fresh = log.Next(TimeSpan.FromMilliseconds(500));
         // A failed dispatch-log write ends the app (§36 R2-F2): lost
         // evidence fails here instead of reading as a suppressed chord.
         Assert.False(app.HasExited, $"the app exited after {chord} on {surface}: a dispatch-log write failed, so the routing evidence is lost");
-        bool reached = fresh.Contains(BindingMutation.Target(chord, command), StringComparer.Ordinal);
+        // Negative routing needs zero dispatch and unchanged state (D00 T02
+        // §51 item 3), judged by the one rule the pure fixture pins.
         string want = BindingManifest.RoutingExpectation(oracle, chord, command, surface);
-        if (reached != (want == "execute"))
+        string? problem = BindingMutation.RoutingProblem(chord, command, surface, want, fresh, windowsBefore, WindowCount(app));
+        if (problem is not null)
         {
-            mismatches.Add($"{chord} -> {command} on {surface}: oracle says {want}, the press {(reached ? "reached" : "did not reach")} the command (logged: {string.Join(", ", fresh)})");
+            mismatches.Add(problem);
         }
+    }
+
+    // The app's top-level window count, read from outside (§51 item 3).
+    static int WindowCount(FlaUI.Core.Application app)
+    {
+        using var automation = new FlaUI.UIA3.UIA3Automation();
+        return app.GetAllTopLevelWindows(automation).Length;
     }
 
     // Presses a declared chord (letters, digits, Tab) into a target.

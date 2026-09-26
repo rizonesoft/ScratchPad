@@ -653,6 +653,16 @@ public sealed partial class MainWindow : Window, IDisposable
         // The HWND is not valid in the constructor; installing here silently
         // subclasses nothing. First activation owns the install.
         Activated += OnFirstActivated;
+        // A hold ends when the window loses activation (D00 T02 §51 item 6):
+        // focus leaving mid-hold never leaves a command suppressed or
+        // repeating for the next press.
+        Activated += (_, e) =>
+        {
+            if (e.WindowActivationState == WindowActivationState.Deactivated)
+            {
+                HeldChord.Reset();
+            }
+        };
         // D01 T02 §14: the extended chrome draws no caption glyph, so a
         // raster of the shipped asset pins left of the tab strip in our own
         // row (stock placement per the §14 Fidelity capture). The image takes
@@ -826,6 +836,8 @@ public sealed partial class MainWindow : Window, IDisposable
                     Bar()?.NewTab();
                 }
 
+                // The substitute returned (D00 T02 §51 item 1).
+                TestMutation.RecordSwapDone(target, Environment.GetEnvironmentVariable);
                 return true;
             case MutationEffect.Observe:
                 TestMutation.RecordOrFail(target, Environment.GetEnvironmentVariable);
@@ -835,12 +847,16 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    // Each accelerator records its arming evidence for the mutation run
+    // (D00 T02 §51 item 11) and guards with HeldChord.ShouldSkip (§51
+    // item 8: one dispatch per key event).
     private static void AddAccel(UIElement scope, VirtualKey key, VirtualKeyModifiers modifiers, Action action)
     {
         var accel = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
+        TestMutation.RecordArmed(TestMutation.Key((int)key, (int)modifiers), Environment.GetEnvironmentVariable);
         accel.Invoked += (_, args) =>
         {
-            if (!HeldChord.Suppress(TestMutation.Key((int)key, (int)modifiers)) && !MutationHandled(key, modifiers))
+            if (!HeldChord.ShouldSkip(TestMutation.Key((int)key, (int)modifiers)) && !MutationHandled(key, modifiers))
             {
                 action();
             }

@@ -173,7 +173,7 @@ internal sealed partial class AppMenuBar : MenuBar
     {
         // An auto-repeat of a one-shot command runs nothing (D00 T02 §43
         // item 4); the guard every bound handler already calls carries it.
-        if (HeldChord.Suppress(id))
+        if (HeldChord.ShouldSkip(id))
         {
             return true;
         }
@@ -191,6 +191,8 @@ internal sealed partial class AppMenuBar : MenuBar
                     host?.NewTab();
                 }
 
+                // The substitute returned (D00 T02 §51 item 1).
+                TestMutation.RecordSwapDone(id, Environment.GetEnvironmentVariable);
                 return true;
             case MutationEffect.Observe:
                 TestMutation.RecordOrFail(id, Environment.GetEnvironmentVariable);
@@ -204,6 +206,8 @@ internal sealed partial class AppMenuBar : MenuBar
     {
         string id = AutomationProperties.GetAutomationId(item);
         commands[id] = item;
+        // Arming evidence for the mutation run (D00 T02 §51 item 11).
+        TestMutation.RecordArmed(id, Environment.GetEnvironmentVariable);
     }
 
     void OnFileNewTab(object sender, RoutedEventArgs e)

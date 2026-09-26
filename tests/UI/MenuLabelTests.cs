@@ -72,6 +72,67 @@ public sealed class MenuLabelTests
         Assert.Empty(BindingManifest.EnablementProblems(rows, observations, states.Select(s => s[0])));
     }
 
+    // D00 T02 §51 item 9: the enumerated transitions of the audit's
+    // Enablement transitions table, each read on entry and exit over every
+    // bound menu item. The focus-free rows run here: a tab switch between
+    // two documents, and an undo-history change (text edited twice); each
+    // documented `unchanged` transition reads every item as before it.
+    // The rows whose proof is an Interactive case (a clipboard change, a
+    // disablement during a held chord) run in the quiet window.
+    [Fact]
+    public void EnablementTransitionsReadTheirDocumentedStates()
+    {
+        string root = BindingManifestTests.RepoRoot();
+        string audit = File.ReadAllText(Path.Combine(root, "docs", "ui-input-audit.md"));
+        var rows = BindingManifest.ParseAudit(audit, out var parse);
+        Assert.Empty(parse);
+        var all = rows.Where(r => r.Command.StartsWith("Menu", StringComparison.Ordinal)).Select(r => r.Command).Distinct(StringComparer.Ordinal).ToList();
+        var transitions = BindingManifest.SubTable(audit, "Enablement transitions", 4, out var tparse);
+        Assert.Empty(tparse);
+        var here = transitions.Where(t => t[3].Contains($"`MenuLabelTests.{nameof(EnablementTransitionsReadTheirDocumentedStates)}`", StringComparison.Ordinal)).ToList();
+        Assert.True(here.Count >= 2, "the audit names fewer than two focus-free enablement transitions for this test");
+        string a = Path.Combine(Path.GetTempPath(), $"scratchpad-transition-a-{Guid.NewGuid():N}.txt");
+        string b = Path.Combine(Path.GetTempPath(), $"scratchpad-transition-b-{Guid.NewGuid():N}.txt");
+        File.WriteAllText(a, "first" + Environment.NewLine);
+        File.WriteAllText(b, "second" + Environment.NewLine);
+        try
+        {
+            foreach (string[] t in here)
+            {
+                Assert.Equal("unchanged", t[2]);
+                var (entry, exit) = t[1] switch
+                {
+                    "tab-switch" => WithApp($"\"{a}\" \"{b}\"", window =>
+                    {
+                        var pre = ReadBound(window, all);
+                        var first = window.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.TabItem)).First(t => (t.Name ?? string.Empty).Contains("scratchpad-transition-a-", StringComparison.Ordinal));
+                        first.Patterns.SelectionItem.Pattern.Select();
+                        Assert.True(Retry.WhileFalse(() => window.Title.Contains("scratchpad-transition-a-", StringComparison.Ordinal), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(200)).Result, $"the tab switch did not reach the first document: {window.Title}");
+                        return (pre, ReadBound(window, all));
+                    }),
+                    "undo-history" => WithApp(null, window =>
+                    {
+                        var box = ContentBox(window);
+                        var pre = ReadBound(window, all);
+                        UiInput.AppendText(box, "one");
+                        UiInput.AppendText(box, "two");
+                        return (pre, ReadBound(window, all));
+                    }),
+                    _ => throw new InvalidOperationException($"the Enablement transitions row '{t[0]}' names setup '{t[1]}', which this test cannot build"),
+                };
+                var missing = all.Where(id => !entry.ContainsKey(id) || !exit.ContainsKey(id)).ToList();
+                Assert.True(missing.Count == 0, $"{t[0]}: {missing.Count} bound item(s) were not read: {string.Join(", ", missing)}");
+                var changed = all.Where(id => entry[id].Enabled != exit[id].Enabled).ToList();
+                Assert.True(changed.Count == 0, $"{t[0]}: documented unchanged, but {string.Join(", ", changed.Select(id => $"{id} {(entry[id].Enabled ? "enabled" : "disabled")} -> {(exit[id].Enabled ? "enabled" : "disabled")}"))}");
+            }
+        }
+        finally
+        {
+            File.Delete(a);
+            File.Delete(b);
+        }
+    }
+
     // D00 T02 §43 item 5 (R1-F2): enablement is read across a transition,
     // over every bound menu item, not only the always-disabled rows. The
     // read-only document is entered (its documented enablement: every
