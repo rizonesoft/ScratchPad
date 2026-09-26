@@ -647,8 +647,17 @@ $sjT1 = @(Add-StagedDebtLines $sj2 @('UI.S.D', 'UI.S.D') 'staged' 's1' 'twins')
 $sjT2 = @(Add-StagedDebtLines $sj2 @('UI.S.D', 'UI.S.D') 'staged' 's2' 'again')
 $sjT3 = @(Add-StagedDebtLines $sj2 @('UI.S.D') 'collected' 's2' 'one closed')
 $sjTOpen = Get-StagedOpenCases (Read-StagedDebt $sj2)
+# R2-I2: re-staging the one remaining twin stages nothing new, and a later
+# second obligation takes a fresh occurrence, never the collected one.
+$sjT4 = @(Add-StagedDebtLines $sj2 @('UI.S.D') 'staged' 's3' 'remaining')
+$sjT5 = @(Add-StagedDebtLines $sj2 @('UI.S.D', 'UI.S.D') 'staged' 's4' 'two again')
+$sjTRead = Read-StagedDebt $sj2
+$sjTOcc = @(@($sjTRead.Open.Values) | ForEach-Object { $_.Occurrence } | Sort-Object)
+# R2-I1: an open receipt without a token gains it.
+$sjT6 = @(Add-StagedDebtLines $sj2 @('UI.S.D', 'UI.S.D') 'staged' 's5' 'tokens' @{ 'UI.S.D' = 'rows:dddd' })
+$sjTIds = (Get-StagedOpenCases (Read-StagedDebt $sj2)).Ids
 $sjIds = (Get-StagedOpenCases $sjR1).Ids
-Assert (($sjW1.Count -eq 2) -and (@($sjPrev.Owed).Count -eq 0) -and ($sjR1.Open.Count -eq 2) -and (@(@($sjR1.Open.Values) | ForEach-Object { $_.Case }) -contains 'UI.S.B') -and ($sjW2.Count -eq 0) -and ($sjW3.Count -eq 1) -and ($sjR2.Open.Count -eq 1) -and (@($sjR2.Open.Values)[0].Case -eq 'UI.S.B') -and (@($sjR2.Bad).Count -eq 1) -and ($sjT1.Count -eq 2) -and ($sjT2.Count -eq 0) -and ($sjT3.Count -eq 1) -and (@($sjTOpen.Cases).Count -eq 1) -and ($sjIds['UI.S.A(n: 1)'] -eq 'rows:aaaa')) 's52-staging-survives-a-crash' "w1=$($sjW1.Count) open1=$($sjR1.Open.Count) w2=$($sjW2.Count) w3=$($sjW3.Count) open2=$(@(@($sjR2.Open.Values) | ForEach-Object { $_.Case }) -join ',') twins=$($sjT1.Count)/$($sjT2.Count)/$($sjT3.Count) bad=$(@($sjR2.Bad) -join ',')"
+Assert (($sjW1.Count -eq 2) -and (@($sjPrev.Owed).Count -eq 0) -and ($sjR1.Open.Count -eq 2) -and (@(@($sjR1.Open.Values) | ForEach-Object { $_.Case }) -contains 'UI.S.B') -and ($sjW2.Count -eq 0) -and ($sjW3.Count -eq 1) -and ($sjR2.Open.Count -eq 1) -and (@($sjR2.Open.Values)[0].Case -eq 'UI.S.B') -and (@($sjR2.Bad).Count -eq 1) -and ($sjT1.Count -eq 2) -and ($sjT2.Count -eq 0) -and ($sjT3.Count -eq 1) -and (@($sjTOpen.Cases).Count -eq 1) -and ($sjIds['UI.S.A(n: 1)'] -eq 'rows:aaaa') -and ($sjT4.Count -eq 0) -and ($sjT5.Count -eq 1) -and (($sjTOcc -join ',') -eq '2,3') -and ($sjT6.Count -eq 2) -and ($sjTIds['UI.S.D'] -eq 'rows:dddd')) 's52-staging-survives-a-crash' "w1=$($sjW1.Count) open1=$($sjR1.Open.Count) w2=$($sjW2.Count) w3=$($sjW3.Count) open2=$(@(@($sjR2.Open.Values) | ForEach-Object { $_.Case }) -join ',') twins=$($sjT1.Count)/$($sjT2.Count)/$($sjT3.Count) bad=$(@($sjR2.Bad) -join ',')"
 # D00 T02 §52 item 10: mixed versions. A population/2 fingerprint is
 # refused by the checker (regen named) but read by a historical proof
 # reader; a streak bound under /2 reads stale by schema name under /3,
@@ -762,7 +771,10 @@ $i3Expect = [pscustomobject]@{ RunStartUtc = $trExpect.RunStartUtc; Assembly = $
 $i3a = Read-TrxCaseResults $i3In $i3Expect
 $i3b = Read-TrxCaseResults $i3NoDefs $i3Expect
 $i3c = Read-TrxCaseResults $trGood $i3Expect
-Assert ($i3a.Ok -and (-not $i3b.Ok) -and (@($i3b.Refusals | Where-Object { $_ -like 'unmatched: nodefs.trx carries no test definitions*' }).Count -eq 1) -and (-not $i3c.Ok) -and (@($i3c.Refusals | Where-Object { $_ -like "foreign: good.trx is outside this run's results directory*" }).Count -eq 1)) 's52-bound-trx-needs-definitions-and-its-run-folder' ((@($i3b.Refusals) + @($i3c.Refusals)) -join ' | ')
+# R2-A1: under an expectation a result without a testId refuses.
+$i3NoId = & $trMake 'run-1\noid.trx' '2026-09-26T02:40:00Z' $trAsm @('<UnitTestResult executionId="e9" testName="UI.T.A" outcome="Passed" />') $trDefs
+$i3d = Read-TrxCaseResults $i3NoId $i3Expect
+Assert ($i3a.Ok -and (-not $i3b.Ok) -and (@($i3b.Refusals | Where-Object { $_ -like 'unmatched: nodefs.trx carries no test definitions*' }).Count -eq 1) -and (-not $i3c.Ok) -and (@($i3c.Refusals | Where-Object { $_ -like "foreign: good.trx is outside this run's results directory*" }).Count -eq 1) -and (-not $i3d.Ok) -and (@($i3d.Refusals | Where-Object { $_ -like 'unmatched: result 1 (UI.T.A) has no testId*' }).Count -eq 1)) 's52-bound-trx-needs-definitions-and-its-run-folder' ((@($i3b.Refusals) + @($i3c.Refusals)) -join ' | ')
 # D00 T02 §52 item 4: an excluded case (listed, selected by no leg)
 # needs a ledger row with a reason, an owner, and a live review date; a
 # missing owner, an expired review, a missing row, a duplicate, and a
@@ -846,6 +858,7 @@ $pbRoot = Join-Path $dir 's52-binding'
 $null = New-Item -ItemType Directory -Force -Path (Join-Path $pbRoot 'tests\UI'), (Join-Path $pbRoot 'Bin\UI\Debug')
 Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'tests\UI\TestPopulation.fingerprint') -Destination (Join-Path $pbRoot 'tests\UI\TestPopulation.fingerprint')
 Set-Content -LiteralPath (Join-Path $pbRoot 'Bin\UI\Debug\build-inputs.digest') -Value @('aaaaaaaaaaaaaaaa', 'src/x.cs 1') -Encoding UTF8
+Set-Content -LiteralPath (Join-Path $pbRoot 'Bin\UI\Debug\build-binding.txt') -Value @('out UI.dll 00') -Encoding UTF8
 $pb1 = Get-ProofBinding $pbRoot 'c0ffee1'
 Set-Content -LiteralPath (Join-Path $pbRoot 'Bin\UI\Debug\build-inputs.digest') -Value @('bbbbbbbbbbbbbbbb', 'src/x.cs 2') -Encoding UTF8
 $pb2 = Get-ProofBinding $pbRoot 'c0ffee1'
@@ -863,12 +876,17 @@ $pbE4 = $pbU4.Incidents['INC-5200a001'].passStreak
 $pbU5 = Update-IncidentLedger $pbU4.Incidents @() 's5' $pbPass @{} 5 @{} $pb4 '' $pbDesc
 $pbE5 = $pbU5.Incidents['INC-5200a001'].passStreak
 $pbAll = @($pbU2.Lines) + @($pbU4.Lines) + @($pbU5.Lines)
-Assert (($pb1 -like 'population=* build=aaaaaaaaaaaaaaaa filters=* config=Debug schema=population/3 candidate=c0ffee1') -and ($pb1 -notlike '*population=unknown*') -and ($pb1 -notlike '*filters=unknown*') -and ([int]$pbE2 -eq 1) -and ((@($pbU2.Lines | Where-Object { $_ -like '*streak reset (build aaaaaaaaaaaaaaaa -> bbbbbbbbbbbbbbbb: the earlier passes stand stale)*' }).Count) -eq 1) -and ([int]$pbE4 -eq 3) -and ((@($pbU4.Lines) -join '') -notlike '*streak reset*') -and ([int]$pbE5 -eq 1) -and ((@($pbU5.Lines | Where-Object { $_ -like '*streak reset (candidate c0ffee2 -> badbad3: not a descendant: *' }).Count) -eq 1)) 's52-proof-reads-stale-after-a-source-edit-with-identical-cases' ("pb1=$pb1 e2=$pbE2 e4=$pbE4 e5=$pbE5 | " + ($pbAll -join ' | '))
+Assert (($pb1 -like 'population=* build=aaaaaaaaaaaaaaaa binaries=* filters=* config=Debug schema=population/3 candidate=c0ffee1') -and ($pb1 -notlike '*population=unknown*') -and ($pb1 -notlike '*filters=unknown*') -and ([int]$pbE2 -eq 1) -and ((@($pbU2.Lines | Where-Object { $_ -like '*streak reset (build aaaaaaaaaaaaaaaa -> bbbbbbbbbbbbbbbb: the earlier passes stand stale)*' }).Count) -eq 1) -and ([int]$pbE4 -eq 3) -and ((@($pbU4.Lines) -join '') -notlike '*streak reset*') -and ([int]$pbE5 -eq 1) -and ((@($pbU5.Lines | Where-Object { $_ -like '*streak reset (candidate c0ffee2 -> badbad3: not a descendant: *' }).Count) -eq 1)) 's52-proof-reads-stale-after-a-source-edit-with-identical-cases' ("pb1=$pb1 e2=$pbE2 e4=$pbE4 e5=$pbE5 | " + ($pbAll -join ' | '))
+# R2-C1: a descendant keeps the streak only with identical binaries.
+$pbBinSame = Get-ProofBindingChange 'population=p build=b binaries=x1 candidate=c0ffee1' 'population=p build=b binaries=x1 candidate=c0ffee2' $pbDesc
+$pbBinDiff = Get-ProofBindingChange 'population=p build=b binaries=x1 candidate=c0ffee1' 'population=p build=b binaries=x2 candidate=c0ffee2' $pbDesc
+$pbBinUnk = Get-ProofBindingChange 'population=p build=b binaries=unknown candidate=c0ffee1' 'population=p build=b binaries=unknown candidate=c0ffee2' $pbDesc
+Assert (($pbBinSame -eq '') -and ($pbBinDiff -like '*binaries x1 -> x2*') -and ($pbBinDiff -like '*candidate c0ffee1 -> c0ffee2: the binaries are not provably the same*') -and ($pbBinUnk -like '*candidate c0ffee1 -> c0ffee2: the binaries are not provably the same*')) 's52-descendant-needs-identical-binaries' "same=$pbBinSame | diff=$pbBinDiff | unk=$pbBinUnk"
 $pbF = Get-ProofBindingChange 'population=p build=b filters=f1 config=Debug candidate=c0ffee1' 'population=p build=b filters=f2 config=Release candidate=c0ffee1' $pbDesc
 $pbLegacy = Get-ProofBindingChange 'p' 'population=p build=b filters=f config=Debug candidate=c0ffee1' $pbDesc
 $pbUnknown = Get-ProofBindingChange 'population=p build=b candidate=c0ffee1' 'population=p build=b candidate=unknown' $pbDesc
 $pbSame = Get-ProofBindingChange 'population=p build=b' 'population=p build=b' $pbDesc
-Assert (($pbF -eq 'filters f1 -> f2; config Debug -> Release') -and ($pbLegacy -like 'build unrecorded -> b; filters unrecorded -> f; config unrecorded -> Debug; candidate unrecorded -> c0ffee1: not a descendant') -and ($pbUnknown -eq 'candidate c0ffee1 -> unknown: not a descendant') -and ($pbSame -eq '')) 's52-every-binding-part-counts' "f=$pbF | legacy=$pbLegacy | unknown=$pbUnknown | same=$pbSame"
+Assert (($pbF -eq 'filters f1 -> f2; config Debug -> Release') -and ($pbLegacy -like 'build unrecorded -> b; filters unrecorded -> f; config unrecorded -> Debug; candidate unrecorded -> c0ffee1: the binaries are not provably the same') -and ($pbUnknown -eq 'candidate c0ffee1 -> unknown: the binaries are not provably the same') -and ($pbSame -eq '')) 's52-every-binding-part-counts' "f=$pbF | legacy=$pbLegacy | unknown=$pbUnknown | same=$pbSame"
 # D00 T02 §44 R1-F2: a retried case counts once per attempt set, so it
 # never discharges its unexecuted twin.
 $att = @(Merge-AttemptNames @(@('UI.D.Dup'), @('UI.D.Dup')))

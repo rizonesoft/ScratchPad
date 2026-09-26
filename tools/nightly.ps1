@@ -897,7 +897,11 @@ try {
       $nightOwedRows += @(Get-UnexecutedCaseRows $owed.Cases @() "interactive budget-cut $stamp")
       # Durable handoff (D00 T02 section 52 item 11): each cut case is
       # journaled with its receipt now, before the report exists.
-      try { $null = Add-StagedDebtLines (Join-Path $nightDir 'staged-debt.jsonl') @($owed.Cases) 'staged' $stamp "interactive budget-cut $stamp" } catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message) (the report and result still carry the rows)" }
+      try {
+        $cutIds = @{}
+        try { $cutIds = Get-OwedCaseIdentities @($owed.Cases) (Get-CaseIdentityRunner (Join-Path $Root 'tests\UI\UI.csproj')) } catch { $nightOwedRows += "- Budget-cut staging carries no identity tokens: $($_.Exception.Message)" }
+        $null = Add-StagedDebtLines (Join-Path $nightDir 'staged-debt.jsonl') @($owed.Cases) 'staged' $stamp "interactive budget-cut $stamp" $cutIds
+      } catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message) (the report and result still carry the rows)" }
       Write-Output "nightly: interactive cut stages $($owed.MethodCount) Night-owed rows"
     } catch {
       $nightOwedRows += "- Night-owed: collection unverifiable ($_) | collector filter: $collectFilter (full collection re-owed)"
@@ -1500,18 +1504,19 @@ $nightOwedRows += @(Get-ExecutionClosureNotes $carryClosed $ledgerUpd.Incidents)
 # A refused trx closes nothing and says why (D00 T02 section 52 item 5).
 foreach ($tr in @($script:TrxRefusals | Sort-Object -Unique)) { $nightOwedRows += "- Trx refused (counted nothing): $tr" }
 $owedCasesTonight = @(Merge-OwedCases $owedCasesTonight @($carry.Still))
-# Every obligation tonight is journaled (idempotent), and each case the
-# collection closed tonight closes its receipt (section 52 item 11).
-try {
-  $null = Add-StagedDebtLines $stagedPath @($owedCasesTonight) 'staged' $stamp 'owed at run end' $owedIdentitiesTonight
-  $null = Add-StagedDebtLines $stagedPath @(@($carryClosed) + @($migration.Retired)) 'collected' $stamp 'closed or retired tonight'
-} catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message)" }
 # Identity tokens for tonight's owed cases: carried cases keep their
 # original token, newly owed cut cases get tonight's (section 52 item 8).
 $owedIdentitiesTonight = [ordered]@{}
 $newOwedIds = @{}
 try { $newOwedIds = Get-OwedCaseIdentities @($owedCasesTonight | Where-Object { -not $migration.Ids.ContainsKey("$_") }) (Get-CaseIdentityRunner (Join-Path $Root 'tests\UI\UI.csproj')) } catch { $nightOwedRows += "- Owed case identities not recorded tonight: $($_.Exception.Message)" }
 foreach ($oc in @($owedCasesTonight | Sort-Object -Unique)) { if ($migration.Ids.ContainsKey("$oc")) { $owedIdentitiesTonight["$oc"] = $migration.Ids["$oc"] } elseif ($newOwedIds.ContainsKey("$oc")) { $owedIdentitiesTonight["$oc"] = $newOwedIds["$oc"] } }
+# Every obligation tonight is journaled (idempotent) with its identity
+# token (computed above; R2-I1), and each case the
+# collection closed tonight closes its receipt (section 52 item 11).
+try {
+  $null = Add-StagedDebtLines $stagedPath @($owedCasesTonight) 'staged' $stamp 'owed at run end' $owedIdentitiesTonight
+  $null = Add-StagedDebtLines $stagedPath @(@($carryClosed) + @($migration.Retired)) 'collected' $stamp 'closed or retired tonight'
+} catch { $nightOwedRows += "- Staging journal write failed: $($_.Exception.Message)" }
 if ($nightOwedRows.Count -gt 0) {
   $report += '### Night-owed (staged; triage files via add-todo)'
   $report += $nightOwedRows

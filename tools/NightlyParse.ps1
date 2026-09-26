@@ -1982,18 +1982,21 @@ function Read-StagedDebt([string]$Path) {
   # caller, never silently dropped).
   $open = [ordered]@{}
   $bad = @()
-  if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Open = $open; Bad = $bad } }
+  $maxOcc = @{}
+  if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc } }
   $n = 0
   foreach ($ln in [System.IO.File]::ReadAllLines($Path)) {
     $n++
     if ("$ln".Trim() -eq '') { continue }
     try { $o = $ln | ConvertFrom-Json -ErrorAction Stop } catch { $bad += $n; continue }
     if (("$($o.receipt)" -eq '') -or ("$($o.case)" -eq '')) { $bad += $n; continue }
-    if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = [pscustomobject]@{ Case = "$($o.case)"; Occurrence = $(try { [int]$o.occurrence } catch { 1 }); Token = "$($o.token)" } }
+    $occ = $(try { [int]$o.occurrence } catch { 1 })
+    $maxOcc["$($o.case)"] = [Math]::Max($occ, $(if ($maxOcc.ContainsKey("$($o.case)")) { $maxOcc["$($o.case)"] } else { 0 }))
+    if ("$($o.state)" -eq 'staged') { $open["$($o.receipt)"] = [pscustomobject]@{ Case = "$($o.case)"; Occurrence = $occ; Token = "$($o.token)" } }
     elseif ("$($o.state)" -eq 'collected') { $open.Remove("$($o.receipt)") }
     else { $bad += $n }
   }
-  return [pscustomobject]@{ Open = $open; Bad = $bad }
+  return [pscustomobject]@{ Open = $open; Bad = $bad; MaxOccurrence = $maxOcc }
 }
 
 function Get-StagedOpenCases($Read) {
@@ -2017,12 +2020,24 @@ function Add-StagedDebtLines([string]$Path, $Cases, [string]$State, [string]$Sta
   foreach ($c in @(@($Cases) | Where-Object { "$_" -ne '' })) { $k = "$c"; $want[$k] = 1 + $(if ($want.Contains($k)) { $want[$k] } else { 0 }) }
   foreach ($k in @($want.Keys)) {
     if ($State -eq 'staged') {
-      for ($i = 1; $i -le $want[$k]; $i++) {
-        $r = Get-StagedDebtReceipt $k $i
-        if ($cur.Open.Contains($r)) { continue }
-        $tok = if ($Identities.ContainsKey($k)) { "$($Identities[$k])" } else { '' }
-        $lines += ([pscustomobject][ordered]@{ receipt = $r; case = $k; occurrence = $i; token = $tok; state = 'staged'; stamp = $Stamp; why = $Why } | ConvertTo-Json -Compress)
+      # Reconcile against the open occurrences (R2-I2): only the shortfall
+      # stages, numbered past every occurrence ever issued for the case, so
+      # a collected receipt is never reused or resurrected. An open receipt
+      # without a token gains it (R2-I1) through a re-staged line.
+      $tok = if ($Identities.ContainsKey($k)) { "$($Identities[$k])" } else { '' }
+      $openHere = @($cur.Open.GetEnumerator() | Where-Object { $_.Value.Case -ceq $k } | Sort-Object { $_.Value.Occurrence })
+      foreach ($e in $openHere) {
+        if (($tok -ne '') -and ("$($e.Value.Token)" -eq '')) {
+          $lines += ([pscustomobject][ordered]@{ receipt = $e.Key; case = $k; occurrence = $e.Value.Occurrence; token = $tok; state = 'staged'; stamp = $Stamp; why = 'identity recorded' } | ConvertTo-Json -Compress)
+          $written += $e.Key
+        }
+      }
+      $next = 1 + $(if ($cur.MaxOccurrence.ContainsKey($k)) { [int]$cur.MaxOccurrence[$k] } else { 0 })
+      for ($i = $openHere.Count; $i -lt $want[$k]; $i++) {
+        $r = Get-StagedDebtReceipt $k $next
+        $lines += ([pscustomobject][ordered]@{ receipt = $r; case = $k; occurrence = $next; token = $tok; state = 'staged'; stamp = $Stamp; why = $Why } | ConvertTo-Json -Compress)
         $written += $r
+        $next++
       }
     } else {
       $openHere = @($cur.Open.GetEnumerator() | Where-Object { $_.Value.Case -ceq $k } | Sort-Object { $_.Value.Occurrence } | Select-Object -First $want[$k])
@@ -2119,6 +2134,13 @@ function Get-ProofBinding([string]$Root, [string]$Candidate) {
     $first = @(Get-Content -LiteralPath $digestFile -TotalCount 1)
     if (($first.Count -gt 0) -and ("$($first[0])".Trim() -match '^[0-9a-f]{16}$')) { $build = "$($first[0])".Trim() }
   }
+  # The binaries under test (R2-C1): a hash of the UI build binding (the
+  # UI assembly's hash plus each reference's compile evidence and copy),
+  # so the descendant-candidate exception holds only for byte-identical
+  # binaries.
+  $binaries = 'unknown'
+  $bindingFile = Join-Path $Root 'Bin\UI\Debug\build-binding.txt'
+  if (Test-Path -LiteralPath $bindingFile) { $binaries = (Get-FileSha256 $bindingFile).Substring(0, 16) }
   $filters = 'unknown'
   $fp = Read-TestPopulationFile $fpPath -AllowPrevious
   $schema = 'unknown'
@@ -2126,7 +2148,7 @@ function Get-ProofBinding([string]$Root, [string]$Candidate) {
   $cand = if ("$Candidate".Trim() -match '^[0-9a-f]{7,40}$') { "$Candidate".Trim() } else { 'unknown' }
   # The fingerprint version the population was read under (section 52
   # item 10): a migration reads stale by name.
-  return "population=$pop build=$build filters=$filters config=Debug schema=$schema candidate=$cand"
+  return "population=$pop build=$build binaries=$binaries filters=$filters config=Debug schema=$schema candidate=$cand"
 }
 
 function ConvertFrom-ProofBinding([string]$Binding) {
@@ -2151,7 +2173,9 @@ function Get-ProofBindingChange([string]$Was, [string]$Now, [scriptblock]$Descen
   # keeps the streak (its binaries already answer to the build digest, so
   # a docs-only commit never erases recovery evidence), while a candidate
   # that does not descend (a rewrite, another branch) or whose ancestry
-  # cannot be read resets it.
+  # cannot be read resets it. The exception needs the binaries part
+  # (the build binding's hash) present and unchanged on both sides, so a
+  # descendant that rebuilt different binaries always resets (R2-C1).
   $w = ConvertFrom-ProofBinding $Was
   $n = ConvertFrom-ProofBinding $Now
   $changes = @()
@@ -2160,12 +2184,13 @@ function Get-ProofBindingChange([string]$Was, [string]$Now, [scriptblock]$Descen
     $nv = "$($n[$k])"
     if ($wv -ceq $nv) { continue }
     if ($k -eq 'candidate') {
-      if (($wv -ne 'unrecorded') -and ($wv -ne 'unknown') -and ($nv -ne 'unknown') -and ($null -ne $Descends)) {
+      $sameBinaries = ($n.Contains('binaries') -and $w.Contains('binaries') -and ("$($n['binaries'])" -ne 'unknown') -and ("$($n['binaries'])" -ceq "$($w['binaries'])"))
+      if ($sameBinaries -and ($wv -ne 'unrecorded') -and ($wv -ne 'unknown') -and ($nv -ne 'unknown') -and ($null -ne $Descends)) {
         $ok = $false
         try { $ok = [bool](& $Descends $wv $nv) } catch { $ok = $false }
         if ($ok) { continue }
       }
-      $changes += "candidate $wv -> ${nv}: not a descendant"
+      $changes += $(if ($sameBinaries) { "candidate $wv -> ${nv}: not a descendant" } else { "candidate $wv -> ${nv}: the binaries are not provably the same" })
       continue
     }
     $changes += "$k $wv -> $nv"
@@ -2228,6 +2253,7 @@ function Read-TrxCaseResults([string]$TrxPath, $Expect = $null) {
     $id = "$($r.testId)"
     $name = "$($r.testName)"
     if (($id -eq '') -and ("$($r.executionId)" -eq '')) { $refuse.Add("ambiguous: result $n ($name) has neither testId nor executionId"); continue }
+    if (($id -eq '') -and ($null -ne $Expect)) { $refuse.Add("unmatched: result $n ($name) has no testId, so no test definition can match it"); continue }
     if ($id -eq '') { $id = "exec-$($r.executionId)" }
     elseif ((($defs.Count -gt 0) -or ($null -ne $Expect)) -and (-not $defs.ContainsKey($id))) { $refuse.Add("unmatched: result $n ($name) names testId $id, which no test definition carries"); continue }
     $end = [datetime]::MinValue
