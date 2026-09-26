@@ -773,6 +773,22 @@ $gRr = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-11-01')
 Remove-Item (Join-Path $nd 'ack-corruption.json')
 Assert (@($gRr.Lines | Where-Object { $_ -like "*CORRECTIVE ack-rd.md ($fnd9): open (duplicate of $runRr; open while its action ack-rr-damaged.md ($fnd9) is open*" }).Count -eq 1) 's46-repaired-alias-answers-for-its-run' ($gRr.Lines -join ' | ')
 
+# D00 T02 section 47 R1-I1: the gate reads the alert ledger beside the run
+# acks. A committed alert-acks.md row acknowledges; a row only in the
+# working copy reads pending and leaves its alert unowned; neither blocks.
+$alLedger = [pscustomobject]@{ schema = 'alerts/1'; alerts = @(
+  [pscustomobject]@{ id = 'h0st0001|runa-duration'; occurrence = 'o1'; state = 'open'; firstNight = '2026-11-01'; lastNight = '2026-11-02'; evaluated = 'e2'; line = 'ALERT runa-duration: 900s'; closedNight = ''; notifiedOpen = $true; notifiedClose = $true },
+  [pscustomobject]@{ id = 'h0st0001|pass-rate'; occurrence = 'o2'; state = 'open'; firstNight = '2026-11-01'; lastNight = '2026-11-02'; evaluated = 'e2'; line = 'ALERT pass-rate: 90%'; closedNight = ''; notifiedOpen = $true; notifiedClose = $true }) }
+ConvertTo-Json $alLedger -Depth 5 | Set-Content -Path (Join-Path $nd 'alerts.json') -Encoding UTF8
+$alAckPath = Join-Path $acks 'alert-acks.md'
+'| Alert | Owner | Date | Reason |', '| --- | --- | --- | --- |', '| h0st0001|runa-duration | operator | 2026-11-02 | slower suite by design |' | Set-Content -Path $alAckPath -Encoding UTF8
+Save-All 'alert ack'
+Add-Content -Path $alAckPath -Value '| h0st0001|pass-rate | operator | 2026-11-02 | drafted, not committed |' -Encoding UTF8
+$gAl = Test-Acknowledgements $ws $acks (Get-Dem) (Get-Date '2026-11-02')
+$alOk = (@($gAl.Alerts | Where-Object { $_ -like '- ALERT acknowledged: h0st0001|runa-duration (operator on 2026-11-02: slower suite*' }).Count -eq 1) -and (@($gAl.Alerts | Where-Object { $_ -like '- ALERT ack pending (uncommitted, not yet effective): | h0st0001|pass-rate*' }).Count -eq 1) -and (@($gAl.Alerts | Where-Object { $_ -like '- ALERT unowned: h0st0001|pass-rate open since 2026-11-01*' }).Count -eq 1) -and (@($gAl.Lines | Where-Object { $_ -like '- ALERT *' }).Count -eq 3)
+Assert $alOk 's47-gate-reads-committed-alert-acks' ($gAl.Alerts -join ' | ')
+Remove-Item (Join-Path $nd 'alerts.json')
+
 Remove-Item $ws -Recurse -Force
 if ($failures -gt 0) { Write-Output "NightlyAck.Tests: $failures FAILURE(S)"; exit 1 }
 Write-Output 'NightlyAck.Tests: all green'

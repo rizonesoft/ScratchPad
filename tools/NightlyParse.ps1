@@ -3904,16 +3904,30 @@ function Get-AlertIdentity([string]$Line, [string]$HostKey) {
   return $id
 }
 
-function Read-AlertAcks([string]$Path) {
+function Read-AlertAcks([string]$Path, [string]$Root = '') {
   # Acknowledged alerts (D00 T02 section 47 item 4): rows `| <alert id> |
   # <owner> | <YYYY-MM-DD> | <reason> |` in docs/nightly-acks/alert-acks.md,
   # the acknowledgement home §39's gate reads beside the run acks, so a
   # regression on a passing run (a duration shift, a recurring flake on a
   # green night) is owned without a RED to hang it on. An id is the alert
   # identity (`host|series` or `host|series|INC-...`). Returns id -> text.
+  # With $Root, the gate's integrity rule applies (section 47 R1-I1): only
+  # the committed file counts, as for a run ack, and rows present only in
+  # the working copy are listed in $script:AlertAcksPending.
   $map = @{}
+  $script:AlertAcksPending = @()
   if (-not (Test-Path -LiteralPath $Path)) { return $map }
-  foreach ($ln in (Get-Content -LiteralPath $Path -Encoding UTF8)) {
+  $text = @(Get-Content -LiteralPath $Path -Encoding UTF8)
+  if ($Root -ne '') {
+    $full = (Resolve-Path -LiteralPath $Path).Path; $rootFull = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\', '/')
+    $rel = if ($full.StartsWith("$rootFull\", [System.StringComparison]::OrdinalIgnoreCase)) { $full.Substring($rootFull.Length + 1) -replace '\\', '/' } else { '' }
+    $eap = $ErrorActionPreference
+    $committed = @()
+    try { $ErrorActionPreference = 'Continue'; if ($rel -ne '') { $committed = @(git -C $Root show "HEAD:$rel" 2>$null); if ($LASTEXITCODE -ne 0) { $committed = @() } } } finally { $ErrorActionPreference = $eap }
+    $script:AlertAcksPending = @($text | Where-Object { ("$_" -match '^\|\s*[0-9a-z]+\|') -and ($committed -notcontains "$_") })
+    $text = $committed
+  }
+  foreach ($ln in $text) {
     $m = [regex]::Match($ln, '^\|\s*([0-9a-z]+\|[a-z-]+(?:\|INC-[0-9a-f]{8})?)\s*\|\s*([^|]+?)\s*\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]*?)\s*\|')
     if ($m.Success -and ($m.Groups[2].Value -notmatch '^(TBD|TODO|none|n/a|unknown|\?)$')) { $map[$m.Groups[1].Value] = "$($m.Groups[2].Value) on $($m.Groups[3].Value): $($m.Groups[4].Value)" }
   }
@@ -4094,6 +4108,15 @@ function Restore-MetricsStore([string]$Path) {
         try { $br = [int]$b.Rows[$k].revision } catch { }
         if ($cr -gt $br) { $lost += "$k (revision $cr; the backup holds $br)" }
       }
+      # Unreadable lines of the damaged store are loss the comparison
+      # cannot see (section 47 R1-A2): they are counted as lost and the
+      # damaged store is kept aside for repair, never overwritten away.
+      if (@($cur.Malformed).Count -gt 0) { $lost += "$(@($cur.Malformed).Count) unreadable line(s) (line $(@($cur.Malformed) -join ', ')) whose rows cannot be compared" }
+    }
+    $kept = ''
+    if ((Test-Path -LiteralPath $Path) -and (($null -eq $cur) -or (@($cur.Malformed).Count -gt 0))) {
+      $kept = "$Path.damaged-$((Get-Date).ToString('yyyyMMdd-HHmmss'))"
+      Copy-Item -LiteralPath $Path -Destination $kept -Force
     }
     # The disclosure contract re-applies on restore (section 47 item 11): a
     # backup written before a rule existed never reintroduces a value the
@@ -4101,6 +4124,7 @@ function Restore-MetricsStore([string]$Path) {
     $lines = @($b.Rows.Keys | ForEach-Object { $clean = ConvertTo-Json (Protect-DisclosedObject $b.Rows[$_]) -Depth 6 -Compress; if ($clean -ne (ConvertTo-Json $b.Rows[$_] -Depth 6 -Compress)) { $clean } else { $b.Raw[$_] } }) + @($b.Supersessions | ForEach-Object { ConvertTo-Json (Protect-DisclosedObject $_) -Compress })
     Write-AtomicReport $lines $Path
     $lossText = if ($null -eq $cur) { '; rows written since the backup cannot be listed (the store is unreadable): rerun the trend to re-derive them from any result still on disk' } elseif ($lost.Count -gt 0) { "; LOST since the backup: $($lost -join ', ') (re-derived on the next trend run only while their results remain on disk)" } else { '; nothing lost since the backup' }
+    if ($kept -ne '') { $lossText += "; the damaged store is kept as $(Split-Path -Leaf $kept)" }
     return "metrics: restored $($b.Rows.Count) row(s) from $bak$(if ($b.Rejected -gt 0) { "; $($b.Rejected) line(s) the compaction had already rejected stay dropped" })$lossText"
   })
 }
@@ -4181,6 +4205,8 @@ $script:TrendTailMin = 20
 # short of samples for this many nights says so.
 $script:TrendBaselineExpiryDays = 60
 $script:TrendProlongedNights = 10
+# How far back the insufficiency streak is counted (section 47 R1-A1).
+$script:TrendStreakScan = 60
 
 function Get-RunCohort($Result) {
   # The comparison cohort (section 32 item 4): environment (OS, DPI,
@@ -4285,7 +4311,9 @@ function Format-AlertContext($Latest, $Baseline, [string]$Name, $Values = $null,
   # values it compared, how many samples, which nights were left out and
   # why, and what recovers it.
   $calc = ''
-  if ($null -ne $Values) { $vals = @(@($Values) | ForEach-Object { [math]::Round([double]$_, 1) }); $calc += "; baseline values [$($vals -join ', ')]; samples $($vals.Count)" }
+  # A value is a number, or a labeled observation (a recurrence window's
+  # `<night> hit`); a missing night is not a sample.
+  if ($null -ne $Values) { $vals = @(@($Values) | ForEach-Object { if ($_ -is [string]) { "$_" } else { [math]::Round([double]$_, 1) } }); $calc += "; baseline values [$($vals -join ', ')]; samples $(@($vals | Where-Object { "$_" -notlike '* missing' }).Count)" }
   $exText = if (@($Excluded).Count -gt 0) { @($Excluded) -join '; ' } else { 'none' }
   $calc += "; excluded nights: $exText"
   if ($Recovery -ne '') { $calc += "; recovers when $Recovery" }
@@ -4309,7 +4337,7 @@ function Protect-DisclosedText([string]$Text) {
   return $t
 }
 
-function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
+function Get-TrendAlerts($Rows, [int]$Baseline = 7, [switch]$NoStreak) {
   # Regression alerts from the series (D00 T02 §25 item 6), over
   # canonical native nights only (series rule): RunA duration past 125%
   # of the median of the previous nights and at least 60 s over; the
@@ -4379,13 +4407,32 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
       $prev = @($reuse) + @($prev)
     }
   }
-  # How long this cohort has run (section 47 item 5): the nights from the
-  # end of the series that share the evaluated night's cohort.
-  $cohortStreak = 0
-  for ($ci = $r.Count - 1; $ci -ge 0; $ci--) { if (@(Get-CohortChanges $latest @($r[$ci])).Count -eq 0) { $cohortStreak++ } else { break } }
+  # How long a series has had no actionable baseline (section 47 R1-A1):
+  # the trailing nights each evaluated as insufficient for it, across
+  # cohort changes, so a harness that changes every night still reaches
+  # the prolonged line. Each earlier night is judged by this same function
+  # over the series up to it (with the streak itself off); a night with
+  # no earlier night counts as insufficient. The scan stops at the first
+  # actionable night or $script:TrendStreakScan nights.
+  $streakFor = {
+    param($series)
+    $n = 1
+    $saved = $script:LastTrendEvaluation
+    try {
+      for ($k = $r.Count - 2; ($k -ge 0) -and ($n -lt $script:TrendStreakScan); $k--) {
+        if ($k -lt 1) { $n++; continue }
+        $sub = @(Get-TrendAlerts @($r[0..$k]) $Baseline -NoStreak)
+        if (@($sub | Where-Object { "$_".StartsWith("- Insufficient data: $series (") }).Count -gt 0) { $n++ } else { break }
+      }
+    } finally { $script:LastTrendEvaluation = $saved }
+    $n
+  }
   $la = $null
   try { $la = [double]$latest.legs.'run-a'.testSeconds } catch { }
   $pa = @($prev | ForEach-Object { try { if ($null -ne $_.legs.'run-a'.testSeconds) { [double]$_.legs.'run-a'.testSeconds } } catch { } })
+  # Nights in the baseline that measured no duration are exclusions too
+  # (section 47 R1-C1), named with their reason.
+  $durExcluded = @($excludedNights) + @($prev | Where-Object { $v = $null; try { $v = $_.legs.'run-a'.testSeconds } catch { }; $null -eq $v } | ForEach-Object { "$(Get-ResultNight $_) (no RunA duration measured)" })
   # Each series is gated on its own samples (R1-I2): a duration alert
   # needs $script:TrendMinSamples measured durations, a pass-rate alert
   # as many measured rates; recurrence needs none.
@@ -4393,7 +4440,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
   # A cohort still short of samples after many nights says so plainly
   # (section 47 item 5): frequent harness or environment changes must not
   # disable detection silently.
-  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if ($cohortStreak -ge $script:TrendProlongedNights) { $t += "`n- PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $cohortStreak night(s) in this cohort; check what keeps it from measuring (harness churn, missing timings) before trusting silence" }; $t }
+  $insufficient = { param($series, $n) $t = "- Insufficient data: $series ($n measured baseline night(s) of $($script:TrendMinSamples) needed$gap; evaluated night $(Get-ResultNight $latest) excluded from its own baseline); no $series alert is actionable yet"; if (-not $NoStreak) { $st = & $streakFor $series; if ($st -ge $script:TrendProlongedNights) { $t += "`n- PROLONGED INSUFFICIENCY: $series has had no actionable baseline for $st night(s)$(if ($st -ge $script:TrendStreakScan) { ' or more' }) (counted across cohort changes); check what keeps it from measuring (harness churn, missing timings) before trusting silence" } }; $t }
   if ($pa.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'runa-duration' $pa.Count) }
   elseif (($null -ne $la) -and ($pa.Count -gt 0)) {
     $med = Get-Percentile $pa 50
@@ -4401,7 +4448,7 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
       # A zero baseline has no percentage (R3-F1): the delta rides alone.
       $pct = if ($med -gt 0) { "+$([int][math]::Round(100 * ($la - $med) / $med))%" } else { "+$([int]($la - $med))s over a zero baseline" }
       $alerts += "- ALERT runa-duration: $([int]$la)s on $(Get-ResultNight $latest) vs baseline $([int]$med)s ($pct, median of $($pa.Count) night(s))"
-      $alerts += Format-AlertContext $latest $prev 'runa-duration' $pa $excludedNights "RunA is back under 125% of the $([int]$med)s baseline median or within 60 s of it on a later night"
+      $alerts += Format-AlertContext $latest $prev 'runa-duration' $pa $durExcluded "RunA is back under 125% of the $([int]$med)s baseline median or within 60 s of it on a later night"
     }
   }
   # An unproven night (a killed or budget-cut leg) contributes no rate,
@@ -4427,18 +4474,19 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
     if (($recentMed -gt 1.2 * $priorMed) -and (($recentMed - $priorMed) -ge 60)) {
       $shift = if ($priorMed -gt 0) { "+$([int][math]::Round(100 * ($recentMed - $priorMed) / $priorMed))%" } else { "+$([int]($recentMed - $priorMed))s over a zero baseline" }
       $alerts += "- ALERT runa-shift: last 3 nights median $([int]$recentMed)s vs the prior 7 nights median $([int]$priorMed)s ($shift, sustained)"
-      $alerts += Format-AlertContext $latest (@($priorRows) + @($recentRows | Where-Object { $_ -ne $latest })) 'runa-shift'
+      $alerts += Format-AlertContext $latest (@($priorRows) + @($recentRows | Where-Object { $_ -ne $latest })) 'runa-shift' @($priorRows | ForEach-Object { [double]$_.legs.'run-a'.testSeconds }) $excludedNights "the last 3 nights' median returns under 120% of the prior 7 nights' median or within 60 s of it"
     }
   }
   $rate = { param($x) $p = 0; $f = 0; $unproven = $false; foreach ($leg in @('run-a', 'run-b', 'interactive')) { try { $o = $x.legs.$leg; if (($null -ne $o) -and (($null -eq $o.ran) -or [bool]$o.ran)) { $p += [int]$o.passed; $f += [int]$o.failed; if ([bool]$o.killed -or [bool]$o.cut) { $unproven = $true } } } catch { } }; if ((-not $unproven) -and (($p + $f) -gt 0)) { 100.0 * $p / ($p + $f) } else { $null } }
   $lr = & $rate $latest
   $pr = @($prev | ForEach-Object { & $rate $_ } | Where-Object { $null -ne $_ })
+  $rateExcluded = @($excludedNights) + @($prev | Where-Object { $null -eq (& $rate $_) } | ForEach-Object { "$(Get-ResultNight $_) (pass rate unproven: a killed or cut leg, or no executions)" })
   if ($pr.Count -lt $script:TrendMinSamples) { $alerts += (& $insufficient 'pass-rate' $pr.Count) }
   elseif (($null -ne $lr) -and ($pr.Count -gt 0)) {
     $med = Get-Percentile $pr 50
     if ($lr -lt ($med - 2)) {
       $alerts += "- ALERT pass-rate: $([math]::Round($lr, 1))% on $(Get-ResultNight $latest) vs baseline $([math]::Round($med, 1))% ($([math]::Round($lr - $med, 1)) points, median of $($pr.Count) night(s))"
-      $alerts += Format-AlertContext $latest $prev 'pass-rate' $pr $excludedNights "the pass rate returns within 2 points of the $([math]::Round($med, 1))% baseline median on a later night"
+      $alerts += Format-AlertContext $latest $prev 'pass-rate' $pr $rateExcluded "the pass rate returns within 2 points of the $([math]::Round($med, 1))% baseline median on a later night"
     }
   }
   $aliasMap = Get-IncidentAliases $Rows
@@ -4455,7 +4503,13 @@ function Get-TrendAlerts($Rows, [int]$Baseline = 7) {
     $hits = @($recent | Where-Object { (& $ids $_) -contains $id })
     if ($hits.Count -gt 0) {
       $alerts += "- ALERT recurring-flake: $id on $(Get-ResultNight $latest) and $(($hits | ForEach-Object { Get-ResultNight $_ }) -join ', ')"
-      $alerts += Format-AlertContext $latest $hits 'recurring-flake' $null $excludedNights "$id does not recur on the next two nights"
+      # The recurrence window's values (section 47 R1-C1): each of the two
+      # nights before, hit, clear, or missing, so the sample count is
+      # visible too.
+      $winVals = @()
+      if ($windowed) { foreach ($dn in @($rFrom, $rTo)) { $at = @($recent | Where-Object { (Get-ResultNight $_) -eq $dn }); $winVals += $(if ($at.Count -eq 0) { "$dn missing" } elseif (@($at | Where-Object { (& $ids $_) -contains $id }).Count -gt 0) { "$dn hit" } else { "$dn clear" }) } }
+      else { $winVals = @($recent | ForEach-Object { "$(Get-ResultNight $_) $(if ((& $ids $_) -contains $id) { 'hit' } else { 'clear' })" }) }
+      $alerts += Format-AlertContext $latest $hits 'recurring-flake' $winVals $excludedNights "$id does not recur on the next two nights"
     }
   }
   return $alerts
@@ -6534,9 +6588,27 @@ function Test-Acknowledgements([string]$Root, [string]$AckDir, [hashtable]$Deman
       $lines += "- UNACKED$tag $id ($what, due $dueText)"
     }
   }
+  # Alerts on passing runs (section 47 R1-I1): the gate reads the alert
+  # ledger beside the run acks, so an open alert reads acknowledged (by a
+  # committed row of alert-acks.md) or unowned; it never blocks the gate,
+  # since no run failed, but an unowned one persisting past its first
+  # night is named every time the gate runs.
+  $alertLines = @()
+  $alertPath = Join-Path $Root 'build\nightly\alerts.json'
+  if (Test-Path -LiteralPath $alertPath) {
+    try {
+      $alAcks = Read-AlertAcks (Join-Path $AckDir 'alert-acks.md') $Root
+      foreach ($pl in @($script:AlertAcksPending)) { $alertLines += "- ALERT ack pending (uncommitted, not yet effective): $("$pl".Trim())" }
+      foreach ($ae in @(@((Read-AlertLedger $alertPath).alerts) | Where-Object { ($null -ne $_) -and ("$($_.state)" -eq 'open') })) {
+        if ($alAcks.ContainsKey("$($ae.id)")) { $alertLines += "- ALERT acknowledged: $($ae.id) ($($alAcks["$($ae.id)"]))" }
+        elseif ("$($ae.lastNight)" -ne "$($ae.firstNight)") { $alertLines += "- ALERT unowned: $($ae.id) open since $($ae.firstNight), still firing $($ae.lastNight); acknowledge it in docs/nightly-acks/alert-acks.md" }
+      }
+    } catch { $alertLines += "- ALERT ledger unreadable: $($_.Exception.Message)" }
+  }
+  $lines += $alertLines
   # The status view's inputs (section 46 item 13): the governing ack per
   # run and each demand's deadline.
-  return [pscustomobject]@{ Ok = ($unacked.Count -eq 0); Unacked = $unacked; ProofUnacked = $proofUnacked; Lines = $lines; Staged = $staged; Overdue = $overdue; Corrective = $corrective; CorrectiveOverdue = $corrOverdue; Governing = $acked; Dues = $dues; Claims = $claims }
+  return [pscustomobject]@{ Alerts = $alertLines; Ok = ($unacked.Count -eq 0); Unacked = $unacked; ProofUnacked = $proofUnacked; Lines = $lines; Staged = $staged; Overdue = $overdue; Corrective = $corrective; CorrectiveOverdue = $corrOverdue; Governing = $acked; Dues = $dues; Claims = $claims }
 }
 
 function Read-CorruptionRecord([string]$Path) {

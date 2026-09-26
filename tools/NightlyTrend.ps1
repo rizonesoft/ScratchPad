@@ -115,7 +115,7 @@ if (@($script:TrendAlertGroups).Count -gt 0) {
   try {
     $nNew = 0; $nPer = 0; $closedAll = @()
     foreach ($g in @($script:TrendAlertGroups)) {
-      $life = Update-AlertLedger @($g.Alerts) (Join-Path $NightDir 'alerts.json') $g.Evaluation @($supersessions | ForEach-Object { $_.Backfill }) (Read-AlertAcks $AlertAcksPath)
+      $life = Update-AlertLedger @($g.Alerts) (Join-Path $NightDir 'alerts.json') $g.Evaluation @($supersessions | ForEach-Object { $_.Backfill }) (Read-AlertAcks $AlertAcksPath (Split-Path -Parent $PSScriptRoot))
       $nNew += @($life.NewIds).Count; $nPer += @($life.Persisting).Count; $closedAll += @($life.Closed)
     }
     $lines += "- Alert lifecycle: $nNew new, $nPer persisting, $(@($closedAll).Count) closed$(if (@($closedAll).Count -gt 0) { ' (' + ((@($closedAll) | ForEach-Object { "$($_.Id) $($_.State)" }) -join '; ') + ')' })"

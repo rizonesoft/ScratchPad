@@ -858,6 +858,17 @@ $coldRows = @()
 foreach ($i in 1..11) { $n = New-Night ('2026-09-{0:d2}' -f $i) ('2026-09-{0:d2}-023000' -f $i) 600; $n.harness = 'eeee5555-ffff6666'; $n.legs.'run-a'.testSeconds = $null; $coldRows += $n }
 $g5b = @(Get-TrendAlerts $coldRows)
 Assert ((@($g5 | Where-Object { $_ -like '- Rebaseline: cohort returned; reusing *earlier same-cohort night(s)*' }).Count -eq 1) -and (@($g5 | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 1) -and (@($g5b | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 11 night(s)*' }).Count -eq 1)) 's47-returning-cohort-reuses-and-cold-start-escalates' (($g5 + @('||') + $g5b) -join ' | ')
+# R1-A1: a harness that changes every night still reaches the prolonged
+# line (the streak counts across cohort changes); R1-R1: a returning
+# cohort's baseline older than the expiry is never reused.
+$churn = @()
+foreach ($i in 1..12) { $n = New-Night ('2026-09-{0:d2}' -f $i) ('2026-09-{0:d2}-023000' -f $i) 600; $n.harness = ('{0:x8}-churn{1:d3}' -f $i, $i); $churn += $n }
+$g5c = @(Get-TrendAlerts $churn)
+$expRows = @()
+foreach ($i in 1..6) { $expRows += New-Night ('2026-06-{0:d2}' -f $i) ('2026-06-{0:d2}-023000' -f $i) 600 }
+foreach ($i in 1..3) { $n = New-Night ('2026-06-{0:d2}' -f (10 + $i)) ('2026-06-{0:d2}-023000' -f (10 + $i)) 600; $n.harness = 'cccc3333-dddd4444'; $expRows += $n }
+$g5d = @(Get-TrendAlerts (@($expRows) + @(New-Night '2026-09-10' '2026-09-10-023000' 5000)))
+Assert ((@($g5c | Where-Object { $_ -like '*PROLONGED INSUFFICIENCY: runa-duration has had no actionable baseline for 12 night(s) (counted across cohort changes)*' }).Count -eq 1) -and (@($g5d | Where-Object { $_ -like '- Rebaseline: cohort returned*' }).Count -eq 0) -and (@($g5d | Where-Object { $_ -like '- ALERT runa-duration*' }).Count -eq 0) -and (@($g5d | Where-Object { $_ -like '- Insufficient data: runa-duration (0 measured*' }).Count -eq 1)) 's47-churn-escalates-and-expired-baseline-is-not-reused' (($g5c + @('||') + $g5d) -join ' | ')
 # Item 6: a native row with counts never takes the backfill's population;
 # a tombstone blocks a refill.
 $mgS = Join-Path $d47 'merge.jsonl'
@@ -893,7 +904,9 @@ $null = Compress-MetricsStore $rs
 $null = Sync-MetricsStore $rs @((New-Night '2026-09-11' '2026-09-11-023000'))
 [System.IO.File]::AppendAllText($rs, "{torn`n")
 $rsOut = Restore-MetricsStore $rs
-Assert ($rsOut -like '*LOST since the backup: 2026-09-11-023000-pid1@h0st0001 (not in the backup)*') 's47-stale-restore-lists-lost-rows' $rsOut
+# R1-A2: the torn line is loss the comparison cannot see; it is counted
+# and the damaged store is kept aside.
+Assert (($rsOut -like '*LOST since the backup: 2026-09-11-023000-pid1@h0st0001 (not in the backup), 1 unreadable line(s) (line *) whose rows cannot be compared*') -and ($rsOut -like '*the damaged store is kept as restore.jsonl.damaged-*') -and ($rsOut -notlike '*nothing lost*') -and (@(Get-ChildItem -LiteralPath $d47 -Filter 'restore.jsonl.damaged-*').Count -eq 1)) 's47-stale-restore-lists-lost-rows' $rsOut
 # Item 11: a restore from a pre-rule backup yields sanitized rows, and the
 # migration rewrites the retained copy once.
 $ds = Join-Path $d47 'disc.jsonl'
@@ -938,6 +951,17 @@ $b14[0].harness = 'other000-harness'
 $l14 = New-Night '2026-09-27' '2026-09-27-023000' 5000
 $g14 = @(Get-TrendAlerts (@($b14) + @($l14)))
 $ctx14 = @($g14 | Where-Object { $_ -like '  - runa-duration context:*' })
+# R1-C1: a baseline night with no duration is an exclusion with its
+# reason, and a recurring flake names its window values and samples.
+$b14b = @(1..7 | ForEach-Object { New-Night ('2026-09-{0:d2}' -f (19 + $_)) ('2026-09-{0:d2}-023000' -f (19 + $_)) 600 })
+$b14b[2].legs.'run-a'.testSeconds = $null
+$b14b[6] | Add-Member -NotePropertyName incidents -NotePropertyValue @('INC-abcd1234 UI.Flaky') -Force
+$l14b = New-Night '2026-09-27' '2026-09-27-023000' 5000
+$l14b | Add-Member -NotePropertyName incidents -NotePropertyValue @('INC-abcd1234 UI.Flaky') -Force
+$g14b = @(Get-TrendAlerts (@($b14b) + @($l14b)))
+$ctx14b = @($g14b | Where-Object { $_ -like '  - runa-duration context:*' })
+$ctx14c = @($g14b | Where-Object { $_ -like '  - recurring-flake context:*' })
+Assert (($ctx14b.Count -eq 1) -and ($ctx14b[0] -like '*excluded nights: 2026-09-22 (no RunA duration measured)*') -and ($ctx14c.Count -eq 1) -and $ctx14c[0].Contains('baseline values [2026-09-25 clear, 2026-09-26 hit]; samples 2') -and ($ctx14c[0] -like '*recovers when INC-abcd1234 does not recur*')) 's47-alert-context-names-missing-measurements-and-flake-window' (($ctx14b + $ctx14c) -join ' | ')
 Assert (($ctx14.Count -eq 1) -and $ctx14[0].Contains('baseline values [600, 600, 600, 600, 600, 600]; samples 6') -and ($ctx14[0] -like '*excluded nights: 2026-09-20 (cohort: harness*') -and ($ctx14[0] -like '*recovers when RunA is back under 125% of the 600s baseline median*')) 's47-alert-context-explains-the-calculation' ($ctx14 -join ' | ')
 
 Remove-Item $dir -Recurse -Force
