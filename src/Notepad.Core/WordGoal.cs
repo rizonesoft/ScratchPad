@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 
 namespace Notepad.Core;
 
@@ -10,16 +11,19 @@ namespace Notepad.Core;
 // count against the goal (the words the strip already shows), not words
 // added since the goal was set. Cost of changing: a baseline captured at
 // set time and one subtraction.
-public static class WordGoal
+public static partial class WordGoal
 {
     public const int Max = 1_000_000;
 
-    // Whole numbers 1..Max; thousands separators and surrounding spaces
-    // are accepted. Returns the goal, or null with the message to show.
+    // Whole numbers 1..Max; surrounding spaces and correctly grouped
+    // thousands separators ("1,000") are accepted, misplaced ones ("1,,0",
+    // "10,", "1,00") are refused. Returns the goal, or null with the
+    // message to show.
     public static (int? Goal, string? Error) Parse(string? input)
     {
         string text = (input ?? string.Empty).Trim();
-        if (!int.TryParse(text, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out int goal))
+        if (!Grouped().IsMatch(text)
+            || !int.TryParse(text, NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out int goal))
         {
             return (null, "Enter a whole number of words.");
         }
@@ -41,6 +45,9 @@ public static class WordGoal
     // is a full line.
     public static double Percent(int words, int goal) =>
         goal <= 0 ? 0 : Math.Clamp(words * 100.0 / goal, 0, 100);
+
+    [GeneratedRegex(@"\A(?:\d+|\d{1,3}(?:,\d{3})+)\z")]
+    private static partial Regex Grouped();
 
     public static string Label(int? goal) =>
         goal is int g ? $"Word goal {g.ToString("N0", CultureInfo.InvariantCulture)}" : "Set word goal";

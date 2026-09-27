@@ -11,6 +11,8 @@ public sealed class WordGoalTests
     [InlineData(" 1 ", 1)]
     [InlineData("1,000", 1000)]
     [InlineData("1000000", 1000000)]
+    [InlineData("12,345", 12345)]
+    [InlineData("1,000,000", 1000000)]
     public void ValidGoalsParse(string input, int expected)
     {
         (int? goal, string? error) = WordGoal.Parse(input);
@@ -27,6 +29,11 @@ public sealed class WordGoalTests
     [InlineData("0", "Enter a goal of at least 1 word.")]
     [InlineData("1000001", "Enter a goal of at most 1,000,000 words.")]
     [InlineData("99999999999", "Enter a whole number of words.")]
+    [InlineData("1,,0", "Enter a whole number of words.")]
+    [InlineData("10,", "Enter a whole number of words.")]
+    [InlineData(",10", "Enter a whole number of words.")]
+    [InlineData("1,00", "Enter a whole number of words.")]
+    [InlineData("1,0000", "Enter a whole number of words.")]
     public void InvalidGoalsAreRefusedWithAMessage(string? input, string message)
     {
         (int? goal, string? error) = WordGoal.Parse(input);
