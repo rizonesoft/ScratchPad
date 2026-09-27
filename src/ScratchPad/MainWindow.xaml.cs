@@ -41,6 +41,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? wordsTimer;
     private string? wordsPending;
     private string? wordsCounted;
+    private bool wordsBusy;
+    private int wordsComputed;
     private bool liveWordsOff;
     private TextBox? hookedBox;
     bool statsDialogOpen;
@@ -1184,10 +1186,23 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void ScheduleWords(string text)
     {
-        if (liveWordsOff || statusBar is null || string.Equals(text, wordsCounted, StringComparison.Ordinal))
+        if (liveWordsOff || statusBar is null || closed)
         {
+            return;
+        }
+
+        if (string.Equals(text, wordsCounted, StringComparison.Ordinal))
+        {
+            // Back to what the strip already shows: nothing to count.
             wordsPending = null;
             wordsTimer?.Stop();
+            return;
+        }
+
+        // Caret moves and selection changes refresh the strip too; only a
+        // real text change restarts the pause, so they never postpone it.
+        if (string.Equals(text, wordsPending, StringComparison.Ordinal))
+        {
             return;
         }
 
@@ -1204,37 +1219,56 @@ public sealed partial class MainWindow : Window, IDisposable
         wordsTimer.Start();
     }
 
-    private void WordsTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    private void WordsTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => StartWordsCount();
+
+    // At most one count runs at a time. A pause that lands while one is
+    // running leaves its snapshot in wordsPending, and the running count
+    // starts it on completion, so only the latest text is ever queued.
+    private void StartWordsCount()
     {
-        if (wordsPending is not string snapshot)
+        if (wordsBusy || closed || wordsPending is not string snapshot)
         {
             return;
         }
 
         wordsPending = null;
+        wordsBusy = true;
         _ = Task.Run(() => LiveCounts.Compute(snapshot)).ContinueWith(
             done =>
             {
-                if (!done.IsCompletedSuccessfully)
-                {
-                    return;
-                }
-
-                string label = done.Result;
+                string? label = done.IsCompletedSuccessfully ? done.Result : null;
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    // A newer edit (or a closed window) supersedes this
-                    // result; only a count of the current text lands.
-                    if (statusBar is null || !string.Equals(ActiveText(), snapshot, StringComparison.Ordinal))
+                    wordsBusy = false;
+                    wordsComputed++;
+                    if (closed || statusBar is null)
                     {
                         return;
                     }
 
-                    wordsCounted = snapshot;
-                    statusBar.ShowWords(label);
+                    // A newer edit supersedes this result; only a count of
+                    // the current text lands.
+                    if (label is not null && string.Equals(ActiveText(), snapshot, StringComparison.Ordinal))
+                    {
+                        wordsCounted = snapshot;
+                        statusBar.ShowWords(label, wordsComputed);
+                    }
+
+                    StartWordsCount();
                 });
             },
             TaskScheduler.Default);
+    }
+
+    private void StopWordsCount()
+    {
+        wordsPending = null;
+        if (wordsTimer is not null)
+        {
+            wordsTimer.Stop();
+            wordsTimer.Tick -= WordsTimer_Tick;
+            wordsTimer = null;
+        }
     }
 
     private string ActiveText() =>
@@ -1621,6 +1655,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     public void Dispose()
     {
+        StopWordsCount();
         SettingsStore.Shared.Changed -= OnSettingsChanged;
         if (hookedBox is not null)
         {
@@ -1761,6 +1796,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         closed = true;
         StopReloadWatching();
+        StopWordsCount();
 
         // No close prompt here, by probe, not by omission (D01 T01 §7):
         // stock closes windows with dirty tabs silently for one tab and

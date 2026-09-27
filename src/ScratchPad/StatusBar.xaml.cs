@@ -24,11 +24,18 @@ internal sealed partial class StatusBar : UserControl
 
     // D01 T02 §9: the live words segment. The owner computes off the UI
     // thread and hands over the finished label.
-    public void ShowWords(string label)
+    public void ShowWords(string label, int computeCount)
     {
         ArgumentNullException.ThrowIfNull(label);
         WordsText.Text = label;
         AutomationProperties.SetName(WordsText, label);
+
+        // Test seam (test-run marker only): the number of counts the
+        // window has run, so the §9 drive can prove one per pause.
+        if (Environment.GetEnvironmentVariable(LaunchCapture.RunMarkerVariable) == "1")
+        {
+            AutomationProperties.SetHelpText(WordsText, "counts " + computeCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
     }
 
     // Test seam for the §9 typing benchmark's baseline leg: the strip as

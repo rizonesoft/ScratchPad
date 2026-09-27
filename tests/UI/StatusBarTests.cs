@@ -102,6 +102,7 @@ public sealed class StatusBarTests
             try
             {
                 WaitForSegmentName(window, "StatusWords", "9 words, 1 min read");
+                int before = ComputeCount(window);
                 var box = ContentBox(window);
                 var seen = new HashSet<string>(StringComparer.Ordinal);
                 string text = start;
@@ -116,6 +117,29 @@ public sealed class StatusBarTests
 
                 Assert.Equal(["9 words, 1 min read"], seen.ToArray());
                 WaitForSegmentName(window, "StatusWords", "17 words, 1 min read");
+                Thread.Sleep(800);
+                Assert.Equal(before + 1, ComputeCount(window));
+
+                // Selection changes refresh the strip but are not edits:
+                // toggling the selection every 100 ms for a second after
+                // an edit must not postpone the count past its pause.
+                text += " tail";
+                box.Text = text;
+                for (int i = 0; i < 10; i++)
+                {
+                    if (i % 2 == 0)
+                    {
+                        UiInput.SelectAllText(box);
+                    }
+                    else
+                    {
+                        UiInput.ClearSelection(box);
+                    }
+
+                    Thread.Sleep(100);
+                }
+
+                Assert.Equal("18 words, 1 min read", SegmentName(window, "StatusWords"));
 
                 box.Text = string.Empty;
                 WaitForSegmentName(window, "StatusWords", "0 words");
@@ -570,6 +594,15 @@ public sealed class StatusBarTests
     }
 
     static string SegmentName(Window window, string id) => Segment(window, id).Name ?? string.Empty;
+
+    // The words segment's compute counter (published only under the
+    // test-run marker): how many counts the window has run.
+    static int ComputeCount(Window window)
+    {
+        string help = Segment(window, "StatusWords").HelpText ?? string.Empty;
+        Assert.StartsWith("counts ", help, StringComparison.Ordinal);
+        return int.Parse(help["counts ".Length..], System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     // Tight poll for timing-sensitive drives (D01 T02 §9): 10 ms steps,
     // so a measurement or a burst gap is not padded by the 250 ms poll.
