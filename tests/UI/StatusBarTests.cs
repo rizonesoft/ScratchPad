@@ -162,8 +162,10 @@ public sealed class StatusBarTests
     // character-count latency on a 1 MiB document is measured with the
     // segment and without it (the SCRATCHPAD_TEST_NO_LIVE_WORDS seam),
     // with keystrokes paced past the debounce so word counts compute
-    // between them; the medians must sit within 25 ms (a synchronous
-    // count on the keystroke path measured +45 ms and fails).
+    // between them; the median must clear §4's 1 MiB/500 ms bar
+    // (StatusSegmentsTests) and sit within 25 ms of the strip without the
+    // segment (a synchronous count on the keystroke path measured +45 ms
+    // and fails).
     [Fact]
     public void LiveWordsNeverSlowTyping()
     {
@@ -177,6 +179,7 @@ public sealed class StatusBarTests
         double with = MedianKeystrokeMs(body.ToString(), liveWords: true, out string words);
         Assert.StartsWith(TextStats.Compute(body.ToString() + " k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10 k11 k12 k13 k14 k15").TotalWords.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " words", words, StringComparison.Ordinal);
         Console.WriteLine($"median keystroke latency: {with:F0} ms with live words, {without:F0} ms without");
+        Assert.True(with < 500, $"median keystroke latency {with:F0} ms breaks the D01 T02 §4 1 MiB/500 ms bar");
         Assert.True(
             with <= without + 25,
             $"median keystroke latency {with:F0} ms with live words vs {without:F0} ms without");
