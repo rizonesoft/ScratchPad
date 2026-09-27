@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **148 of 334 sections complete (44%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **149 of 334 sections complete (45%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -205,7 +205,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §53` | Unattended notification and register follow-ups           |  18   |
 | [x] | `D00 T01 §54` | Clearance fixture follow-ups                              |   8   |
 | [x] | `D00 T01 §55` | Clearance causality follow-ups                            |  30   |
-| [ ] | `D00 T04 §1`  | Sol-note and disposition follow-ups                       |  30   |
+| [x] | `D00 T04 §1`  | Sol-note and disposition follow-ups                       |  30   |
 | [ ] | `D00 T04 §2`  | Rule-24 probe follow-ups                                  |   6   |
 | [ ] | `D00 T04 §3`  | Migration-assurance follow-ups                            |   5   |
 | [ ] | `D00 T04 §4`  | Review-evaluation follow-ups                              |   4   |

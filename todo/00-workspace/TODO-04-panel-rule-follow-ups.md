@@ -38,7 +38,7 @@ track: W0
 
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
-|   1   |   §1    | Sol-note and disposition follow-ups | D00 T01 §37 |  [ ]   |
+|   1   |   §1    | Sol-note and disposition follow-ups | D00 T01 §37 |  [x]   |
 |   2   |   §2    | Rule-24 probe follow-ups | D00 T01 §46 |  [ ]   |
 |   3   |   §3    | Migration-assurance follow-ups | D00 T01 §48 |  [ ]   |
 |   4   |   §4    | Review-evaluation follow-ups | D00 T01 §49 |  [ ]   |
@@ -111,7 +111,14 @@ Why this section exists: the §37 review's sign-off round plus plan review retur
 -> SOURCE: Opus-panel-D00-T01-s55-round-5 (candidate 67ac72f, round-5 adversarial below bar; transcribed in docs/reviews/00-workspace/D00-T01-s55.md)
 - [x] Commit: `"workspace: follow up panel rules per the D00 T01 §37-§55 reviews"`
 
-**Test checkpoint:** the re-anchored nothing-check passes honest openers and fires denials (matrix green), disposition tables validate with the escalated state, partial-failure and resume rules read in the matrix, the §55 Commit line is retitled; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
+**Test checkpoint:** the re-anchored nothing-check passes honest openers and fires denials (matrix green), disposition tables validate with the escalated state, partial-failure and resume rules read in the matrix (the §55 Commit retitle closed as moot per the 2026-09-23 groom); suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
+
+> **Verified:** 2026-09-27 | §1 | the nothing-check reads whole values; disposition tables, telemetry lines, architecture-gate records, Manual marks, and ledger tallies each execute as a validator rule with fixtures; the gate's fallback rung runs and is proven live; receipts carry reported usage; `query run` carries lineage and evidence freshness under a checked run/2 schema with an error/1 envelope; the span, Items-table, and exemption fixes land with guards; and the review record for this section passes every new rule
+> **Review:** round 5 (Full), candidates `06b19a4`..`3ef43e0` `67eb649` `6bb358d` `05ee34e` `6618975` `1384ffa` -- GPT R1-R2 bulk needs-attention (R1-A1, A2, C1, I1, I2, R1 and R2-A1, A2 fixed), GPT R3 sign-off needs-attention (A1, C1 advisory, I1, I2, R1 fixed in 05ee34e), R4 depth I1, I2 fixed in 6618975, R5 depth governing: `adversarial` approve · `consistency` approve · `integration` needs-attention · `record` approve (gpt-6-astra); R5-I1 and I2 below the bar, fixed forward in 1384ffa, unreviewed. Raw findings: docs/reviews/00-workspace/D00-T04-s1.md
+> **Plan review:** GPT medium, 16 rejected under the 2026-09-26 filing bar (1 already holds, 15 hardening, enhancement, or wording corrected in the stamp commit), none filed (run 20260927-D00-T04-S1-codex-c06751119-r6)
+> **CRUD:** not-applicable | review tooling, skill prose, and fixtures; no user data
+> **Duration:** 2026-09-26T17:34:55Z to 2026-09-27T01:23:40Z
+> **Reviewed-tip:** 1384ffa
 
 ## 2. Rule-24 Probe Follow-Ups
 
