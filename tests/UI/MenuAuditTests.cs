@@ -136,16 +136,42 @@ public sealed partial class MenuAuditTests
             try
             {
                 var problems = new List<string>();
-                foreach (var menu in rows.Select(r => r.Menu).Distinct())
+
+                // Every top-level menu on the live bar, audited or not: an
+                // unaudited menu is walked too, so its items read as extra.
+                var bar = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuRegion"));
+                Assert.NotNull(bar);
+                var tops = bar.FindAllChildren(cf => cf.ByControlType(ControlType.MenuItem))
+                    .Select(t => new LiveItem(KeyOf(t.Properties.AutomationId.ValueOrDefault, t.Name), t.Name, t.IsEnabled))
+                    .ToList();
+                var barIds = tops.Select(t => t.Id).ToHashSet();
+                var expectedTops = rows.Select(r => r.Menu).Distinct().ToList();
+                if (!tops.Select(t => t.Id).SequenceEqual(expectedTops.Select(m => "Menu" + m)))
                 {
-                    string topId = "Menu" + menu;
-                    var expected = rows.Where(r => r.Menu == menu).ToList();
-                    var live = WalkMenu(window, topId, expected.Where(r => r.Status == "container").Select(r => r.Id).ToHashSet());
+                    problems.Add($"menu bar: live [{string.Join(", ", tops.Select(t => t.Id))}] differs from the audit's menus [{string.Join(", ", expectedTops.Select(m => "Menu" + m))}]");
+                }
+
+                foreach (var top in tops.Where(t => expectedTops.Contains(t.Id["Menu".Length..]) && t.Label != t.Id["Menu".Length..]))
+                {
+                    problems.Add($"menu bar: {top.Id} reads '{top.Label}'");
+                }
+
+                foreach (var top in tops)
+                {
+                    string topId = top.Id;
+                    var expected = rows.Where(r => "Menu" + r.Menu == topId).ToList();
+                    string menu = topId;
+                    var live = WalkMenu(window, topId, expected.Where(r => r.Status == "container").Select(r => r.Id).ToHashSet(), barIds);
                     var liveIds = live.Select(i => i.Id).ToList();
                     var expectedIds = expected.Select(r => r.Id).ToList();
                     if (!liveIds.SequenceEqual(expectedIds))
                     {
                         problems.Add($"{menu}: live order [{string.Join(", ", liveIds)}] differs from the audit [{string.Join(", ", expectedIds)}]");
+                    }
+
+                    foreach (var extra in live.Where(i => expected.All(r => r.Id != i.Id)))
+                    {
+                        problems.Add($"{menu}: live item {extra.Id} ('{extra.Label}') has no audit row");
                     }
 
                     foreach (var row in expected)
@@ -316,18 +342,23 @@ public sealed partial class MenuAuditTests
 
     internal sealed record LiveItem(string Id, string Label, bool Enabled);
 
-    static List<LiveItem> WalkMenu(Window window, string topId, HashSet<string> containers)
+    static List<LiveItem> WalkMenu(Window window, string topId, HashSet<string> containers, HashSet<string> barIds)
     {
-        var top = Collect(window, topId, topId);
+        MenuBarTests.OpenMenu(window, topId);
+        var top = Onscreen(window, barIds);
+        MenuBarTests.DismissMenu(window, topId);
         var result = new List<LiveItem>();
         foreach (var item in top)
         {
             result.Add(item);
             if (containers.Contains(item.Id))
             {
+                // A submenu's children are whatever newly appears on screen
+                // when it expands, whatever their ids.
                 MenuBarTests.OpenMenu(window, topId);
+                var before = Onscreen(window, barIds).Select(i => i.Id).ToHashSet();
                 MenuBarTests.OpenSubmenu(window, item.Id);
-                result.AddRange(Collect(window, item.Id, null));
+                result.AddRange(Onscreen(window, barIds).Where(i => !before.Contains(i.Id)));
                 MenuBarTests.DismissMenu(window, topId);
                 MenuBarTests.DismissMenu(window, topId);
             }
@@ -336,28 +367,29 @@ public sealed partial class MenuAuditTests
         return result;
     }
 
-    // Collects the on-screen items whose id extends prefix; with topId set
-    // the menu is opened first and dismissed after. Expanded children
-    // render in a separate popup, so the search is window-wide.
-    static List<LiveItem> Collect(Window window, string prefix, string? topId)
+    // Every on-screen menu item in the window except the bar's own top
+    // items and the title-bar chrome, with no id filter: an item with a foreign or empty id still
+    // counts. Expanded children render in a separate popup, so the search
+    // is window-wide.
+    static List<LiveItem> Onscreen(Window window, HashSet<string> barIds)
     {
-        if (topId is not null)
-        {
-            MenuBarTests.OpenMenu(window, topId);
-        }
-
+        // The OS title bar's System menu is window chrome, not an app menu
+        // item; it is excluded by element identity, never by id.
+        var chrome = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TitleBar))
+            .SelectMany(t => t.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)))
+            .ToList();
         var items = new List<LiveItem>();
         foreach (var m in window.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)))
         {
             try
             {
-                if (m.IsOffscreen)
+                if (m.IsOffscreen || chrome.Any(c => c.Equals(m)))
                 {
                     continue;
                 }
 
-                string id = m.Properties.AutomationId.ValueOrDefault ?? string.Empty;
-                if (id.StartsWith(prefix, StringComparison.Ordinal) && id.Length > prefix.Length)
+                string id = KeyOf(m.Properties.AutomationId.ValueOrDefault, m.Name);
+                if (!barIds.Contains(id))
                 {
                     items.Add(new LiveItem(id, m.Name, m.IsEnabled));
                 }
@@ -367,13 +399,11 @@ public sealed partial class MenuAuditTests
             }
         }
 
-        if (topId is not null)
-        {
-            MenuBarTests.DismissMenu(window, topId);
-        }
-
         return items;
     }
+
+    static string KeyOf(string? automationId, string name) =>
+        string.IsNullOrEmpty(automationId) ? $"<no AutomationId: {name}>" : automationId;
 
     internal static List<AuditRow> LoadRows()
     {
