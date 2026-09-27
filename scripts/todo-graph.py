@@ -1424,6 +1424,12 @@ def migration_overdue_today(today: str) -> bool:
 RATCHET_EXEMPT_LINES = 47
 RATCHET_EXEMPT_FILES = 17
 PROVENANCE_EXEMPT_FILES = 57
+# Membership, not only size (D00 T04 §1 item 29): the first 16 hex of
+# sha256 over the sorted run-less paths, and over the sorted ratchet
+# lines as `<path>|<candidate>|<run>`, so a same-count swap that retires
+# the wrong record still drifts.
+PROVENANCE_EXEMPT_DIGEST = "98bfecd73fef6a4f"
+RATCHET_EXEMPT_DIGEST = "dd7280355b6baece"
 _PROVENANCE_LINE = re.compile(
     r"^Provenance:\s*candidate\s+(\S+);\s*command\s+.+;\s*exit\s+\d+;\s*tool\s+.+;\s*"
     r"digest\s+[0-9a-fA-F]+;\s*path\s+(\S+);\s*run\s+(\S+)\s*$",
@@ -1442,6 +1448,7 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
     runless: set[str] = set()
     ratchet_lines = 0
     ratchet_files: set[str] = set()
+    ratchet_members: list[str] = []
     if reviews.is_dir():
         for path in reviews.rglob("*.md"):
             rel = path.relative_to(root).as_posix()
@@ -1463,12 +1470,31 @@ def exemption_problems(root: Path, today: str) -> list[tuple[str, str]]:
                 if short or recorded == rel:
                     ratchet_lines += 1
                     ratchet_files.add(rel)
+                    ratchet_members.append(f"{rel}|{cand}|{run}")
     problems: list[tuple[str, str]] = []
     if len(runless) != PROVENANCE_EXEMPT_FILES:
         problems.append(
             (
                 "exemption-drift",
                 f"provenance exemption is {len(runless)} files, inventory says {PROVENANCE_EXEMPT_FILES}",
+            )
+        )
+    _pdig = hashlib.sha256("\n".join(sorted(runless)).encode()).hexdigest()[:16]
+    if len(runless) == PROVENANCE_EXEMPT_FILES and _pdig != PROVENANCE_EXEMPT_DIGEST:
+        problems.append(
+            (
+                "exemption-drift",
+                f"provenance exemption keeps {len(runless)} files but its membership changed "
+                f"(digest {_pdig}, inventory says {PROVENANCE_EXEMPT_DIGEST}): a same-count swap retires the wrong record",
+            )
+        )
+    _rdig = hashlib.sha256("\n".join(sorted(ratchet_members)).encode()).hexdigest()[:16]
+    if ratchet_lines == RATCHET_EXEMPT_LINES and len(ratchet_files) == RATCHET_EXEMPT_FILES and _rdig != RATCHET_EXEMPT_DIGEST:
+        problems.append(
+            (
+                "exemption-drift",
+                f"ratchet exemption keeps {ratchet_lines} lines but its membership changed "
+                f"(digest {_rdig}, inventory says {RATCHET_EXEMPT_DIGEST})",
             )
         )
     if ratchet_lines != RATCHET_EXEMPT_LINES or len(ratchet_files) != RATCHET_EXEMPT_FILES:
@@ -2708,6 +2734,13 @@ def section_window_lines(todo_lines: dict[str, list[str]], todo: Todo, num: int)
     every section-window scan; `span_marker_bodies` and
     `section_retired` share it so a future span fix lands once
     (D00 T01 §47).
+
+    None stays the only failure signal (D00 T04 §1 item 27, a recorded
+    decision): the one way to fail is an unreadable TODO file, which the
+    graph load already reports with its path, and every caller treats
+    None the same way (skip the section, never guess a span). Structured
+    diagnostics would restate that report without a caller to use them;
+    the cost of changing is one return shape plus its three callers.
     """
     if todo.path not in todo_lines:
         try:
@@ -8694,6 +8727,28 @@ PLAN_ITEM_TAIL_RE = re.compile(r"\|\s*(?P<n>\d+)\s*\|\s*$")
 _PLAN_SEP_CELL_RE = re.compile(r"^:?-+:?$")
 
 
+def _plan_items_table_next(line: str, current: bool) -> bool:
+    """Whether the plan sync is inside an Items-counting table after `line`.
+
+    D00 T04 §1 item 28: every table header resets the state, so a table
+    without an Items cell never inherits the previous table's rewrite,
+    even when only a blank line separates them. Rows and separator lines
+    keep the state; a prose line ends it.
+    """
+    if line.startswith("|"):
+        if PLAN_ROW_RE.match(line):
+            return current
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if _plan_header_counts_items(line):
+            return True
+        if cells and all(_PLAN_SEP_CELL_RE.match(c) for c in cells):
+            return current
+        return False
+    if line.strip():
+        return False
+    return current
+
+
 def _plan_header_counts_items(line: str) -> bool:
     cells = [c.strip() for c in line.strip().strip("|").split("|")]
     return any(c == "Items" for c in cells)
@@ -9301,14 +9356,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
             continue
         m = PLAN_ROW_RE.match(line)
         if not m:
-            if line.startswith("|"):
-                cells = [c.strip() for c in line.strip().strip("|").split("|")]
-                if _plan_header_counts_items(line):
-                    items_table = True
-                elif cells and all(_PLAN_SEP_CELL_RE.match(c) for c in cells):
-                    pass
-            elif line.strip():
-                items_table = False
+            items_table = _plan_items_table_next(line, items_table)
             if pending_notes and not line.startswith("|"):
                 flush_notes(line)
             out.append(line)
@@ -9860,6 +9908,14 @@ def cmd_self_test(args) -> int:
         check("item count in sync is quiet", (_item_same, _item_quiet), (_item_rewritten, None))
         check("Items header is detected", _plan_header_counts_items("| ✔ | Section | Deliverable | Items |"), True)
         check("Days header is not an item count", _plan_header_counts_items("| ✔ | Section | Deliverable | Days |"), False)
+        # D00 T04 §1 item 28: two adjacent tables, the second without an
+        # Items cell, separated only by a blank line.
+        _it = False
+        _trail = []
+        for _ln in ["| ✔ | Section | Deliverable | Items |", "| :-: | :-: | --- | :-: |", "", "| ✔ | Section | Deliverable | Days |", "| :-: | :-: | --- | :-: |"]:
+            _it = _plan_items_table_next(_ln, _it)
+            _trail.append(_it)
+        check("a header without Items ends the Items rewrite across a blank line", _trail, [True, True, True, False, False])
         check("§2 has a Test checkpoint", ta.sections[2].has_test_checkpoint, True)
         # --- the Needs marker (D00 T07 §28) ---------------------------------
         check("§2 Needs parses to the closed-list key", ta.sections[2].needs, ["windows-host"])
@@ -20926,6 +20982,22 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             section_window_lines({}, _missing, 6),
             None,
         )
+        # Span-window sharing regression guard (D00 T04 §1 item 26): the
+        # lazy file load into the line cache and the span-bound arithmetic
+        # appear exactly once each, inside section_window_lines, in both
+        # scripts, so a duplicated calculation cannot hide behind green
+        # behavioral probes.
+        _gsrc = Path(__file__).read_text(encoding="utf-8")
+        _vsrc = Path(__file__).with_name("todo-validate.py").read_text(encoding="utf-8")
+        _hs = _gsrc.index("def section_window_lines(")
+        _he = _gsrc.index("\ndef ", _hs + 10)
+        # Split literals, so the probe never counts itself.
+        _span_pats = ("todo_lines[todo.path]" + " = ", "following = " + "[ln for ln", "sorted((s2.line" + " or 0")
+        check(
+            "span load and arithmetic live only in section_window_lines",
+            [(_sp, _gsrc.count(_sp), _gsrc[_hs:_he].count(_sp), _vsrc.count(_sp)) for _sp in _span_pats],
+            [(_sp, 1, 1, 0) for _sp in _span_pats],
+        )
         check(
             "span helper serves preloaded lines without a read",
             section_window_lines({"90-no-such-file.md": _slines}, _missing, 6),
@@ -25822,6 +25894,25 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
             "a changed inventory drifts",
             any(code == "exemption-drift" for code, _msg in _ex_probs),
             True,
+        )
+        # Same-count swap (D00 T04 §1 item 29): the inventory pinned to one
+        # run-less file, the tree holding a different one.
+        _sw_root = root / "exempt-swap"
+        (_sw_root / "docs" / "reviews" / "00-workspace").mkdir(parents=True)
+        (_sw_root / "docs" / "reviews" / "00-workspace" / "D00-T01-s2.md").write_text("no provenance\n", encoding="utf-8")
+        _sw_saved = (PROVENANCE_EXEMPT_FILES, PROVENANCE_EXEMPT_DIGEST, RATCHET_EXEMPT_LINES, RATCHET_EXEMPT_FILES, RATCHET_EXEMPT_DIGEST)
+        globals()["PROVENANCE_EXEMPT_FILES"] = 1
+        globals()["PROVENANCE_EXEMPT_DIGEST"] = hashlib.sha256("docs/reviews/00-workspace/D00-T01-s1.md".encode()).hexdigest()[:16]
+        globals()["RATCHET_EXEMPT_LINES"] = 0
+        globals()["RATCHET_EXEMPT_FILES"] = 0
+        globals()["RATCHET_EXEMPT_DIGEST"] = hashlib.sha256(b"").hexdigest()[:16]
+        _sw_probs = exemption_problems(_sw_root, "2026-09-22")
+        (globals()["PROVENANCE_EXEMPT_FILES"], globals()["PROVENANCE_EXEMPT_DIGEST"], globals()["RATCHET_EXEMPT_LINES"],
+         globals()["RATCHET_EXEMPT_FILES"], globals()["RATCHET_EXEMPT_DIGEST"]) = _sw_saved
+        check(
+            "a same-count swap of an exempt record drifts (membership, not size)",
+            [code for code, _msg in _sw_probs],
+            ["exemption-drift"],
         )
         check(
             "drift before the deadline is not overdue",
