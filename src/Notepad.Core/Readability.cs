@@ -41,9 +41,11 @@ public static partial class Readability
             ? "No text to score"
             : "Grade " + level.Grade.ToString("0.0", CultureInfo.InvariantCulture);
 
-    // Vowel groups after dropping a silent ending (-es, -ed, or -e after a
-    // consonant other than l, so "cake" is one and "candle" two) and a
-    // leading y; words of three letters or fewer count one, and a word
+    // Vowel groups after dropping a silent ending and a leading y. Silent
+    // endings: -ed except after t or d ("jumped" one, "wanted" two); -es
+    // after a consonant other than l, s, x, z, c, g, ch, or sh ("makes"
+    // one, "roses", "boxes", "places", "judges", "wishes" two); -e after a
+    // consonant other than l ("cake" one, "candle" two); words of three letters or fewer count one, and a word
     // with no letters (a number) counts one. English-first, like TextStats.
     public static int Syllables(string word)
     {
@@ -59,7 +61,7 @@ public static partial class Readability
         return Math.Max(1, VowelGroup().Count(letters));
     }
 
-    [GeneratedRegex("(?:[^laeiouy]es|ed|[^laeiouy]e)$")]
+    [GeneratedRegex("(?:(?<![cs])[^laeiouysxzcg]es|(?<![td])ed|[^laeiouy]e)$")]
     private static partial Regex SilentEnding();
 
     [GeneratedRegex("^y")]

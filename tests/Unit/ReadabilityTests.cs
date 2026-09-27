@@ -25,6 +25,16 @@ public sealed class ReadabilityTests
     [InlineData("improves", 2)]
     [InlineData("education", 4)]
     [InlineData("opportunity", 5)]
+    [InlineData("jumped", 1)]
+    [InlineData("makes", 1)]
+    [InlineData("wanted", 2)]
+    [InlineData("needed", 2)]
+    [InlineData("roses", 2)]
+    [InlineData("boxes", 2)]
+    [InlineData("places", 2)]
+    [InlineData("judges", 2)]
+    [InlineData("wishes", 2)]
+    [InlineData("churches", 2)]
     [InlineData("2026", 1)]
     [InlineData("Don't", 1)]
     public void SyllablesMatchTheDictionary(string word, int expected)
@@ -102,8 +112,9 @@ public sealed class ReadabilityTests
     [Fact]
     public void ScoringSourceTouchesNoNetwork()
     {
-        // The on-demand rule's negative: the scorer's source names no
-        // network API, so nothing it runs can phone home.
+        // The on-demand rule's negative, scoped to what it checks: the
+        // scorer and the TextStats counter it calls are the whole compute
+        // path, and neither source names a network API.
         string dir = System.AppContext.BaseDirectory;
         while (dir is not null && !Directory.Exists(Path.Combine(dir, "src", "Notepad.Core")))
         {
@@ -111,11 +122,14 @@ public sealed class ReadabilityTests
         }
 
         Assert.NotNull(dir);
-        string source = File.ReadAllText(Path.Combine(dir, "src", "Notepad.Core", "Readability.cs"));
         string[] banned = ["System.Net", "HttpClient", "WebRequest", "Socket", "Uri("];
-        foreach (string api in banned)
+        foreach (string file in new[] { "Readability.cs", "TextStats.cs" })
         {
-            Assert.DoesNotContain(api, source, System.StringComparison.Ordinal);
+            string source = File.ReadAllText(Path.Combine(dir, "src", "Notepad.Core", file));
+            foreach (string api in banned)
+            {
+                Assert.DoesNotContain(api, source, System.StringComparison.Ordinal);
+            }
         }
     }
 }
