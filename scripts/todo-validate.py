@@ -696,7 +696,35 @@ def validate(graph, _args) -> int:
                         if _derived.get(_w, 0) != _n:
                             flag("ledger-tally-mismatch", f"{_lwhere} {_src} states {_n} {_w} but the ledger carries {_derived.get(_w, 0)}")
     _src_paren_re = re.compile(r"\(([^()]*?\b([0-9]{1,4}) findings\b[^()]*)\)")
-    _src_part_re = re.compile(r"\b([0-9]{1,4})\s+(filed here|filed at siblings|filed|duplicates?|rejected)\b", re.IGNORECASE)
+    # Every disposition counts toward the total (D00 T04 §1 R4-I2).
+    _src_part_re = re.compile(r"\b([0-9]{1,4})\s+(filed here|filed at siblings|filed|duplicates?|rejected|accepted|deferred)\b", re.IGNORECASE)
+    _src_key_re = re.compile(r"plan-review-D(\d+)-T(\d+)-s(\d+)-(\d{4}-\d{2}-\d{2})")
+
+    def _source_ledger_counts(dn: str, tn: str, sn: str) -> dict[str, int] | None:
+        # The source plan review's own ledger (D00 T04 §1 R3-R1): the key's
+        # section's findings file, its last plan-review block.
+        st = next((x for x in todos if x.domain.startswith(dn + "-") and x.number == tn), None)
+        ss = st.sections.get(graph.parse_bounded_int(sn, 9999) or 0) if st else None
+        sf = graph.FINDINGS_RE.search(getattr(ss, "review_body", None) or "") if ss else None
+        if not sf:
+            return None
+        try:
+            stext = graph.strip_fenced_code((graph.TODO_DIR.parent / sf.group(1)).read_text(encoding="utf-8"))[0]
+        except OSError:
+            return None
+        sheads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(stext))
+        if not sheads:
+            return None
+        ssec = stext[sheads[-1].end():]
+        snx = re.search(r"^#{1,6}\s+", ssec, re.MULTILINE)
+        sblock, _sp = graph.ledger_block(ssec[: snx.start()] if snx else ssec)
+        if sblock is None:
+            return None
+        counts: dict[str, int] = {}
+        for lr in graph.LEDGER_ROW_RE.finditer(sblock):
+            counts[lr.group(3).lower()] = counts.get(lr.group(3).lower(), 0) + 1
+        return counts
+
     for t in todos:
         try:
             _tlines = (graph.TODO_DIR.parent / t.path).read_text(encoding="utf-8").splitlines()
@@ -705,37 +733,17 @@ def validate(graph, _args) -> int:
         for _li, _line in enumerate(_tlines, 1):
             if "-> SOURCE:" not in _line:
                 continue
-            # Forward only: older SOURCE parentheticals are narrative (they
-            # count sibling filings elsewhere, items, or unnumbered rows), so
-            # only plan-review keys dated after the cutover are summed.
-            _kd = re.findall(r"plan-review-[A-Za-z0-9-]*?-(\d{4}-\d{2}-\d{2})", _line)
-            if not _kd or max(_kd) <= graph.DISPOSITION_CUTOVER:
-                continue
-            # The source plan review's own ledger (D00 T04 §1 R3-R1): the
-            # key names D<nn>-T<nn>-s<n>; its section's findings file holds
-            # the ledger whose filed, duplicate, and rejected rows the
-            # summary must match.
-            _km = re.search(r"plan-review-D(\d+)-T(\d+)-s(\d+)-", _line)
-            _src_counts = None
-            if _km:
-                _st = next((x for x in todos if x.domain.startswith(_km.group(1) + "-") and x.number == _km.group(2)), None)
-                _ss = _st.sections.get(graph.parse_bounded_int(_km.group(3), 9999) or 0) if _st else None
-                _sf = graph.FINDINGS_RE.search(getattr(_ss, "review_body", None) or "") if _ss else None
-                if _sf:
-                    try:
-                        _stext = graph.strip_fenced_code((graph.TODO_DIR.parent / _sf.group(1)).read_text(encoding="utf-8"))[0]
-                    except OSError:
-                        _stext = ""
-                    _sheads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(_stext))
-                    if _sheads:
-                        _ssec = _stext[_sheads[-1].end():]
-                        _snx = re.search(r"^#{1,6}\s+", _ssec, re.MULTILINE)
-                        _sblock, _sp = graph.ledger_block(_ssec[: _snx.start()] if _snx else _ssec)
-                        if _sblock is not None:
-                            _src_counts = {}
-                            for _lr in graph.LEDGER_ROW_RE.finditer(_sblock):
-                                _src_counts[_lr.group(3).lower()] = _src_counts.get(_lr.group(3).lower(), 0) + 1
+            # Each parenthetical belongs to the plan-review key before it
+            # (D00 T04 §1 R4-I1), and only keys dated after the cutover are
+            # checked: older SOURCE parentheticals are narrative (they count
+            # sibling filings elsewhere, items, or unnumbered rows).
+            _keys = list(_src_key_re.finditer(_line))
             for _pm in _src_paren_re.finditer(_line):
+                _owner = [k for k in _keys if k.start() < _pm.start()]
+                if not _owner or _owner[-1].group(4) <= graph.DISPOSITION_CUTOVER:
+                    continue
+                _k = _owner[-1]
+                _src_counts = _source_ledger_counts(_k.group(1), _k.group(2), _k.group(3))
                 if _src_counts is not None:
                     _said: dict[str, int] = {}
                     for _x in _src_part_re.finditer(_pm.group(1)):

@@ -12319,7 +12319,7 @@ Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s1-2026-09-27-s
 
 ## 94. Ledger tallies that agree stay silent
 
-Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s94-2026-09-27-s94 (2 findings, 1 filed here, 1 rejected)
+Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s94-2026-09-27-s94 (2 findings, 1 filed here, 1 rejected) -> SOURCE: plan-review-D90-T06-s93-2026-09-27-s94 (2 findings, 1 rejected, 1 accepted)
 
 - [x] Did the thing
 - [x] Commit: `"selftest: panel"`
@@ -13307,6 +13307,11 @@ Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s94-2026-09-27-
             "a SOURCE summary that disagrees with the source plan review's ledger fires",
             any("TODO-06-panel.md" in ln and "SOURCE summary says 1 filed but the source plan review's ledger carries 0" in ln for ln in panel_out),
             True,
+        )
+        check(
+            "a second SOURCE key on one line binds its own summary, accepted counting (R4-I1, R4-I2)",
+            [ln for ln in panel_out if "TODO-06-panel.md" in ln and ("1 accepted" in ln or "sums its parts to 1, not 2" in ln)],
+            [],
         )
         check(
             "ledger tallies that agree stay silent",
