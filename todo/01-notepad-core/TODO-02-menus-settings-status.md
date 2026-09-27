@@ -57,7 +57,7 @@ track: N1
 |   4   |   §4    | Status bar | D01 T01 §1 |  [x]   |
 |   5   |   §13   | ScratchPad rename completion | D01 T01 §1 |  [x]   |
 |   6   |   §14   | Title-bar icon beside the tabs | §13, D01 T01 §11 |  [x]   |
-|   7   |   §15   | Chrome color finetune against stock | §13, D01 T01 §1 |  [ ]   |
+|   7   |   §15   | Chrome color finetune against stock | §13, D01 T01 §1 |  [x]   |
 |   8   |   §5    | Print path | §1 |  [ ]   |
 |   9   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
 |  10   |   §7    | Reading level in the status bar | §4 |  [ ]   |
@@ -495,6 +495,13 @@ Why this section exists: side by side with stock, our chrome reads slightly off 
 - [x] Commit: `"notepad-core: finetune chrome colors"`.
 
 **Test checkpoint:** A/B probes recorded; deltas quoted; theme matrix green; goldens refreshed with confined diffs. Cheaper substitute that fails: eyeballed colors with no sampled numbers.
+
+> **Verified:** 2026-09-27 | §15 | Mica Alt backdrop plus layer fills on menu, status, and selected tab plus tertiary editor fill; lit probes of the final build match stock per channel within 0-6 (dark tab strip 10, wallpaper tint); theme matrix 17/17; wider chrome suites 36/0/1; golden refreshed, diff confined to chrome bands plus border bleed, FreshCaptureMatchesGolden 0.0022%
+> **Review:** round 2 (Light), candidates `c9a050c` `26b79b9` -- GPT R1 bulk record needs-attention (lit probe of the final build), fixed in 26b79b9; R2 signoff approve on all four lenses. Arch trigger none. Raw findings: docs/reviews/01-notepad-core/D01-T02-s15.md
+> **Plan review:** GPT medium, no findings (15 rejected under the filing bar) (run 20260927-D01-T02-S15-codex-c06751119-r3)
+> **CRUD:** not-applicable | chrome brushes only; no user data read or written
+> **Duration:** 2026-09-27T01:51:05Z to 2026-09-27T05:58:32Z
+> **Reviewed-tip:** 26b79b9643b52714be416e6f35575b2b4b4989ba
 
 ## 16. Quarantine the MenuBarTests Flakes
 
