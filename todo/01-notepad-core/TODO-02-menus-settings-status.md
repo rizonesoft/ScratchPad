@@ -65,7 +65,7 @@ track: N1
 |  12   |   §9    | Live counts in the status bar | §4 |  [x]   |
 |  13   |   §10   | Custom accent themes | §2, §3 |  [x]   |
 |  14   |   §11   | Session word goal | §4, §9 |  [x]   |
-|  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
+|  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [x]   |
 |  16   |   §16   | Quarantine the MenuBarTests flakes | §1 |  [ ]   |
 |  17   |   §17   | About panel identity rows | D07 T01 §10 |  [ ]   |
 
@@ -445,6 +445,13 @@ Why this section exists: stock's Opening Notepad group carries a Recent Files to
 - [x] Commit: `"notepad-core: toggle recent-files display"`
 
 **Test checkpoint:** Key round-trip, submenu empty state, jump-list omission, and both card directions driven. Cheaper substitute that fails: a toggle that stops recording recents.
+
+> **Verified:** 2026-09-27 | §12 | ShowRecentFiles (default true) binds the stock Recent Files card; off shows the File > Recent empty state and drops recents from the jump-list feed (pins kept) while recording continues; on restores both; settings golden refreshed (isolated diff: the enabled toggle alone); Unit 503/503; batch 44 passed, 11 fenced skips; goldens 0.0454% and 0.0000%
+> **Review:** round 2 (Light), candidate `be00992` -- GPT R1 bulk approve, R2 signoff approve on all four lenses. Arch trigger storage: Arch-1 approve. Raw findings: docs/reviews/01-notepad-core/D01-T02-s12.md
+> **Plan review:** GPT medium, no findings (11 rejected under the filing bar) (run 20260927-D01-T02-S12-codex-c06751119-r4)
+> **CRUD:** create/read/update exercised | the key is written by the card, read back after reopen with the recorded list intact (unit), and flipped both ways by the UI drive; recents are never deleted by the toggle
+> **Duration:** 2026-09-27T08:31:00Z to 2026-09-27T08:58:03Z
+> **Reviewed-tip:** be00992aa89bb3c160cd76df4e5ec82a893e90de
 
 ## 13. ScratchPad Rename Completion
 
