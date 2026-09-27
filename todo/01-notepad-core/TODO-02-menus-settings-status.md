@@ -64,7 +64,7 @@ track: N1
 |  11   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
 |  12   |   §9    | Live counts in the status bar | §4 |  [x]   |
 |  13   |   §10   | Custom accent themes | §2, §3 |  [x]   |
-|  14   |   §11   | Session word goal | §4, §9 |  [ ]   |
+|  14   |   §11   | Session word goal | §4, §9 |  [x]   |
 |  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
 |  16   |   §16   | Quarantine the MenuBarTests flakes | §1 |  [ ]   |
 |  17   |   §17   | About panel identity rows | D07 T01 §10 |  [ ]   |
@@ -420,6 +420,13 @@ Why this section exists: a word goal with a thin progress line for the session. 
 - [x] Commit: `"notepad-core: goal the session"`
 
 **Test checkpoint:** set, fill, and session-death are all driven in the room. Cheaper substitute that fails: a goal that follows you home.
+
+> **Verified:** 2026-09-27 | §11 | Session word goal from a flag button beside the live words segment (flyout: input, Set, Clear, inline error); a 2 px line along the strip's bottom edge fills from the §9 count of the active document; the goal lives only in the window's strip and dies with the session; Unit WordGoalTests 25/25; UI SessionWordGoalSetsFillsAndDies (refusals, 50% -> 100%, change, clear, relaunch shows none); StatusBar plus Golden 13 passed, 2 fenced skips; golden 0.0574%
+> **Review:** round 2 (Light), candidates `4c84aff` `877aded` -- GPT R1 bulk adversarial needs-attention (malformed thousands separators accepted), fixed 877aded; R2 signoff approve on all four lenses. Arch trigger none. Raw findings: docs/reviews/01-notepad-core/D01-T02-s11.md
+> **Plan review:** GPT medium, no findings (10 rejected under the filing bar) (run 20260927-D01-T02-S11-codex-c06751119-r3)
+> **CRUD:** not-applicable | window-local UI state, never persisted; the drive proves the settings file names no goal
+> **Duration:** 2026-09-27T08:12:00Z to 2026-09-27T08:29:34Z
+> **Reviewed-tip:** 877adedb5f506a8e47d9aac8cd7d09031c0fa073
 
 ## 12. Recent Files Display Toggle
 

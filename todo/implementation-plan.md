@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **156 of 335 sections complete (47%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **157 of 335 sections complete (47%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -274,7 +274,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D01 T02 §8`  | Command palette                                                     |   7   |
 | [x] | `D01 T02 §9`  | Live counts in the status bar                                       |   6   |
 | [x] | `D01 T02 §10` | Custom accent themes                                                |   6   |
-| [ ] | `D01 T02 §11` | Session word goal                                                   |   5   |
+| [x] | `D01 T02 §11` | Session word goal                                                   |   5   |
 | [ ] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
 | [ ] | `D01 T02 §16` | Quarantine the MenuBarTests flakes                                  |   7   |
 | [ ] | `D01 T02 §17` | About panel identity rows                                           |   8   |
