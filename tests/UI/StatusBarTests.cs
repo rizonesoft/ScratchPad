@@ -135,6 +135,9 @@ public sealed class StatusBarTests
         }
         finally
         {
+            // The drive leaves a dirty tab, which the session keeps; a
+            // later launch must not restore it.
+            SessionData.Delete();
             DeleteDir(dir);
         }
     }
