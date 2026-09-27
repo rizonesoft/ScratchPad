@@ -126,6 +126,7 @@ internal sealed partial class SettingsPage : UserControl
             SelectCombo(FontSizeCombo, current.FontSize.ToString(CultureInfo.InvariantCulture));
             UpdateFontPreview();
             WordWrapToggle.IsOn = current.WordWrap;
+            RecentFilesToggle.IsOn = current.ShowRecentFiles;
             string openingLabel = OpeningOptions.FirstOrDefault(o => o.Value == current.OpenIn).Label ?? current.OpenIn;
             SelectCombo(OpeningCombo, openingLabel);
             CheckRadio(WhenStartsContinue, WhenStartsFresh, null, WhenStartsOptions, current.WhenStarts);
@@ -243,6 +244,20 @@ internal sealed partial class SettingsPage : UserControl
         }
 
         AccentRevert.IsEnabled = !string.Equals(id, AccentThemes.System, StringComparison.Ordinal);
+    }
+
+    // D01 T02 §12: display-side only; the jump list re-commits so recents
+    // leave or rejoin it with the setting.
+    void RecentFilesToggle_Toggled(object sender, RoutedEventArgs e)
+    {
+        if (suspend)
+        {
+            return;
+        }
+
+        bool show = RecentFilesToggle.IsOn;
+        SettingsStore.Shared.Update(current => current.ShowRecentFiles = show);
+        App.RefreshJumpList();
     }
 
     void ThemeRadio_Checked(object sender, RoutedEventArgs e)

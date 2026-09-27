@@ -17,6 +17,7 @@ Store: `src/Notepad.Core/SettingsStore.cs` (owned by D01 T02 §2), file `%LocalA
 | `OpenIn` | string | `new-tab` | Stock "Open in a new tab" (capture plus probe) | App launch routing |
 | `WhenStarts` | string | `continue` | Stock "Continue previous session" (capture plus probe) | App startup routing |
 | `RecentFiles` | string[] | empty | User data, MRU-first | File Recent submenu, jump list |
+| `ShowRecentFiles` | bool | true | Stock "Recent Files" toggle reads On (probed 2026-09-16); display-side only, recording continues | D01 T02 §12: File Recent submenu, jump list feed, §3 card |
 | `PinnedFiles` | string[] | empty | User data, pin order | Pin state, jump list |
 | `JumpListHash` | string | empty | Computed feed fingerprint | JumpListService commit-on-change |
 | `WhatsNewSeen` | bool | false | First-run latch | MainWindow first-run gate |

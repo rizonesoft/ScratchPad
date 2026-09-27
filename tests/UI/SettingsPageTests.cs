@@ -67,6 +67,95 @@ public sealed class SettingsPageTests
         }
     }
 
+    // D01 T02 §12: the Recent Files card is live. Off shows the File >
+    // Recent empty state and drops recents from the committed jump-list
+    // feed while the recorded list stays whole; on restores both.
+    [Fact]
+    public void RecentFilesToggleHidesAndRestoresRecents()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        string recent = Path.Combine(dir, "recent.txt");
+        File.WriteAllText(recent, "recent body");
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, RecentFiles = [recent] });
+        try
+        {
+            SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchApp();
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(("entry", 1), RecentState(window));
+
+                OpenSettings(window);
+                var toggle = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsRecentFilesToggle"));
+                Assert.NotNull(toggle);
+                Assert.True(toggle.IsEnabled, "Recent Files card still disabled");
+                Assert.Equal(FlaUI.Core.Definitions.ToggleState.On, toggle.Patterns.Toggle.Pattern.ToggleState);
+                ToggleById(window, "SettingsRecentFilesToggle");
+                WaitForStore(s => !s.ShowRecentFiles, "recent files hidden");
+                Assert.Equal([recent], ShellSettings.Load().RecentFiles);
+                WaitForStore(s => s.JumpListHash == JumpListFeed.Fingerprint(JumpListFeed.Build(s.PinnedFiles, null)), "jump list without recents");
+                InvokeById(window, "SettingsBackButton");
+                Assert.Equal(("empty", 0), RecentState(window));
+
+                OpenSettings(window);
+                ToggleById(window, "SettingsRecentFilesToggle");
+                WaitForStore(s => s.ShowRecentFiles, "recent files shown");
+                WaitForStore(s => s.JumpListHash == JumpListFeed.Fingerprint(JumpListFeed.Build(s.PinnedFiles, s.RecentFiles)), "jump list with recents");
+                InvokeById(window, "SettingsBackButton");
+                Assert.Equal(("entry", 1), RecentState(window));
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            CleanSettings(settingsPath);
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    }
+
+    // Opens File > Recent and reads what it shows: "entry" plus the entry
+    // count, or "empty" when only the empty-state placeholder renders.
+    // The submenu renders its children a beat after it expands, so poll
+    // until it shows entries or the placeholder rather than read too soon.
+    static (string State, int Entries) RecentState(Window window)
+    {
+        MenuBarTests.OpenMenu(window, "MenuFile");
+        MenuBarTests.OpenSubmenu(window, "MenuFileRecent");
+        int entries = 0;
+        bool empty = false;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            entries = window.FindAllDescendants(cf => cf.ByAutomationId("MenuFileRecentEntry")).Length;
+            empty = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuFileRecentEmpty")) is not null;
+            if (entries > 0 || empty)
+            {
+                break;
+            }
+
+            Thread.Sleep(200);
+        }
+
+        MenuBarTests.DismissMenu(window, "MenuFile");
+        MenuBarTests.DismissMenu(window, "MenuFile");
+        return (empty ? "empty" : entries > 0 ? "entry" : "none", entries);
+    }
+
     // D01 T02 §10: the gallery renders every built-in swatch in its own
     // color, and a fresh store follows the system accent (nothing
     // selected, revert disabled, Accent "system").
@@ -483,7 +572,6 @@ public sealed class SettingsPageTests
                 foreach (string id in new[]
                 {
                     "SettingsFormattingToggle",
-                    "SettingsRecentFilesToggle",
                     "SettingsCardSpellCheck",
                     "SettingsAutocorrectToggle",
                     "SettingsWritingToolsToggle",

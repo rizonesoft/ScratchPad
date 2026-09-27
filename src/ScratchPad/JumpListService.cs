@@ -36,7 +36,7 @@ internal static class JumpListService
         ArgumentNullException.ThrowIfNull(store);
         ArgumentException.ThrowIfNullOrEmpty(exePath);
         EnsureAppId();
-        IReadOnlyList<Notepad.Core.JumpListItem> feed = JumpListFeed.Build(store.Current.PinnedFiles, store.Current.RecentFiles);
+        IReadOnlyList<Notepad.Core.JumpListItem> feed = JumpListFeed.ForSettings(store.Current);
         string fingerprint = JumpListFeed.Fingerprint(feed);
         if (string.Equals(fingerprint, store.Current.JumpListHash, StringComparison.Ordinal))
         {

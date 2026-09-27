@@ -187,8 +187,8 @@
                     </StackPanel>
                 </Expander>
 
-                <!-- Owner: D01 T02 §12. Enables and binds on landing. -->
-                <Border AutomationProperties.AutomationId="SettingsCardRecentFiles" Opacity="0.5"
+                <!-- D01 T02 §12: bound to ShowRecentFiles (display-side only). -->
+                <Border AutomationProperties.AutomationId="SettingsCardRecentFiles"
                         Background="{ThemeResource CardBackgroundFillColorDefault}"
                         BorderBrush="{ThemeResource CardStrokeColorDefault}" BorderThickness="1" CornerRadius="4"
                         Padding="16,12">
@@ -200,8 +200,9 @@
                         </Grid.ColumnDefinitions>
                         <SymbolIcon Grid.Column="0" Symbol="Clock" VerticalAlignment="Center" Margin="0,0,12,0" />
                         <TextBlock Grid.Column="1" Text="Recent Files" VerticalAlignment="Center" />
-                        <ToggleSwitch Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
-                                      VerticalAlignment="Center" IsEnabled="False" AutomationProperties.AutomationId="SettingsRecentFilesToggle" />
+                        <ToggleSwitch x:Name="RecentFilesToggle" Grid.Column="2" IsOn="True" OnContent="On" OffContent="Off"
+                                      VerticalAlignment="Center" AutomationProperties.AutomationId="SettingsRecentFilesToggle"
+                                      AutomationProperties.Name="Recent Files" Toggled="RecentFilesToggle_Toggled" />
                     </Grid>
                 </Border>
 

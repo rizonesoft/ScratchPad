@@ -7,6 +7,23 @@ namespace Unit;
 // (Windows-only) and is driven by the UI suite; these pin the feed rules.
 public sealed class JumpListFeedTests
 {
+    // D01 T02 §12: the Recent Files toggle omits recents from the feed and
+    // keeps pins; turning it back on restores the recents.
+    [Fact]
+    public void ForSettingsOmitsRecentsWhileHidden()
+    {
+        var settings = new ShellSettings
+        {
+            PinnedFiles = ["C:\\p.txt"],
+            RecentFiles = ["C:\\r.txt"],
+            ShowRecentFiles = false,
+        };
+        Assert.Equal([new JumpListItem("p.txt", "\"C:\\p.txt\"", JumpListFeed.PinnedCategory)], JumpListFeed.ForSettings(settings));
+        settings.ShowRecentFiles = true;
+        Assert.Equal(JumpListFeed.Build(settings.PinnedFiles, settings.RecentFiles), JumpListFeed.ForSettings(settings));
+        Assert.Equal(2, JumpListFeed.ForSettings(settings).Count);
+    }
+
     [Fact]
     public void PinsFillPinnedThenRecentsFillRecent()
     {

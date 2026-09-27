@@ -1748,6 +1748,10 @@ public sealed partial class MainWindow : Window, IDisposable
             MenuRegion.SetStatusBarChecked(SettingsStore.Shared.Current.ShowStatusBar);
             ApplyStatusVisibility();
             RefreshStatusBar();
+
+            // D01 T02 §12: the Recent Files toggle (from any window) and
+            // list changes rebuild the submenu.
+            MenuRegion.RefreshRecents();
         });
     }
 

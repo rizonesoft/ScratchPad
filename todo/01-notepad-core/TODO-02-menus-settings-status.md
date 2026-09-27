@@ -430,6 +430,8 @@ Why this section exists: a word goal with a thin progress line for the session. 
 
 ## 12. Recent Files Display Toggle
 
+> **Started:** 2026-09-27T08:31:00Z
+
 Why this section exists: stock's Opening Notepad group carries a Recent Files toggle, on by default; the §3 page renders the card disabled until this section binds it. The toggle is display-side only: recording never stops, so flipping it destroys nothing.
 
 **Probed 2026-09-16 (§3 validation, stock 11.2607.14.0):** the toggle reads On; toggling off leaves the File > Recent entry in place (menu dump), so the entry stays and the contents hide. Exact stock semantics (record vs display) unconfirmed; display-side is the recorded default (reversible; a recording-side toggle would destroy user data on an unconfirmed control, cost: the submenu plus jump-list branches).
@@ -437,10 +439,10 @@ Why this section exists: stock's Opening Notepad group carries a Recent Files to
 **Needs:** Windows host (build/test)
 
 - -> XREF: D01 T02 §3 -- the disabled Recent Files card this section enables, binds, and drives
-- [ ] The store carries a `ShowRecentFiles` key defaulting true, with a schema-doc row naming this section as consumer. Done when: the key round-trips and the doc row exists.
-- [ ] Toggle-off shows the Recents submenu empty state and omits recents from the jump-list feed; toggle-on restores both. Done when: each state is driven.
-- [ ] The §3 Recent Files card is enabled and bound to the key. Done when: the card drive passes both ways.
-- [ ] Commit: `"notepad-core: toggle recent-files display"`
+- [x] The store carries a `ShowRecentFiles` key defaulting true, with a schema-doc row naming this section as consumer. Done when: the key round-trips and the doc row exists. **Evidence 2026-09-27:** `ShellSettings.ShowRecentFiles` (default true) and its `docs/settings-schema.md` row; `SettingsStoreTests.ShowRecentFilesRoundTripsAndKeepsTheList` writes false with two recents, reopens (false, both recents kept), and writes true back; `FreshProfileMatchesRecordedDefaults` pins the default.
+- [x] Toggle-off shows the Recents submenu empty state and omits recents from the jump-list feed; toggle-on restores both. Done when: each state is driven. **Evidence 2026-09-27:** the menu host returns no recents while the key is off (the submenu renders its `No recent files` state) and `JumpListFeed.ForSettings` drops recents but keeps pins; `MainWindow.OnSettingsChanged` rebuilds the submenu, so a toggle from any window lands. `SettingsPageTests.RecentFilesToggleHidesAndRestoresRecents`: off reads the empty state, the stored `JumpListHash` equals the pins-only feed's fingerprint, and the recorded list still holds the file; on reads the entry back and the hash equals the feed with recents. `JumpListFeedTests.ForSettingsOmitsRecentsWhileHidden` pins the feed rule.
+- [x] The §3 Recent Files card is enabled and bound to the key. Done when: the card drive passes both ways. **Evidence 2026-09-27:** the card drops its disabled look and the toggle binds `ShowRecentFiles` (and re-commits the jump list); the drive toggles it off and on; `DisabledCardsStayDisabled` no longer lists it. The settings golden was refreshed per procedure: an isolated capture's diff was the toggle alone (672 px, 0.1343%), eyeballed and adopted; a batch run's extra focus rectangle over the gear was an ordering artifact that did not reproduce alone. Settings, MenuBar, JumpList, MenuAudit, Golden batch 44 passed, 11 fenced skips; goldens 0.0454% and 0.0000%; Unit 503/503.
+- [x] Commit: `"notepad-core: toggle recent-files display"`
 
 **Test checkpoint:** Key round-trip, submenu empty state, jump-list omission, and both card directions driven. Cheaper substitute that fails: a toggle that stops recording recents.
 

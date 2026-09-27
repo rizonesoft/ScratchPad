@@ -24,6 +24,14 @@ public static class JumpListFeed
     // the task never changes (D01 T01 §25).
     public static readonly JumpListItem NewNoteTask = new("New note", LaunchArgs.NewNoteFlag, TasksCategory);
 
+    // The feed the store's settings ask for (D01 T02 §12): pins always,
+    // recents only while ShowRecentFiles is on.
+    public static IReadOnlyList<JumpListItem> ForSettings(ShellSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return Build(settings.PinnedFiles, settings.ShowRecentFiles ? settings.RecentFiles : null);
+    }
+
     public static IReadOnlyList<JumpListItem> Build(IList<string>? pinned, IList<string>? recent)
     {
         var items = new List<JumpListItem>();

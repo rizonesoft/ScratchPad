@@ -27,7 +27,37 @@ public sealed class SettingsStoreTests
             Assert.Equal("continue", store.Current.WhenStarts);
             Assert.Empty(store.Current.RecentFiles);
             Assert.Empty(store.Current.PinnedFiles);
+            Assert.True(store.Current.ShowRecentFiles);
+            Assert.Equal("system", store.Current.Accent);
             Assert.False(File.Exists(Path.Combine(dir, "settings.json")));
+        }
+        finally
+        {
+            DeleteDir(dir);
+        }
+    }
+
+    // D01 T02 §12: the Recent Files toggle round-trips, and hiding the
+    // list keeps every recorded recent.
+    [Fact]
+    public void ShowRecentFilesRoundTripsAndKeepsTheList()
+    {
+        string dir = NewTempDir();
+        try
+        {
+            string path = Path.Combine(dir, "settings.json");
+            var store = new SettingsStore(path);
+            store.Update(current =>
+            {
+                current.RecentFiles.Add("C:\\a.txt");
+                current.RecentFiles.Add("C:\\b.txt");
+                current.ShowRecentFiles = false;
+            });
+            var reopened = new SettingsStore(path);
+            Assert.False(reopened.Current.ShowRecentFiles);
+            Assert.Equal(["C:\\a.txt", "C:\\b.txt"], reopened.Current.RecentFiles);
+            reopened.Update(current => current.ShowRecentFiles = true);
+            Assert.True(new SettingsStore(path).Current.ShowRecentFiles);
         }
         finally
         {

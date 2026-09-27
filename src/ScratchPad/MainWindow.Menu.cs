@@ -285,7 +285,10 @@ sealed partial class MainWindow : IMenuHost
     {
         try
         {
-            return SettingsStore.Shared.Current.RecentFiles;
+            // D01 T02 §12: the Recent Files toggle hides the list (the
+            // submenu shows its empty state); the list itself is kept.
+            ShellSettings current = SettingsStore.Shared.Current;
+            return current.ShowRecentFiles ? current.RecentFiles : [];
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

@@ -91,6 +91,11 @@ public sealed class ShellSettings
     [SuppressMessage("Usage", "CA2227", Justification = "Setter serves deserialization.")]
     public List<string> RecentFiles { get; set; } = new();
 
+    // Stock "Recent Files" toggle, owned by D01 T02 §12: display-side only.
+    // Off hides recents from the File > Recent submenu and the jump list;
+    // recording continues, so turning it back on shows the full list.
+    public bool ShowRecentFiles { get; set; } = true;
+
     // Pinned files for the §8 jump list, oldest first, capped by
     // RecentFiles.MaxCount. Pins live here; the D01 T02 §1 recents submenu
     // renders the toggle that mutates them.
