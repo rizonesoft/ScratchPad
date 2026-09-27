@@ -141,10 +141,10 @@ public sealed partial class MenuAuditTests
                 // unaudited menu is walked too, so its items read as extra.
                 var bar = window.FindFirstDescendant(cf => cf.ByAutomationId("MenuRegion"));
                 Assert.NotNull(bar);
-                var tops = bar.FindAllChildren(cf => cf.ByControlType(ControlType.MenuItem))
+                var barElements = bar.FindAllChildren(cf => cf.ByControlType(ControlType.MenuItem)).ToList();
+                var tops = barElements
                     .Select(t => new LiveItem(KeyOf(t.Properties.AutomationId.ValueOrDefault, t.Name), t.Name, t.IsEnabled))
                     .ToList();
-                var barIds = tops.Select(t => t.Id).ToHashSet();
                 var expectedTops = rows.Select(r => r.Menu).Distinct().ToList();
                 if (!tops.Select(t => t.Id).SequenceEqual(expectedTops.Select(m => "Menu" + m)))
                 {
@@ -161,7 +161,7 @@ public sealed partial class MenuAuditTests
                     string topId = top.Id;
                     var expected = rows.Where(r => "Menu" + r.Menu == topId).ToList();
                     string menu = topId;
-                    var live = WalkMenu(window, topId, expected.Where(r => r.Status == "container").Select(r => r.Id).ToHashSet(), barIds);
+                    var live = WalkMenu(window, topId, expected.Where(r => r.Status == "container").Select(r => r.Id).ToHashSet(), barElements);
                     var liveIds = live.Select(i => i.Id).ToList();
                     var expectedIds = expected.Select(r => r.Id).ToList();
                     if (!liveIds.SequenceEqual(expectedIds))
@@ -342,23 +342,26 @@ public sealed partial class MenuAuditTests
 
     internal sealed record LiveItem(string Id, string Label, bool Enabled);
 
-    static List<LiveItem> WalkMenu(Window window, string topId, HashSet<string> containers, HashSet<string> barIds)
+    static List<LiveItem> WalkMenu(Window window, string topId, HashSet<string> containers, List<AutomationElement> bar)
     {
         MenuBarTests.OpenMenu(window, topId);
-        var top = Onscreen(window, barIds);
+        var top = Onscreen(window, bar);
         MenuBarTests.DismissMenu(window, topId);
         var result = new List<LiveItem>();
-        foreach (var item in top)
+        foreach (var (_, item) in top)
         {
             result.Add(item);
             if (containers.Contains(item.Id))
             {
-                // A submenu's children are whatever newly appears on screen
-                // when it expands, whatever their ids.
+                // A submenu's children are the elements that newly appear
+                // on screen when it expands, compared by element identity,
+                // so a child reusing a visible item's id still counts.
                 MenuBarTests.OpenMenu(window, topId);
-                var before = Onscreen(window, barIds).Select(i => i.Id).ToHashSet();
+                var before = Onscreen(window, bar).Select(e => e.Element).ToList();
                 MenuBarTests.OpenSubmenu(window, item.Id);
-                result.AddRange(Onscreen(window, barIds).Where(i => !before.Contains(i.Id)));
+                result.AddRange(Onscreen(window, bar)
+                    .Where(e => !before.Any(b => b.Equals(e.Element)))
+                    .Select(e => e.Item));
                 MenuBarTests.DismissMenu(window, topId);
                 MenuBarTests.DismissMenu(window, topId);
             }
@@ -368,31 +371,27 @@ public sealed partial class MenuAuditTests
     }
 
     // Every on-screen menu item in the window except the bar's own top
-    // items and the title-bar chrome, with no id filter: an item with a foreign or empty id still
-    // counts. Expanded children render in a separate popup, so the search
-    // is window-wide.
-    static List<LiveItem> Onscreen(Window window, HashSet<string> barIds)
+    // items and the OS title-bar System menu, both excluded by element
+    // identity, never by id: an item with a foreign, empty, or reused id
+    // (even a top menu's) still counts. Expanded children render in a
+    // separate popup, so the search is window-wide.
+    static List<(AutomationElement Element, LiveItem Item)> Onscreen(Window window, List<AutomationElement> bar)
     {
-        // The OS title bar's System menu is window chrome, not an app menu
-        // item; it is excluded by element identity, never by id.
-        var chrome = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TitleBar))
+        var excluded = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TitleBar))
             .SelectMany(t => t.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)))
+            .Concat(bar)
             .ToList();
-        var items = new List<LiveItem>();
+        var items = new List<(AutomationElement, LiveItem)>();
         foreach (var m in window.FindAllDescendants(cf => cf.ByControlType(ControlType.MenuItem)))
         {
             try
             {
-                if (m.IsOffscreen || chrome.Any(c => c.Equals(m)))
+                if (m.IsOffscreen || excluded.Any(c => c.Equals(m)))
                 {
                     continue;
                 }
 
-                string id = KeyOf(m.Properties.AutomationId.ValueOrDefault, m.Name);
-                if (!barIds.Contains(id))
-                {
-                    items.Add(new LiveItem(id, m.Name, m.IsEnabled));
-                }
+                items.Add((m, new LiveItem(KeyOf(m.Properties.AutomationId.ValueOrDefault, m.Name), m.Name, m.IsEnabled)));
             }
             catch (Exception ex) when (ex is InvalidOperationException or FlaUI.Core.Exceptions.FlaUIException)
             {
