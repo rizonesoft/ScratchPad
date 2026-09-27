@@ -41,7 +41,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? wordsTimer;
     private string? wordsPending;
     private string? wordsCounted;
-    private bool wordsBusy;
+    private string? wordsRunning;
+    private bool wordsDue;
     private int wordsComputed;
     private bool liveWordsOff;
     private TextBox? hookedBox;
@@ -1184,6 +1185,12 @@ public sealed partial class MainWindow : Window, IDisposable
         ScheduleWords(box.Text);
     }
 
+    // Queue state: wordsPending is the latest unseen text, wordsDue says
+    // its pause has elapsed, wordsRunning is the snapshot a worker is
+    // counting now, and wordsCounted is what the strip shows. A count
+    // starts only for pending text whose pause elapsed while no other
+    // count runs; text equal to the running or shown snapshot never
+    // queues, so refreshes without edits never cost a count.
     private void ScheduleWords(string text)
     {
         if (liveWordsOff || statusBar is null || closed)
@@ -1191,10 +1198,12 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        if (string.Equals(text, wordsCounted, StringComparison.Ordinal))
+        if (string.Equals(text, wordsCounted, StringComparison.Ordinal)
+            || string.Equals(text, wordsRunning, StringComparison.Ordinal))
         {
-            // Back to what the strip already shows: nothing to count.
+            // Back to what is shown or already being counted.
             wordsPending = null;
+            wordsDue = false;
             wordsTimer?.Stop();
             return;
         }
@@ -1207,6 +1216,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         wordsPending = text;
+        wordsDue = false;
         if (wordsTimer is null)
         {
             wordsTimer = DispatcherQueue.CreateTimer();
@@ -1219,27 +1229,31 @@ public sealed partial class MainWindow : Window, IDisposable
         wordsTimer.Start();
     }
 
-    private void WordsTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => StartWordsCount();
+    private void WordsTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        wordsDue = true;
+        StartWordsCount();
+    }
 
-    // At most one count runs at a time. A pause that lands while one is
-    // running leaves its snapshot in wordsPending, and the running count
-    // starts it on completion, so only the latest text is ever queued.
+    // At most one count runs at a time; a pause that elapses while one is
+    // running waits for it, and completion starts it then.
     private void StartWordsCount()
     {
-        if (wordsBusy || closed || wordsPending is not string snapshot)
+        if (wordsRunning is not null || !wordsDue || closed || wordsPending is not string snapshot)
         {
             return;
         }
 
         wordsPending = null;
-        wordsBusy = true;
+        wordsDue = false;
+        wordsRunning = snapshot;
         _ = Task.Run(() => LiveCounts.Compute(snapshot)).ContinueWith(
             done =>
             {
                 string? label = done.IsCompletedSuccessfully ? done.Result : null;
                 DispatcherQueue.TryEnqueue(() =>
                 {
-                    wordsBusy = false;
+                    wordsRunning = null;
                     wordsComputed++;
                     if (closed || statusBar is null)
                     {
@@ -1252,6 +1266,11 @@ public sealed partial class MainWindow : Window, IDisposable
                     {
                         wordsCounted = snapshot;
                         statusBar.ShowWords(label, wordsComputed);
+                        if (string.Equals(wordsPending, snapshot, StringComparison.Ordinal))
+                        {
+                            wordsPending = null;
+                            wordsDue = false;
+                        }
                     }
 
                     StartWordsCount();
@@ -1263,6 +1282,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void StopWordsCount()
     {
         wordsPending = null;
+        wordsDue = false;
         if (wordsTimer is not null)
         {
             wordsTimer.Stop();

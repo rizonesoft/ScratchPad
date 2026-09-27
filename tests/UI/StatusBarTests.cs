@@ -140,6 +140,8 @@ public sealed class StatusBarTests
                 }
 
                 Assert.Equal("18 words, 1 min read", SegmentName(window, "StatusWords"));
+                Thread.Sleep(800);
+                Assert.Equal(before + 2, ComputeCount(window));
 
                 box.Text = string.Empty;
                 WaitForSegmentName(window, "StatusWords", "0 words");
