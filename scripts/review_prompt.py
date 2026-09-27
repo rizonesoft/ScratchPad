@@ -457,12 +457,32 @@ def producer_tokens(stderr_text: str) -> int | None:
     wins (a retrying producer reports cumulatively). None when the
     producer reported nothing, so a receipt never invents a number.
     """
-    found = re.findall(r"tokens used\W{0,3}([0-9][0-9,]{0,14})", stderr_text, re.IGNORECASE)
-    found += re.findall(r'"total_tokens"\s*:\s*([0-9]{1,12})', stderr_text)
-    if not found:
+    # The last report by POSITION wins across both shapes (D00 T04 §1
+    # R1-I2), not the last of one shape appended after the other.
+    hits = [(m.end(), m.group(1)) for m in re.finditer(r"tokens used\W{0,3}([0-9][0-9,]{0,14})", stderr_text, re.IGNORECASE)]
+    hits += [(m.end(), m.group(1)) for m in re.finditer(r'"total_tokens"\s*:\s*([0-9]{1,12})', stderr_text)]
+    if not hits:
         return None
-    digits = found[-1].replace(",", "")
+    digits = max(hits)[1].replace(",", "")
     return int(digits) if digits.isdigit() and len(digits) <= 12 else None
+
+
+def producer_token_dims(stderr_text: str) -> dict:
+    """Input, output, and cache token counts a producer reported (D00 T04 §1 R1-R1).
+
+    JSON-event producers report `input_tokens`, `output_tokens`, and
+    `cached_input_tokens` (or `cache_read_input_tokens`); the last report
+    of each wins. Codex's plain stderr reports only a total, so its
+    dimensions stay None. Comparability rule: totals compare across
+    rungs; dimensions compare only where both rungs report them.
+    """
+    out = {}
+    for key, pats in (("input", (r'"input_tokens"\s*:\s*([0-9]{1,12})',)),
+                      ("output", (r'"output_tokens"\s*:\s*([0-9]{1,12})',)),
+                      ("cache", (r'"cached_input_tokens"\s*:\s*([0-9]{1,12})', r'"cache_read_input_tokens"\s*:\s*([0-9]{1,12})'))):
+        hits = [(m.end(), m.group(1)) for pat in pats for m in re.finditer(pat, stderr_text)]
+        out[key] = int(max(hits)[1]) if hits else None
+    return out
 
 
 def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tuple[bool, str, dict]:
@@ -724,7 +744,7 @@ def collect_producer(argv: list[str], prompt: bytes, timeout_secs: float) -> tup
             rc = _reap()
     errout.join(timeout=5)
     _last = errtail[0].decode("utf-8", "replace")
-    info = {"returncode": rc, "stderr_tail": _stderr_tail(), "stderr_last": " ".join(_last.split())[-300:], "tokens": producer_tokens(_last), "bytes_read": total_bytes, "lines_read": total_lines, "raw": b"".join(raw_parts)}
+    info = {"returncode": rc, "stderr_tail": _stderr_tail(), "stderr_last": " ".join(_last.split())[-300:], "tokens": producer_tokens(_last), "token_dims": producer_token_dims(_last), "bytes_read": total_bytes, "lines_read": total_lines, "raw": b"".join(raw_parts)}
     if reason:
         return False, reason, info
     if rc != 0:
@@ -1310,6 +1330,10 @@ if __name__ == "__main__":
                     # receipt (D00 T04 §1 item 11): telemetry reads the
                     # tokens, and a failed run shows why without rerun.
                     "tokens": info.get("tokens"),
+                    "tokens_input": (info.get("token_dims") or {}).get("input"),
+                    "tokens_output": (info.get("token_dims") or {}).get("output"),
+                    "tokens_cache": (info.get("token_dims") or {}).get("cache"),
+                    "tokens_comparability": "totals compare across rungs; dimensions only where both rungs report them",
                     "stderr_last": info.get("stderr_last", ""),
                 },
             )

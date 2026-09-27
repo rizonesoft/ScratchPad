@@ -664,7 +664,8 @@ def validate(graph, _args) -> int:
             if _lunb is not None:
                 continue
             _lwhere = f"{t.path}:{s.line}: §{num} findings {_lm.group(1)}"
-            for _h in graph.PLAN_REVIEW_HEADING_RE.finditer(_ltext):
+            _plheads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(_ltext))
+            for _hi, _h in enumerate(_plheads):
                 _sec = _ltext[_h.end():]
                 _nx = re.search(r"^#{1,6}\s+", _sec, re.MULTILINE)
                 if _nx:
@@ -677,7 +678,13 @@ def validate(graph, _args) -> int:
                     _k = _lr.group(3).lower()
                     _derived[_k] = _derived.get(_k, 0) + 1
                 _head = _sec[: graph.LEDGER_OPEN_RE.search(_sec).start()] if graph.LEDGER_OPEN_RE.search(_sec) else ""
-                for _src, _txt in (("Triage header", _head), ("stamp's Plan review marker", getattr(s, "plan_review_body", "") or "")):
+                # The stamp's marker speaks for the governing (last)
+                # plan-review block only (D00 T04 §1 R1-I1): earlier
+                # rounds keep their own Triage headers.
+                _srcs = [("Triage header", _head)]
+                if _hi == len(_plheads) - 1:
+                    _srcs.append(("stamp's Plan review marker", getattr(s, "plan_review_body", "") or ""))
+                for _src, _txt in _srcs:
                     _stated: dict[str, int] = {}
                     for _tm2 in _tally_re.finditer(_txt):
                         _w = _tm2.group(2).lower().rstrip("s")
@@ -723,7 +730,11 @@ def validate(graph, _args) -> int:
     # derives nothing and only its listed rows are checked.
     _disp_lens = {"adversarial": "A", "consistency": "C", "integration": "I", "record": "R"}
     _disp_round_re = re.compile(r"^#{2,6}\s+\w+ panel\b[^\n]*?\bround\s+(\d+)", re.IGNORECASE | re.MULTILINE)
-    _disp_verdict_re = re.compile(r"^\*\*(adversarial|consistency|integration|record): needs-attention\*\*\s*\((\d{1,4})\)", re.IGNORECASE | re.MULTILINE)
+    # Findings come from needs-attention AND advisory verdicts, counted by
+    # the declared `(n)` or, when a lens gives none, by its numbered
+    # finding lines (D00 T04 §1 R1-A1).
+    _disp_verdict_re = re.compile(r"^\*\*(adversarial|consistency|integration|record): (?:needs-attention|advisory)\*\*[ \t]*(?:\((\d{1,4})\))?[ \t]*$", re.IGNORECASE | re.MULTILINE)
+    _disp_numbered_re = re.compile(r"^[ \t]{0,3}\d{1,4}\.[ \t]+\S", re.MULTILINE)
     _disp_head_re = re.compile(r"^\|\s*ID\s*\|\s*Disposition\s*\|\s*Evidence\s*\|\s*$", re.IGNORECASE | re.MULTILINE)
     _disp_row_re = re.compile(r"^\|\s*(R\d+-[A-Z]+\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|\n]*?)\s*\|\s*$", re.MULTILINE)
     for t in todos:
@@ -755,8 +766,14 @@ def validate(graph, _args) -> int:
                 _rn = graph.parse_bounded_int(_rm.group(1), 9999) or 0
                 _legacy_f = _rn in _f_rounds
                 _k = 0
-                for _vm in _disp_verdict_re.finditer(_body):
-                    _cnt = graph.parse_bounded_int(_vm.group(2), 9999) or 0
+                _vms = list(_disp_verdict_re.finditer(_body))
+                for _vi, _vm in enumerate(_vms):
+                    if _vm.group(2):
+                        _cnt = graph.parse_bounded_int(_vm.group(2), 9999) or 0
+                    else:
+                        _lend = re.search(r"^\*\*\w+:|^#{1,6}\s", _body[_vm.end():], re.MULTILINE)
+                        _span = _body[_vm.end(): _vm.end() + _lend.start()] if _lend else _body[_vm.end():]
+                        _cnt = len(_disp_numbered_re.findall(_span))
                     for _j in range(1, _cnt + 1):
                         _k += 1
                         _expected.append(f"R{_rn}-F{_k}" if _legacy_f else f"R{_rn}-{_disp_lens[_vm.group(1).lower()]}{_j}")
@@ -796,6 +813,10 @@ def validate(graph, _args) -> int:
                     flag("panel-disposition-table", f"{_dwhere} is stamped while {_rid} is still live (fix it, file it, reject it with a reason, or escalate with no stamp)")
                 elif _disp == "escalated":
                     flag("panel-disposition-table", f"{_dwhere} is stamped over the escalated finding {_rid} (a blocking round-5 leftover stops the run: no stamp until the operator decides)")
+                elif _disp == "filed" and _rid.startswith("R5-") and not re.search(r"below[- ](?:the[- ])?(?:filing[- ])?bar", _rr.group(3), re.IGNORECASE):
+                    # Round 5 is the cap (D00 T04 §1 R1-A2): only a below-bar
+                    # leftover files and stamps; a blocking one escalates.
+                    flag("panel-disposition-table", f"{_dwhere} files the round-5 finding {_rid} without stating it sits below the bar (a blocking round-5 leftover escalates, it never files and stamps)")
             _miss = [x for x in _expected if x not in _seen]
             if _miss:
                 flag("panel-disposition-table", f"{_dwhere} final disposition table misses {len(_miss)} reported finding(s): {', '.join(_miss[:8])}{' ...' if len(_miss) > 8 else ''}")

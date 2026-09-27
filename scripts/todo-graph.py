@@ -5764,13 +5764,15 @@ def cmd_query(args) -> int:
                 tel_n += 1
                 outcomes[t["outcome"]] = outcomes.get(t["outcome"], 0) + 1
                 fam_tel[r["family"]] += 1
-                if t["tokens"] is None:
-                    _rt = [_rcpt_tokens[x] for x in d.get("round_runs", {}).get(r["n"], []) if x in _rcpt_tokens]
-                    if _rt:
-                        tok_sum += _rt[-1]
-                        tok_receipt += 1
-                    else:
-                        tok_unknown += 1
+                # Producer-reported receipt tokens win over a transcribed
+                # line (D00 T04 §1 R1-R1): the receipt is the producer's
+                # own report, the line a copy of it.
+                _rt = [_rcpt_tokens[x] for x in d.get("round_runs", {}).get(r["n"], []) if x in _rcpt_tokens]
+                if _rt:
+                    tok_sum += _rt[-1]
+                    tok_receipt += 1
+                elif t["tokens"] is None:
+                    tok_unknown += 1
                 else:
                     tok_sum += t["tokens"]
                 if t["round"] != r["n"]:
@@ -11256,6 +11258,8 @@ track: Z1
 |  92   |   §92   | Clean Telemetry per round stays silent | - |  [x]   |
 |  93   |   §93   | Ledger tallies that disagree fire | - |  [x]   |
 |  94   |   §94   | Ledger tallies that agree stay silent | - |  [x]   |
+|  95   |   §95   | Uncounted and advisory findings still need rows | - |  [x]   |
+|  96   |   §96   | A round-5 finding filed without the bar fires | - |  [x]   |
 
 ---
 
@@ -12297,6 +12301,28 @@ Why this section exists: fixture.
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-tally-ok.md
 > **Plan review:** GPT high, no findings
 
+## 95. Uncounted and advisory findings still need rows
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §95 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-uncounted.md
+> **Plan review:** GPT high, no findings
+
+## 96. A round-5 finding filed without the bar fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §96 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-r5.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12747,6 +12773,9 @@ Why this section exists: fixture.
         (rev_dir / "90-panel-arch-noround.md").write_text("# Review: fixture\nArch trigger: storage - settings format changes\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         (rev_dir / "90-panel-arch-badhead.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review\n\nverdict: approve\n\nArch outage: both rungs - timeout\n\nArch outage: somewhere - x\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         (rev_dir / "90-panel-arch-ok.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review (Arch-1 fallback)\n\nArch outage: arch-primary - timeout\n\nverdict: approve\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
+        # Disposition round-1 fixes (D00 T04 §1 R1-A1, R1-A2).
+        (rev_dir / "90-panel-disp-uncounted.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: needs-attention**\n1. first\n2. second\n**consistency: advisory**\n1. note\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n| ID | Disposition | Evidence |\n| --- | --- | --- |\n| R1-A1 | fixed | abc1234 |\n", encoding="utf-8")
+        (rev_dir / "90-panel-disp-r5.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 5\n\n**adversarial: needs-attention** (2)\n1. a\n2. b\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 5; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n| ID | Disposition | Evidence |\n| --- | --- | --- |\n| R5-A1 | filed | D90 T06 §1 |\n| R5-A2 | filed | D90 T06 §1, below the filing bar: cosmetic |\n", encoding="utf-8")
         # Ledger tallies (D00 T04 §1 item 19).
         (rev_dir / "90-panel-tally-bad.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\n## Plan review\n\nRound: fixture. Triage: 2 rejected under the bar; 0 accepted; none filed\n\nLedger:\n\n- [D90-T06-S93-PR1] [minor] a -> rejected below the bar\n- [D90-T06-S93-PR2] [minor] b -> accepted for triage\n\nEnd of ledger\n", encoding="utf-8")
         (rev_dir / "90-panel-tally-ok.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\n## Plan review\n\nRound: fixture. Triage: 2 rejected under the bar; none filed\n\nLedger:\n\n- [D90-T06-S94-PR1] [minor] a -> rejected below the bar\n- [D90-T06-S94-PR2] [minor] b -> rejected below the bar\n\nEnd of ledger\n", encoding="utf-8")
@@ -13190,6 +13219,17 @@ Why this section exists: fixture.
             True,
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
+        check(
+            "uncounted needs-attention and advisory findings derive expected rows",
+            any("TODO-06-panel.md" in ln and "§95 " in ln and "misses 2 reported finding(s): R1-A2, R1-C1" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "a round-5 finding filed without the bar fires; one below the bar stays silent",
+            ([ln for ln in panel_out if "TODO-06-panel.md" in ln and "§96 " in ln and "round-5 finding R5-A1" in ln] != [],
+             any("TODO-06-panel.md" in ln and "§96 " in ln and "R5-A2" in ln for ln in panel_out)),
+            (True, False),
+        )
         check(
             "Triage header stating a count the ledger does not carry fires",
             any("TODO-06-panel.md" in ln and "§93 " in ln and "Triage header states 2 rejected but the ledger carries 1" in ln for ln in panel_out),
@@ -19088,6 +19128,7 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         _rs = json.loads((Path(__file__).with_name("schemas") / "run-2.schema.json").read_text(encoding="utf-8"))
         check("query run --json meets scripts/schemas/run-2.schema.json", schema_errors(_jdata, _rs["run"]), [])
         check("run/2 keeps every run/1 leg (compatibility)", sorted(RUN_SCHEMA_V1_KEYS - set(_rs["run"]["properties"])), [])
+        check("the schema rejects a malformed array element", schema_errors(dict(_jdata, artifacts=[42]), _rs["run"]) != [], True)
         check("the schema checker names a type, enum, and missing-key violation",
               len(schema_errors({"schema": 3, "verdict": "bogus"}, _rs["run"])) >= 3, True)
         _ebuf = _mio.StringIO()
@@ -24560,6 +24601,10 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         check("producer tokens read codex's tail report", rp.producer_tokens("hook: Stop\ntokens used\n28,509\n"), 28509)
         check("producer tokens take the last report", rp.producer_tokens("tokens used 5\n...\ntokens used: 7,001"), 7001)
         check("producer tokens read JSON usage", rp.producer_tokens('{"total_tokens": 99}'), 99)
+        check("producer tokens take the last report by position across shapes", rp.producer_tokens('{"total_tokens": 99}\ntokens used 100'), 100)
+        check("producer token dimensions read JSON events and stay None for a plain total",
+              (rp.producer_token_dims('{"input_tokens": 10, "output_tokens": 5, "cached_input_tokens": 3}'), rp.producer_token_dims("tokens used 7")),
+              ({"input": 10, "output": 5, "cache": 3}, {"input": None, "output": None, "cache": None}))
         check("producer tokens stay unknown when nothing is reported", rp.producer_tokens("model grok-4.7\n"), None)
         check(
             "prompt tags are unique per prompt",

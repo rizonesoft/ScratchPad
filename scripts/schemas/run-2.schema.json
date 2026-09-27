@@ -50,7 +50,45 @@
         ]
       },
       "corrections": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "row",
+            "corrects",
+            "original",
+            "depth",
+            "corrected_by",
+            "head_external"
+          ],
+          "properties": {
+            "row": {
+              "type": "string"
+            },
+            "corrects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "original": {
+              "type": "string"
+            },
+            "depth": {
+              "type": "integer"
+            },
+            "corrected_by": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "head_external": {
+              "type": "boolean"
+            }
+          }
+        }
       },
       "confidence": {
         "type": "object",
@@ -169,22 +207,190 @@
         }
       },
       "candidates": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "text"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
       },
       "scope": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sections",
+            "dependents"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "sections": {
+              "type": "string"
+            },
+            "dependents": {
+              "type": "string"
+            }
+          }
+        }
       },
       "findings": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "row",
+            "id",
+            "severity",
+            "disposition"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "row": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "severity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "disposition": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
       },
       "markers": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "section",
+            "index",
+            "of",
+            "run",
+            "edges",
+            "text"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "section": {
+              "type": "integer"
+            },
+            "index": {
+              "type": "integer"
+            },
+            "of": {
+              "type": "integer"
+            },
+            "run": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "edges": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
       },
       "outages": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "section",
+            "text"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "section": {
+              "type": "integer"
+            },
+            "text": {
+              "type": "string"
+            }
+          }
+        }
       },
       "artifacts": {
-        "type": "array"
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "candidate",
+            "command",
+            "exit",
+            "tool",
+            "digest",
+            "target"
+          ],
+          "properties": {
+            "path": {
+              "type": "string"
+            },
+            "candidate": {
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "exit": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "digest": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            }
+          }
+        }
       }
     }
   },
