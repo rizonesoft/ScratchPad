@@ -62,7 +62,7 @@ track: N1
 |   9   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [x]   |
 |  10   |   §7    | Reading level in the status bar | §4 |  [x]   |
 |  11   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
-|  12   |   §9    | Live counts in the status bar | §4 |  [ ]   |
+|  12   |   §9    | Live counts in the status bar | §4 |  [x]   |
 |  13   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
 |  14   |   §11   | Session word goal | §4, §9 |  [ ]   |
 |  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
@@ -353,6 +353,13 @@ Why this section exists: writers watch length as they type. Words, reading time,
 - [x] Commit: `"notepad-core: count live in the status bar"`
 
 **Test checkpoint:** live counts, reading time, debounce, and non-blocking input are all driven in the room. Cheaper substitute that fails: counts that lag a paragraph behind.
+
+> **Verified:** 2026-09-27 | §9 | Words and reading time (200 wpm, rounded up) from TextStats in a sibling segment beside stock's verbatim character count; counts land once per 300 ms pause from a single-flight worker and only for the current text; Unit 113/113; StatusBar plus Golden 12 passed, 2 Interactive skipped; 1 MiB benchmark 187 ms with vs 187 ms without, under §4's 500 ms bar; golden 0.0544%
+> **Review:** round 4 (Light escalated to Full), candidates `8d1c8d5` `b729799` `f03b498` `d38b40b` -- GPT R1 bulk adversarial, integration (2), and record needs-attention, fixed b729799; R2 signoff adversarial and integration needs-attention, fixed f03b498; R3 signoff approve; plan-review record fix (§4's bar) d38b40b; R4 depth approve on all four lenses. Arch trigger none. Raw findings: docs/reviews/01-notepad-core/D01-T02-s9.md
+> **Plan review:** GPT medium, no findings (13 rejected under the filing bar, 1 of them corrected in place) (run 20260927-D01-T02-S9-codex-c06751119-r4)
+> **CRUD:** not-applicable | a read-only readout over the buffer; UI drives write only temp fixture files and clear their sessions
+> **Duration:** 2026-09-27T07:12:00Z to 2026-09-27T07:43:18Z
+> **Reviewed-tip:** d38b40b1ccb21fab276c33529d91f18076d14f21
 
 ## 10. Custom Accent Themes
 
