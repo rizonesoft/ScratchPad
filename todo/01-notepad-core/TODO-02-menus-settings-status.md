@@ -63,7 +63,7 @@ track: N1
 |  10   |   §7    | Reading level in the status bar | §4 |  [x]   |
 |  11   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
 |  12   |   §9    | Live counts in the status bar | §4 |  [x]   |
-|  13   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
+|  13   |   §10   | Custom accent themes | §2, §3 |  [x]   |
 |  14   |   §11   | Session word goal | §4, §9 |  [ ]   |
 |  15   |   §12   | Recent Files display toggle | §1, §2, §3, D01 T01 §8 |  [ ]   |
 |  16   |   §16   | Quarantine the MenuBarTests flakes | §1 |  [ ]   |
@@ -387,6 +387,13 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 - [x] Commit: `"notepad-core: theme the accents"`
 
 **Test checkpoint:** gallery, preview, persistence, and untouched defaults are all driven in the room. Cheaper substitute that fails: themes that need a restart to apply.
+
+> **Verified:** 2026-09-27 | §10 | Accent gallery inside the stock App theme card (seven built-ins, preview on hover or focus, commit on click, Use system accent revert) over a new store key Accent (default system); AccentService recolors the shared accent brushes through an explicit key-to-shade map and follows Windows accent changes; Rose drive 0 -> 154 px, 696 after relaunch, 0 after revert; every swatch renders 1,129-1,185 px; Unit AccentThemesTests 16/16; Settings, MainWindow, Golden 22 passed, 2 fenced skips; hover preview owed D01-T02-S10-N1
+> **Review:** round 2 (Light), candidates `aa9e830` `1bcbb47` `433aa64` `64a94e7` -- GPT R1 bulk adversarial needs-attention (RGB-only discovery) plus record advisory, fixed 433aa64; R2 signoff approve on all four lenses. Arch trigger storage: Arch-1 needs-attention (stale system snapshot, RGB-inferred shades), fixed 64a94e7; Arch-2 approve. Raw findings: docs/reviews/01-notepad-core/D01-T02-s10.md
+> **Plan review:** GPT medium, no findings (13 rejected under the filing bar) (run 20260927-D01-T02-S10-codex-c06751119-r3)
+> **CRUD:** create/read/update exercised | the Accent key is written on commit, read back at relaunch (Rose fill 696 px at startup), and updated to system by revert; unknown ids read as system
+> **Duration:** 2026-09-27T07:47:00Z to 2026-09-27T08:15:15Z
+> **Reviewed-tip:** 64a94e721e8e2b7f638acb23f935bab3eb78d86f
 
 **Night-owed:** D01-T02-S10-N1 (1 FullyQualifiedName~SettingsPageTests.AccentHoverPreviewsAndRestores, collector Nightly UI 02:30, owed 2026-09-28, digest 758652bb60fa0cb3, tests docs/night-owed/D01-T02-S10-N1.txt, candidate aa9e8308c044a1716c9bc1aa235b97eecdbfa45d, tz +02:00, schedule 2026-09-19) hover preview and restore by physical pointer (item 2).
 
