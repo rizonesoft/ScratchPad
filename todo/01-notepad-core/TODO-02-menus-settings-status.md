@@ -59,7 +59,7 @@ track: N1
 |   6   |   §14   | Title-bar icon beside the tabs | §13, D01 T01 §11 |  [x]   |
 |   7   |   §15   | Chrome color finetune against stock | §13, D01 T01 §1 |  [x]   |
 |   8   |   §5    | Print path | §1 |  [ ]   |
-|   9   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [ ]   |
+|   9   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [x]   |
 |  10   |   §7    | Reading level in the status bar | §4 |  [ ]   |
 |  11   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
 |  12   |   §9    | Live counts in the status bar | §4 |  [ ]   |
@@ -261,6 +261,13 @@ Why this section exists: menus rot one item at a time. The audit makes "every co
 - [x] Commit: `"notepad-core: audit menu and shortcut completeness"`
 
 **Test checkpoint:** Audit green in the local full run; probe dead item fails; every item working or owner-named. Cheaper substitute that fails: a spreadsheet audit nobody reruns.
+
+> **Verified:** 2026-09-27 | §6 | docs/menu-audit.md resolves 43 items (19 working with named proofs, 2 containers, 2 owner-owed, 20 pending on open owners); MenuAuditTests 5/5 in the default run; dead-item, foreign-id, and duplicate-id probes each fail the run and were reverted; with MenuBar and BindingManifest 57 passed, 0 failed, 10 Interactive skipped
+> **Review:** round 3 (Light escalated to Full), candidates `0963015` `eb616c9` `c94250a` -- GPT R1 bulk adversarial needs-attention (id-prefix enumeration), fixed eb616c9; R2 signoff adversarial needs-attention (id-based exclusion), fixed c94250a; R3 signoff approve on all four lenses. Arch trigger none. Raw findings: docs/reviews/01-notepad-core/D01-T02-s6.md
+> **Plan review:** GPT medium, no findings (12 rejected under the filing bar) (run 20260927-D01-T02-S6-codex-c06751119-r4)
+> **CRUD:** not-applicable | menu audit doc and tests; the Save all leg writes only a temp fixture file
+> **Duration:** 2026-09-27T06:03:00Z to 2026-09-27T06:36:30Z
+> **Reviewed-tip:** c94250a0dff21a79581f8dfb3d26c07f780b2417
 
 ## 7. Reading Level in the Status Bar
 
