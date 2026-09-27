@@ -1,3 +1,4 @@
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 using Notepad.Core;
@@ -9,24 +10,44 @@ namespace ScratchPad;
 // Accent themes, owned by D01 T02 §10. WinUI resolves accent brushes
 // inside XamlControlsResources, where app- or element-level keys cannot
 // shadow them at runtime, so the accent recolors the brush instances
-// themselves: on first use every SolidColorBrush in the app's Light and
-// Dark theme dictionaries (recursively, HighContrast excluded) whose key
-// names an accent resource (contains "Accent") and whose color equals one
-// of the seven live Windows accent shades is recorded with its original
-// color and shade. The key test keeps a neutral brush that happens to
-// share an accent shade's color out; control brushes such as the checked
-// radio fill are aliases of the accent brush instances, so they follow. A built-in accent sets each recorded brush to
-// the same shade of its palette (keeping the brush's alpha); "system"
-// restores the originals. The brushes are shared, so every window
-// repaints at once. Previews apply without touching the store;
-// EndPreview restores the stored accent.
-//
-// Default 2026-09-27: the originals are the Windows accent read at first
-// use; a Windows accent change mid-session shows after a restart while a
-// custom accent was ever applied. Cost of changing: re-read UISettings on
-// its ColorValuesChanged event and re-record.
+// themselves. Ownership is explicit: ShadeMap names each supported accent
+// brush key and the semantic shade it carries in each theme (WinUI's
+// mapping: dark fills use Light2, dark text Light3; light fills Dark1,
+// light text Dark2/Dark3). Discovery records a key only when its brush
+// currently shows the live Windows color for that shade, so a key whose
+// meaning differs on some WinUI version is skipped, never guessed.
+// Control brushes (the checked radio fill, the toggle on-fill) are
+// aliases of these instances, so they follow. A built-in accent sets
+// each recorded brush to its shade of the palette (keeping alpha);
+// "system" sets the current Windows color for that shade. When Windows
+// changes its accent, the Windows colors are re-read and the current
+// choice re-applied, so "system" keeps following Windows. HighContrast
+// dictionaries are never touched.
 internal static class AccentService
 {
+    // Theme dictionary kind -> accent brush key -> shade key.
+    static readonly Dictionary<string, Dictionary<string, string>> ShadeMap = new(StringComparer.Ordinal)
+    {
+        ["Dark"] = new(StringComparer.Ordinal)
+        {
+            ["AccentFillColorDefaultBrush"] = "SystemAccentColorLight2",
+            ["AccentFillColorSecondaryBrush"] = "SystemAccentColorLight2",
+            ["AccentFillColorTertiaryBrush"] = "SystemAccentColorLight2",
+            ["AccentTextFillColorPrimaryBrush"] = "SystemAccentColorLight3",
+            ["AccentTextFillColorSecondaryBrush"] = "SystemAccentColorLight3",
+            ["AccentTextFillColorTertiaryBrush"] = "SystemAccentColorLight2",
+        },
+        ["Light"] = new(StringComparer.Ordinal)
+        {
+            ["AccentFillColorDefaultBrush"] = "SystemAccentColorDark1",
+            ["AccentFillColorSecondaryBrush"] = "SystemAccentColorDark1",
+            ["AccentFillColorTertiaryBrush"] = "SystemAccentColorDark1",
+            ["AccentTextFillColorPrimaryBrush"] = "SystemAccentColorDark2",
+            ["AccentTextFillColorSecondaryBrush"] = "SystemAccentColorDark3",
+            ["AccentTextFillColorTertiaryBrush"] = "SystemAccentColorDark1",
+        },
+    };
+
     static readonly (UIColorType Type, string Shade)[] SystemShades =
     [
         (UIColorType.Accent, "SystemAccentColor"),
@@ -38,12 +59,15 @@ internal static class AccentService
         (UIColorType.AccentDark3, "SystemAccentColorDark3"),
     ];
 
-    static List<(SolidColorBrush Brush, Color Original, string Shade)>? targets;
+    static List<(SolidColorBrush Brush, string Shade)>? targets;
+    static Dictionary<string, Color> system = new(StringComparer.Ordinal);
+    static UISettings? uiSettings;
+    static DispatcherQueue? queue;
     static string applied = AccentThemes.System;
 
     public static string Current => applied;
 
-    // Brushes recolored by the current accent (diagnostics and tests).
+    // Brushes the accent owns (diagnostics and tests).
     public static int TargetCount => targets?.Count ?? 0;
 
     public static void Apply(string? id)
@@ -54,70 +78,114 @@ internal static class AccentService
             return;
         }
 
-        targets ??= Discover();
-        IReadOnlyDictionary<string, AccentColor>? shades =
-            AccentThemes.Find(target) is AccentTheme accent ? AccentThemes.Shades(accent.Color) : null;
-        foreach ((SolidColorBrush brush, Color original, string shade) in targets)
-        {
-            brush.Color = shades is null
-                ? original
-                : Color.FromArgb(original.A, shades[shade].R, shades[shade].G, shades[shade].B);
-        }
-
+        EnsureDiscovered();
         applied = target;
+        Recolor();
     }
 
     public static void Preview(string id) => Apply(id);
 
     public static void EndPreview() => Apply(SettingsStore.Shared.Current.Accent);
 
-    static List<(SolidColorBrush, Color, string)> Discover()
+    static void EnsureDiscovered()
     {
-        var settings = new UISettings();
-        var byColor = new Dictionary<uint, string>();
-        foreach ((UIColorType type, string shade) in SystemShades)
+        if (targets is not null)
         {
-            Color c = settings.GetColorValue(type);
-            byColor.TryAdd(Rgb(c), shade);
+            return;
         }
 
-        var found = new List<(SolidColorBrush, Color, string)>();
-        var seen = new HashSet<SolidColorBrush>(ReferenceEqualityComparer.Instance);
-        Walk(Application.Current.Resources, byColor, found, seen);
-        return found;
+        queue = DispatcherQueue.GetForCurrentThread();
+        uiSettings = new UISettings();
+        system = ReadSystem(uiSettings);
+        targets = [];
+        Walk(Application.Current.Resources, null, targets);
+        uiSettings.ColorValuesChanged += OnSystemColorsChanged;
     }
 
-    static void Walk(
-        ResourceDictionary dictionary,
-        Dictionary<uint, string> byColor,
-        List<(SolidColorBrush, Color, string)> found,
-        HashSet<SolidColorBrush> seen)
+    // Raised off the UI thread when Windows changes its colors: re-read the
+    // Windows accent and re-apply the current choice on the UI thread (a
+    // WinUI refresh of the accent brushes would otherwise leave a custom
+    // accent overwritten, or "system" pinned to the old accent).
+    static void OnSystemColorsChanged(UISettings sender, object args)
     {
-        foreach ((object key, object value) in dictionary)
+        Dictionary<string, Color> fresh = ReadSystem(sender);
+        queue?.TryEnqueue(() =>
         {
-            if (key is string name
-                && name.Contains("Accent", StringComparison.Ordinal)
-                && value is SolidColorBrush brush
-                && byColor.TryGetValue(Rgb(brush.Color), out string? shade)
-                && seen.Add(brush))
+            system = fresh;
+            Recolor();
+        });
+    }
+
+    static void Recolor()
+    {
+        if (targets is null)
+        {
+            return;
+        }
+
+        IReadOnlyDictionary<string, AccentColor>? shades =
+            AccentThemes.Find(applied) is AccentTheme accent ? AccentThemes.Shades(accent.Color) : null;
+        foreach ((SolidColorBrush brush, string shade) in targets)
+        {
+            byte alpha = brush.Color.A;
+            if (shades is not null)
             {
-                found.Add((brush, brush.Color, shade));
+                brush.Color = Color.FromArgb(alpha, shades[shade].R, shades[shade].G, shades[shade].B);
+            }
+            else if (system.TryGetValue(shade, out Color windows))
+            {
+                brush.Color = Color.FromArgb(alpha, windows.R, windows.G, windows.B);
+            }
+        }
+    }
+
+    static Dictionary<string, Color> ReadSystem(UISettings settings)
+    {
+        var colors = new Dictionary<string, Color>(StringComparer.Ordinal);
+        foreach ((UIColorType type, string shade) in SystemShades)
+        {
+            colors[shade] = settings.GetColorValue(type);
+        }
+
+        return colors;
+    }
+
+    // kind is null outside theme dictionaries, "Dark" for the Default and
+    // Dark theme dictionaries, "Light" for Light; HighContrast is skipped.
+    static void Walk(ResourceDictionary dictionary, string? kind, List<(SolidColorBrush, string)> found)
+    {
+        if (kind is not null && ShadeMap.TryGetValue(kind, out Dictionary<string, string>? map))
+        {
+            foreach ((string key, string shade) in map)
+            {
+                if (dictionary.TryGetValue(key, out object? value)
+                    && value is SolidColorBrush brush
+                    && system.TryGetValue(shade, out Color windows)
+                    && brush.Color.R == windows.R && brush.Color.G == windows.G && brush.Color.B == windows.B
+                    && !found.Exists(t => ReferenceEquals(t.Item1, brush)))
+                {
+                    found.Add((brush, shade));
+                }
             }
         }
 
         foreach ((object key, object value) in dictionary.ThemeDictionaries)
         {
-            if (value is ResourceDictionary theme && !string.Equals(key as string, "HighContrast", StringComparison.Ordinal))
+            string? childKind = (key as string) switch
             {
-                Walk(theme, byColor, found, seen);
+                "Default" or "Dark" => "Dark",
+                "Light" => "Light",
+                _ => null,
+            };
+            if (childKind is not null && value is ResourceDictionary theme)
+            {
+                Walk(theme, childKind, found);
             }
         }
 
         foreach (ResourceDictionary merged in dictionary.MergedDictionaries)
         {
-            Walk(merged, byColor, found, seen);
+            Walk(merged, kind, found);
         }
     }
-
-    static uint Rgb(Color c) => ((uint)c.R << 16) | ((uint)c.G << 8) | c.B;
 }
