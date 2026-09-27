@@ -2951,7 +2951,7 @@ TELEMETRY_PANEL_RE = re.compile(r"^(#{2,6})\s+(Opus panel|Claude panel|GPT panel
 # Near misses (D00 T04 §1 item 12): any run of list markers (`*`, `+`,
 # `-`, numbered `1.` or `1)`), nested quotes, or an opening backtick
 # before the word counts malformed instead of dropping silently.
-TELEMETRY_NEAR_RE = re.compile(r"^\s{0,3}(?:(?:[*+>\-]|[0-9]{1,9}[.)]|`)\s*)*Telemetry\s*:", re.IGNORECASE)
+TELEMETRY_NEAR_RE = re.compile(r"^\s*(?:(?:[*+>\-]|[0-9]{1,9}[.)]|`)\s*)*Telemetry\s*:", re.IGNORECASE)
 TELEMETRY_HEADING_RE = re.compile(r"^(#{1,6})\s+")
 TELEMETRY_WORST = {"needs-attention": 2, "advisory": 1, "approve": 0}
 TELEMETRY_ROUND_RE = re.compile(r"round\s+(\d+)", re.IGNORECASE)
@@ -4082,6 +4082,33 @@ def unmet_dependencies(
                 }
             )
     return unmet
+
+
+def panel_round_numbers(heading_suffixes: list[str]) -> list[int]:
+    """Round numbers for panel headings in document order (D00 T04 §1 R3-I2).
+
+    An explicit `round N` in the heading's suffix numbers it; an
+    unnumbered heading takes its order, skipping every number an explicit
+    heading or an earlier round already holds. telemetry_parse and the
+    validator's disposition pass share this, so both bind a finding to
+    the same round.
+    """
+    explicit = set()
+    for suf in heading_suffixes:
+        m = TELEMETRY_ROUND_RE.search(suf or "")
+        if m:
+            explicit.add(parse_bounded_int(m.group(1), 9999) or 0)
+    out: list[int] = []
+    for order, suf in enumerate(heading_suffixes, 1):
+        m = TELEMETRY_ROUND_RE.search(suf or "")
+        if m:
+            rn = parse_bounded_int(m.group(1), 9999) or 0
+        else:
+            rn = order
+            while rn in set(out) | explicit:
+                rn += 1
+        out.append(rn)
+    return out
 
 
 def telemetry_parse(text: str) -> dict:
@@ -12292,7 +12319,7 @@ Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s1-2026-09-27-s
 
 ## 94. Ledger tallies that agree stay silent
 
-Why this section exists: fixture.
+Why this section exists: fixture. -> SOURCE: plan-review-D90-T06-s94-2026-09-27-s94 (2 findings, 1 filed here, 1 rejected)
 
 - [x] Did the thing
 - [x] Commit: `"selftest: panel"`
@@ -13274,6 +13301,11 @@ Why this section exists: fixture.
         check(
             "a zero count beside a matching ledger row fires",
             any("TODO-06-panel.md" in ln and "§93 " in ln and "states 0 accepted but the ledger carries 1" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "a SOURCE summary that disagrees with the source plan review's ledger fires",
+            any("TODO-06-panel.md" in ln and "SOURCE summary says 1 filed but the source plan review's ledger carries 0" in ln for ln in panel_out),
             True,
         )
         check(
@@ -24637,6 +24669,7 @@ proof D90-T07-S4-PR112 tests/fix-proof.py::test_clearance
         check("producer tokens read codex's tail report", rp.producer_tokens("hook: Stop\ntokens used\n28,509\n"), 28509)
         check("producer tokens take the last report", rp.producer_tokens("tokens used 5\n...\ntokens used: 7,001"), 7001)
         check("producer tokens read JSON usage", rp.producer_tokens('{"total_tokens": 99}'), 99)
+        check("panel round numbers skip explicit numbers the way telemetry does", panel_round_numbers([" Round 2", "", " (round 1)", ""]), [2, 3, 1, 4])
         check("producer tokens take the last report by position across shapes", rp.producer_tokens('{"total_tokens": 99}\ntokens used 100'), 100)
         check("producer token dimensions read JSON events and stay None for a plain total",
               (rp.producer_token_dims('{"input_tokens": 10, "output_tokens": 5, "cached_input_tokens": 3}'), rp.producer_token_dims("tokens used 7")),

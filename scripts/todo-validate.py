@@ -711,7 +711,40 @@ def validate(graph, _args) -> int:
             _kd = re.findall(r"plan-review-[A-Za-z0-9-]*?-(\d{4}-\d{2}-\d{2})", _line)
             if not _kd or max(_kd) <= graph.DISPOSITION_CUTOVER:
                 continue
+            # The source plan review's own ledger (D00 T04 §1 R3-R1): the
+            # key names D<nn>-T<nn>-s<n>; its section's findings file holds
+            # the ledger whose filed, duplicate, and rejected rows the
+            # summary must match.
+            _km = re.search(r"plan-review-D(\d+)-T(\d+)-s(\d+)-", _line)
+            _src_counts = None
+            if _km:
+                _st = next((x for x in todos if x.domain.startswith(_km.group(1) + "-") and x.number == _km.group(2)), None)
+                _ss = _st.sections.get(graph.parse_bounded_int(_km.group(3), 9999) or 0) if _st else None
+                _sf = graph.FINDINGS_RE.search(getattr(_ss, "review_body", None) or "") if _ss else None
+                if _sf:
+                    try:
+                        _stext = graph.strip_fenced_code((graph.TODO_DIR.parent / _sf.group(1)).read_text(encoding="utf-8"))[0]
+                    except OSError:
+                        _stext = ""
+                    _sheads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(_stext))
+                    if _sheads:
+                        _ssec = _stext[_sheads[-1].end():]
+                        _snx = re.search(r"^#{1,6}\s+", _ssec, re.MULTILINE)
+                        _sblock, _sp = graph.ledger_block(_ssec[: _snx.start()] if _snx else _ssec)
+                        if _sblock is not None:
+                            _src_counts = {}
+                            for _lr in graph.LEDGER_ROW_RE.finditer(_sblock):
+                                _src_counts[_lr.group(3).lower()] = _src_counts.get(_lr.group(3).lower(), 0) + 1
             for _pm in _src_paren_re.finditer(_line):
+                if _src_counts is not None:
+                    _said: dict[str, int] = {}
+                    for _x in _src_part_re.finditer(_pm.group(1)):
+                        _w = _x.group(2).lower()
+                        _w = "filed" if _w.startswith("filed") else ("duplicate" if _w.startswith("duplicate") else _w)
+                        _said[_w] = _said.get(_w, 0) + (graph.parse_bounded_int(_x.group(1), 9999) or 0)
+                    for _w, _n in _said.items():
+                        if _src_counts.get(_w, 0) != _n:
+                            flag("ledger-tally-mismatch", f"{t.path}:{_li}: SOURCE summary says {_n} {_w} but the source plan review's ledger carries {_src_counts.get(_w, 0)}")
                 _total = graph.parse_bounded_int(_pm.group(2), 9999) or 0
                 _parts = [graph.parse_bounded_int(x.group(1), 9999) or 0 for x in _src_part_re.finditer(_pm.group(1))]
                 if _parts and sum(_parts) != _total:
@@ -760,6 +793,8 @@ def validate(graph, _args) -> int:
                 continue
             _dwhere = f"{t.path}:{s.line}: §{num} findings {_dm.group(1)}"
             _rounds = list(_disp_round_re.finditer(_dtext))
+            # One numbering with query telemetry (R3-I2).
+            _rnums = graph.panel_round_numbers([m.group(1) for m in _rounds])
             _expected: list[str] = []
             # The ID style is read per round (older records mix them): a
             # round whose findings appear anywhere as `R<n>-F<k>` rows is
@@ -768,8 +803,7 @@ def validate(graph, _args) -> int:
             for _i, _rm in enumerate(_rounds):
                 _end = _rounds[_i + 1].start() if _i + 1 < len(_rounds) else len(_dtext)
                 _body = _dtext[_rm.end():_end]
-                _rnm = re.search(r"\bround\s+(\d{1,4})", _rm.group(1), re.IGNORECASE)
-                _rn = (graph.parse_bounded_int(_rnm.group(1), 9999) or 0) if _rnm else _i + 1
+                _rn = _rnums[_i]
                 _legacy_f = _rn in _f_rounds
                 _k = 0
                 _vms = list(_disp_verdict_re.finditer(_body))
@@ -789,7 +823,7 @@ def validate(graph, _args) -> int:
             _stops = list(re.finditer(r"^Panel stop: round ([0-9]{1,4})\b", _dtext, re.MULTILINE))
             if _stops:
                 _sn = graph.parse_bounded_int(_stops[-1].group(1), 9999) or 0
-                _after = [m for _k, m in enumerate(_rounds) if m.start() > _stops[-1].start() and (((graph.parse_bounded_int(_x.group(1), 9999) or 0) if (_x := re.search(r"\bround\s+(\d{1,4})", m.group(1), re.IGNORECASE)) else _k + 1)) >= _sn]
+                _after = [m for _k, m in enumerate(_rounds) if m.start() > _stops[-1].start() and _rnums[_k] >= _sn]
                 if not _after:
                     flag("panel-disposition-table", f"{_dwhere} is stamped after `Panel stop: round {_sn}` with no resumed panel round {_sn} or later after it")
             _heads = list(_disp_head_re.finditer(_dtext))
@@ -803,10 +837,7 @@ def validate(graph, _args) -> int:
                 if not _ln.startswith("|"):
                     break
                 _rows.append(_ln)
-            _cap_reached = any(
-                ((graph.parse_bounded_int(_x.group(1), 9999) or 0) if (_x := re.search(r"\bround\s+(\d{1,4})", _m.group(1), re.IGNORECASE)) else _k + 1) >= 5
-                for _k, _m in enumerate(_rounds)
-            )
+            _cap_reached = any(_n >= 5 for _n in _rnums)
             _seen: dict[str, str] = {}
             for _ln in _rows:
                 _rr = _disp_row_re.match(_ln)
