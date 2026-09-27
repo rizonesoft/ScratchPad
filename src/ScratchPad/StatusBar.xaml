@@ -40,12 +40,38 @@
                  debounced off the keystroke path. -->
             <Border x:Name="WordsDivider" Style="{StaticResource StatusDivider}" />
             <TextBlock x:Name="WordsText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusWords" AutomationProperties.Name="0 words" Text="0 words" />
+            <!-- D01 T02 §11: session word goal. An icon button (its UIA name
+                 carries the goal) opens the set/clear flyout; the thin line
+                 at the strip's bottom edge fills from the live count. -->
+            <Button x:Name="GoalButton" AutomationProperties.AutomationId="StatusGoalButton" AutomationProperties.Name="Set word goal"
+                    ToolTipService.ToolTip="Set word goal" Padding="6,2,6,2" Margin="4,0,0,0" VerticalAlignment="Center"
+                    Background="Transparent" BorderThickness="0">
+                <FontIcon Glyph="&#xE7C1;" FontSize="12" />
+                <Button.Flyout>
+                    <Flyout x:Name="GoalFlyout">
+                        <StackPanel Spacing="8" Width="220">
+                            <TextBlock Text="Session word goal" />
+                            <TextBox x:Name="GoalInput" AutomationProperties.AutomationId="StatusGoalInput" AutomationProperties.Name="Word goal" PlaceholderText="Words, for example 500" />
+                            <TextBlock x:Name="GoalError" AutomationProperties.AutomationId="StatusGoalError" TextWrapping="Wrap" Visibility="Collapsed"
+                                       Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button x:Name="GoalSet" Content="Set" AutomationProperties.AutomationId="StatusGoalSet" Click="GoalSet_Click" Style="{StaticResource AccentButtonStyle}" />
+                                <Button x:Name="GoalClear" Content="Clear" AutomationProperties.AutomationId="StatusGoalClear" Click="GoalClear_Click" IsEnabled="False" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
             <Border Style="{StaticResource StatusDivider}" />
             <TextBlock x:Name="ModeText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusMode" Text="Plain text" />
             <Button x:Name="ModeButton" AutomationProperties.AutomationId="StatusModeButton" AutomationProperties.Name="Formatted" Content="Formatted" FontSize="12" Padding="8,2,8,2" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" IsEnabled="False" Visibility="Collapsed" />
             <Border Style="{StaticResource StatusDivider}" />
             <Button x:Name="ReadingLevelButton" AutomationProperties.AutomationId="StatusReadingLevel" AutomationProperties.Name="Reading level" Content="Reading level" FontSize="12" Padding="8,2,8,2" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Compute the Flesch-Kincaid grade of this document" Click="ReadingLevelButton_Click" />
         </StackPanel>
+
+        <ProgressBar x:Name="GoalProgress" Grid.ColumnSpan="2" VerticalAlignment="Bottom" Height="2" MinHeight="2"
+                     Maximum="100" Visibility="Collapsed" AutomationProperties.AutomationId="StatusGoalProgress"
+                     AutomationProperties.Name="Word goal progress" />
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,0">
             <TextBlock x:Name="ZoomText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusZoom" Text="100%" />

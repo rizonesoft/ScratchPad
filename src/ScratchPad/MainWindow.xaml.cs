@@ -1247,10 +1247,11 @@ public sealed partial class MainWindow : Window, IDisposable
         wordsPending = null;
         wordsDue = false;
         wordsRunning = snapshot;
-        _ = Task.Run(() => LiveCounts.Compute(snapshot)).ContinueWith(
+        _ = Task.Run(() => TextStats.Compute(snapshot).TotalWords).ContinueWith(
             done =>
             {
-                string? label = done.IsCompletedSuccessfully ? done.Result : null;
+                int count = done.IsCompletedSuccessfully ? done.Result : 0;
+                string? label = done.IsCompletedSuccessfully ? LiveCounts.Label(count) : null;
                 DispatcherQueue.TryEnqueue(() =>
                 {
                     wordsRunning = null;
@@ -1265,7 +1266,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     if (label is not null && string.Equals(ActiveText(), snapshot, StringComparison.Ordinal))
                     {
                         wordsCounted = snapshot;
-                        statusBar.ShowWords(label, wordsComputed);
+                        statusBar.ShowWords(label, count, wordsComputed);
                         if (string.Equals(wordsPending, snapshot, StringComparison.Ordinal))
                         {
                             wordsPending = null;

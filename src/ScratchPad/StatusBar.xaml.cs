@@ -22,13 +22,20 @@ internal sealed partial class StatusBar : UserControl
         InitializeComponent();
     }
 
+    // D01 T02 §11: the session goal lives only here, in this window's
+    // strip: nothing persists it, so it dies with the window.
+    private int? goal;
+    private int words;
+
     // D01 T02 §9: the live words segment. The owner computes off the UI
-    // thread and hands over the finished label.
-    public void ShowWords(string label, int computeCount)
+    // thread and hands over the count and its finished label.
+    public void ShowWords(string label, int wordCount, int computeCount)
     {
         ArgumentNullException.ThrowIfNull(label);
         WordsText.Text = label;
         AutomationProperties.SetName(WordsText, label);
+        words = wordCount;
+        ShowGoal();
 
         // Test seam (test-run marker only): the number of counts the
         // window has run, so the §9 drive can prove one per pause.
@@ -44,6 +51,50 @@ internal sealed partial class StatusBar : UserControl
     {
         WordsText.Visibility = Visibility.Collapsed;
         WordsDivider.Visibility = Visibility.Collapsed;
+        GoalButton.Visibility = Visibility.Collapsed;
+    }
+
+    private void GoalSet_Click(object sender, RoutedEventArgs e)
+    {
+        (int? parsed, string? error) = WordGoal.Parse(GoalInput.Text);
+        if (parsed is null)
+        {
+            // Refused: the message shows and the goal stays as it was.
+            GoalError.Text = error ?? string.Empty;
+            GoalError.Visibility = Visibility.Visible;
+            return;
+        }
+
+        goal = parsed;
+        GoalError.Visibility = Visibility.Collapsed;
+        GoalFlyout.Hide();
+        ShowGoal();
+    }
+
+    private void GoalClear_Click(object sender, RoutedEventArgs e)
+    {
+        goal = null;
+        GoalInput.Text = string.Empty;
+        GoalError.Visibility = Visibility.Collapsed;
+        GoalFlyout.Hide();
+        ShowGoal();
+    }
+
+    private void ShowGoal()
+    {
+        string label = WordGoal.Label(goal);
+        AutomationProperties.SetName(GoalButton, label);
+        ToolTipService.SetToolTip(GoalButton, label);
+        GoalClear.IsEnabled = goal is not null;
+        if (goal is int target)
+        {
+            GoalProgress.Value = WordGoal.Percent(words, target);
+            GoalProgress.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            GoalProgress.Visibility = Visibility.Collapsed;
+        }
     }
 
     // Raised on a click; the owner computes over the active buffer and

@@ -81,6 +81,142 @@ public sealed class StatusBarTests
         }
     }
 
+    // D01 T02 §11: the session word goal sets from the strip, refuses bad
+    // input with a message, fills its thin line from the live count,
+    // changes and clears, and dies with the session (a relaunch shows no
+    // goal and the settings file never names one).
+    [Fact]
+    public void SessionWordGoalSetsFillsAndDies()
+    {
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string dir = NewTempDir();
+        try
+        {
+            string file = SeedFile(dir, "goal.txt", "The quick brown fox jumps over the lazy dog.");
+            nint fgBefore = UiForeground.Capture();
+            using (var app = UiLaunch.LaunchAppWithArgs($"\"{file}\""))
+            {
+                using var automation = new UIA3Automation();
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
+                Assert.NotNull(window);
+                try
+                {
+                    WaitForSegmentName(window, "StatusWords", "9 words, 1 min read");
+                    Assert.Equal("Set word goal", SegmentName(window, "StatusGoalButton"));
+                    Assert.Null(GoalProgress(window));
+
+                    SubmitGoal(window, "abc");
+                    WaitForSegmentName(window, "StatusGoalError", "Enter a whole number of words.");
+                    SubmitGoal(window, "0");
+                    WaitForSegmentName(window, "StatusGoalError", "Enter a goal of at least 1 word.");
+                    Assert.Equal("Set word goal", SegmentName(window, "StatusGoalButton"));
+
+                    SubmitGoal(window, "18");
+                    WaitForSegmentName(window, "StatusGoalButton", "Word goal 18");
+                    WaitForProgress(window, 50);
+
+                    var box = ContentBox(window);
+                    box.Text = box.Text + " one two three four five six seven eight nine";
+                    WaitForSegmentName(window, "StatusWords", "18 words, 1 min read");
+                    WaitForProgress(window, 100);
+
+                    SubmitGoal(window, "36");
+                    WaitForSegmentName(window, "StatusGoalButton", "Word goal 36");
+                    WaitForProgress(window, 50);
+
+                    OpenGoal(window);
+                    Segment(window, "StatusGoalClear").Patterns.Invoke.Pattern.Invoke();
+                    WaitForSegmentName(window, "StatusGoalButton", "Set word goal");
+                    Assert.True(Retry.WhileFalse(() => GoalProgress(window) is null, TimeSpan.FromSeconds(5)).Success, "progress line stayed after clear");
+
+                    SubmitGoal(window, "10");
+                    WaitForSegmentName(window, "StatusGoalButton", "Word goal 10");
+                }
+                finally
+                {
+                    CloseApp(app, window);
+                }
+            }
+
+            Assert.DoesNotContain("goal", File.ReadAllText(ShellSettings.FilePath), StringComparison.OrdinalIgnoreCase);
+            fgBefore = UiForeground.Capture();
+            using (var app = UiLaunch.LaunchAppWithArgs($"\"{file}\""))
+            {
+                using var automation = new UIA3Automation();
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
+                Assert.NotNull(window);
+                try
+                {
+                    WaitForSegmentName(window, "StatusWords", "9 words, 1 min read");
+                    Assert.Equal("Set word goal", SegmentName(window, "StatusGoalButton"));
+                    Assert.Null(GoalProgress(window));
+                }
+                finally
+                {
+                    CloseApp(app, window);
+                }
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    static void OpenGoal(Window window)
+    {
+        // A flyout that is closing still shows its input for a moment, so
+        // settle first: open means the input is still there after 600 ms.
+        Thread.Sleep(600);
+        if (window.FindFirstDescendant(cf => cf.ByAutomationId("StatusGoalInput")) is null)
+        {
+            Segment(window, "StatusGoalButton").Patterns.Invoke.Pattern.Invoke();
+        }
+
+        Assert.True(
+            Retry.WhileNull(() => window.FindFirstDescendant(cf => cf.ByAutomationId("StatusGoalInput")), TimeSpan.FromSeconds(5)).Success,
+            "goal flyout never opened");
+    }
+
+    static void SubmitGoal(Window window, string value)
+    {
+        OpenGoal(window);
+        var input = window.FindFirstDescendant(cf => cf.ByAutomationId("StatusGoalInput"));
+        Assert.NotNull(input);
+        input.Patterns.Value.Pattern.SetValue(value);
+        Thread.Sleep(150);
+        Segment(window, "StatusGoalSet").Patterns.Invoke.Pattern.Invoke();
+        Thread.Sleep(300);
+    }
+
+    static AutomationElement? GoalProgress(Window window) =>
+        window.FindFirstDescendant(cf => cf.ByAutomationId("StatusGoalProgress"));
+
+    static void WaitForProgress(Window window, double expected)
+    {
+        double value = -1;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline)
+        {
+            var bar = GoalProgress(window);
+            if (bar is not null && bar.Patterns.RangeValue.IsSupported)
+            {
+                value = bar.Patterns.RangeValue.Pattern.Value;
+                if (Math.Abs(value - expected) < 0.01)
+                {
+                    return;
+                }
+            }
+
+            Thread.Sleep(100);
+        }
+
+        Assert.Equal(expected, value, 2);
+    }
+
     // D01 T02 §9: characters follow every keystroke (stock segment),
     // while words and reading time land once per typing pause: a burst of
     // edits shows no intermediate word count, then the final one.

@@ -399,6 +399,8 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 
 ## 11. Session Word Goal
 
+> **Started:** 2026-09-27T08:12:00Z
+
 Why this section exists: a word goal with a thin progress line for the session. No accounts, no streaks, no cloud: the goal dies with the session.
 
 **Fidelity:** new build, no baseline (stock Notepad goals nothing).
@@ -411,11 +413,11 @@ Why this section exists: a word goal with a thin progress line for the session. 
 
 **Needs:** Windows host (build/test)
 
-- [ ] A session goal sets from the status bar. Done when: the set path is driven.
-- [ ] The thin line fills from the live count. Done when: typing moves the line under host drive.
-- [ ] The goal and progress vanish with the session. Done when: relaunch shows no goal.
-- [ ] The goal can be cleared or changed, and invalid input is refused with a message. Done when: clear, change, and an invalid value are driven (Groomed 2026-09-23.)
-- [ ] Commit: `"notepad-core: goal the session"`
+- [x] A session goal sets from the status bar. Done when: the set path is driven. **Evidence 2026-09-27:** a flag icon button (`StatusGoalButton`, UIA name `Set word goal` or `Word goal N`) beside the §9 words segment opens a flyout with the goal input, Set, and Clear; `StatusBarTests.SessionWordGoalSetsFillsAndDies` sets 18 and reads `Word goal 18`.
+- [x] The thin line fills from the live count. Done when: typing moves the line under host drive. **Default 2026-09-27:** progress reads the active document's live word count against the goal (the count the strip shows), not words added since the goal was set; cost of changing: a baseline at set time and one subtraction (`WordGoal`). **Evidence 2026-09-27:** a 2 px `ProgressBar` along the strip's bottom edge (`StatusGoalProgress`) reads 50 at 9 of 18 words, and after typing nine more words the §9 count lands and it reads 100 (a reached goal is a quiet full line). `WordGoalTests` pins the clamp.
+- [x] The goal and progress vanish with the session. Done when: relaunch shows no goal. **Evidence 2026-09-27:** the goal lives only in the window's status strip; the drive sets a goal, closes, checks the settings file names no goal, relaunches, and reads `Set word goal` with no progress line.
+- [x] The goal can be cleared or changed, and invalid input is refused with a message. Done when: clear, change, and an invalid value are driven (Groomed 2026-09-23.) **Evidence 2026-09-27:** `abc` reads `Enter a whole number of words.` and `0` reads `Enter a goal of at least 1 word.`, each leaving the goal unset; changing to 36 reads 50%; Clear removes the goal and the line. `WordGoalTests` 18/18 pin parsing (thousands separators, bounds 1 to 1,000,000, overflow) and messages.
+- [x] Commit: `"notepad-core: goal the session"`
 
 **Test checkpoint:** set, fill, and session-death are all driven in the room. Cheaper substitute that fails: a goal that follows you home.
 
