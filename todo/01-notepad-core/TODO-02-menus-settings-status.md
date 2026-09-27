@@ -70,6 +70,7 @@ track: N1
 |  17   |   §17   | About panel identity rows | D07 T01 §10 |  [ ]   |
 
 |  18   |  §18    | Fix-or-remove MenuBarTests flakes | §16 |  [ ]   |
+|  19   |  §19    | Syllable endings keep the preceding vowel | §7 |  [ ]   |
 ---
 
 ## 1. Menu Bar with All Items and Enablement
@@ -573,6 +574,18 @@ Why this section exists: §16 quarantines five MenuBarTests flakes and hands the
 - [ ] Commit: `"menus: fix or remove the MenuBarTests flakes"`
 
 **Test checkpoint:** the five tests pass unskipped in the owed runs, or their removal records the covering test. Cheaper substitute that fails: extending the quarantine.
+
+## 19. Syllable Endings Keep the Preceding Vowel
+
+Why this section exists: the §7 panel's round 3 (the Full sign-off) reported that the silent-ending regex in `src/Notepad.Core/Readability.cs` (`SilentEnding`) consumes the vowel before a silent vowel-l ending, so multisyllabic words lose a syllable: `profile`, `profiles`, `tadpole`, and `tadpoles` reduce to `prof` or `tadp` and score one syllable instead of two, understating the Flesch-Kincaid grade the status bar shows. The same unit was patched in three consecutive rounds (R1 pronounced -ed/-es, R2 the ch/sh guard, R3 this), so the fix is a rethink, not a fourth patch: remove only the ending's own letters (match the context with lookbehinds), then sweep a dictionary list that includes multisyllabic words for every ending class. -> SOURCE: GPT-panel-D01-T02-s7-round-3 R3-A1 (candidate f94aeb6).
+
+**Needs:** Windows host (build/test)
+
+- [ ] `Readability.Syllables` removes only the silent ending's letters (`e`, `es`, `ed`), never the vowel or consonant before it, for every ending class the §7 comment lists. Done when: `profile`, `profiles`, `tadpole`, `tadpoles`, `compile`, `reconciled` fixtures read their dictionary counts beside every existing `SyllablesMatchTheDictionary` row.
+- [ ] A committed sweep list pins the heuristic: at least 150 dictionary words covering each ending class in one-, two-, and three-plus-syllable words, with the known pronunciation-only misses listed by name. Done when: a unit test runs the list and fails on any unlisted miss.
+- [ ] Commit: `"notepad-core: keep the vowel before silent endings"`
+
+**Test checkpoint:** `dotnet test tests/Unit --filter ReadabilityTests` green with the multisyllabic fixtures and the sweep list; the §7 grade fixtures (20.8, 2.3, 0.0, 12.0) unchanged. Cheaper substitute that fails: a fourth special-case alternative for the next reported word.
 
 ## Verification
 
