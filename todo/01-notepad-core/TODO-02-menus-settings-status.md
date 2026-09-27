@@ -60,7 +60,7 @@ track: N1
 |   7   |   §15   | Chrome color finetune against stock | §13, D01 T01 §1 |  [x]   |
 |   8   |   §5    | Print path | §1 |  [ ]   |
 |   9   |   §6    | Menu and shortcut completeness audit | §1, T02 §3, T02 §4 |  [x]   |
-|  10   |   §7    | Reading level in the status bar | §4 |  [ ]   |
+|  10   |   §7    | Reading level in the status bar | §4 |  [x]   |
 |  11   |   §8    | Command palette | §1, D05 T02 §6 |  [ ]   |
 |  12   |   §9    | Live counts in the status bar | §4 |  [ ]   |
 |  13   |   §10   | Custom accent themes | §2, §3 |  [ ]   |
@@ -293,6 +293,13 @@ Why this section exists: writers calibrate difficulty. A click computes grade le
 - [x] Commit: `"notepad-core: show reading level on demand"`
 
 **Test checkpoint:** Computation, display, and the on-demand rule driven. Cheaper substitute that fails: a score that phones home.
+
+> **Verified:** 2026-09-27 | §7 | Flesch-Kincaid grade over TextStats words and sentences, floored at 0; a Reading level status segment computes on click only and drops its score on any edit or tab switch; Unit 54/54 (grades 20.8, 2.3, 0.0; wordless null; no network API on the compute path); StatusBar plus Golden 10 passed, 2 Interactive skipped, golden 0.0318%
+> **Review:** round 4 (Light escalated to Full), candidates `e482916` `57f67b8` `f94aeb6` `2ac3a19` -- GPT R1 bulk adversarial needs-attention (pronounced endings) plus record advisory, fixed 57f67b8; R2 signoff adversarial needs-attention (ch/sh guard), fixed f94aeb6 with a 115-word family sweep; R3 signoff adversarial needs-attention (vowel-l consumes a vowel), below the bar and third round on the unit, filed D01 T02 §19; red golden gate after R3 (session leak) fixed 2ac3a19; R4 depth approve on all four lenses. Arch trigger none. Raw findings: docs/reviews/01-notepad-core/D01-T02-s7.md
+> **Plan review:** GPT medium, no findings (15 rejected under the filing bar) (run 20260927-D01-T02-S7-codex-c06751119-r4)
+> **CRUD:** not-applicable | a read-only readout over the buffer; the UI drive writes only a temp fixture file and clears its session
+> **Duration:** 2026-09-27T06:40:00Z to 2026-09-27T07:09:44Z
+> **Reviewed-tip:** 2ac3a19da25b0d95256a42d9feab33197218df2a
 
 ## 8. Command Palette
 
