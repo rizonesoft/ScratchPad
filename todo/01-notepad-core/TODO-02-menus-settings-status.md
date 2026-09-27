@@ -329,6 +329,8 @@ Why this section exists: every command in one fuzzy list: menu items, agent acti
 
 ## 9. Live Counts in the Status Bar
 
+> **Started:** 2026-09-27T07:12:00Z
+
 Why this section exists: writers watch length as they type. Words, reading time, and characters update live beside the stock fields.
 
 **Fidelity:** new build, no baseline (beyond the stock status bar in §4).
@@ -341,14 +343,14 @@ Why this section exists: writers watch length as they type. Words, reading time,
 
 **Needs:** Windows host (build/test)
 
-**Groomed 2026-09-23:** Corrected: the document character count is already a live stock segment shipped by §4 (StatusSegments.cs:47-82), and §4 defines no latency bar; words and reading time join that segment, and typing latency is measured with and without the new fields.
+**Groomed 2026-09-23:** Corrected: the document character count is already a live stock segment shipped by §4 (StatusSegments.cs:47-82), and §4 defines no latency bar; words and reading time join that segment, and typing latency is measured with and without the new fields. **Corrected 2026-09-27:** joining the stock count segment would change its verbatim stock text (`N characters`, pinned by §4's tests and the captures), so words and reading time ride a sibling segment (`StatusWords`) right after it, the same pattern §7 used for the reading level; the stock segment is untouched.
 
-- [ ] Words and characters update live as the user types. Done when: every keystroke updates them under host drive.
-- [ ] Reading time updates live beside the counts. Done when: the estimate tracks the words.
-- [ ] Recompute is debounced off the keystroke path. Done when: rapid typing shows one recompute per pause.
-- [ ] Typing benchmarks prove counts never block input. Done when: latency matches §4's bar without the fields.
-- [ ] Word and reading-time counts reuse `TextStats.Compute` rather than a second word counter. Done when: the status counts match the Stats dialog on a fixture (Groomed 2026-09-23.)
-- [ ] Commit: `"notepad-core: count live in the status bar"`
+- [x] Words and characters update live as the user types. Done when: every keystroke updates them under host drive. **Corrected 2026-09-27:** items 1 and 3 conflicted (every keystroke versus one recompute per pause); resolved as: the stock character count follows every keystroke, and words land once per pause, so every keystroke is reflected when typing stops. **Evidence 2026-09-27:** `StatusBarTests.LiveWordsTrackTypingAfterEachPause` edits eight times and reads the character count after each edit, then reads the words settle at `17 words, 1 min read`; clearing the buffer reads `0 words`.
+- [x] Reading time updates live beside the counts. Done when: the estimate tracks the words. **Default 2026-09-27:** 200 words per minute rounded up (`LiveCounts.WordsPerMinute`), rendered `N words, M min read`; cost of changing: one constant and its fixtures. **Evidence 2026-09-27:** `LiveCountsTests` pins 0/1/200/201/1000 words to 0/1/1/2/5 minutes and the labels, and the UI drives read the estimate beside the count.
+- [x] Recompute is debounced off the keystroke path. Done when: rapid typing shows one recompute per pause. **Evidence 2026-09-27:** a 300 ms `DispatcherQueueTimer` restarts on each text change; on a pause the count runs on a worker thread over an immutable snapshot and lands only if the active text still equals it. The drive's burst (eight edits about 40 ms apart) observed only the starting value `9 words, 1 min read` mid-burst, then the final value once. Negative control: a synchronous per-keystroke count (reverted) failed this drive.
+- [x] Typing benchmarks prove counts never block input. Done when: latency matches §4's bar without the fields. **Corrected 2026-09-27:** §4 defines no absolute bar (the groom note above), so the bar is the strip without the field: `StatusBarTests.LiveWordsNeverSlowTyping` measures keystroke-to-character-count latency over 16 keystrokes on a 1 MiB document, paced past the debounce, once with the words segment and once without (the `SCRATCHPAD_TEST_NO_LIVE_WORDS` seam, honored only under the test-run marker), and requires the medians within 25 ms. **Evidence 2026-09-27:** 193 ms with versus 198 ms without (earlier runs 187/199, 187/186); the synchronous-count probe read 245 versus 187 and failed.
+- [x] Word and reading-time counts reuse `TextStats.Compute` rather than a second word counter. Done when: the status counts match the Stats dialog on a fixture (Groomed 2026-09-23.) **Corrected 2026-09-27:** the Statistics dialog shows top words and sentences but no total-word figure, so the match is against its engine: `LiveCounts.Compute` is `TextStats.Compute(text).TotalWords` (`LiveCountsTests.WordsMatchTheStatisticsCounter` over three fixtures), and the benchmark checks the 1 MiB document's live count against `TextStats.Compute` too. The main-window golden absorbs the new segment at 0.0544% (272/500256, threshold 0.1000%).
+- [x] Commit: `"notepad-core: count live in the status bar"`
 
 **Test checkpoint:** live counts, reading time, debounce, and non-blocking input are all driven in the room. Cheaper substitute that fails: counts that lag a paragraph behind.
 

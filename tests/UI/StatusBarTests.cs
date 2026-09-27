@@ -81,6 +81,134 @@ public sealed class StatusBarTests
         }
     }
 
+    // D01 T02 §9: characters follow every keystroke (stock segment),
+    // while words and reading time land once per typing pause: a burst of
+    // edits shows no intermediate word count, then the final one.
+    [Fact]
+    public void LiveWordsTrackTypingAfterEachPause()
+    {
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string dir = NewTempDir();
+        try
+        {
+            const string start = "The quick brown fox jumps over the lazy dog.";
+            string file = SeedFile(dir, "words.txt", start);
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                WaitForSegmentName(window, "StatusWords", "9 words, 1 min read");
+                var box = ContentBox(window);
+                var seen = new HashSet<string>(StringComparer.Ordinal);
+                string text = start;
+                for (int i = 0; i < 8; i++)
+                {
+                    text += $" w{i}";
+                    box.Text = text;
+                    WaitFast(window, "StatusCount", $"{text.Length} characters");
+                    seen.Add(SegmentName(window, "StatusWords"));
+                    Thread.Sleep(40);
+                }
+
+                Assert.Equal(["9 words, 1 min read"], seen.ToArray());
+                WaitForSegmentName(window, "StatusWords", "17 words, 1 min read");
+
+                box.Text = string.Empty;
+                WaitForSegmentName(window, "StatusWords", "0 words");
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
+    // D01 T02 §9: the words segment never slows typing. Keystroke-to-
+    // character-count latency on a 1 MiB document is measured with the
+    // segment and without it (the SCRATCHPAD_TEST_NO_LIVE_WORDS seam),
+    // with keystrokes paced past the debounce so word counts compute
+    // between them; the medians must sit within 25 ms (a synchronous
+    // count on the keystroke path measured +45 ms and fails).
+    [Fact]
+    public void LiveWordsNeverSlowTyping()
+    {
+        var body = new System.Text.StringBuilder();
+        while (body.Length < 1024 * 1024)
+        {
+            body.Append("Writers watch length as they type and the strip keeps up. ");
+        }
+
+        double without = MedianKeystrokeMs(body.ToString(), liveWords: false, out _);
+        double with = MedianKeystrokeMs(body.ToString(), liveWords: true, out string words);
+        Assert.StartsWith(TextStats.Compute(body.ToString() + " k0 k1 k2 k3 k4 k5 k6 k7 k8 k9 k10 k11 k12 k13 k14 k15").TotalWords.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) + " words", words, StringComparison.Ordinal);
+        Console.WriteLine($"median keystroke latency: {with:F0} ms with live words, {without:F0} ms without");
+        Assert.True(
+            with <= without + 25,
+            $"median keystroke latency {with:F0} ms with live words vs {without:F0} ms without");
+    }
+
+    static double MedianKeystrokeMs(string body, bool liveWords, out string finalWords)
+    {
+        string? prior = Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_NO_LIVE_WORDS");
+        Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_NO_LIVE_WORDS", liveWords ? null : "1");
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string dir = NewTempDir();
+        try
+        {
+            string file = SeedFile(dir, "big.txt", body);
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                var box = ContentBox(window);
+                string text = body;
+                WaitForSegmentName(window, "StatusCount", StatusSegments.TotalText(StatusSegments.CountCharacters(text)));
+                var samples = new List<double>();
+                for (int i = 0; i < 16; i++)
+                {
+                    text += $" k{i}";
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    box.Text = text;
+                    WaitFast(window, "StatusCount", StatusSegments.TotalText(StatusSegments.CountCharacters(text)));
+                    samples.Add(clock.Elapsed.TotalMilliseconds);
+                    Thread.Sleep(450);
+                }
+
+                samples.Sort();
+                if (liveWords)
+                {
+                    Thread.Sleep(1500);
+                }
+
+                finalWords = liveWords ? SegmentName(window, "StatusWords") : string.Empty;
+                return samples[samples.Count / 2];
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("SCRATCHPAD_TEST_NO_LIVE_WORDS", prior);
+            SessionData.Delete();
+            DeleteDir(dir);
+        }
+    }
+
     // D01 T02 §7: the reading level computes on the click only, drops
     // back to its prompt on any edit or tab switch (never a stale score,
     // never a recompute nobody asked for), and an empty buffer says so.
@@ -442,6 +570,21 @@ public sealed class StatusBarTests
     }
 
     static string SegmentName(Window window, string id) => Segment(window, id).Name ?? string.Empty;
+
+    // Tight poll for timing-sensitive drives (D01 T02 §9): 10 ms steps,
+    // so a measurement or a burst gap is not padded by the 250 ms poll.
+    static void WaitFast(Window window, string id, string expected)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        string name = SegmentName(window, id);
+        while (!string.Equals(name, expected, StringComparison.Ordinal) && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(10);
+            name = SegmentName(window, id);
+        }
+
+        Assert.Equal(expected, name);
+    }
 
     static void WaitForSegmentName(Window window, string id, string expected)
     {

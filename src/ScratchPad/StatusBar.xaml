@@ -35,6 +35,11 @@
             <TextBlock x:Name="LineColumnText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusLineColumn" Text="Ln 1, Col 1" />
             <Border Style="{StaticResource StatusDivider}" />
             <TextBlock x:Name="CountText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusCount" Text="0 characters" />
+            <!-- D01 T02 §9: this app's addition beside stock's count (whose
+                 text stays verbatim): live words and reading time,
+                 debounced off the keystroke path. -->
+            <Border x:Name="WordsDivider" Style="{StaticResource StatusDivider}" />
+            <TextBlock x:Name="WordsText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusWords" AutomationProperties.Name="0 words" Text="0 words" />
             <Border Style="{StaticResource StatusDivider}" />
             <TextBlock x:Name="ModeText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusMode" Text="Plain text" />
             <Button x:Name="ModeButton" AutomationProperties.AutomationId="StatusModeButton" AutomationProperties.Name="Formatted" Content="Formatted" FontSize="12" Padding="8,2,8,2" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" IsEnabled="False" Visibility="Collapsed" />

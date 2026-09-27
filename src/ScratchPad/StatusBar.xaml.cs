@@ -22,6 +22,23 @@ internal sealed partial class StatusBar : UserControl
         InitializeComponent();
     }
 
+    // D01 T02 §9: the live words segment. The owner computes off the UI
+    // thread and hands over the finished label.
+    public void ShowWords(string label)
+    {
+        ArgumentNullException.ThrowIfNull(label);
+        WordsText.Text = label;
+        AutomationProperties.SetName(WordsText, label);
+    }
+
+    // Test seam for the §9 typing benchmark's baseline leg: the strip as
+    // it was before the words segment existed.
+    public void HideWords()
+    {
+        WordsText.Visibility = Visibility.Collapsed;
+        WordsDivider.Visibility = Visibility.Collapsed;
+    }
+
     // Raised on a click; the owner computes over the active buffer and
     // answers through ShowReadingLevel.
     public event EventHandler? ReadingLevelRequested;

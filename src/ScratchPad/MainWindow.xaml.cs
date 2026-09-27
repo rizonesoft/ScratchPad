@@ -32,6 +32,16 @@ public sealed partial class MainWindow : Window, IDisposable
     // Caret moves do not change Text, so the active box needs its own
     // SelectionChanged hook, re-hung on every tab switch.
     private StatusBar? statusBar;
+
+    // D01 T02 §9: live words. The count restarts a 300 ms timer on each
+    // text change, computes on a worker thread from an immutable snapshot
+    // when typing pauses, and lands only if the active text still equals
+    // that snapshot, so typing never waits on the arithmetic.
+    private const int WordsDebounceMs = 300;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? wordsTimer;
+    private string? wordsPending;
+    private string? wordsCounted;
+    private bool liveWordsOff;
     private TextBox? hookedBox;
     bool statsDialogOpen;
     bool snapshotsDialogOpen;
@@ -719,6 +729,12 @@ public sealed partial class MainWindow : Window, IDisposable
         // the View toggle enables here and the store owns its state.
         statusBar = new StatusBar();
         statusBar.ReadingLevelRequested += StatusBar_ReadingLevelRequested;
+        liveWordsOff = Environment.GetEnvironmentVariable(LaunchCapture.RunMarkerVariable) == "1"
+            && Environment.GetEnvironmentVariable("SCRATCHPAD_TEST_NO_LIVE_WORDS") == "1";
+        if (liveWordsOff)
+        {
+            statusBar.HideWords();
+        }
         StatusRegion.Content = statusBar;
         MenuRegion.SetEnabled("MenuViewStatusBar", true);
         MenuRegion.SetStatusBarChecked(SettingsStore.Shared.Current.ShowStatusBar);
@@ -1148,6 +1164,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             statusBar.Show(StatusView.Empty(SettingsStore.Shared.Current.ZoomDefault));
             statusBar.KeepReadingLevelFor(null, null);
+            ScheduleWords(string.Empty);
             return;
         }
 
@@ -1162,7 +1179,66 @@ public sealed partial class MainWindow : Window, IDisposable
             active.LineEnding,
             SettingsStore.Shared.Current.ZoomDefault,
             StatusSegments.IsMarkdownFile(active.FilePath)));
+        ScheduleWords(box.Text);
     }
+
+    private void ScheduleWords(string text)
+    {
+        if (liveWordsOff || statusBar is null || string.Equals(text, wordsCounted, StringComparison.Ordinal))
+        {
+            wordsPending = null;
+            wordsTimer?.Stop();
+            return;
+        }
+
+        wordsPending = text;
+        if (wordsTimer is null)
+        {
+            wordsTimer = DispatcherQueue.CreateTimer();
+            wordsTimer.Interval = TimeSpan.FromMilliseconds(WordsDebounceMs);
+            wordsTimer.IsRepeating = false;
+            wordsTimer.Tick += WordsTimer_Tick;
+        }
+
+        wordsTimer.Stop();
+        wordsTimer.Start();
+    }
+
+    private void WordsTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        if (wordsPending is not string snapshot)
+        {
+            return;
+        }
+
+        wordsPending = null;
+        _ = Task.Run(() => LiveCounts.Compute(snapshot)).ContinueWith(
+            done =>
+            {
+                if (!done.IsCompletedSuccessfully)
+                {
+                    return;
+                }
+
+                string label = done.Result;
+                DispatcherQueue.TryEnqueue(() =>
+                {
+                    // A newer edit (or a closed window) supersedes this
+                    // result; only a count of the current text lands.
+                    if (statusBar is null || !string.Equals(ActiveText(), snapshot, StringComparison.Ordinal))
+                    {
+                        return;
+                    }
+
+                    wordsCounted = snapshot;
+                    statusBar.ShowWords(label);
+                });
+            },
+            TaskScheduler.Default);
+    }
+
+    private string ActiveText() =>
+        tabs.ActiveTab is Tab active && tabBar is not null ? tabBar.ContentFor(active).Text : string.Empty;
 
     // D01 T02 §7: the reading level computes here, on the click only,
     // over the active buffer; the strip drops it when the text changes.
