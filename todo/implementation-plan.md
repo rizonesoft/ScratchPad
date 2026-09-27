@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **149 of 334 sections complete (45%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **151 of 334 sections complete (45%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -171,7 +171,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §43` | Binding guard second residuals                            |   6   |
 | [x] | `D00 T02 §44` | Population gate second residuals                          |   9   |
 | [x] | `D00 T02 §45` | Nightly evidence third residuals                          |   9   |
-| [ ] | `D00 T02 §46` | Acknowledgement third residuals                           |  14   |
+| [x] | `D00 T02 §46` | Acknowledgement third residuals                           |  14   |
 | [x] | `D00 T02 §47` | Trend and telemetry third residuals                       |  15   |
 | [x] | `D00 T02 §48` | Sibling sweep third residuals                             |  10   |
 | [x] | `D00 T02 §49` | Gate process attribution under pid reuse                  |   3   |
@@ -179,7 +179,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §51` | Binding guard third residuals                             |  13   |
 | [x] | `D00 T02 §52` | Population gate third residuals                           |  12   |
 | [x] | `D00 T02 §53` | Nightly evidence fourth residuals                         |  17   |
-| [ ] | `D00 T02 §54` | Trend and telemetry fourth residuals                      |  18   |
+| [x] | `D00 T02 §54` | Trend and telemetry fourth residuals                      |  18   |
 | [x] | `D00 T02 §55` | Notify redesign residuals                                 |  21   |
 | [ ] | `D00 T10 §1`  | Sibling sweep fourth residuals                            |  16   |
 | [ ] | `D00 T10 §2`  | Gate attribution residuals                                |  13   |

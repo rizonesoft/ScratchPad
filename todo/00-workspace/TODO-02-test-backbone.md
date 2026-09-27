@@ -86,7 +86,7 @@ track: W0
 |   43  |   §43   | Binding guard second residuals | §36 |  [x]   |
 |   44  |   §44   | Population gate second residuals | §37 |  [x]   |
 |   45  |   §45   | Nightly evidence third residuals | §38 |  [x]   |
-|   46  |   §46   | Acknowledgement third residuals | §39 |  [ ]   |
+|   46  |   §46   | Acknowledgement third residuals | §39 |  [x]   |
 |   47  |   §47   | Trend and telemetry third residuals | §40 |  [x]   |
 |   48  |   §48   | Sibling sweep third residuals | §41 |  [x]   |
 |   49  |   §49   | Gate process attribution under pid reuse | §18 |  [x]   |
@@ -94,7 +94,7 @@ track: W0
 |   51  |   §51   | Binding guard third residuals | §43 |  [x]   |
 |   52  |   §52   | Population gate third residuals | §44 |  [x]   |
 |   53  |   §53   | Nightly evidence fourth residuals | §45 |  [x]   |
-|   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [ ]   |
+|   54  |   §54   | Trend and telemetry fourth residuals | §47 |  [x]   |
 |   55  |   §55   | Notify redesign residuals | §24 |  [x]   |
 
 ---
@@ -1525,6 +1525,13 @@ Why this section exists: the §39 plan review returned 14 findings; 13 file here
 
 **Test checkpoint:** Duplicates link surviving actions, withdrawals keep remediation, deadlines inherit, receipt time governs lateness, §31's rule reads superseded, invalid revisions never win, corruption collisions merge, deleted damage stays demanded, fixes carry verification, provenance edits are detected, coverage overlaps refuse, filing crash points stay consistent, and status explains a run. Cheaper substitute that fails: more lines in the ack report.
 
+> **Verified:** 2026-09-27 | §46 | acknowledgement third residuals land with fixtures through round 5; the round-5 findings (classification tampering with entries stripped, reassignment to a nonexistent finding, file-wide coverage rejection, corruption-alias action ownership) are fixed forward in 40f7731 and accepted by the operator 2026-09-27 (option b), unreviewed
+> **Review:** round 5 (Full), candidates `499f8cc` `d12efb0` `3a57d30` `3937689` `3940849` `40f7731` -- GPT R1-R4 needs-attention, all fixed; R5 depth needs-attention escalated at the cap (data integrity), operator decision 2026-09-27 option (b): the forward fixes in 40f7731 are accepted and stamped unreviewed. Raw findings: docs/reviews/00-workspace/D00-T02-s46.md
+> **Plan review:** GPT medium, 12 rejected under the residual depth cap, none filed (run 20260927-D00-T02-S46-codex-c06751119)
+> **CRUD:** not-applicable | nightly tooling; no user data
+> **Duration:** 2026-09-25T21:01:09Z to 2026-09-27T01:31:51Z
+> **Reviewed-tip:** 40f7731
+
 ## 47. Trend and Telemetry Third Residuals
 
 > **Started:** 2026-09-25T23:11:12Z
@@ -1776,6 +1783,13 @@ Why this section exists: the §47 plan review returned 20 findings; 17 file here
 - [x] Commit: `"workspace: settle the fourth trend and telemetry residuals"`
 
 **Test checkpoint:** Aliases and legacy nights resolve, alert acks have identity and stay apart from recovery, insufficiency escalates, merges and tombstones follow a schema, shards read an inventory, the calendar resolves one status per slot, recovery states its loss and stays consistent, migration survives interruption, a full store compacts, derivations never mix, explanations are immutable, the proofs are broad (each named case has its own fixture: expired baseline reuse `s47-churn-escalates-and-expired-baseline-is-not-reused`, alias conflicts `s54-host-alias-rules`, cancellation `s54-late-completion-keeps-the-overrun`, tombstone replay `s54-restore-after-tombstone-keeps-the-field-deleted`, interrupted disclosure migration `s54-disclosure-migration-resumes-and-names-failures`), and one summary routes to action. Cheaper substitute that fails: more report lines with no owner behind them.
+
+> **Verified:** 2026-09-27 | §54 | trend and telemetry fourth residuals land with fixtures through round 5; the round-5 findings (tombstone fallback, flake isolation, alias clone rows, ack gate expiry, insufficiency calculation) are fixed forward in 018d4dc and accepted by the operator 2026-09-27 (option b), unreviewed
+> **Review:** round 5 (Full), candidates `721ce8b`..`6ec6185` `8a0243f` `1a6dfce` `56fe7b4` `d2099b0` `018d4dc` -- GPT R1-R4 needs-attention, all fixed; R5 depth needs-attention escalated at the cap (data integrity), operator decision 2026-09-27 option (b): the forward fixes in 018d4dc are accepted and stamped unreviewed. Raw findings: docs/reviews/00-workspace/D00-T02-s54.md
+> **Plan review:** GPT medium, 14 rejected under the residual depth cap, none filed (run 20260927-D00-T02-S54-codex-c06751119)
+> **CRUD:** not-applicable | nightly tooling; no user data
+> **Duration:** 2026-09-26T12:06:52Z to 2026-09-27T01:31:51Z
+> **Reviewed-tip:** 018d4dc
 
 ## 55. Notify Redesign Residuals
 
