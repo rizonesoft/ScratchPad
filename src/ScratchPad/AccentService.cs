@@ -10,9 +10,12 @@ namespace ScratchPad;
 // inside XamlControlsResources, where app- or element-level keys cannot
 // shadow them at runtime, so the accent recolors the brush instances
 // themselves: on first use every SolidColorBrush in the app's Light and
-// Dark theme dictionaries (recursively, HighContrast excluded) whose color
-// equals one of the seven live Windows accent shades is recorded with its
-// original color and shade. A built-in accent sets each recorded brush to
+// Dark theme dictionaries (recursively, HighContrast excluded) whose key
+// names an accent resource (contains "Accent") and whose color equals one
+// of the seven live Windows accent shades is recorded with its original
+// color and shade. The key test keeps a neutral brush that happens to
+// share an accent shade's color out; control brushes such as the checked
+// radio fill are aliases of the accent brush instances, so they follow. A built-in accent sets each recorded brush to
 // the same shade of its palette (keeping the brush's alpha); "system"
 // restores the originals. The brushes are shared, so every window
 // repaints at once. Previews apply without touching the store;
@@ -90,9 +93,13 @@ internal static class AccentService
         List<(SolidColorBrush, Color, string)> found,
         HashSet<SolidColorBrush> seen)
     {
-        foreach (object value in dictionary.Values)
+        foreach ((object key, object value) in dictionary)
         {
-            if (value is SolidColorBrush brush && seen.Add(brush) && byColor.TryGetValue(Rgb(brush.Color), out string? shade))
+            if (key is string name
+                && name.Contains("Accent", StringComparison.Ordinal)
+                && value is SolidColorBrush brush
+                && byColor.TryGetValue(Rgb(brush.Color), out string? shade)
+                && seen.Add(brush))
             {
                 found.Add((brush, brush.Color, shade));
             }

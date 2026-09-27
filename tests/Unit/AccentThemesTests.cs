@@ -7,6 +7,21 @@ namespace Unit;
 // D01 T02 §10: the accent palette and its WinUI shade keys.
 public sealed class AccentThemesTests
 {
+    [Theory]
+    [InlineData(0, "ocean", "Ocean", "#0063B1")]
+    [InlineData(1, "teal", "Teal", "#00827F")]
+    [InlineData(2, "forest", "Forest", "#107C10")]
+    [InlineData(3, "amber", "Amber", "#CA5010")]
+    [InlineData(4, "rose", "Rose", "#C30052")]
+    [InlineData(5, "plum", "Plum", "#881798")]
+    [InlineData(6, "graphite", "Graphite", "#5D5A58")]
+    public void PaletteIsPinned(int index, string id, string name, string hex)
+    {
+        AccentTheme theme = AccentThemes.BuiltIn[index];
+        Assert.Equal((id, name, hex), (theme.Id, theme.Name, theme.Color.Hex));
+        Assert.Same(theme, AccentThemes.Find(id));
+    }
+
     [Fact]
     public void BuiltInsAreUniqueAndNeverSystem()
     {
