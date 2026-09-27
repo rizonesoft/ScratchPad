@@ -11260,6 +11260,8 @@ track: Z1
 |  94   |   §94   | Ledger tallies that agree stay silent | - |  [x]   |
 |  95   |   §95   | Uncounted and advisory findings still need rows | - |  [x]   |
 |  96   |   §96   | A round-5 finding filed without the bar fires | - |  [x]   |
+|  97   |   §97   | Backtick verdicts under unnumbered headings derive rows | - |  [x]   |
+|  98   |   §98   | An older ID filed at the round cap without the bar fires | - |  [x]   |
 
 ---
 
@@ -12323,6 +12325,28 @@ Why this section exists: fixture.
 > **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-r5.md
 > **Plan review:** GPT high, no findings
 
+## 97. Backtick verdicts under unnumbered headings derive rows
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §97 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-backtick.md
+> **Plan review:** GPT high, no findings
+
+## 98. An older ID filed at the round cap without the bar fires
+
+- [x] Did the thing
+- [x] Commit: `"selftest: panel"`
+
+**Test checkpoint:** `true`
+
+> **Verified:** 2026-09-27 | §98 | fixture
+> **Review:** round 1 -- Raw findings: docs/reviews/90-panel-disp-cap.md
+> **Plan review:** GPT high, no findings
+
 """,
             encoding="utf-8",
         )
@@ -12774,6 +12798,8 @@ Why this section exists: fixture.
         (rev_dir / "90-panel-arch-badhead.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review\n\nverdict: approve\n\nArch outage: both rungs - timeout\n\nArch outage: somewhere - x\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         (rev_dir / "90-panel-arch-ok.md").write_text("# Review: fixture\nArch trigger: protocol - wire shape changes\n\n## Architecture review (Arch-1 fallback)\n\nArch outage: arch-primary - timeout\n\nverdict: approve\n\n## GPT panel Round 1\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n", encoding="utf-8")
         # Disposition round-1 fixes (D00 T04 §1 R1-A1, R1-A2).
+        (rev_dir / "90-panel-disp-backtick.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel\n\n- `adversarial` needs-attention (1)\n1. a\n- `consistency` approve\n- `integration` approve\n- `record` approve\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n| ID | Disposition | Evidence |\n| --- | --- | --- |\n| R0-X1 | fixed | abc1234 |\n", encoding="utf-8")
+        (rev_dir / "90-panel-disp-cap.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: needs-attention** (1)\n1. a\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n## GPT panel Round 5\n\n**adversarial: approve**\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 5; model gpt-6-astra; effort medium; duration 60s; outcome approve; tokens 1000\n\n| ID | Disposition | Evidence |\n| --- | --- | --- |\n| R1-A1 | filed | D90 T06 §1 |\n", encoding="utf-8")
         (rev_dir / "90-panel-disp-uncounted.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 1\n\n**adversarial: needs-attention**\n1. first\n2. second\n**consistency: advisory**\n1. note\n**integration: approve**\n**record: approve**\n\nTelemetry: round 1; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n| ID | Disposition | Evidence |\n| --- | --- | --- |\n| R1-A1 | fixed | abc1234 |\n", encoding="utf-8")
         (rev_dir / "90-panel-disp-r5.md").write_text("# Review: fixture\nArch trigger: none - fixture review; no gate surface\n\n## GPT panel Round 5\n\n**adversarial: needs-attention** (2)\n1. a\n2. b\n**consistency: approve**\n**integration: approve**\n**record: approve**\n\nTelemetry: round 5; model gpt-6-astra; effort medium; duration 60s; outcome needs-attention; tokens 1000\n\n| ID | Disposition | Evidence |\n| --- | --- | --- |\n| R5-A1 | filed | D90 T06 §1 |\n| R5-A2 | filed | D90 T06 §1, below the filing bar: cosmetic |\n", encoding="utf-8")
         # Ledger tallies (D00 T04 §1 item 19).
@@ -13220,13 +13246,23 @@ Why this section exists: fixture.
         )
         # Six-slot era (D00 T04 §25): families read from the TOML.
         check(
+            "backtick verdicts under an unnumbered heading derive expected rows",
+            any("TODO-06-panel.md" in ln and "§97 " in ln and "misses 1 reported finding(s): R1-A1" in ln for ln in panel_out),
+            True,
+        )
+        check(
+            "an older ID filed at the round cap without the bar fires",
+            any("TODO-06-panel.md" in ln and "§98 " in ln and "reached the round-5 cap and files R1-A1" in ln for ln in panel_out),
+            True,
+        )
+        check(
             "uncounted needs-attention and advisory findings derive expected rows",
             any("TODO-06-panel.md" in ln and "§95 " in ln and "misses 2 reported finding(s): R1-A2, R1-C1" in ln for ln in panel_out),
             True,
         )
         check(
             "a round-5 finding filed without the bar fires; one below the bar stays silent",
-            ([ln for ln in panel_out if "TODO-06-panel.md" in ln and "§96 " in ln and "round-5 finding R5-A1" in ln] != [],
+            ([ln for ln in panel_out if "TODO-06-panel.md" in ln and "§96 " in ln and "files R5-A1" in ln] != [],
              any("TODO-06-panel.md" in ln and "§96 " in ln and "R5-A2" in ln for ln in panel_out)),
             (True, False),
         )

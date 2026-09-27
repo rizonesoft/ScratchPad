@@ -729,11 +729,16 @@ def validate(graph, _args) -> int:
     # (`**<lens>: needs-attention** (n)`), so a lens without a count
     # derives nothing and only its listed rows are checked.
     _disp_lens = {"adversarial": "A", "consistency": "C", "integration": "I", "record": "R"}
-    _disp_round_re = re.compile(r"^#{2,6}\s+\w+ panel\b[^\n]*?\bround\s+(\d+)", re.IGNORECASE | re.MULTILINE)
+    # Any family panel heading is a round (D00 T04 §1 R2-A2): an explicit
+    # `round N` numbers it, else its order among the panel headings does,
+    # the way query telemetry numbers rounds.
+    _disp_round_re = re.compile(r"^#{2,6}\s+\w+ panel\b([^\n]*)$", re.IGNORECASE | re.MULTILINE)
     # Findings come from needs-attention AND advisory verdicts, counted by
     # the declared `(n)` or, when a lens gives none, by its numbered
     # finding lines (D00 T04 §1 R1-A1).
-    _disp_verdict_re = re.compile(r"^\*\*(adversarial|consistency|integration|record): (?:needs-attention|advisory)\*\*[ \t]*(?:\((\d{1,4})\))?[ \t]*$", re.IGNORECASE | re.MULTILINE)
+    # Every accepted verdict shape counts (R2-A2): `**lens: verdict**` and
+    # the marker-led backtick form `- \`lens\` verdict`.
+    _disp_verdict_re = re.compile(r"^[ \t]{0,3}(?:[*`>-][ *`>-]*)?`?(adversarial|consistency|integration|record)`?(?::|[ \t])[ \t]*(?:needs-attention|advisory)\b[*` \t]*(?:\((\d{1,4})\))?[ \t]*$", re.IGNORECASE | re.MULTILINE)
     _disp_numbered_re = re.compile(r"^[ \t]{0,3}\d{1,4}\.[ \t]+\S", re.MULTILINE)
     _disp_head_re = re.compile(r"^\|\s*ID\s*\|\s*Disposition\s*\|\s*Evidence\s*\|\s*$", re.IGNORECASE | re.MULTILINE)
     _disp_row_re = re.compile(r"^\|\s*(R\d+-[A-Z]+\d+)\s*\|\s*([^|]*?)\s*\|\s*([^|\n]*?)\s*\|\s*$", re.MULTILINE)
@@ -763,7 +768,8 @@ def validate(graph, _args) -> int:
             for _i, _rm in enumerate(_rounds):
                 _end = _rounds[_i + 1].start() if _i + 1 < len(_rounds) else len(_dtext)
                 _body = _dtext[_rm.end():_end]
-                _rn = graph.parse_bounded_int(_rm.group(1), 9999) or 0
+                _rnm = re.search(r"\bround\s+(\d{1,4})", _rm.group(1), re.IGNORECASE)
+                _rn = (graph.parse_bounded_int(_rnm.group(1), 9999) or 0) if _rnm else _i + 1
                 _legacy_f = _rn in _f_rounds
                 _k = 0
                 _vms = list(_disp_verdict_re.finditer(_body))
@@ -771,7 +777,7 @@ def validate(graph, _args) -> int:
                     if _vm.group(2):
                         _cnt = graph.parse_bounded_int(_vm.group(2), 9999) or 0
                     else:
-                        _lend = re.search(r"^\*\*\w+:|^#{1,6}\s", _body[_vm.end():], re.MULTILINE)
+                        _lend = _disp_verdict_re.search(_body[_vm.end():]) or re.search(r"^[ \t]{0,3}(?:[*`>-][ *`>-]*)?`?(?:adversarial|consistency|integration|record)`?(?::|[ \t])|^#{1,6}\s", _body[_vm.end():], re.MULTILINE | re.IGNORECASE)
                         _span = _body[_vm.end(): _vm.end() + _lend.start()] if _lend else _body[_vm.end():]
                         _cnt = len(_disp_numbered_re.findall(_span))
                     for _j in range(1, _cnt + 1):
@@ -783,7 +789,7 @@ def validate(graph, _args) -> int:
             _stops = list(re.finditer(r"^Panel stop: round ([0-9]{1,4})\b", _dtext, re.MULTILINE))
             if _stops:
                 _sn = graph.parse_bounded_int(_stops[-1].group(1), 9999) or 0
-                _after = [m for m in _rounds if m.start() > _stops[-1].start() and (graph.parse_bounded_int(m.group(1), 9999) or 0) >= _sn]
+                _after = [m for _k, m in enumerate(_rounds) if m.start() > _stops[-1].start() and (((graph.parse_bounded_int(_x.group(1), 9999) or 0) if (_x := re.search(r"\bround\s+(\d{1,4})", m.group(1), re.IGNORECASE)) else _k + 1)) >= _sn]
                 if not _after:
                     flag("panel-disposition-table", f"{_dwhere} is stamped after `Panel stop: round {_sn}` with no resumed panel round {_sn} or later after it")
             _heads = list(_disp_head_re.finditer(_dtext))
@@ -797,6 +803,10 @@ def validate(graph, _args) -> int:
                 if not _ln.startswith("|"):
                     break
                 _rows.append(_ln)
+            _cap_reached = any(
+                ((graph.parse_bounded_int(_x.group(1), 9999) or 0) if (_x := re.search(r"\bround\s+(\d{1,4})", _m.group(1), re.IGNORECASE)) else _k + 1) >= 5
+                for _k, _m in enumerate(_rounds)
+            )
             _seen: dict[str, str] = {}
             for _ln in _rows:
                 _rr = _disp_row_re.match(_ln)
@@ -813,10 +823,11 @@ def validate(graph, _args) -> int:
                     flag("panel-disposition-table", f"{_dwhere} is stamped while {_rid} is still live (fix it, file it, reject it with a reason, or escalate with no stamp)")
                 elif _disp == "escalated":
                     flag("panel-disposition-table", f"{_dwhere} is stamped over the escalated finding {_rid} (a blocking round-5 leftover stops the run: no stamp until the operator decides)")
-                elif _disp == "filed" and _rid.startswith("R5-") and not re.search(r"below[- ](?:the[- ])?(?:filing[- ])?bar", _rr.group(3), re.IGNORECASE):
-                    # Round 5 is the cap (D00 T04 §1 R1-A2): only a below-bar
-                    # leftover files and stamps; a blocking one escalates.
-                    flag("panel-disposition-table", f"{_dwhere} files the round-5 finding {_rid} without stating it sits below the bar (a blocking round-5 leftover escalates, it never files and stamps)")
+                elif _disp == "filed" and _cap_reached and not re.search(r"below[- ](?:the[- ])?(?:filing[- ])?bar", _rr.group(3), re.IGNORECASE):
+                    # At the round cap (D00 T04 §1 R1-A2, R2-A1) only a
+                    # below-bar leftover files and stamps, whatever round
+                    # first reported it; a blocking one escalates.
+                    flag("panel-disposition-table", f"{_dwhere} reached the round-5 cap and files {_rid} without stating it sits below the bar (a blocking leftover escalates, it never files and stamps)")
             _miss = [x for x in _expected if x not in _seen]
             if _miss:
                 flag("panel-disposition-table", f"{_dwhere} final disposition table misses {len(_miss)} reported finding(s): {', '.join(_miss[:8])}{' ...' if len(_miss) > 8 else ''}")
