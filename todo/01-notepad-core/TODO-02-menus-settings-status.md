@@ -388,6 +388,8 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 
 **Test checkpoint:** gallery, preview, persistence, and untouched defaults are all driven in the room. Cheaper substitute that fails: themes that need a restart to apply.
 
+**Night-owed:** D01-T02-S10-N1 (1 FullyQualifiedName~SettingsPageTests.AccentHoverPreviewsAndRestores, collector Nightly UI 02:30, owed 2026-09-28, digest 758652bb60fa0cb3, tests docs/night-owed/D01-T02-S10-N1.txt, candidate aa9e8308c044a1716c9bc1aa235b97eecdbfa45d, tz +02:00, schedule 2026-09-19) hover preview and restore by physical pointer (item 2).
+
 ## 11. Session Word Goal
 
 Why this section exists: a word goal with a thin progress line for the session. No accounts, no streaks, no cloud: the goal dies with the session.
