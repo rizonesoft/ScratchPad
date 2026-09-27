@@ -306,6 +306,14 @@ static int CaptureStub(string exe, string outdir, string? element, int width, in
         {
             window.SetForeground();
             Thread.Sleep(800);
+            if (Native.ForegroundPid() != app.ProcessId)
+            {
+                // The foreground lock refuses a background process while a
+                // user holds the desktop; --foreground is an explicit ask to
+                // take focus, so join the foreground thread's input and retry.
+                Native.ForceForeground(window);
+                Thread.Sleep(800);
+            }
 
             // Mica renders only while the window is active; say which state
             // the pixels are in so a probe never compares active to inactive.
@@ -443,6 +451,28 @@ static class Native
         return (NativeMethods.GetWindowLong(window.Properties.NativeWindowHandle.Value, exStyle) & topmostBit) != 0;
     }
 
+    // AttachThreadInput to the current foreground thread lifts the
+    // foreground lock for one SetForegroundWindow; detach right after.
+    internal static void ForceForeground(Window window)
+    {
+        var hwnd = window.Properties.NativeWindowHandle.Value;
+        var fgThread = NativeMethods.GetWindowThreadProcessId(NativeMethods.GetForegroundWindow(), out _);
+        var ownThread = NativeMethods.GetCurrentThreadId();
+        var attached = fgThread != 0 && fgThread != ownThread && NativeMethods.AttachThreadInput(ownThread, fgThread, true);
+        try
+        {
+            NativeMethods.BringWindowToTop(hwnd);
+            NativeMethods.SetForegroundWindow(hwnd);
+        }
+        finally
+        {
+            if (attached)
+            {
+                NativeMethods.AttachThreadInput(ownThread, fgThread, false);
+            }
+        }
+    }
+
     // The process that owns the foreground window (0 when none).
     internal static int ForegroundPid()
     {
@@ -459,6 +489,25 @@ static class Native
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern uint GetWindowThreadProcessId(nint hWnd, out uint processId);
+
+        [DllImport("kernel32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        internal static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, [MarshalAs(UnmanagedType.Bool)] bool fAttach);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool BringWindowToTop(nint hWnd);
+
+        [DllImport("user32.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool SetForegroundWindow(nint hWnd);
 
         [DllImport("user32.dll")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
