@@ -1074,6 +1074,10 @@ if __name__ == "__main__":
         print(f"outage: {word} outage: {where}{primary} - {why1}")
         fb = list(argv)
         fb[si + 1] = "fallback"
+        # The fallback belongs to another family (D00 T04 §1 R5-I1): its
+        # family argument reads `slot`, so an explicit primary family never
+        # blocks the fallback launch.
+        fb[6] = "slot"
         rc2, why2 = _once(fb)
         if rc2 == 0:
             print(f"record: the fallback round records `{word} outage: {where}{primary} - {why1}` under its heading")

@@ -700,9 +700,11 @@ def validate(graph, _args) -> int:
     _src_part_re = re.compile(r"\b([0-9]{1,4})\s+(filed here|filed at siblings|filed|duplicates?|rejected|accepted|deferred)\b", re.IGNORECASE)
     _src_key_re = re.compile(r"plan-review-D(\d+)-T(\d+)-s(\d+)-(\d{4}-\d{2}-\d{2})")
 
-    def _source_ledger_counts(dn: str, tn: str, sn: str) -> dict[str, int] | None:
+    def _source_ledger_counts(dn: str, tn: str, sn: str, day: str) -> dict[str, int] | None:
         # The source plan review's own ledger (D00 T04 §1 R3-R1): the key's
-        # section's findings file, its last plan-review block.
+        # section's findings file, and in it the plan-review block whose
+        # run carries the key's date (R5-I2), so a later review never
+        # re-judges a historical summary. No such block: no comparison.
         st = next((x for x in todos if x.domain.startswith(dn + "-") and x.number == tn), None)
         ss = st.sections.get(graph.parse_bounded_int(sn, 9999) or 0) if st else None
         sf = graph.FINDINGS_RE.search(getattr(ss, "review_body", None) or "") if ss else None
@@ -713,11 +715,17 @@ def validate(graph, _args) -> int:
         except OSError:
             return None
         sheads = list(graph.PLAN_REVIEW_HEADING_RE.finditer(stext))
-        if not sheads:
+        compact = day.replace("-", "")
+        chosen = None
+        for sh in sheads:
+            ssec = stext[sh.end():]
+            snx = re.search(r"^#{1,6}\s+", ssec, re.MULTILINE)
+            ssec = ssec[: snx.start()] if snx else ssec
+            if re.search(r"\brun\s+" + compact + r"-", ssec):
+                chosen = ssec
+        if chosen is None:
             return None
-        ssec = stext[sheads[-1].end():]
-        snx = re.search(r"^#{1,6}\s+", ssec, re.MULTILINE)
-        sblock, _sp = graph.ledger_block(ssec[: snx.start()] if snx else ssec)
+        sblock, _sp = graph.ledger_block(chosen)
         if sblock is None:
             return None
         counts: dict[str, int] = {}
@@ -743,7 +751,7 @@ def validate(graph, _args) -> int:
                 if not _owner or _owner[-1].group(4) <= graph.DISPOSITION_CUTOVER:
                     continue
                 _k = _owner[-1]
-                _src_counts = _source_ledger_counts(_k.group(1), _k.group(2), _k.group(3))
+                _src_counts = _source_ledger_counts(_k.group(1), _k.group(2), _k.group(3), _k.group(4))
                 if _src_counts is not None:
                     _said: dict[str, int] = {}
                     for _x in _src_part_re.finditer(_pm.group(1)):
