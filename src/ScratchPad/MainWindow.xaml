@@ -5,8 +5,11 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:ScratchPad">
 
+    <!-- D01 T02 §15: stock Notepad is Mica Alt, not base Mica. Same-machine
+         probes put stock's tab strip at (10,10,7) dark / (205,223,224) light,
+         the Alt tint; base Mica rendered our strip flat at 32 / 243. -->
     <Window.SystemBackdrop>
-        <MicaBackdrop />
+        <MicaBackdrop Kind="BaseAlt" />
     </Window.SystemBackdrop>
 
     <!-- Shell regions in Notepad layout. Owners fill them: MenuBar items are D01 T02 §1,
@@ -27,7 +30,12 @@
 
         <ContentControl x:Name="TabRegion" Grid.Row="0" AutomationProperties.AutomationId="TabRegion" AutomationProperties.Name="Tab region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
 
-        <Grid Grid.Row="1">
+        <!-- D01 T02 §15: the menu and status bands are the layer fill stock
+             lays on Mica Alt (LayerOnMicaBaseAltFillColorDefault), and the
+             editor sits on the tertiary solid fill. Theme resources, so the
+             Light/Dark/HighContrast dictionaries and D01 T02 §10's accent
+             pipeline keep owning the values. -->
+        <Grid Grid.Row="1" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
@@ -43,7 +51,28 @@
             </StackPanel>
         </Grid>
 
-        <ContentControl x:Name="EditorRegion" Grid.Row="2" AutomationProperties.AutomationId="EditorRegion" AutomationProperties.Name="Editor region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+        <ContentControl x:Name="EditorRegion" Grid.Row="2" AutomationProperties.AutomationId="EditorRegion" AutomationProperties.Name="Editor region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+            <ContentControl.Resources>
+                <ResourceDictionary>
+                    <ResourceDictionary.ThemeDictionaries>
+                        <ResourceDictionary x:Key="Default">
+                            <StaticResource x:Key="TextControlBackground" ResourceKey="SolidBackgroundFillColorTertiaryBrush" />
+                            <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="SolidBackgroundFillColorTertiaryBrush" />
+                            <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="SolidBackgroundFillColorTertiaryBrush" />
+                        </ResourceDictionary>
+                        <ResourceDictionary x:Key="Light">
+                            <StaticResource x:Key="TextControlBackground" ResourceKey="SolidBackgroundFillColorTertiaryBrush" />
+                            <StaticResource x:Key="TextControlBackgroundPointerOver" ResourceKey="SolidBackgroundFillColorTertiaryBrush" />
+                            <StaticResource x:Key="TextControlBackgroundFocused" ResourceKey="SolidBackgroundFillColorTertiaryBrush" />
+                        </ResourceDictionary>
+                    </ResourceDictionary.ThemeDictionaries>
+                </ResourceDictionary>
+            </ContentControl.Resources>
+        </ContentControl>
+
+        <!-- ContentControl's template draws no Background, so the status band's
+             layer fill is its own element; StatusRow collapsing to 0 hides it. -->
+        <Border Grid.Row="3" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}" />
 
         <ContentControl x:Name="StatusRegion" Grid.Row="3" AutomationProperties.AutomationId="StatusRegion" AutomationProperties.Name="Status region" Background="Transparent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
 

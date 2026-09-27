@@ -15,26 +15,29 @@ using System.Drawing.Imaging;
 // Captures baseline surfaces for resources/baseline/. Usage:
 //   CaptureBaseline notepad <outdir> [--width N --height N]
 //     stock Windows 11 Notepad; safe alongside a running Notepad (captures only the window it opens)
-//   CaptureBaseline stub <exe> <outdir> [--element NAME] [--width N --height N]
-//     our app window, or one element by Name
+//   CaptureBaseline stub <exe> <outdir> [--element NAME] [--width N --height N] [--foreground]
+//     our app window, or one element by Name; --foreground activates it first, as
+//     the stock mode does, so an active window's Mica renders (an inactive window
+//     paints the flat fallback color; D01 T02 §15 compares like with like)
 // Sizes are logical pixels at 96 DPI; the tool scales by the window's real DPI and
 // downscales the capture back to canonical size, so goldens match across DPI settings.
 if (args.Length < 2)
 {
     Console.WriteLine("usage: CaptureBaseline notepad <outdir> [--width N --height N]");
-    Console.WriteLine("       CaptureBaseline stub <exe> <outdir> [--element NAME] [--width N --height N]");
+    Console.WriteLine("       CaptureBaseline stub <exe> <outdir> [--element NAME] [--width N --height N] [--foreground]");
     return 2;
 }
 
 var width = Flag(args, "--width", 900);
 var height = Flag(args, "--height", 650);
 var element = Value(args, "--element");
+var foreground = args.Contains("--foreground");
 
 return args[0] switch
 {
     "notepad" => CaptureNotepad(args[1], width, height),
     "held-keys" => CaptureHeldKeys(args[1]),
-    "stub" when args.Length >= 3 => CaptureStub(args[1], args[2], element, width, height),
+    "stub" when args.Length >= 3 => CaptureStub(args[1], args[2], element, width, height, foreground),
     _ => 2,
 };
 
@@ -279,7 +282,7 @@ static IntPtr WaitForNewWindow(UIA3Automation automation, HashSet<IntPtr> before
     return IntPtr.Zero;
 }
 
-static int CaptureStub(string exe, string outdir, string? element, int width, int height)
+static int CaptureStub(string exe, string outdir, string? element, int width, int height, bool foreground = false)
 {
     if (!File.Exists(exe))
     {
@@ -297,6 +300,16 @@ static int CaptureStub(string exe, string outdir, string? element, int width, in
         {
             Console.WriteLine("no main window");
             return 1;
+        }
+
+        if (foreground)
+        {
+            window.SetForeground();
+            Thread.Sleep(800);
+
+            // Mica renders only while the window is active; say which state
+            // the pixels are in so a probe never compares active to inactive.
+            Console.WriteLine($"active={Native.ForegroundPid() == app.ProcessId}");
         }
 
         if (element is null)
