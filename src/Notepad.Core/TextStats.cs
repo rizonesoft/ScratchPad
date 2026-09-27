@@ -90,6 +90,14 @@ public static class TextStats
             repeated);
     }
 
+    // The same words Compute counts, in order, for callers that need the
+    // words themselves (D01 T02 §7 counts their syllables).
+    public static IReadOnlyList<string> Words(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return Tokenize(text);
+    }
+
     // A word is a maximal run of Unicode letters/digits with internal
     // apostrophes kept (don't stays one word); casing is first-seen.
     private static List<string> Tokenize(string text)

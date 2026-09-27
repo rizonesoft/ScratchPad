@@ -718,6 +718,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // D01 T02 §4: the status strip lives in the shell's fourth row;
         // the View toggle enables here and the store owns its state.
         statusBar = new StatusBar();
+        statusBar.ReadingLevelRequested += StatusBar_ReadingLevelRequested;
         StatusRegion.Content = statusBar;
         MenuRegion.SetEnabled("MenuViewStatusBar", true);
         MenuRegion.SetStatusBarChecked(SettingsStore.Shared.Current.ShowStatusBar);
@@ -1146,10 +1147,12 @@ public sealed partial class MainWindow : Window, IDisposable
         if (tabs.ActiveTab is not Tab active || tabBar is null)
         {
             statusBar.Show(StatusView.Empty(SettingsStore.Shared.Current.ZoomDefault));
+            statusBar.KeepReadingLevelFor(null, null);
             return;
         }
 
         TextBox box = tabBar.ContentFor(active);
+        statusBar.KeepReadingLevelFor(active, box.Text);
         statusBar.Show(StatusView.Compute(
             box.Text,
             box.SelectionStart,
@@ -1159,6 +1162,19 @@ public sealed partial class MainWindow : Window, IDisposable
             active.LineEnding,
             SettingsStore.Shared.Current.ZoomDefault,
             StatusSegments.IsMarkdownFile(active.FilePath)));
+    }
+
+    // D01 T02 §7: the reading level computes here, on the click only,
+    // over the active buffer; the strip drops it when the text changes.
+    private void StatusBar_ReadingLevelRequested(object? sender, EventArgs e)
+    {
+        if (statusBar is null || tabs.ActiveTab is not Tab active || tabBar is null)
+        {
+            return;
+        }
+
+        string text = tabBar.ContentFor(active).Text;
+        statusBar.ShowReadingLevel(Readability.Compute(text), active, text);
     }
 
     // D01 T02 §4: the toggle collapses the strip and its 32-DIP row

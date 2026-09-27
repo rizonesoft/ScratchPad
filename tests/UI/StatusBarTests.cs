@@ -81,6 +81,64 @@ public sealed class StatusBarTests
         }
     }
 
+    // D01 T02 §7: the reading level computes on the click only, drops
+    // back to its prompt on any edit or tab switch (never a stale score,
+    // never a recompute nobody asked for), and an empty buffer says so.
+    // Fixture grades are the Unit ReadabilityTests values.
+    [Fact]
+    public void ReadingLevelComputesOnlyOnClick()
+    {
+        UiLaunch.SeedSettings(new ShellSettings { WhatsNewSeen = true });
+        string dir = NewTempDir();
+        try
+        {
+            string file = SeedFile(dir, "grade.txt", "Education improves opportunity. Reading matters.");
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchAppWithArgs($"\"{file}\"");
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                WaitForSegmentName(window, "StatusCount", "48 characters");
+                Thread.Sleep(1500);
+                Assert.Equal("Reading level", SegmentName(window, "StatusReadingLevel"));
+
+                Segment(window, "StatusReadingLevel").Patterns.Invoke.Pattern.Invoke();
+                WaitForSegmentName(window, "StatusReadingLevel", "Grade 20.8");
+
+                UiInput.AppendText(ContentBox(window), " More words here.");
+                WaitForSegmentName(window, "StatusReadingLevel", "Reading level");
+                Thread.Sleep(1500);
+                Assert.Equal("Reading level", SegmentName(window, "StatusReadingLevel"));
+
+                Segment(window, "StatusReadingLevel").Patterns.Invoke.Pattern.Invoke();
+                WaitForSegmentName(window, "StatusReadingLevel", "Grade 12.0");
+
+                UiInput.InvokeMenuItem(window, "MenuFile", "MenuFileNewTab");
+                WaitForSegmentName(window, "StatusCount", "0 characters");
+                WaitForSegmentName(window, "StatusReadingLevel", "Reading level");
+                Segment(window, "StatusReadingLevel").Patterns.Invoke.Pattern.Invoke();
+                WaitForSegmentName(window, "StatusReadingLevel", "No text to score");
+
+                var target = TabItems(window).FirstOrDefault(item => (item.Name ?? string.Empty).Contains("grade.txt", StringComparison.Ordinal));
+                Assert.NotNull(target);
+                target.Patterns.SelectionItem.Pattern.Select();
+                WaitForSegmentName(window, "StatusCount", "65 characters");
+                WaitForSegmentName(window, "StatusReadingLevel", "Reading level");
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            DeleteDir(dir);
+        }
+    }
+
     [Fact]
     public void TabSwitchUpdatesStrip()
     {

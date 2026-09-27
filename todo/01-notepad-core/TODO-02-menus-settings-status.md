@@ -271,6 +271,8 @@ Why this section exists: menus rot one item at a time. The audit makes "every co
 
 ## 7. Reading Level in the Status Bar
 
+> **Started:** 2026-09-27T06:40:00Z
+
 Why this section exists: writers calibrate difficulty. A click computes grade level locally with no agent and no network.
 
 **Fidelity:** new build, no baseline (beyond the stock status bar).
@@ -283,11 +285,11 @@ Why this section exists: writers calibrate difficulty. A click computes grade le
 
 **Needs:** Windows host (build/test)
 
-- [ ] Flesch-Kincaid grade computes locally over the buffer. Done when: fixtures match reference values.
-- [ ] Clicking the status area computes and shows the score. Done when: driven.
-- [ ] The score never recomputes unprompted and never touches the network. Done when: the negative tests pass.
-- [ ] The readability score reuses `TextStats.Compute` (TotalWords, TotalSentences; src/Notepad.Core/TextStats.cs) instead of a second counter, handles an empty or sentence-free buffer, and never shows a stale score after edits. Done when: an empty buffer and an edit after scoring are driven (Groomed 2026-09-23.)
-- [ ] Commit: `"notepad-core: show reading level on demand"`
+- [x] Flesch-Kincaid grade computes locally over the buffer. Done when: fixtures match reference values. **Evidence 2026-09-27:** `src/Notepad.Core/Readability.cs` computes 0.39 (words/sentences) + 11.8 (syllables/words) - 15.59, rounded to one decimal; syllables by vowel groups after a silent -es/-ed/-e ending and a leading y. `tests/Unit/ReadabilityTests.cs` pins 15 dictionary syllable counts and three hand-computed grades: "Education improves opportunity. Reading matters." 20.8, the pangram 2.3, "The cat sat on the mat." -1.45 floored to 0.0 (**Default 2026-09-27:** a negative grade means nothing to a reader, so it floors at 0; cost of changing: one branch and its fixture). ReadabilityTests plus TextStatsTests 33/33.
+- [x] Clicking the status area computes and shows the score. Done when: driven. **Decided 2026-09-27:** stock's status segments are static and §4 pins that (`StatusSegmentsHaveNoClickPath`), so the score gets its own segment rather than a click on a stock one: a `Reading level` Button (`StatusReadingLevel`) after the mode segment, styled like the Formatted switch, reading `Grade N.N` after a click. Cost: one segment stock does not have; the main-window golden absorbs it at 0.0318% (159/500256, threshold 0.1000%), so the golden was not refreshed: a clean refresh needs a flat-Mica capture and the idle desktop kept activating the capture (four tries read the lit tab strip (18,8,0), not the golden's flat 32), and a lit golden would move every chrome band. **Evidence 2026-09-27:** `StatusBarTests.ReadingLevelComputesOnlyOnClick` invokes the segment and reads `Grade 20.8`.
+- [x] The score never recomputes unprompted and never touches the network. Done when: the negative tests pass. **Evidence 2026-09-27:** the UI drive waits 1.5 s after load and again after an edit and reads the `Reading level` prompt both times (no timer, no recompute on typing); `ReadabilityTests.ScoringSourceTouchesNoNetwork` fails if the scorer's source names `System.Net`, `HttpClient`, `WebRequest`, `Socket`, or `Uri(`.
+- [x] The readability score reuses `TextStats.Compute` (TotalWords, TotalSentences; src/Notepad.Core/TextStats.cs) instead of a second counter, handles an empty or sentence-free buffer, and never shows a stale score after edits. Done when: an empty buffer and an edit after scoring are driven (Groomed 2026-09-23.) **Evidence 2026-09-27:** words and sentences come from `TextStats.Compute` (`WordsAndSentencesComeFromTextStats`), with `TextStats.Words` exposing the same tokens for syllables; a wordless buffer scores null and shows `No text to score` (unit theory over empty, whitespace, and punctuation-only text, plus the UI drive on a new empty tab). The strip keeps a score only for the tab and text it measured (`StatusBar.KeepReadingLevelFor` on every refresh): the drive edits after scoring and reads the prompt again, rescoring reads `Grade 12.0`, and switching tabs drops the score. StatusBarTests 7 passed, 2 Interactive skipped.
+- [x] Commit: `"notepad-core: show reading level on demand"`
 
 **Test checkpoint:** Computation, display, and the on-demand rule driven. Cheaper substitute that fails: a score that phones home.
 

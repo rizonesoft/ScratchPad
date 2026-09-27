@@ -8,7 +8,10 @@
          dividers, per the stock captures. Plain-text segments are static
          Text: stock 11.2607.14.0 opens nothing on segment clicks (probed
          single twice plus double-click once); only the Formatted switch
-         is a Button, and it ships disabled until D02 T04 §3. -->
+         is a Button, and it ships disabled until D02 T04 §3. The reading
+         level (D01 T02 §7) is this app's addition, not stock: a Button
+         that computes Flesch-Kincaid on click only, so the stock segments
+         keep their static no-click behavior. -->
     <UserControl.Resources>
         <Style x:Key="StatusDivider" TargetType="Border">
             <Setter Property="Width" Value="1" />
@@ -35,6 +38,8 @@
             <Border Style="{StaticResource StatusDivider}" />
             <TextBlock x:Name="ModeText" Style="{StaticResource StatusText}" AutomationProperties.AutomationId="StatusMode" Text="Plain text" />
             <Button x:Name="ModeButton" AutomationProperties.AutomationId="StatusModeButton" AutomationProperties.Name="Formatted" Content="Formatted" FontSize="12" Padding="8,2,8,2" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" IsEnabled="False" Visibility="Collapsed" />
+            <Border Style="{StaticResource StatusDivider}" />
+            <Button x:Name="ReadingLevelButton" AutomationProperties.AutomationId="StatusReadingLevel" AutomationProperties.Name="Reading level" Content="Reading level" FontSize="12" Padding="8,2,8,2" VerticalAlignment="Center" Background="Transparent" BorderThickness="0" ToolTipService.ToolTip="Compute the Flesch-Kincaid grade of this document" Click="ReadingLevelButton_Click" />
         </StackPanel>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,12,0">
