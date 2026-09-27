@@ -66,6 +66,7 @@ internal sealed partial class SettingsPage : UserControl
             }
 
             AboutVersion.Text = AppVersion();
+            BuildAccentGallery();
             RefreshFromStore();
         }
         finally
@@ -128,6 +129,7 @@ internal sealed partial class SettingsPage : UserControl
             string openingLabel = OpeningOptions.FirstOrDefault(o => o.Value == current.OpenIn).Label ?? current.OpenIn;
             SelectCombo(OpeningCombo, openingLabel);
             CheckRadio(WhenStartsContinue, WhenStartsFresh, null, WhenStartsOptions, current.WhenStarts);
+            MarkAccent(AccentThemes.Normalize(current.Accent));
         }
         finally
         {
@@ -179,6 +181,68 @@ internal sealed partial class SettingsPage : UserControl
         FontPreview.FontWeight = style.Contains("Bold", StringComparison.Ordinal)
             ? Microsoft.UI.Text.FontWeights.Bold
             : Microsoft.UI.Text.FontWeights.Normal;
+    }
+
+    // D01 T02 §10: one swatch per built-in accent. The swatch face is the
+    // accent itself; the selected one carries a check glyph and reports
+    // "Selected" through UIA ItemStatus.
+    void BuildAccentGallery()
+    {
+        foreach (AccentTheme theme in AccentThemes.BuiltIn)
+        {
+            var check = new FontIcon
+            {
+                Glyph = "",
+                FontSize = 14,
+                Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White),
+                Visibility = Visibility.Collapsed,
+            };
+            var swatch = new Button
+            {
+                Width = 36,
+                Height = 36,
+                Padding = new Thickness(0),
+                CornerRadius = new CornerRadius(4),
+                Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(
+                    Windows.UI.Color.FromArgb(0xFF, theme.Color.R, theme.Color.G, theme.Color.B)),
+                Content = check,
+                Tag = theme.Id,
+            };
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(swatch, "SettingsAccent-" + theme.Id);
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(swatch, theme.Name + " accent");
+            ToolTipService.SetToolTip(swatch, theme.Name);
+            swatch.PointerEntered += (_, _) => AccentService.Preview(theme.Id);
+            swatch.GotFocus += (_, _) => AccentService.Preview(theme.Id);
+            swatch.PointerExited += (_, _) => AccentService.EndPreview();
+            swatch.LostFocus += (_, _) => AccentService.EndPreview();
+            swatch.Click += (_, _) => CommitAccent(theme.Id);
+            AccentGallery.Children.Add(swatch);
+        }
+    }
+
+    void CommitAccent(string id)
+    {
+        SettingsStore.Shared.Update(current => current.Accent = id);
+        AccentService.Apply(id);
+        MarkAccent(id);
+    }
+
+    void AccentRevert_Click(object sender, RoutedEventArgs e) => CommitAccent(AccentThemes.System);
+
+    void MarkAccent(string id)
+    {
+        foreach (Button swatch in AccentGallery.Children.OfType<Button>())
+        {
+            bool selected = string.Equals(swatch.Tag as string, id, StringComparison.Ordinal);
+            if (swatch.Content is FontIcon check)
+            {
+                check.Visibility = selected ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetItemStatus(swatch, selected ? "Selected" : string.Empty);
+        }
+
+        AccentRevert.IsEnabled = !string.Equals(id, AccentThemes.System, StringComparison.Ordinal);
     }
 
     void ThemeRadio_Checked(object sender, RoutedEventArgs e)

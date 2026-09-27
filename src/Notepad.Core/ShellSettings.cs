@@ -21,6 +21,11 @@ public sealed class ShellSettings
 
     public string Theme { get; set; } = "system";
 
+    // Accent theme, owned by D01 T02 §10: "system" (the default) follows
+    // the Windows accent; a built-in id from AccentThemes names a palette.
+    // Unknown ids read as "system" (AccentThemes.Normalize).
+    public string Accent { get; set; } = AccentThemes.System;
+
     // Store schema version, owned by D01 T02 §2. Absent (0) means the
     // unversioned file §2 inherited; 1 is current. Migration stamps the
     // version and carries every key forward unchanged.

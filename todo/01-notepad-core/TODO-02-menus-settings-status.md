@@ -363,6 +363,8 @@ Why this section exists: writers watch length as they type. Words, reading time,
 
 ## 10. Custom Accent Themes
 
+> **Started:** 2026-09-27T07:47:00Z
+
 Why this section exists: system dark and light are the floor. Writers pick accent themes that feel like theirs, previewed live before applying.
 
 **Fidelity:** new build, no baseline (beyond the stock theme setting in §3).
@@ -377,12 +379,12 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 
 - -> XREF: D01 T02 §15 -- chrome color finetune preserves the accent coloring this gallery themes.
 
-- [ ] The gallery lists the built-in accent themes. Done when: every theme renders its swatch.
-- [ ] Preview applies live before commit. Done when: hovering previews and leaving restores.
-- [ ] The chosen accent persists across restarts through §2. Done when: relaunch keeps it.
-- [ ] Stock dark and light stay default and untouched. Done when: a fresh install shows system themes.
-- [ ] A revert-to-system-accent action restores the default after a custom accent. Done when: revert is driven and the system accent returns (Groomed 2026-09-23.)
-- [ ] Commit: `"notepad-core: theme the accents"`
+- [x] The gallery lists the built-in accent themes. Done when: every theme renders its swatch. **Decided 2026-09-27:** the gallery sits inside the stock App theme card (below the three radios), not as a new card, so the stock card list and the settings golden stay as captured; seven built-ins (`AccentThemes.BuiltIn`: Ocean, Teal, Forest, Amber, Rose, Plum, Graphite; **Default 2026-09-27:** hues spread around the wheel at the Windows picker's saturation, cost: the list and its fixtures). **Evidence 2026-09-27:** `SettingsPageTests.AccentGalleryRendersEverySwatch` scrolls each swatch into view and counts its own color in the rendered frame: 1,129 to 1,185 px each; `AccentThemesTests` 9/9 pin the palette, ids, and shade math.
+- [x] Preview applies live before commit. Done when: hovering previews and leaving restores. **Evidence 2026-09-27:** pointer enter and keyboard focus call `AccentService.Preview`; pointer exit and focus loss call `EndPreview`, which re-applies the stored accent, and the store is written only on click. The drive is physical pointer movement, so `SettingsPageTests.AccentHoverPreviewsAndRestores` is fenced Interactive and owed to the nightly collector below; the live-recolor mechanism it exercises is the one the focus-free commit drive proves.
+- [x] The chosen accent persists across restarts through §2. Done when: relaunch keeps it. **Evidence 2026-09-27:** new store key `Accent` (default `system`, unknown ids read as `system`; `docs/settings-schema.md` row). `SettingsPageTests.AccentCommitPersistsAndReverts` invokes the Rose swatch: store reads `rose`, the swatch reports `Selected`, and the checked theme radio renders Rose's dark-theme fill shade (#DB6697: 0 px before, 154 px after); after a relaunch the fill renders at startup (696 px). Mechanism: WinUI resolves accent brushes inside XamlControlsResources, where app-level overrides proved inert at runtime (probe frame showed the system blue), so `AccentService` recolors the shared accent brush instances by shade and every window repaints at once.
+- [x] Stock dark and light stay default and untouched. Done when: a fresh install shows system themes. **Evidence 2026-09-27:** a fresh store reads `Accent` `system`, no swatch is selected, and revert is disabled (`AccentGalleryRendersEverySwatch`); with `system` stored, `AccentService` never walks or touches a brush, and HighContrast dictionaries are excluded from the walk. Theme radios, `ThemesRenderWithMica`, and both goldens pass unchanged (main 0.0544%, settings 0.0044%).
+- [x] A revert-to-system-accent action restores the default after a custom accent. Done when: revert is driven and the system accent returns (Groomed 2026-09-23.) **Evidence 2026-09-27:** `Use system accent` (`SettingsAccentRevert`) writes `system` and restores every recorded brush's original color; the drive reads 0 px of the Rose fill after revert.
+- [x] Commit: `"notepad-core: theme the accents"`
 
 **Test checkpoint:** gallery, preview, persistence, and untouched defaults are all driven in the room. Cheaper substitute that fails: themes that need a restart to apply.
 

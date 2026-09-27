@@ -1752,6 +1752,9 @@ public sealed partial class MainWindow : Window, IDisposable
 
     void ApplyTheme()
     {
+        // D01 T02 §10: the stored accent recolors the shared accent
+        // brushes, so every window follows without a theme flip.
+        AccentService.Apply(SettingsStore.Shared.Current.Accent);
         if (Content is FrameworkElement root)
         {
             root.RequestedTheme = SettingsStore.Shared.Current.Theme switch

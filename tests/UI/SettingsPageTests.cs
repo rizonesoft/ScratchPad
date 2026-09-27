@@ -67,6 +67,218 @@ public sealed class SettingsPageTests
         }
     }
 
+    // D01 T02 §10: the gallery renders every built-in swatch in its own
+    // color, and a fresh store follows the system accent (nothing
+    // selected, revert disabled, Accent "system").
+    [Fact]
+    public void AccentGalleryRendersEverySwatch()
+    {
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
+        try
+        {
+            SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
+            using var app = UiLaunch.LaunchApp();
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            UiForeground.Background(window, fgBefore);
+            Assert.NotNull(window);
+            try
+            {
+                Assert.Equal(AccentThemes.System, ShellSettings.Load().Accent);
+                OpenSettings(window);
+                ExpandCard(window, "SettingsCardAppTheme");
+                Thread.Sleep(600);
+                foreach (AccentTheme theme in AccentThemes.BuiltIn)
+                {
+                    var swatch = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAccent-" + theme.Id));
+                    Assert.NotNull(swatch);
+                    Assert.Equal(theme.Name + " accent", swatch.Name);
+                    Assert.True(string.IsNullOrEmpty(swatch.Properties.ItemStatus.ValueOrDefault), $"{theme.Id} selected on a fresh store");
+
+                    // The page scrolls; bring each swatch on screen first.
+                    if (swatch.Patterns.ScrollItem.IsSupported)
+                    {
+                        swatch.Patterns.ScrollItem.Pattern.ScrollIntoView();
+                        Thread.Sleep(300);
+                    }
+
+                    using var shot = CaptureShot(window);
+                    int painted = CountNear(shot, theme.Color, 4);
+                    output.WriteLine($"{theme.Id} {theme.Color.Hex}: {painted} px");
+                    Assert.True(painted > 300, $"{theme.Id} swatch painted {painted} px of {theme.Color.Hex}");
+                }
+
+                var revert = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAccentRevert"));
+                Assert.NotNull(revert);
+                Assert.False(revert.IsEnabled, "revert enabled while following the system accent");
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            CleanSettings(settingsPath);
+        }
+    }
+
+    // D01 T02 §10: committing an accent persists it, recolors the accent
+    // surfaces live (the checked theme radio fills with the dark-theme
+    // fill shade), survives a relaunch, and the revert action returns to
+    // the system accent with no accent fill left.
+    [Fact]
+    public void AccentCommitPersistsAndReverts()
+    {
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
+        AccentTheme rose = AccentThemes.Find("rose")!;
+        AccentColor fill = AccentThemes.Shades(rose.Color)["SystemAccentColorLight2"];
+        try
+        {
+            SessionData.Delete();
+            nint fgBefore = UiForeground.Capture();
+            using (var app = UiLaunch.LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
+                Assert.NotNull(window);
+                try
+                {
+                    OpenSettings(window);
+                    ExpandCard(window, "SettingsCardAppTheme");
+                    int before = FillPixels(window, fill);
+                    InvokeById(window, "SettingsAccent-rose");
+                    WaitForStore(s => s.Accent == "rose", "accent rose");
+                    int after = WaitForFill(window, fill, atLeast: 40);
+                    output.WriteLine($"rose fill {fill.Hex}: {before} px before, {after} px after commit");
+                    Assert.True(before < 10, $"{before} px of the rose fill before any accent");
+                    var swatch = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAccent-rose"));
+                    Assert.NotNull(swatch);
+                    Assert.Equal("Selected", swatch.Properties.ItemStatus.ValueOrDefault);
+                }
+                finally
+                {
+                    CloseApp(app, window);
+                }
+            }
+
+            fgBefore = UiForeground.Capture();
+            using (var app = UiLaunch.LaunchApp())
+            {
+                using var automation = new UIA3Automation();
+                var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+                UiForeground.Background(window, fgBefore);
+                Assert.NotNull(window);
+                try
+                {
+                    OpenSettings(window);
+                    ExpandCard(window, "SettingsCardAppTheme");
+                    int relaunched = WaitForFill(window, fill, atLeast: 40);
+                    output.WriteLine($"rose fill after relaunch: {relaunched} px");
+                    InvokeById(window, "SettingsAccentRevert");
+                    WaitForStore(s => s.Accent == AccentThemes.System, "accent reverted");
+                    Thread.Sleep(1000);
+                    int reverted = FillPixels(window, fill);
+                    output.WriteLine($"rose fill after revert: {reverted} px");
+                    Assert.True(reverted < 10, $"{reverted} px of the rose fill after revert");
+                }
+                finally
+                {
+                    CloseApp(app, window);
+                }
+            }
+        }
+        finally
+        {
+            CleanSettings(settingsPath);
+        }
+    }
+
+    // D01 T02 §10: hovering a swatch previews its accent without touching
+    // the store, and leaving restores the stored accent. Fenced: the point
+    // is physical pointer movement.
+    [InteractiveFact]
+    [Trait("Category", "Interactive")]
+    public void AccentHoverPreviewsAndRestores()
+    {
+        string settingsPath = UiLaunch.SeedSettingsFile(new ShellSettings { WhatsNewSeen = true, Theme = "dark" });
+        AccentTheme ocean = AccentThemes.Find("ocean")!;
+        AccentColor fill = AccentThemes.Shades(ocean.Color)["SystemAccentColorLight2"];
+        try
+        {
+            SessionData.Delete();
+            using var app = UiLaunch.LaunchApp();
+            using var automation = new UIA3Automation();
+            var window = UiApp.Attach(app, automation, TimeSpan.FromSeconds(30));
+            Assert.NotNull(window);
+            try
+            {
+                OpenSettings(window);
+                ExpandCard(window, "SettingsCardAppTheme");
+                var swatch = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAccent-ocean"));
+                Assert.NotNull(swatch);
+                Mouse.MoveTo(swatch.GetClickablePoint());
+                int previewed = WaitForFill(window, fill, atLeast: 40);
+                Assert.Equal(AccentThemes.System, ShellSettings.Load().Accent);
+                var heading = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsHeading"));
+                Assert.NotNull(heading);
+                Mouse.MoveTo(heading.GetClickablePoint());
+                Thread.Sleep(1000);
+                int restored = FillPixels(window, fill);
+                output.WriteLine($"ocean fill: {previewed} px on hover, {restored} px after leaving");
+                Assert.True(restored < 10, $"{restored} px of the ocean fill after leaving the swatch");
+            }
+            finally
+            {
+                CloseApp(app, window);
+            }
+        }
+        finally
+        {
+            CleanSettings(settingsPath);
+        }
+    }
+
+    static int FillPixels(Window window, AccentColor color)
+    {
+        using var shot = CaptureShot(window);
+        return CountNear(shot, color, 6);
+    }
+
+    static int WaitForFill(Window window, AccentColor color, int atLeast)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        int count = FillPixels(window, color);
+        while (count < atLeast && DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(250);
+            count = FillPixels(window, color);
+        }
+
+        Assert.True(count >= atLeast, $"{count} px of {color.Hex}, wanted at least {atLeast}");
+        return count;
+    }
+
+    static int CountNear(Bitmap shot, AccentColor color, int tolerance)
+    {
+        int count = 0;
+        for (int y = 0; y < shot.Height; y++)
+        {
+            for (int x = 0; x < shot.Width; x++)
+            {
+                Color c = shot.GetPixel(x, y);
+                if (Math.Abs(c.R - color.R) <= tolerance && Math.Abs(c.G - color.G) <= tolerance && Math.Abs(c.B - color.B) <= tolerance)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
     [Fact]
     public void ThemeEachOptionAppliesLive()
     {

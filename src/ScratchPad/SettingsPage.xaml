@@ -46,6 +46,16 @@
                                      AutomationProperties.AutomationId="SettingsThemeDark" Checked="ThemeRadio_Checked" />
                         <RadioButton x:Name="ThemeSystem" Content="Use system setting" GroupName="SettingsTheme"
                                      AutomationProperties.AutomationId="SettingsThemeSystem" Checked="ThemeRadio_Checked" />
+                        <!-- D01 T02 §10: accent gallery, this app's addition inside
+                             the stock App theme card (stock has no accent setting),
+                             so the stock card list stays as captured. Swatches
+                             preview on hover or keyboard focus and commit on click. -->
+                        <TextBlock Text="Accent color" Margin="0,12,0,4" />
+                        <VariableSizedWrapGrid x:Name="AccentGallery" Orientation="Horizontal" ItemWidth="44" ItemHeight="44"
+                                               AutomationProperties.AutomationId="SettingsAccentGallery"
+                                               AutomationProperties.Name="Accent color" />
+                        <Button x:Name="AccentRevert" Content="Use system accent" Margin="0,8,0,0"
+                                AutomationProperties.AutomationId="SettingsAccentRevert" Click="AccentRevert_Click" />
                     </StackPanel>
                 </Expander>
 

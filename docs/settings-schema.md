@@ -7,6 +7,7 @@ Store: `src/Notepad.Core/SettingsStore.cs` (owned by D01 T02 §2), file `%LocalA
 | `Version` | int | 1 | §2 (v0 is the inherited unversioned file) | Store migration |
 | `X`, `Y`, `Width`, `Height` | int | 50, 50, 900, 650 | D01 T01 §1 choice | MainWindow restore on open, geometry on close |
 | `Theme` | string | `system` | Stock "Use system setting" radio (probed 2026-09-16) | MainWindow theme, §3 page |
+| `Accent` | string | `system` | Stock follows the Windows accent (no accent setting in 11.2607.14.0); ids from `AccentThemes.BuiltIn`, unknown ids read as `system` | D01 T02 §10 accent gallery, `AccentService` |
 | `FontFamily` | string | `Consolas` | Stock font dropdown (UIA dump) plus reset guides | §3 page, D02 T01 |
 | `FontStyle` | string | `Regular` | Stock style dropdown selection (probed 2026-09-16) | §3 page, D02 T01 |
 | `FontSize` | int | 11 | Stock size dropdown (UIA dump) plus reset guides | §3 page, D02 T01 |
