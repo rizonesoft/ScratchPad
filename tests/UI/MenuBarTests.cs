@@ -1243,7 +1243,7 @@ public sealed class MenuBarTests
         return bar.FindAllChildren(cf => cf.ByControlType(ControlType.MenuItem)).Select(m => m.Name).ToList();
     }
 
-    static void OpenMenu(Window window, string topId)
+    internal static void OpenMenu(Window window, string topId)
     {
         // No Focus: Invoke dispatches on background windows (spiked D00
         // T02 §8), and the default suite never activates. Invoke toggles,
@@ -1261,7 +1261,7 @@ public sealed class MenuBarTests
         }
     }
 
-    static void DismissMenu(Window window, string topId)
+    internal static void DismissMenu(Window window, string topId)
     {
         var top = window.FindFirstDescendant(cf => cf.ByAutomationId(topId));
         if (top is null || !MenuOpen(top))
@@ -1295,7 +1295,7 @@ public sealed class MenuBarTests
         return false;
     }
 
-    static void OpenSubmenu(Window window, string subId)
+    internal static void OpenSubmenu(Window window, string subId)
     {
         var sub = Retry.WhileNull(
             () => window.FindFirstDescendant(cf => cf.ByAutomationId(subId)),
@@ -1314,7 +1314,7 @@ public sealed class MenuBarTests
         Thread.Sleep(600);
     }
 
-    static void ClickMenuItem(Window window, string topId, string itemId, bool expectClose = true)
+    internal static void ClickMenuItem(Window window, string topId, string itemId, bool expectClose = true)
     {
         OpenMenu(window, topId);
         ClickFoundItem(window, itemId);
@@ -1725,7 +1725,7 @@ public sealed class MenuBarTests
         Thread.Sleep(400);
     }
 
-    static void SelectTab(Window window, int index)
+    internal static void SelectTab(Window window, int index)
     {
         var items = window.FindAllDescendants(cf => cf.ByControlType(ControlType.TabItem)).ToList();
         Assert.True(items.Count > index, $"tab list holds {items.Count} items, index {index} wanted");
@@ -1745,7 +1745,7 @@ public sealed class MenuBarTests
         return box;
     }
 
-    static void SetBoxText(Window window, string text)
+    internal static void SetBoxText(Window window, string text)
     {
         ContentBox(window).Text = text;
         var deadline = DateTime.UtcNow.AddSeconds(10);
@@ -1778,7 +1778,7 @@ public sealed class MenuBarTests
         UiInput.SelectAllText(box);
     }
 
-    static int WaitForTabCount(Window window, int expected)
+    internal static int WaitForTabCount(Window window, int expected)
     {
         // lastValueOnTimeout: without it a timeout reports default(int)
         // instead of the stuck count (that 0 hid two real failures).
@@ -1791,14 +1791,14 @@ public sealed class MenuBarTests
         return result.Result;
     }
 
-    static string NewTempDir()
+    internal static string NewTempDir()
     {
         string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         return dir;
     }
 
-    static string SeedFile(string dir, string name, string content)
+    internal static string SeedFile(string dir, string name, string content)
     {
         string path = Path.Combine(dir, name);
         File.WriteAllText(path, content);
@@ -1846,7 +1846,7 @@ public sealed class MenuBarTests
         Assert.True(app.HasExited, "app did not exit after Close");
     }
 
-    static void CloseApp(Application app, Window? window)
+    internal static void CloseApp(Application app, Window? window)
     {
         try
         {
