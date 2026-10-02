@@ -7,7 +7,7 @@ description: Front door for todo/implementation-plan.md. Audits the plan, then r
 
 The only front door for `todo/implementation-plan.md` when the user did not name a single phase. The file is a **derived projection**: processing it is not "pick a row and improvise", and it is not "tick the boxes".
 
-This skill does not ship a section. It does not write a stamp. Writes stay serial, and the run this skill starts is the only writer on the tree.
+This skill does not ship a section. It does not write a stamp. Writes stay serial, and the run this skill starts is the only writer on the tree: its Sonnet delegates are read-only (`AGENTS.md` Delegation).
 
 ## The loop
 

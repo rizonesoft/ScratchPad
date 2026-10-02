@@ -23,6 +23,8 @@ Run `python3 scripts/todo-graph.py validate` after every structural edit. Cycles
 
 Walk every open section's concrete claims against today's repository: files, classes, paths, counts, versions, protocol shapes. Correct drift in place with dated notes, exactly as `process-todo-section` steps 2-3 do, but tree-wide and without building anything.
 
+Fan the claim checks out to parallel `sonnet-researcher` runs, one per TODO file or domain with no overlap (`AGENTS.md` Delegation); each returns claims with `path:line` evidence. The lead decides every correction and writes it.
+
 Pay special attention to:
 
 - "Nothing exists yet" claims that are no longer true.

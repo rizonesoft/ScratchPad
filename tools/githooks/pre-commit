@@ -31,4 +31,10 @@ cleanup() {
 trap 'cleanup' EXIT INT TERM
 git checkout-index -a --prefix="$WORK/" || { echo "pre-commit: cannot stage the index for validation" >&2; exit 1; }
 (cd "$WORK" && "$PY" scripts/todo-graph.py validate) || { echo "pre-commit: todo-graph validate is red on the staged tree; fix the findings above and retry" >&2; exit 1; }
+if [ ! -f "$WORK/scripts/agent_routing.py" ] && grep -q "agent_routing.py" "$WORK/.claude/settings.json" 2>/dev/null; then
+  echo "pre-commit: .claude/settings.json wires scripts/agent_routing.py but the staged tree does not carry it" >&2; exit 1
+fi
+if [ -f "$WORK/scripts/agent_routing.py" ]; then
+  (cd "$WORK" && "$PY" scripts/agent_routing.py check >/dev/null) || { (cd "$WORK" && "$PY" scripts/agent_routing.py check | grep FATAL >&2); echo "pre-commit: subagent routing drifted on the staged tree (see AGENTS.md Delegation); fix the findings above and retry" >&2; exit 1; }
+fi
 git diff --quiet -- scripts todo docs || { "$PY" scripts/todo-graph.py validate >/dev/null 2>&1 || echo "pre-commit: warning: unstaged changes carry findings; this gate validated only the staged tree" >&2; }

@@ -20,6 +20,9 @@ on:
       - '.github/owner-logins.json'
       - '.gitattributes'
       - '.github/workflows/plan.yml'
+      - '.claude/agents/**'
+      - '.claude/settings.json'
+      - 'docs/agent-routing.md'
   # Unattended gate (D00 T01 §29 item 1): daily, off-peak, away from
   # soak's 3:17 slot. The unattended job below runs on every trigger
   # (its gates also catch push-time drift); only the notify post is
@@ -55,6 +58,14 @@ jobs:
           python3 scripts/probe_runner.py --live
       - name: Validate the TODO tree
         run: python3 scripts/todo-graph.py validate
+      - name: Check subagent routing pins
+        # Delegation cost rule (operator direction 2026-10-01): every
+        # repo agent stays pinned to sonnet at high effort, the Agent
+        # PreToolUse hook stays wired, and the live record stays named.
+        # Hermetic; no model call.
+        run: |
+          python3 scripts/agent_routing.py self-test
+          python3 scripts/agent_routing.py check
       - name: Check plan projection is current
         run: |
           python3 scripts/todo-graph.py plan --sync

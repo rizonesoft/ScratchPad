@@ -66,9 +66,18 @@ Use the `skill arg` line it prints as the canonical form for the rest of the run
 - **Server-side authority, adapted.** Any value the user trusts (file bytes, a permission decision, a diff hunk) is computed or verified in exactly one place, and the UI reflects it rather than deciding it. A UI calculation nothing verifies is a bug.
 - **Parity is the bar on Notepad surfaces.** A section that builds a Notepad surface proves it against the captured baseline, not against memory of what Notepad looks like.
 
-## The session does every step
+## The session owns every step; Sonnet agents do bounded read-only work
 
-One session validates, builds, gates, commits, and hands to review. It dispatches nobody to implement, gate, or keep records. Output discipline is load-bearing: bound every command (`dotnet test --filter` for affected tests, `tail`/`head` on logs, field extraction on JSON), because an unbounded dump lands in the one context that must carry it for the rest of the run.
+One lead session owns validation, the build, the gates, the commit, and the hand to review, and is accountable for each. It delegates bounded read-only work to the Sonnet agents under `AGENTS.md` Delegation (operator direction 2026-10-01; this replaced the scaffold's dispatch-nobody rule) and keeps the judgment:
+
+| Step | Delegate | Lead keeps |
+| ---- | -------- | ---------- |
+| 1-2 Read and validate | `sonnet-researcher` fact-checks named claims, references, and deferrals, in parallel batches | the seven-question verdict and every plan correction |
+| 4 Build | nothing: the lead implements every item itself | all code, tests, and docs |
+| 6 Gates | `sonnet-verifier` runs affected tests, warnings, analysis, and `validate` while iterating | the final Test checkpoint, run and quoted by the lead |
+| Pre-review | `sonnet-reviewer` routine pass on the candidate | self-review of consequential areas, every panel call |
+
+Read every delegate report against its acceptance criteria before using it; an `Escalate:` item is resolved by the lead, not passed through. A delegate that fails the same task twice stops being retried: the lead does it or stops and reports. Output discipline is load-bearing for the lead and every delegate: bound every command (`dotnet test --filter` for affected tests, `tail`/`head` on logs, field extraction on JSON), because an unbounded dump lands in a context that must carry it for the rest of the run.
 
 ## Workflow
 

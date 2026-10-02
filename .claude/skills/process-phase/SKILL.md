@@ -53,7 +53,7 @@ The phase table is a plan, and plans drift. Fix it before building on it. In ord
 `[x]` rows in the phase are claims, and a claim is checked. At run start, re-check shipped rows that an OPEN row in this phase depends on: the dependency spine the new work builds on. For each spine row:
 
 1. Confirm a `Verified:` stamp covers it (`resolve` exits 3 and the stamp names the section).
-2. Re-run its `Test checkpoint` command if it names one. A checkpoint that no longer passes means the section regressed after shipping: treat it as this phase's work (diagnose, fix forward, re-review with `review-todo-section` in audit stance).
+2. Re-run its `Test checkpoint` command if it names one (independent spine checkpoints can go to parallel `sonnet-verifier` runs; `AGENTS.md` Delegation). A checkpoint that no longer passes means the section regressed after shipping: treat it as this phase's work (diagnose, fix forward, re-review with `review-todo-section` in audit stance).
 3. If anything about the implementation looks wrong against today's source, invoke `review-todo-section` in audit stance on that section. It either re-confirms the row or downgrades it to `[ ]`, and a downgraded row rejoins the loop like any other.
 
 ## Step 2 -- gap-audit the phase

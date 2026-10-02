@@ -7,7 +7,7 @@ description: Quality-gate a just-implemented TODO section -- self-review, indepe
 
 The gate between "code exists" and "the row says `[x]`". Nothing else may flip that row.
 
-**Review is mandatory.** A `Verified:` stamp whose `Review:` line does not record real review work, with a committed findings file, is not a valid stamp. Self-review stays in-session, but the lens verdicts come from the headless panel below, never from the implementing session alone. Claude Code writes every candidate, so its family never reviews: the slots, their families, models, and efforts live in `.conclave/panel.toml` (five primaries plus one fallback on a different provider since D00 T04 §25), and this skill names slots, never pins: and the findings file is what makes that honest.
+**Review is mandatory.** A `Verified:` stamp whose `Review:` line does not record real review work, with a committed findings file, is not a valid stamp. Self-review stays with the lead session (a `sonnet-reviewer` pre-pass is advisory input to it, step 2), but the lens verdicts come from the headless panel below, never from the implementing session alone. Claude Code writes every candidate, so its family never reviews: the slots, their families, models, and efforts live in `.conclave/panel.toml` (five primaries plus one fallback on a different provider since D00 T04 §25), and this skill names slots, never pins: and the findings file is what makes that honest.
 
 ## Use this skill when
 
@@ -62,6 +62,8 @@ Look specifically for the failure modes this codebase is prone to:
 - A UI surface compared against memory instead of the captured baseline.
 
 Cheap defects caught here cost nothing; the same defect caught by a lens costs a whole round.
+
+A `sonnet-reviewer` pass on the candidate may run first (`AGENTS.md` Delegation) to catch the routine classes: test quality, scope, drift, and style. It is advisory input, never a lens verdict or panel record, and it does not discharge self-review: the lead still works the three questions itself on every item in the list above that touches trust, consent, file writes, encoding, protocol validation, or frozen behavior, plus each area the pass names under `Lead must review:`.
 
 ### 3. The lenses
 
