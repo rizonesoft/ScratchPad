@@ -56,14 +56,16 @@ Why this section exists: the §41 review's round-5 advisory found `docs/bootstra
 
 ## 2. Birth Rule States the Derived Origin
 
+> **Started:** 2026-10-03T09:59:31Z
+
 Why this section exists: D00 T02 §18 replaced the fixed off-screen seed with an origin derived outside the virtual screen (`DeriveOffScreenOrigin` in `tests/UI/UiLaunch.cs`, a922f86), but the `docs/testing.md` Birth rule still says `UiLaunch.SeedSettings` seeds X/Y 10000, so an operator following the procedure expects a point the code no longer uses and cannot reason about negative-origin or stacked-monitor layouts. Found 2026-10-03 while reviewing D00-T02-S10-PR1 A2, whose rationale cites the same retired point. D00 T02 is at its 55-section cap, so the correction files here by subject.
 
 - -> XREF: D00 T02 §18 -- owns the derived origin this section documents.
 - -> SOURCE: reconcile-2026-10-03-birth-rule-drift (docs/testing.md Birth rule vs tests/UI/UiLaunch.cs DeriveOffScreenOrigin on 12b662c)
 
-- [ ] The Birth rule paragraph states the derived origin: `UiLaunch.SeedSettings` seeds a point outside the virtual screen derived from SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, and SM_CYVIRTUALSCREEN (never a fixed coordinate), under the same `SCRATCHPAD_BACKGROUND=1` and default-geometry conditions, and cites D00 T02 §18. Done when: the paragraph names the derivation, matches `DeriveOffScreenOrigin` as read on the candidate, and no fixed 10000 seed remains in `docs/testing.md`.
-- [ ] The rest of the Birth rule paragraph is read against the current `UiLaunch.cs` and `UiForeground.cs`, and any other claim D00 T02 §18 or later sections superseded is corrected in place with its owning section cited. Done when: every factual claim in the paragraph is quoted beside the code line that backs it in the review record.
-- [ ] Commit: `"docs: state the derived off-screen origin in the birth rule"`
+- [x] The Birth rule paragraph states the derived origin: `UiLaunch.SeedSettings` seeds a point outside the virtual screen derived from SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN, and SM_CYVIRTUALSCREEN (never a fixed coordinate), under the same `SCRATCHPAD_BACKGROUND=1` and default-geometry conditions, and cites D00 T02 §18. Done when: the paragraph names the derivation, matches `DeriveOffScreenOrigin` as read on the candidate, and no fixed 10000 seed remains in `docs/testing.md`. Done: `docs/testing.md` Birth rule now names `UiLaunch.DeriveOffScreenOrigin` over the four SM_*VIRTUALSCREEN metrics with the code's side order (right edge, above, left, below, overflow skips) and cites D00 T02 §18; `grep -n "10000" docs/testing.md` prints nothing.
+- [x] The rest of the Birth rule paragraph is read against the current `UiLaunch.cs` and `UiForeground.cs`, and any other claim D00 T02 §18 or later sections superseded is corrected in place with its owning section cited. Done when: every factual claim in the paragraph is quoted beside the code line that backs it in the review record. Done: one more stale claim corrected, `(both Primary tests seed explicit rects)` to `(every Primary test seeds an explicit on-primary rect)`, since GateCalibrationTests and UiLeakBundleTests joined MainWindowTests and MultiWindowTests in the Primary set and all four seed explicit X/Y; the 50/50 defaults (`ShellSettings` X/Y = 50 via `UiLaunch.Untouched`), the EVENT/census agreement (`tools/ForegroundLog/Program.cs` header), the five helpers living only in `UiLaunch.cs`, and the `UiForeground.Background` funnel each re-read true; the claim table rides the review record.
+- [x] Commit: `"docs: state the derived off-screen origin in the birth rule"`
 
 **Test checkpoint:** `grep -n "10000" docs/testing.md` prints nothing, the Birth rule paragraph reads beside `DeriveOffScreenOrigin` with every claim backed, and `python3 scripts/todo-graph.py validate` stays at 0 fatal. Cheaper substitute that fails: deleting the number without stating the derivation.
 
