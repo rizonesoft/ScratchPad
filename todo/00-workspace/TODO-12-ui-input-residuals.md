@@ -25,6 +25,8 @@ track: W0
 - `docs/ui-input-audit.md` -- the held-key classes, transitions, and debt mapping §1 updates
 - `docs/reviews/00-workspace/D00-T02-s51.md` -- the plan-review ledger and round-5 finding each item cites
 - -> XREF: D00 T02 §51 -- the binding guard section whose plan review and round-5 finding §1 carries.
+- [`tests/UI/TabBarTests.cs`](../../tests/UI/TabBarTests.cs) `MiddleClick` -- the one pointer helper that already reads its point inside PerMonitorV2, the pattern §2 generalizes
+- -> XREF: D01 T02 §10 -- its owed hover proof (D01-T02-S10-N1) failed on the DPI-virtualized pointer §2 fixes.
 
 ## Outcome
 
@@ -40,6 +42,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Binding guard fourth residuals | D00 T02 §51 |  [ ]   |
+|   2   |   §2    | Pointer moves in physical coordinates | -- |  [ ]   |
 
 ---
 
@@ -68,6 +71,23 @@ Why this section exists: the §51 plan review returned 12 findings and all 12 fi
 - [ ] Commit: `"workspace: settle the fourth binding guard residuals"`
 
 **Test checkpoint:** Mixed failures read one verdict, substitutes prove sensitivity, negative routing observes long enough and widely enough, containment crosses processes, operator keys stay the operator's, holds reset only on a fresh press, stale targets never retarget, repeats have one identity, the matrix is complete, parity capture is pinned, debt maps once, child runs start equal, and the capture releases only its own keys. Cheaper substitute that fails: another assertion inside one happy-path hold.
+
+## 2. Pointer Moves in Physical Coordinates
+
+Why this section exists: testhost is DPI-unaware, so an `AutomationElement.GetClickablePoint()` read outside a PerMonitorV2 thread context arrives virtualized, and moving the real cursor to it lands up-left of the target on a scaled display. `TabBarTests.MiddleClick` already documents and avoids this ("at 150% the miss reaches whatever window sits above ours"), but four other physical-pointer sites do not: `SettingsPageTests.AccentHoverPreviewsAndRestores` (swatch and heading), `TabBarTests.DragAttemptLeavesOrderUnchanged`, `MultiWindowTests.TabDragOutsideStripDetachesNothing`, and the shared `UiInput.Wheel` funnel. On 2026-10-03 the forced collection of D01-T02-S10-N1 (run 2026-10-03-223350) failed `0 px of #66A1D0, wanted at least 40`; a screen-capture rerun on the operator box (primary at 150%) showed the Ocean swatch at about screen (208, 628) while the cursor sat at (140, 417), exactly the swatch point divided by 1.5, so no hover fired. The drag tests pass vacuously under the same miss (their assertion is no reorder), so the defect hides there. This section moves every physical pointer action through one helper that reads and moves in physical pixels, and guards the class.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T02 §10 -- its owed hover proof is the first casualty; collecting it green is this section's live proof.
+- -> SOURCE: reconcile-2026-10-03-accent-hover-dpi (Night-red 6a7661d; diagnostic frames at 150% primary scaling)
+
+- [ ] A `UiPointer` helper in `tests/UI/UiPointer.cs` reads an element's clickable point and sets the cursor inside one `UiDpi.Enter()` context, and offers the same for a physical point path (drag interpolation), returning the physical point it used. Done when: `TabBarTests.MiddleClick` uses it instead of its private `SetCursorPos` pair, with behavior unchanged.
+- [ ] Every physical pointer site goes through `UiPointer`: `SettingsPageTests.AccentHoverPreviewsAndRestores` (swatch and heading), `TabBarTests.DragAttemptLeavesOrderUnchanged`, `MultiWindowTests.TabDragOutsideStripDetachesNothing`, and `UiInput.Wheel`. Done when: no `Mouse.MoveTo(` or `Mouse.Position =` remains in `tests/UI` outside `UiPointer.cs`.
+- [ ] `AccentHoverPreviewsAndRestores` pins its window topmost while the pointer hovers and unpins in `finally` (`UiDpi.PinTopmost`, as the drag tests do), so an overlapping window can never take the hover. Done when: the pin and unpin read in the test.
+- [ ] A default-suite guard fails when a `tests/UI` source moves the real cursor outside `UiPointer.cs` (`Mouse.MoveTo(`, `Mouse.Position =`, or a direct `SetCursorPos`). Done when: the guard passes on the tree and a planted raw call fed to its scanner fails it with the file and line named.
+- [ ] Commit: `"workspace: move the real pointer in physical coordinates"`
+
+**Test checkpoint:** The default run of the new guard passes, and its planted-call fixture fails naming the site. With the operator away, `SCRATCHPAD_INTERACTIVE_FORCE=1 dotnet test tests/UI/UI.csproj --filter "FullyQualifiedName~SettingsPageTests.AccentHoverPreviewsAndRestores|FullyQualifiedName~TabBarTests.DragAttemptLeavesOrderUnchanged|FullyQualifiedName~MultiWindowTests.TabDragOutsideStripDetachesNothing|FullyQualifiedName~TabBarTests.MiddleClickClosesTheTabUnderTheCursor"` passes on the 150% primary, and `tools/nightly.ps1 -Force -CollectDebt D01-T02-S10-N1 -SkipDefault -SkipPrimary -SkipSoak` appends `Night-collected:` for D01-T02-S10-N1. Fails if the hover still finds no preview pixels or the collection reads red.
 
 ## Verification
 
