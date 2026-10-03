@@ -141,7 +141,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §13` | Backgrounding leak on the default leg                     |  10   |
 | [x] | `D00 T02 §14` | Run-level deadline for the governed run                   |   6   |
 | [x] | `D00 T02 §15` | Nightly enforcement and count hardening                   |  27   |
-| [ ] | `D00 T02 §16` | Verify timer-fired completion and green                   |  18   |
+| [ ] | `D00 T02 §16` | Verify timer-fired completion and green                   |  19   |
 | [x] | `D00 T02 §17` | Nightly notify plus trend surface                         |  10   |
 | [x] | `D00 T02 §18` | Central launch hardening and evidence                     |  10   |
 | [x] | `D00 T02 §19` | Night-debt due dates and escalation                       |   3   |
