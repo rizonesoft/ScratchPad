@@ -33,6 +33,17 @@ public sealed class UiPointerGuardTests
         Assert.Empty(UiPointer.FindRawMoves(snippet, "tests/UI/Clean.cs"));
     }
 
+    // R1-A1: a move split across lines still counts, named by its first line.
+    [Theory]
+    [InlineData("class Q\n{\n    void M(P p) { Mouse.\n        MoveTo(p); }\n}\n", 3)]
+    [InlineData("class Q\n{\n    void M(P p) { Mouse.Position\n        = p; }\n}\n", 3)]
+    [InlineData("class Q\r\n{\r\n    void M() { NativeMethods.SetCursorPos\r\n        (1, 2); }\r\n}\r\n", 3)]
+    public void MultilineRawMoveFailsTheGuard(string source, int line)
+    {
+        string hit = Assert.Single(UiPointer.FindRawMoves(source, "tests/UI/Plant.cs"));
+        Assert.StartsWith($"tests/UI/Plant.cs:{line}: ", hit, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void HitNamesItsLine()
     {

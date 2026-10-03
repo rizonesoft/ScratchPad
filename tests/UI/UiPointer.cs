@@ -187,25 +187,20 @@ internal static partial class UiPointer
         public NativeMouseInput Mouse;
     }
 
-    // Raw cursor moves outside this file, as `<path>:<line>: <text>`.
-    // Comment lines are skipped; any code line naming a raw move counts.
+    // Raw cursor moves outside this file, as `<path>:<line>: <text>`,
+    // naming the line the move starts on. Whole-line comments are blanked
+    // (line count kept) and the pattern then runs over the whole source,
+    // so a move split across lines (`Mouse.` / `MoveTo(p)`) still counts.
     internal static IReadOnlyList<string> FindRawMoves(string source, string path)
     {
         ArgumentNullException.ThrowIfNull(source);
+        string[] lines = source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
+        string code = string.Join('\n', lines.Select(line => line.TrimStart().StartsWith("//", StringComparison.Ordinal) ? string.Empty : line));
         var hits = new List<string>();
-        string[] lines = source.Split('\n');
-        for (int i = 0; i < lines.Length; i++)
+        foreach (Match match in RawMove().Matches(code))
         {
-            string line = lines[i].TrimEnd('\r');
-            if (line.TrimStart().StartsWith("//", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (RawMove().IsMatch(line))
-            {
-                hits.Add($"{path}:{i + 1}: {line.Trim()}");
-            }
+            int line = code.AsSpan(0, match.Index).Count('\n');
+            hits.Add($"{path}:{line + 1}: {lines[line].Trim()}");
         }
 
         return hits;

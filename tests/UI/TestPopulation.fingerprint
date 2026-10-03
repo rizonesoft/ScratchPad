@@ -290,13 +290,14 @@ run-a:
   UI.UiLeakBundleTests.ScrubTitleTruncates
   UI.UiPointerGuardTests.HitNamesItsLine
   UI.UiPointerGuardTests.LiveTreeScansClean
+  UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard
   UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard
   UI.UiPointerGuardTests.SanctionedShapesPassTheGuard
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 287
-run-a-cases: 359
-run-a-case-hash: ff1298bbfd37b42c
+run-a-methods: 288
+run-a-cases: 362
+run-a-case-hash: bf3389110789f1bb
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -645,6 +646,9 @@ run-a-case-rows:
   UI|UI.UiLeakBundleTests.ScrubTitleTruncates
   UI|UI.UiPointerGuardTests.HitNamesItsLine
   UI|UI.UiPointerGuardTests.LiveTreeScansClean
+  UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\n{\n    void M(P p) { Mouse.Position\n    "···, line: 3)
+  UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\n{\n    void M(P p) { Mouse.\n        Move"···, line: 3)
+  UI|UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard(source: "class Q\r\n{\r\n    void M() { NativeMethods.SetCu"···, line: 3)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { FlaUI.Core.Input.Mouse.Positi"···)
   UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { Mouse . MoveTo (new System.Dr"···)
@@ -735,6 +739,9 @@ run-a-case-rows:
   UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:900, int32:650, int32:900, int32:650)
   UI|case UI.UiLeakBundleTests.ScrubTitleShapes("login token=abc123 failed", "login token=*** failed")
   UI|case UI.UiLeakBundleTests.ScrubTitleShapes("plain title", "plain title")
+  UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\n{\n    void M(P p) { Mouse.Position\n        = p; }\n}\n", int32:3)
+  UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\n{\n    void M(P p) { Mouse.\n        MoveTo(p); }\n}\n", int32:3)
+  UI|case UI.UiPointerGuardTests.MultilineRawMoveFailsTheGuard("class Q\r\n{\r\n    void M() { NativeMethods.SetCursorPos\r\n        (1, 2); }\r\n}\r\n", int32:3)
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { [System.Runtime.InteropServices.DllImport(\"user32.dll\")] static extern bool SetCursorPos(int x, int y); }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { FlaUI.Core.Input.Mouse.Position=new System.Drawing.Point(1, 2); } }")
   UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { Mouse . MoveTo (new System.Drawing.Point(1, 2)); } }")
