@@ -38,7 +38,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Prerequisite scope audit | D00 T01 §41 |  [ ]   |
-|   2   |   §2    | Birth rule states the derived origin | D00 T02 §18 |  [ ]   |
+|   2   |   §2    | Birth rule states the derived origin | D00 T02 §18 |  [x]   |
 
 ---
 
@@ -69,8 +69,15 @@ Why this section exists: D00 T02 §18 replaced the fixed off-screen seed with an
 
 **Test checkpoint:** `grep -n "10000" docs/testing.md` prints nothing, the Birth rule paragraph reads beside `DeriveOffScreenOrigin` with every claim backed, and `python3 scripts/todo-graph.py validate` stays at 0 fatal. Cheaper substitute that fails: deleting the number without stating the derivation.
 
+> **Verified:** 2026-10-03 | §2 | `docs/testing.md` Birth rule states `UiLaunch.DeriveOffScreenOrigin` over the SM_*VIRTUALSCREEN metrics with its side order and overflow skip (D00 T02 §18), names `MainWindow.BirthOrigin` for unseeded paths, the safety net's placement before a no-activate show, and the explicit 50/50 exception, and points gate semantics at `tools/ForegroundLog/Program.cs`; `grep -n "10000" docs/testing.md` prints nothing (exit 1); validate 0 fatal
+> **Review:** round 8 (Light after a stopped Full run), candidates `ff59cc0` `68acf36` `08d0995` `00f6564` `ada1fa1` `a4e5726` `428650c` -- GPT R1 bulk and R2-R5 signoff and depth needs-attention (stale gate and birth claims fixed each round; R5-C1 escalated at the cap, operator redesign 2026-10-03 to a Program.cs pointer), then R6 bulk, R7 signoff, and R8 signoff over the plan-review fix approve on all four lenses. Arch trigger none. Raw findings: docs/reviews/00-workspace/D00-T06-s2.md
+> **Plan review:** GPT medium, filed D00 T06 §2 (run 20261003-D00-T06-S2-codex-c06751119-r8)
+> **CRUD:** not-applicable | operator-docs prose; no user data
+> **Duration:** 2026-10-03T09:59:31Z to 2026-10-03T18:50:32Z
+> **Reviewed-tip:** 428650cb5da89861afedff3cf15b2398e3512e02
+
 ## Verification
 
 - [ ] Prerequisite rows name every live consumer
-- [ ] The Birth rule names the derived off-screen origin
+- [x] The Birth rule names the derived off-screen origin
 - [ ] `python3 scripts/todo-graph.py validate` clean
