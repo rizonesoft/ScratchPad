@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **158 of 335 sections complete (47%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **158 of 336 sections complete (47%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -141,7 +141,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §13` | Backgrounding leak on the default leg                     |  10   |
 | [x] | `D00 T02 §14` | Run-level deadline for the governed run                   |   6   |
 | [x] | `D00 T02 §15` | Nightly enforcement and count hardening                   |  27   |
-| [ ] | `D00 T02 §16` | Verify timer-fired completion and green                   |  17   |
+| [ ] | `D00 T02 §16` | Verify timer-fired completion and green                   |  18   |
 | [x] | `D00 T02 §17` | Nightly notify plus trend surface                         |  10   |
 | [x] | `D00 T02 §18` | Central launch hardening and evidence                     |  10   |
 | [x] | `D00 T02 §19` | Night-debt due dates and escalation                       |   3   |
@@ -235,6 +235,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T05 §1`  | Runner file-closeout wiring                               |   4   |
 | [ ] | `D00 T05 §2`  | Run-guard proof                                           |   3   |
 | [ ] | `D00 T06 §1`  | Prerequisite scope audit                                  |   5   |
+| [ ] | `D00 T06 §2`  | Birth rule states the derived origin                      |   3   |
 | [ ] | `D00 T07 §1`  | Bin machinery follow-ups                                  |   9   |
 | [ ] | `D00 T08 §1`  | Poster and delivery hardening                             |  12   |
 | [ ] | `D00 T08 §2`  | Notification governance and premium views                 |  13   |
