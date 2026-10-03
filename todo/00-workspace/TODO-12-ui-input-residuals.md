@@ -43,6 +43,7 @@ track: W0
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Binding guard fourth residuals | D00 T02 §51 |  [ ]   |
 |   2   |   §2    | Pointer moves in physical coordinates | -- |  [ ]   |
+|   3   |   §3    | Element clicks in physical coordinates | §2 |  [ ]   |
 
 ---
 
@@ -76,11 +77,12 @@ Why this section exists: the §51 plan review returned 12 findings and all 12 fi
 
 > **Started:** 2026-10-03T21:21:01Z
 
-Why this section exists: testhost is DPI-unaware, so an `AutomationElement.GetClickablePoint()` read outside a PerMonitorV2 thread context arrives virtualized, and moving the real cursor to it lands up-left of the target on a scaled display. `TabBarTests.MiddleClick` already documents and avoids this ("at 150% the miss reaches whatever window sits above ours"), but four other physical-pointer sites do not: `SettingsPageTests.AccentHoverPreviewsAndRestores` (swatch and heading), `TabBarTests.DragAttemptLeavesOrderUnchanged`, `MultiWindowTests.TabDragOutsideStripDetachesNothing`, and the shared `UiInput.Wheel` funnel. On 2026-10-03 the forced collection of D01-T02-S10-N1 (run 2026-10-03-223350) failed `0 px of #66A1D0, wanted at least 40`; a screen-capture rerun on the operator box (primary at 150%) showed the Ocean swatch at about screen (208, 628) while the cursor sat at (140, 417), exactly the swatch point divided by 1.5, so no hover fired. The drag tests pass vacuously under the same miss (their assertion is no reorder), so the defect hides there. This section moves every physical pointer action through one helper that reads and moves in physical pixels, and guards the class. **Corrected 2026-10-03 (implementation diagnosis):** physical coordinates alone did not fix the hover; an in-test hit test proved the cursor on `SettingsAccent-ocean` inside the app window at DPI 144 with no preview, because `SetCursorPos` is no input event and a cursor already parked on the target (left there by the previous rerun) makes no enter transition. The helper therefore moves by an absolute `SendInput` move before pinning the pixel, and a `Hover` entry point approaches from outside the element; with both, the hover drive read `ocean fill: 403 px on hover, 0 px after leaving`.
+Why this section exists: testhost is DPI-unaware, so an `AutomationElement.GetClickablePoint()` read outside a PerMonitorV2 thread context arrives virtualized, and moving the real cursor to it lands up-left of the target on a scaled display. `TabBarTests.MiddleClick` already documents and avoids this ("at 150% the miss reaches whatever window sits above ours"), but four other physical-pointer sites do not: `SettingsPageTests.AccentHoverPreviewsAndRestores` (swatch and heading), `TabBarTests.DragAttemptLeavesOrderUnchanged`, `MultiWindowTests.TabDragOutsideStripDetachesNothing`, and the shared `UiInput.Wheel` funnel. On 2026-10-03 the forced collection of D01-T02-S10-N1 (run 2026-10-03-223350) failed `0 px of #66A1D0, wanted at least 40`; a screen-capture rerun on the operator box (primary at 150%) showed the Ocean swatch at about screen (208, 628) while the cursor sat at (140, 417), exactly the swatch point divided by 1.5, so no hover fired. The drag tests pass vacuously under the same miss (their assertion is no reorder), so the defect hides there. This section moves every physical pointer action through one helper that reads and moves in physical pixels, and guards the class. **Corrected 2026-10-03 (implementation diagnosis):** physical coordinates alone did not fix the hover; an in-test hit test proved the cursor on `SettingsAccent-ocean` inside the app window at DPI 144 with no preview, because `SetCursorPos` is no input event and a cursor already parked on the target (left there by the previous rerun) makes no enter transition. The helper therefore moves by an absolute `SendInput` move before pinning the pixel, and a `Hover` entry point approaches from outside the element; with both, the hover drive read `ocean fill: 403 px on hover, 0 px after leaving`. **Corrected 2026-10-04 (self-review):** "every physical pointer action" read wider than the items; FlaUI element clicks (`AutomationElement.Click()` and `DoubleClick()`), which jump the cursor to a virtualized point too, are a second call form with fenced tests that need their own away-from-the-PC proof, so they file to §3 and this section owns the three raw move forms its items and guard name.
 
 **Needs:** Windows host (build/test)
 
 - -> XREF: D01 T02 §10 -- its owed hover proof is the first casualty; collecting it green is this section's live proof.
+- -> XREF: D00 T12 §3 -- carries the FlaUI element-click form this section's guard does not cover.
 - -> SOURCE: reconcile-2026-10-03-accent-hover-dpi (Night-red 6a7661d; diagnostic frames at 150% primary scaling)
 
 - [x] A `UiPointer` helper in `tests/UI/UiPointer.cs` reads an element's clickable point and sets the cursor inside one `UiDpi.Enter()` context, and offers the same for a physical point path (drag interpolation), returning the physical point it used. Done when: `TabBarTests.MiddleClick` uses it instead of its private `SetCursorPos` pair, with behavior unchanged. Done: `UiPointer.ClickablePoint`, `Bounds`, `MoveTo(element)`, `MoveTo(point)`, `Travel`, and `Hover` read and set inside one `UiDpi.Enter()` context, moving by an absolute `SendInput` move and proving the landed pixel with `GetCursorPos`; `TabBarTests.MiddleClick` now calls `UiPointer.MoveTo` and its private `SetCursorPos` import is gone.
@@ -90,6 +92,21 @@ Why this section exists: testhost is DPI-unaware, so an `AutomationElement.GetCl
 - [x] Commit: `"workspace: move the real pointer in physical coordinates"`
 
 **Test checkpoint:** The default run of the new guard passes, and its planted-call fixture fails naming the site. With the operator away, `SCRATCHPAD_INTERACTIVE_FORCE=1 dotnet test tests/UI/UI.csproj --filter "FullyQualifiedName~SettingsPageTests.AccentHoverPreviewsAndRestores|FullyQualifiedName~TabBarTests.DragAttemptLeavesOrderUnchanged|FullyQualifiedName~MultiWindowTests.TabDragOutsideStripDetachesNothing|FullyQualifiedName~TabBarTests.MiddleClickClosesTheTabUnderTheCursor"` passes on the 150% primary, and `tools/nightly.ps1 -Force -CollectDebt D01-T02-S10-N1 -SkipDefault -SkipPrimary -SkipSoak` appends `Night-collected:` for D01-T02-S10-N1. Fails if the hover still finds no preview pixels or the collection reads red.
+
+## 3. Element Clicks in Physical Coordinates
+
+Why this section exists: FlaUI's `AutomationElement.Click()` and `DoubleClick()` move the real cursor to the element's clickable point before clicking, and testhost reads that point DPI-virtualized, so on a scaled display the click lands up-left of its target exactly as §2's raw moves did. Nine sites use them: `PinnedTabsTests.DoubleClickTogglesPinGlyph`, `PinsSurviveRelaunch`, and `CloseOthersSkipsPinned` (fenced Interactive, double-click), `LaunchTests.MissingFileOfferEnterAcceptsAsYes` (fenced Interactive), and the click fallbacks in `MenuBarTests` helpers `OpenSubmenu`, `ClickFoundItem` (the mouse-only items), `InvokeOrClick`, `ExpandCombo`, and `SelectEncoding`, which default-suite tests reach. Found in §2's self-review on 2026-10-04; §2 fixed and guarded the raw move forms only.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D00 T12 §2 -- supplies the `UiPointer` helper and guard this section extends.
+- -> SOURCE: reconcile-2026-10-04-element-click-dpi (grep of `.Click(` and `.DoubleClick(` under `tests/UI` on a615bf8)
+
+- [ ] `UiPointer` gains `Click(element)` and `DoubleClick(element)` that move through `UiPointer.MoveTo` and press with FlaUI's coordinate-free `Mouse.Click(MouseButton.Left)` and `Mouse.DoubleClick(MouseButton.Left)`. Done when: both exist and every one of the nine sites calls them instead of the element method.
+- [ ] The §2 guard also fails a FlaUI element click (`.Click(`, `.DoubleClick(`, `.RightClick(`, `.RightDoubleClick(` calls) and a pointed `Mouse.Click(` outside `UiPointer.cs`. Done when: planted forms fail naming file and line and the live tree scans clean.
+- [ ] Commit: `"workspace: click elements in physical coordinates"`
+
+**Test checkpoint:** The guard passes on the tree and fails its planted element-click fixtures; the default run of `MenuBarTests` passes under `SCRATCHPAD_BACKGROUND=1`; and with the operator away, `SCRATCHPAD_INTERACTIVE_FORCE=1 dotnet test tests/UI/UI.csproj --filter "FullyQualifiedName~PinnedTabsTests|FullyQualifiedName~LaunchTests.MissingFileOfferEnterAcceptsAsYes"` passes on the 150% primary. Fails if any of the nine sites still clicks a virtualized point.
 
 ## Verification
 
