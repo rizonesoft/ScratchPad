@@ -42,7 +42,7 @@ track: W0
 | Order | Section | Deliverable | Depends On | Status |
 | :---: | :-----: | ----------- | ---------- | :----: |
 |   1   |   §1    | Binding guard fourth residuals | D00 T02 §51 |  [ ]   |
-|   2   |   §2    | Pointer moves in physical coordinates | -- |  [ ]   |
+|   2   |   §2    | Pointer moves in physical coordinates | -- |  [x]   |
 |   3   |   §3    | Element clicks in physical coordinates | §2 |  [ ]   |
 
 ---
@@ -93,6 +93,13 @@ Why this section exists: testhost is DPI-unaware, so an `AutomationElement.GetCl
 
 **Test checkpoint:** The default run of the new guard passes, and its planted-call fixture fails naming the site. With the operator away, `SCRATCHPAD_INTERACTIVE_FORCE=1 dotnet test tests/UI/UI.csproj --filter "FullyQualifiedName~SettingsPageTests.AccentHoverPreviewsAndRestores|FullyQualifiedName~TabBarTests.DragAttemptLeavesOrderUnchanged|FullyQualifiedName~MultiWindowTests.TabDragOutsideStripDetachesNothing|FullyQualifiedName~TabBarTests.MiddleClickClosesTheTabUnderTheCursor"` passes on the 150% primary, and `tools/nightly.ps1 -Force -CollectDebt D01-T02-S10-N1 -SkipDefault -SkipPrimary -SkipSoak` appends `Night-collected:` for D01-T02-S10-N1. Fails if the hover still finds no preview pixels or the collection reads red.
 
+> **Verified:** 2026-10-03 | §2 | every real cursor move in `tests/UI` reads and sets in physical pixels through `UiPointer` (SendInput move, pinned and proven pixel, `Hover` from outside); guard fails single-line and multiline raw moves; focus-free 106/106 under SCRATCHPAD_BACKGROUND=1; forced on the 150% primary all five pointer tests pass and D01-T02-S10-N1 collected green on a615bf8
+> **Review:** round 3 (Full), candidates `3315777` `a615bf8` `ae9d224` `3737d7c` `6040e67` -- GPT R1 bulk needs-attention (R1-A1 multiline guard bypass, fixed), R2 bulk approve with one record advisory (fixed), R3 signoff approve on all four lenses. Arch trigger none. Self-review filed FlaUI element clicks to D00 T12 §3. Raw findings: docs/reviews/00-workspace/D00-T12-s2.md
+> **Plan review:** GPT medium, filed D00 T12 §3 (run 20261003-D00-T12-S2-codex-c06751119-r4)
+> **CRUD:** not-applicable | test-harness pointer injection and a source guard; no user data
+> **Duration:** 2026-10-03T21:21:01Z to 2026-10-03T22:19:30Z
+> **Reviewed-tip:** 6040e6720d741c32120d5c693bb219912835bd62
+
 ## 3. Element Clicks in Physical Coordinates
 
 Why this section exists: FlaUI's `AutomationElement.Click()` and `DoubleClick()` move the real cursor to the element's clickable point before clicking, and testhost reads that point DPI-virtualized, so on a scaled display the click lands up-left of its target exactly as §2's raw moves did. Nine sites use them: `PinnedTabsTests.DoubleClickTogglesPinGlyph`, `PinsSurviveRelaunch`, and `CloseOthersSkipsPinned` (fenced Interactive, double-click), `LaunchTests.MissingFileOfferEnterAcceptsAsYes` (fenced Interactive), and the click fallbacks in `MenuBarTests` helpers `OpenSubmenu`, `ClickFoundItem` (the mouse-only items), `InvokeOrClick`, `ExpandCombo`, and `SelectEncoding`, which default-suite tests reach. Found in §2's self-review on 2026-10-04; §2 fixed and guarded the raw move forms only.
@@ -104,6 +111,7 @@ Why this section exists: FlaUI's `AutomationElement.Click()` and `DoubleClick()`
 
 - [ ] `UiPointer` gains `Click(element)` and `DoubleClick(element)` that move through `UiPointer.MoveTo` and press with FlaUI's coordinate-free `Mouse.Click(MouseButton.Left)` and `Mouse.DoubleClick(MouseButton.Left)`. Done when: both exist and every one of the nine sites calls them instead of the element method.
 - [ ] The §2 guard also fails a FlaUI element click (`.Click(`, `.DoubleClick(`, `.RightClick(`, `.RightDoubleClick(` calls) and a pointed `Mouse.Click(` outside `UiPointer.cs`. Done when: planted forms fail naming file and line and the live tree scans clean.
+- [ ] Each migrated `MenuBarTests` fallback (`OpenSubmenu`, `ClickFoundItem`, `InvokeOrClick`, `ExpandCombo`, `SelectEncoding`) either gets a focus-free path the default run can take or is fenced Interactive with its owed proof, because a default-suite click fallback moves the operator's real cursor during a background run (D00-T12-S2-PR5). Done when: the default run of `MenuBarTests` under `SCRATCHPAD_BACKGROUND=1` moves no cursor (a cursor-position read before and after the run is identical), and every fenced fallback names its debt.
 - [ ] Commit: `"workspace: click elements in physical coordinates"`
 
 **Test checkpoint:** The guard passes on the tree and fails its planted element-click fixtures; the default run of `MenuBarTests` passes under `SCRATCHPAD_BACKGROUND=1`; and with the operator away, `SCRATCHPAD_INTERACTIVE_FORCE=1 dotnet test tests/UI/UI.csproj --filter "FullyQualifiedName~PinnedTabsTests|FullyQualifiedName~LaunchTests.MissingFileOfferEnterAcceptsAsYes"` passes on the 150% primary. Fails if any of the nine sites still clicks a virtualized point.

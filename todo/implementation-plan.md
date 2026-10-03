@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **159 of 340 sections complete (47%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **160 of 340 sections complete (47%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -186,8 +186,8 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D00 T11 §1`  | Unresolvable reference refusal                            |   4   |
 | [ ] | `D00 T11 §2`  | Night-debt governance third residuals                     |  16   |
 | [ ] | `D00 T12 §1`  | Binding guard fourth residuals                            |  15   |
-| [ ] | `D00 T12 §2`  | Pointer moves in physical coordinates                     |   5   |
-| [ ] | `D00 T12 §3`  | Element clicks in physical coordinates                    |   3   |
+| [x] | `D00 T12 §2`  | Pointer moves in physical coordinates                     |   5   |
+| [ ] | `D00 T12 §3`  | Element clicks in physical coordinates                    |   4   |
 | [ ] | `D00 T13 §1`  | Gate tools built and the governed population in CI soak   |   4   |
 | [ ] | `D00 T13 §2`  | Runner failures resolved and soak green                   |   6   |
 | [x] | `D00 T03 §1`  | App screenshots for README                                |   6   |
