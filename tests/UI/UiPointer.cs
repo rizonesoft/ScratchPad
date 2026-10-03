@@ -177,8 +177,9 @@ internal static partial class UiPointer
         public nint ExtraInfo;
     }
 
-    // INPUT with the mouse arm; the explicit size keeps the union as
-    // wide as its keyboard and hardware arms on x64.
+    // INPUT with the mouse arm. MOUSEINPUT is the widest union member
+    // (32 bytes on x64, aligned after the 4-byte type), so this
+    // sequential layout is the full 40-byte INPUT SendInput expects.
     [StructLayout(LayoutKind.Sequential)]
     struct NativeInput
     {
