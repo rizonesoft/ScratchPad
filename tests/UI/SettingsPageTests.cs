@@ -311,13 +311,14 @@ public sealed class SettingsPageTests
                 var heading = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsHeading"));
                 Assert.NotNull(heading);
 
-                // Physical pointer (D00 T12 §2): the point is read and the
-                // cursor set in PerMonitorV2, and the window is pinned
-                // topmost so an overlapping window cannot take the hover.
+                // Physical pointer (D00 T12 §2): UiPointer.Hover reads in
+                // PerMonitorV2, moves by injected input, and arrives from
+                // outside the swatch so it sees a real enter; the window is
+                // pinned topmost so an overlapping window cannot take it.
                 UiDpi.PinTopmost(window, true);
                 try
                 {
-                    UiPointer.MoveTo(swatch);
+                    UiPointer.Hover(swatch);
                     int previewed = WaitForFill(window, fill, atLeast: 40);
                     Assert.Equal(AccentThemes.System, ShellSettings.Load().Accent);
                     UiPointer.MoveTo(heading);
