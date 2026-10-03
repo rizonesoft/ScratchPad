@@ -396,6 +396,7 @@ Why this section exists: system dark and light are the floor. Writers pick accen
 > **Reviewed-tip:** 64a94e721e8e2b7f638acb23f935bab3eb78d86f
 
 **Night-owed:** D01-T02-S10-N1 (1 FullyQualifiedName~SettingsPageTests.AccentHoverPreviewsAndRestores, collector Nightly UI 02:30, owed 2026-09-28, digest 758652bb60fa0cb3, tests docs/night-owed/D01-T02-S10-N1.txt, candidate aa9e8308c044a1716c9bc1aa235b97eecdbfa45d, tz +02:00, schedule 2026-09-19) hover preview and restore by physical pointer (item 2).
+**Night-red:** 2026-10-03 D01-T02-S10-N1 (0 passed, 1 failed, 0 skipped; log build/nightly/2026-10-03-223350/interactive.trx; run 2026-10-03-223350; at 22:35; event red-2026-10-03-223350-D01-T02-S10-N1)
 
 ## 11. Session Word Goal
 
