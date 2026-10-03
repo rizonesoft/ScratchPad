@@ -73,7 +73,7 @@ internal static class UiInput
             Keyboard.Release,
             () =>
             {
-                Mouse.MoveTo(target.GetClickablePoint());
+                UiPointer.MoveTo(target);
                 Mouse.Scroll(clicks);
             },
             () => ModifiersReleased(AllModifiers));

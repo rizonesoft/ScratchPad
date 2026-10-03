@@ -279,21 +279,17 @@ public sealed class TabBarTests
             UiDpi.PinTopmost(window, true);
             try
             {
+                // Physical pixels (D00 T12 §2): points read outside
+                // PerMonitorV2 arrive virtualized on a scaled display.
                 var before = TabItems(window);
-                var from = before[0].GetClickablePoint();
-                var to = before[2].GetClickablePoint();
-                Mouse.Position = from;
+                var from = UiPointer.ClickablePoint(before[0]);
+                var to = UiPointer.ClickablePoint(before[2]);
+                UiPointer.MoveTo(from);
                 Thread.Sleep(100);
                 Mouse.Down(MouseButton.Left);
                 try
                 {
-                    for (int step = 1; step <= 10; step++)
-                    {
-                        Mouse.Position = new System.Drawing.Point(
-                            (from.X * (10 - step) + to.X * step) / 10,
-                            (from.Y * (10 - step) + to.Y * step) / 10);
-                        Thread.Sleep(50);
-                    }
+                    UiPointer.Travel(from, to, steps: 10, delayMs: 50);
                 }
                 finally
                 {
@@ -610,28 +606,19 @@ public sealed class TabBarTests
     }
 
     // A real middle-button event: FlaUI's middle-click never lands the close.
-    // The clickable point is queried inside the PerMonitorV2 context with the
-    // cursor move: testhost is DPI-unaware, so a point read outside arrives
-    // virtualized and the cursor lands up-left of the tab (at 150% the miss
-    // reaches whatever window sits above ours instead).
+    // The cursor move rides UiPointer (D00 T12 §2), which reads the point and
+    // sets the cursor in PerMonitorV2: testhost is DPI-unaware, so a point
+    // read outside arrives virtualized and the cursor lands up-left of the
+    // tab (at 150% the miss reaches whatever window sits above ours instead).
     static void MiddleClick(AutomationElement element)
     {
         const uint down = 0x0020;
         const uint up = 0x0040;
-        var previous = UiDpi.Enter();
-        try
-        {
-            var point = element.GetClickablePoint();
-            NativeMethods.SetCursorPos((int)point.X, (int)point.Y);
-            Thread.Sleep(100);
-            NativeMethods.MouseEvent(down, 0, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(100);
-            NativeMethods.MouseEvent(up, 0, 0, 0, UIntPtr.Zero);
-        }
-        finally
-        {
-            UiDpi.Exit(previous);
-        }
+        UiPointer.MoveTo(element);
+        Thread.Sleep(100);
+        NativeMethods.MouseEvent(down, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(100);
+        NativeMethods.MouseEvent(up, 0, 0, 0, UIntPtr.Zero);
     }
 
     static void CloseActiveViaGlyph(Window window)
@@ -786,10 +773,6 @@ public sealed class TabBarTests
 
     static class NativeMethods
     {
-        [DllImport("user32.dll")]
-        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-        internal static extern bool SetCursorPos(int x, int y);
-
         [DllImport("user32.dll", EntryPoint = "mouse_event")]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         internal static extern void MouseEvent(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);

@@ -107,22 +107,18 @@ public sealed class MultiWindowTests
             UiDpi.PinTopmost(window, true);
             try
             {
+                // Physical pixels (D00 T12 §2): bounds read outside
+                // PerMonitorV2 arrive virtualized on a scaled display.
                 AutomationElement tab = TabItemAt(window, 0);
-                Rectangle bounds = tab.BoundingRectangle;
+                Rectangle bounds = UiPointer.Bounds(tab);
                 var from = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
                 var to = new Point(from.X, bounds.Bottom + 260);
-                Mouse.Position = from;
+                UiPointer.MoveTo(from);
                 Thread.Sleep(100);
                 Mouse.Down(MouseButton.Left);
                 try
                 {
-                    for (int step = 1; step <= 10; step++)
-                    {
-                        Mouse.Position = new Point(
-                            (from.X * (10 - step) + to.X * step) / 10,
-                            (from.Y * (10 - step) + to.Y * step) / 10);
-                        Thread.Sleep(50);
-                    }
+                    UiPointer.Travel(from, to, steps: 10, delayMs: 50);
                 }
                 finally
                 {

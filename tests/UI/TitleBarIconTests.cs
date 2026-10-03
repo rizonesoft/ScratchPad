@@ -151,24 +151,17 @@ public sealed class TitleBarIconTests
         }
     }
 
+    // The cursor move rides UiPointer (D00 T12 §2): point read and cursor
+    // set in PerMonitorV2, so the click lands on a scaled display.
     static void LeftClick(AutomationElement element)
     {
         const uint down = 0x0002;
         const uint up = 0x0004;
-        var previous = UiDpi.Enter();
-        try
-        {
-            var point = element.GetClickablePoint();
-            ClickNative.SetCursorPos((int)point.X, (int)point.Y);
-            Thread.Sleep(100);
-            ClickNative.MouseEvent(down, 0, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(100);
-            ClickNative.MouseEvent(up, 0, 0, 0, UIntPtr.Zero);
-        }
-        finally
-        {
-            UiDpi.Exit(previous);
-        }
+        UiPointer.MoveTo(element);
+        Thread.Sleep(100);
+        ClickNative.MouseEvent(down, 0, 0, 0, UIntPtr.Zero);
+        Thread.Sleep(100);
+        ClickNative.MouseEvent(up, 0, 0, 0, UIntPtr.Zero);
     }
 
     static int WaitForTabCount(Window window, int expected)
@@ -206,10 +199,6 @@ public sealed class TitleBarIconTests
 
     static class ClickNative
     {
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
-        internal static extern bool SetCursorPos(int x, int y);
-
         [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "mouse_event")]
         [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
         internal static extern void MouseEvent(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);

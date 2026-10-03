@@ -308,16 +308,28 @@ public sealed class SettingsPageTests
                 ExpandCard(window, "SettingsCardAppTheme");
                 var swatch = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsAccent-ocean"));
                 Assert.NotNull(swatch);
-                Mouse.MoveTo(swatch.GetClickablePoint());
-                int previewed = WaitForFill(window, fill, atLeast: 40);
-                Assert.Equal(AccentThemes.System, ShellSettings.Load().Accent);
                 var heading = window.FindFirstDescendant(cf => cf.ByAutomationId("SettingsHeading"));
                 Assert.NotNull(heading);
-                Mouse.MoveTo(heading.GetClickablePoint());
-                Thread.Sleep(1000);
-                int restored = FillPixels(window, fill);
-                output.WriteLine($"ocean fill: {previewed} px on hover, {restored} px after leaving");
-                Assert.True(restored < 10, $"{restored} px of the ocean fill after leaving the swatch");
+
+                // Physical pointer (D00 T12 §2): the point is read and the
+                // cursor set in PerMonitorV2, and the window is pinned
+                // topmost so an overlapping window cannot take the hover.
+                UiDpi.PinTopmost(window, true);
+                try
+                {
+                    UiPointer.MoveTo(swatch);
+                    int previewed = WaitForFill(window, fill, atLeast: 40);
+                    Assert.Equal(AccentThemes.System, ShellSettings.Load().Accent);
+                    UiPointer.MoveTo(heading);
+                    Thread.Sleep(1000);
+                    int restored = FillPixels(window, fill);
+                    output.WriteLine($"ocean fill: {previewed} px on hover, {restored} px after leaving");
+                    Assert.True(restored < 10, $"{restored} px of the ocean fill after leaving the swatch");
+                }
+                finally
+                {
+                    UiDpi.PinTopmost(window, false);
+                }
             }
             finally
             {

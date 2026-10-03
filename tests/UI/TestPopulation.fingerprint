@@ -288,11 +288,15 @@ run-a:
   UI.UiLeakBundleTests.ScaleToCapPinsDimensions
   UI.UiLeakBundleTests.ScrubTitleShapes
   UI.UiLeakBundleTests.ScrubTitleTruncates
+  UI.UiPointerGuardTests.HitNamesItsLine
+  UI.UiPointerGuardTests.LiveTreeScansClean
+  UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard
+  UI.UiPointerGuardTests.SanctionedShapesPassTheGuard
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 283
-run-a-cases: 347
-run-a-case-hash: 2885df4856792e04
+run-a-methods: 287
+run-a-cases: 359
+run-a-case-hash: ff1298bbfd37b42c
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -639,6 +643,18 @@ run-a-case-rows:
   UI|UI.UiLeakBundleTests.ScrubTitleShapes(title: "login token=abc123 failed", expected: "login token=*** failed")
   UI|UI.UiLeakBundleTests.ScrubTitleShapes(title: "plain title", expected: "plain title")
   UI|UI.UiLeakBundleTests.ScrubTitleTruncates
+  UI|UI.UiPointerGuardTests.HitNamesItsLine
+  UI|UI.UiPointerGuardTests.LiveTreeScansClean
+  UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { [System.Runtime.InteropServices.DllImpor"···)
+  UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { FlaUI.Core.Input.Mouse.Positi"···)
+  UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { Mouse . MoveTo (new System.Dr"···)
+  UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M() { NativeMethods.SetCursorPos(1,"···)
+  UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M(E e) { Mouse.MoveTo(e.GetClickabl"···)
+  UI|UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard(snippet: "class Q { void M(System.Drawing.Point p) { Mouse.P"···)
+  UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "// Mouse.MoveTo(e.GetClickablePoint()) in a commen"···)
+  UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { bool M(System.Drawing.Point p) => Mouse."···)
+  UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { void M() { Mouse.Down(MouseButton.Left);"···)
+  UI|UI.UiPointerGuardTests.SanctionedShapesPassTheGuard(snippet: "class Q { void M(E e) { UiPointer.MoveTo(e); } }")
   UI|UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI|UI.UntitledTitleTests.TypingFirstLineRenamesTab
   UI|case UI.BingLaunchTests.BingCommandLaunchesItsEscapedUriWithoutABrowser("MenuEditDefineBing", true)
@@ -719,6 +735,16 @@ run-a-case-rows:
   UI|case UI.UiLeakBundleTests.ScaleToCapPinsDimensions(int32:900, int32:650, int32:900, int32:650)
   UI|case UI.UiLeakBundleTests.ScrubTitleShapes("login token=abc123 failed", "login token=*** failed")
   UI|case UI.UiLeakBundleTests.ScrubTitleShapes("plain title", "plain title")
+  UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { [System.Runtime.InteropServices.DllImport(\"user32.dll\")] static extern bool SetCursorPos(int x, int y); }")
+  UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { FlaUI.Core.Input.Mouse.Position=new System.Drawing.Point(1, 2); } }")
+  UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { Mouse . MoveTo (new System.Drawing.Point(1, 2)); } }")
+  UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M() { NativeMethods.SetCursorPos(1, 2); } }")
+  UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M(E e) { Mouse.MoveTo(e.GetClickablePoint()); } }")
+  UI|case UI.UiPointerGuardTests.PlantedRawMoveFailsTheGuard("class Q { void M(System.Drawing.Point p) { Mouse.Position = p; } }")
+  UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("// Mouse.MoveTo(e.GetClickablePoint()) in a comment is not a move")
+  UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { bool M(System.Drawing.Point p) => Mouse.Position == p; }")
+  UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { void M() { Mouse.Down(MouseButton.Left); Mouse.Up(MouseButton.Left); Mouse.Scroll(2); } }")
+  UI|case UI.UiPointerGuardTests.SanctionedShapesPassTheGuard("class Q { void M(E e) { UiPointer.MoveTo(e); } }")
 run-b:
   UI.GateCalibrationTests.PlantedDwellTripsTheGate
   UI.MainWindowTests.GeometryRestoresAcrossLaunches
