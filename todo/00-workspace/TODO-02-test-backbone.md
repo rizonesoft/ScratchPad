@@ -202,6 +202,7 @@ Why this section exists: UI and protocol tests flake. Without a procedure, flake
 - -> XREF: D00 T02 §9 -- flakes the nightly run surfaces quarantine by this procedure; soak stays the flake-hunting repeat loop, the nightly run stays the regression proof.
 - -> XREF: D01 T01 §35 -- owns the fix-or-remove windows for the 7 09-20 night-triage quarantines (due 09-27).
 - -> XREF: D00 T02 §14 -- run-level deadline this procedure's soak loop must respect.
+- -> XREF: D00 T13 §1 -- brings this section's CI soak workflow and procedure doc back to green and truth (red since 2026-09-15).
 - -> XREF: D00 T02 §10 -- night-debt collector whose reds stage quarantine-bound findings for triage under this procedure.
 
 - [x] `docs/soak-and-quarantine.md` defines the nightly soak (what runs, how long, where results go). Done when: the soak ran once and its log is linked.
@@ -557,6 +558,7 @@ Why this section exists: the §9 evidence proves the demand-fired path (04:13:43
 - -> XREF: D00 T02 §15 -- supervisor tombstone deduped with recovery (item 12).
 - -> XREF: D01 T01 §34 -- post-fix green needs its red resolutions (item 3).
 - -> XREF: D01 T02 §16 -- post-fix green needs its red resolutions (item 3).
+- -> XREF: D00 T13 §1 -- owns the hosted soak; this section owns the local timer-fired night, and both are the regression evidence the plan reads.
 
 **Groomed 2026-09-23:** Sequence: its prerequisites D01 T01 §34 and D01 T02 §16 sit in phase 1 and are runnable now; `process-plan` parks this row until they ship. Splitting them into phase 0 would duplicate the work (a groom default; cost of changing: a duplicate section).
 
