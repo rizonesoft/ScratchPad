@@ -55,7 +55,7 @@ ScratchPad is a desktop app: there are no environment variables to set and no `.
 
 ## Troubleshooting
 
-- **`dotnet build` says a compatible .NET SDK was not found.** The shell resolved a machine SDK, and `global.json` accepts only 10.0.400. Run the `$env:DOTNET_ROOT = ...` line from the quick start in the same shell, then check `dotnet --info` lists the SDK under your checkout's `.tools\` folder. Never install an SDK by hand to fix this.
+- **`dotnet build` (or C# Dev Kit in VS Code) says a compatible .NET SDK was not found.** `global.json` accepts only 10.0.400 and points the `dotnet` host at `.tools\dotnet-win-x64` through `sdk.paths`, so a machine-wide .NET 10 or later host finds the repo SDK on its own once the provisioner has run. A machine host older than .NET 10 ignores `sdk.paths`: run the `$env:DOTNET_ROOT = ...` line from the quick start in the same shell, then check `dotnet --info` lists the SDK under your checkout's `.tools\` folder. Never install an SDK by hand to fix this.
 - **The provisioner fails with `WSL UtilBindVsockAnyPort: socket failed 1`.** You ran it through WSL interop. Run `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` from Windows PowerShell directly.
 - **The app does not start after a green build.** The Windows App Runtime 2.x is missing. Check with `Get-AppxPackage -Name '*WindowsAppRuntime*'` and install it from `https://aka.ms/windowsappsdk/2.4/2.4.0/windowsappruntimeinstall-x64.exe`.
 - **A commit is refused with a TODO validation error.** The pre-commit hook runs `py scripts/todo-graph.py validate` on the staged tree. Run that command, fix what it names, and commit again; if the hook never ran at all, wire it once with `git config core.hooksPath tools/githooks`.

@@ -1,6 +1,8 @@
 {
   "sdk": {
     "version": "10.0.400",
-    "rollForward": "disable"
+    "rollForward": "disable",
+    "paths": [".tools/dotnet-win-x64"],
+    "errorMessage": "The pinned .NET SDK 10.0.400 is not provisioned in .tools/dotnet-win-x64. Run tools/provision.ps1 (see README.md); never install an SDK by hand."
   }
 }

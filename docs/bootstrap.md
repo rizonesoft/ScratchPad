@@ -35,6 +35,6 @@ The hook validates the staged tree with `scripts/todo-graph.py validate` on ever
 
 ## Troubleshooting
 
-Failure 1: `dotnet build` says `The command could not be loaded ... A compatible .NET SDK was not found.` You skipped step 3: the shell resolved a machine SDK (or none) and `global.json` refuses anything but 10.0.400, even one patch off. Fix: run the step 3 export for your OS and retry; verify with `dotnet --info`, which must show the SDK under your checkout's `.tools/`. Never fix this by installing an SDK by hand.
+Failure 1: `dotnet build` (or C# Dev Kit's NuGet restore in VS Code) says `The command could not be loaded ... A compatible .NET SDK was not found.` `global.json` refuses anything but 10.0.400, even one patch off, and its `sdk.paths` sends the host to `.tools/dotnet-win-x64`. A machine-wide .NET 10 or later host therefore resolves the repo SDK without step 3; an older host (or none) ignores `sdk.paths` and needs step 3. Fix: run step 2 if `.tools/` is empty, then the step 3 export for your OS, and retry; verify with `dotnet --info`, which must show the SDK under your checkout's `.tools/`. Never fix this by installing an SDK by hand.
 
 Failure 2: `powershell -ExecutionPolicy Bypass -File tools\provision.ps1` fails with `WSL UtilBindVsockAnyPort: socket failed 1`. You ran the Windows provisioner from inside WSL and the interop channel is down in that session. Fix: run it from Windows PowerShell directly instead of through interop.
