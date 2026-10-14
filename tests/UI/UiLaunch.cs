@@ -214,7 +214,7 @@ internal static class UiLaunch
         string assembly = typeof(UiLaunch).Assembly.Location;
         string args = $"test \"{assembly}\" --filter \"{filter}\"" + (extraArgs.Length > 0 ? " " + extraArgs : string.Empty);
         var info = new ProcessStartInfo(dotnet, args) { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
-        foreach (var (name, value) in environment)
+        foreach (var (name, value) in ChildEnvironment(environment))
         {
             info.Environment[name] = value;
         }
@@ -232,6 +232,22 @@ internal static class UiLaunch
         }
 
         return (process.ExitCode, stdout.Result + stderr.Result);
+    }
+
+    // The parent host already passed the operator-idle gate (UiOperatorIdle)
+    // if it runs fenced tests at all, and its own SendInput resets the idle
+    // clock, so a child would wait on input the parent made: children never
+    // re-gate. Caller entries win, so a test can still drive the gate.
+    internal static Dictionary<string, string> ChildEnvironment(IReadOnlyDictionary<string, string> environment)
+    {
+        ArgumentNullException.ThrowIfNull(environment);
+        var merged = new Dictionary<string, string>(StringComparer.Ordinal) { [UiOperatorIdle.IdleVariable] = "0" };
+        foreach (var (name, value) in environment)
+        {
+            merged[name] = value;
+        }
+
+        return merged;
     }
 
     // Tool runs (D00 T02 §18 item 8): gate and probe subprocesses.

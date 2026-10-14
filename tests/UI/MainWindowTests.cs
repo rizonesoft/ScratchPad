@@ -47,22 +47,12 @@ public sealed class MainWindowTests
     }
 
     [Fact]
+    [Trait(UiGolden.TraitName, UiGolden.TraitValue)]
     public void ShellMatchesGolden()
     {
         // UiCapture seeds the seam (no first-run, dark Mica) for determinism.
-        var tolerance = GoldenComparer.Load(Path.Combine(AppContext.BaseDirectory, "tolerance.json"));
-        using var fresh = UiCapture.CaptureWindow(tolerance);
-        using var golden = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "main-window.png"));
-        var result = GoldenComparer.Compare(golden, fresh, tolerance);
-        output.WriteLine($"shell-vs-golden: {result.DifferentFraction:P4} different ({result.DifferentPixels}/{result.TotalPixels}), threshold {tolerance.MaxDifferentFraction:P4}");
-        if (!result.Match)
-        {
-            var freshPath = Path.Combine(AppContext.BaseDirectory, "golden-failure-shell.png");
-            fresh.Save(freshPath);
-            output.WriteLine($"failure artifact: {freshPath}");
-        }
-
-        Assert.True(result.Match, $"shell golden mismatch: {result.DifferentFraction:P3} different");
+        using var fresh = UiCapture.CaptureWindow(UiGolden.Tolerance());
+        UiGolden.AssertMatches(fresh, "main-window", output);
     }
 
     [PrimaryFact]

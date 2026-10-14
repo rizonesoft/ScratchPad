@@ -23,6 +23,16 @@ internal static class UiQuietHours
     internal static string? SkipOutsideWindow(DateTime now) =>
         IsAllowed(now) ? null : $"Outside the foreground window ({Window} local); fenced tests run inside it or with {ForceVariable}=1.";
 
+    // The fenced gates' full verdict. A forced run is a daytime fenced run
+    // (the section gate's scoped step, the operator's phase-close run), so
+    // it first waits for the operator to go idle (UiOperatorIdle) and never
+    // fights the operator's own typing. An unforced run never waits: it
+    // runs fenced tests only inside the window, and a focus-free run there
+    // must not stall on an idle check for tests its filter excludes.
+    internal static string? SkipUnlessForegroundFree(DateTime now) =>
+        SkipOutsideWindow(now)
+        ?? (Environment.GetEnvironmentVariable(ForceVariable) == "1" ? UiOperatorIdle.SkipUnlessIdle() : null);
+
     internal static bool IsInWindow(TimeSpan time, TimeSpan start, TimeSpan end) =>
         start <= end ? time >= start && time < end : time >= start || time < end;
 

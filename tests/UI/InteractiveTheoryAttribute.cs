@@ -10,6 +10,6 @@ sealed class InteractiveTheoryAttribute : GatedTheoryAttribute
 {
     public InteractiveTheoryAttribute()
     {
-        Gate(UiQuietHours.SkipOutsideWindow(DateTime.Now));
+        Gate(UiQuietHours.SkipUnlessForegroundFree(DateTime.Now));
     }
 }

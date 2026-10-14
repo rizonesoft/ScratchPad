@@ -1,6 +1,6 @@
 # Baseline Captures
 
-Parity with Windows 11 Notepad is checkable only against captures. This store holds two kinds: `stock/` has reference screenshots of the real Notepad for human parity judgment (owned by D06 T01 §3), and `app/` has golden captures of our own surfaces that `tests/UI` compares against automatically. Every capture is canonical 900x650 logical pixels (physical size times the window DPI over 96, downscaled back), so goldens match across DPI settings. Captures assume dark app theme (CI sets it; check the capture machine matches) and must fit a 1024x768 runner screen. No capture lives outside this directory.
+Parity with Windows 11 Notepad is checkable only against captures. This store holds two kinds: `stock/` has reference screenshots of the real Notepad for human parity judgment (owned by D06 T01 §3), and `app/` has golden captures of our own surfaces that `tests/UI` compares against automatically through `UiGolden` (including the `parity-*` set that mirrors the stock references, with each verdict in `docs/parity-review.md`). Every capture is canonical 900x650 logical pixels (physical size times the window DPI over 96, downscaled back), so goldens match across DPI settings. Captures assume dark app theme unless the golden's name carries `-light` (the capture seeds the theme itself through `CaptureSetup`) and must fit a 1024x768 runner screen. No capture lives outside this directory.
 
 ## Sources
 

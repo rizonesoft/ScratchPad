@@ -16,7 +16,7 @@ sealed class HookFactAttribute : FactAttribute
     public HookFactAttribute(string owner)
     {
         Owner = owner;
-        Skip = UiQuietHours.SkipOutsideWindow(DateTime.Now);
+        Skip = UiQuietHours.SkipUnlessForegroundFree(DateTime.Now);
         if (Skip is null && !UiHooks.AreAvailable(out int error))
         {
             Skip = $"CAPABILITY: Low-level mouse hooks are unavailable on this host (Win32 error {error}); owner {owner}; owed on a host whose policy allows low-level mouse hooks.";

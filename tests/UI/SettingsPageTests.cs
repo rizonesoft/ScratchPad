@@ -769,32 +769,11 @@ public sealed class SettingsPageTests
     }
 
     [Fact]
+    [Trait(UiGolden.TraitName, UiGolden.TraitValue)]
     public void SettingsCaptureMatchesGolden()
     {
-        var tolerance = GoldenComparer.Load(Path.Combine(AppContext.BaseDirectory, "tolerance.json"));
-        string goldenPath = Path.Combine(AppContext.BaseDirectory, "goldens", "settings-page.png");
-        using var fresh = UiCapture.CaptureSettings(tolerance);
-        if (!File.Exists(goldenPath))
-        {
-            string saved = Path.Combine(AppContext.BaseDirectory, "settings-page-fresh.png");
-            fresh.Save(saved);
-            Assert.Fail($"golden missing; fresh capture saved at {saved} for eyeball review");
-        }
-
-        using var golden = new Bitmap(goldenPath);
-        var result = GoldenComparer.Compare(golden, fresh, tolerance);
-        output.WriteLine($"fresh-vs-golden: {result.DifferentFraction:P4} different ({result.DifferentPixels}/{result.TotalPixels}), threshold {tolerance.MaxDifferentFraction:P4}");
-        if (!result.Match)
-        {
-            string freshPath = Path.Combine(AppContext.BaseDirectory, "golden-failure-settings.png");
-            fresh.Save(freshPath);
-            using var diff = GoldenComparer.RenderDiff(fresh, result);
-            string diffPath = Path.Combine(AppContext.BaseDirectory, "golden-failure-settings-diff.png");
-            diff.Save(diffPath);
-            output.WriteLine($"failure artifacts: {freshPath} {diffPath}");
-        }
-
-        Assert.True(result.Match, $"golden mismatch: {result.DifferentFraction:P3} different ({result.DifferentPixels}/{result.TotalPixels})");
+        using var fresh = UiCapture.CaptureSettings(UiGolden.Tolerance());
+        UiGolden.AssertMatches(fresh, "settings-page", output);
     }
 
     static void CleanSettings(string path)

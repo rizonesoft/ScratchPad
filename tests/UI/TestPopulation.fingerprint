@@ -78,8 +78,12 @@ run-a:
   UI.GateAttributionTests.ReusedPidIsNeverAttributedToTheAppAndLinesNameTheExecutable
   UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
   UI.GoldenComparisonTests.FreshCaptureMatchesGolden
+  UI.GoldenComparisonTests.LeftoverSessionNeverLeaksIntoTheCapture
   UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
   UI.GoldenComparisonTests.TenPixelShiftFailsComparison
+  UI.GoldenInventoryTests.EveryCommittedGoldenHasATestAndReachesTheOutput
+  UI.GoldenInventoryTests.EveryGoldenComparisonIsATaggedTest
+  UI.GoldenInventoryTests.EveryGoldenTestIsFocusFree
   UI.JumpListSpikeTests.JumpListApiWorksUnpackaged
   UI.JumpListTaskTests.NewNoteFreshWithFileSelectsSpare
   UI.JumpListTaskTests.NewNoteRedirectOpensFreshTab
@@ -165,6 +169,25 @@ run-a:
   UI.OffScreenBirthTests.StackedMonitorsKeepTheWindowOutside
   UI.OffScreenBirthTests.VeryWideScreenRejectsTheOldFixedPoint
   UI.OffScreenBirthTests.WindowSizeStaysOutsideOnTheLeftFallback
+  UI.OperatorIdleTests.ActiveOperatorIsWaitedOutThenPasses
+  UI.OperatorIdleTests.BusyOperatorSkipsAfterTheMaxWaitAndNeverSleepsPastIt
+  UI.OperatorIdleTests.ChildTestRunsNeverReGateButCallersStillWin
+  UI.OperatorIdleTests.IdleOperatorPassesWithoutWaiting
+  UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback
+  UI.OperatorIdleTests.ListingNeverWaits
+  UI.OperatorIdleTests.UnforcedRunsNeverConsultTheIdleGate
+  UI.OperatorIdleTests.UnreadableIdleTimeFailsClosed
+  UI.OperatorIdleTests.ZeroIdleRequirementDisablesTheGate
+  UI.ParityGoldenTests.FirstLineTruncateMatchesGolden
+  UI.ParityGoldenTests.MainLightMatchesGolden
+  UI.ParityGoldenTests.OpenInSettingMatchesGolden
+  UI.ParityGoldenTests.SessionRestoredMatchesGolden
+  UI.ParityGoldenTests.SettingsLightMatchesGolden
+  UI.ParityGoldenTests.StatusBarOffMatchesGolden
+  UI.ParityGoldenTests.StatusCrMatchesGolden
+  UI.ParityGoldenTests.StatusMarkdownFormattedMatchesGolden
+  UI.ParityGoldenTests.TabsMatchesGolden
+  UI.ParityGoldenTests.WhenStartsMatchesGolden
   UI.ProtocolHandlerTests.LinkOpensTheCarriedFile
   UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow
   UI.ProtocolHandlerTests.ProtocolVerbsCycleCleanly
@@ -295,9 +318,9 @@ run-a:
   UI.UiPointerGuardTests.SanctionedShapesPassTheGuard
   UI.UntitledTitleTests.FirstLineTrimsAndTruncates
   UI.UntitledTitleTests.TypingFirstLineRenamesTab
-run-a-methods: 288
-run-a-cases: 362
-run-a-case-hash: bf3389110789f1bb
+run-a-methods: 311
+run-a-cases: 389
+run-a-case-hash: 3a01dd3676747c54
 run-a-case-rows:
   UI|UI.AppIconTests.ExeIconMatchesAsset
   UI|UI.AppIconTests.WindowChromeIconMatchesAsset
@@ -373,8 +396,12 @@ run-a-case-rows:
   UI|UI.GateAttributionTests.ReusedPidIsNeverAttributedToTheAppAndLinesNameTheExecutable
   UI|UI.GateCalibrationTests.NoPlantKeepsTheGateGreen
   UI|UI.GoldenComparisonTests.FreshCaptureMatchesGolden
+  UI|UI.GoldenComparisonTests.LeftoverSessionNeverLeaksIntoTheCapture
   UI|UI.GoldenComparisonTests.OnePixelEdgeWobblePassesComparison
   UI|UI.GoldenComparisonTests.TenPixelShiftFailsComparison
+  UI|UI.GoldenInventoryTests.EveryCommittedGoldenHasATestAndReachesTheOutput
+  UI|UI.GoldenInventoryTests.EveryGoldenComparisonIsATaggedTest
+  UI|UI.GoldenInventoryTests.EveryGoldenTestIsFocusFree
   UI|UI.JumpListSpikeTests.JumpListApiWorksUnpackaged
   UI|UI.JumpListTaskTests.NewNoteFreshWithFileSelectsSpare
   UI|UI.JumpListTaskTests.NewNoteRedirectOpensFreshTab
@@ -502,6 +529,29 @@ run-a-case-rows:
   UI|UI.OffScreenBirthTests.StackedMonitorsKeepTheWindowOutside
   UI|UI.OffScreenBirthTests.VeryWideScreenRejectsTheOldFixedPoint
   UI|UI.OffScreenBirthTests.WindowSizeStaysOutsideOnTheLeftFallback
+  UI|UI.OperatorIdleTests.ActiveOperatorIsWaitedOutThenPasses
+  UI|UI.OperatorIdleTests.BusyOperatorSkipsAfterTheMaxWaitAndNeverSleepsPastIt
+  UI|UI.OperatorIdleTests.ChildTestRunsNeverReGateButCallersStillWin
+  UI|UI.OperatorIdleTests.IdleOperatorPassesWithoutWaiting
+  UI|UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback(value: "", expected: 60)
+  UI|UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback(value: "-5", expected: 60)
+  UI|UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback(value: "0", expected: 0)
+  UI|UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback(value: "30", expected: 30)
+  UI|UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback(value: "soon", expected: 60)
+  UI|UI.OperatorIdleTests.ListingNeverWaits
+  UI|UI.OperatorIdleTests.UnforcedRunsNeverConsultTheIdleGate
+  UI|UI.OperatorIdleTests.UnreadableIdleTimeFailsClosed
+  UI|UI.OperatorIdleTests.ZeroIdleRequirementDisablesTheGate
+  UI|UI.ParityGoldenTests.FirstLineTruncateMatchesGolden
+  UI|UI.ParityGoldenTests.MainLightMatchesGolden
+  UI|UI.ParityGoldenTests.OpenInSettingMatchesGolden
+  UI|UI.ParityGoldenTests.SessionRestoredMatchesGolden
+  UI|UI.ParityGoldenTests.SettingsLightMatchesGolden
+  UI|UI.ParityGoldenTests.StatusBarOffMatchesGolden
+  UI|UI.ParityGoldenTests.StatusCrMatchesGolden
+  UI|UI.ParityGoldenTests.StatusMarkdownFormattedMatchesGolden
+  UI|UI.ParityGoldenTests.TabsMatchesGolden
+  UI|UI.ParityGoldenTests.WhenStartsMatchesGolden
   UI|UI.ProtocolHandlerTests.LinkOpensTheCarriedFile
   UI|UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow(link: "scratchpad://")
   UI|UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow(link: "scratchpad://relative/x.txt")
@@ -714,6 +764,11 @@ run-a-case-rows:
   UI|case UI.MainWindowTests.ThemesRenderWithMica("dark", int32:100)
   UI|case UI.MainWindowTests.ThemesRenderWithMica("light", int32:150)
   UI|case UI.MainWindowTests.ThemesRenderWithMica("system", int32:100)
+  UI|case UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback("", int32:60)
+  UI|case UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback("-5", int32:60)
+  UI|case UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback("0", int32:0)
+  UI|case UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback("30", int32:30)
+  UI|case UI.OperatorIdleTests.IdleSecondsParseWithTheDefaultAsFallback("soon", int32:60)
   UI|case UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow("scratchpad://")
   UI|case UI.ProtocolHandlerTests.MalformedLinksOpenBareWindow("scratchpad://relative/x.txt")
   UI|case UI.QuietHoursTests.DefaultWindowAdmitsOnly0200To0650("00:00", false)

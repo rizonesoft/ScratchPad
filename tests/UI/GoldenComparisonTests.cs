@@ -1,4 +1,5 @@
 using System.Drawing;
+using Notepad.Core;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -15,19 +16,26 @@ public sealed class GoldenComparisonTests
     }
 
     [Fact]
+    [Trait(UiGolden.TraitName, UiGolden.TraitValue)]
     public void FreshCaptureMatchesGolden()
     {
-        var tolerance = GoldenComparer.Load(Path.Combine(AppContext.BaseDirectory, "tolerance.json"));
-        using var fresh = UiCapture.CaptureWindow(tolerance);
-        using var golden = new Bitmap(Path.Combine(AppContext.BaseDirectory, "goldens", "main-window.png"));
-        var result = GoldenComparer.Compare(golden, fresh, tolerance);
-        output.WriteLine($"fresh-vs-golden: {result.DifferentFraction:P4} different ({result.DifferentPixels}/{result.TotalPixels}), threshold {tolerance.MaxDifferentFraction:P4}");
-        if (!result.Match)
-        {
-            SaveFailureArtifacts(fresh, result, "fresh");
-        }
+        using var fresh = UiCapture.CaptureWindow(UiGolden.Tolerance());
+        UiGolden.AssertMatches(fresh, "main-window", output);
+    }
 
-        Assert.True(result.Match, $"golden mismatch: {result.DifferentFraction:P3} different ({result.DifferentPixels}/{result.TotalPixels})");
+    [Fact]
+    [Trait(UiGolden.TraitName, UiGolden.TraitValue)]
+    public void LeftoverSessionNeverLeaksIntoTheCapture()
+    {
+        // WhenStarts defaults to Continue, so a session another test left
+        // behind restores its tabs into the capture (a dirty "4 characters"
+        // tab once did); the capture must start from a fresh session.
+        new SessionData
+        {
+            Windows = [new SessionWindow { Tabs = [new SessionTab { Content = "leftover", Caret = 4 }, new SessionTab { Content = "second leftover tab" }] }],
+        }.Save();
+        using var fresh = UiCapture.CaptureWindow(UiGolden.Tolerance());
+        UiGolden.AssertMatches(fresh, "main-window", output);
     }
 
     [Fact]

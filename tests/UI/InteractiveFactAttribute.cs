@@ -10,6 +10,6 @@ sealed class InteractiveFactAttribute : FactAttribute
 {
     public InteractiveFactAttribute()
     {
-        Skip = UiQuietHours.SkipOutsideWindow(DateTime.Now);
+        Skip = UiQuietHours.SkipUnlessForegroundFree(DateTime.Now);
     }
 }
