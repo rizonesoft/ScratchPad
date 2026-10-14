@@ -180,9 +180,9 @@ Before the checkpoint, account for **every control, menu item, dialog, and state
 
 ### 6. Run the Test checkpoint, for real
 
-Execute the checkpoint command and read the output. Quote the result in the commit body. If the checkpoint cannot run (no Windows host, missing fixture), the section is not done: record what ran, what did not, and why, and stop without a stamp. A checkpoint half-run is not evidence. Ship with debt instead of waiting: record the section's Interactive and Primary tests as `Night-owed` (the operator's phase-close run collects them), and flip the same session.
+Execute the checkpoint command and read the output. Quote the result in the commit body. If the checkpoint cannot run (no Windows host, missing fixture), the section is not done: record what ran, what did not, and why, and stop without a stamp. A checkpoint half-run is not evidence. The feature's own Interactive and Primary tests run in the gate, scoped to its classes (`gates.md` step 3); record them as `Night-owed` only when the host cannot run them, and flip the same session.
 
-UI proof follows the gate card `.claude/skills/process-todo-section/gates.md` (the section's own UI tests, focus-free; no whole-suite run, no Primary run); `docs/testing.md` wins where they disagree.
+UI proof follows the gate card `.claude/skills/process-todo-section/gates.md` (every test of the feature, including its own Primary and Interactive tests, scoped by filter, plus the visual check against Notepad for anything the user sees; never the whole suite); `docs/testing.md` wins where they disagree.
 
 Then run the section's other owed gates: a clean build and `validate` clean. Run the tests of what the section implemented: the new and changed tests plus the existing tests of the code it touched, by `dotnet test --filter`; never the whole suite (operator decision 2026-10-14, `docs/testing.md`).
 

@@ -40,14 +40,14 @@ The lifecycle is: capture, author, validate the plan and source claims, record `
 - **Writes are serial:** one session owns the working tree. Check `git status` before building over unfamiliar work.
 - **Claude Code is the only writer** (operator decision 2026-09-23): no other harness edits, commits, or runs campaigns in this repo. Codex and other models take part only as headless review producers through `.conclave/panel.toml`.
 - **User data first:** atomic writes, readback, skip-and-report, confirmed destructive paths. Checkpoints prove the failure path too.
-- **Testing is scoped and quiet** (operator decision 2026-10-14, `docs/testing.md`): no scheduled test runs; a section runs only its own tests; the full suite runs when a phase, file, or release closes, and only the operator starts the foreground legs.
+- **Testing is scoped and quiet** (operator decision 2026-10-14, `docs/testing.md`): no scheduled test runs; a section runs every test of its feature and nothing else, and checks anything the user sees visually against Notepad; the full suite runs when a phase, file, or release closes, and only the operator starts the foreground legs.
 - **Parity is proven:** captures for Notepad surfaces, ACP schema and docs for protocol behavior. No artifact, no claim.
 - **Consent gates agents:** deny-by-default, exactly-once answers, diff review, undoable apply.
 - **No em dashes** in authored prose. One line per paragraph and list item in Markdown.
 - **Section atomicity is the candidate range:** one section ships as one logical change, and review fix-loop commits append to that range (never amend); each fix is re-reviewed and the stamp names the whole range. "One section = one commit" never means "one hash".
 - **Source of truth:** Notepad behavior via captures, ACP via [agentclientprotocol.com](https://agentclientprotocol.com/get-started/agents), plan state via `todo/`. [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) is prior art, never a design authority. Disagreements are recorded decisions, not silent reinterpretations.
 
-Completion-first: runners do everything to 100% complete the section, tool, or feature in the shipping session: test what the section implemented (focus-free, never the whole suite), record its Interactive and Primary tests as `Night-owed` debt, and flip the same session; owed foreground tests never park work, review and stamp never wait for them, and repeated manual workspace tweaks become owned automation.
+Completion-first: runners do everything to 100% complete the section, tool, or feature in the shipping session: run every test of what the section implemented, its own Interactive and Primary tests included, scoped by filter (never the whole suite), record as `Night-owed` debt only what the host cannot run, and flip the same session; owed foreground tests never park work, review and stamp never wait for them, and repeated manual workspace tweaks become owned automation.
 
 ## Delegation
 
