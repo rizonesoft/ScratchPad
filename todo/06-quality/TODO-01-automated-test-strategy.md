@@ -43,6 +43,7 @@ track: Q1
 |   4   |   §4    | AI surface UI suites | §1, D05 T02 §5 |  [ ]   |
 |   5   |   §5    | Perf budgets enforced in CI | §1 |  [ ]   |
 |   6   |   §6    | Flake policy and quarantine operation | §1, D00 T02 §5 |  [ ]   |
+|   7   |   §7    | Deterministic input mode for popup and dialog goldens | -- |  [ ]   |
 
 ---
 
@@ -77,6 +78,10 @@ Why this section exists: floors that CI does not enforce are wishes. Measure per
 Why this section exists: the clone claim is proven surface by surface, automatically, on every run.
 
 **Groomed 2026-09-23:** Corrected: `PollThemeSide` now calls `UiCapture.PrintCapture`, which enters UiDpi and uses PrintWindow full content (MainWindowTests.cs:146, UiCapture.cs:218), so the DPI half is fixed; the vacuous dark and system pass still stands, so add a non-black guard.
+
+**Groomed 2026-10-14:** `tests/UI/ParityGoldenTests.cs` (not `tests/UI/Parity/`) already drives the ten stable reference surfaces as focus-free goldens through `UiCapture.CaptureState` and `UiGolden`; the review register is `docs/parity-review.md`, and menus and in-window dialogs wait on §7.
+
+- -> XREF: D06 T01 §7 -- pins the input mode so the menu and dialog surfaces join the parity goldens.
 
 - [ ] `tests/UI/Parity/` drives every Notepad surface in the coverage table (`TODO-00-INDEX.md`) through the real UI. Done when: every row maps to a passing suite.
 - [ ] Each suite compares against the `D00 T02 §3` captures within the committed tolerance. Done when: a deliberate deviation fails the suite.
@@ -123,6 +128,23 @@ Why this section exists: the quarantine procedure from `D00 T02 §5` needs an op
 - [ ] Commit: `"quality: operate the flake policy"`
 
 **Test checkpoint:** Lifecycle demonstrated for real; quarantine growth fails CI; one incident verdict recorded. Cheaper substitute that fails: quarantine as a trash can with no triage.
+
+## 7. Deterministic Input Mode for Popup and Dialog Goldens
+
+Why this section exists: the 2026-10-14 parity work (`docs/parity-review.md`) added focus-free goldens for every Notepad reference surface (`tests/UI/ParityGoldenTests.cs`, `UiCapture.CaptureState` with popup composition), and three back-to-back runs showed that menus, submenus, and in-window dialogs do not hold still: the keyboard focus ring on the first menu item or the default button appears in some runs and not others, and menu row height switches between about 33 and 41 px. Both follow WinUI's ambient input mode at the moment the flyout or dialog opens, not anything the test sets, so those twelve surfaces stay review captures under `docs/parity-review/` instead of goldens. The same review could not tell from an inactive, off-screen capture whether our light-theme menu really lacks stock's brighter background and border (ours sampled flat 249, stock 252 with a border). -> SOURCE: parity-review-2026-10-14-golden-stability.
+
+**Fidelity:** no page of its own; the test harness that captures the menu and dialog surfaces named in `docs/parity-review.md`.
+
+- -> XREF: D06 T01 §3 -- the parity suites these goldens extend; `tests/UI/ParityGoldenTests.cs` is their current home.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The input mode that decides focus visuals and menu padding is pinned before each popup or dialog capture without physical input and without activating the window. Done when: the mechanism is named in `UiCapture` with the WinUI behavior it relies on, and twenty consecutive captures of the File menu and of the missing-file dialog are pixel-stable.
+- [ ] The twelve review captures in `docs/parity-review/` become `ParityGoldenTests` goldens, each re-checked against its stock capture per the refresh procedure. Done when: three consecutive `Visual=Golden` runs pass with them.
+- [ ] The light-theme menu background and border are checked on an active on-screen capture against `resources/baseline/stock/notepad-menu-file-light-n11.2607.14.0-win25h2.png`. Done when: the sampled values are recorded in `docs/parity-review.md` and a real difference, if any, is filed to the menu owner.
+- [ ] Commit: `"quality: deterministic input mode for popup and dialog goldens"`
+
+**Test checkpoint:** three consecutive `dotnet test tests/UI --filter "Visual=Golden|FullyQualifiedName~GoldenInventoryTests" -e SCRATCHPAD_BACKGROUND=1` runs green with the twelve new goldens. Cheaper substitute that fails: raising the golden tolerance until the focus ring and row height stop failing.
 
 ## Verification
 

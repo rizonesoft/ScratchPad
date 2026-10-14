@@ -92,6 +92,8 @@ track: N1
 |  33   |   §34   | Pinned-tab close regressions | §13 |  [ ]   |
 |  34   |   §35   | Fix-or-remove the night-triage quarantines | D00 T02 §9, D01 T01 §34, D01 T02 §16, D00 T02 §5 |  [ ]   |
 |  35   |   §36   | Bounded single-instance redirect | §8 |  [ ]   |
+|  36   |   §37   | Tab width, title clipping, and close glyph match the capture | §3 |  [ ]   |
+|  37   |   §38   | Single-button dialogs carry the accent default button | §4, §6 |  [ ]   |
 
 ---
 
@@ -1101,6 +1103,47 @@ Why this section exists: a second launch that finds a primary instance still shu
 - [ ] Commit: `"notepad-core: bound the single-instance redirect"`
 
 **Test checkpoint:** A second launch into a closing, a gone, and a silent primary each ends within the bound with its files opened or kept; no launcher survives without a window. Cheaper substitute that fails: a timeout that exits and drops the files.
+
+## 37. Tab Width, Title Clipping, and Close Glyph Match the Capture
+
+Why this section exists: the 2026-10-14 parity review (`docs/parity-review.md`) found our tabs narrower than stock and drawn differently. At canonical 900x650, stock's selected Untitled tab spans about x 55 to 295 (`resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png`); ours spans about x 40 to 142, because `TabBar.xaml` sets `TabWidthMode="SizeToContent"` and the tab sizes to its title (`NaturalTabWidth = 134` at `src/ScratchPad/TabBar.xaml.cs:75` is only the `MaxWidth` clamp `ShrinkTabsToFit` applies when tabs must shrink). Stock clips a long title at the tab edge (`notepad-firstline-truncate-n11.2607.14.0-win25h2.png`), ours ellipsizes (`TextTrimming.CharacterEllipsis`, `TabBar.xaml.cs:758`). Stock shows the close glyph on the selected tab only, with inactive tabs bare (`notepad-tabs-n11.2607.14.0-win25h2.png`); ours shows it on every tab, although §3 records "the X hides until hover". §3 and §27 pinned order, dot, glyph, and heights, not width or visibility. -> SOURCE: parity-review-2026-10-14-tabs (D5).
+
+**Fidelity:** stock tab strip -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png`, `notepad-tabs-n11.2607.14.0-win25h2.png`, `notepad-firstline-truncate-n11.2607.14.0-win25h2.png`, `notepad-firstline-title-n11.2607.14.0-win25h2.png`. Natural tab width, title clipping, and close-glyph visibility (selected and hovered tabs only) match the captures; shrink behavior with many tabs stays as shipped.
+
+**Job:** The user can read tab titles at Notepad's width and see a close glyph only where Notepad shows one. Consumer: none, this surface is the consumer.
+
+**Treatment:** The natural width set where it is decided (`TabWidthMode` or a per-item `MinWidth` beside `ShrinkTabsToFit` and `ClampAll` in `TabBar.xaml.cs`, keeping the shrink path's arithmetic), trimming on the title `TextBlock`, and close-button visibility through `CloseButtonOverlayMode`. Cheaper substitute that fails the checkpoint: raising `NaturalTabWidth`, which only moves the shrink clamp and leaves content-sized tabs narrow.
+
+**Chrome:** consume the shipped `TabBar.xaml` TabView and its theme resources. Do not invent a second tab control.
+
+**Needs:** Windows host (build/test)
+
+- [ ] The natural tab width is measured from the capture and our tabs match it within 4 px at canonical 900x650. Done when: the refreshed `main-window` and `parity-tabs` goldens show the stock width beside the stock captures in the commit.
+- [ ] A long title clips at the tab edge without an ellipsis, as stock does. Done when: the refreshed `parity-firstline-truncate` golden matches the stock crop's clipping.
+- [ ] The close glyph shows on the selected tab and on a hovered tab only. Done when: a UI test reads the inactive tab's close button as not visible and the `parity-tabs` golden shows a bare inactive tab.
+- [ ] Commit: `"notepad-core: tab width and close glyph match the capture"`
+
+**Test checkpoint:** `dotnet test tests/UI --filter "FullyQualifiedName~TabBarTests|FullyQualifiedName~PinnedTabsTests|Visual=Golden" -e SCRATCHPAD_BACKGROUND=1` green with the goldens refreshed per procedure. Cheaper substitute that fails: a fixed width that matches one DPI and overflows the strip with many tabs.
+
+## 38. Single-Button Dialogs Carry the Accent Default Button
+
+Why this section exists: the 2026-10-14 parity review found that our dialogs with only an OK button draw it plain, while stock draws it as the accent default button (`resources/baseline/stock/notepad-fail-locked-n11.2607.14.0-win25h2.png`, `notepad-fail-missing-n11.2607.14.0-win25h2.png`, `resources/baseline/session/notepad-missing-notice-n11.2607.14.0-win25h2.png`). `OpenFailureDialog`, `MissingFileDialog`, `PrintFailureDialog`, `SaveFailureDialog`, and `CorruptSettingsDialog` set `CloseButtonText = "OK"` with no `DefaultButton`, while our Yes/No and save prompts set `DefaultButton = Primary` and already match. §4 and §6 recorded the text and the OK-only shape, not the button style. -> SOURCE: parity-review-2026-10-14-dialogs (D10).
+
+**Fidelity:** stock OK-only dialogs -- the three captures above. The OK button is the accent default button, and Enter dismisses it.
+
+**Job:** The user can see and press the default OK as in Notepad. Consumer: none, this surface is the consumer.
+
+**Treatment:** `DefaultButton = ContentDialogButton.Close` on each OK-only dialog. Cheaper substitute that fails the checkpoint: restyling the button with a local brush, which drops the default-button keyboard behavior.
+
+**Chrome:** consume `ContentDialog`'s default-button styling. Do not invent a second dialog style.
+
+**Needs:** Windows host (build/test)
+
+- [ ] Every OK-only dialog sets the close button as its default. Done when: a unit or UI test enumerates the five dialogs and reads `DefaultButton == Close` on each.
+- [ ] The rendered OK is the accent button. Done when: captures of the locked-file, path-not-found, and missing-file dialogs sit beside their stock twins in the commit.
+- [ ] Commit: `"notepad-core: OK-only dialogs carry the accent default button"`
+
+**Test checkpoint:** the new default-button test green plus `dotnet test tests/UI --filter "FullyQualifiedName~LaunchTests|FullyQualifiedName~SessionRestoreTests|Visual=Golden" -e SCRATCHPAD_BACKGROUND=1` green; the three captures recorded in the commit. Cheaper substitute that fails: an accent brush on a button that Enter does not press.
 
 ## Verification
 

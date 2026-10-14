@@ -71,6 +71,9 @@ track: N1
 
 |  18   |  §18    | Fix-or-remove MenuBarTests flakes | §16 |  [ ]   |
 |  19   |  §19    | Syllable endings keep the preceding vowel | §7 |  [ ]   |
+|  20   |  §20    | Menu separators and labels match the captures | §1 |  [ ]   |
+|  21   |  §21    | Status bar segment layout matches the capture | §4 |  [ ]   |
+|  22   |  §22    | Settings page chrome and layout match the capture | §3 |  [ ]   |
 ---
 
 ## 1. Menu Bar with All Items and Enablement
@@ -601,6 +604,8 @@ Why this section exists: the shipped Settings About panel (D01 T02 §3) shows na
 
 **Needs:** Windows host (build/test)
 
+- -> XREF: D01 T02 §22 -- places the About panel (below the cards at narrow widths, beside them at wide); this section fills it.
+
 **Groomed 2026-09-23:** Sequence: the prerequisite D07 T01 §10 (product identity registry) sits in a later phase (phase 4); its own dependencies are none, so it is runnable as soon as its phase is reached, and `process-plan` parks this row until it ships. Splitting it into this phase would duplicate the work (and D01 T01 sits at its 55-section cap), so the edge stands as recorded (a groom default; cost of changing: a duplicate section).
 
 - [ ] `src/ScratchPad/SettingsPage.xaml` renders copyright, publisher, links, and logo rows in the About panel from the §10 registry. Done when: each row's text matches the registry and no identity string is hardcoded in the page.
@@ -634,6 +639,77 @@ Why this section exists: the §7 panel's round 3 (the Full sign-off) reported th
 - [ ] Commit: `"notepad-core: keep the vowel before silent endings"`
 
 **Test checkpoint:** `dotnet test tests/Unit --filter ReadabilityTests` green with the multisyllabic fixtures and the sweep list; the §7 grade fixtures (20.8, 2.3, 0.0, 12.0) unchanged. Cheaper substitute that fails: a fourth special-case alternative for the next reported word.
+
+## 20. Menu Separators and Labels Match the Captures
+
+Why this section exists: the 2026-10-14 parity review (`docs/parity-review.md`) held our menus against the stock captures and found the §1 record wrong where the captures are the source of truth. §1 records "File ... no separators", but `resources/baseline/stock/notepad-menu-file-n11.2607.14.0-win25h2.png` shows a separator after Save all and after Print; §1 records Edit separators after Undo, Delete, Clear formatting, Define with Bing, Go to, and Time/Date, but `notepad-menu-edit-n11.2607.14.0-win25h2.png` groups Clear formatting with Search with Bing and draws the line after Search with Bing instead. `src/ScratchPad/MenuBar.xaml` follows the wrong record. The same review found three label and icon differences that `docs/menu-audit.md:74-75` deferred to editor sections whose checklists never carry them: the Delete shortcut reads `Delete` (stock `Del`), Zoom reads `Ctrl++` and `Ctrl+-` (stock `Ctrl+Plus` and `Ctrl+Minus`), and View > Markdown's Formatted and Syntax items have no icons (stock shows them). All five are menu-surface text and layout, so they live here, with the menu. -> SOURCE: parity-review-2026-10-14-menus (D6, D7, D8).
+
+**Fidelity:** stock File, Edit, and View menus -- `resources/baseline/stock/notepad-menu-file-n11.2607.14.0-win25h2.png`, `notepad-menu-edit-n11.2607.14.0-win25h2.png`, `notepad-menu-view-zoom-n11.2607.14.0-win25h2.png`, `notepad-menu-view-markdown-n11.2607.14.0-win25h2.png`. Separator positions, shortcut label text, and submenu icons match the captures; item enablement is out of scope (each item's owner enables it through `MenuCommands`).
+
+**Job:** The user can scan our menus and find the same groups, labels, and icons Notepad shows. Consumer: none, this surface is the consumer.
+
+**Treatment:** Separators and label text set in `MenuBar.xaml` to the captures, label text through `KeyboardAcceleratorTextOverride` so the bound keys stay unchanged. Cheaper substitute that fails the checkpoint: renaming the accelerators themselves, which changes the keys the menus answer to.
+
+**Chrome:** consume the shipped `MenuBar.xaml` `MenuFlyoutSeparator` and `MenuFlyoutItem.Icon` patterns and the Fluent glyph set the other menu icons use. Do not invent a second menu definition.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D02 T04 §3 -- that section enables View > Markdown's items; this section gives them their stock icons.
+
+- [ ] File menu separators sit after Save all and after Print, and nowhere else. Done when: `MenuBarTests.MenuStructureMatchesStockCaptures` pins the separator positions for File and the parity review capture of the File menu shows both lines.
+- [ ] Edit menu separators sit after Undo, Delete, Search with Bing, Go to, and Time/Date (Clear formatting and Search with Bing in one group). Done when: the same test pins Edit's separator positions against `notepad-menu-edit`.
+- [ ] Shortcut labels read `Del`, `Ctrl+Plus`, and `Ctrl+Minus` while the bound keys stay Delete, Ctrl+Plus, and Ctrl+Minus. Done when: a menu test reads each item's displayed accelerator text and the existing accelerator tests stay green.
+- [ ] View > Markdown's Formatted and Syntax items carry the stock icons. Done when: a capture of the submenu sits beside `notepad-menu-view-markdown` in the commit and the icons match.
+- [ ] `docs/menu-audit.md` lines 74-75 point the label and icon deferrals at this section. Done when: the audit names D01 T02 §20 for each.
+- [ ] Commit: `"notepad-core: menu separators and labels match the captures"`
+
+**Test checkpoint:** `dotnet test tests/UI --filter "FullyQualifiedName~MenuBarTests|FullyQualifiedName~MenuLabelTests|Visual=Golden" -e SCRATCHPAD_BACKGROUND=1` green, plus the visual check of File, Edit, View > Zoom, and View > Markdown against the four captures recorded in the commit. Cheaper substitute that fails: following §1's prose record instead of the captures.
+
+## 21. Status Bar Segment Layout Matches the Capture
+
+Why this section exists: the 2026-10-14 parity review found our status segments packed to the left, while stock lays them across the bar at fixed positions (`resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png`: line and column, character count, mode on the left half; zoom, line ending, encoding on the right). §4 pinned order and click behavior, not width or spread, and `src/ScratchPad/StatusBar.xaml` uses one left `*` column and one right `Auto` column. The same review found the Markdown mode switch rendered as a grey button with no icon, where stock shows an `AA` icon and the label with no button chrome (`notepad-status-md-formatted-n11.2607.14.0-win25h2.png`). Our added segments (word count, goal flag, reading level) are decided additions (§7, §9, §11) and keep their places between the stock segments. -> SOURCE: parity-review-2026-10-14-status (D4, D12).
+
+**Fidelity:** stock status bar -- `resources/baseline/stock/notepad-main-n11.2607.14.0-win25h2.png`, `notepad-status-md-formatted-n11.2607.14.0-win25h2.png`, `notepad-status-cr-n11.2607.14.0-win25h2.png`. Each stock segment's left edge sits at the capture's position within 4 px at canonical 900x650; the Markdown switch shows the icon and label without button chrome. Deviations: the §7, §9, and §11 segments, already approved.
+
+**Job:** The user can read line, count, mode, zoom, line ending, and encoding where Notepad puts them. Consumer: none, this surface is the consumer.
+
+**Treatment:** Fixed segment widths taken from the capture and the right group anchored right, in `StatusBar.xaml`. Cheaper substitute that fails the checkpoint: padding the existing packed layout until one capture lines up.
+
+**Chrome:** consume the shipped status bar segment style and separators. Do not invent a second status bar.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D02 T04 §3 -- that section enables the Markdown mode switch; this section gives it the stock look.
+
+- [ ] The stock segment positions are measured from the capture and recorded. Done when: the left edge of each stock segment at canonical 900x650 is quoted in this section.
+- [ ] `StatusBar.xaml` places each stock segment at its measured position within 4 px, with the §7, §9, and §11 segments between them. Done when: a status bar golden (`UiGolden`) matches and its capture sits beside the stock one in the commit.
+- [ ] The Markdown mode switch shows the `AA` icon and its label with no button chrome, in both the disabled and the enabled state. Done when: the `parity-status-md-formatted` golden is refreshed per procedure and shows the icon.
+- [ ] Commit: `"notepad-core: status bar segment layout matches the capture"`
+
+**Test checkpoint:** `dotnet test tests/UI --filter "FullyQualifiedName~StatusBarTests|Visual=Golden" -e SCRATCHPAD_BACKGROUND=1` green with the refreshed goldens; the measured positions quoted. Cheaper substitute that fails: matching one capture by padding while the layout still packs left at another width.
+
+## 22. Settings Page Chrome and Layout Match the Capture
+
+Why this section exists: the 2026-10-14 parity review held our settings page against `resources/baseline/stock/notepad-settings-n11.2607.14.0-win25h2.png` and `-light-` and found four layout differences no section owns: stock draws a title row (back arrow, app icon, app name) where ours shows only a back arrow; stock's `Settings` heading is larger; several card icons differ (App theme, Word wrap, Formatting, Opening files, When Notepad starts, Recent Files); and at the canonical 900 px width stock lays the page out in one column, while ours always puts About in a second column (`SettingsPage.xaml`, `CardsScroll` beside the About panel). Stock shows About as a side panel only at wide widths (`resources/baseline/windows/notepad-open-in-setting-n11.2607.14.0-win25h2.png`). About's content is §17's. -> SOURCE: parity-review-2026-10-14-settings (D9).
+
+**Fidelity:** stock settings page -- `resources/baseline/stock/notepad-settings-n11.2607.14.0-win25h2.png`, its `-light-` twin, and `resources/baseline/windows/notepad-open-in-setting-n11.2607.14.0-win25h2.png`. Title row, heading size, card icons, and the one-column to two-column breakpoint match the captures.
+
+**Job:** The user can open settings and see Notepad's page. Consumer: none, this surface is the consumer.
+
+**Treatment:** The title row, heading style, icons, and an adaptive layout with the stock breakpoint in `SettingsPage.xaml`. Cheaper substitute that fails the checkpoint: a fixed one-column page that breaks the wide capture.
+
+**Chrome:** consume the shipped settings card styles and the window title-bar app icon from §14. Do not invent a second card style.
+
+**Needs:** Windows host (build/test)
+
+- -> XREF: D01 T02 §17 -- About's identity rows; this section places the panel, §17 fills it.
+
+- [ ] The title row shows the back arrow, the app icon, and the app name as stock does. Done when: the settings goldens show it beside the stock capture in the commit.
+- [ ] The `Settings` heading and every card icon match the capture. Done when: the refreshed `settings-page` and `parity-settings-light` goldens show the stock size and icons.
+- [ ] At the canonical 900 px width the page is one column with About below the cards, and above the stock breakpoint About is a side panel. Done when: the breakpoint is measured from the two captures and recorded, and `parity-open-in-setting` plus a wide capture match.
+- [ ] Commit: `"notepad-core: settings page chrome and layout match the capture"`
+
+**Test checkpoint:** `dotnet test tests/UI --filter "FullyQualifiedName~SettingsPageTests|Visual=Golden" -e SCRATCHPAD_BACKGROUND=1` green with the settings goldens refreshed per procedure and each capture beside its stock twin in the commit. Cheaper substitute that fails: matching the narrow capture and breaking the wide one.
 
 ## Verification
 

@@ -92,6 +92,8 @@ Why this section exists: users type Markdown by hand. It must render, and the fi
 **Groomed 2026-09-13:** Notepad audit: the view switch, the .txt save warning, and per-tab activation are now explicit.
 
 - -> XREF: D01 T02 §4 -- the disabled status-bar Formatted switch this section enables alongside the View pair
+- -> XREF: D01 T02 §20 -- the stock icons on View > Markdown's Formatted and Syntax items this section enables.
+- -> XREF: D01 T02 §21 -- the stock look (icon, no button chrome) of the status-bar Formatted switch this section enables.
 
 - [ ] Hand-typed Markdown renders with Notepad's timing and rules. Done when: the render fixtures pass.
 - [ ] Save writes clean Markdown source, byte-stable across open-format-save cycles. Done when: the round-trip fixtures pass.
