@@ -174,7 +174,7 @@ Alternative markers, one per stamp (the last marker line governs, so these never
 
 ### Completion-first: ship with night debt
 
-A section ships its focus-free proofs, records Interactive skips as `Night-owed` debt, and flips the same session; review and stamp never wait for quiet time. The `\ScratchPad\Nightly UI` run's Interactive leg (`tools/nightly.ps1`, D00 T02 §9) is the collector: green collection appends `Night-collected:` and closes the debt, red collection stages finding stubs in the morning report and the debt stays open. The only true flip blockers are red focus-free or Primary proofs, unmet Depends, a missing baseline artifact, an unreachable host, and both review families down; open night debt is information, never a blocker, and quiet time never parks work.
+A section ships its own focus-free tests, records its Interactive and Primary tests as `Night-owed` debt, and flips the same session; review and stamp never wait for the foreground tests. Since 2026-10-14 there is no scheduled run (`docs/testing.md` testing policy): the operator starts `tools/nightly.ps1 -Force -SkipDefault -SkipSoak` when a phase, file, or release closes, and its Interactive leg (D00 T02 §9) is the collector: green collection appends `Night-collected:` and closes the debt, red collection stages finding stubs in the morning report and the debt stays open. The only true flip blockers are red section tests, unmet Depends, a missing baseline artifact, an unreachable host, and both review families down; open night debt is information, never a blocker, and quiet time never parks work.
 
 ### A deferral cannot be left to rot
 

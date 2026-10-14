@@ -215,4 +215,4 @@ On an already-`[x]` section: run steps 1-6 against the section's own candidate. 
 - Do not stamp a frozen behavior that moved without approval.
 - Do not flip a row this review did not earn.
 - Do not review the working tree when the candidate is a commit. Name the hashes.
-- Night debt is stampable: stamp a debt-carrying candidate when its focus-free proofs are green (never-park: quiet time never holds a stamp). The `Night-owed` line plus the collector runbook is the owed proof's address, not a gap; only the true flip blockers (red focus-free or Primary proofs, unmet Depends, missing baseline artifact, unreachable host, both review families down) hold the stamp.
+- Night debt is stampable: stamp a debt-carrying candidate when the section's own focus-free tests are green. The `Night-owed` line is the owed proof's address, collected by the operator's phase-close run, not a gap; only the true flip blockers (red section tests, unmet Depends, missing baseline artifact, unreachable host, both review families down) hold the stamp. Never ask for a whole-suite, Primary, or ForegroundLog run at review (operator decision 2026-10-14, `docs/testing.md`).

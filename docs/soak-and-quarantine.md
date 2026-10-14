@@ -2,6 +2,8 @@
 
 UI and protocol tests flake. Without a procedure, flakes get deleted and coverage silently shrinks. This procedure is the only sanctioned path for a flaky test: soak to find flakes, quarantine to contain them, a window to fix or remove them, and a record so nothing vanishes silently. A retry loop that hides a flake is never a substitute: retries make red green without evidence, while quarantine keeps the failure visible and owned.
 
+**Relaxed 2026-10-14** (operator decision, `docs/testing.md` testing policy): soak never runs on a schedule (local or `soak.yml`, which is `workflow_dispatch` only), and quarantine has no deadline. The 7-day fix-or-remove window and the overdue rules below are retired: a quarantined test stays quarantined until its owning section fixes or removes it.
+
 ## Nightly soak
 
 Soak runs locally, usually as an unattended bedtime run: five extra repetitions of the flake-prone suites (UI and Protocol) after the governed legs (the solution run is Run A), all with `trx` loggers; the CI `soak` workflow repeats the same shape nightly. The command below shows the local shape.

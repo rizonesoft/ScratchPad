@@ -1,12 +1,11 @@
 name: soak
 
-# Nightly flake hunter. Full Windows suite plus repeats of the flake-prone
-# suites (UI, Protocol). Procedure: docs/soak-and-quarantine.md.
+# Flake hunter, started by hand. Full Windows suite plus repeats of the
+# flake-prone suites (UI, Protocol). Procedure: docs/soak-and-quarantine.md.
 # (Operator decision 2026-09-19: Windows-only CI; the Linux soak leg is removed.)
+# (Operator decision 2026-10-14: no scheduled test runs; the nightly cron is removed.)
 
 on:
-  schedule:
-    - cron: '17 3 * * *'
   workflow_dispatch:
 
 jobs:

@@ -64,11 +64,11 @@ Read the phase as a user would use it, end to end, and ask what is missing: surf
 
 In table order, for each open row: `process-todo-section`, then `review-todo-section`. Record each outcome in the findings file's Sections log. After each stamp, sync the plan. Commit per section; push per the two-push discipline (ship push, then stamp push).
 
-Skip rows whose `resolve` is not exit 0 or whose verdict is runnable-elsewhere here, and re-check them after each stamp: the graph moves as rows flip. Never park a ready row on quiet time: ship-with-debt rows run now and the collector closes their debt async. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write a column-0 `PARKED <UTC stamp> <one-line reason>` line in the run file, then the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
+Skip rows whose `resolve` is not exit 0 or whose verdict is runnable-elsewhere here, and re-check them after each stamp: the graph moves as rows flip. Never park a ready row on owed foreground tests: ship-with-debt rows run now and the operator's phase-close run collects their debt. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write a column-0 `PARKED <UTC stamp> <one-line reason>` line in the run file, then the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
 
 ## Step 4 -- closeout
 
-When the table is all `[x]`: re-run the full suite once, confirm the plan shows the phase complete, write the closeout under a `## Closeout` heading in the run file (what shipped, what was repaired, what was learned), commit, delete the guard if pinned standalone (the plan deletes it when chained), and report. A phase is complete when its table says so and the closeout is written: not before.
+When the table is all `[x]`: re-run the full suite once, focus-free (`docs/testing.md` testing policy: `dotnet test src/ScratchPad.slnx --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1`; the foreground legs are the operator's to start and the closeout lists them as owed), confirm the plan shows the phase complete, write the closeout under a `## Closeout` heading in the run file (what shipped, what was repaired, what was learned), commit, delete the guard if pinned standalone (the plan deletes it when chained), and report. A phase is complete when its table says so and the closeout is written: not before.
 
 ## Guardrails
 

@@ -29,13 +29,13 @@ Every row `[x]`, every `[x]` covered by a `Verified:` stamp, zero FATALs. If a r
 
 The `## Verification` section is not decoration. Run every item in it and record the real output. This is the only place the file is checked as a whole rather than section by section, and it is where integration gaps surface.
 
-For a code TODO that means the **full** suite, not the filtered runs individual sections used:
+For a code TODO that means the **full** suite, focus-free, not the filtered runs individual sections used:
 
 ```bash
-dotnet test
+dotnet test src/ScratchPad.slnx --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1
 ```
 
-plus the file's other Verification items (warnings, analysis, captures, clean-machine checks), each executed, none trimmed.
+The Interactive and Primary legs take the screen, so the operator starts them (`docs/testing.md` testing policy); list them as owed in the closeout and do not wait. Then run the file's other Verification items (warnings, analysis, captures, clean-machine checks), each executed, none trimmed.
 
 ### 3. Loose-end sweep
 

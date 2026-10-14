@@ -3,22 +3,21 @@
 .SYNOPSIS
   Self-healing workspace provisioner (D00 T02 §10 item 10).
 .DESCRIPTION
-  One idempotent command verifies plus repairs the scheduled tasks, git
-  hooks, and CI workflows on Windows, and provisions the pinned .NET SDK.
-  -Verify runs the verify half only (session-start surface: the
-  process-plan audit step invokes it); exit 0 when every leg quotes
-  green, exit 1 naming each fault. Without -Verify, repairs run first
-  (hooks re-wire on unambiguous breakage only, tasks re-enable plus
-  re-register when missing from tools/tasks/, SDK re-provision when its
-  verify faults), then a final verify quotes the end state. CI
-  workflows are verify-only: content intent lives in git, so drift
-  reports as a fault, never auto-edits. Task field drift (a retuned
-  trigger or action) likewise reports; only a missing task
-  re-registers. A missing or modified hook file reports the exact
+  One idempotent command verifies plus repairs the git hooks, checks
+  the CI workflows and that no scheduled test task exists, on Windows,
+  and provisions the pinned .NET SDK. -Verify runs the verify half only
+  (session-start surface: the process-plan audit step invokes it); exit
+  0 when every leg quotes green, exit 1 naming each fault. Without
+  -Verify, repairs run first (hooks re-wire on unambiguous breakage
+  only, SDK re-provision when its verify faults), then a final verify
+  quotes the end state. CI workflows and scheduled tasks are
+  verify-only: a workflow's content intent lives in git and the
+  scheduler belongs to the operator, so drift reports as a fault and is
+  never auto-edited. Scheduled test runs are retired (operator decision
+  2026-10-14, docs/testing.md); tools/tasks/ keeps the old definitions
+  as history only. A missing or modified hook file reports the exact
   restore instead of running it, and a hooks path pointing at an
-  existing other dir is left alone: both may be deliberate user
-  intent. Re-export the tools/tasks/ XMLs (UTF-16, matching the
-  declaration) after any operator retuning of the live tasks.
+  existing other dir is left alone: both may be deliberate user intent.
   Run from any directory: powershell -ExecutionPolicy Bypass -File tools\provision.ps1 [-Verify]
 #>
 [CmdletBinding()]
@@ -27,88 +26,18 @@ $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
 $Rid = 'win-x64'
-$Tasks = @(
-  @{ Name = 'Nightly UI'; Path = '\ScratchPad\'; Time = '02:30'; ArgMatch = 'NightlySupervisor.ps1'; Supervisor = 'tools/NightlySupervisor.ps1'; Xml = 'tools/tasks/nightly-ui.xml';
-     Extra = @{ MultipleInstances = 'IgnoreNew'; ExecutionTimeLimit = 'PT4H'; WakeToRun = 'True' } },
-  @{ Name = 'Nightly Foreground Single'; Path = '\ScratchPad\'; Time = '02:05'; ArgMatch = 'OpenInNewWindowModeOpensSecondWindow'; Xml = 'tools/tasks/nightly-foreground-single.xml';
-     Extra = @{} },
-  @{ Name = 'Nightly Morning'; Path = '\ScratchPad\'; Time = '07:05'; ArgMatch = 'NightlyMorning.ps1'; Xml = 'tools/tasks/nightly-morning.xml';
-     Extra = @{ MultipleInstances = 'IgnoreNew'; ExecutionTimeLimit = 'PT15M' } }
-)
 
-function Test-OneTask($Spec) {
-  $label = "task $($Spec.Path)$($Spec.Name)"
-  $t = Get-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name -ErrorAction SilentlyContinue
-  if ($null -eq $t) { return @{ Name = $label; Ok = $false; Detail = "missing (repair re-registers from $($Spec.Xml))" } }
-  $tr = @($t.Triggers)[0]
-  $tod = ''
-  try { $tod = ([datetime]$tr.StartBoundary).ToString('HH:mm') } catch { }
-  $faults = @()
-  if ($t.State -eq 'Disabled') { $faults += 'disabled' }
-  if ($tr.Enabled -ne $true) { $faults += 'trigger disabled' }
-  if ($tod -ne $Spec.Time) { $faults += "trigger $tod, want $($Spec.Time)" }
-  if ($tr.DaysInterval -ne 1) { $faults += 'not daily' }
-  $act = @($t.Actions)[0]
-  if ($act.Execute -ne 'powershell.exe') { $faults += "execute $($act.Execute)" }
-  if ($act.Arguments -notlike ('*' + $Spec.ArgMatch + '*')) { $faults += 'action args drifted' }
-  # Workdir compares against the exported definition, not this
-  # checkout: the tasks serve the canonical checkout, so a second
-  # clone verifies the definition, never its own path.
-  $xmlWd = ''
-  try {
-    [xml]$x = Get-Content (Join-Path $Root $Spec.Xml) -Raw
-    $xmlWd = (Select-Xml -Xml $x -Namespace @{ t = 'http://schemas.microsoft.com/windows/2004/02/mit/task' } -XPath '//t:Exec/t:WorkingDirectory').Node.'#text'
-  } catch { }
-  if ($xmlWd -eq '') { $faults += 'definition has no workdir' }
-  elseif ($act.WorkingDirectory -ne $xmlWd) { $faults += "workdir $($act.WorkingDirectory)" }
-  if ($t.Principal.UserId -ne $env:USERNAME) { $faults += "run-as $($t.Principal.UserId)" }
-  if ("$($t.Principal.LogonType)" -ne 'Interactive') { $faults += "logon $($t.Principal.LogonType)" }
-  foreach ($k in $Spec.Extra.Keys) {
-    if ("$($t.Settings.psobject.Properties[$k].Value)" -ne "$($Spec.Extra[$k])") {
-      $faults += "$k $($t.Settings.psobject.Properties[$k].Value)"
-    }
-  }
-  if ($Spec.Supervisor) {
-    $sup = Test-SupervisorUnderLimit (Join-Path $Root $Spec.Supervisor) ([string]$t.Settings.ExecutionTimeLimit)
-    if (-not $sup.Ok) { $faults += "supervisor $($sup.Detail)" }
-  }
-  if ($faults.Count -eq 0) { return @{ Name = $label; Ok = $true; Detail = "ready $($Spec.Time) daily $($Spec.ArgMatch)" } }
-  return @{ Name = $label; Ok = $false; Detail = ($faults -join '; ') }
-}
-
-function Repair-OneTask($Spec) {
-  $t = Get-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name -ErrorAction SilentlyContinue
-  if ($null -eq $t) {
-    try {
-      $xml = Get-Content (Join-Path $Root $Spec.Xml) -Raw
-      Register-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name -Xml $xml -Force | Out-Null
-      # Registering the nightly records its enrollment night once (D00 T02
-      # §24 redesign review), so the morning no-start check alerts even
-      # when the task never produces a first result.
-      if ($Spec.Name -eq 'Nightly UI') {
-        $hist = Join-Path $Root 'docs/nightly-schedule-history.md'
-        if ((Test-Path $hist) -and (-not ((Get-Content $hist -Raw) -match '(?m)^Enrolled:\s*\d{4}-\d{2}-\d{2}'))) {
-          $lines = @(Get-Content $hist -Encoding UTF8)
-          $at = [Array]::IndexOf($lines, @($lines | Where-Object { $_ -like '| From |*' })[0])
-          if ($at -lt 0) { $at = $lines.Count }
-          # The first scheduled trigger after registration decides the
-          # night (§24 R7), never a fixed tomorrow.
-          $next = $null
-          try { $next = (Get-ScheduledTaskInfo -TaskPath $Spec.Path -TaskName $Spec.Name -ErrorAction Stop).NextRunTime } catch { }
-          $new = @($lines[0..([math]::Max(0, $at - 1))]) + @("Enrolled: $(Get-EnrollmentNight $next (Get-Date) $Spec.Time)", '') + @($lines[$at..($lines.Count - 1)])
-          $tmp = "$hist.tmp"; $new | Set-Content -Path $tmp -Encoding UTF8; Move-Item -Path $tmp -Destination $hist -Force
-        }
-      }
-      return "re-registered from $($Spec.Xml)"
-    } catch { return "re-register failed: $_" }
-  }
-  if ($t.State -eq 'Disabled') {
-    try { Enable-ScheduledTask -TaskPath $Spec.Path -TaskName $Spec.Name | Out-Null; return 're-enabled' }
-    catch { return "re-enable failed: $_" }
-  }
-  return 'nothing to repair (drift reports as fault)'
+function Test-NoTasksLeg {
+  # Operator decision 2026-10-14: no scheduled test runs. The full suite
+  # runs by hand when a phase, TODO file, or release closes, so any task
+  # under \ScratchPad\ is a fault. Repair never removes it: the
+  # operator owns the scheduler and removes it with
+  # Unregister-ScheduledTask.
+  $live = @(Get-ScheduledTask -TaskPath '\ScratchPad\' -ErrorAction SilentlyContinue)
+  if ($live.Count -eq 0) { return @{ Name = 'scheduled tasks'; Ok = $true; Detail = 'none under \ScratchPad\ (no scheduled test runs)' } }
+  $names = ($live | ForEach-Object { $_.TaskName }) -join ', '
+  return @{ Name = 'scheduled tasks'; Ok = $false; Detail = "found $names; scheduled test runs are retired (docs/testing.md), remove with Unregister-ScheduledTask -TaskPath '\ScratchPad\' -TaskName <name>" }
 }
 
 function Test-HooksLeg {
@@ -159,6 +88,14 @@ function Test-WorkflowsLeg {
     $linux = Select-String -Path $p -Pattern '^\s*runs-on:\s*.*ubuntu' -CaseSensitive:$false
     if ($linux) { $res += @{ Name = "workflow $wf"; Ok = $false; Detail = 'linux runner (Windows-only repo)' }; continue }
     $res += @{ Name = "workflow $wf"; Ok = $true; Detail = 'present, no linux runner' }
+  }
+  # No scheduled test runs (operator decision 2026-10-14): the soak runs
+  # on workflow_dispatch only.
+  $soak = Join-Path $Root '.github/workflows/soak.yml'
+  if ((Test-Path $soak) -and (Select-String -Path $soak -Pattern '^\s*schedule:' -Quiet)) {
+    $res += @{ Name = 'workflow soak trigger'; Ok = $false; Detail = 'soak.yml has a schedule trigger; scheduled test runs are retired' }
+  } else {
+    $res += @{ Name = 'workflow soak trigger'; Ok = $true; Detail = 'manual only' }
   }
   $plan = Join-Path $Root '.github/workflows/plan.yml'
   if ((Test-Path $plan) -and -not (Select-String -Path $plan -Pattern 'plan-gates' -Quiet)) {
@@ -220,15 +157,12 @@ function Install-Sdk {
 
 function Test-All {
   $res = @()
-  # Scheduled tasks are dev-box-only (dev SID plus dev workdir baked
-  # into the definitions): ephemeral CI runners can never satisfy
-  # them, so a cache-miss provision failed deterministically there.
-  # GitHub sets CI=true on every runner; skip the legs (verify and
-  # repair alike) instead of failing what cannot pass.
+  # The scheduler leg is dev-box-only: GitHub sets CI=true on every
+  # runner, and an ephemeral runner has no ScratchPad tasks to check.
   if ($env:CI -ne 'true') {
-    foreach ($spec in $Tasks) { $res += Test-OneTask $spec }
+    $res += Test-NoTasksLeg
   } else {
-    Write-Host 'provision: tasks skipped on CI (dev-box only)'
+    Write-Host 'provision: scheduled-task leg skipped on CI (dev-box only)'
   }
   $res += Test-HooksLeg
   $res += Test-WorkflowsLeg
@@ -256,12 +190,7 @@ if ($Verify) {
 if (@($results | Where-Object { -not $_.Ok }).Count -gt 0) {
   $hookNotes = try { Repair-HooksLeg } catch { @("repair crashed: $_") }
   foreach ($n in $hookNotes) { Write-Output "provision: repair hooks: $n" }
-  if ($env:CI -ne 'true') {
-    foreach ($spec in $Tasks) {
-      $tnote = try { Repair-OneTask $spec } catch { "repair crashed: $_" }
-      Write-Output "provision: repair task $($spec.Name): $tnote"
-    }
-  }
+  Write-Output 'provision: repair scheduled tasks: verify-only, the operator removes any task'
   Write-Output 'provision: repair workflows: verify-only, nothing repaired'
   if (@($results | Where-Object { (-not $_.Ok) -and ($_.Name -eq 'sdk') }).Count -gt 0) { Install-Sdk }
   $results = @(Test-All)

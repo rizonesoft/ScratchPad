@@ -2,6 +2,17 @@
 
 Unit, smoke, UI-automation, and protocol tests each have a harness under `tests/`, and one `dotnet test src/ScratchPad.slnx` run executes every suite (`src/Notepad.Neutral.slnf` filters the neutral scope for a fast check). The run includes the fenced interactive UI tests (below) plus the Category=Primary placement set, and each skips unless its safe context holds: the fenced set runs only inside the 02:00-06:50 window (or with SCRATCHPAD_INTERACTIVE_FORCE=1), owning the foreground while it runs, and the Primary set runs only under SCRATCHPAD_BACKGROUND=1 (or in the window/forced), so outside those contexts the run reads green-plus-skipped; the per-section gate is the default-filtered run, which never takes the foreground.
 
+## Testing policy (operator decision 2026-10-14)
+
+This section wins over every other rule on this page, and over `.claude/skills/process-todo-section/gates.md`, wherever they disagree. The app is already close to Windows 11 Notepad parity, and the scheduled runs and whole-suite gates took the operator's screen at night and during the day for no new information. So testing is scoped to what changed and never interrupts the operator.
+
+- **No scheduled test runs.** The `\ScratchPad\Nightly UI`, `Nightly Foreground Single` and `Nightly Morning` tasks were removed on 2026-10-14, and `soak.yml` runs on `workflow_dispatch` only. `tools/provision.ps1 -Verify` faults if a task under `\ScratchPad\` or a soak schedule comes back. `tools/tasks/*.xml` remain as history only: never re-register them.
+- **A section tests what it implemented.** Its gate is a clean build, the tests it added or changed plus the existing tests of the code it touched (one `--filter` over those classes), and `validate`. The UI part runs focus-free with `-e SCRATCHPAD_BACKGROUND=1` and `Category!=Interactive&Category!=Primary`. A section gate never runs the whole UI suite, never runs the Primary set, and needs no ForegroundLog proof (run it only when the section changes focus or window placement).
+- **Interactive and Primary tests a section owns** are written and compiled with the section, recorded on its `Night-owed:` line (format in `todo/README.md`; the name is historical, the phase-close run collects it), and never hold the flip. Due dates, escalation and acceptance terms on that debt are information only.
+- **The full suite runs when a phase, a TODO file or a release closes, never on a timer.** The closing session runs the focus-free full suite itself: `dotnet test src/ScratchPad.slnx --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1`. The foreground legs (Primary and Interactive) take the screen, so only the operator starts them, when convenient: `powershell -ExecutionPolicy Bypass -File tools\nightly.ps1 -Force -SkipDefault -SkipSoak` (the default leg already ran), which also collects open `Night-owed` debt. Until then they stay owed; the close does not wait for them.
+- **Quarantine has no deadline.** A quarantined test stays quarantined until its owning section fixes or removes it; overdue quarantine due dates no longer fail anything.
+- The sections below describe the nightly machinery as it was built (D00 T02). Its rules still apply when the operator runs `tools/nightly.ps1` by hand; every schedule, 02:30 trigger, collector-night window and morning-report duty in them is retired by this policy.
+
 ## Framework
 
 xUnit v2 with the VSTest runner: `Microsoft.NET.Test.Sdk` 17.14.1, `xunit` 2.9.3, `xunit.runner.visualstudio` 2.8.2, pinned per project with lockfiles. Every test project targets `net10.0` and references only neutral libraries, keeping the suites OS-independent; Windows-only coverage comes from the UI suite driving the real binary.
@@ -44,9 +55,13 @@ Interruption-risk exception (D00 T02 §21 item 1): a test whose physical press p
 
 ## Ship-with-debt gate (D00 T02 §10)
 
+**Superseded 2026-10-14** by the testing policy above: a section gate is its own tests only, with no Primary run and no ForegroundLog proof.
+
 A daytime gate is complete with debt: default run green plus placement run green plus the Interactive skip count with its debt id is a complete gate, and the collector closes the debt async. Concretely: the default suite passes with zero failures and a clean foreground log, the Primary set passes with its census on primary, every Interactive test skips with the quiet-hours reason, and the skip count matches the `Night-owed` count the section recorded; the section flips the same session and never parks on quiet time. The debt id travels in the section's `Night-owed:` line and the morning report's Night debt section proves the collection; a red collection reopens through triage, never by holding the flip.
 
 ## Nightly regression run (D00 T02 §9)
+
+**Retired as a schedule 2026-10-14** (testing policy above): there is no scheduled task; `tools/nightly.ps1 -Force` is the operator-started phase-close run for the foreground legs.
 
 The nightly run is the governed full-suite proof: three legs inside the 02:00-06:50 window, owned by the `\ScratchPad\Nightly UI` scheduled task (daily 02:30 local; action `powershell.exe -NoProfile -ExecutionPolicy Bypass -File "R:\GitHub\ScratchPad\tools\NightlySupervisor.ps1"`, Start In the repo root, Run As DerickPayne, multiple-instances IgnoreNew, 4-hour limit, wake-to-run, interactive-token logon; all read live 2026-09-20, task operator-owned). The action runs the outer supervisor (D00 T02 §15, D00-T02-S14-PR1), which watches the run with a 14280 s timeout (PT4H minus 120 s) and publishes a minimal RED tombstone (`Status: supervisor tombstone`) when the run hangs or exits without publishing; a fresh report always stands and the supervisor relays the run's exit code, and a second supervisor stands down on its own mutex (the scheduled IgnoreNew equivalent). A manual run (`powershell -ExecutionPolicy Bypass -File tools\NightlySupervisor.ps1`, or `tools\nightly.ps1` directly with `-Force` outside the window for an accepted interruption) is the backup when the trigger is missed. The sibling `\ScratchPad\Nightly Foreground Single` task (daily 02:05, one foreground test) predates this procedure and stays outside it.
 
