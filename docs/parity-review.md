@@ -14,7 +14,7 @@ Verdicts: **matches** (no difference beyond capture noise), **intended** (a reco
 | -- | ---------------------------- | ------- | ----------------- |
 | D1 | No formatting toolbar (heading, lists, bold, italic, strikethrough, link, table, clear formatting) | owned | D02 T04 §2 (toolbar), D02 T04 §4 (table) |
 | D2a | No Copilot button | intended | D05 T03 §1: the status bar, not a Copilot button, is the agent entry |
-| D2b | No account avatar | open question | No section or decision names it; review records point at D04 T02, which has no avatar item |
+| D2b | No account avatar | intended | Operator decision 2026-10-14: ScratchPad has no Microsoft account sign-in, so no avatar (consistent with D05 T02 §6, "no Microsoft account"); earlier review records that pointed it at D04 T02 are superseded |
 | D3 | Extra Tools menu | intended | D01 T02 §1, `docs/menu-audit.md:72` |
 | D4a | Status bar adds words and reading time, goal flag, reading level | intended | D01 T02 §7, §9, §11 |
 | D4b | Status segments packed left; stock places them at fixed positions | filed | D01 T02 §21 |

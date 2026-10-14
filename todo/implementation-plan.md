@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **160 of 334 sections complete (48%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **160 of 335 sections complete (48%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -421,6 +421,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [ ] | `D06 T01 §5`  | Perf budgets enforced in CI                           |   4   |
 | [ ] | `D06 T01 §6`  | Flake policy and quarantine operation                 |   5   |
 | [ ] | `D06 T01 §7`  | Deterministic input mode for popup and dialog goldens |   4   |
+| [ ] | `D06 T01 §8`  | UI tests use a throwaway data folder                  |   5   |
 | [ ] | `D06 T02 §1`  | Scripted agent library                                |   6   |
 | [ ] | `D06 T02 §2`  | Schema pin and drift detection                        |   4   |
 | [ ] | `D06 T02 §3`  | Version matrix (v1 and v2)                            |   4   |

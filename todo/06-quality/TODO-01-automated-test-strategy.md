@@ -44,6 +44,7 @@ track: Q1
 |   5   |   §5    | Perf budgets enforced in CI | §1 |  [ ]   |
 |   6   |   §6    | Flake policy and quarantine operation | §1, D00 T02 §5 |  [ ]   |
 |   7   |   §7    | Deterministic input mode for popup and dialog goldens | -- |  [ ]   |
+|   8   |   §8    | UI tests use a throwaway data folder | -- |  [ ]   |
 
 ---
 
@@ -145,6 +146,22 @@ Why this section exists: the 2026-10-14 parity work (`docs/parity-review.md`) ad
 - [ ] Commit: `"quality: deterministic input mode for popup and dialog goldens"`
 
 **Test checkpoint:** three consecutive `dotnet test tests/UI --filter "Visual=Golden|FullyQualifiedName~GoldenInventoryTests" -e SCRATCHPAD_BACKGROUND=1` runs green with the twelve new goldens. Cheaper substitute that fails: raising the golden tolerance until the focus ring and row height stop failing.
+
+## 8. UI Tests Use a Throwaway Data Folder
+
+Why this section exists: UI tests read and write the operator's real ScratchPad data. `AppDataDir.Root` is always `%LOCALAPPDATA%\ScratchPad` (`src/Notepad.Core/AppDataDir.cs`) with no override; `UiLaunch.SeedSettings` saves `settings.json` and deletes `session.json`, `UiCapture.CaptureInner` does the same, and some tests delete `settings.json` through a path built from `Environment.SpecialFolder.LocalApplicationData` (for example `SessionRestoreTests.cs`). Since 2026-10-14 every section gate runs the golden set (`Visual=Golden`), so every gate overwrites the operator's settings and deletes their saved session, unsaved tab content included. Operator decision 2026-10-14: the operator uses ScratchPad on the dev box for real notes, so tests must never touch that profile. -> SOURCE: operator-decision-2026-10-14-test-profile.
+
+**Fidelity:** no page of its own; the data folder every store resolves through `AppDataDir.Root`.
+
+**Needs:** Windows host (build/test)
+
+- [ ] `AppDataDir.Root` resolves `SCRATCHPAD_DATA_DIR` when it is set and `%LOCALAPPDATA%\ScratchPad` otherwise, and the legacy migration runs only for the default root. Done when: unit tests prove the override, the default, and no migration under the override.
+- [ ] The UI test assembly sets `SCRATCHPAD_DATA_DIR` to a fresh per-run folder under the temp directory before any test runs (a module initializer), so the test host and every app it launches through `UiLaunch` use it. Done when: a focus-free UI run leaves every file under `%LOCALAPPDATA%\ScratchPad` byte-identical, with the before and after hashes quoted.
+- [ ] No test builds the data path itself: tests resolve it through `AppDataDir.Root`. Done when: a guard test fails on any `SpecialFolder.LocalApplicationData` use under `tests/UI` outside the seam.
+- [ ] Tools that launch the app for tests (`tools/CaptureBaseline` stub mode, `tools/nightly.ps1`) set the same variable, or say why they do not. Done when: each is listed with its choice in `docs/testing.md`.
+- [ ] Commit: `"quality: UI tests use a throwaway data folder"`
+
+**Test checkpoint:** unit tests for the seam green; the full focus-free UI run (`dotnet test tests/UI --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1`) green with the real profile's hashes unchanged before and after. Cheaper substitute that fails: backing the real profile up and restoring it after the run, which still loses data when a run is killed midway.
 
 ## Verification
 
