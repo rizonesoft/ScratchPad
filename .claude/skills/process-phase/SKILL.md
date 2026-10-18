@@ -38,7 +38,7 @@ Gaps you notice while shipping (a surface or control no section owns) are filed 
 
   List the two foreground commands from `docs/testing.md` as owed to the operator (they take the screen; do not wait for them). Write `## Closeout` in the run file: what shipped, what was corrected, what was filed.
 
-For each TODO file whose rows are now all `[x]`: run its `## Verification` items, grep the touched paths for new `TODO`/`FIXME` markers (finish each or give it an owning section), confirm its open deferrals still name live owners, set `status: done` in its frontmatter, and move it to a Completed list in the domain `INDEX.md`.
+For each TODO file whose rows are now all `[x]` or Moved: run its `## Verification` items, grep the touched paths for new `TODO`/`FIXME` markers (finish each or give it an owning section), confirm its open deferrals still name live owners, set `status: done` in its frontmatter, and move it to a Completed list in the domain `INDEX.md`.
 
 Commit, sync the plan, and continue with the next phase that has a ready row unless a single phase was named. Stop when no phase has one, and report what shipped and what is left.
 

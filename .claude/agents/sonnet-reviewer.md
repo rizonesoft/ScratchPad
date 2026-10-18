@@ -1,6 +1,6 @@
 ---
 name: sonnet-reviewer
-description: Routine pre-panel diff review on Sonnet at high effort. Use for a first pass over a candidate diff for test quality, scope, drift, style, and docs. Its findings are advisory input to the lead's self-review; it never produces panel lens verdicts or stamps.
+description: Routine pre-review diff pass on Sonnet at high effort. Use for a first pass over a candidate diff for test quality, scope, drift, style, and docs. Its findings are advisory input to the lead's own review; it never produces review verdicts or stamps.
 model: sonnet
 effort: high
 tools: Read, Grep, Glob, Bash, PowerShell

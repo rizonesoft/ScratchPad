@@ -285,7 +285,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D01 T02 §12` | Recent Files display toggle                                         |   4   |
 | [ ] | `D01 T02 §16` | Quarantine the MenuBarTests flakes                                  |   7   |
 | [ ] | `D01 T02 §17` | About panel identity rows                                           |   8   |
-| [ ] | `D01 T02 §18` | Fix-or-remove MenuBarTests flakes                                   |   2   |
+| [ ] | `D01 T02 §18` | Fix-or-remove MenuBarTests flakes                                   |   3   |
 | [ ] | `D01 T02 §19` | Syllable endings keep the preceding vowel                           |   3   |
 | [ ] | `D01 T02 §20` | Menu separators and labels match the captures                       |   6   |
 | [ ] | `D01 T02 §21` | Status bar segment layout matches the capture                       |   4   |

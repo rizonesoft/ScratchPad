@@ -112,10 +112,9 @@ Never a cross-TODO reference without a section. **Cross-references are bidirecti
 
 ## Stamps
 
-Written at the end of the section they cover, after the test checkpoint:
+`> **Started:** <UTC instant>` goes under the section heading when work begins and is never overwritten on resume. The rest are written at the end of the section they cover, after the test checkpoint:
 
 ```
-> **Started:** 2026-10-18T09:12:00Z
 > **Verified:** 2026-10-18 | §3 | dotnet test --filter TabModel 12 passed, golden set 41 passed
 > **Review:** Opus, approve after 2 fixes
 > **Deferred:** session restore across restarts -> XREF: D01 T01 §6 (item: "Restore open tabs")
@@ -123,7 +122,6 @@ Written at the end of the section they cover, after the test checkpoint:
 
 - `Verified:` is `<YYYY-MM-DD> | <coverage> | <evidence>`: a real date, `§N` or `§N-§M` (comma-separated, at most 65 sections), and real command output. A malformed line is refused by `validate`. Re-verification replaces the line in place.
 - `Review:` names the reviewer and the outcome in one line.
-- `Started:` is the UTC instant work began; never overwritten on resume.
 - If a section cannot run its own Primary or Interactive tests on this host, its `Verified:` evidence says so; the phase-close foreground run covers them (`docs/testing.md`).
 
 ## Deferrals

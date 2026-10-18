@@ -63,6 +63,8 @@ STAMP_BODY_RE = re.compile(
 )
 COVER_ITEM_RE = re.compile(r"^§(?P<lo>\d{1,9})(?:[ \t]*-[ \t]*§?(?P<hi>\d{1,9}))?$", re.ASCII)
 DEFER_REF_RE = re.compile(r"->\s*XREF:\s*(?P<ref>(?:D\d{2}\s+)?(?:T\d{2}\s+)?§\d+)")
+# The target of an explicit `-> XREF:`, backticked or not; it must name a real section.
+XREF_TARGET_RE = re.compile(r"->\s*XREF:\s*`?(?P<ref>(?:D\d{2}\s+)?(?:T\d{2}\s+)?§\d{1,9})(?!\d)")
 DEFER_ITEM_RE = re.compile(r"\(item:\s*[\"“](?P<item>[^\"”]+)[\"”]")
 MOVED_PATH_RE = re.compile(r"(?P<path>(?:[\w.-]+/)+[\w.-]+\.md)")
 
@@ -183,6 +185,7 @@ class Todo:
     verified_sections: set[int] = field(default_factory=set)
     deferred: list[Deferral] = field(default_factory=list)
     xrefs: list[str] = field(default_factory=list)
+    xref_targets: list[tuple[int, str]] = field(default_factory=list)  # (line, ref) of each `-> XREF: <ref>`
     fm_errors: list[str] = field(default_factory=list)
     malformed_stamps: list[tuple[int, str]] = field(default_factory=list)
 
@@ -240,6 +243,7 @@ def parse_todo(path: Path) -> Todo:
     current: Section | None = None
     in_order_table = False
     for lineno, line in enumerate(text.splitlines(), start=1):
+        todo.xref_targets += [(lineno, x.group("ref")) for x in XREF_TARGET_RE.finditer(line)]
         stamp = STAMP_RE.match(line)
         if stamp:
             kind, body = stamp.group("kind"), stamp.group("body")
@@ -526,6 +530,9 @@ def problems(todos: list[Todo]) -> list[str]:
                 elif g.section(raw, t) is None:
                     out.append(f"{t.path}: §{num} Depends On {raw!r} -> {r[0]} §{r[1]}, which does not exist")
 
+        for lineno, ref in t.xref_targets:
+            if g.section(ref, t) is None:
+                out.append(f"{t.path}:{lineno}: -> XREF: {ref} names no existing section")
         for raw in t.xrefs:
             r = g.resolve_ref(raw, t)
             target = g.by_id.get(r[0]) if r and r[0] != t.id else None
@@ -1068,11 +1075,21 @@ def cmd_self_test(_args) -> int:
             check("same-file resolve", g.resolve_ref("§2", alpha), ("alpha", 2))
             check("unmet open dependency", g.unmet(alpha, 3), [("beta §1", "D01 T01 §1")])
             check("met dependency", g.unmet(alpha, 2), [])
-            check("moved section counts as met", g.unmet(g.by_id["beta"], 1), [])
+            write(b=FIXTURE_B.replace("| Beta one | D00 T01 §1 |", "| Beta one | D00 T01 §1, §2 |"))
+            g2 = Graph(load_todos())
+            check("moved section counts as met", g2.unmet(g2.by_id["beta"], 1), [])
+            write(a=FIXTURE_A.replace("title:", "depends_on: [beta]\ntitle:"))
+            g2 = Graph(load_todos())
+            check("whole-TODO dependency waits on its open section", [lbl for lbl, _ in g2.unmet(g2.by_id["alpha"], 2)], ["beta (whole TODO)"])
+            write(a=FIXTURE_A.replace("| Second | §1 |", "| Second | §1, §7 |"))
+            g2 = Graph(load_todos())
+            check("unresolvable edge is unmet", g2.unmet(g2.by_id["alpha"], 2), [("alpha §7", "alpha §7")])
+            write()
             check("parse_verified range", parse_verified("2026-10-18 | §1-§3, §5 | ok"), ([1, 2, 3, 5], ""))
             check("parse_verified bad date", parse_verified("2026-02-30 | §1 | ok")[0], [])
             check("parse_verified no evidence", parse_verified("2026-10-18 | §1 |  ")[1], "has an empty evidence field")
             check("parse_verified cap", bool(parse_verified("2026-10-18 | §1-§66 | ok")[1]), True)
+            check("parse_verified cap is across elements", bool(parse_verified("2026-10-18 | §1-§40, §41-§80 | ok")[1]), True)
             check("detect_context console", detect_context("win32", {"SESSIONNAME": "Console"}), {"display-session"})
             check("detect_context services", detect_context("win32", {"SESSIONNAME": "Services"}), set())
             check("find by DNN", g.find("| [ ] | `D01 T01 §2` | x |")[:2], (g.by_id["beta"], 2))
@@ -1111,6 +1128,15 @@ def cmd_self_test(_args) -> int:
             red("deferral owner unknown", "does not resolve to a real section", FIXTURE_A.replace("> **Review:** Opus, approve", "> **Deferred:** polish -> XREF: §8"))
             red("stale deferral", "deferral is stale", FIXTURE_A.replace("> **Review:** Opus, approve", "> **Deferred:** polish -> XREF: §1"))
             check("resolved deferral is clean", found(FIXTURE_A.replace("> **Review:** Opus, approve", "> **Resolved:** polish -> XREF: §1")), [])
+            red("stale deferral by ticked item", "deferral is stale",
+                FIXTURE_A.replace("- [ ] Build it.\n\n**Test checkpoint:** green.\n\n## 3.", "- [x] Build it.\n\n**Test checkpoint:** green.\n\n## 3.")
+                .replace("> **Review:** Opus, approve", "> **Deferred:** polish -> XREF: §2 (item: \"Build it\")"))
+            red("xref to a missing section", "names no existing section",
+                FIXTURE_A.replace("- [ ] Build it.\n\n**Test checkpoint:** green.\n\n## 3.", "- [ ] Build it. -> XREF: D01 T01 §9\n\n**Test checkpoint:** green.\n\n## 3."))
+            check("struck, XREF and Commit items do not orphan a shipped section", found(FIXTURE_A.replace(
+                "- [x] Build it. -> XREF: D01 T01 §1", "- [x] Build it. -> XREF: D01 T01 §1\n- [ ] ~~Dropped~~\n- [ ] -> XREF: D01 T01 §1\n- [ ] Commit: later")), [])
+            check("stamp-line XREFs count for reciprocity", found(FIXTURE_A, FIXTURE_B.replace(
+                "- [ ] Build it. -> XREF: D00 T01 §1", "- [ ] Build it.\n\n> **Deferred:** later -> XREF: D00 T01 §2")), [])
             red("deferral item reworded", "has no such item", FIXTURE_A.replace("> **Review:** Opus, approve", "> **Deferred:** polish -> XREF: §2 (item: \"Paint it\")"))
             write()
             (root / "01-app" / "INDEX.md").write_text("nothing\n", encoding="utf-8")
@@ -1137,6 +1163,15 @@ def cmd_self_test(_args) -> int:
             write()
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 check("plan check stale", cmd_plan(argparse.Namespace(check=True)), 1)
+            for name, broken in (
+                ("duplicate row", synced.replace("| [ ] | `D00 T01 §2`", "| [ ] | `D00 T01 §2` | Second | 1 |\n| [ ] | `D00 T01 §2`", 1)),
+                ("moved row", synced + "\n| [ ] | `D01 T01 §2` | Beta two | 1 |\n"),
+                ("stale Moved line", synced + "\n> **Moved:** `D00 T01 §2` -- nowhere\n"),
+                ("Items drift", synced.replace("Third       |   1   |", "Third       |   7   |")),
+            ):
+                write(plan=broken)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    check(f"plan check refuses {name}", cmd_plan(argparse.Namespace(check=True)), 1)
             write(plan=FIXTURE_PLAN.replace("| [ ] | `D01 T01 §1` | Beta one | 1 |\n", ""))
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 cmd_plan(ns)
@@ -1155,13 +1190,33 @@ def cmd_self_test(_args) -> int:
             with contextlib.redirect_stdout(out):
                 cmd_query(argparse.Namespace(what="blocked", context=None))
             check("blocked names the wait", "waiting on: beta §1" in out.getvalue(), True)
+            write(a=FIXTURE_A.replace("| Third | D01 T01 §1 |", "| Third | -- |"))
+            for ctx, want in (([], "requires operator (missing: operator)"), (["operator"], "00-core/TODO-01-alpha.md §3  Third")):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    cmd_query(argparse.Namespace(what="ready", context=ctx))
+                check(f"ready splits Requires with context {ctx}", want in out.getvalue(), True)
+            write(a=FIXTURE_A.replace("> **Review:** Opus, approve", "> **Deferred:** polish -> XREF: §2"))
+            for what, want in (("stats", "sections         5"), ("stats", "moved          1"), ("deferred", "1 open, 0 resolved")):
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    cmd_query(argparse.Namespace(what=what, context=None))
+                check(f"query {what} reports {want.split()[0]}", want in out.getvalue(), True)
+            write()
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 for ref, want in (("D00 T01 §2", 0), ("D00 T01 §9", 1), ("garbage", 2), ("D00 T01 §1", 3), ("D00 T01 §3", 4), ("D01 T01 §2", 5)):
                     check(f"resolve {ref}", cmd_resolve(argparse.Namespace(ref=[ref])), want)
 
             # Output stays UTF-8 when the console code page cannot encode the text.
+            run_on_fixture = (
+                "import importlib.util, pathlib, sys\n"
+                "spec = importlib.util.spec_from_file_location('tg', sys.argv[1])\n"
+                "m = importlib.util.module_from_spec(spec); sys.modules['tg'] = m; spec.loader.exec_module(m)\n"
+                "m.TODO_DIR = pathlib.Path(sys.argv[2]); sys.argv = ['todo-graph', 'resolve', sys.argv[3]]\n"
+                "sys.exit(m.main())\n"
+            )
             proc = subprocess.run(
-                [sys.executable, str(Path(__file__).resolve()), "resolve", "→ §1"],
+                [sys.executable, "-c", run_on_fixture, str(Path(__file__).resolve()), str(root), "→ §1"],
                 capture_output=True, env={**os.environ, "PYTHONIOENCODING": "cp1252"},
             )
             check("non-cp1252 output exits cleanly", (proc.returncode, "→".encode() in proc.stderr), (1, True))

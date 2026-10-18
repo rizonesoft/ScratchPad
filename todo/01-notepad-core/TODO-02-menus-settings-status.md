@@ -624,6 +624,7 @@ Why this section exists: the shipped Settings About panel (D01 T02 §3) shows na
 Why this section exists: §16 quarantines five MenuBarTests flakes and hands their fix-or-remove window to the owners, but D01 T02 §1 is stamped, so nobody owns the window (groom 2026-09-23). -> XREF: D01 T01 §35 (the sibling quarantine owner).
 
 - [ ] Each of the five quarantined MenuBarTests is fixed and un-skipped, or removed with its behavior covered elsewhere, inside its window. Done when: the quarantine list drops all five
+- [ ] The menu helper's close wait treats a torn-down automation tree as closed: `WaitForMenuClosed` in `tests/UI/MenuBarTests.cs` catches `InvalidOperationException` and `FlaUIException` but not the `COMException` (0x8000FFFF, E_UNEXPECTED) UIA throws while the window closes, so File > Exit and File > Close Window failed in Run A on 2026-09-26 while the app did what they asked. Done when: a `COMException` from the closing window's query reads as closed, and both tests pass three runs in a row. (Re-homed 2026-10-18 from the retired D00 T12 §1.)
 - [ ] Commit: `"menus: fix or remove the MenuBarTests flakes"`
 
 **Test checkpoint:** the five tests pass unskipped in the owed runs, or their removal records the covering test. Cheaper substitute that fails: extending the quarantine.

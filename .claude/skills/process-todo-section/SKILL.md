@@ -67,7 +67,7 @@ Commit as `<area>: <what now works> (<ref>)` with the gate evidence in the body,
 
 ## Audit (a shipped section)
 
-Re-run the section's Test checkpoint and read its code against the checklist. If it still holds, say so in one line. If it regressed, flip the row back to `[ ]` with a dated note under the heading saying why, then fix it through steps 1 to 5.
+Re-run the section's Test checkpoint and read its code against the checklist. If it still holds, say so in one line. If it regressed, flip the row back to `[ ]` with a dated note under the heading saying why, then fix it through steps 1 to 5; the new `Verified:` and `Review:` lines replace the old ones in place.
 
 ## Report
 

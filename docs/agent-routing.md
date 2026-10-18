@@ -1,6 +1,6 @@
 # Subagent routing
 
-Operator direction 2026-10-01: minimize agent cost without lowering the bar. The lead Claude Code session delegates bounded read-only work (research, gate runs, and routine pre-panel review) to Sonnet agents at high effort, and keeps implementation, architecture, integration, acceptance, and consequential review. Operator direction 2026-10-02: no Sonnet agent implements; every code, test, and docs change is the lead's. The working rules live in `AGENTS.md` (Delegation); this file is the routing record and its live evidence.
+Operator direction 2026-10-01: minimize agent cost without lowering the bar. The lead Claude Code session delegates bounded read-only work (research, gate runs, and routine pre-review passes) to Sonnet agents at high effort, and keeps implementation, architecture, integration, acceptance, and consequential review. Operator direction 2026-10-02: no Sonnet agent implements; every code, test, and docs change is the lead's. The working rules live in `AGENTS.md` (Delegation); this file is the routing record and its live evidence.
 
 ## Routing
 
