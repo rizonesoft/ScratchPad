@@ -3,17 +3,15 @@
 # D00-T02-S13-PR13). Build first (discovery runs --list-tests against
 # the built UI binaries). Membership regenerates from live discovery;
 # filters stay as fingerprinted unless the file is missing or
-# malformed, in which case they bootstrap from nightly.ps1 by shape
-# (the &-conjunction is Run A, Category=Primary is Run B, the
-# $collectFilter default is Interactive). Changing a filter is a
+# malformed, in which case they bootstrap to the documented legs
+# (docs/testing.md: focus-free, Primary, Interactive). Changing a filter is a
 # hand-edit to the fingerprint plus this regen: review the diff, since
 # every membership change stales prior proofs until re-accepted here.
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
-. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+. (Join-Path $PSScriptRoot 'TestBuild.ps1')
 $Dotnet = Join-Path $Root '.tools\dotnet-win-x64\dotnet.exe'
 $Fingerprint = Join-Path $Root 'tests\UI\TestPopulation.fingerprint'
-$Nightly = Join-Path $PSScriptRoot 'nightly.ps1'
 
 $existing = Read-TestPopulationFile $Fingerprint
 if ($existing.Ok) {
@@ -21,15 +19,10 @@ if ($existing.Ok) {
   $runB = $existing.RunBFilter
   $interactive = $existing.InteractiveFilter
 } else {
-  Write-Output "fingerprint $($existing.Error); bootstrapping filters from nightly.ps1"
-  $live = Get-NightlyFilterLiterals $Nightly
-  $conj = @($live.Literals | Where-Object { $_ -like '*&*' })
-  if ($conj.Count -ne 1) { throw "cannot bootstrap run-a filter ($($conj.Count) &-conjunctions)" }
-  if (@($live.Literals | Where-Object { $_ -eq 'Category=Primary' }).Count -lt 1) { throw 'cannot bootstrap run-b filter (Category=Primary absent)' }
-  if ($live.CollectDefault -eq '') { throw 'cannot bootstrap interactive filter ($collectFilter default absent)' }
-  $runA = $conj[0]
+  Write-Output "fingerprint $($existing.Error); bootstrapping the documented filters"
+  $runA = 'Category!=Interactive&Category!=Primary'
   $runB = 'Category=Primary'
-  $interactive = $live.CollectDefault
+  $interactive = 'Category=Interactive'
 }
 # A regen against a stale build would record an older tree's counts
 # (D00 T02 §29): refuse with the build instruction instead.

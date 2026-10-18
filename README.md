@@ -88,7 +88,7 @@ It is not a subscription. Saying it twice because it bears repeating.
 | `resources/baseline/` | Captured Notepad baseline for parity checks |
 | `todo/` | The live execution plan. Start here. |
 | `scripts/` | The TODO graph (`todo-graph.py`, stdlib-only) and the subagent routing check (`agent_routing.py`) |
-| `tools/` | Provisioning, launch, the governed nightly and its reconcilers, and the README capture |
+| `tools/` | Provisioning, launch, build evidence and the test-population check, and the README capture |
 | `docs/` | Guides, procedures, ledgers, review records, and phase runs |
 | `.claude/` | Claude Code skills and hooks that run the plan |
 | `.github/` | CI workflows, issue and pull request templates |
@@ -142,15 +142,13 @@ Ported deliberately later, when the repo earns them:
 | --- | --- |
 | [docs/bootstrap.md](docs/bootstrap.md) | From a fresh clone to a green build and test run, with troubleshooting |
 | [docs/build.md](docs/build.md) | Build, clean, test, analysis, and launch commands |
-| [docs/testing.md](docs/testing.md) | The test suites, the governed nightly, and its notification contracts |
+| [docs/testing.md](docs/testing.md) | The test suites, the section gates, and the close-out runs |
 | [docs/settings-schema.md](docs/settings-schema.md) | The settings store and every setting |
 | [docs/encrypted-notes.md](docs/encrypted-notes.md) | The encrypted note file format |
 | [docs/soak-and-quarantine.md](docs/soak-and-quarantine.md) | How flaky tests are soaked and quarantined instead of deleted |
 | [docs/ui-automation-spike.md](docs/ui-automation-spike.md) | The UI automation driver decision |
 | [docs/ui-input-audit.md](docs/ui-input-audit.md) | The audit of focus-dependent UI test input |
-| [docs/incident-ledger.md](docs/incident-ledger.md), [docs/incident-links.md](docs/incident-links.md) | Nightly incident identity and triage links |
-| [docs/nightly-exclusions.md](docs/nightly-exclusions.md), [docs/nightly-host-aliases.md](docs/nightly-host-aliases.md), [docs/nightly-pauses.md](docs/nightly-pauses.md), [docs/nightly-schedule-history.md](docs/nightly-schedule-history.md) | Operator ledgers the nightly trend reads |
-| [docs/owed-case-retirements.md](docs/owed-case-retirements.md), [docs/test-exclusions.md](docs/test-exclusions.md) | Test population ledgers |
+| [docs/test-exclusions.md](docs/test-exclusions.md) | Test population exclusions |
 | [docs/assets/captures.md](docs/assets/captures.md) | Provenance for every screenshot in this README |
 
 ## Contributing

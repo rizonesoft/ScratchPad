@@ -22,7 +22,7 @@ param(
   [string]$Snapshot = ''
 )
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+. (Join-Path $PSScriptRoot 'TestBuild.ps1')
 $rootFull = [System.IO.Path]::GetFullPath($Root)
 $d = Get-BuildInputsDigest $rootFull $Sdk
 if ($Phase -eq 'before') {

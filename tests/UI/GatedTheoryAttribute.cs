@@ -9,7 +9,7 @@ namespace UI;
 // Every gated Theory derives from this base and sets its gate through
 // Gate: while listing (SCRATCHPAD_DISCOVERY_LISTING=1, set with the
 // Interactive force by the population discovery,
-// Invoke-WithForcedDiscovery in tools/NightlyParse.ps1) the gate is
+// Invoke-WithForcedDiscovery in tools/TestBuild.ps1) the gate is
 // lifted and every row lists; at run time the gate applies as before.
 // DiscoveryListingTests enforces that no other Theory attribute exists.
 abstract class GatedTheoryAttribute : TheoryAttribute

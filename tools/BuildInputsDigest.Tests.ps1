@@ -2,7 +2,7 @@
 # an edit whose timestamp was restored, a deleted input, and an SDK change
 # each refuse; an untouched tree passes.
 $ErrorActionPreference = 'Stop'
-. (Join-Path $PSScriptRoot 'NightlyParse.ps1')
+. (Join-Path $PSScriptRoot 'TestBuild.ps1')
 $failures = 0
 function Assert([bool]$Cond, [string]$Name, [string]$Detail = '') {
   if ($Cond) { Write-Output "PASS $Name" } else { Write-Output "FAIL $Name $Detail"; $script:failures++ }

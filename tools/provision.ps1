@@ -14,8 +14,8 @@
   verify-only: a workflow's content intent lives in git and the
   scheduler belongs to the operator, so drift reports as a fault and is
   never auto-edited. Scheduled test runs are retired (operator decision
-  2026-10-14, docs/testing.md); tools/tasks/ keeps the old definitions
-  as history only. A missing or modified hook file reports the exact
+  2026-10-14, docs/testing.md); the nightly runner was removed on
+  2026-10-18. A missing or modified hook file reports the exact
   restore instead of running it, and a hooks path pointing at an
   existing other dir is left alone: both may be deliberate user intent.
   Run from any directory: powershell -ExecutionPolicy Bypass -File tools\provision.ps1 [-Verify]

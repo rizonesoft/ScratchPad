@@ -4,13 +4,13 @@ UI and protocol tests flake. Without a procedure, flakes get deleted and coverag
 
 **Relaxed 2026-10-14** (operator decision, `docs/testing.md` testing policy): soak never runs on a schedule (local or `soak.yml`, which is `workflow_dispatch` only), and quarantine has no deadline. The 7-day fix-or-remove window and the overdue rules below are retired: a quarantined test stays quarantined until its owning section fixes or removes it.
 
-## Nightly soak
+## Soak
 
-Soak runs locally, usually as an unattended bedtime run: five extra repetitions of the flake-prone suites (UI and Protocol) after the governed legs (the solution run is Run A), all with `trx` loggers; the CI `soak` workflow repeats the same shape nightly. The command below shows the local shape.
+Soak is started by hand, locally or through the `soak` workflow (`workflow_dispatch`): five repetitions of the flake-prone suites (UI and Protocol) with `trx` loggers.
 
-`dotnet test tests/UI --logger trx` plus `dotnet test tests/Protocol --logger trx`, each x5 (the governed shape lives in `docs/testing.md`).
+`dotnet test tests/UI --logger trx` plus `dotnet test tests/Protocol --logger trx`, each x5.
 
-Results stay under `build/nightly/<stamp>/` (gitignored): the per-leg transcripts plus the trx files, with golden-failure captures kept alongside on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.
+Results stay under `build/soak/<stamp>/` (gitignored): the per-leg transcripts plus the trx files, with golden-failure captures kept alongside on UI failure. Runs are linked from this doc only when they catch a flake: a quarantine entry references the run that proved the flake, so the run history stays the log and this doc stays the index.
 
 ## Truncated soak (D00 T02 §15, D00-T02-S14-PR12, agreed with §5)
 
