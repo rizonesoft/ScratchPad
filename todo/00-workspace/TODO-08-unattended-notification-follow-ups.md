@@ -43,6 +43,8 @@ track: W0
 
 ## 1. Poster and Delivery Hardening
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §53 plan review returned 30 findings; 11 harden the poster plus delivery path (integration proof, reminder cadence, mapping failures, multi-owner reconciliation, login preflight, machine IDs, JSON payloads, concurrency, snapshot guards, operation idempotency, retry classification), so they home here as the delivery half of the second resident file past the 55-section cap. -> XREF: D00 T01 §53 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s53-2026-09-21-t08-s1 D00-T01-S53-PR2 D00-T01-S53-PR3 D00-T01-S53-PR4 D00-T01-S53-PR5 D00-T01-S53-PR6 D00-T01-S53-PR7 D00-T01-S53-PR8 D00-T01-S53-PR9 D00-T01-S53-PR10 D00-T01-S53-PR11 D00-T01-S53-PR12 (`gpt-5.6-sol` high over §53 plus §28 plus §29 plus §54, 30 findings, 11 filed here, 11 filed at D00 T08 §2, 1 closed in the §53 stamp, 2 correct D00 T01 §29 in place, 3 correct D00 T01 §54 in place, 3 rejected with reasons in the §53 findings file).
 
 - [ ] The poster proves itself against a disposable repository: create, comment-on-open dedup, close-when-clear, reopen, and failure handling run against throwaway GitHub issues where auth exists and skip honestly elsewhere, so fake-`gh` argument fixtures stop standing in for authentication, permissions, pagination, and API behavior (PR2 D00-T01-S53-PR2). This item is a joiner from the §53 plan review. Done when: the integration leg runs green where auth exists and skips loud where it does not.
@@ -61,6 +63,8 @@ Why this section exists: the §53 plan review returned 30 findings; 11 harden th
 **Test checkpoint:** Integration proves, cadence resolves, absence fails loud, assignees reconcile, logins preflight, IDs persist, JSON validates, waves serialize, snapshots gate, operations idle, retries classify. Falsifiable by any unproven post, silent wave, or duplicate issue.
 
 ## 2. Notification Governance and Premium Views
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §53 plan review returned 30 findings; 11 harden notification governance (bootstrap grace, latency SLO, acknowledgement ladder, trust model, schema policy, retention, linkage breadth, renewal freshness, tiered governance, redaction, dashboard views), so they home here as the governance half of the second resident file past the 55-section cap. -> XREF: D00 T01 §53 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s53-2026-09-21-t08-s2 D00-T01-S53-PR15 D00-T01-S53-PR16 D00-T01-S53-PR17 D00-T01-S53-PR18 D00-T01-S53-PR20 D00-T01-S53-PR21 D00-T01-S53-PR22 D00-T01-S53-PR23 D00-T01-S53-PR24 D00-T01-S53-PR26 D00-T01-S53-PR27 (`gpt-5.6-sol` high over §53 plus §28 plus §29 plus §54, 30 findings, 11 filed here, 11 filed at D00 T08 §1, 1 closed in the §53 stamp, 2 correct D00 T01 §29 in place, 3 correct D00 T01 §54 in place, 3 rejected with reasons in the §53 findings file).
 

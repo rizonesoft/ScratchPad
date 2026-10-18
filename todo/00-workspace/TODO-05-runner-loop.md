@@ -41,6 +41,8 @@ track: W0
 
 ## 1. Runner File-Closeout Wiring
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the runner loop ships rows and writes closeouts but no closeout step invokes `process-todo-file`, so file-level `## Verification` blocks execute only when someone remembers. Both closeouts name the invocation: per touched file whose rows are all `[x]`, run file closeout after the all-green confirm and before writing the closeout. -> SOURCE: operator-finding-2026-09-19-runner-closeout (closeout never invokes process-todo-file; verified 2026-09-19: zero mentions across process-phase, process-plan, process-todo-section).
 
 **Groomed 2026-09-23:** Anchor corrected: `process-plan` has no closeout step; the anchor is "## 2. After a phase closeout or park" in `.claude/skills/process-plan/SKILL.md`, which since 0da6bd2 also tears down the run guard (guard file plus CronDelete). The item reads: `process-plan` §2 invokes `process-todo-file` for fully-shipped touched files before the guard teardown.
@@ -53,6 +55,8 @@ Why this section exists: the runner loop ships rows and writes closeouts but no 
 **Test checkpoint:** both closeout steps name `process-todo-file` with the fully-shipped trigger; grep proves the lines; a walkthrough over the current tree names the files that would close. Falsifiable by any closeout text missing the invocation.
 
 ## 2. Run-Guard Proof
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: `.claude/hooks/campaign-stop.ps1` blocks the campaign session's end of turn, trips a stall breaker, fails open, and writes `build/claude-campaign-*.json`, and it is wired into every session through `.claude/settings.json`, yet it has no self-test, no fixtures, and no TODO owner; its deleted predecessor had `.grok/scripts/campaign-selftest.ps1` (groom 2026-09-23).
 

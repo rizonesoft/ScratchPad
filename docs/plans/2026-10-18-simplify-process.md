@@ -32,8 +32,8 @@ Spec: `docs/specs/2026-10-18-simplify-process-design.md`. Each phase is one comm
 
 ## Phase 4: retire governance TODO sections
 
-- [ ] Each open D00 section whose purpose is review or nightly governance gets a `Moved:` note pointing at the spec, then `plan --sync`.
-- [ ] Open product and test-infrastructure sections stay untouched.
+- [x] Each open D00 section whose purpose is review or nightly governance gets a `Moved:` note pointing at the spec, then `plan --sync`.
+- [x] Open product and test-infrastructure sections stay untouched.
 
 ## Phase 5: verify
 

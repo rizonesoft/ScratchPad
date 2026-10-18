@@ -2,7 +2,7 @@
 
 The order to run every section in, from today to a signed release.
 
-> **Progress:** **160 of 335 sections complete (48%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
+> **Progress:** **160 of 306 sections complete (52%).** Derived from the Implementation Order tables by `python3 scripts/todo-graph.py plan --sync` -- never edited by hand.
 >
 > **Plan/graph parity.** Every numbered TODO section, open or shipped, appears in exactly one phase table row. `plan --check` enforces missing, unknown, duplicate, and status parity. Read live totals from the generated Progress line above and `python3 scripts/todo-graph.py query stats`; never repeat a fixed denominator in prose.
 
@@ -180,10 +180,6 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §53` | Nightly evidence fourth residuals               |  17   |
 | [x] | `D00 T02 §54` | Trend and telemetry fourth residuals            |  18   |
 | [x] | `D00 T02 §55` | Notify redesign residuals                       |  21   |
-| [ ] | `D00 T10 §1`  | Sibling sweep fourth residuals                  |  16   |
-| [ ] | `D00 T10 §2`  | Gate attribution residuals                      |  13   |
-| [ ] | `D00 T11 §1`  | Unresolvable reference refusal                  |   4   |
-| [ ] | `D00 T12 §1`  | Binding guard fourth residuals                  |  15   |
 | [x] | `D00 T12 §2`  | Pointer moves in physical coordinates           |   5   |
 | [ ] | `D00 T12 §3`  | Element clicks in physical coordinates          |   4   |
 | [x] | `D00 T03 §1`  | App screenshots for README                      |   6   |
@@ -206,39 +202,44 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T01 §54` | Clearance fixture follow-ups                    |   8   |
 | [x] | `D00 T01 §55` | Clearance causality follow-ups                  |  30   |
 | [x] | `D00 T04 §1`  | Sol-note and disposition follow-ups             |  30   |
-| [ ] | `D00 T04 §2`  | Rule-24 probe follow-ups                        |   6   |
-| [ ] | `D00 T04 §3`  | Migration-assurance follow-ups                  |   5   |
-| [ ] | `D00 T04 §4`  | Review-evaluation follow-ups                    |   4   |
-| [ ] | `D00 T04 §5`  | Windows console and prompt follow-ups           |   4   |
 | [x] | `D00 T04 §6`  | Acceptance-record sign-off residuals            |   6   |
-| [ ] | `D00 T04 §7`  | Generation-map refusal parity                   |   3   |
-| [ ] | `D00 T04 §8`  | Position-proof health results                   |   3   |
-| [ ] | `D00 T04 §9`  | Acceptance semantic version binding             |   3   |
-| [ ] | `D00 T04 §10` | Section-52 sign-off residuals                   |   6   |
-| [ ] | `D00 T04 §11` | Section-52 plan-review residuals                |   4   |
-| [ ] | `D00 T04 §12` | Section-54 sign-off residuals                   |  13   |
-| [ ] | `D00 T04 §13` | Section-54 e2e and lane residuals               |  10   |
 | [x] | `D00 T04 §14` | Panel-label rename to Claude and GPT            |   7   |
 | [x] | `D00 T04 §15` | Panel rewire: sol bulk, opus governs            |   7   |
-| [ ] | `D00 T04 §16` | Section-15 plan-review residuals                |   4   |
-| [ ] | `D00 T04 §17` | Section-14 sign-off residuals                   |   4   |
-| [ ] | `D00 T04 §18` | Section-14 plan-review residuals                |   3   |
 | [x] | `D00 T04 §19` | Opus 5.5 reviewer re-pin                        |   6   |
-| [ ] | `D00 T04 §20` | Section-19 plan-review residuals                |   3   |
 | [x] | `D00 T04 §21` | GPT-6 sol reviewer re-pin                       |   6   |
-| [ ] | `D00 T04 §22` | Section-21 review residuals                     |   4   |
 | [x] | `D00 T04 §23` | Implementer-independent panel: GPT governs      |   9   |
-| [ ] | `D00 T04 §24` | Section-23 sign-off residuals                   |   5   |
 | [x] | `D00 T04 §25` | Simplified panel: sol primaries, Grok fallback  |   9   |
-| [ ] | `D00 T04 §26` | Section-25 sign-off residuals                   |   6   |
-| [ ] | `D00 T04 §27` | Self-test determinism on Windows                |   4   |
-| [ ] | `D00 T05 §1`  | Runner file-closeout wiring                     |   4   |
-| [ ] | `D00 T05 §2`  | Run-guard proof                                 |   3   |
-| [ ] | `D00 T06 §1`  | Prerequisite scope audit                        |   5   |
 | [x] | `D00 T06 §2`  | Birth rule states the derived origin            |   3   |
-| [ ] | `D00 T07 §1`  | Bin machinery follow-ups                        |   9   |
-| [ ] | `D00 T08 §1`  | Poster and delivery hardening                   |  12   |
-| [ ] | `D00 T08 §2`  | Notification governance and premium views       |  13   |
+
+> **Moved:** `D00 T10 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T10 §2` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T11 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T12 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §2` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §3` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §4` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §5` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §7` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §8` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §9` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §10` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §11` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §12` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §13` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §16` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §17` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §18` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §20` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §22` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §24` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §26` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T04 §27` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T05 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T05 §2` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T06 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T07 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T08 §1` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+> **Moved:** `D00 T08 §2` -- 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 > **Moved:** `D00 T02 §16` -- 2026-10-14 to docs/testing.md (operator instruction: scheduled test runs retired and testing relaxed, see the testing policy; there is no timer-fired run left to verify).
 > **Moved:** `D00 T11 §2` -- 2026-10-14 to docs/testing.md (operator instruction: scheduled test runs retired and testing relaxed, see the testing policy; night-debt due dates and governance are information only, so no further governance tooling is owed).

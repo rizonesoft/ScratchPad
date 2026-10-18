@@ -122,6 +122,8 @@ Why this section exists: the §37 review's sign-off round plus plan review retur
 
 ## 2. Rule-24 Probe Follow-Ups
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §46 review's sign-off round plus plan review returned 6 residuals (3 panel, 3 plan-review with PR5 sharing the clause-specific item) that belong to the rule-24 probes, and §1 would pass 30 items, so they home here as the file's second subject section. -> XREF: D00 T01 §46 (review findings filed here); -> SOURCE: Opus-panel-D00-T01-s46-round-3 (candidate 973bce4, round-3 sign-off needs-attention below bar plus advisory; transcribed in docs/reviews/00-workspace/D00-T01-s46.md); -> XREF: D00 T01 §46 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s46-2026-09-19-t04 D00-T01-S46-PR2 D00-T01-S46-PR5 D00-T01-S46-PR8 (`gpt-5.6-sol` high over §46 plus §25, 9 findings, 3 filed here in 2 items with PR5 sharing the clause-specific item, 2 reworded in place, 4 rejected with reasons in the §46 findings file).
 
 **Groomed 2026-09-23:** Moot: the AGENTS self-test count refresh item has nothing to refresh, since AGENTS.md now says "the run prints its own total".
@@ -137,6 +139,8 @@ Why this section exists: the §46 review's sign-off round plus plan review retur
 
 ## 3. Migration-Assurance Follow-Ups
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §48 plan review (`gpt-5.6-sol` high over §48 plus §26 plus §28) returned 14 findings; 4 file here, 6 are reworded in place, 4 are rejected with reasons in the §48 findings file. The shipped assurance holds but its membership proof is count-level, its tamper residual is human-only, its diagnostics name no anchor, and its report is prose. -> XREF: D00 T01 §48 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s48-2026-09-19-t04 D00-T01-S48-PR1 D00-T01-S48-PR7 D00-T01-S48-PR13 D00-T01-S48-PR14 (`gpt-5.6-sol` high over §48 plus §26 plus §28, 14 findings, 4 filed here, 6 reworded in place, 4 rejected with reasons in the §48 findings file).
 
 - [ ] Membership exactness pins pair-for-pair: a probe asserts the live retired set equals `MIGRATION_FROZEN` exactly (not just count plus split), so a substituted member cannot hide behind equal totals; the frozen set reads as the machine per-record manifest (PR1 D00-T01-S48-PR1). This item is a joiner from the §48 plan review. Done when: the exactness probe ships green.
@@ -149,6 +153,8 @@ Why this section exists: the §48 plan review (`gpt-5.6-sol` high over §48 plus
 
 ## 4. Review-Evaluation Follow-Ups
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §49 plan review (`gpt-5.6-sol` high over §49 plus §27) returned 8 findings; 3 file here, 1 is reworded in place, 4 are rejected with reasons in the §49 findings file. Per-citer evaluation holds but evidence ignores citer state, downstream consumers are unpinned, and dedupe drops citer provenance. -> XREF: D00 T01 §49 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s49-2026-09-19-t04 D00-T01-S49-PR1 D00-T01-S49-PR5 D00-T01-S49-PR6 (`gpt-5.6-sol` high over §49 plus §27, 8 findings, 3 filed here, 1 reworded in place, 4 rejected with reasons in the §49 findings file).
 
 - [ ] Evidence binds the covering citer state: a finding acceptance's freshness covers the citer marker (or citation topology) that made it hold, not just the findings-file blob, so a later marker change cannot activate an acceptance against evidence it never reviewed (PR1 D00-T01-S49-PR1). This item is a joiner from the §49 plan review. Done when: the binding ships with fixtures pinning a marker-change activation.
@@ -159,6 +165,8 @@ Why this section exists: the §49 plan review (`gpt-5.6-sol` high over §49 plus
 **Test checkpoint:** evidence binds citer state, every consumer renders second-citer obligations, and single rows carry their citer sets; suite green, validate clean. Cheaper substitute that fails: prose controls nobody checks.
 
 ## 5. Windows Console and Prompt Follow-Ups
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §51 round-1 panel assembly exposed two Windows-only failure modes in the review-runner tooling. First, `review_prompt.py fence` crashed printing fenced TODO bytes to a cp1252 console, because no repo script pins UTF-8 stdio and any non-cp1252 prose byte is therefore fatal on Windows. Second, the skill's panel, plan-review, and architecture prompt blocks are bash-only (`timeout`, `sed`, pipes, stdin redirects), so every Windows session hand-translates them and hand-assembles tags plus instruction headers around the checked fencer. -> XREF: D00 T01 §51 (surfaced during its round-1 panel assembly); -> SOURCE: s51-panel-assembly-2026-09-20 (operator-filed from the §51 review session: `UnicodeEncodeError: 'charmap' codec can't encode character '\ufeff'` from `fence` under PowerShell, plus the hand-built prompt file `R:\tmp\s51-r1.prompt.md` the skill blocks cannot produce on Windows); -> XREF: D00 T01 §51 (plan-review refinements landed here); -> SOURCE: plan-review-D00-T01-s51-2026-09-20-t04s5 D00-T01-S51-PR13 D00-T01-S51-PR14 D00-T01-S51-PR15 (same round as the §6 filing: 17 findings, 8 filed, 2 duplicates, 7 rejected with reasons in the §51 findings file).
 
@@ -200,6 +208,8 @@ Why this section exists: the §51 sign-off round (Sol, after the Opus rung timed
 
 ## 7. Generation-Map Refusal Parity
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §6 Opus sign-off advisory (R3-F1) found `stamp_generations_by_section` claiming sections off parser-refused stamps: it skips bad cover elements and still claims the rest, and it never checks date validity or post-generation-prefix empty evidence, while the parser refuses the whole stamp on any of those shapes. A refused stamp then reads unstamped to the parser but map-claimed at generation 0, so `stamp-generation-regressed` can name a generation cause for a stamp that claims nothing (redundant with the co-firing `malformed-stamp`, never lone, hence advisory rather than blocking). -> XREF: D00 T04 §6 (filed from its panel sign-off); -> SOURCE: Opus-panel-D00-T04-s6-round-3-consistency (candidate 4bc3fd9, round-3 consistency advisory R3-F1; transcribed in `docs/reviews/00-workspace/D00-T04-s6.md`).
 
 - [ ] Map refuses whole stamps like the parser: a bad cover element, an invalid date, or an evidence field empty after the generation prefix skips the stamp with no partial claim, mirroring the parser's refusal order; or the parity claim softens to cover-field-only with the divergence named. Prefer one shared refusal helper over two synchronized implementations (D00-T04-S6-PR5): separately maintained parsers drift. Done when: the refusal shapes ship with fixtures pinning each (bad element, bad date, empty evidence), or the softened claim reads with its reason.
@@ -211,6 +221,8 @@ Why this section exists: the §6 Opus sign-off advisory (R3-F1) found `stamp_gen
 ---
 
 ## 8. Position-Proof Health Results
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §6 plan review (PR6, PR7) found the item-5 closure incomplete in one direction: `NamedTuple` still permits positional construction, unpacking, and indexing, so a future consumer can reintroduce the swap class the section closed; the no-positional source scan pins construction only, and no contract test guards serialization or public-consumer boundaries. -> XREF: D00 T04 §6 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s6-2026-09-20-s8 D00-T04-S6-PR6 D00-T04-S6-PR7 (`gpt-5.6-sol` high over §6 plus §51 plus §7 with dependents D00 T04 §7 plus D00 T02 §11 plus D00 T02 §8 plus D00 T02 §13, 18 findings, 5 filed across §6 (PR1 record fix) plus §7 (PR5 extension) plus §8 (PR6 plus PR7 merged) plus §9, 1 duplicate of D00-T01-S51-PR5, 12 rejected with reasons in the §6 findings file).
 
@@ -224,6 +236,8 @@ Why this section exists: the §6 plan review (PR6, PR7) found the item-5 closure
 
 ## 9. Acceptance Semantic Version Binding
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §6 plan review (PR10) found acceptances unbound to the semantics that interpret them: target-only digests leave an old waiver valid after parser, outcome-matrix, coverage, or normalization changes materially reinterpret it. Generations bind record age to section re-stamps, but nothing binds record meaning to tool semantics. -> XREF: D00 T04 §6 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s6-2026-09-20-s9 D00-T04-S6-PR10 (`gpt-5.6-sol` high over §6 plus §51 plus §7 with dependents D00 T04 §7 plus D00 T02 §11 plus D00 T02 §8 plus D00 T02 §13, 18 findings, 5 filed across §6 (PR1 record fix) plus §7 (PR5 extension) plus §8 (PR6 plus PR7 merged) plus §9, 1 duplicate of D00-T01-S51-PR5, 12 rejected with reasons in the §6 findings file).
 
 - [ ] Records carry their semantic version: acceptances bind to the interpreting semantics (parser plus outcome-matrix plus coverage plus normalization versions current at record time), and a record read under newer semantics voids or re-validates instead of silently reinterpreting. Done when: the binding plus void-or-revalidate rule ships with fixtures pinning a stale-semantics record.
@@ -235,6 +249,8 @@ Why this section exists: the §6 plan review (PR10) found acceptances unbound to
 ---
 
 ## 10. Section-52 Sign-Off Residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §52 Opus sign-off returned 5 below-bar needs-attention findings on the shipped rules 30 through 32 plus their docs, and §1 would pass 30 items, so they home here as the file's tenth subject section. -> XREF: D00 T01 §52 (review findings filed here); -> SOURCE: Opus-panel-D00-T01-s52-round-3 (candidate 8d753ee, round-3 sign-off needs-attention below bar; transcribed in docs/reviews/00-workspace/D00-T01-s52.md).
 
@@ -251,6 +267,8 @@ Why this section exists: the §52 Opus sign-off returned 5 below-bar needs-atten
 
 ## 11. Section-52 Plan-Review Residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §52 plan review (`gpt-5.6-sol` high over §52 plus §28 plus §29 plus D00 T04 §10, one review dependent) returned 24 findings; 3 file here, 1 reworded in place, 3 duplicate earlier triage, 17 are rejected with reasons in the §52 findings file. The shipped rules hold but retry-owed counting stays family-absolute, §28's partial prose predates the flip, and dual-spelled rows lack an exactly-once pin. -> XREF: D00 T01 §52 (plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s52-2026-09-21-s11 D00-T01-S52-PR5 D00-T01-S52-PR6 D00-T01-S52-PR18 (`gpt-5.6-sol` high over §52 plus §28 plus §29 plus D00 T04 §10, 24 findings, 3 filed here, 1 reworded in place, 3 duplicates of D00-T01-S29-PR15 D00-T01-S29-PR2 D00-T01-S29-PR3, 17 rejected with reasons in the §52 findings file).
 
 - [ ] Retry-owed counts follow the owed rung: the per-line attempt semantics plus a flipped-family composite fixture pin the count to the same-family survivor's invocations (not always the fallback), so flipped composites describe consistent retry histories (PR5 D00-T01-S52-PR5). This item is a joiner from the §52 plan review. Done when: the corrected semantics plus fixture ship.
@@ -263,6 +281,8 @@ Why this section exists: the §52 plan review (`gpt-5.6-sol` high over §52 plus
 ---
 
 ## 12. Section-54 Sign-Off Residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the pre-record §54 Opus sign-off (unledgered; raw outputs lost with the 2026-09-21 session compaction, fixes in-candidate) returned 3 below-bar needs-attention findings on the shipped canonical identity (stable repository identity, cross-run persistence with SHA-256 operation, plus identity reporting), and the pre-record §54 plan review filed 15 more here (PR2-PR14, PR20, PR21: facets, matrix, contract, corpus IDs, wording), and the repo-and-toolchain file sits at its 55-section cap, so all 23 home here in 12 items with merges noted per item as the file's twelfth subject section. -> XREF: D00 T01 §54 (review findings filed here); -> SOURCE: pre-record-panel-D00-T01-s54-2026-09-21-R3 D00-T01-S54-R3-F1 D00-T01-S54-R3-F2 D00-T01-S54-R3-F5; -> SOURCE: pre-record-plan-review-D00-T01-s54-2026-09-21-t04-s12 D00-T01-S54-PR2 D00-T01-S54-PR3 D00-T01-S54-PR4 D00-T01-S54-PR5 D00-T01-S54-PR6 D00-T01-S54-PR7 D00-T01-S54-PR8 D00-T01-S54-PR9 D00-T01-S54-PR10 D00-T01-S54-PR11 D00-T01-S54-PR12 D00-T01-S54-PR13 D00-T01-S54-PR14 D00-T01-S54-PR20 D00-T01-S54-PR21 (15 filed here, 5 at D00 T04 §13, 1 rejected; corpus re-triaged by the ledgered plan review) (Opus round-3 sign-off identity family, merging Sol R1-F1 R1-F2 R1-F3 R1-F4 R1-F5 plus R2-F1 R2-F2 R2-F3 R2-F4 R2-F5 same-family; noted (pre-record, per-finding text lost) in docs/reviews/00-workspace/D00-T01-s54.md). R-F and PR cites in the items below name those pre-record rounds, never the ledgered record. -> XREF: D00 T01 §54 (ledgered plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s54-2026-09-21-t04-s12 D00-T01-S54-PR2 D00-T01-S54-PR15 D00-T01-S54-PR16 D00-T01-S54-PR22 D00-T01-S54-PR26 (`gpt-5.6-sol` high over §54 plus §30 plus §31 plus §55 plus D00 T04 §12 plus D00 T04 §13, 28 findings, 5 filed here in 4 items plus 1 wording note, 9 filed at siblings, 1 duplicate, 13 rejected with reasons in the §54 findings file).
 
@@ -285,6 +305,8 @@ Why this section exists: the pre-record §54 Opus sign-off (unledgered; raw outp
 ---
 
 ## 13. Section-54 E2E and Lane Residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the pre-record §54 plan review (unledgered) returned 21 findings; 5 harden the end-to-end clearance proof plus the required-lane and Windows coverage the §54 fixtures leave narrow (diagnostic breadth, git capability, hermetic environment, path identity, contention realism), so they home here as the file's thirteenth subject section, joined by 1 ledgered-panel advisory (PATH-hide case) plus 6 ledgered plan-review joiners (5 items, PR23 merged into the PATH-hide item). -> XREF: D00 T01 §54 (review findings filed here); -> SOURCE: pre-record-plan-review-D00-T01-s54-2026-09-21-t04-s13 D00-T01-S54-PR15 D00-T01-S54-PR16 D00-T01-S54-PR17 D00-T01-S54-PR18 D00-T01-S54-PR19 (`gpt-5.6-sol` high over §54 plus §30 plus D00 T04 §12, 21 findings, 5 filed here, 15 filed at D00 T04 §12, 1 rejected (pre-record PR1, rationale unrecoverable, corpus re-triaged by the ledgered plan review) per the §54 findings file). -> SOURCE: Opus-panel-D00-T01-s54-round-3-t04-s13 (candidate 04e3bf6, round-3 sign-off advisory R3-F3; transcribed in docs/reviews/00-workspace/D00-T01-s54.md). -> XREF: D00 T01 §54 (ledgered plan-review findings filed here); -> SOURCE: plan-review-D00-T01-s54-2026-09-21-t04-s13 D00-T01-S54-PR17 D00-T01-S54-PR19 D00-T01-S54-PR20 D00-T01-S54-PR23 D00-T01-S54-PR24 D00-T01-S54-PR27 (`gpt-5.6-sol` high over §54 plus §30 plus §31 plus §55 plus D00 T04 §12 plus D00 T04 §13, 28 findings, 6 filed here in 5 items plus 1 extension, 8 filed at siblings, 1 duplicate, 13 rejected with reasons in the §54 findings file).
 
@@ -356,6 +378,8 @@ Why this section exists: the panel spends uniform high effort on two models (`gp
 
 ## 16. Section-15 plan-review residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §15 plan review (terra-high over §15 plus §14 plus T01 §35 plus T01 §37 plus T04 §1, 4 findings) returned 3 residuals that belong to the panel rules, and §1 sits at the 30-item sizing rule so they home here instead of joining it. -> XREF: D00 T04 §15 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s15-2026-09-22-t04 D00-T04-S15-PR1 D00-T04-S15-PR2 D00-T04-S15-PR3 (`gpt-5.6-terra` high over §15 plus §14 plus §35 plus §37 plus §1, 4 findings, 3 filed here, PR4 a premium win noted not filed, synthesis with reasons in the §15 findings file); -> SOURCE: plan-review-D00-T04-s19-2026-09-22-t04-s16 D00-T04-S19-PR4 D00-T04-S19-PR5 (accepted in the §19 stamp run: vocabulary alignment plus stamp-keyed boundary rewordings).
 
 **Groomed 2026-09-23:** Superseded: §23 and §25 replaced the §15 ladder, so the §35 annotation points at the current matrix (D00 T04 §25 six slots, with the §15 and §23 ladders as history); the Claude-outage exception item folds into §24's slot-binding item as "a fallback-governed stamp reads distinctly (Grok-last plus a `GPT outage` line naming the failed run)", since terra is retired.
@@ -369,6 +393,8 @@ Why this section exists: the §15 plan review (terra-high over §15 plus §14 pl
 
 ## 17. Section-14 sign-off residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §14 round-3 sign-off (opus-xhigh over the §14 range, 5 findings) plus the round-4 depth round (opus-high, 2 findings) returned 3 below-bar residuals that belong to the panel rules: a telemetry display case split needing a designed echo-vs-normalize decision rather than a fix-loop guess, a stale grok runner rules file outside the candidate that contradicts the post-cutover skill and needs owner direction, and a missing re-stamp era escape that freezes 62 grandfathered records. -> XREF: D00 T04 §14 (filed from its round-3 sign-off plus round-4 depth); -> SOURCE: Opus-panel-D00-T04-s14-round-3 (candidate c66111d, round-3 consistency 1 plus integration 1; transcribed in docs/reviews/00-workspace/D00-T04-s14.md); -> SOURCE: Opus-panel-D00-T04-s14-round-4 (candidate c57eaad, round-4 adversarial 1; transcribed in docs/reviews/00-workspace/D00-T04-s14.md).
 
 **Groomed 2026-09-23:** Counts and moot items: 64 findings files carry an `Opus panel` heading on 2026-09-23 (164 headings), so read "62" as a count to redo at implementation; the Grok runner reconcile item is moot because 0da6bd2 deleted `.grok/` and AGENTS.md makes Claude Code the only writer.
@@ -381,6 +407,8 @@ Why this section exists: the §14 round-3 sign-off (opus-xhigh over the §14 ran
 **Test checkpoint:** telemetry outage labels read one case policy on both sides, no grok runner prose contradicts the cutover skill, and grandfathered records survive re-stamps. Falsifiable by any mixed-case outage line, any live `Opus panel` runner instruction, or any re-stamp firing on legacy rounds.
 
 ## 18. Section-14 plan-review residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §14 plan review (sol-medium over §14 plus §35 plus §37 plus §1 plus §15, 8 findings) returned 2 residuals that belong to the panel rules: a shaped-vs-bare outage-note asymmetry the rename carried forward, and a stamped section whose Commit line lacks the shipped-state annotation the §35 precedent requires. -> XREF: D00 T04 §14 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s14-2026-09-22-t04 D00-T04-S14-PR4 D00-T04-S14-PR6 (`gpt-5.6-sol` medium over §14 plus §35 plus §37 plus §1 plus §15, 8 findings, 2 filed here, 4 rejected with reasons plus 2 wins noted in the §14 findings file).
 
@@ -417,6 +445,8 @@ Why this section exists: the panel's opus slots pin `claude-opus-5`, but the run
 
 ## 20. Section-19 plan-review residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §19 plan review (sol-medium over §19 plus §15 plus §14 plus §16, 7 findings) returned 2 residuals that belong to the panel rules: a documented runner floor with no pre-dispatch enforcement, and per-slot argv coverage the re-pin left at two slots. -> XREF: D00 T04 §19 (filed from its plan review); -> SOURCE: plan-review-D00-T04-s19-2026-09-22-t04-s20 D00-T04-S19-PR1 D00-T04-S19-PR6 (`gpt-5.6-sol` medium over §19 plus §15 plus §14 plus §16, 7 findings, 2 filed here, 2 accepted in the stamp run, 2 rejected with reasons plus 1 win noted in the §19 findings file).
 
 **Groomed 2026-09-23:** Moot as written: both items key to claude slots (CLI floor 2.1.280, argv fixtures for signoff, depth, cross-fill, plan-fallback, arch-primary on claude-opus-5-5), and no claude slot exists since §25; reframe item 1 as a Grok CLI floor (1.0.40, `--prompt-file`) or retire the section at implementation.
@@ -449,6 +479,8 @@ Why this section exists: the panel's sol slots pin `gpt-5.6-sol`, but GPT-6 sol 
 > **Duration:** 2026-09-22T18:53:21Z to 2026-09-22T20:29:55Z
 
 ## 22. Section-21 review residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §21 depth round returned an advisory (R4-A1) on the pin-injection fixture the §21 fix loop strengthened: the `claude-opus-5-5` detector alternative has no falsifier because `claude-(?:opus|sonnet)-5` matches its prefix, so its model-only line never goes silent, and the `terra` branch of the sol family alternative has no fixture line at all. The §21 sol pins are fully covered, so the advisory filed here instead of re-rounding. -> XREF: D00 T04 §21 (review advisory filed here); -> SOURCE: Claude-panel-D00-T04-s21-round-4 (candidate 5931567, round-4 adversarial advisory; transcribed in docs/reviews/00-workspace/D00-T04-s21.md).
 
@@ -485,6 +517,8 @@ Why this section exists: Claude Code became the only writer on 2026-09-23 (`AGEN
 > **Reviewed-tip:** 5fe276822309a4b0001d6f8e864f8df340aae8c4
 
 ## 24. Section-23 sign-off residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §23 round-3 sign-off (`gpt-6-sol` high, the first GPT-governed round) returned three findings below the blocking bar, so they filed here instead of re-rounding. Both cutovers (`LABEL_CUTOVER` and `SIGNOFF_FAMILY_CUTOVER`) fall on 2026-09-22, so no stamp ever carried Claude record words under a Claude sign-off: pre-cutover records use `Opus panel`, `Opus outage`, and `Sol outage`, and post-cutover records are GPT-governed. The §23 prose still names `Claude outage` for the old era in places, and `query plan-health` classifies a findings file by the first owning stamp it visits and reads legacy words as new-era fallback evidence. -> XREF: D00 T04 §23 (round-3 sign-off residuals filed here); -> XREF: D00 T04 §25 (its fallback-family rules supersede the post-cutover plan-health and prose items here for stamps after 2026-09-23); -> SOURCE: GPT-panel-D00-T04-s23-round-3 (candidate 5fe2768, round-3 consistency plus integration; transcribed in docs/reviews/00-workspace/D00-T04-s23.md). -> SOURCE: plan-review-D00-T04-s23-2026-09-23 D00-T04-S23-PR4 D00-T04-S23-PR5 -> SOURCE: plan-review-D00-T04-s25-era-split D00-T04-S25-PR2 D00-T04-S25-PR3 D00-T04-S25-PR6
 **Noted 2026-09-23 (§25 plan review):** every post-cutover item here applies to stamps dated 2026-09-23 only; stamps after it read the §25 six-slot era, so each fixture below pins its era by stamp date and closing this section never restores the retired ladder for later stamps (D00-T04-S25-PR2).
@@ -526,6 +560,8 @@ Why this section exists: operator direction 2026-09-23 calls the ten-slot panel 
 
 ## 26. Section-25 sign-off residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §25 round-3 sign-off (`signoff` slot, `gpt-6-sol` high) returned one advisory and one finding below the blocking bar, so they filed here instead of re-rounding. -> XREF: D00 T04 §25 (round-3 sign-off residuals filed here); -> SOURCE: GPT-panel-D00-T04-s25-round-3 (candidate e6fdc7e, round-3 consistency advisory plus record finding; transcribed in docs/reviews/00-workspace/D00-T04-s25.md). -> SOURCE: plan-review-D00-T04-s25-2026-09-23 D00-T04-S25-PR5 D00-T04-S25-PR7 D00-T04-S25-PR8
 
 **Groomed 2026-09-23:** Item 2 widens to README: the `Plan review:` marker row (todo/README.md:163) has no six-slot era wording (no `grok rung`, nothing on post-cutover retry-owed), so item 2's Done-when covers that row too.
@@ -540,6 +576,8 @@ Why this section exists: the §25 round-3 sign-off (`signoff` slot, `gpt-6-sol` 
 **Test checkpoint:** `python3 scripts/todo-graph.py self-test` grows with 0 failed and `python3 scripts/todo-graph.py validate` prints 0 fatal. Falsifiable by an exact Grok pin failing to load, a variant pin loading, or a post-cutover `retry-owed` marker passing.
 
 ## 27. Self-Test Determinism on Windows
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: `python3 scripts/todo-graph.py self-test` is the gate every section in this tree runs, and on 2026-09-23 and 2026-09-24 it failed intermittently on this Windows host, then passed on an immediate rerun: "locked recording keeps racing runs distinct" recorded a `PermissionError(13, 'Permission denied')` and lost one of eight racing run ids, and "optional lane CLI skips honestly without git" failed once while its child run passed alone (1519/0). An intermittent red in the shared gate trains runners to rerun until green, which is how a real regression slips through (filed from the 2026-09-24 Phase 0 run).
 

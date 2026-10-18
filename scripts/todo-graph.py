@@ -21,6 +21,7 @@ import contextlib
 import io
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -1157,6 +1158,13 @@ def cmd_self_test(_args) -> int:
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 for ref, want in (("D00 T01 §2", 0), ("D00 T01 §9", 1), ("garbage", 2), ("D00 T01 §1", 3), ("D00 T01 §3", 4), ("D01 T01 §2", 5)):
                     check(f"resolve {ref}", cmd_resolve(argparse.Namespace(ref=[ref])), want)
+
+            # Output stays UTF-8 when the console code page cannot encode the text.
+            proc = subprocess.run(
+                [sys.executable, str(Path(__file__).resolve()), "resolve", "→ §1"],
+                capture_output=True, env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+            )
+            check("non-cp1252 output exits cleanly", (proc.returncode, "→".encode() in proc.stderr), (1, True))
         finally:
             TODO_DIR, PLAN = saved
 
@@ -1170,6 +1178,10 @@ def cmd_self_test(_args) -> int:
 
 
 def main() -> int:
+    # TODO text is UTF-8; a Windows console code page cannot encode all of it.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(prog="todo-graph", description=__doc__.split("\n")[0])
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("validate", help="integrity checks; exit 1 on any problem").set_defaults(fn=cmd_validate)

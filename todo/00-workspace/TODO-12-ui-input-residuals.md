@@ -49,6 +49,8 @@ track: W0
 
 ## 1. Binding Guard Fourth Residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §51 plan review returned 12 findings and all 12 file here, with §51's round-5 below-bar finding R5-I1 (in this file because TODO-02 reached its 55-section cap). §51 correlated swaps with execution, attributed kills to in-segment outcome assertions, separated negative routing, reconciled and contained stuck keys, classified held chords, captured stock parity, defined counting, enumerated enablement transitions, owned its physical debt, isolated child runs, and combined hold contracts with the surface matrix; these carry that through verdict precedence, substitute sensitivity, bounded negative observation, cross-process containment, operator key ownership, hold reset, stale targets, repeat identity, matrix completeness, pinned parity, one debt mapping, child state isolation, and capture key ownership. -> SOURCE: plan-review-D00-T02-s51-2026-09-26-d00t12s1 D00-T02-S51-PR1 D00-T02-S51-PR2 D00-T02-S51-PR3 D00-T02-S51-PR4 D00-T02-S51-PR5 D00-T02-S51-PR6 D00-T02-S51-PR7 D00-T02-S51-PR8 D00-T02-S51-PR9 D00-T02-S51-PR10 D00-T02-S51-PR11 D00-T02-S51-PR12 D00-T02-S51-R5-I1 run-a-s52b-2026-09-26
 
 **Needs:** Windows host (build/test)

@@ -46,6 +46,8 @@ track: W0
 
 ## 1. Sibling Sweep Fourth Residuals
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §48 plan review returned 16 findings; 15 file here (in this file because TODO-02 reached its 55-section cap) and 1 is rejected with its reason in the §48 findings file. §48 placed or reported overlapped helpers, failed visible unplaced ones, proved shared-thread attribution, bounded the recorder, required every first-birth helper pinned, abandoned failed constructions, correlated diagnostics by generation, revalidated topology, and measured the cost; these carry that through terminal overlap outcomes, containment, one verdict, unobtrusive births, adversarial attribution, the move race, topology during the move, recorder limits, independent reconciliation, queued teardown, log faults, harder workloads, the dialog proof, one contract, and a compact summary. -> SOURCE: plan-review-D00-T02-s48-2026-09-26-d00t10s1 D00-T02-S48-PR1 D00-T02-S48-PR2 D00-T02-S48-PR3 D00-T02-S48-PR4 D00-T02-S48-PR5 D00-T02-S48-PR6 D00-T02-S48-PR7 D00-T02-S48-PR8 D00-T02-S48-PR9 D00-T02-S48-PR10 D00-T02-S48-PR11 D00-T02-S48-PR12 D00-T02-S48-PR13 D00-T02-S48-PR15 D00-T02-S48-PR16
 
 **Needs:** Windows host (build/test)
@@ -72,6 +74,8 @@ Why this section exists: the §48 plan review returned 16 findings; 15 file here
 **Test checkpoint:** Overlaps end, failures contain, one verdict rules, births stay unobtrusive, attribution resists adversaries, the move race and topology changes are safe, the recorder has limits, reconciliation is independent, teardown clears queued work, log faults red, the budget holds under load, the dialog proof reruns, one contract maps owners, and each launch summarizes itself. Cheaper substitute that fails: another log field no test reads.
 
 ## 2. Gate Attribution Residuals
+
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
 
 Why this section exists: the §49 plan review returned 12 findings; 11 file here with §49's round-5 finding R5-I1 (in this file because TODO-02 reached its 55-section cap) and 1 is rejected with its reason in the §49 findings file. §49 attributed each gate event to its process by pid and start time and named the executable in every line; these carry that through event-time ownership, atomic reads, unknown outcomes, recognition rules, evidence joins, one identity everywhere, detection controls, path privacy, lookup cost, historical reassessment, and one stale-chord case from the §43 surface its false red came from. -> SOURCE: plan-review-D00-T02-s49-2026-09-26-d00t10s2 D00-T02-S49-PR1 D00-T02-S49-PR2 D00-T02-S49-PR3 D00-T02-S49-PR4 D00-T02-S49-PR5 D00-T02-S49-PR6 D00-T02-S49-PR7 D00-T02-S49-PR9 D00-T02-S49-PR10 D00-T02-S49-PR11 D00-T02-S49-PR12 D00-T02-S49-R5-I1
 

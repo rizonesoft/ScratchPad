@@ -42,6 +42,8 @@ track: W0
 
 ## 1. Unresolvable Reference Refusal
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the validator accepted a cross-reference to TODO-02 section 57 in TODO-02 §33 although no section 57 exists, because the bidirectionality check only pairs sections it can find. A reference to a missing section is worse than a one-sided one: it points work at an owner that is not there. -> SOURCE: campaign-2026-09-26-d00t02s33-xref57
 
 - -> XREF: D00 T01 §55 -- continues the TODO-governance tooling that file closed at its cap.

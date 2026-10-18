@@ -41,6 +41,8 @@ track: W0
 
 ## 1. Bin Machinery Follow-Ups
 
+> **Moved:** 2026-10-18 to docs/specs/2026-10-18-simplify-process-design.md (operator decision: review and nightly governance retired; this section served only that process).
+
 Why this section exists: the §41 plan review returned 24 findings and 8 of them harden the Bin-output machinery (guards, launcher, clean, soak glob, manifest, operator command), so they home here as the first resident file past the 55-section cap. -> XREF: D00 T01 §41 (filed from its plan review); -> SOURCE: plan-review-D00-T01-s41-2026-09-19-t07 D00-T01-S41-PR3 D00-T01-S41-PR6 D00-T01-S41-PR9 D00-T01-S41-PR10 D00-T01-S41-PR13 D00-T01-S41-PR15 D00-T01-S41-PR22 D00-T01-S41-PR24 (`gpt-5.6-sol` high over §41 plus §40 plus D00 T06 §1, 24 findings, 8 filed here, 3 filed at D00 T06 §1, 2 accepted in the §41 stamp run, 1 duplicate, 10 rejected with reasons in the §41 findings file).
 
 **Groomed 2026-09-23:** Already in the repo: the only CI job runs on windows-2025 and carries both the conformance probe with fire proofs and the clean-bin fixture proof (`.github/workflows/build.yml:18,55-71`), so the Windows-conformance and clean-proof items close by citing a green run at implementation (grooming ticks nothing).
