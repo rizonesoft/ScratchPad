@@ -65,10 +65,16 @@ jobs:
       - name: Prove clean-bin fixture
         shell: bash
         run: |
-          rm -rf /tmp/clean-proof && cp -r tests/Fixtures/clean-bin/Bin /tmp/clean-proof
-          python3 tools/clean-bin.py --bin-dir /tmp/clean-proof
-          test ! -e /tmp/clean-proof/DefunctProject || { echo "stale dir survived"; exit 1; }
-          test -e /tmp/clean-proof/AcpLoopback/Debug/keep.dll || { echo "live dir pruned"; exit 1; }
+          rm -rf /tmp/clean-proof && mkdir -p /tmp/clean-proof && cp -r tests/Fixtures/clean-bin/Bin /tmp/clean-proof/Bin
+          python3 tools/clean-bin.py --bin-dir /tmp/clean-proof/Bin
+          test ! -e /tmp/clean-proof/Bin/DefunctProject || { echo "stale dir survived"; exit 1; }
+          test -e /tmp/clean-proof/Bin/AcpLoopback/Debug/keep.dll || { echo "live dir pruned"; exit 1; }
+          # A mistyped --bin-dir or a repo with no projects must refuse, never delete.
+          rm -rf /tmp/not-bin && mkdir -p /tmp/not-bin/Photos
+          if python3 tools/clean-bin.py --bin-dir /tmp/not-bin; then echo "pruned a non-Bin dir"; exit 1; fi
+          test -e /tmp/not-bin/Photos || { echo "non-Bin dir was pruned"; exit 1; }
+          if python3 tools/clean-bin.py --bin-dir /tmp/clean-proof/Bin --repo /tmp/not-bin; then echo "pruned with no project stems"; exit 1; fi
+          test -e /tmp/clean-proof/Bin/AcpLoopback/Debug/keep.dll || { echo "no-stems run pruned"; exit 1; }
       - name: Probe Bin layout conformance
         shell: bash
         run: |

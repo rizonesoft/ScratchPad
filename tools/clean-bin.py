@@ -4,7 +4,9 @@
 A Bin/<child>/ dir whose name matches no tracked csproj stem is a leftover
 of a renamed or removed project: remove it. Matching is case-insensitive so
 a pure rename (Foo to foo) still reads stale. Prints every removal; exits 0
-always (an empty prune is the common green case). `--dry-run` lists without
+(an empty prune is the common green case), or 2 when it refuses: a
+`--bin-dir` not named Bin, or a repo with no project stems. Links under Bin
+are never followed or removed. `--dry-run` lists without
 removing. Full cleans stay `rm -rf Bin` (docs/build.md); this script clears
 only the stale-project tail that a full wipe would also take.
 """
@@ -54,9 +56,20 @@ def main(argv: list[str]) -> int:
     if not bindir.is_dir():
         print(f"no Bin dir at {bindir}, nothing to prune")
         return 0
+    # Deleting is only safe inside a build-output tree: a mistyped --bin-dir
+    # must never reach user folders.
+    if bindir.resolve().name.casefold() != "bin":
+        print(f"refusing to prune {bindir}: not a Bin directory", file=sys.stderr)
+        return 2
     live = stems(repo)
+    if not live:
+        print(f"refusing to prune {bindir}: no project stems under {repo}, so every dir would read stale", file=sys.stderr)
+        return 2
     removed = kept = 0
     for child in sorted(bindir.iterdir()):
+        if child.is_symlink() or child.is_junction():
+            print(f"skipping link {child}")
+            continue
         if not child.is_dir():
             continue
         if child.name.casefold() in live:
