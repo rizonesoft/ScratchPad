@@ -6,16 +6,16 @@ Spec: `docs/specs/2026-10-18-simplify-process-design.md`. Each phase is one comm
 
 - [x] Record acceptance A4 (outcome `closed`) on `docs/reviews/00-workspace/D00-T02-s10.md`: the flip-blocker list the finding critiqued was replaced on 2026-10-14 by "a red test of the feature holds the flip".
 - [x] Write this spec and plan.
-- [ ] Tag the last commit before the cut as `pre-simplify`.
+- [x] Tag the last commit before the cut as `pre-simplify`.
 
 ## Phase 1: rewrite `scripts/todo-graph.py` to the core
 
-- [ ] Capture the old tool's outputs on the live tree into scratch: `plan --sync` result, `query ready`, `query blocked`, `query stats`, `resolve` for a sample of references.
-- [ ] Write the new tool (parse, validate, plan, queries, resolve, self-test) with no imports outside the standard library and no git or `docs/reviews` reads.
-- [ ] Prove equivalence: `plan --sync` leaves `todo/implementation-plan.md` byte-identical; `ready`, `blocked`, `stats` and the `resolve` sample match; `validate` reports 0 fatal; `self-test` passes; each validate rule has a red fixture.
-- [ ] Delete `scripts/todo-validate.py`, `todo-adjacency.py`, `panel_slots.py`, `review_prompt.py`, `probe_runner.py`, `.conclave/`, `todo/.warning-baseline`.
-- [ ] `plan.yml`: keep `self-test`, `validate`, routing checks and the projection check; delete the unattended job and the probe step. Delete `.github/owner-logins.json`, `tools/check_heartbeat.py`, `tools/notify_poster.py`, `docs/risk-register.md`.
-- [ ] Pre-commit hook keeps working against the new `validate`.
+- [x] Capture the old tool's outputs on the live tree into scratch: `plan --sync` result, `query ready`, `query blocked`, `query stats`, `resolve` for a sample of references.
+- [x] Write the new tool (parse, validate, plan, queries, resolve, self-test) with no imports outside the standard library and no git or `docs/reviews` reads.
+- [x] Prove equivalence: `plan --sync` leaves `todo/implementation-plan.md` byte-identical; `ready`, `blocked`, `stats` and the `resolve` sample match; `validate` reports 0 fatal; `self-test` passes; each validate rule has a red fixture.
+- [x] Delete `scripts/todo-validate.py`, `todo-adjacency.py`, `panel_slots.py`, `review_prompt.py`, `probe_runner.py`, `.conclave/`, `todo/.warning-baseline`.
+- [x] `plan.yml`: keep `self-test`, `validate`, routing checks and the projection check; delete the unattended job and the probe step. Delete `.github/owner-logins.json`, `tools/check_heartbeat.py`, `tools/notify_poster.py`, `docs/risk-register.md`.
+- [x] Pre-commit hook keeps working against the new `validate`.
 
 ## Phase 2: docs and skills
 
