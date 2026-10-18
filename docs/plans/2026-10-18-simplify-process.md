@@ -19,16 +19,16 @@ Spec: `docs/specs/2026-10-18-simplify-process-design.md`. Each phase is one comm
 
 ## Phase 2: docs and skills
 
-- [ ] `todo/README.md`: drop the governance rule table, outcome matrix, clearance, plan-review, night-debt and grandfathering material; the stamp section shows `Verified`, `Review` (one line), `Deferred`, `Resolved`, `Moved`, `Started`.
-- [ ] Skills: merge into `add-todo`, `process-todo-section`, `process-phase`, `groom-plan`; delete the rest.
-- [ ] `AGENTS.md`: Validation lists only the kept commands; review is one Opus pass; drop the panel references.
-- [ ] `docs/agent-routing.md`, `CONTRIBUTING.md`, `README.md`, PR and issue templates: kept commands only.
+- [x] `todo/README.md`: drop the governance rule table, outcome matrix, clearance, plan-review, night-debt and grandfathering material; the stamp section shows `Verified`, `Review` (one line), `Deferred`, `Resolved`, `Moved`, `Started`.
+- [x] Skills: merge into `add-todo`, `process-todo-section`, `process-phase`, `groom-plan`; delete the rest.
+- [x] `AGENTS.md`: Validation lists only the kept commands; review is one Opus pass; drop the panel references.
+- [x] `docs/agent-routing.md`, `CONTRIBUTING.md`, `README.md`, PR and issue templates: kept commands only.
 
 ## Phase 3: nightly machinery and governance docs
 
 - [ ] `docs/testing.md`: replace `tools/nightly.ps1` with the two foreground commands; drop night-debt collection.
 - [ ] Delete `tools/nightly.ps1`, `tools/Nightly*.ps1`, `tools/NightDebt*.ps1`, `tools/tasks/`, and docs that only serve them (`docs/nightly-*`, `docs/night-owed/`, `docs/incident-*`, `docs/owed-case-retirements.md`). Check each for a live caller first (`tools/provision.ps1`, `build.yml`, `soak.yml`, tests).
-- [ ] `.claude/hooks/campaign-stop.ps1` still works against `query ready`.
+- [ ] `.claude/hooks/campaign-stop.ps1` stays inert (no skill writes its guard file); removing its `Stop` entry from `.claude/settings.json` is the operator's edit.
 
 ## Phase 4: retire governance TODO sections
 

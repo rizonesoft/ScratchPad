@@ -25,10 +25,6 @@ track: CHANGEME
 - CHANGEME: observable end state, not an activity.
 - CHANGEME: a second end state.
 
-**Adjacency:** CHANGEME: all=not-applicable (reason) or all nine keys exactly once, separated by semicolons.
-
-**Adjacency rationale:** CHANGEME: the substantive decisions behind the line above, in prose.
-
 ## Implementation Order
 
 | Order | Section | Deliverable | Depends On | Status |

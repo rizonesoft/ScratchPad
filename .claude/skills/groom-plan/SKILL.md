@@ -34,9 +34,7 @@ Pay special attention to:
 
 ### 3. Gap scan
 
-Read the plan as the user will use the finished product, domain by domain, and ask what has no owner: surfaces, controls, handoffs, error paths, settings without consumers, writes without readback. File each gap with `add-todo` (evidence, owner, dependency), place the new rows in their phases, and sync the plan.
-
-Check the Adjacency declarations while here: `python3 scripts/todo-graph.py query adjacency` advisories that name real gaps become sections; ones that are already covered get their anchors sharpened.
+Read the plan as the user will use the finished product, domain by domain, and ask what has no owner: surfaces, controls, handoffs, error paths, settings without consumers, writes without readback. File only gaps a user or test would observe. File each gap with `add-todo` (evidence, owner, dependency), place the new rows in their phases, and sync the plan.
 
 ### 4. Complete-feature pass
 

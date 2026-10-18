@@ -1,10 +1,10 @@
 """Subagent routing for Claude Code sessions (operator direction 2026-10-01).
 
 The lead session delegates bounded read-only work (research, gate runs,
-and routine pre-panel review) to the repo agents in `.claude/agents/`,
+and routine pre-review passes) to the repo agents in `.claude/agents/`,
 each pinned to the `sonnet` alias at `high` effort. No routed agent writes:
 implementation stays with the lead (operator direction 2026-10-02). This file is the one
-source of truth for those pins, in the panel_slots.py pattern: the
+source of truth for those pins: the
 closed sets live here, `check` fails when an agent file drifts from
 them, and `pre-agent` is the PreToolUse hook body that keeps a session
 from silently substituting another model or the inherited lead model.
@@ -20,8 +20,8 @@ Commands:
                            or one agent-*.jsonl)
   self-test                hermetic cases for all of the above
 
-Routing rules enforced by pre-agent (fail open on a bad payload, like
-campaign-stop.ps1; `check` in CI and pre-commit guards the wiring):
+Routing rules enforced by pre-agent (fail open on a bad payload;
+`check` in CI and pre-commit guards the wiring):
   - A routed agent may not carry a `model` override other than its pin.
   - A routed agent is denied while the session env sets
     CLAUDE_CODE_EFFORT_LEVEL to another effort, or sets

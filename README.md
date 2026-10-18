@@ -87,11 +87,10 @@ It is not a subscription. Saying it twice because it bears repeating.
 | `tests/` | Unit, smoke, UI, and protocol suites (backbone: `D00 T02`) |
 | `resources/baseline/` | Captured Notepad baseline for parity checks |
 | `todo/` | The live execution plan. Start here. |
-| `scripts/` | The TODO graph (`todo-graph.py`, stdlib-only) and the review tooling (`review_prompt.py`, `panel_slots.py`, `probe_runner.py`) |
+| `scripts/` | The TODO graph (`todo-graph.py`, stdlib-only) and the subagent routing check (`agent_routing.py`) |
 | `tools/` | Provisioning, launch, the governed nightly and its reconcilers, and the README capture |
 | `docs/` | Guides, procedures, ledgers, review records, and phase runs |
 | `.claude/` | Claude Code skills and hooks that run the plan |
-| `.conclave/` | The review panel's slot wiring (`panel.toml`) |
 | `.github/` | CI workflows, issue and pull request templates |
 
 Build output lands under `Bin/`, `build/`, and `TestResults/`, all gitignored.
@@ -152,7 +151,6 @@ Ported deliberately later, when the repo earns them:
 | [docs/incident-ledger.md](docs/incident-ledger.md), [docs/incident-links.md](docs/incident-links.md) | Nightly incident identity and triage links |
 | [docs/nightly-exclusions.md](docs/nightly-exclusions.md), [docs/nightly-host-aliases.md](docs/nightly-host-aliases.md), [docs/nightly-pauses.md](docs/nightly-pauses.md), [docs/nightly-schedule-history.md](docs/nightly-schedule-history.md) | Operator ledgers the nightly trend reads |
 | [docs/owed-case-retirements.md](docs/owed-case-retirements.md), [docs/test-exclusions.md](docs/test-exclusions.md) | Test population ledgers |
-| [docs/risk-register.md](docs/risk-register.md) | Accepted risks with residual severity |
 | [docs/assets/captures.md](docs/assets/captures.md) | Provenance for every screenshot in this README |
 
 ## Contributing

@@ -1,80 +1,49 @@
 ---
 name: process-phase
-description: Attended runner that takes one phase of todo/implementation-plan.md to 100% -- repair the phase, gap-check it, then ship section after section via process-todo-section plus review-todo-section, parking only when every leftover row is blocked or runnable-elsewhere in this context. Use when the user says process, run, or finish a phase.
+description: Run a phase of todo/implementation-plan.md (or the whole plan) section by section through process-todo-section until every runnable row is shipped, then close the phase and any finished TODO files. Use when the user says process, run, or finish a phase or the plan.
 ---
 
 # Process Phase
 
-One phase, start to 100%, or parked when the rest of it is blocked or runnable-elsewhere here. You do not stop in between.
+Ship rows until nothing runnable is left, then close out. With no phase named, start at the first phase that has a ready row and move to the next when it closes or parks.
 
-**Exactly three endings.** Zero open rows and a written closeout. Every leftover row blocked or runnable-elsewhere here, so the phase is **parked** and `process-plan` moves to the next ready phase. Or the operator's own pause. There is no fourth, and a parked phase is neither complete nor a stall.
+The operator is present but is not the engine: decide, verify and fix what you can. If the operator says stop or pause, stop at once.
 
-The whole plan is `process-plan`, not this skill. This skill is one named phase. When the session entered through `process-plan` with no phase argument, return to it after closeout or park so it can start the next ready phase; a session pinned to one phase ends here.
+## 0. Open the run
 
-The user is present but is not the engine. Talk to them when something genuinely needs them; never wait on them for anything you can decide, verify, or fix yourself.
-
-**Completion-first never buys completion with a bypass.** `--no-verify`, `--amend`, and force-push are forbidden to this run. If a gate refuses, the run fixes the cause. It does not push, and it does not pause: a red gate is work. A failed push is a red gate, not a skip: diagnose, fix, retry. Never leave an unpushed stack on the theory that CI will catch up later.
-
-**Attended means interruptible, not stoppable.** When the user sends a message mid-run, answer it briefly and continue the loop in the same turn. The one exception outranks everything: **if the user tells you to stop or pause the run, obey immediately**, confirm, and wait. Their instruction beats completion-first, always. Stopping or pausing deletes the run guard first (guard file, state file, heartbeat job, as `process-plan` specifies), so no heartbeat resumes against the operator's instruction; resume recreates it before any other step.
-
-## Step 0 -- open the run
-
-Check that no other writer holds the tree (`git status`, and ask about unfamiliar uncommitted work). Then open the run's findings file: `docs/phase-runs/<YYYY-MM-DD>-phase-<N>.md` (create `docs/phase-runs/` if absent). **Every finding this run produces is appended there the moment it is made, not at the end**: the file survives session death where chat scrollback does not, and it is what the user reads during and after the run. Structure:
-
-```markdown
-# Phase run: <heading>
-
-## Phase repairs              (Step 1: what was wrong with the plan, what was corrected, where)
-## Shipped-row verification   (Step 1b: each [x] row -- stamp ok / checkpoint re-run result / audit outcome)
-## Gap audit                  (Step 2: gaps found, where each was filed, rows pulled in; the park record lands here)
-## Sections                   (Step 3: one entry per section -- ref, outcome, review verdict, corrections)
-## Critical events            (every stop, pause, resume, and session death)
-## Lessons                    (what was learned this run, worth keeping)
+```bash
+git status -sb
+python3 scripts/todo-graph.py validate
+python3 scripts/todo-graph.py plan --check || python3 scripts/todo-graph.py plan --sync
+python3 scripts/todo-graph.py query ready
+powershell -ExecutionPolicy Bypass -File tools/provision.ps1 -Verify
 ```
 
-Read the most recent prior file in `docs/phase-runs/` for this phase, if one exists: anything unresolved there is this run's first input.
+Fix any `validate` failure first; if provisioning faults, run `tools/provision.ps1` without `-Verify` to repair. Create `docs/phase-runs/<YYYY-MM-DD>-phase-<N>.md` and append to it as you go (it survives a lost session): each section's outcome, plan corrections, anything filed, stops.
 
-Run guard: if this session entered through `process-plan`, the plan owns the guard; verify it exists (`CronList` plus `build/claude-campaign-guard.json` naming this session and this run file) and record the check, but do not create a second. If pinned to this phase standalone, start the guard exactly as the `process-plan` skill specifies, with this phase's run file, and record its job id in Critical events.
+## 1. Ship
 
-## Step 1 -- repair the phase before running it
+For each row of the phase in table order that `resolve` exits `0` for and that is runnable in this context: run `process-todo-section` on it. Re-check skipped rows after each stamp, because rows unblock as others flip. A row blocked on another phase stays where it is. A broken reference in the phase table is repaired, not skipped.
 
-The phase table is a plan, and plans drift. Fix it before building on it. In order:
+Gaps you notice while shipping (a surface or control no section owns) are filed with `add-todo` the same turn.
 
-1. `python3 scripts/todo-graph.py validate`: fix every FATAL now.
-2. `python3 scripts/todo-graph.py plan --check`: if stale, `plan --sync`.
-3. For EVERY open row in the phase: `python3 scripts/todo-graph.py resolve '<ref>'`. Record the exit code.
-   - Exit 4 with unmet deps **outside this phase** is a **leftover, not a stall**. Leave the row here, ship every exit-0 runnable-now row, and park when only leftovers remain. Do not drag a later phase's dependency into this one, and do not loop back hoping the answer changes.
-   - Exit 1/2: the row cites a section that does not exist: repair the reference against the TODO file. A broken ref is repairable work, so it blocks a park.
-   - A row whose `resolve` verdict is runnable-elsewhere **in this context** is a leftover, not a shippable row, whatever the exit code: it stays visible, never ships here, and parks with the rest when only leftovers remain. Re-run `resolve` rather than trusting a previous verdict.
-4. Read each open section's TODO file top to bottom, looking for **phase-level** staleness only (per-section validation happens again inside `process-todo-section`): sections whose work already shipped elsewhere, sections made moot by a decision since, callouts whose blocker no longer exists. Correct with dated `**Corrected YYYY-MM-DD:**` notes.
+## 2. Park or close
 
-### Step 1b -- shipped rows are verified, not trusted
+- **Park:** every open row left is blocked or runnable only elsewhere. Write a column-0 `PARKED <UTC> <reason>` line and list each leftover with what blocks it.
+- **Close:** every row is `[x]`. Run the focus-free full suite once:
 
-`[x]` rows in the phase are claims, and a claim is checked. At run start, re-check shipped rows that an OPEN row in this phase depends on: the dependency spine the new work builds on. For each spine row:
+  ```powershell
+  dotnet test src/ScratchPad.slnx --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1
+  ```
 
-1. Confirm a `Verified:` stamp covers it (`resolve` exits 3 and the stamp names the section).
-2. Re-run its `Test checkpoint` command if it names one (independent spine checkpoints can go to parallel `sonnet-verifier` runs; `AGENTS.md` Delegation). A checkpoint that no longer passes means the section regressed after shipping: treat it as this phase's work (diagnose, fix forward, re-review with `review-todo-section` in audit stance).
-3. If anything about the implementation looks wrong against today's source, invoke `review-todo-section` in audit stance on that section. It either re-confirms the row or downgrades it to `[ ]`, and a downgraded row rejoins the loop like any other.
+  List the two foreground commands from `docs/testing.md` as owed to the operator (they take the screen; do not wait for them). Write `## Closeout` in the run file: what shipped, what was corrected, what was filed.
 
-## Step 2 -- gap-audit the phase
+For each TODO file whose rows are now all `[x]`: run its `## Verification` items, grep the touched paths for new `TODO`/`FIXME` markers (finish each or give it an owning section), confirm its open deferrals still name live owners, set `status: done` in its frontmatter, and move it to a Completed list in the domain `INDEX.md`.
 
-Read the phase as a user would use it, end to end, and ask what is missing: surfaces with no owner, controls with no section, handoffs between domains nobody specified. File each gap with `add-todo` (with evidence and an owner), pull the resulting rows into the phase table where they belong, and sync the plan. A gap found is a gap filed the same turn: the audit that only lists gaps in chat has not audited.
-
-## Step 3 -- ship the phase, one row at a time
-
-In table order, for each open row: `process-todo-section`, then `review-todo-section`. Record each outcome in the findings file's Sections log. After each stamp, sync the plan. Commit per section; push per the two-push discipline (ship push, then stamp push).
-
-Skip rows whose `resolve` is not exit 0 or whose verdict is runnable-elsewhere here, and re-check them after each stamp: the graph moves as rows flip. Never park a ready row on owed foreground tests: ship-with-debt rows run now and the operator's phase-close run collects their debt. When every remaining open row is exit 4 (or otherwise unshippable here), the phase parks: write a column-0 `PARKED <UTC stamp> <one-line reason>` line in the run file, then the park record (each leftover, what blocks it, where the blocker lives), commit the findings file, and if pinned standalone delete the guard and record its deletion. Then return to `process-plan` (or end, if pinned).
-
-## Step 4 -- closeout
-
-When the table is all `[x]`: re-run the full suite once, focus-free (`docs/testing.md` testing policy: `dotnet test src/ScratchPad.slnx --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1`; the foreground legs are the operator's to start and the closeout lists them as owed), confirm the plan shows the phase complete, write the closeout under a `## Closeout` heading in the run file (what shipped, what was repaired, what was learned), commit, delete the guard if pinned standalone (the plan deletes it when chained), and report. A phase is complete when its table says so and the closeout is written: not before.
+Commit, sync the plan, and continue with the next phase that has a ready row unless a single phase was named. Stop when no phase has one, and report what shipped and what is left.
 
 ## Guardrails
 
-- Do not invent a side loop that ships rows outside `process-todo-section` plus `review-todo-section`.
-- Do not tick `implementation-plan.md` by hand. Sync it.
-- Do not claim a phase complete while its table has `[ ]` rows.
-- Do not call a parked phase complete, and do not call it a stall.
-- Do not end the turn on the audit. Ship, park, or close out.
-- Do not leave a run guarded after it ends, and do not pause with the guard live: stop deletes first, resume recreates.
+- Rows ship only through `process-todo-section`. Never tick a plan box by hand.
+- A parked phase is neither complete nor stalled; say which rows block it.
+- No `--no-verify`, amends or force-pushes. A red gate is work to fix.

@@ -1,46 +1,40 @@
 ---
 name: add-todo
-description: Front door for new work -- search the tree for an existing home first, then route to an existing section, a new section, or a whole new file via create-todo. Use whenever work needs capturing.
+description: Front door for new work -- search the tree for an existing home first, then add a checklist item, a new section, or a whole new TODO file. Use whenever work needs capturing.
 ---
 
 # Add TODO
 
-New work enters through here. The failure this skill exists to prevent is the near-duplicate TODO in a second domain, which is worse than no entry: two owners, neither complete.
+New work enters through here. The failure this prevents is a near-duplicate section in a second file: two owners, neither complete.
 
-## Workflow
-
-### 1. Search before filing
-
-Search the tree for a home the work already has:
+## 1. Search before filing
 
 ```bash
 grep -rn "<keywords>" todo/ --include='TODO-*.md' | head -30
-python3 scripts/todo-graph.py query findings | head -20
 ```
 
-Read the candidates. A home exists when a section's scope already covers the work, even if its checklist does not name it yet.
+A home exists when an open section's scope already covers the work, even if its checklist does not name it yet.
 
-### 2. Route to one of four outcomes
+## 2. Route
 
 | Outcome | When | Do this |
 | ------- | ---- | ------- |
 | Already covered | A section owns it | Point at the section. File nothing. |
-| Fits a section | An open section's scope covers it | Add a checklist item there, or extend the section body. Never touch a `[x]` section's checklist. |
-| Needs a section | Real work with no owner, inside an existing file's scope | Append a new `## N.` section in numerical position with its Implementation Order row, then sync the plan. |
-| Needs a file | A new subject no file owns | Delegate to `create-todo`. |
+| Fits a section | An open section's scope covers it | Add a checklist item there. Never touch a `[x]` section's checklist. |
+| Needs a section | Real work inside an existing file's scope | Add `## N.` in numerical position (before `## Verification`) with its Implementation Order row. |
+| Needs a file | A subject no file owns | Copy `todo-template.md` (beside this skill) to `todo/<domain>/TODO-NN-<name>.md`, fill every `CHANGEME`, and list the file in the domain `INDEX.md`. |
 
-### 3. New sections are born complete
+File only work with an observable reason: a user-visible gap, a wrong result a test or user would see, a safety or data-integrity fault, or an operator request. Hardening ideas with no failure behind them are not filed.
 
-A new section carries everything the format requires from birth: context paragraph, micro-step checklist with a `Commit:` item, `Test checkpoint:`, Fidelity/Job/Treatment/Chrome when it builds a surface, `Needs:` when it needs a Windows host, `Requires:` when it needs an environment capability, and its Implementation Order row with a real `Depends On`. A section filed as a one-line stub is a plan defect, not a head start.
+## 3. Born complete
 
-Give it a dependency edge, not a wish. If it must wait on another section, say so in `Depends On`; if it truly stands alone, `--`.
+A new section carries what `todo/README.md` Section anatomy requires: context paragraph, checklist ending in `Commit:`, a falsifiable `Test checkpoint:`, the UI blocks on surface work, `Needs:`/`Requires:` when they apply, and a row with real `Depends On` edges (`--` only when it truly stands alone). Every section must be buildable with zero conversation context.
 
-### 4. Wire and verify
+## 4. Wire and verify
 
-- Point at related sections with `-> XREF:` and point back from each target. One-sided XREFs are FATAL.
-- Name a `(item: "...")` on any deferral that hands this work to an owner, so closure is detectable at item granularity.
-- A finding filed from evidence carries a `-> SOURCE: <key>` line naming what it was filed from, so a second run of the same scan cannot open a second row for it.
-- Then prove the tree still holds:
+- Point at related sections with `-> XREF:` and add the line pointing back in each target.
+- A deferral that hands this work to an owner names the owner's `(item: "...")`.
+- Add a row for every new section to the right phase table in `todo/implementation-plan.md`, then:
 
 ```bash
 python3 scripts/todo-graph.py validate
@@ -48,13 +42,6 @@ python3 scripts/todo-graph.py plan --sync
 python3 scripts/todo-graph.py plan --check
 ```
 
-### 5. Commit and report
+## 5. Commit and report
 
-Commit as `todo: file <what> in <ref>`. Report the section address (`DNN TNN §N`), why that home won over the alternatives searched, and what the plan totals now say.
-
-## Guardrails
-
-- Do not file work into a `[x]` section. New granularity on shipped work is a new section.
-- Do not write a bare `TNN` reference without a section on any line containing `XREF`, `Depends`, or `|`.
-- Do not leave the plan unsynced. A section with no plan row breaks `plan --check`.
-- Do not file the same real-world thing twice. Search first, and stamp automated filings with `SOURCE:`.
+Commit as `todo: file <what> in <ref>`. Report the section address (`DNN TNN §N`) and why that home won.

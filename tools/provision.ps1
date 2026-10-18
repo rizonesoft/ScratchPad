@@ -6,7 +6,7 @@
   One idempotent command verifies plus repairs the git hooks, checks
   the CI workflows and that no scheduled test task exists, on Windows,
   and provisions the pinned .NET SDK. -Verify runs the verify half only
-  (session-start surface: the process-plan audit step invokes it); exit
+  (session-start surface: the process-phase open step may invoke it); exit
   0 when every leg quotes green, exit 1 naming each fault. Without
   -Verify, repairs run first (hooks re-wire on unambiguous breakage
   only, SDK re-provision when its verify faults), then a final verify

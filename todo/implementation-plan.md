@@ -8,7 +8,7 @@ The order to run every section in, from today to a signed release.
 
 Seeded 2026-09-14 by porting the JMR Online TODO system. Current state and dependency ordering are derived from the repository; dated operational evidence remains dated evidence and must be re-read before an external change.
 
-**How to use this.** The front door for this file is the `process-plan` skill. It audits, then runs `process-phase` on the first phase that has a ready row, then the next ready phase after that closeout or park, until no ready phase remains. A phase whose leftover `[ ]` rows are blocked by another phase (or another unmet dep) is parked, not a stall, and is not called complete. One row is `process-todo-section` then `review-todo-section`. Do not invent a side loop. Within a phase, follow the rows in order; if a newly discovered edge points later, add or split the prerequisite under `groom-plan` rather than moving the existing consumer.
+**How to use this.** The front door for this file is the `process-phase` skill. With no phase named it starts at the first phase that has a ready row, then the next ready phase after that closeout or park, until no ready phase remains. A phase whose leftover `[ ]` rows are blocked by another phase (or another unmet dep) is parked, not a stall, and is not called complete. One row is one `process-todo-section` run. Do not invent a side loop. Within a phase, follow the rows in order; if a newly discovered edge points later, add or split the prerequisite under `groom-plan` rather than moving the existing consumer.
 
 **Copy a row and paste it.** The skills resolve a reference from whatever shape it arrives in, so this is a complete instruction:
 
@@ -21,7 +21,7 @@ No translating domain `00` and TODO `01` into a filename. `todo-graph.py resolve
 > [!IMPORTANT]
 > **The boxes are derived. Never tick one by hand.**
 >
-> They are a projection of each TODO's Implementation Order table, and those flip in exactly one place: `review-todo-section`, after a `Verified:` stamp exists. A box ticked here would be a second record of the same fact.
+> They are a projection of each TODO's Implementation Order table, and those flip in exactly one place: `process-todo-section`, after a `Verified:` stamp exists. A box ticked here would be a second record of the same fact.
 >
 > ```bash
 > python3 scripts/todo-graph.py plan --sync     # rewrite the boxes, then re-align every table
