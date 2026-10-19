@@ -617,7 +617,8 @@ def cmd_query(args) -> int:
             print(f"section cap      {MAX_SECTIONS_PER_FILE} per file; nearest:")
             for count, path in near:
                 left = MAX_SECTIONS_PER_FILE - count
-                print(f"  {count:>3}  {f'{left} left' if left > 0 else 'OVER CAP':<9}  {path}")
+                label = f"{left} left" if left > 0 else "at cap" if left == 0 else "OVER CAP"
+                print(f"  {count:>3}  {label:<9}  {path}")
         return 0
 
     if args.what == "deferred":
@@ -1141,13 +1142,15 @@ def cmd_self_test(_args) -> int:
             write()
             (root / "01-app" / "INDEX.md").write_text("nothing\n", encoding="utf-8")
             check("missing from index", any("not listed in" in p for p in problems(load_todos())), True)
-            many = FIXTURE_A.replace("## Verification", "".join(
-                f"## {n}. S{n}\n\n- [ ] x\n\n**Test checkpoint:** g.\n\n" for n in range(4, 57)
-            ) + "## Verification").replace(
-                "|   3   |   §3    | Third | D01 T01 §1 |  [ ]   |",
-                "|   3   |   §3    | Third | D01 T01 §1 |  [ ]   |\n" + "\n".join(f"| {n} | §{n} | S{n} | -- | [ ] |" for n in range(4, 57)),
-            )
-            red("section cap", "over the 55 cap", many)
+            def sized(total: int) -> str:
+                return FIXTURE_A.replace("## Verification", "".join(
+                    f"## {n}. S{n}\n\n- [ ] x\n\n**Test checkpoint:** g.\n\n" for n in range(4, total + 1)
+                ) + "## Verification").replace(
+                    "|   3   |   §3    | Third | D01 T01 §1 |  [ ]   |",
+                    "|   3   |   §3    | Third | D01 T01 §1 |  [ ]   |\n" + "\n".join(f"| {n} | §{n} | S{n} | -- | [ ] |" for n in range(4, total + 1)),
+                )
+            red("section cap", "over the 55 cap", sized(56))
+            check("a file at the cap is valid", any("cap" in p for p in found(sized(55))), False)
 
             # plan --sync then --check.
             write()
@@ -1202,6 +1205,12 @@ def cmd_self_test(_args) -> int:
                 with contextlib.redirect_stdout(out):
                     cmd_query(argparse.Namespace(what=what, context=None))
                 check(f"query {what} reports {want.split()[0]}", want in out.getvalue(), True)
+            for total, want in ((55, "55  at cap"), (56, "56  OVER CAP")):
+                write(a=sized(total))
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    cmd_query(argparse.Namespace(what="stats", context=None))
+                check(f"query stats labels {total} sections {want.split(None, 1)[1]}", want in out.getvalue(), True)
             write()
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 for ref, want in (("D00 T01 §2", 0), ("D00 T01 §9", 1), ("garbage", 2), ("D00 T01 §1", 3), ("D00 T01 §3", 4), ("D01 T01 §2", 5)):
