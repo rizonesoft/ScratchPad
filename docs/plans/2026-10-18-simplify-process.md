@@ -37,5 +37,5 @@ Spec: `docs/specs/2026-10-18-simplify-process-design.md`. Each phase is one comm
 
 ## Phase 5: verify
 
-- [ ] `validate`, `self-test`, `plan --check` green; `dotnet build` clean; CI green on push.
-- [ ] Line count report: process scripts before and after.
+- [x] `validate`, `self-test`, `plan --check` green; `dotnet build` clean; CI green on push. 2026-10-19: self-test 86 cases 0 failed, validate 0 fatal, plan current; build run 39207599834 on 4cb2751 green with 0 warnings, 0 errors and no annotations (actions/cache v6.1.0 cleared the Node 20 and save-always warnings); plan-gates run 39207599711 green; provision -Verify 9/9; no workflow has a schedule trigger.
+- [x] Line count report: process scripts before and after. `scripts/`, `tools/`, `.github/workflows/` and `.conclave/` (`.py`, `.ps1`, `.psm1`, `.yml`): 57,251 lines at `pre-simplify`, 4,153 at 4cb2751; app source under `src/` unchanged at 14,260.
