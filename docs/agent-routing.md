@@ -49,6 +49,11 @@ Observed: 2026-10-01, Claude Code 2.1.287, `observe` over the subagent transcrip
 | fresh `claude -p` 9882c31f | `claude-opus-5-5`, high | `sonnet-verifier` | run routing, validator, plan, probe, and graph self-tests | `claude-sonnet-5-5` x34 | `high` x34 |
 | same, in parallel | | `sonnet-reviewer` | routine review of this change's diff | `claude-sonnet-5-5` x25 | `high` x25 |
 | authoring session 17bfea76 | `claude-opus-5-5`, high | `sonnet-verifier` | full gate run: routing, validator, plan, probe, graph self-tests, pre-commit simulation, em-dash scan | `claude-sonnet-5-5` | `high` |
+| fresh `claude -p` faccc373 (2026-10-19, Claude Code 2.1.303) | `claude-opus-5-5`, high | `code-explorer` | locate the effort pin check | `claude-sonnet-5-5` x2 | `high` x2 |
+| same, in parallel | | `debug-evidence` | try to reproduce a reported `check` failure | `claude-sonnet-5-5` x2 | `high` x2 |
+| same, in parallel | | `git-runner` | status and last three commits | `claude-sonnet-5-5` x2 | `high` x2 |
+| same, in parallel | | `test-runner` | `todo-graph.py self-test` | `claude-sonnet-5-5` x2 | `high` x2 |
+| same, in parallel | | `mutation-tester` | disable the effort pin check, run routing self-test (killed: 117/119) | `claude-sonnet-5-5` x11 | `high` x11 |
 
 Hook: a live `general-purpose` spawn without a model was denied with the routing message (authoring session, 2026-10-01).
 
