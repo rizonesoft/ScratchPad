@@ -28,7 +28,7 @@ Spec: `docs/specs/2026-10-18-simplify-process-design.md`. Each phase is one comm
 
 - [x] `docs/testing.md`: replace `tools/nightly.ps1` with the two foreground commands; drop night-debt collection.
 - [x] Move the build-evidence and test-population functions the build and CI still need into `tools/TestBuild.ps1` (they lived in `NightlyParse.ps1`). Delete `tools/nightly.ps1`, `tools/Nightly*.ps1`, `tools/NightDebt*.ps1`, `tools/tasks/`, and docs that only serve them (`docs/nightly-*`, `docs/night-owed/`, `docs/incident-*`, `docs/owed-case-retirements.md`). Check each for a live caller first (`tools/provision.ps1`, `build.yml`, `soak.yml`, tests).
-- [x] `.claude/hooks/campaign-stop.ps1` stays inert (no skill writes its guard file); removing its `Stop` entry from `.claude/settings.json` is the operator's edit.
+- [x] `.claude/hooks/campaign-stop.ps1` stays inert (no skill writes its guard file); removing its `Stop` entry from `.claude/settings.json` is the operator's edit. 2026-10-19: operator approved; the `Stop` entry and the script are removed.
 
 ## Phase 4: retire governance TODO sections
 

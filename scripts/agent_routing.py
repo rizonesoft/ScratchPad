@@ -485,7 +485,7 @@ def check(root: str) -> list[str]:
     for filename in SETTINGS_FILES:
         found = settings if filename == "settings.json" else _read_settings(root, filename, problems, required=False)
         if found.get("disableAllHooks") is True:
-            problems.append(f".claude/{filename}: disableAllHooks is true, which switches off the routing hook and the Stop hook")
+            problems.append(f".claude/{filename}: disableAllHooks is true, which switches off the routing hook")
         env_block = found.get("env")
         if isinstance(env_block, dict):
             for var, _value in env_overrides(env_block, efforts, models):

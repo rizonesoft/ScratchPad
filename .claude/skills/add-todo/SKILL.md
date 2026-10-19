@@ -21,7 +21,7 @@ A home exists when an open section's scope already covers the work, even if its 
 | ------- | ---- | ------- |
 | Already covered | A section owns it | Point at the section. File nothing. |
 | Fits a section | An open section's scope covers it | Add a checklist item there. Never touch a `[x]` section's checklist. |
-| Needs a section | Real work inside an existing file's scope | Add `## N.` in numerical position (before `## Verification`) with its Implementation Order row. |
+| Needs a section | Real work inside an existing file's scope | Add `## N.` in numerical position (before `## Verification`) with its Implementation Order row. If the file is at the 55-section cap (`query stats` lists it), take the "Needs a file" route instead: a new file in the same domain, split by subject. |
 | Needs a file | A subject no file owns | Copy `todo-template.md` (beside this skill) to `todo/<domain>/TODO-NN-<name>.md`, fill every `CHANGEME`, and list the file in the domain `INDEX.md`. |
 
 File only work with an observable reason: a user-visible gap, a wrong result a test or user would see, a safety or data-integrity fault, or an operator request. Hardening ideas with no failure behind them are not filed.
