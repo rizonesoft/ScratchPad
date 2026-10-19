@@ -89,13 +89,14 @@ function Test-WorkflowsLeg {
     if ($linux) { $res += @{ Name = "workflow $wf"; Ok = $false; Detail = 'linux runner (Windows-only repo)' }; continue }
     $res += @{ Name = "workflow $wf"; Ok = $true; Detail = 'present, no linux runner' }
   }
-  # No scheduled test runs (operator decision 2026-10-14): the soak runs
-  # on workflow_dispatch only.
-  $soak = Join-Path $Root '.github/workflows/soak.yml'
-  if ((Test-Path $soak) -and (Select-String -Path $soak -Pattern '^\s*schedule:' -Quiet)) {
-    $res += @{ Name = 'workflow soak trigger'; Ok = $false; Detail = 'soak.yml has a schedule trigger; scheduled test runs are retired' }
+  # No scheduled runs (operator decisions 2026-10-14 and 2026-10-18): CI
+  # runs on push, the soak on workflow_dispatch, and nothing on a timer.
+  $timed = @(Get-ChildItem (Join-Path $Root '.github/workflows') -Filter *.yml -ErrorAction SilentlyContinue |
+    Where-Object { Select-String -Path $_.FullName -Pattern '^\s*schedule:' -Quiet } | ForEach-Object { $_.Name })
+  if ($timed.Count -gt 0) {
+    $res += @{ Name = 'workflow schedules'; Ok = $false; Detail = "schedule trigger in $($timed -join ', '); scheduled runs are retired" }
   } else {
-    $res += @{ Name = 'workflow soak trigger'; Ok = $true; Detail = 'manual only' }
+    $res += @{ Name = 'workflow schedules'; Ok = $true; Detail = 'none (push or manual only)' }
   }
   $plan = Join-Path $Root '.github/workflows/plan.yml'
   if ((Test-Path $plan) -and -not (Select-String -Path $plan -Pattern 'plan-gates' -Quiet)) {

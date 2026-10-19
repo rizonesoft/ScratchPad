@@ -18,18 +18,16 @@ jobs:
           fetch-depth: 0
       - name: Cache provisioned SDK
         id: sdk-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v6.1.0
         with:
           path: .tools/dotnet-win-x64
           key: sdk-v1-${{ runner.os }}-${{ hashFiles('global.json', 'tools/provision.ps1') }}
-          save-always: true
       - name: Cache NuGet packages
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-v1-${{ runner.os }}-${{ hashFiles('**/packages.lock.json') }}
           restore-keys: nuget-v1-${{ runner.os }}-
-          save-always: true
       - name: Provision SDK
         if: steps.sdk-cache.outputs.cache-hit != 'true'
         run: powershell -ExecutionPolicy Bypass -File tools\provision.ps1
