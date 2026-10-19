@@ -9,6 +9,13 @@ Operator direction 2026-10-01: minimize agent cost without lowering the bar. The
 | `sonnet-researcher` | `sonnet` | `high` | no | Read, Grep, Glob, Bash, PowerShell, WebFetch, WebSearch |
 | `sonnet-verifier` | `sonnet` | `high` | no | Read, Grep, Glob, Bash, PowerShell |
 | `sonnet-reviewer` | `sonnet` | `high` | no | Read, Grep, Glob, Bash, PowerShell |
+| `code-explorer` | `sonnet` | `high` | no | Read, Glob, Grep, Bash |
+| `debug-evidence` | `sonnet` | `high` | no | Bash, Read, Glob, Grep |
+| `git-runner` | `sonnet` | `high` | no | Bash, Read, Grep |
+| `mutation-tester` | `sonnet` | `high` | no (mutates only its own throwaway worktree) | Bash, Read, Glob, Grep |
+| `test-runner` | `sonnet` | `high` | no | Bash, Read, Glob, Grep |
+
+The last five come from the Conclave-SDK base kit (imported 2026-10-19, operator decision to route all five). Refreshing a body from the kit drops the `effort: high` line ScratchPad adds; `check` then fails until the line is restored. In this repo `git-runner` stays read-only: the lead owns every commit, so a brief never asks it to commit, push, rebase, reset, or clean.
 
 Definitions: `.claude/agents/<name>.md`. No routed agent holds a write tool or the Agent tool, so delegates cannot edit files through their tools, delegation never nests, and the lead stays the only writer and integrator.
 
@@ -54,4 +61,4 @@ Independent review: GPT sign-off slot (`.conclave/panel.toml`, `gpt-6-astra`, hi
 - Routed agents keep Bash and PowerShell for reading and running gates, so a shell command could still write; their instructions forbid it, and the lead checks `git status` after every delegate run and reverts any such change.
 - Agents spawned by the Workflow tool's `agent()` do not pass through the Agent PreToolUse hook; a workflow script must pass `model: 'sonnet'` itself and must not delegate writes to it.
 - User-level `~/.claude/agents/`, plugin agents, and user settings are outside `check`; the hook still sees the env they leave in the session.
-- The hook runs under `python3`; if it is missing from the hook shell, Claude Code treats the error as non-blocking and routing is unenforced (the Stop hook shares that dependency).
+- The hook runs under `python3`; if it is missing from the hook shell, Claude Code treats the error as non-blocking and routing is unenforced.

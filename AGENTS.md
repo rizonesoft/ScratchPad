@@ -13,8 +13,9 @@ Agent instructions for this repository. Human orientation lives in `README.md`. 
 | `resources/baseline/` | Captured Notepad baseline for parity checks |
 | `todo/` | Canonical execution contracts; read `todo/README.md` before authoring or implementing |
 | `todo/implementation-plan.md` | Ordered execution plan synchronized through `scripts/todo-graph.py` |
-| `scripts/` | `todo-graph.py` (validate, plan, queries) and `agent_routing.py` |
-| `docs/` | User guide, testing policy, phase runs, specs and plans; `docs/reviews/` is read-only history |
+| `scripts/` | `todo-graph.py` (validate, plan, queries), `agent_routing.py`, and the Conclave-SDK kit scripts `review-dispatch.py` (tests in `scripts/tests/`) and `verify-agent-tiers.mjs` |
+| `docs/` | User guide, testing policy, phase runs, specs and plans; `docs/reviews/` is read-only history; `docs/cross-model-reviews/` holds `independent-review` rounds |
+| `.agents/`, `.codex/`, `.conclave/` | Conclave-SDK base and reviewer kit copies for Antigravity and Codex, and the reviewer pin (`reviewers.toml`) |
 | `build/` | Ignored derived output, never an authoritative record |
 
 The app runs on Windows only; neutral libraries build and test on Windows with the repo-local .NET SDK. The TODO tooling (`scripts/`, plan checks) runs on Windows with Python 3. CI and dev are Windows-only since the 2026-09-19 operator decision.
@@ -38,13 +39,14 @@ The lifecycle is: capture, check the section's claims against the repository, re
 - **Output discipline:** bound every command (`dotnet test --filter`, `tail`/`head`, field extraction, `>/dev/null`). Keep full logs in ignored scratch.
 - **Act, then report:** complete authorized work and report evidence. Explicit operator stop instructions take effect immediately.
 - **Writes are serial:** one session owns the working tree. Check `git status` before building over unfamiliar work.
-- **Claude Code is the only writer** (operator decision 2026-09-23): no other harness edits or commits in this repo. Codex reviews only when the operator asks.
+- **Claude Code is the only writer** (operator decision 2026-09-23): no other harness edits or commits in this repo. Codex and Antigravity review only when the operator asks, read-only, through the `independent-review` skill (`scripts/review-dispatch.py`).
 - **User data first:** atomic writes, readback, skip-and-report, confirmed destructive paths. Checkpoints prove the failure path too.
 - **Testing is scoped and quiet** (operator decision 2026-10-14, `docs/testing.md`): no scheduled test runs; a section runs every test of its feature and nothing else, and checks anything the user sees visually against Notepad; the full suite runs when a phase, file, or release closes, and only the operator starts the foreground legs.
 - **Parity is proven:** captures for Notepad surfaces, ACP schema and docs for protocol behavior. No artifact, no claim.
 - **Consent gates agents:** deny-by-default, exactly-once answers, diff review, undoable apply.
 - **No em dashes** in authored prose. One line per paragraph and list item in Markdown.
 - **One section is one logical change:** review fixes land as new commits (never amend) and are re-reviewed.
+- **Conclave-SDK kits** (`base` and `reviewer`, imported 2026-10-19): refresh them with `forge.py kit` (additive) or by copying the changed kit file, then re-apply the local edits (agent `effort: high`, entry-doc reviewer lines, `independent-review` scope). Never run `forge.py sync` here: it reads `scripts/todo-graph.py` as the SDK `todo` kit and would overwrite ScratchPad's own TODO skills and, with `--include-scripts`, the tool itself.
 - **Source of truth:** Notepad behavior via captures, ACP via [agentclientprotocol.com](https://agentclientprotocol.com/get-started/agents), plan state via `todo/`. [Intelligent Terminal](https://github.com/microsoft/intelligent-terminal) is prior art, never a design authority. Disagreements are recorded decisions, not silent reinterpretations.
 
 Completion-first: finish the section in the shipping session: run every test of what it implemented, its own Interactive and Primary tests included, scoped by filter (never the whole suite), and flip the same session. Tests the host cannot run are noted in the `Verified:` evidence and covered by the phase-close run; they never park work.
@@ -58,13 +60,18 @@ Cost rule (operator direction 2026-10-01): the lead session delegates every boun
 | `sonnet-researcher` | sonnet, high | fact-checks of section claims, code location, reference tracing, source and spec lookup |
 | `sonnet-verifier` | sonnet, high | named build, test, validator, and checkpoint runs with bounded results |
 | `sonnet-reviewer` | sonnet, high | routine pre-review diff pass: test quality, scope, drift, style |
+| `code-explorer` | sonnet, high | read-only code location and subsystem maps (Conclave-SDK base kit) |
+| `debug-evidence` | sonnet, high | evidence gathering for a bug before any theory: timeline, state, safe reproduction |
+| `git-runner` | sonnet, high | read-only git surveys: status, diff, log, blame (never commits here) |
+| `mutation-tester` | sonnet, high | apply named mutations in a throwaway worktree, run the named test, report killed or survived |
+| `test-runner` | sonnet, high | run named test and check commands, report counts and failing assertions |
 
 - **The lead keeps:** all implementation (code, tests, docs, TODO edits), architecture and design decisions, TODO plan corrections, `Started:`, integration, commits, the final Test checkpoint run, stamps and row flips, the review call, and its own review of consequential design, security, privacy, consent, data integrity, and critical correctness.
 - **Briefs are complete:** goal, exact paths, sources to use, acceptance criteria, and the commands that prove them. A delegate gets what it needs and nothing it must rediscover.
 - **Delegates never write:** routed agents hold no write tools (`check` enforces it); the lead checks `git status` after every delegate run and reverts anything a delegate changed through its shell.
 - **Escalate, do not absorb:** a delegate's ambiguity, failed check, or unresolved finding comes back to the lead. After two unsuccessful delegations of the same task, the lead does it itself or stops and reports; it never accepts a weaker result.
 - **Stronger model on purpose:** built-in `general-purpose`, `claude`, `Explore`, `Plan`, and `claude-code-guide` are denied by the hook unless the call passes `model: "opus"`; that, a fork, or the lead itself is the escalation path for consequential review. Routed agents never take a model override.
-- **Independent review** is one Opus pass per section (`process-todo-section` step 4); `sonnet-reviewer` passes are advisory input to the lead's own review.
+- **Independent review** is one Opus pass per section (`process-todo-section` step 4); `sonnet-reviewer` passes are advisory input to the lead's own review. A cross-model round (`independent-review`, pin `.conclave/reviewers.toml`: GPT-6 Astra, then Gemini 4, then Sonnet 5.5) runs only when the operator asks and never replaces the Opus pass.
 
 ## Unknowns and questions
 

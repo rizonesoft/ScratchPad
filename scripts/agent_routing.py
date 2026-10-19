@@ -63,6 +63,12 @@ ROUTED_AGENTS = {
     "sonnet-researcher": Route("sonnet", "high"),
     "sonnet-verifier": Route("sonnet", "high"),
     "sonnet-reviewer": Route("sonnet", "high"),
+    # Conclave-SDK base kit agents (imported 2026-10-19).
+    "code-explorer": Route("sonnet", "high"),
+    "debug-evidence": Route("sonnet", "high"),
+    "git-runner": Route("sonnet", "high"),
+    "mutation-tester": Route("sonnet", "high"),
+    "test-runner": Route("sonnet", "high"),
 }
 # Routed agents are read-only (operator direction 2026-10-02): none may hold a write tool.
 WRITE_TOOLS = frozenset({"Edit", "Write", "NotebookEdit"})

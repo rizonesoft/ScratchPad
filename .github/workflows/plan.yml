@@ -3,7 +3,8 @@ name: plan-gates
 # Windows-only CI (operator decision 2026-09-19). Bash steps run under the
 # runner's Git Bash; python3 is the image Python. Scope since 2026-10-18:
 # the TODO graph's integrity, the plan projection, and the subagent routing
-# pins (docs/specs/2026-10-18-simplify-process-design.md).
+# pins (docs/specs/2026-10-18-simplify-process-design.md), plus the
+# Conclave-SDK kit scripts imported 2026-10-19.
 
 on:
   push:
@@ -17,6 +18,7 @@ on:
       - '.claude/agents/**'
       - '.claude/settings.json'
       - 'docs/agent-routing.md'
+      - '.conclave/**'
 
 jobs:
   plan-gates:
@@ -37,6 +39,13 @@ jobs:
         run: |
           python3 scripts/agent_routing.py self-test
           python3 scripts/agent_routing.py check
+      - name: Check Conclave-SDK kit scripts
+        # Base kit: every agent pins a model and holds no edit tool. Reviewer
+        # kit: the dispatcher's routing, failover and record tests (fake CLIs,
+        # no model call).
+        run: |
+          node scripts/verify-agent-tiers.mjs
+          python3 -m unittest discover -s scripts/tests
       - name: Check plan projection is current
         run: python3 scripts/todo-graph.py plan --check
       - name: Assert commit hook is intact
