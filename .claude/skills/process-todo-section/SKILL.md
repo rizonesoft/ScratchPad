@@ -39,7 +39,7 @@ Follow `gates.md` beside this skill (it defers to `docs/testing.md`): clean buil
 
 ## 4. Review
 
-Commit the candidate first. Then get **one independent review** of the diff (`git show <sha>` or the range) against the section text: an `Agent` call with `subagent_type: "general-purpose"` and `model: "opus"`, or a cross-model round through the `independent-review` skill when the operator asks for it. Brief it with the section text, the diff, and three questions:
+Commit the candidate first. Then get **one independent review** of the diff (`git show <sha>` or the range) against the section text: an `Agent` call with `subagent_type: "general-purpose"` and `model: "opus"`. When the operator asks, also run a cross-model round through the `independent-review` skill; it adds to the Opus pass and never replaces it. Brief it with the section text, the diff, and three questions:
 
 1. Does it do exactly what the section asks, without extra scope?
 2. Is it correct: logic, failure paths, trust boundaries (file writes, encodings, consent, protocol validation, values the UI decides that nothing verifies)?

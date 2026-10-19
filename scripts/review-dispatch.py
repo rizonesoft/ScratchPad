@@ -120,8 +120,9 @@ def kill_tree(process):
 
 def remove_scratch(path):
     """Remove a reviewer's scratch directory. On Windows a file stays locked until every process holding it has
-    exited, and a reviewer's helper can outlive the reviewer (see kill_tree), so a locked file is retried for a
-    bounded time. A directory that stays locked is left behind with a note: the round's outcome is already decided."""
+    exited, and a reviewer's helper can outlive the reviewer (see kill_tree) and keep writing into it, so a failed
+    removal is retried for a bounded time. A directory that still cannot be removed is left behind with a note: the
+    round's outcome is already decided."""
     deadline = time.monotonic() + CLEANUP_SECONDS
     while True:
         try:
@@ -129,7 +130,7 @@ def remove_scratch(path):
             return
         except FileNotFoundError:
             return
-        except PermissionError as exc:
+        except OSError as exc:
             if time.monotonic() > deadline:
                 print(f"review-dispatch: left {path} behind ({exc.strerror or type(exc).__name__})", file=sys.stderr)
                 return

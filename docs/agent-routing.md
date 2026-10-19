@@ -64,6 +64,8 @@ Independent review: GPT sign-off slot (`.conclave/panel.toml`, `gpt-6-astra`, hi
 ## Limitations
 
 - Routed agents keep Bash and PowerShell for reading and running gates, so a shell command could still write; their instructions forbid it, and the lead checks `git status` after every delegate run and reverts any such change.
+- `mutation-tester` works in a fresh `git worktree`, which lacks the ignored repo-local SDK `global.json` pins (`.tools/dotnet-win-x64`), so a `dotnet test` baseline there goes red. Brief it with Python gates (`agent_routing.py`, `todo-graph.py`, dispatcher tests); a .NET mutation run stays with the lead until the agent can link `.tools` into its copy.
+- `debug-evidence` is written for Linux services (`journalctl`, WSL paths); on this Windows-only repo, brief it with the Windows logs and commands to use.
 - Agents spawned by the Workflow tool's `agent()` do not pass through the Agent PreToolUse hook; a workflow script must pass `model: 'sonnet'` itself and must not delegate writes to it.
 - User-level `~/.claude/agents/`, plugin agents, and user settings are outside `check`; the hook still sees the env they leave in the session.
 - The hook runs under `python3`; if it is missing from the hook shell, Claude Code treats the error as non-blocking and routing is unenforced.
