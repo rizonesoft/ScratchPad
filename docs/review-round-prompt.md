@@ -26,4 +26,8 @@ Give a verdict per lens: `approve`, `needs-attention` (numbered findings, each w
 
 ## Reply format
 
-One section per lens with its verdict and findings, then a final line: `OVERALL: approve` or `OVERALL: needs-attention`.
+One section per scheduled lens with its verdict and numbered findings. End with exactly one `HIGHEST: P1`, `HIGHEST: P2`, `HIGHEST: P3` or `HIGHEST: none` line, then a final line: `OVERALL: approve` or `OVERALL: needs-attention`.
+
+## Antigravity read-only access
+
+Use native file-reading tools for source and documents. The session permission file allows only these shell command forms: `git status --short`, `git rev-parse HEAD`, `git --no-pager show --no-ext-diff --no-textconv <HEAD-or-full-SHA>`, and `git --no-pager diff --no-ext-diff --no-textconv <HEAD-or-full-SHA-or-two-SHA-range>`. Use exactly these forms, without a shell prefix, pipelines or extra options. File writes and edits are denied. A denied required action means `OVERALL: blocked` (or `COMPLETION: blocked` for completion), never approval.

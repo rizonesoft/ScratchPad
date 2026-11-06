@@ -9,6 +9,8 @@ Ship rows until nothing runnable is left, then close out. With no phase named, s
 
 The operator is present but is not the engine: decide, verify and fix what you can. If the operator says stop or pause, stop at once.
 
+Read `docs/writer-campaigns.md` and acquire the claude guard with the current session id before starting a campaign. Arm only this harness's heartbeat. A named phase uses `--scope phase --phase N`; the whole plan uses `--scope plan`. Stop or pause ends the guard and cancels its heartbeat immediately.
+
 ## 0. Open the run
 
 ```bash
@@ -29,14 +31,14 @@ Gaps you notice while shipping (a surface or control no section owns) are filed 
 
 ## 2. Park or close
 
-- **Park:** every open row left is blocked or runnable only elsewhere. Write a column-0 `PARKED <UTC> <reason>` line and list each leftover with what blocks it.
+- **Park:** every open row left is blocked or runnable only elsewhere. Write a column-0 `PARKED <UTC> run=<run_id> <reason>` line and list each leftover with what blocks it.
 - **Close:** every row is `[x]`. Run the focus-free full suite once:
 
   ```powershell
   dotnet test src/ScratchPad.slnx --filter "Category!=Interactive&Category!=Primary" -e SCRATCHPAD_BACKGROUND=1
   ```
 
-  List the two foreground commands from `docs/testing.md` as owed to the operator (they take the screen; do not wait for them). Write `## Closeout` in the run file: what shipped, what was corrected, what was filed.
+  List the two foreground commands from `docs/testing.md` as owed to the operator (they take the screen; do not wait for them). Write `## Closeout run=<run_id>` in the run file: what shipped, what was corrected, what was filed.
 
 For each TODO file whose rows are now all `[x]` or Moved: run its `## Verification` items, grep the touched paths for new `TODO`/`FIXME` markers (finish each or give it an owning section), confirm its open deferrals still name live owners, set `status: done` in its frontmatter, and move it to a Completed list in the domain `INDEX.md`.
 
@@ -47,3 +49,5 @@ Commit, sync the plan, and continue with the next phase that has a ready row unl
 - Rows ship only through `process-todo-section`. Never tick a plan box by hand.
 - A parked phase is neither complete nor stalled; say which rows block it.
 - No `--no-verify`, amends or force-pushes. A red gate is work to fix.
+
+After the requested scope closes or parks, end the guard and cancel the heartbeat as described in `docs/writer-campaigns.md`. For a whole-plan run, a phase closeout is intermediate: acquire a fresh run id for the next phase only after ending the previous guard. Do not leave a heartbeat for a finished scope.

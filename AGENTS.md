@@ -30,16 +30,16 @@ Files are `todo/NN-domain/TODO-NN-short-name.md`. The **Implementation Order tab
 
 ## Choose the work contract
 
-For TODO work, read the target section, `todo/README.md`, its dependencies, and the skill under `.claude/skills/`: capture or author through `add-todo`, ship or audit one section through `process-todo-section`, run a phase or the plan through `process-phase`, harden the tree through `groom-plan`.
+For TODO work, read the target section, `todo/README.md`, its dependencies, and the skill under the active harness folder (`.claude/skills/` or `.codex/skills/`): capture or author through `add-todo`, ship or audit one section through `process-todo-section`, run a phase or the plan through `process-phase`, harden the tree through `groom-plan`.
 
-The lifecycle is: capture, check the section's claims against the repository, record `Started:`, implement, run the section's gates, commit, one independent Opus review with fixes, stamp, flip the row, sync the plan, commit. Each section must be executable with zero conversation context. Preserve section addresses and bidirectional cross-references. A row turns `[x]` only with its `Verified:` stamp. Do not rewrite a stamped checklist. File new work only for an observable failure or an operator request, with its own owner and dependency.
+The lifecycle is: capture, check the section's claims against the repository, record `Started:`, implement, run the section's gates, commit, the pinned plan, adversarial, low follow-up and completion reviews with fixes, stamp, flip the row, sync the plan, commit. Each section must be executable with zero conversation context. Preserve section addresses and bidirectional cross-references. A row turns `[x]` only with its `Verified:` stamp. Do not rewrite a stamped checklist. File new work only for an observable failure or an operator request, with its own owner and dependency.
 
 ## Working rules
 
 - **Output discipline:** bound every command (`dotnet test --filter`, `tail`/`head`, field extraction, `>/dev/null`). Keep full logs in ignored scratch.
 - **Act, then report:** complete authorized work and report evidence. Explicit operator stop instructions take effect immediately.
-- **Writes are serial:** one session owns the working tree. Check `git status` before building over unfamiliar work.
-- **Claude Code is the only writer** (operator decision 2026-09-23): no other harness edits or commits in this repo. Codex and Antigravity review only when the operator asks, read-only, through the `independent-review` skill (`scripts/review-dispatch.py`).
+- **Writes are serial:** one session owns the working tree. Check `git status` before building over unfamiliar work. Campaigns use the active harness's own guard and heartbeat; read `docs/writer-campaigns.md`. End the old guard before switching writers. Never resume a paused run without the operator.
+- **Claude Code and Codex may write** (operator decision 2026-11-06): the operator may switch between them. Only one lead session owns the working tree at a time; inspect status and the existing diff before taking over. Antigravity remains a read-only reviewer. Cross-model review uses `independent-review` (`scripts/review-dispatch.py`): Claude work goes to Codex GPT-6 Astra at medium; Codex work goes to Google Antigravity Gemini 4 Argon Medium. Never raise reviewer effort above medium.
 - **User data first:** atomic writes, readback, skip-and-report, confirmed destructive paths. Checkpoints prove the failure path too.
 - **Testing is scoped and quiet** (operator decision 2026-10-14, `docs/testing.md`): no scheduled test runs; a section runs every test of its feature and nothing else, and checks anything the user sees visually against Notepad; the full suite runs when a phase, file, or release closes, and only the operator starts the foreground legs.
 - **Parity is proven:** captures for Notepad surfaces, ACP schema and docs for protocol behavior. No artifact, no claim.
@@ -71,7 +71,7 @@ Cost rule (operator direction 2026-10-01): the lead session delegates every boun
 - **Delegates never write:** routed agents hold no write tools (`check` enforces it); the lead checks `git status` after every delegate run and reverts anything a delegate changed through its shell.
 - **Escalate, do not absorb:** a delegate's ambiguity, failed check, or unresolved finding comes back to the lead. After two unsuccessful delegations of the same task, the lead does it itself or stops and reports; it never accepts a weaker result.
 - **Stronger model on purpose:** built-in `general-purpose`, `claude`, `Explore`, `Plan`, and `claude-code-guide` are denied by the hook unless the call passes `model: "opus"`; that, a fork, or the lead itself is the escalation path for consequential review. Routed agents never take a model override.
-- **Independent review** is one Opus pass per section (`process-todo-section` step 4); `sonnet-reviewer` passes are advisory input to the lead's own review. A cross-model round (`independent-review`, pin `.conclave/reviewers.toml`: GPT-6 Astra, then Gemini 4, then Sonnet 5.5) runs only when the operator asks and never replaces the Opus pass.
+- **Independent review:** one pinned cross-model reviewer per writer replaces the old Opus pass (operator decision 2026-11-06). Claude uses Codex GPT-6 Astra; Codex uses Antigravity Gemini 4 Argon. Plan and initial adversarial reviews run at medium, follow-up rounds at low (up to eight), and completion runs last at medium. Never exceed medium or substitute Claude as reviewer. Use `independent-review`; no returned review means no approval.
 
 ## Unknowns and questions
 

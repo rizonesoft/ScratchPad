@@ -1,32 +1,43 @@
-# Independent reviewers for this repository, read by scripts/review-dispatch.py.
-#
-# A route names exactly one reviewer for work written by one agent, never of
-# the writer's own model family (the CLI names it: codex is OpenAI, agy is
-# Google, claude is Anthropic). A reviewer that is not installed, fails, times
-# out, returns nothing or replies OVERALL: blocked is skipped and the reason
-# recorded: there is no review, never an approval, and no other reviewer runs.
-#
-# Loaded strictly: an unknown key, an unknown CLI, a malformed model, a route
-# naming an undefined reviewer, a same-family reviewer or more than one
-# reviewer refuses every dispatch.
-
+# One writer and one reviewer per section. Historical receipts replay their original pin.
+# ScratchPad operator 2026-11-06: plan medium, adversarial medium, up to eight low rounds,
+# completion medium last. Codex is reviewed by Argon; other writers by Astra. Claude is never a reviewer.
 schema_version = 1
 
-# GPT-6 Astra through the Codex CLI, read-only sandbox.
 [reviewers.astra]
 cli = "codex"
 model = "gpt-6-astra"
 effort = "medium"
 
-# Sonnet 5.5 through Claude Code in plan mode.
-[reviewers.sonnet]
-cli = "claude"
-model = "claude-sonnet-5-5"
-effort = "high"
+[reviewers.argon]
+cli = "agy"
+model = "gemini-4-argon-medium"
+models_by_effort = { low = "gemini-4-argon-low", medium = "gemini-4-argon-medium" }
 
-# Astra reviews wherever it may; Sonnet reviews Codex work (owner decision
-# 2026-10-21: one reviewer per writer, no fallback).
 [routes]
 claude = ["astra"]
-codex = ["sonnet"]
+codex = ["argon"]
 gemini = ["astra"]
+
+[schedule]
+completion_order = "last"
+max_low_rounds = 8
+severity_stop_after = 0
+
+[schedule.plan]
+effort = "medium"
+lenses = ["plan"]
+
+[[schedule.rounds]]
+effort = "medium"
+lenses = ["adversarial"]
+
+[schedule.rotation]
+effort = "low"
+lenses = ["consistency", "quality", "integration", "source-defect", "design", "optimization", "record", "plan-delivery"]
+
+[schedule.escalation]
+effort = "low"
+lenses = ["adversarial"]
+
+[schedule.completion]
+effort = "medium"

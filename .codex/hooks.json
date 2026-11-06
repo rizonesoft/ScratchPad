@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import subprocess,runpy,sys; r=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['campaign','hook']; runpy.run_path(r+'/scripts/codex_campaign.py',run_name='__main__')\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import subprocess,runpy,sys; r=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['campaign','hook']; runpy.run_path(r+'/scripts/codex_campaign.py',run_name='__main__')\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import subprocess,runpy,sys; r=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['campaign','hook']; runpy.run_path(r+'/scripts/codex_campaign.py',run_name='__main__')\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import subprocess,runpy,sys; r=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['campaign','hook']; runpy.run_path(r+'/scripts/codex_campaign.py',run_name='__main__')\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "Interrupt": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -c \"import subprocess,runpy,sys; r=subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip(); sys.argv=['campaign','hook']; runpy.run_path(r+'/scripts/codex_campaign.py',run_name='__main__')\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

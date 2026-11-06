@@ -29,6 +29,8 @@ Read the whole TODO file and the stamps of the sections this one depends on (the
 
 Fix drift in the TODO file before building, marked `**Corrected YYYY-MM-DD:**` with what it said and what is true. Make an unfalsifiable checkpoint falsifiable. Never narrow the section to fit the code you meant to write. If the whole section is wrong, stop and say what you propose. Where the source is silent, take the standard option and record it as a default.
 
+Before building, commit the corrected contract and run the medium plan pass through `independent-review`. Resolve its findings first.
+
 ## 2. Build
 
 Work the checklist top to bottom and tick each item when its `Done when` holds. Keep the diff to the section; file adjacent problems with `add-todo`. User data first: atomic writes, read back what was written, every destructive path confirmed, the failure path tested. Notepad surfaces are proven against the captures in `resources/baseline/`, never memory. UI sections consume the shared styles named in `**Chrome:**` and account for every control on the counterpart (working, or deferred to a named section).
@@ -39,13 +41,8 @@ Follow `gates.md` beside this skill (it defers to `docs/testing.md`): clean buil
 
 ## 4. Review
 
-Commit the candidate first. Then get **one independent review** of the diff (`git show <sha>` or the range) against the section text: an `Agent` call with `subagent_type: "general-purpose"` and `model: "opus"`. When the operator asks, also run a cross-model round through the `independent-review` skill; it adds to the Opus pass and never replaces it. Brief it with the section text, the diff, and three questions:
+Commit the candidate first. Run `independent-review`: medium adversarial pass, low follow-up rounds with verified fixes, then the medium completion review on the final commit. The active writer determines the pinned reviewer. This replaces the former Opus-only section gate. Preserve the review record and name its path in the stamp. No returned review, unresolved findings, budget exhaustion or completion gaps permit a stamp.
 
-1. Does it do exactly what the section asks, without extra scope?
-2. Is it correct: logic, failure paths, trust boundaries (file writes, encodings, consent, protocol validation, values the UI decides that nothing verifies)?
-3. Did it break a caller, consumer, test, or adjacent workflow?
-
-Ask for findings with `file:line` and the concrete failure, or `approve`. Verify each finding against the code before acting on it. Fix real ones in new commits (never amend), re-run the affected gates, and re-review the new diff. At most three rounds; anything real left after that, or anything out of the section's scope, is filed with `add-todo` and named in the report.
 
 ## 5. Stamp, flip, commit
 
@@ -53,7 +50,7 @@ At the end of the section:
 
 ```
 > **Verified:** <YYYY-MM-DD> | §N | <quoted gate evidence>
-> **Review:** Opus, <approve | approve after N fixes>[, filed <refs>]
+> **Review:** <pinned reviewer and exact model>, <findings path>, completion complete[, filed <refs>]
 ```
 
 Close any deferral this section resolved (`Deferred:` to `Resolved:` in place). Flip the Implementation Order row to `[x]`, then:
