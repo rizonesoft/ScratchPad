@@ -181,7 +181,7 @@ The app is C# and WinUI 3 on .NET: neutral libraries build and test anywhere wit
 | [x] | `D00 T02 §54` | Trend and telemetry fourth residuals            |  18   |
 | [x] | `D00 T02 §55` | Notify redesign residuals                       |  21   |
 | [x] | `D00 T12 §2`  | Pointer moves in physical coordinates           |   5   |
-| [ ] | `D00 T12 §3`  | Element clicks in physical coordinates          |   4   |
+| [ ] | `D00 T12 §3`  | Element clicks in physical coordinates          |   5   |
 | [x] | `D00 T03 §1`  | App screenshots for README                      |   6   |
 | [x] | `D00 T03 §2`  | README rewrite plus repo-face files             |  10   |
 | [ ] | `D00 T03 §3`  | Setup-path CI plus reproducibility record       |   7   |
