@@ -41,7 +41,7 @@ Follow `gates.md` beside this skill (it defers to `docs/testing.md`): clean buil
 
 ## 4. Review
 
-Commit the candidate first. Run `independent-review`: medium adversarial pass, low follow-up rounds with verified fixes, then the medium completion review on the final commit. The active writer determines the pinned reviewer. This replaces the former Opus-only section gate. Preserve the review record and name its path in the stamp. No returned review, unresolved findings, budget exhaustion or completion gaps permit a stamp.
+Commit the candidate first. Run `independent-review` on the three-pass schedule the pin sets (`.conclave/reviewers.toml`): one round on the candidate (`--kind round`), every real finding fixed in new commits with the affected gates rerun, then the completion review on the final commit (`--kind completion`), and a reconciliation (`--kind reconciliation`) only after a pass that asks for one, up to the pin's `pass_cap`. Name the section's findings file `docs/cross-model-reviews/<NN-domain>/D<NN>-T<NN>-s<N>.md` and pass your own harness as `--writer` (`claude` or `agy`); the dispatcher picks the reviewer. This replaces the former Opus-only section gate. Preserve the review record and name its path in the stamp. No returned review, unresolved findings, budget exhaustion or completion gaps permit a stamp.
 
 
 ## 5. Stamp, flip, commit

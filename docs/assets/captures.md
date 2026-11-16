@@ -6,11 +6,12 @@ Every image under `docs/assets/` is a real capture of the shipped app, never a m
 
 | File | Size (px) | SHA-256 (first 16) | Theme |
 | --- | --- | --- | --- |
-| `readme-hero.png` | 1382 x 851 | 8e4d7affc3fbd196 | light (the README's default hero, a copy of the light shot) |
-| `readme-hero-light.png` | 1382 x 851 | 8e4d7affc3fbd196 | light |
-| `readme-hero-dark.png` | 1382 x 851 | d638fd80cac9e789 | dark |
+| `readme-hero.png` | 1382 x 851 | 4959976261e2d3a2 | light (the README's default hero, a copy of the light shot) |
+| `readme-hero-light.png` | 1382 x 851 | 4959976261e2d3a2 | light |
+| `readme-hero-dark.png` | 1382 x 851 | cb87663c0d8855fe | dark |
 
 - Captured: 2026-09-26 18:57 +02:00 at app commit `444aa412cd623bdc31f51c1f1639544af58fb3ca`; recaptured at `d47393c333a4ed23a01653f9b52afc293ee87627` and again at `cbe82a9a8f40cbebdaf237fe1300fb8df2cbb93b` (the capture's private profile) with byte-identical results each time, so the shots reproduce.
+- Recaptured: 2026-11-17 00:55 +02:00 at app commit `df755c0450324460901a409b16efb69e9abd5a87` (OS 10.0.26300.0, same command with that commit) after the app icon changed to the ScratchPad identity; the hashes in the table are from this capture, and the lines below describe the earlier one.
 - Host: the operator's Windows 11 dev box (host key `fec14402`, OS 10.0.26200.0), interactive desktop session.
 - App commit: `cbe82a9a8f40cbebdaf237fe1300fb8df2cbb93b` (app sources unchanged since `444aa41`), built from a fresh clone at that commit (its `Bin/` empty before the build).
 - Build configuration: Debug, repo-local SDK (`.tools/dotnet-win-x64`).

@@ -107,6 +107,27 @@ class Campaign(unittest.TestCase):
         mark.write_text(json.dumps(dict(session='other',pid=os.getpid(),deadline=time.time()+60)))
         self.assertFalse(m.review_wait(self.root,state))
 
+    def test_dispatcher_marks_a_live_review_for_each_writers_guard(self):
+        # The producer half of review_wait: the dispatcher's own marker, not one this test writes by hand.
+        import os
+        spec=importlib.util.spec_from_file_location('dispatch_for_campaign',ROOT/'scripts/review-dispatch.py')
+        dispatch=importlib.util.module_from_spec(spec); spec.loader.exec_module(dispatch)
+        for name,env in (('agy','ANTIGRAVITY_CONVERSATION_ID'),('claude','CLAUDE_CODE_SESSION_ID')):
+            with self.subTest(harness=name):
+                m=self.modules[name]; state=self.acquire(name)
+                with patch.dict(os.environ,{env:'owner'}), patch.object(m,'fingerprint',return_value='same'), patch.object(m,'runnable',return_value=True):
+                    with dispatch.campaign_review_marker(self.root,name,60) as marker:
+                        self.assertTrue(marker.is_file())
+                        self.assertTrue(m.review_wait(self.root,state))
+                        self.assertEqual(m.hook(self.root,dict(session_id='owner',hook_event_name='Stop')),{})
+                        self.assertEqual(m.read(self.root)['blocks'],0)
+                    self.assertFalse(marker.exists())
+                    self.assertFalse(m.review_wait(self.root,state))
+                m.end(self.root,'owner','operator-stop')
+        with patch.dict(os.environ,{'CLAUDE_CODE_SESSION_ID':''}):
+            with dispatch.campaign_review_marker(self.root,'claude',60) as marker:
+                self.assertIsNone(marker)
+
     def test_interrupt_cancels_even_with_interlock_held(self):
         self.acquire(); m=self.modules['agy']
         with m.ownership_lock(self.root):

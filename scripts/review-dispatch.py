@@ -68,6 +68,7 @@ a review outside a section, take the files from `--paths`. The summary of a retu
 """
 import argparse
 import atexit
+from contextlib import contextmanager
 import ctypes
 from datetime import datetime, timezone
 import hashlib
@@ -620,6 +621,30 @@ def blocked(text):
         return None
     reason = next((line.strip() for line in lines[:-1] if not line.lstrip().startswith("#")), "no reason given")
     return f"could not review: {reason[:300]}"
+
+
+# ScratchPad local edit (not in the SDK kit; re-apply after a kit refresh): the campaign guards
+# (scripts/claude_campaign.py, scripts/agy_campaign.py) read these markers so a Stop that arrives while the owning
+# session waits on a review neither asks it to continue nor counts toward the no-progress breaker.
+CAMPAIGN_SESSION_ENV = {"claude": "CLAUDE_CODE_SESSION_ID", "agy": "ANTIGRAVITY_CONVERSATION_ID",
+                        "gemini": "ANTIGRAVITY_CONVERSATION_ID"}
+
+
+@contextmanager
+def campaign_review_marker(root, writer, timeout):
+    """Mark a live review for the writer's campaign guard while the block runs; removed however the block ends."""
+    session = os.environ.get(CAMPAIGN_SESSION_ENV.get(writer, ""), "")
+    marker = None
+    if session:
+        harness = "agy" if writer == "gemini" else writer
+        marker = Path(root) / "build" / f"{harness}-campaign" / "reviews" / f"{os.getpid()}-{time.time_ns()}.json"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write(marker, json.dumps({"session": session, "pid": os.getpid(), "deadline": time.time() + timeout + 30}))
+    try:
+        yield marker
+    finally:
+        if marker is not None:
+            marker.unlink(missing_ok=True)
 
 
 def atomic_write(path, text):
@@ -1457,7 +1482,8 @@ def main(argv=None):
                                      f"format --record writes{unreadable_heading(existing)}; {RESERVED_NAMES}), so "
                                      f"no round was run")
             plan = scheduled(schedule, args.kind, rounds, args.surface, paths)
-        result = review(pin, args.writer, args.prompt, args.timeout, plan, args.kind)
+        with campaign_review_marker(ROOT, args.writer, args.timeout):
+            result = review(pin, args.writer, args.prompt, args.timeout, plan, args.kind)
     except (Refused, Unrecorded, OSError) as exc:
         print("review-dispatch refused: " + str(exc), file=sys.stderr)
         return 2
